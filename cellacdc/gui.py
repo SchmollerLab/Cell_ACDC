@@ -48,7 +48,7 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
-    QFont, QKeyEvent, QMouseEvent
+    QFont, QKeyEvent, QMouseEvent, QPainter
 )
 from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
@@ -923,6 +923,177 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         pixmap = QPixmap(":cross_cursor.svg")
         self.addPointsCursor = QCursor(pixmap, 16, 16)
+
+        cursor_size = QSize(64, 64)
+        crosshair = QPixmap(":cross_cursor.svg").scaled(
+            QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
+        self._toolCursorCenterPixmaps = {
+            'blank': QPixmap(32, 32),
+            'crosshair': crosshair,
+            'wand': QPixmap(":wand_cursor.svg").scaled(
+                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'curvature': QPixmap(":curv_cursor.svg").scaled(
+                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'polyline': QPixmap(":addDelPolyLineRoi_cursor.svg").scaled(
+                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+        }
+        self._toolCursorCenterPixmaps['blank'].fill(Qt.transparent)
+        self._normalToolCursorPixmaps = {}
+        for isHoverImg1 in (True, False):
+            pixmap = QPixmap(cursor_size)
+            pixmap.fill(Qt.transparent)
+            self._normalToolCursorPixmaps[isHoverImg1] = pixmap
+
+        self.toolCursors = {}
+        self.leftClickCursorTools = ()
+        self.rightClickCursorTools = ()
+        self._cursorHoverImage = None
+
+    def gui_createToolCursorRegistry(self):
+        # Ordering mirrors the mutually exclusive click handling priority.
+        self.leftClickCursorTools = (
+            ('brush', self.brushButton),
+            ('eraser', self.eraserButton),
+            ('curvature', self.curvToolButton),
+            ('magic_wand', self.wandToolButton),
+            ('magic_prompts', self.magicPromptsToolButton),
+            ('label_roi', self.labelRoiButton),
+            ('ruler', self.rulerButton),
+            ('polyline_deletion_roi', self.addDelPolyLineRoiButton),
+            ('clear_region', self.clearFreehandRoiButton),
+            ('merge_ids', self.mergeIDsButton),
+            ('keep_ids', self.keepIDsButton),
+            ('whitelist_ids', self.whitelistIDsButton),
+            ('manual_background', self.manualBackgroundButton),
+            ('zoom_rectangle', self.zoomRectButton),
+        )
+        self.rightClickCursorTools = (
+            ('separate_objects', self.separateBudButton),
+            ('fill_holes', self.fillHolesToolButton),
+            ('hull_contour', self.hullContToolButton),
+            ('move_object', self.moveLabelToolButton),
+            ('edit_id', self.editIDbutton),
+            ('merge_ids', self.mergeIDsButton),
+            ('keep_ids', self.keepIDsButton),
+            ('whitelist_ids', self.whitelistIDsButton),
+            ('exclude_from_analysis', self.binCellButton),
+            ('annotate_dead', self.ripCellButton),
+            ('assign_mother', self.assignBudMothButton),
+            ('set_history_known', self.setIsHistoryKnownButton),
+            ('manual_tracking', self.manualTrackingButton),
+            ('manual_background', self.manualBackgroundButton),
+            ('copy_lost_contour', self.copyLostObjButton),
+            ('curvature', self.curvToolButton),
+            ('label_roi', self.labelRoiButton),
+            ('magic_prompts', self.magicPromptsToolButton),
+        )
+        cursor_tools = {
+            tool for _, tool in (
+                self.leftClickCursorTools + self.rightClickCursorTools
+            )
+        }
+        for tool in cursor_tools:
+            tool.toggled.connect(self.gui_refreshToolCursor)
+        self.gui_cacheToolCursors()
+
+    def gui_cacheToolCursors(self):
+        left_tools = ((None, QIcon()),) + tuple(
+            (name, tool.icon()) for name, tool in self.leftClickCursorTools
+        )
+        right_tools = ((None, QIcon()),) + tuple(
+            (name, tool.icon()) for name, tool in self.rightClickCursorTools
+        )
+        for isHoverImg1 in (True, False):
+            for left_tool in left_tools:
+                for right_tool in right_tools:
+                    self.gui_createToolCursor(
+                        isHoverImg1, left_tool, right_tool
+                    )
+
+    def gui_activeCursorTool(self, tools):
+        for name, tool in tools:
+            if tool.isChecked():
+                return name, tool.icon()
+
+        if self.customAnnotButton is not None and self.customAnnotButton.isChecked():
+            return 'custom_annotation', self.customAnnotButton.icon()
+
+        return None, QIcon()
+
+    def gui_getToolCursorCenter(self, left_name, right_name):
+        active_tools = {left_name, right_name}
+        overlay_cursor_tools = {
+            'brush', 'eraser', 'clear_region'
+        }
+        if active_tools & overlay_cursor_tools:
+            center = 'blank'
+        elif (
+                'label_roi' in active_tools
+                and self.labelRoiIsCircularRadioButton.isChecked()
+            ):
+            center = 'blank'
+        elif 'magic_wand' in active_tools:
+            center = 'wand'
+        elif 'curvature' in active_tools:
+            center = 'curvature'
+        elif 'polyline_deletion_roi' in active_tools:
+            center = 'polyline'
+        else:
+            center = 'crosshair'
+        return center, self._toolCursorCenterPixmaps[center]
+
+    def gui_createToolCursor(self, isHoverImg1, left_tool, right_tool):
+        left_name, left_icon = left_tool
+        right_name, right_icon = right_tool
+        center_name, center_pixmap = self.gui_getToolCursorCenter(
+            left_name, right_name
+        )
+        key = (isHoverImg1, left_name, right_name, center_name)
+        cursor = self.toolCursors.get(key)
+        if cursor is not None:
+            return cursor
+
+        pixmap = self._normalToolCursorPixmaps[isHoverImg1].copy()
+        painter = QPainter(pixmap)
+        painter.drawPixmap(16, 16, center_pixmap)
+        for icon, x in ((left_icon, 3), (right_icon, 37)):
+            if not icon.isNull():
+                tool_pixmap = icon.pixmap(QSize(24, 24))
+                painter.drawPixmap(x, 0, tool_pixmap)
+        painter.end()
+
+        cursor = QCursor(pixmap, 32, 32)
+        self.toolCursors[key] = cursor
+        return cursor
+
+    def gui_getToolCursor(self, isHoverImg1):
+        left_tool = self.gui_activeCursorTool(self.leftClickCursorTools)
+        right_tool = self.gui_activeCursorTool(self.rightClickCursorTools)
+        return self.gui_createToolCursor(isHoverImg1, left_tool, right_tool)
+
+    def gui_setToolCursor(self, event, isHoverImg1):
+        if event.isExit():
+            return
+
+        self.gui_refreshToolCursor()
+
+    def gui_refreshToolCursor(self, *args):
+        isHoverImg1 = self._cursorHoverImage
+        if isHoverImg1 is None:
+            return
+
+        if self.app.overrideCursor() == Qt.SizeAllCursor:
+            return
+
+        cursor = self.gui_getToolCursor(isHoverImg1)
+        if self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(cursor)
+        else:
+            self.app.changeOverrideCursor(cursor)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -2609,6 +2780,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         secondLevelToolbar.setMovable(False)
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
+
+        self.gui_createToolCursorRegistry()
         
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -6564,8 +6737,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.gui_hoverEventImg1(event, isHoverImg1=False)
         setMirroredCursor = (
-            self.app.overrideCursor() is None and not event.isExit()
-            and self.showMirroredCursorAction.isChecked()
+            not event.isExit() and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -6599,6 +6771,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData = self.data[self.pos_i]
         except AttributeError:
             return
+
+        self._cursorHoverImage = None if event.isExit() else isHoverImg1
         
         # Update x, y, value label bottom right
         if not event.isExit():
@@ -6614,7 +6788,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        cursorsInfo = self.gui_setCursor(modifiers, event)
+        cursorsInfo = self.gui_setCursor(modifiers, event, isHoverImg1)
         self.highlightHoverLostObj(modifiers, event)
         
         drawRulerLine = (
@@ -6728,8 +6902,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.hoverEventDrawSpline(event)
         
         setMirroredCursor = (
-            self.app.overrideCursor() is None and not event.isExit()
-            and isHoverImg1 and self.showMirroredCursorAction.isChecked()
+            not event.isExit() and isHoverImg1
+            and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -6789,7 +6963,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.ax1.addItem(self.ax1_cursor)
 
-    def gui_setCursor(self, modifiers, event):
+    def gui_setCursor(self, modifiers, event, isHoverImg1=True):
         noModifier = modifiers == Qt.NoModifier
         shift = modifiers == Qt.ShiftModifier
         ctrl = modifiers == Qt.ControlModifier
@@ -6874,36 +7048,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         setPanImageCursor = alt and not event.isExit()
         if setPanImageCursor and overrideCursor is None:
             self.app.setOverrideCursor(Qt.SizeAllCursor)
-        elif setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setWandCursor and overrideCursor is None:
-            self.app.setOverrideCursor(self.wandCursor)
-        elif setLabelRoiCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setCurvCursor and overrideCursor is None:
-            self.app.setOverrideCursor(self.curvCursor)
-        elif setCustomAnnotCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setAddDelPolyLineCursor:
-            self.app.setOverrideCursor(self.polyLineRoiCursor)
-        elif setCustomAnnotCursor:
+        elif not event.isExit():
+            self.gui_setToolCursor(event, isHoverImg1)
+
+        if setCustomAnnotCursor:
             x, y = event.pos()
-            self.highlightHoverID(x, y)        
-        elif setKeepObjCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)        
-        elif setManualTrackingCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setManualBackgroundCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setAddPointCursor:
-            self.app.setOverrideCursor(self.addPointsCursor)
-        elif setZoomRectCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setEditIDCursor and overrideCursor is None:
-            if shift:
-                self.app.setOverrideCursor(Qt.CrossCursor)
-            else:
-                self.app.restoreOverrideCursor()
+            self.highlightHoverID(x, y)
         
         return {
             'setBrushCursor': setBrushCursor,
@@ -6954,6 +7104,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData = self.data[self.pos_i]
         except AttributeError:
             return
+
+        self._cursorHoverImage = None if event.isExit() else False
             
         if not event.isExit():
             self.xHoverImg, self.yHoverImg = event.pos()
@@ -6986,8 +7138,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and (noModifier or shift or ctrl)
             and self.labelRoiIsCircularRadioButton.isChecked()
         )
-        if setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
 
         setMoveLabelCursor = (
             self.moveLabelToolButton.isChecked() and not event.isExit()
@@ -7009,8 +7159,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.keepIDsButton.isChecked() and not event.isExit()
             and noModifier
         )
-        if setKeepObjCursor and self.app.overrideCursor() is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
+        if not setPanImageCursor and not event.isExit():
+            self.gui_setToolCursor(event, isHoverImg1=False)
 
         # Update x, y, value label bottom right
         if not event.isExit():
@@ -15418,6 +15568,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.mergeIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
         
         self.mergeIDsToolbar.setVisible(checked)
+        QTimer.singleShot(100, self.gui_refreshToolCursor)
 
     def acceptMergeMultipleIDs(self, IDs):
         if not self.mergeIDsButton.isChecked():
@@ -15719,6 +15870,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.showEditIDwidgets(checked)
         self.enableSizeSpinbox(checked)
+        QTimer.singleShot(100, self.gui_refreshToolCursor)
     
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
@@ -15999,6 +16151,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         self.showEditIDwidgets(checked)
         self.enableSizeSpinbox(checked)
+        QTimer.singleShot(100, self.gui_refreshToolCursor)
     
     def storeCurrentAnnotationsOptions(self):
         self.storeCurrentAnnotOptions(0)
@@ -26983,7 +27136,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         opacity = float(transparent)
         opacity = opacity if opacity < 1.0 else 0.999
         self.rgbaImg1.setOpacity(opacity)
-        
+
         if transparent:
             self.rgbaImg1.setVisible(True)
             self.img1.setOpacity(0.001, applyToLinked=False)
@@ -26993,20 +27146,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.imgGrad.sigLevelsChanged.connect(
                 self.updateTransparentOverlayRgba
             )
-        
-        for channel, items in self.overlayLayersItems.items():
-            imageItem, lutItem, alphaSB = items[:3]
-            if transparent:
-                alphaSB.valueChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                lutItem.sigLookupTableChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                lutItem.sigLevelsChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                imageItem.setOpacity(0)
+            
+            for channel, items in self.overlayLayersItems.items():
+                imageItem, lutItem, alphaSB = items[:3]
+                if transparent:
+                    alphaSB.valueChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    lutItem.sigLookupTableChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    lutItem.sigLevelsChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    imageItem.setOpacity(0)
         else:
             self.rgbaImg1.clear()
             self.rgbaImg1.setVisible(False)
@@ -27034,7 +27187,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     pass
 
             self.setOverlayItemsOpacities()
-        
+
         self.setOverlayImages()
         
     def overlay_cb(self, checked):
@@ -27712,7 +27865,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.overlayToolbar.isTransparent():
             self.rgbaImg1.clear()
             self.rgbaImg1.setVisible(False)
-            return            
+            return
 
         self.rgbaImg1.setVisible(True)
         
@@ -31334,13 +31487,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if annotInfo is None:
             return
         
-        # IDs_set = posData.rp.IDs_set
+        self.ax1_trackerMovementAgainstPrevLinesItem.clear()
+        self.yellowContourScatterItem.clear()
+        IDs_set = posData.rp.IDs_set
 
         new_objs_1st_step, lost_objs_1st_step = annotInfo
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
             # guard against removed cells
-            # if newObj.label not in IDs_set:
-            #     continue
+            # ID is actually not present in current frame !DO not use newObj, it is stale!
+            if lostObj.label not in IDs_set: 
+                continue
             allContours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -33744,10 +33900,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         toolbutton = self.allOverlayToolbuttons[channel]
         if not toolbutton.isChecked() or not toolbutton.isVisible():
             return
-        
+
         if value is None:
             value = scrollbar.value()
-            
+
         if imageItem is None:
             imageItem = scrollbar.imageItem
             alpha = value/scrollbar.maximum()
@@ -33755,7 +33911,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             alpha = value/scrollbar.maximum()
         else:
             alpha = value
-        
+
         alpha_values = []
         activeOverlayImageItems = []
         for items in self.overlayLayersItems.values():
@@ -33767,18 +33923,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             else:
                 alpha_values.append(alphaSB.value()/alphaSB.maximum())
-            
+
             activeOverlayImageItems.append(imgItem)
-        
+
         if not alpha_values:
             self.img1.setOpacity(1.0, applyToLinked=False)
             return
 
         opacities = colors.hierarchical_weights(alpha_values)[::-1]
-        
+
         for i, imgItem in enumerate(activeOverlayImageItems):
             imgItem.setOpacity(opacities[i+1])
-            
+
         self.img1.setOpacity(opacities[0], applyToLinked=False)
         
     def showInExplorer_cb(self):
