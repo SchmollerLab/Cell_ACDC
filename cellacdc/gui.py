@@ -16663,7 +16663,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 obj = posData.rp.get_obj_from_ID(ID)
                 posData.lab[obj.slice][obj.image] = self.firstID
             
-            preloaded_bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old RP to get the correct bbox
+            specific_IDs = [ID for ID in IDs_to_merge if ID in IDs]
+            preloaded_bbox = self.update_rp_get_bbox(
+                specific_IDs=specific_IDs, use_bbox=True
+                ) # use old RP to get the correct bbox
             specific_IDs = [*IDs_to_merge, self.firstID]
             self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=specific_IDs)
             self.store_data(autosave=False)
