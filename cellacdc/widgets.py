@@ -3163,6 +3163,7 @@ class ToolBar(QToolBar):
         super().__init__(*args, **kwargs)
         
         self.widgetsWithShortcut = {}
+        self.widgetsForActions = {}
         
         for child in self.children(): 
             if child.objectName() == 'qt_toolbar_ext_button':
@@ -3211,10 +3212,12 @@ class ToolBar(QToolBar):
         spinbox.action = self.addWidget(spinbox)
         return spinbox
     
-    def addButton(self, icon_str: str, text='', checkable=False):
+    def addButton(self, icon_str: str, text='', checkable=False, ret_widget=False):
         action = QAction(QIcon(icon_str), text, self)
         action.setCheckable(checkable)
-        self.addAction(action)
+        widget = self.addAction(action)
+        if ret_widget:
+            return action, widget
         return action
 
     def addComboBox(self, items=None, label=''):
@@ -3324,7 +3327,7 @@ class CopyLostObjectToolbar(ToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
         
-        action = self.addButton(':copyContour_all.svg')
+        action, widget = self.addButton(':copyContour_all.svg', ret_widget=True)
         # action.setShortcut('Alt+C')
         action.keyPressShortcut = KeySequenceFromText('Alt+C')
         action.setToolTip(
@@ -3332,6 +3335,7 @@ class CopyLostObjectToolbar(ToolBar):
             'Shortcut: Alt+C'
         )
         self.widgetsWithShortcut['Copy all lost objects'] = action
+        self.widgetsForActions['Copy all lost objects'] = widget
         
         action.triggered.connect(self.emitSigCopyAllObjects)
         
@@ -11422,7 +11426,7 @@ class WhitelistIDsToolbar(ToolBar):
         )
 
         # add a view OG toggle
-        self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
+        self.viewOGToggle, viewOGWidget = self.addButton(':eye.svg', checkable=True, ret_widget=True)
         viewOGTooltip = (
             'View the non-whitelisted segmentation mask.\n\n'
             'You can activate this to add new IDs to the whitelist,\n'
@@ -11433,6 +11437,7 @@ class WhitelistIDsToolbar(ToolBar):
         self.viewOGToggle.setShortcut('Shift+K')
         key = 'View the non-whitelisted segmentation mask'
         self.widgetsWithShortcut[key] = self.viewOGToggle
+        self.widgetsForActions[key] = viewOGWidget
         
         self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
         self.emitViewOGIDs(True)

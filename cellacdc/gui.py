@@ -389,6 +389,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.storeStateWorker = None
         self.AutoPilot = None
         self.widgetsWithShortcut = {}
+        self.widgetsForActions = {}
         self.invertBwAlreadyCalledOnce = False
         self.zoomOutKeyValue = Qt.Key_H
         self.preprocWorker = None
@@ -1589,7 +1590,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
         self.segmentToolAction.setShortcut('R')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
-        editToolBar.addAction(self.segmentToolAction)
+        widget = editToolBar.addAction(self.segmentToolAction)
+        self.widgetsForActions['Repeat segmentation'] = widget
+
 
         self.segForLostIDsButton = QToolButton(self)
         self.segForLostIDsButton.setIcon(QIcon(":segForLostIDs.svg"))
@@ -1625,7 +1628,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.widgetsWithShortcut['Delete all objects outside segm'] = (
             self.delObjsOutSegmMaskAction
         )
-        editToolBar.addAction(self.delObjsOutSegmMaskAction)
+        widget = editToolBar.addAction(self.delObjsOutSegmMaskAction)
+        self.widgetsForActions['Delete all objects outside segm'] = widget
+
 
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
@@ -1784,7 +1789,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.delNewObjAction.toolbar = editToolBar
         # self.functionsNotTested3D.append(self.delNewObjAction) so id this doesnt work in 3d i dont know anymore
 
-        editToolBar.addAction(self.repeatTrackingAction)
+        widget = editToolBar.addAction(self.repeatTrackingAction)
+        self.widgetsForActions['Repeat Tracking'] = widget
         
         self.manualTrackingAction = editToolBar.addWidget(
             self.manualTrackingButton
@@ -1890,12 +1896,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             "Next"
         )
         
-        
+        ok_num_widgets = [1]
         for name, button in self.widgetsWithShortcut.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
@@ -1908,8 +1914,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for name, button in self.keepToolActiveNames.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
@@ -1919,15 +1925,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for name, button in self.applyToolNewFrameButtons.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
             action = self.applyToolNewFrameActions[name]
             menu.addAction(action)
             
-    def _setupRightClickMenuOnButton(self, target):
+    def _setupRightClickMenuOnButton(self, target, name):
         if hasattr(target, 'rightClickMenu') and target.rightClickMenu is not None:
             return True, 1
         
@@ -1935,6 +1941,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         target.rightClickMenu = menu
         widgets = None
         if isinstance(target, QAction):
+            if name in self.widgetsForActions:
+                widgets = [self.widgetsForActions[name]]
             if hasattr(target, 'associatedWidgets'):
                 widgets = target.associatedWidgets()
             elif hasattr(target, 'widgetsforAction'):
@@ -1947,7 +1955,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     and obj is not target.parent
                     ]
             if widgets is None or len(widgets) == 0:
-                return False, len(widgets) if widgets is not None else 0
+                return False, 0
             else:    
                 for w in widgets:
                     self._installRightClickFilter(w, menu)
@@ -2684,6 +2692,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         for name, action in self.copyLostObjToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
+        for name, widget in self.copyLostObjToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
 
         self.copyLostObjToolbar.sigCopyAllObjects.connect(
             self.copyAllLostObjects
@@ -2712,6 +2722,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
+        for name, widget in self.whitelistIDsToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
         
         self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
         self.whitelistIDsToolbar.setVisible(False)
@@ -3141,7 +3153,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.repeatTrackingAction.setShortcut('Shift+T')
         self.widgetsWithShortcut['Repeat Tracking'] = self.repeatTrackingAction
-        
 
         self.editRtTrackerParamsAction = QAction(
             'Edit real-time tracker parameters...', self
