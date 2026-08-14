@@ -47,7 +47,7 @@ from qtpy.QtCore import (
     QThread, QMutex, QWaitCondition, QSettings, PYQT6,
 )
 from qtpy.QtGui import (
-    QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
+    QIcon, QKeySequence, QCursor, QGuiApplication, QPen, QPixmap, QColor,
     QFont, QKeyEvent, QMouseEvent, QPainter
 )
 from qtpy.QtWidgets import (
@@ -913,25 +913,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return middle_click
 
     def gui_createCursors(self):
-        pixmap = QPixmap(":wand_cursor.svg")
-        self.wandCursor = QCursor(pixmap, 16, 16)
-
-        pixmap = QPixmap(":curv_cursor.svg")
-        self.curvCursor = QCursor(pixmap, 16, 16)
-
-        pixmap = QPixmap(":addDelPolyLineRoi_cursor.svg")
-        self.polyLineRoiCursor = QCursor(pixmap, 16, 16)
-        
-        pixmap = QPixmap(":cross_cursor.svg")
-        self.addPointsCursor = QCursor(pixmap, 16, 16)
 
         cursor_size = QSize(64, 64)
-        crosshair = QPixmap(":cross_cursor.svg").scaled(
-            QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
-        )
         self._toolCursorCenterPixmaps = {
             'blank': QPixmap(32, 32),
-            'crosshair': crosshair,
+            'crosshair': QPixmap(":cross_cursor.svg").scaled(
+                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
             'wand': QPixmap(":wand_cursor.svg").scaled(
                 QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
@@ -939,6 +927,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'polyline': QPixmap(":addDelPolyLineRoi_cursor.svg").scaled(
+                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'default_no_lc': QPixmap(":hand.svg").scaled(
+                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'default_lc': QPixmap(":crosshair.svg").scaled(
                 QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
         }
@@ -971,6 +965,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ('whitelist_ids', self.whitelistIDsButton),
             ('manual_background', self.manualBackgroundButton),
             ('zoom_rectangle', self.zoomRectButton),
+            ('toggle_points_layer', self.togglePointsLayerAction),
         )
         self.rightClickCursorTools = (
             ('separate_objects', self.separateBudButton),
@@ -991,6 +986,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ('curvature', self.curvToolButton),
             ('label_roi', self.labelRoiButton),
             ('magic_prompts', self.magicPromptsToolButton),
+            ('toggle_points_layer', self.togglePointsLayerAction),
         )
         cursor_tools = {
             tool for _, tool in (
@@ -1017,6 +1013,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_activeCursorTool(self, tools):
         for name, tool in tools:
+            if name == 'toggle_points_layer':
+                magicPromptsON = self.magicPromptsToolButton.isChecked()
+                pointsLayerON = self.togglePointsLayerAction.isChecked()
+                addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+                if (addPointsByClickingButton is not None 
+                    and (magicPromptsON or pointsLayerON)
+                    and addPointsByClickingButton.isChecked()):
+                    return 'toggle_points_layer', tool.icon()
+                else:
+                    continue
             if tool.isChecked():
                 return name, tool.icon()
 
@@ -1027,8 +1033,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_getToolCursorCenter(self, left_name, right_name):
         active_tools = {left_name, right_name}
+        isLeftClickActive = left_name is not None
         overlay_cursor_tools = {
-            'brush', 'eraser', 'clear_region'
+            'brush', 'eraser'
         }
         if active_tools & overlay_cursor_tools:
             center = 'blank'
@@ -1043,8 +1050,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             center = 'curvature'
         elif 'polyline_deletion_roi' in active_tools:
             center = 'polyline'
-        else:
+        elif 'toggle_points_layer' in active_tools:
             center = 'crosshair'
+        elif isLeftClickActive:
+            center = 'default_lc'
+        else:
+            center = 'default_no_lc'
         return center, self._toolCursorCenterPixmaps[center]
 
     def gui_createToolCursor(self, isHoverImg1, left_tool, right_tool):
@@ -1067,7 +1078,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 painter.drawPixmap(x, 0, tool_pixmap)
         painter.end()
 
-        cursor = QCursor(pixmap, 32, 32)
+        pixmap = pixmap.scaled(
+            QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
+        cursor = QCursor(pixmap, 16, 16)
         self.toolCursors[key] = cursor
         return cursor
 
@@ -1791,7 +1805,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         widget = editToolBar.addAction(self.repeatTrackingAction)
         self.widgetsForActions['Repeat Tracking'] = widget
-        
+
         self.manualTrackingAction = editToolBar.addWidget(
             self.manualTrackingButton
         )
@@ -15579,7 +15593,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.mergeIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
         
         self.mergeIDsToolbar.setVisible(checked)
-        QTimer.singleShot(100, self.gui_refreshToolCursor)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
 
     def acceptMergeMultipleIDs(self, IDs):
         if not self.mergeIDsButton.isChecked():
@@ -15881,7 +15895,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.showEditIDwidgets(checked)
         self.enableSizeSpinbox(checked)
-        QTimer.singleShot(100, self.gui_refreshToolCursor)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
     
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
@@ -16162,7 +16176,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         self.showEditIDwidgets(checked)
         self.enableSizeSpinbox(checked)
-        QTimer.singleShot(100, self.gui_refreshToolCursor)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
     
     def storeCurrentAnnotationsOptions(self):
         self.storeCurrentAnnotOptions(0)
@@ -27915,8 +27929,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if mode == 'intensity_to_alpha':
             # get base image item lut
             if self.baseLayerToolbutton.isChecked():
-            base_img = images.pop()
-            base_lut = luts.pop()
+                base_img = images.pop()
+                base_lut = luts.pop()
             else:
                 base_img = np.zeros_like(images[0])
                 base_lut = None
