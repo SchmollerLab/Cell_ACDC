@@ -592,80 +592,12 @@ def calc_centroids_3D(
     return centroids
 
 
-def color_normalize_grayscale_image(image):
-    """Normalize a 2-D grayscale image to [0, 1] as float32."""
-    return np.asarray(image, dtype=np.float32)
-    cdef np.ndarray[np.float32_t, ndim=2] arr = np.asarray(image, dtype=np.float32)
-    cdef Py_ssize_t h = arr.shape[0]
-    cdef Py_ssize_t w = arr.shape[1]
-    cdef Py_ssize_t i, j
-    cdef float min_val = arr[0, 0]
-    cdef float max_val = arr[0, 0]
-    cdef float denom
-
-    for i in range(h):
-        for j in range(w):
-            if arr[i, j] < min_val:
-                min_val = arr[i, j]
-            if arr[i, j] > max_val:
-                max_val = arr[i, j]
-
-    cdef np.ndarray[np.float32_t, ndim=2] out = np.empty((h, w), dtype=np.float32)
-    denom = max_val - min_val
-    if denom <= 0.0:
-        out.fill(0.0)
-        return out
-
-    for i in range(h):
-        for j in range(w):
-            out[i, j] = (arr[i, j] - min_val) / denom
-    return out
-
-
-def color_rgb_to_uint8_float(rgb_img):
-    """Rescale an RGB image to [0, 255] uint8 using global min/max."""
-    return np.asarray(rgb_img * 255.0, dtype=np.uint8)
-    cdef np.ndarray[np.float32_t, ndim=3] arr = np.asarray(rgb_img, dtype=np.float32)
-    cdef Py_ssize_t h = arr.shape[0]
-    cdef Py_ssize_t w = arr.shape[1]
-    cdef Py_ssize_t i, j, c
-    cdef float min_val = arr[0, 0, 0]
-    cdef float max_val = arr[0, 0, 0]
-    cdef float denom, v
-
-    for i in range(h):
-        for j in range(w):
-            for c in range(3):
-                v = arr[i, j, c]
-                if v < min_val:
-                    min_val = v
-                if v > max_val:
-                    max_val = v
-
-    cdef np.ndarray[np.uint8_t, ndim=3] out = np.zeros((h, w, 3), dtype=np.uint8)
-    denom = max_val - min_val
-    if denom <= 0.0:
-        return out
-
-    for i in range(h):
-        for j in range(w):
-            for c in range(3):
-                v = ((arr[i, j, c] - min_val) / denom) * 255.0
-                if v <= 0.0:
-                    out[i, j, c] = 0
-                elif v >= 255.0:
-                    out[i, j, c] = 255
-                else:
-                    out[i, j, c] = <np.uint8_t>v
-    return out
-
-
 def color_norm_hsv_style(rgb, alpha_scale=1.0, calc_alpha=True):
-    """Normalize RGB so each pixel keeps hue and max channel becomes 255."""
+    """Normalize already bounded RGB values while preserving hue."""
     cdef np.ndarray[np.float32_t, ndim=3] arr = np.asarray(rgb, dtype=np.float32)
     cdef Py_ssize_t h = arr.shape[0]
     cdef Py_ssize_t w = arr.shape[1]
-    cdef Py_ssize_t i, j, c
+    cdef Py_ssize_t i, j
     cdef float r, g, b, max_val, alpha_val
 
     cdef np.ndarray[np.float32_t, ndim=3] norm_rgb = np.empty((h, w, 3), dtype=np.float32)
@@ -683,18 +615,14 @@ def color_norm_hsv_style(rgb, alpha_scale=1.0, calc_alpha=True):
                 max_val = b
 
             if max_val < 1e-6:
-                max_val = 1e-6
+                max_val = <float>1e-6
 
-            norm_rgb[i, j, 0] = (r / max_val) * 255.0
-            norm_rgb[i, j, 1] = (g / max_val) * 255.0
-            norm_rgb[i, j, 2] = (b / max_val) * 255.0
+            norm_rgb[i, j, 0] = r / max_val
+            norm_rgb[i, j, 1] = g / max_val
+            norm_rgb[i, j, 2] = b / max_val
 
             if calc_alpha:
-                alpha_val = (max_val / 255.0) * <float>alpha_scale
-                if alpha_val < 0.0:
-                    alpha_val = 0.0
-                elif alpha_val > 1.0:
-                    alpha_val = 1.0
+                alpha_val = max_val * <float>alpha_scale
                 alpha[i, j, 0] = alpha_val
 
     if calc_alpha:
@@ -709,7 +637,7 @@ def combine_grayscale_images_with_alpha_cy(
         luts=None,
         base_lut=None,
 ):
-    """Cython implementation of grayscale alpha compositing used in colors.py."""
+    """Composite already-normalized images using float16 RGB values."""
     cdef np.ndarray[np.float32_t, ndim=2] base_arr = np.asarray(base_img, dtype=np.float32)
     cdef Py_ssize_t h = base_arr.shape[0]
     cdef Py_ssize_t w = base_arr.shape[1]
@@ -720,40 +648,27 @@ def combine_grayscale_images_with_alpha_cy(
     cdef float img_val, r, g, b, max_val, alpha_val, mix_val
     cdef int lut_idx
 
-    cdef list alphas_norm = [0.0] * n_imgs
     if n_imgs == 0:
-        return color_rgb_to_uint8_float(np.repeat(base_arr[:, :, None], 3, axis=2))
-
-    for i in range(n_imgs):
-        alphas_norm[i] = <float>alphas[i] / <float>n_imgs
+        return np.repeat(base_arr[:, :, None], 3, axis=2).astype(np.float32)
 
     cdef np.ndarray[np.float32_t, ndim=3] accumulated = np.zeros((h, w, 3), dtype=np.float32)
     cdef np.ndarray[np.float32_t, ndim=2] total_alpha = np.zeros((h, w), dtype=np.float32)
 
     cdef np.ndarray[np.float32_t, ndim=2] img_norm
     cdef np.ndarray[np.float32_t, ndim=3] rgb_src
-    cdef np.ndarray[np.uint8_t, ndim=3] rgb_u8
     cdef np.ndarray[np.float32_t, ndim=2] lut_arr
 
     for i in range(n_imgs):
-        img_norm = color_normalize_grayscale_image(images[i])
+        img_norm = np.asarray(images[i], dtype=np.float32)
         rgb_src = np.empty((h, w, 3), dtype=np.float32)
 
         if luts is not None:
             lut_arr = np.asarray(luts[i], dtype=np.float32)
-            n_lut = lut_arr.shape[0]
+            n_lut = <Py_ssize_t>lut_arr.shape[0]
             for j in range(h):
                 for k in range(w):
                     img_val = img_norm[j, k]
-                    if img_val < 0.0:
-                        img_val = 0.0
-                    elif img_val > 1.0:
-                        img_val = 1.0
                     lut_idx = <int>(img_val * (n_lut - 1))
-                    if lut_idx < 0:
-                        lut_idx = 0
-                    elif lut_idx >= n_lut:
-                        lut_idx = n_lut - 1
                     rgb_src[j, k, 0] = lut_arr[lut_idx, 0]
                     rgb_src[j, k, 1] = lut_arr[lut_idx, 1]
                     rgb_src[j, k, 2] = lut_arr[lut_idx, 2]
@@ -765,14 +680,13 @@ def combine_grayscale_images_with_alpha_cy(
                     rgb_src[j, k, 1] = img_val
                     rgb_src[j, k, 2] = img_val
 
-        rgb_u8 = color_rgb_to_uint8_float(rgb_src)
-        alpha_scale = <float>alphas_norm[i]
+        alpha_scale = <float>alphas[i]
 
         for j in range(h):
             for k in range(w):
-                r = <float>rgb_u8[j, k, 0]
-                g = <float>rgb_u8[j, k, 1]
-                b = <float>rgb_u8[j, k, 2]
+                r = <float>rgb_src[j, k, 0]
+                g = <float>rgb_src[j, k, 1]
+                b = <float>rgb_src[j, k, 2]
                 max_val = r
                 if g > max_val:
                     max_val = g
@@ -780,57 +694,41 @@ def combine_grayscale_images_with_alpha_cy(
                     max_val = b
 
                 if max_val < 1e-6:
-                    max_val = 1e-6
+                    max_val = <float>1e-6
 
-                alpha_val = (max_val / 255.0) * alpha_scale
-                if alpha_val < 0.0:
-                    alpha_val = 0.0
-                elif alpha_val > 1.0:
-                    alpha_val = 1.0
+                alpha_val = max_val * alpha_scale
 
-                accumulated[j, k, 0] += alpha_val * ((r / max_val) * 255.0)
-                accumulated[j, k, 1] += alpha_val * ((g / max_val) * 255.0)
-                accumulated[j, k, 2] += alpha_val * ((b / max_val) * 255.0)
+                accumulated[j, k, 0] += alpha_val * (r / max_val)
+                accumulated[j, k, 1] += alpha_val * (g / max_val)
+                accumulated[j, k, 2] += alpha_val * (b / max_val)
                 total_alpha[j, k] += alpha_val
+                if total_alpha[j, k] > 1.0:
+                    total_alpha[j, k] = 1.0
 
     cdef np.ndarray[np.float32_t, ndim=3] base_rgb
     if base_lut is not None:
         base_rgb = np.empty((h, w, 3), dtype=np.float32)
         lut_arr = np.asarray(base_lut, dtype=np.float32)
-        n_lut = lut_arr.shape[0]
+        n_lut = <Py_ssize_t>lut_arr.shape[0]
         for j in range(h):
             for k in range(w):
                 img_val = base_arr[j, k]
-                if img_val < 0.0:
-                    img_val = 0.0
-                elif img_val > 1.0:
-                    img_val = 1.0
                 lut_idx = <int>(img_val * (n_lut - 1))
-                if lut_idx < 0:
-                    lut_idx = 0
-                elif lut_idx >= n_lut:
-                    lut_idx = n_lut - 1
                 base_rgb[j, k, 0] = lut_arr[lut_idx, 0]
                 base_rgb[j, k, 1] = lut_arr[lut_idx, 1]
                 base_rgb[j, k, 2] = lut_arr[lut_idx, 2]
     else:
         base_rgb = np.repeat(base_arr[:, :, None], 3, axis=2).astype(np.float32)
 
-    cdef np.ndarray[np.uint8_t, ndim=3] base_u8 = color_rgb_to_uint8_float(base_rgb)
     cdef np.ndarray[np.float32_t, ndim=3] accumulated_norm
     accumulated_norm, _ = color_norm_hsv_style(accumulated, alpha_scale=1.0, calc_alpha=False)
 
-    cdef np.ndarray[np.uint8_t, ndim=3] result = np.empty((h, w, 3), dtype=np.uint8)
+    cdef np.ndarray[np.float32_t, ndim=3] result = np.empty((h, w, 3), dtype=np.float32)
     for j in range(h):
         for k in range(w):
             alpha_val = total_alpha[j, k]
             for c in range(3):
-                mix_val = (<float>base_u8[j, k, c]) * (1.0 - alpha_val) + accumulated_norm[j, k, c] * alpha_val
-                if mix_val <= 0.0:
-                    result[j, k, c] = 0
-                elif mix_val >= 255.0:
-                    result[j, k, c] = 255
-                else:
-                    result[j, k, c] = <np.uint8_t>mix_val
+                mix_val = <float>((<float>base_rgb[j, k, c]) * (1.0 - alpha_val) + accumulated_norm[j, k, c] * alpha_val)
+                result[j, k, c] = mix_val
 
     return result

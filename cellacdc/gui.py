@@ -27824,6 +27824,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if mode is None:
             if self.overlayToolbar.isAlphaEncodedIntensity():
                 mode = 'intensity_to_alpha'
+            elif self.overlayToolbar.isTransparent():
+                mode = 'transparent'
             else:
                 mode = 'normal'
         
@@ -27840,7 +27842,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             ol_img = self.getOlImg(filename, frame_i=frame_i)
 
-            if self.overlayToolbar.isTransparent():
+            if mode == 'transparent' or mode == 'intensity_to_alpha':
                 toolbutton = items[3]
                 if not toolbutton.isChecked():
                     continue
@@ -27862,7 +27864,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
                 imageItem.setImage(ol_img)
         
-        if not self.overlayToolbar.isTransparent():
+        if not (mode == 'transparent' or mode == 'intensity_to_alpha'):
             self.rgbaImg1.clear()
             self.rgbaImg1.setVisible(False)
             return
@@ -27901,8 +27903,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         if mode == 'intensity_to_alpha':
             # get base image item lut
+            if self.baseLayerToolbutton.isChecked():
             base_img = images.pop()
             base_lut = luts.pop()
+            else:
+                base_img = np.zeros_like(images[0])
+                base_lut = None
+                
             rgba_merge = colors.combine_grayscale_images_with_alpha(
                 base_img=base_img,
                 images=images,

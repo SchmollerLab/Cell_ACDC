@@ -20,7 +20,6 @@ try:
     _CYTHON_ALPHA_BLEND = True
 except Exception:
     _CYTHON_ALPHA_BLEND = False
-
 if GUI_INSTALLED:
     from pyqtgraph.colormap import ColorMap
     import matplotlib
@@ -410,7 +409,7 @@ def color_palette(name='Okabe_lto', **sns_color_palette_kwargs):
     
     return sns.color_palette(**sns_color_palette_kwargs)
 
-def grayscale_apply_lut(image, lut):
+def grayscale_apply_lut(image, lut, input_range=None):
     """
     Map a grayscale image to RGBA using a lookup table.
 
@@ -428,16 +427,19 @@ def grayscale_apply_lut(image, lut):
     """
     # Normalize image to [0, N-1]
     N = lut.shape[0]
-    img = np.clip(image, 0, 1) if image.dtype.kind == 'f' else image / 255.0
+    if input_range is None or input_range != (0, 1):
+        img = np.clip(image, 0, 1) if image.dtype.kind == 'f' else image / 255.0
+    else:
+        img = image
     indices = np.clip((img * (N - 1)).astype(int), 0, N - 1)
     rgba = lut[indices]
     return rgba
 
-def _normalize_grayscale_image(image):
-    return image
-    max_val, min_val = image.max(), image.min()
-    image = (image - min_val) / (max_val - min_val)
-    return image
+# def _normalize_grayscale_image(image):
+#     return image
+#     max_val, min_val = image.max(), image.min()
+#     image = (image - min_val) / (max_val - min_val)
+#     return image
 
 def _rgb_to_uint8_float(rgb_img):
     rgb_img = np.asarray(rgb_img)
@@ -457,10 +459,10 @@ def _norm_alphas(alphas):
 def _norm_hsv_style(rgb, alpha_scale=1.0, calc_alpha=True):
     max_val = np.max(rgb, axis=2, keepdims=True)
     max_val = np.clip(max_val, 1e-6, None)  # Avoid division by zero
-    norm_rgb = (rgb / max_val) * 255.0
+    norm_rgb = rgb / max_val
     if not calc_alpha:
         return norm_rgb, None
-    alpha = np.clip(max_val / 255.0 * alpha_scale, 0.0, 1.0)
+    alpha = max_val * alpha_scale # normed to 0 1 when inputting
     return norm_rgb, alpha
 
 def combine_grayscale_images_with_alpha(
@@ -519,40 +521,44 @@ def combine_grayscale_images_with_alpha(
 
     # Encode fluorescence intensity in alpha and keep RGB as hue-only.
     if not images:
-        base_rgb = grayscale_apply_lut(base_img, base_lut)[..., :3] if base_lut is not None else skimage.color.gray2rgb(base_img)
-        return _rgb_to_uint8_float(base_rgb)
-
-    alphas = _norm_alphas(alphas)
+        if base_lut is not None:
+            base_img = grayscale_apply_lut(base_img, base_lut, input_range=(0, 1))
+            base_img = base_img[..., :3]
+        else:
+            base_img = np.stack([base_img]*3, axis=-1)  # Convert to RGB if no LUT is provided
+        return base_img
+    
+    # alphas = _norm_alphas(alphas)
     accumulated = np.zeros((*base_img.shape[:2], 3), dtype=np.float32)
     total_alpha = np.zeros(base_img.shape[:2], dtype=np.float32)
     for i, img in enumerate(images):
-        img = _normalize_grayscale_image(img)
+        # img = _normalize_grayscale_image(img)
         if luts is not None:
             lut = luts[i]
-            rgba_img = grayscale_apply_lut(img, lut)
+            rgba_img = grayscale_apply_lut(img, lut, input_range=(0, 1))
         else:
-            rgb_img = skimage.color.gray2rgb(img)
+            rgb_img = np.stack([img]*3, axis=-1)  # Convert to RGB if no LUT is provided
             rgba_img = np.concatenate(
                 [rgb_img, np.ones_like(rgb_img[..., :1])], axis=-1
             )
         
-        rgb = _rgb_to_uint8_float(rgba_img[..., :3])
-        norm_rgb, alpha = _norm_hsv_style(rgb, alpha_scale=alphas[i], calc_alpha=True)
+        # rgb = _rgb_to_uint8_float(rgba_img[..., :3])
+        norm_rgb, alpha = _norm_hsv_style(rgba_img[..., :3], alpha_scale=alphas[i], calc_alpha=True)
         accumulated += alpha * norm_rgb
         # alpha has shape h, w, 1, but total_alpha has shape h, w. We need to sum over the last axis.
         total_alpha += alpha[..., 0]  # Sum over the last axis to get shape (h, w)
 
     if base_lut is not None:
-        base_img = grayscale_apply_lut(base_img, base_lut)
+        base_img = grayscale_apply_lut(base_img, base_lut, input_range=(0, 1))
+        base_img = base_img[..., :3]
     else:
-        base_img = skimage.color.gray2rgb(base_img)
-
-    base_img = _rgb_to_uint8_float(base_img[..., :3])
+        base_img = np.stack([base_img]*3, axis=-1)  # Convert to RGB if no LUT is provided
         
     accumulated, _ = _norm_hsv_style(accumulated, alpha_scale=1.0, calc_alpha=False)
+    total_alpha = np.clip(total_alpha, 0, 1)  # Ensure total_alpha is in [0, 1]
     result = base_img * (1 - total_alpha[..., None]) + accumulated * total_alpha[..., None]
 
-    return np.clip(result, 0, 255).astype(np.uint8)
+    return result
 
 def get_complementary_color(rgba_str: str) -> str:
     r, g, b, a = rgba_str_to_values(rgba_str)
