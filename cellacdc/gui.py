@@ -428,7 +428,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         self.checkableButtons = []
-        self.LeftClickButtons = []
+        self.leftClickButtons = []
         self.toolsActiveInProj3Dsegm = set()
         self.customAnnotDict = {}
 
@@ -914,26 +914,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_createCursors(self):
 
-        cursor_size = QSize(64, 64)
+        cursor_size = QSize(128, 128)
         self._toolCursorCenterPixmaps = {
-            'blank': QPixmap(32, 32),
+            'blank': QPixmap(64, 64),
             'crosshair': QPixmap(":cross_cursor.svg").scaled(
-                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'wand': QPixmap(":wand_cursor.svg").scaled(
-                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'curvature': QPixmap(":curv_cursor.svg").scaled(
-                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'polyline': QPixmap(":addDelPolyLineRoi_cursor.svg").scaled(
-                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'default_no_lc': QPixmap(":hand.svg").scaled(
-                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'default_lc': QPixmap(":crosshair.svg").scaled(
-                QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
         }
         self._toolCursorCenterPixmaps['blank'].fill(Qt.transparent)
@@ -1071,10 +1071,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         pixmap = self._normalToolCursorPixmaps[isHoverImg1].copy()
         painter = QPainter(pixmap)
-        painter.drawPixmap(16, 16, center_pixmap)
-        for icon, x in ((left_icon, 3), (right_icon, 37)):
+        painter.drawPixmap(32, 32, center_pixmap)
+        for icon, x in ((left_icon, 6), (right_icon, 74)):
             if not icon.isNull():
-                tool_pixmap = icon.pixmap(QSize(24, 24))
+                tool_pixmap = icon.pixmap(QSize(48, 48))
                 painter.drawPixmap(x, 0, tool_pixmap)
         painter.end()
 
@@ -1405,7 +1405,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rulerButton.setCheckable(True)
         navigateToolBar.addWidget(self.rulerButton)
         self.checkableButtons.append(self.rulerButton)
-        self.LeftClickButtons.append(self.rulerButton)
+        self.leftClickButtons.append(self.rulerButton)
 
         # fluorescence image color widget
         colorsToolBar = widgets.ToolBar("Colors", self)
@@ -1494,7 +1494,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.brushButton.setCheckable(True)
         editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
-        self.LeftClickButtons.append(self.brushButton)
+        self.leftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
         self.widgetsWithShortcut['Brush'] = self.brushButton
         self.manulAnnotToolButtons.add(self.brushButton)
@@ -1507,7 +1507,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.eraserButton.keyPressShortcut = Qt.Key_X
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
-        self.LeftClickButtons.append(self.eraserButton)
+        self.leftClickButtons.append(self.eraserButton)
         self.manulAnnotToolButtons.add(self.eraserButton)
 
         self.curvToolButton = QToolButton(self)
@@ -1515,7 +1515,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.curvToolButton.setCheckable(True)
         self.curvToolButton.setShortcut('C')
         self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
-        self.LeftClickButtons.append(self.curvToolButton)
+        self.leftClickButtons.append(self.curvToolButton)
         # self.functionsNotTested3D.append(self.curvToolButton)
         self.widgetsWithShortcut['Curvature tool'] = self.curvToolButton
         # self.checkableButtons.append(self.curvToolButton)
@@ -1526,7 +1526,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.wandToolButton.setCheckable(True)
         self.wandToolButton.setShortcut('Ctrl+D')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
-        self.LeftClickButtons.append(self.wandToolButton)
+        self.leftClickButtons.append(self.wandToolButton)
         self.checkableButtons.append(self.eraserButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
         
@@ -1548,7 +1548,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.toolsActiveInProj3Dsegm.add(self.clearFreehandRoiButton)
         
         self.checkableButtons.append(self.clearFreehandRoiButton)
-        self.LeftClickButtons.append(self.clearFreehandRoiButton)
+        self.leftClickButtons.append(self.clearFreehandRoiButton)
         
         self.drawClearRegionAction = editToolBar.addWidget(
             self.clearFreehandRoiButton
@@ -1580,7 +1580,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.labelRoiButton.setCheckable(True)
         self.labelRoiButton.setShortcut('L')
         self.labelRoiButton.action = editToolBar.addWidget(self.labelRoiButton)
-        self.LeftClickButtons.append(self.labelRoiButton)
+        self.leftClickButtons.append(self.labelRoiButton)
         self.checkableButtons.append(self.labelRoiButton)
         self.checkableQButtonsGroup.addButton(self.labelRoiButton)
         self.widgetsWithShortcut['Label ROI'] = self.labelRoiButton
@@ -1624,7 +1624,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
         self.manualBackgroundButton.setCheckable(True)
         self.manualBackgroundButton.setShortcut('G')
-        self.LeftClickButtons.append(self.manualBackgroundButton)
+        self.leftClickButtons.append(self.manualBackgroundButton)
         self.checkableButtons.append(self.manualBackgroundButton)
         self.checkableQButtonsGroup.addButton(self.manualBackgroundButton)
         self.widgetsWithShortcut['Manual background'] = self.manualBackgroundButton
@@ -1682,7 +1682,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.expandLabelToolButton.action = editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
         self.checkableButtons.append(self.expandLabelToolButton)
-        self.LeftClickButtons.append(self.expandLabelToolButton)
+        self.leftClickButtons.append(self.expandLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
         self.widgetsWithShortcut['Expand/shrink label'] = self.expandLabelToolButton
 
@@ -1719,7 +1719,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
-        self.LeftClickButtons.append(self.mergeIDsButton)
+        self.leftClickButtons.append(self.mergeIDsButton)
 
         self.keepIDsButton = QToolButton(self)
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
@@ -1740,7 +1740,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistIDsButton.setShortcut('Ctrl+Shift+W')
         self.checkableButtons.append(self.whitelistIDsButton)
         self.checkableQButtonsGroup.addButton(self.whitelistIDsButton)
-        self.LeftClickButtons.append(self.whitelistIDsButton)
+        self.leftClickButtons.append(self.whitelistIDsButton)
         # self.functionsNotTested3D.append(self.whitelistIDsButton)
         self.widgetsWithShortcut['Select objects to add to a tracking whitelist'] = (
             self.whitelistIDsButton
@@ -3104,7 +3104,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
         self.zoomRectButton.setCheckable(True)
         self.zoomRectButton.setShortcut('Shift+Z')
-        self.LeftClickButtons.append(self.zoomRectButton)
+        self.leftClickButtons.append(self.zoomRectButton)
         self.checkableButtons.append(self.zoomRectButton)
         self.checkableQButtonsGroup.addButton(self.zoomRectButton)
         self.widgetsWithShortcut['Zoom to rectangular area'] = (
@@ -3426,7 +3426,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.addDelPolyLineRoiButton.setIcon(QIcon(":addDelPolyLineRoi.svg"))
         
         self.checkableButtons.append(self.addDelPolyLineRoiButton)
-        self.LeftClickButtons.append(self.addDelPolyLineRoiButton)
+        self.leftClickButtons.append(self.addDelPolyLineRoiButton)
        
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
@@ -13547,7 +13547,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return txt
     
     def getActiveToolButton(self):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             if button.isChecked():
                 return button
     
@@ -14400,7 +14400,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.update_z_slice(nearest_nonzero_z)
 
     def disconnectLeftClickButtons(self):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             try:
                 button.toggled.disconnect()
             except Exception as e:
@@ -14408,7 +14408,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 pass
 
     def uncheckLeftClickButtons(self, sender):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             if button != sender:
                 button.setChecked(False)
         
@@ -18042,6 +18042,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearGhost()
             self.clearManualBackgroundAnnotations()
         self.manualBackgroundToolbar.setVisible(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
 
     def autoSegm_cb(self, checked):
         if checked:
@@ -26023,7 +26024,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return action.button
     
     def setupAddPointsByClicking(self, toolButton, isLoadedDf, toolbar):
-        self.LeftClickButtons.append(toolButton)
+        self.leftClickButtons.append(toolButton)
         posData = self.data[self.pos_i]
         tableEndName = self.addPointsWin.clickEntryTableEndnameText
         if isLoadedDf is not None:
