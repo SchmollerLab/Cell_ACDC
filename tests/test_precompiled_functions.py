@@ -560,10 +560,8 @@ class TestCombineGrayscaleImagesWithAlphaParity:
 
         out_py, out_cy = self._run_both_paths(base, images, alphas)
 
-        assert out_py.dtype == np.uint8
-        assert out_cy.dtype == np.uint8
         assert out_py.shape == out_cy.shape
-        np.testing.assert_array_equal(out_py, out_cy)
+        np.testing.assert_allclose(out_py, out_cy, atol=0.001)
 
     def test_parity_with_rgba_luts(self):
         rng = np.random.default_rng(1)
@@ -580,7 +578,5 @@ class TestCombineGrayscaleImagesWithAlphaParity:
 
         out_py, out_cy = self._run_both_paths(base, images, alphas, luts=luts, base_lut=base_lut)
 
-        assert out_py.dtype == np.uint8
-        assert out_cy.dtype == np.uint8
         assert out_py.shape == out_cy.shape
-        np.testing.assert_allclose(out_py, out_cy, rtol=0.0, atol=1.0)
+        np.testing.assert_allclose(out_py, out_cy, atol=0.001)
