@@ -27138,7 +27138,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 toolbutton = self.allOverlayToolbuttons[ch]
                 toolbutton.setChecked(checked)
             
-            self.setOverlayItemsOpacities()
+            self.setOverlayImages()
     
     def updateTransparentOverlayRgba(self, *args, **kwargs):
         self.setOverlayImages()
