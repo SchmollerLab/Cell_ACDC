@@ -12192,22 +12192,23 @@ class OverlayToolbar(ToolBar):
         )
         
         self.transparencyCheckbox.setToolTip(
-            'Activate to achieve true pixel-wise transparency where '
-            'the pixel intensity is 0 or set to 0 using the '
-            'LUT sliders on the left of the images.\n\n'
-            'Since it is significantly slower, we recommended to activate this '
-            'only if you need to export images for figures.'
+            'Activate to hierarchically blend channels using relative weights '
+            'derived from the scrollbars.\n\n'
+            'Each scrollbar controls the balance between adjacent channels, ' 
+            'allowing you to fine-tune their contributions to the '
+            'final blended image.'
         )
         
         self.alphaEncodedIntensityCheckbox = self.addCheckBox(
             text='Alpha-encoded intensity (RGBA composite)'
         )
         self.alphaEncodedIntensityCheckbox.setToolTip(
-            'Activate to achieve alpha-encoded pixel-wise transparency where '
-            'the pixel intensity is encoded in the alpha channel, so that when '
-            'a pixel is black, it is transparent, and when it is at 50% intensity, '
-            'it is 50% transparent, and when it is white, it is fully opaque. '
-            'This removes the "blackening" effect of true transparency mode. '
+            'Activate to encode pixel intensity as alpha transparency: '
+            'pixels with zero intensity are fully transparent,\n'
+            '50% intensity corresponds to 50% opacity, '
+            'and maximum intensity is fully opaque.\n\n'
+            'This allows low-intensity regions to appear transparent and '
+            'creates the perception of seeing through these regions.'
         )
         
         self.addSeparator()

@@ -27905,8 +27905,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             alpha_values.append(alpha_val)
             images.append(ol_img)
             luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
-                    
-        weights = colors.hierarchical_weights(alpha_values)
         
         if self.baseLayerToolbutton.isChecked():
             image1 = self._getImageupdateAllImages()
@@ -27951,6 +27949,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rgba = colors.grayscale_apply_lut(img, lut)            
             images_rgba.append(rgba)
         
+        weights = colors.hierarchical_weights(alpha_values)
         rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
         self.rgbaImg1.setImage(rgba_merge)
     
