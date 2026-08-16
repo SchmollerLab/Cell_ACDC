@@ -159,6 +159,8 @@ CHECKBOX_OPTION_DEFAULT_VALUES = {
 GREEN_HEX = _palettes.green()
 ORANGE_HEX = _palettes.orange()
 
+MIRRORED_CURSOR_PG_SYMBOL = 'd'
+
 RP_OPT_NUM_CELLS_MIN = 30 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
 RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
                              # if region which we have to update is too large too 
@@ -929,7 +931,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'polyline': QPixmap(":addDelPolyLineRoi_cursor.svg").scaled(
                 QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
-            'default_no_lc': QPixmap(":hand.svg").scaled(
+            'default_no_lc': QPixmap(":crosshair.svg").scaled(
                 QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'default_lc': QPixmap(":crosshair.svg").scaled(
@@ -6977,14 +6979,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             pass
 
         self.ax2_cursor = pg.ScatterPlotItem(
-            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16, tip=None
+            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+            pen=pg.mkPen('w', width=1),
+            brush=pg.mkBrush((255, 255, 255, 70)), 
+            size=16, tip=None
         )
         self.ax2.addItem(self.ax2_cursor)
 
         self.ax1_cursor = pg.ScatterPlotItem(
-            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16, tip=None
+            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+            pen=pg.mkPen('w', width=1),
+            brush=pg.mkBrush((255, 255, 255, 70)), 
+            size=16, tip=None
         )
         self.ax1.addItem(self.ax1_cursor)
 
