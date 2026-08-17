@@ -288,9 +288,9 @@ class PushButton(QPushButton):
         self.setSizePolicy(sp)
     
     def eventFilter(self, object, event):
-        if event.type() == QEvent.Type.HoverEnter:
+        if event.type() == QtScoped.QEventTypeAttribute('HoverEnter'):
             self.setFlat(False)
-        elif event.type() == QEvent.Type.HoverLeave:
+        elif event.type() == QtScoped.QEventTypeAttribute('HoverLeave'):
             self.setFlat(True)
         return False
     
@@ -975,7 +975,7 @@ class ElidingLineEdit(QLineEdit):
         event.accept()
     
     def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
-        isFocusIn = a1.type() == QEvent.Type.FocusIn
+        isFocusIn = a1.type() == QtScoped.QEventTypeAttribute('FocusIn')
         if isFocusIn and (self.isReadOnly() or not self.isEnabled()):
             self.clearFocus()
             return True
@@ -1070,12 +1070,12 @@ class ScrollBar(QScrollBar):
         self.setContextMenuPolicy(Qt.NoContextMenu)
     
     def eventFilter(self, object, event) -> bool:
-        if event.type() == QEvent.Type.Wheel:
+        if event.type() == QtScoped.QEventTypeAttribute('Wheel'):
             return True
-        elif event.type() == QEvent.Type.MouseButtonPress:
+        elif event.type() == QtScoped.QEventTypeAttribute('MouseButtonPress'):
             # Filter right-click to prevent context menu
             return event.button() == Qt.MouseButton.RightButton
-        elif event.type() == QEvent.Type.MouseButtonRelease:
+        elif event.type() == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
             # Filter right-click to prevent context menu
             return event.button() == Qt.MouseButton.RightButton
         return False
@@ -1731,14 +1731,14 @@ class VerticalResizeHline(QFrame):
         return super().mouseReleaseEvent(event)
     
     def eventFilter(self, object, event):
-        if event.type() == QEvent.Type.Enter:
+        if event.type() == QtScoped.QEventTypeAttribute('Enter'):
             self.setLineWidth(0)
             self.setMidLineWidth(self._height)
             pal = self.palette()
             pal.setColor(QPalette.ColorRole.WindowText, QColor(BASE_COLOR))
             self.setPalette(pal)
             # self.setStyleSheet('background-color: #4d4d4d') 
-        elif event.type() == QEvent.Type.Leave:
+        elif event.type() == QtScoped.QEventTypeAttribute('Leave'):
             self.setMidLineWidth(0)
             self.setLineWidth(1)
         return False
@@ -1834,14 +1834,14 @@ class ScrollArea(QScrollArea):
         self.setFixedHeight(height)
 
     def eventFilter(self, object, event: QEvent):
-        if event.type() == QEvent.Type.Leave:
+        if event.type() == QtScoped.QEventTypeAttribute('Leave'):
             self.sigLeaveEvent.emit()
 
         if object != self.containerWidget:
             return False
         
-        isResize = event.type() == QEvent.Type.Resize
-        isShow = event.type() == QEvent.Type.Show
+        isResize = event.type() == QtScoped.QEventTypeAttribute('Resize')
+        isShow = event.type() == QtScoped.QEventTypeAttribute('Show')
         if isResize and self.isOnlyVertical:
             self._resizeHorizontal()
         elif isShow and self.resizeVerticalOnShow:
@@ -1887,7 +1887,7 @@ class QCenteredComboBox(QComboBox):
     
     def eventFilter(self, lineEdit, event):
         # Reimplement show popup on click
-        if event.type() == QEvent.Type.MouseButtonPress and self.isEnabled():
+        if event.type() == QtScoped.QEventTypeAttribute('MouseButtonPress') and self.isEnabled():
             if self._isPopupVisibile:
                 self.hidePopup()
                 self._isPopupVisibile = False
@@ -2325,7 +2325,7 @@ class mySpinBox(QSpinBox):
         super().__init__(*args)
     
     def event(self, event):
-        if event.type()==QEvent.Type.KeyPress and event.key() == Qt.Key_Tab:
+        if event.type()==QtScoped.QEventTypeAttribute('KeyPress') and event.key() == Qt.Key_Tab:
             self.sigTabEvent.emit(event, self)
             return True
 
@@ -3700,7 +3700,7 @@ class Toggle(QCheckBox):
     def eventFilter(self, object, event):
         # To get the actual position of the circle we need to wait that
         # the widget is visible before setting the state
-        if event.type() == QEvent.Type.Show and self.requestedState is not None:
+        if event.type() == QtScoped.QEventTypeAttribute('Show') and self.requestedState is not None:
             self.setChecked(self.requestedState)
         return False
 
@@ -3852,7 +3852,7 @@ class ShortcutLineEdit(QLineEdit):
         self._allowMouseButtons = allowMouseButtons
         
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.MouseButtonPress:
+        if event.type() == QtScoped.QEventTypeAttribute('MouseButtonPress'):
             button = event.button()
             if (
                     self._allowMouseButtons 
@@ -4312,7 +4312,7 @@ class ReadOnlyLineEdit(QLineEdit):
         self.installEventFilter(self)
     
     def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
-        if a1.type() == QEvent.Type.FocusIn:
+        if a1.type() == QtScoped.QEventTypeAttribute('FocusIn'):
             return True
         return super().eventFilter(a0, a1)
 
@@ -5299,9 +5299,9 @@ class expandCollapseButton(PushButton):
         self.sigClicked.emit()
 
     def eventFilter(self, object, event):
-        if event.type() == QEvent.Type.HoverEnter:
+        if event.type() == QtScoped.QEventTypeAttribute('HoverEnter'):
             self.setFlat(False)
-        elif event.type() == QEvent.Type.HoverLeave:
+        elif event.type() == QtScoped.QEventTypeAttribute('HoverLeave'):
             self.setFlat(True)
         return False
 
@@ -6076,7 +6076,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.sigAddTimestamp.emit(self.addTimestampAction.isChecked())
     
     def gradientMenuEventFilter(self, object, event):
-        if event.type() == QEvent.Type.MouseMove:
+        if event.type() == QtScoped.QEventTypeAttribute('MouseMove'):
             hoveredAction = self.gradient.menu.actionAt(event.pos())
             isActionEntered = (
                 hoveredAction != self.lastHoveredAction
@@ -9650,7 +9650,7 @@ class ComboBox(QComboBox):
         self.installEventFilter(self)
     
     def eventFilter(self, object, event) -> bool:
-        if object == self and event.type() == QEvent.Type.Wheel:
+        if object == self and event.type() == QtScoped.QEventTypeAttribute('Wheel'):
             # Forward event to parent so QScrollArea can scroll
             QApplication.sendEvent(self.parent(), event)
             return True  # Consume for the combo itself
@@ -12783,3 +12783,8 @@ class DummyWidget:
     
     def value(self):
         return
+
+class GuiCentralWidget(QWidget):
+    def __init__(self, parent=None, *args):
+        super().__init__(parent, *args)
+    
