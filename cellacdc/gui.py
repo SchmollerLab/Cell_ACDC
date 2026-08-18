@@ -1115,7 +1115,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
         menuBar.setNativeMenuBar(False)
-
         # File menu
         fileMenu = QMenu("&File", self)
         self.fileMenu = fileMenu
@@ -15643,7 +15642,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.lab[obj.slice][obj.image] = target_id
 
             bbox = self.update_rp_get_bbox(
-                specific_IDs=unique_ids, use_bbox=True
+                specific_IDs=unique_ids + [target_id], use_bbox=True
             )
             self.update_rp(
                 specific_IDs=unique_ids + [target_id],
@@ -25195,6 +25194,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_i=None,
             wl_update=True, wl_track_og_curr=False, wl_update_lab=False, # wl stuff
         ):
+        # print('update_rp called with parameters:', {
+        #     'draw': draw,
+        #     'debug': debug,
+        #     'assignments': assignments,
+        #     'deletionIDs': deletionIDs,
+        #     'specific_IDs': specific_IDs,
+        #     'use_curr_view': use_curr_view,
+        #     'use_bbox': use_bbox,
+        #     'preloaded_bbox': preloaded_bbox,
+        #     'frame_i': frame_i,
+        #     'wl_update': wl_update,
+        #     'wl_track_og_curr': wl_track_og_curr,
+        #     'wl_update_lab': wl_update_lab
+        # })
         """Update regionprops and related GUI/tracking metadata.
 
         This method supports full updates and optimized updates for specific
@@ -25321,6 +25334,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif local_rp_update:
             # first get current view
             if preloaded_bbox is None:
+                # returns false if requirement for this opt. branch is not met
                 preloaded_bbox = self.update_rp_get_bbox(use_bbox=use_bbox, 
                                                          use_curr_view=use_curr_view,
                                                          specific_IDs=specific_IDs)
@@ -25332,7 +25346,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # so be careful!
             else:
                 rp.update_regionprops(
-                    lab
+                    lab, specific_IDs_update_centroids=specific_IDs
                 )
         else:
             rp.update_regionprops(
