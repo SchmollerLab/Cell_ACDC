@@ -160,6 +160,10 @@ GREEN_HEX = _palettes.green()
 ORANGE_HEX = _palettes.orange()
 
 MIRRORED_CURSOR_PG_SYMBOL = 'd'
+TOOL_SIZE_CURSOR = 52
+TOTAL_SIZE_CURSOR = 128
+CENTER_SIZE_CURSOR = 64
+FINAL_SIZE_CURSOR = 32
 
 RP_OPT_NUM_CELLS_MIN = 30 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
 RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
@@ -916,26 +920,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_createCursors(self):
 
-        cursor_size = QSize(128, 128)
+        cursor_size = QSize(TOTAL_SIZE_CURSOR, TOTAL_SIZE_CURSOR)
         self._toolCursorCenterPixmaps = {
-            'blank': QPixmap(64, 64),
+            'blank': QPixmap(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR),
             'crosshair': QPixmap(":cross_cursor.svg").scaled(
-                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'wand': QPixmap(":wand_cursor.svg").scaled(
-                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(CENTER_SIZE_CURSOR*2, CENTER_SIZE_CURSOR*2), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'curvature': QPixmap(":curv_cursor.svg").scaled(
-                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(CENTER_SIZE_CURSOR*2, CENTER_SIZE_CURSOR*2), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'polyline': QPixmap(":addDelPolyLineRoi_cursor.svg").scaled(
-                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'default_no_lc': QPixmap(":crosshair.svg").scaled(
-                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
             'default_lc': QPixmap(":crosshair.svg").scaled(
-                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+                QSize(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
             ),
         }
         self._toolCursorCenterPixmaps['blank'].fill(Qt.transparent)
@@ -952,69 +962,58 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_createToolCursorRegistry(self):
         # Ordering mirrors the mutually exclusive click handling priority.
+        # pattern is: (tool_name, tool_button, display small icon, mode)
         self.leftClickCursorTools = (
-            ('brush', self.brushButton),
-            ('eraser', self.eraserButton),
-            ('curvature', self.curvToolButton),
-            ('magic_wand', self.wandToolButton),
-            ('magic_prompts', self.magicPromptsToolButton),
-            ('label_roi', self.labelRoiButton),
-            ('ruler', self.rulerButton),
-            ('polyline_deletion_roi', self.addDelPolyLineRoiButton),
-            ('clear_region', self.clearFreehandRoiButton),
-            ('merge_ids', self.mergeIDsButton),
-            ('keep_ids', self.keepIDsButton),
-            ('whitelist_ids', self.whitelistIDsButton),
-            ('manual_background', self.manualBackgroundButton),
-            ('zoom_rectangle', self.zoomRectButton),
-            ('toggle_points_layer', self.togglePointsLayerAction),
+            ('brush', self.brushButton, True, 'Segmentation and Tracking'),
+            ('eraser', self.eraserButton, True, 'Segmentation and Tracking'),
+            ('curvature', self.curvToolButton, False, 'Segmentation and Tracking'),
+            ('magic_wand', self.wandToolButton, False, 'Segmentation and Tracking'),
+            ('magic_prompts', self.magicPromptsToolButton, True, 'Segmentation and Tracking'),
+            ('label_roi', self.labelRoiButton, True, 'Segmentation and Tracking'),
+            ('ruler', self.rulerButton, True, 'Segmentation and Tracking'),
+            ('polyline_deletion_roi', self.addDelPolyLineRoiButton, True, 'Segmentation and Tracking'),
+            ('clear_region', self.clearFreehandRoiButton, True, 'Segmentation and Tracking'),
+            ('merge_ids', self.mergeIDsButton, True, 'Segmentation and Tracking'),
+            ('keep_ids', self.keepIDsButton, True, 'Segmentation and Tracking'),
+            ('whitelist_ids', self.whitelistIDsButton, True, 'Segmentation and Tracking'),
+            ('manual_background', self.manualBackgroundButton, True, 'Segmentation and Tracking'),
+            ('zoom_rectangle', self.zoomRectButton, True, 'Segmentation and Tracking'),
+            ('toggle_points_layer', self.togglePointsLayerAction, True, 'Segmentation and Tracking'),
         )
         self.rightClickCursorTools = (
-            ('separate_objects', self.separateBudButton),
-            ('fill_holes', self.fillHolesToolButton),
-            ('hull_contour', self.hullContToolButton),
-            ('move_object', self.moveLabelToolButton),
-            ('edit_id', self.editIDbutton),
-            ('merge_ids', self.mergeIDsButton),
-            ('keep_ids', self.keepIDsButton),
-            ('whitelist_ids', self.whitelistIDsButton),
-            ('exclude_from_analysis', self.binCellButton),
-            ('annotate_dead', self.ripCellButton),
-            ('assign_mother', self.assignBudMothButton),
-            ('set_history_known', self.setIsHistoryKnownButton),
-            ('manual_tracking', self.manualTrackingButton),
-            ('manual_background', self.manualBackgroundButton),
-            ('copy_lost_contour', self.copyLostObjButton),
-            ('curvature', self.curvToolButton),
-            ('label_roi', self.labelRoiButton),
-            ('magic_prompts', self.magicPromptsToolButton),
-            ('toggle_points_layer', self.togglePointsLayerAction),
+            ('separate_objects', self.separateBudButton, True, 'Segmentation and Tracking'),
+            ('fill_holes', self.fillHolesToolButton, True, 'Segmentation and Tracking'),
+            ('hull_contour', self.hullContToolButton, True, 'Segmentation and Tracking'),
+            ('move_object', self.moveLabelToolButton, True, 'Segmentation and Tracking'),
+            ('edit_id', self.editIDbutton, True, 'Segmentation and Tracking'),
+            ('merge_ids', self.mergeIDsButton, True, 'Segmentation and Tracking'),
+            ('keep_ids', self.keepIDsButton, True, 'Segmentation and Tracking'),
+            ('whitelist_ids', self.whitelistIDsButton, True, 'Segmentation and Tracking'),
+            ('exclude_from_analysis', self.binCellButton, True, 'Segmentation and Tracking'),
+            ('annotate_dead', self.ripCellButton, True, 'Segmentation and Tracking'),
+            ('assign_mother', self.assignBudMothButton, True, 'Segmentation and Tracking'),
+            ('set_history_known', self.setIsHistoryKnownButton, True, 'Segmentation and Tracking'),
+            ('manual_tracking', self.manualTrackingButton, True, 'Segmentation and Tracking'),
+            ('manual_background', self.manualBackgroundButton, True, 'Segmentation and Tracking'),
+            ('copy_lost_contour', self.copyLostObjButton, True, 'Segmentation and Tracking'),
+            ('curvature', self.curvToolButton, False, 'Segmentation and Tracking'),
+            ('label_roi', self.labelRoiButton, True, 'Segmentation and Tracking'),
+            ('magic_prompts', self.magicPromptsToolButton, True, 'Segmentation and Tracking'),
+            ('toggle_points_layer', self.togglePointsLayerAction, True, 'Segmentation and Tracking'),
         )
         cursor_tools = {
-            tool for _, tool in (
+            tool for _, tool, _, _ in (
                 self.leftClickCursorTools + self.rightClickCursorTools
             )
         }
         for tool in cursor_tools:
             tool.toggled.connect(self.gui_refreshToolCursor)
-        self.gui_cacheToolCursors()
-
-    def gui_cacheToolCursors(self):
-        left_tools = ((None, QIcon()),) + tuple(
-            (name, tool.icon()) for name, tool in self.leftClickCursorTools
-        )
-        right_tools = ((None, QIcon()),) + tuple(
-            (name, tool.icon()) for name, tool in self.rightClickCursorTools
-        )
-        for isHoverImg1 in (True, False):
-            for left_tool in left_tools:
-                for right_tool in right_tools:
-                    self.gui_createToolCursor(
-                        isHoverImg1, left_tool, right_tool
-                    )
 
     def gui_activeCursorTool(self, tools):
-        for name, tool in tools:
+        curr_mode = str(self.modeComboBox.currentText())
+        for name, tool, draw_icon, mode in tools:
+            if mode != curr_mode:
+                continue
             if name == 'toggle_points_layer':
                 magicPromptsON = self.magicPromptsToolButton.isChecked()
                 pointsLayerON = self.togglePointsLayerAction.isChecked()
@@ -1026,7 +1025,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     continue
             if tool.isChecked():
-                return name, tool.icon()
+                if draw_icon:
+                    return name, tool.icon()
+                else:
+                    return name, QIcon()
 
         if self.customAnnotButton is not None and self.customAnnotButton.isChecked():
             return 'custom_annotation', self.customAnnotButton.icon()
@@ -1070,20 +1072,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         cursor = self.toolCursors.get(key)
         if cursor is not None:
             return cursor
+        
+        actual_center_size = center_pixmap.width()  # Assuming square pixmap
 
         pixmap = self._normalToolCursorPixmaps[isHoverImg1].copy()
         painter = QPainter(pixmap)
-        painter.drawPixmap(32, 32, center_pixmap)
-        for icon, x in ((left_icon, 6), (right_icon, 74)):
+
+        center = (TOTAL_SIZE_CURSOR - actual_center_size) // 2
+
+        # Calculate positions automatically
+        left_x = 0 # align left icon to the left edge
+        right_x = TOTAL_SIZE_CURSOR - TOOL_SIZE_CURSOR # align right icon to the right edge
+        tool_y = 0 # align both icons to the top edge
+
+        painter.drawPixmap(center, center, center_pixmap)
+
+        for icon, x in ((left_icon, left_x), (right_icon, right_x)):
             if not icon.isNull():
-                tool_pixmap = icon.pixmap(QSize(48, 48))
-                painter.drawPixmap(x, 0, tool_pixmap)
+                tool_pixmap = icon.pixmap(QSize(TOOL_SIZE_CURSOR, TOOL_SIZE_CURSOR))
+                painter.drawPixmap(x, tool_y, tool_pixmap)
+
         painter.end()
 
         pixmap = pixmap.scaled(
-            QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            QSize(FINAL_SIZE_CURSOR, FINAL_SIZE_CURSOR), Qt.KeepAspectRatio, Qt.SmoothTransformation
         )
-        cursor = QCursor(pixmap, 16, 16)
+        cursor = QCursor(pixmap, FINAL_SIZE_CURSOR // 2, FINAL_SIZE_CURSOR // 2)
         self.toolCursors[key] = cursor
         return cursor
 
@@ -6958,7 +6972,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
             pen=pg.mkPen('w', width=1),
             brush=pg.mkBrush((255, 255, 255, 70)), 
-            size=16, tip=None
+            size=FINAL_SIZE_CURSOR // 2, tip=None
         )
         self.ax2.addItem(self.ax2_cursor)
 
@@ -6966,7 +6980,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
             pen=pg.mkPen('w', width=1),
             brush=pg.mkBrush((255, 255, 255, 70)), 
-            size=16, tip=None
+            size=FINAL_SIZE_CURSOR // 2, tip=None
         )
         self.ax1.addItem(self.ax1_cursor)
 
@@ -16061,6 +16075,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.app.restoreOverrideCursor()
         
         self.showEditIDwidgets(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
 
     def updateHoverLabelCursor(self, x, y):
         if x is None:
@@ -25194,20 +25209,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_i=None,
             wl_update=True, wl_track_og_curr=False, wl_update_lab=False, # wl stuff
         ):
-        # print('update_rp called with parameters:', {
-        #     'draw': draw,
-        #     'debug': debug,
-        #     'assignments': assignments,
-        #     'deletionIDs': deletionIDs,
-        #     'specific_IDs': specific_IDs,
-        #     'use_curr_view': use_curr_view,
-        #     'use_bbox': use_bbox,
-        #     'preloaded_bbox': preloaded_bbox,
-        #     'frame_i': frame_i,
-        #     'wl_update': wl_update,
-        #     'wl_track_og_curr': wl_track_og_curr,
-        #     'wl_update_lab': wl_update_lab
-        # })
         """Update regionprops and related GUI/tracking metadata.
 
         This method supports full updates and optimized updates for specific
