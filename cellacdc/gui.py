@@ -1281,6 +1281,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Settings menu
         self.settingsMenu = QMenu("Settings", self)
+        self.settingsMenu.setToolTipsVisible(True)
         menuBar.addMenu(self.settingsMenu)
         self.settingsMenu.addAction(self.invertBwAction)
         self.settingsMenu.addAction(self.toggleColorSchemeAction)
