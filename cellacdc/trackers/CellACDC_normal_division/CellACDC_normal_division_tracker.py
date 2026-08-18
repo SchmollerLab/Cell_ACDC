@@ -1590,14 +1590,23 @@ class tracker:
         IDs_prev = tracker.IDs_prev
         mothers = {IDs_prev[pair[0]] for pair in mother_daughters_pairs}
         assignments = tracker.assignments
+        IDs_curr_untracked = tracker.IDs_curr_untracked
+        daughters = {daughter
+                     for pair in mother_daughters_pairs 
+                     for daughter in pair[1]
+                     }
+        daughters = IoA_index_daughter_to_ID(
+            daughters, assignments, IDs_curr_untracked)
         if self._annot_obj_2nd_step:
             to_track_tracked_objs_2nd_step = tracker.to_track_tracked_objs_2nd_step
         add_info = {
             'mothers': mothers,
             'assignments': assignments,
+            'daughters': daughters,
             'to_track_tracked_objs_2nd_step': (to_track_tracked_objs_2nd_step 
                                                if self._annot_obj_2nd_step 
-                                               else None)
+                                               else None),
+            
         }
 
         if dont_return_tracked_lab:

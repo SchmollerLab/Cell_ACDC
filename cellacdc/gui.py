@@ -47,8 +47,8 @@ from qtpy.QtCore import (
     QThread, QMutex, QWaitCondition, QSettings, PYQT6,
 )
 from qtpy.QtGui import (
-    QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
-    QFont, QKeyEvent, QMouseEvent
+    QIcon, QKeySequence, QCursor, QGuiApplication, QPen, QPixmap, QColor,
+    QFont, QKeyEvent, QMouseEvent, QPainter
 )
 from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
@@ -158,6 +158,8 @@ CHECKBOX_OPTION_DEFAULT_VALUES = {
 
 GREEN_HEX = _palettes.green()
 ORANGE_HEX = _palettes.orange()
+
+MIRRORED_CURSOR_PG_SYMBOL = 'd'
 
 RP_OPT_NUM_CELLS_MIN = 30 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
 RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
@@ -389,6 +391,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.storeStateWorker = None
         self.AutoPilot = None
         self.widgetsWithShortcut = {}
+        self.widgetsForActions = {}
         self.invertBwAlreadyCalledOnce = False
         self.zoomOutKeyValue = Qt.Key_H
         self.preprocWorker = None
@@ -404,6 +407,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.defaultMouseShortcuts = dict()
         self.widgetsPersistentShortcut = dict()
         self.doubleSpaceBarState = False
+        self.protected_new_IDs = dict()
         
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
@@ -426,7 +430,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         self.checkableButtons = []
-        self.LeftClickButtons = []
+        self.leftClickButtons = []
         self.toolsActiveInProj3Dsegm = set()
         self.customAnnotDict = {}
 
@@ -911,17 +915,202 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return middle_click
 
     def gui_createCursors(self):
-        pixmap = QPixmap(":wand_cursor.svg")
-        self.wandCursor = QCursor(pixmap, 16, 16)
 
-        pixmap = QPixmap(":curv_cursor.svg")
-        self.curvCursor = QCursor(pixmap, 16, 16)
+        cursor_size = QSize(128, 128)
+        self._toolCursorCenterPixmaps = {
+            'blank': QPixmap(64, 64),
+            'crosshair': QPixmap(":cross_cursor.svg").scaled(
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'wand': QPixmap(":wand_cursor.svg").scaled(
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'curvature': QPixmap(":curv_cursor.svg").scaled(
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'polyline': QPixmap(":addDelPolyLineRoi_cursor.svg").scaled(
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'default_no_lc': QPixmap(":crosshair.svg").scaled(
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'default_lc': QPixmap(":crosshair.svg").scaled(
+                QSize(64, 64), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+        }
+        self._toolCursorCenterPixmaps['blank'].fill(Qt.transparent)
+        self._normalToolCursorPixmaps = {}
+        for isHoverImg1 in (True, False):
+            pixmap = QPixmap(cursor_size)
+            pixmap.fill(Qt.transparent)
+            self._normalToolCursorPixmaps[isHoverImg1] = pixmap
 
-        pixmap = QPixmap(":addDelPolyLineRoi_cursor.svg")
-        self.polyLineRoiCursor = QCursor(pixmap, 16, 16)
-        
-        pixmap = QPixmap(":cross_cursor.svg")
-        self.addPointsCursor = QCursor(pixmap, 16, 16)
+        self.toolCursors = {}
+        self.leftClickCursorTools = ()
+        self.rightClickCursorTools = ()
+        self._cursorHoverImage = None
+
+    def gui_createToolCursorRegistry(self):
+        # Ordering mirrors the mutually exclusive click handling priority.
+        self.leftClickCursorTools = (
+            ('brush', self.brushButton),
+            ('eraser', self.eraserButton),
+            ('curvature', self.curvToolButton),
+            ('magic_wand', self.wandToolButton),
+            ('magic_prompts', self.magicPromptsToolButton),
+            ('label_roi', self.labelRoiButton),
+            ('ruler', self.rulerButton),
+            ('polyline_deletion_roi', self.addDelPolyLineRoiButton),
+            ('clear_region', self.clearFreehandRoiButton),
+            ('merge_ids', self.mergeIDsButton),
+            ('keep_ids', self.keepIDsButton),
+            ('whitelist_ids', self.whitelistIDsButton),
+            ('manual_background', self.manualBackgroundButton),
+            ('zoom_rectangle', self.zoomRectButton),
+            ('toggle_points_layer', self.togglePointsLayerAction),
+        )
+        self.rightClickCursorTools = (
+            ('separate_objects', self.separateBudButton),
+            ('fill_holes', self.fillHolesToolButton),
+            ('hull_contour', self.hullContToolButton),
+            ('move_object', self.moveLabelToolButton),
+            ('edit_id', self.editIDbutton),
+            ('merge_ids', self.mergeIDsButton),
+            ('keep_ids', self.keepIDsButton),
+            ('whitelist_ids', self.whitelistIDsButton),
+            ('exclude_from_analysis', self.binCellButton),
+            ('annotate_dead', self.ripCellButton),
+            ('assign_mother', self.assignBudMothButton),
+            ('set_history_known', self.setIsHistoryKnownButton),
+            ('manual_tracking', self.manualTrackingButton),
+            ('manual_background', self.manualBackgroundButton),
+            ('copy_lost_contour', self.copyLostObjButton),
+            ('curvature', self.curvToolButton),
+            ('label_roi', self.labelRoiButton),
+            ('magic_prompts', self.magicPromptsToolButton),
+            ('toggle_points_layer', self.togglePointsLayerAction),
+        )
+        cursor_tools = {
+            tool for _, tool in (
+                self.leftClickCursorTools + self.rightClickCursorTools
+            )
+        }
+        for tool in cursor_tools:
+            tool.toggled.connect(self.gui_refreshToolCursor)
+        self.gui_cacheToolCursors()
+
+    def gui_cacheToolCursors(self):
+        left_tools = ((None, QIcon()),) + tuple(
+            (name, tool.icon()) for name, tool in self.leftClickCursorTools
+        )
+        right_tools = ((None, QIcon()),) + tuple(
+            (name, tool.icon()) for name, tool in self.rightClickCursorTools
+        )
+        for isHoverImg1 in (True, False):
+            for left_tool in left_tools:
+                for right_tool in right_tools:
+                    self.gui_createToolCursor(
+                        isHoverImg1, left_tool, right_tool
+                    )
+
+    def gui_activeCursorTool(self, tools):
+        for name, tool in tools:
+            if name == 'toggle_points_layer':
+                magicPromptsON = self.magicPromptsToolButton.isChecked()
+                pointsLayerON = self.togglePointsLayerAction.isChecked()
+                addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+                if (addPointsByClickingButton is not None 
+                    and (magicPromptsON or pointsLayerON)
+                    and addPointsByClickingButton.isChecked()):
+                    return 'toggle_points_layer', tool.icon()
+                else:
+                    continue
+            if tool.isChecked():
+                return name, tool.icon()
+
+        if self.customAnnotButton is not None and self.customAnnotButton.isChecked():
+            return 'custom_annotation', self.customAnnotButton.icon()
+
+        return None, QIcon()
+
+    def gui_getToolCursorCenter(self, left_name, right_name):
+        active_tools = {left_name, right_name}
+        isLeftClickActive = left_name is not None
+        overlay_cursor_tools = {
+            'brush', 'eraser'
+        }
+        if active_tools & overlay_cursor_tools:
+            center = 'blank'
+        elif (
+                'label_roi' in active_tools
+                and self.labelRoiIsCircularRadioButton.isChecked()
+            ):
+            center = 'blank'
+        elif 'magic_wand' in active_tools:
+            center = 'wand'
+        elif 'curvature' in active_tools:
+            center = 'curvature'
+        elif 'polyline_deletion_roi' in active_tools:
+            center = 'polyline'
+        elif 'toggle_points_layer' in active_tools:
+            center = 'crosshair'
+        elif isLeftClickActive:
+            center = 'default_lc'
+        else:
+            center = 'default_no_lc'
+        return center, self._toolCursorCenterPixmaps[center]
+
+    def gui_createToolCursor(self, isHoverImg1, left_tool, right_tool):
+        left_name, left_icon = left_tool
+        right_name, right_icon = right_tool
+        center_name, center_pixmap = self.gui_getToolCursorCenter(
+            left_name, right_name
+        )
+        key = (isHoverImg1, left_name, right_name, center_name)
+        cursor = self.toolCursors.get(key)
+        if cursor is not None:
+            return cursor
+
+        pixmap = self._normalToolCursorPixmaps[isHoverImg1].copy()
+        painter = QPainter(pixmap)
+        painter.drawPixmap(32, 32, center_pixmap)
+        for icon, x in ((left_icon, 6), (right_icon, 74)):
+            if not icon.isNull():
+                tool_pixmap = icon.pixmap(QSize(48, 48))
+                painter.drawPixmap(x, 0, tool_pixmap)
+        painter.end()
+
+        pixmap = pixmap.scaled(
+            QSize(32, 32), Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
+        cursor = QCursor(pixmap, 16, 16)
+        self.toolCursors[key] = cursor
+        return cursor
+
+    def gui_getToolCursor(self, isHoverImg1):
+        left_tool = self.gui_activeCursorTool(self.leftClickCursorTools)
+        right_tool = self.gui_activeCursorTool(self.rightClickCursorTools)
+        return self.gui_createToolCursor(isHoverImg1, left_tool, right_tool)
+
+    def gui_setToolCursor(self, event, isHoverImg1):
+        if event.isExit():
+            return
+
+        self.gui_refreshToolCursor()
+
+    def gui_refreshToolCursor(self, *args):
+        isHoverImg1 = self._cursorHoverImage
+        if isHoverImg1 is None:
+            return
+
+        if self.app.overrideCursor() == Qt.SizeAllCursor:
+            return
+
+        cursor = self.gui_getToolCursor(isHoverImg1)
+        if self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(cursor)
+        else:
+            self.app.changeOverrideCursor(cursor)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -1218,7 +1407,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rulerButton.setCheckable(True)
         navigateToolBar.addWidget(self.rulerButton)
         self.checkableButtons.append(self.rulerButton)
-        self.LeftClickButtons.append(self.rulerButton)
+        self.leftClickButtons.append(self.rulerButton)
 
         # fluorescence image color widget
         colorsToolBar = widgets.ToolBar("Colors", self)
@@ -1307,7 +1496,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.brushButton.setCheckable(True)
         editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
-        self.LeftClickButtons.append(self.brushButton)
+        self.leftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
         self.widgetsWithShortcut['Brush'] = self.brushButton
         self.manulAnnotToolButtons.add(self.brushButton)
@@ -1320,7 +1509,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.eraserButton.keyPressShortcut = Qt.Key_X
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
-        self.LeftClickButtons.append(self.eraserButton)
+        self.leftClickButtons.append(self.eraserButton)
         self.manulAnnotToolButtons.add(self.eraserButton)
 
         self.curvToolButton = QToolButton(self)
@@ -1328,7 +1517,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.curvToolButton.setCheckable(True)
         self.curvToolButton.setShortcut('C')
         self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
-        self.LeftClickButtons.append(self.curvToolButton)
+        self.leftClickButtons.append(self.curvToolButton)
         # self.functionsNotTested3D.append(self.curvToolButton)
         self.widgetsWithShortcut['Curvature tool'] = self.curvToolButton
         # self.checkableButtons.append(self.curvToolButton)
@@ -1339,7 +1528,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.wandToolButton.setCheckable(True)
         self.wandToolButton.setShortcut('Ctrl+D')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
-        self.LeftClickButtons.append(self.wandToolButton)
+        self.leftClickButtons.append(self.wandToolButton)
         self.checkableButtons.append(self.eraserButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
         
@@ -1361,7 +1550,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.toolsActiveInProj3Dsegm.add(self.clearFreehandRoiButton)
         
         self.checkableButtons.append(self.clearFreehandRoiButton)
-        self.LeftClickButtons.append(self.clearFreehandRoiButton)
+        self.leftClickButtons.append(self.clearFreehandRoiButton)
         
         self.drawClearRegionAction = editToolBar.addWidget(
             self.clearFreehandRoiButton
@@ -1393,7 +1582,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.labelRoiButton.setCheckable(True)
         self.labelRoiButton.setShortcut('L')
         self.labelRoiButton.action = editToolBar.addWidget(self.labelRoiButton)
-        self.LeftClickButtons.append(self.labelRoiButton)
+        self.leftClickButtons.append(self.labelRoiButton)
         self.checkableButtons.append(self.labelRoiButton)
         self.checkableQButtonsGroup.addButton(self.labelRoiButton)
         self.widgetsWithShortcut['Label ROI'] = self.labelRoiButton
@@ -1417,7 +1606,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
         self.segmentToolAction.setShortcut('R')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
-        editToolBar.addAction(self.segmentToolAction)
+        widget = editToolBar.addAction(self.segmentToolAction)
+        self.widgetsForActions['Repeat segmentation'] = widget
+
 
         self.segForLostIDsButton = QToolButton(self)
         self.segForLostIDsButton.setIcon(QIcon(":segForLostIDs.svg"))
@@ -1435,7 +1626,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
         self.manualBackgroundButton.setCheckable(True)
         self.manualBackgroundButton.setShortcut('G')
-        self.LeftClickButtons.append(self.manualBackgroundButton)
+        self.leftClickButtons.append(self.manualBackgroundButton)
         self.checkableButtons.append(self.manualBackgroundButton)
         self.checkableQButtonsGroup.addButton(self.manualBackgroundButton)
         self.widgetsWithShortcut['Manual background'] = self.manualBackgroundButton
@@ -1453,7 +1644,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.widgetsWithShortcut['Delete all objects outside segm'] = (
             self.delObjsOutSegmMaskAction
         )
-        editToolBar.addAction(self.delObjsOutSegmMaskAction)
+        widget = editToolBar.addAction(self.delObjsOutSegmMaskAction)
+        self.widgetsForActions['Delete all objects outside segm'] = widget
+
 
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
@@ -1491,7 +1684,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.expandLabelToolButton.action = editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
         self.checkableButtons.append(self.expandLabelToolButton)
-        self.LeftClickButtons.append(self.expandLabelToolButton)
+        self.leftClickButtons.append(self.expandLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
         self.widgetsWithShortcut['Expand/shrink label'] = self.expandLabelToolButton
 
@@ -1528,7 +1721,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
-        self.LeftClickButtons.append(self.mergeIDsButton)
+        self.leftClickButtons.append(self.mergeIDsButton)
 
         self.keepIDsButton = QToolButton(self)
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
@@ -1549,7 +1742,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistIDsButton.setShortcut('Ctrl+Shift+W')
         self.checkableButtons.append(self.whitelistIDsButton)
         self.checkableQButtonsGroup.addButton(self.whitelistIDsButton)
-        self.LeftClickButtons.append(self.whitelistIDsButton)
+        self.leftClickButtons.append(self.whitelistIDsButton)
         # self.functionsNotTested3D.append(self.whitelistIDsButton)
         self.widgetsWithShortcut['Select objects to add to a tracking whitelist'] = (
             self.whitelistIDsButton
@@ -1612,8 +1805,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.delNewObjAction.toolbar = editToolBar
         # self.functionsNotTested3D.append(self.delNewObjAction) so id this doesnt work in 3d i dont know anymore
 
-        editToolBar.addAction(self.repeatTrackingAction)
-        
+        widget = editToolBar.addAction(self.repeatTrackingAction)
+        self.widgetsForActions['Repeat Tracking'] = widget
+
         self.manualTrackingAction = editToolBar.addWidget(
             self.manualTrackingButton
         )
@@ -1718,12 +1912,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             "Next"
         )
         
-        
+        ok_num_widgets = [1]
         for name, button in self.widgetsWithShortcut.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
@@ -1736,8 +1930,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for name, button in self.keepToolActiveNames.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
@@ -1747,15 +1941,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for name, button in self.applyToolNewFrameButtons.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
             action = self.applyToolNewFrameActions[name]
             menu.addAction(action)
             
-    def _setupRightClickMenuOnButton(self, target):
+    def _setupRightClickMenuOnButton(self, target, name):
         if hasattr(target, 'rightClickMenu') and target.rightClickMenu is not None:
             return True, 1
         
@@ -1763,6 +1957,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         target.rightClickMenu = menu
         widgets = None
         if isinstance(target, QAction):
+            if name in self.widgetsForActions:
+                widgets = [self.widgetsForActions[name]]
             if hasattr(target, 'associatedWidgets'):
                 widgets = target.associatedWidgets()
             elif hasattr(target, 'widgetsforAction'):
@@ -1775,7 +1971,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     and obj is not target.parent
                     ]
             if widgets is None or len(widgets) == 0:
-                return False, len(widgets) if widgets is not None else 0
+                return False, 0
             else:    
                 for w in widgets:
                     self._installRightClickFilter(w, menu)
@@ -2512,6 +2708,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         for name, action in self.copyLostObjToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
+        for name, widget in self.copyLostObjToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
 
         self.copyLostObjToolbar.sigCopyAllObjects.connect(
             self.copyAllLostObjects
@@ -2540,6 +2738,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
+        for name, widget in self.whitelistIDsToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
         
         self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
         self.whitelistIDsToolbar.setVisible(False)
@@ -2608,6 +2808,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         secondLevelToolbar.setMovable(False)
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
+
+        self.gui_createToolCursorRegistry()
         
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -2904,7 +3106,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
         self.zoomRectButton.setCheckable(True)
         self.zoomRectButton.setShortcut('Shift+Z')
-        self.LeftClickButtons.append(self.zoomRectButton)
+        self.leftClickButtons.append(self.zoomRectButton)
         self.checkableButtons.append(self.zoomRectButton)
         self.checkableQButtonsGroup.addButton(self.zoomRectButton)
         self.widgetsWithShortcut['Zoom to rectangular area'] = (
@@ -2967,7 +3169,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.repeatTrackingAction.setShortcut('Shift+T')
         self.widgetsWithShortcut['Repeat Tracking'] = self.repeatTrackingAction
-        
 
         self.editRtTrackerParamsAction = QAction(
             'Edit real-time tracker parameters...', self
@@ -3227,7 +3428,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.addDelPolyLineRoiButton.setIcon(QIcon(":addDelPolyLineRoi.svg"))
         
         self.checkableButtons.append(self.addDelPolyLineRoiButton)
-        self.LeftClickButtons.append(self.addDelPolyLineRoiButton)
+        self.leftClickButtons.append(self.addDelPolyLineRoiButton)
        
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
@@ -6563,8 +6764,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.gui_hoverEventImg1(event, isHoverImg1=False)
         setMirroredCursor = (
-            self.app.overrideCursor() is None and not event.isExit()
-            and self.showMirroredCursorAction.isChecked()
+            not event.isExit() and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -6598,6 +6798,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData = self.data[self.pos_i]
         except AttributeError:
             return
+
+        self._cursorHoverImage = None if event.isExit() else isHoverImg1
         
         # Update x, y, value label bottom right
         if not event.isExit():
@@ -6613,7 +6815,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        cursorsInfo = self.gui_setCursor(modifiers, event)
+        cursorsInfo = self.gui_setCursor(modifiers, event, isHoverImg1)
         self.highlightHoverLostObj(modifiers, event)
         
         drawRulerLine = (
@@ -6727,8 +6929,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.hoverEventDrawSpline(event)
         
         setMirroredCursor = (
-            self.app.overrideCursor() is None and not event.isExit()
-            and isHoverImg1 and self.showMirroredCursorAction.isChecked()
+            not event.isExit() and isHoverImg1
+            and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -6777,18 +6979,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             pass
 
         self.ax2_cursor = pg.ScatterPlotItem(
-            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16, tip=None
+            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+            pen=pg.mkPen('w', width=1),
+            brush=pg.mkBrush((255, 255, 255, 70)), 
+            size=16, tip=None
         )
         self.ax2.addItem(self.ax2_cursor)
 
         self.ax1_cursor = pg.ScatterPlotItem(
-            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16, tip=None
+            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+            pen=pg.mkPen('w', width=1),
+            brush=pg.mkBrush((255, 255, 255, 70)), 
+            size=16, tip=None
         )
         self.ax1.addItem(self.ax1_cursor)
 
-    def gui_setCursor(self, modifiers, event):
+    def gui_setCursor(self, modifiers, event, isHoverImg1=True):
         noModifier = modifiers == Qt.NoModifier
         shift = modifiers == Qt.ShiftModifier
         ctrl = modifiers == Qt.ControlModifier
@@ -6873,36 +7079,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         setPanImageCursor = alt and not event.isExit()
         if setPanImageCursor and overrideCursor is None:
             self.app.setOverrideCursor(Qt.SizeAllCursor)
-        elif setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setWandCursor and overrideCursor is None:
-            self.app.setOverrideCursor(self.wandCursor)
-        elif setLabelRoiCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setCurvCursor and overrideCursor is None:
-            self.app.setOverrideCursor(self.curvCursor)
-        elif setCustomAnnotCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setAddDelPolyLineCursor:
-            self.app.setOverrideCursor(self.polyLineRoiCursor)
-        elif setCustomAnnotCursor:
+        elif not event.isExit():
+            self.gui_setToolCursor(event, isHoverImg1)
+
+        if setCustomAnnotCursor:
             x, y = event.pos()
-            self.highlightHoverID(x, y)        
-        elif setKeepObjCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)        
-        elif setManualTrackingCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setManualBackgroundCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setAddPointCursor:
-            self.app.setOverrideCursor(self.addPointsCursor)
-        elif setZoomRectCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setEditIDCursor and overrideCursor is None:
-            if shift:
-                self.app.setOverrideCursor(Qt.CrossCursor)
-            else:
-                self.app.restoreOverrideCursor()
+            self.highlightHoverID(x, y)
         
         return {
             'setBrushCursor': setBrushCursor,
@@ -6953,6 +7135,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData = self.data[self.pos_i]
         except AttributeError:
             return
+
+        self._cursorHoverImage = None if event.isExit() else False
             
         if not event.isExit():
             self.xHoverImg, self.yHoverImg = event.pos()
@@ -6985,8 +7169,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and (noModifier or shift or ctrl)
             and self.labelRoiIsCircularRadioButton.isChecked()
         )
-        if setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
 
         setMoveLabelCursor = (
             self.moveLabelToolButton.isChecked() and not event.isExit()
@@ -7008,8 +7190,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.keepIDsButton.isChecked() and not event.isExit()
             and noModifier
         )
-        if setKeepObjCursor and self.app.overrideCursor() is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
+        if not setPanImageCursor and not event.isExit():
+            self.gui_setToolCursor(event, isHoverImg1=False)
 
         # Update x, y, value label bottom right
         if not event.isExit():
@@ -12653,11 +12835,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs
         curr_IDs = posData.IDs
-        new_IDs = list(set(curr_IDs) - set(prev_IDs))
+        
+        protected_new_IDs = self.protected_new_IDs.get(frame_i, [])
+        new_IDs = list(set(curr_IDs) - set(prev_IDs) - set(protected_new_IDs))
 
         lab = posData.lab
-        del_mask = np.isin(lab, new_IDs)
-        lab[del_mask] = 0
+        lab[np.isin(lab, new_IDs)] = 0
         posData.lab = lab
         
         self.update_rp(deletionIDs=new_IDs)
@@ -13370,7 +13553,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return txt
     
     def getActiveToolButton(self):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             if button.isChecked():
                 return button
     
@@ -14223,7 +14406,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.update_z_slice(nearest_nonzero_z)
 
     def disconnectLeftClickButtons(self):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             try:
                 button.toggled.disconnect()
             except Exception as e:
@@ -14231,7 +14414,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 pass
 
     def uncheckLeftClickButtons(self, sender):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             if button != sender:
                 button.setChecked(False)
         
@@ -15416,6 +15599,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.mergeIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
         
         self.mergeIDsToolbar.setVisible(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
 
     def acceptMergeMultipleIDs(self, IDs):
         if not self.mergeIDsButton.isChecked():
@@ -15717,6 +15901,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.showEditIDwidgets(checked)
         self.enableSizeSpinbox(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
     
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
@@ -15997,6 +16182,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         self.showEditIDwidgets(checked)
         self.enableSizeSpinbox(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
     
     def storeCurrentAnnotationsOptions(self):
         self.storeCurrentAnnotOptions(0)
@@ -16661,7 +16847,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 obj = posData.rp.get_obj_from_ID(ID)
                 posData.lab[obj.slice][obj.image] = self.firstID
             
-            preloaded_bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old RP to get the correct bbox
+            specific_IDs = [ID for ID in IDs_to_merge if ID in IDs]
+            preloaded_bbox = self.update_rp_get_bbox(
+                specific_IDs=specific_IDs, use_bbox=True
+                ) # use old RP to get the correct bbox
             specific_IDs = [*IDs_to_merge, self.firstID]
             self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=specific_IDs)
             self.store_data(autosave=False)
@@ -17859,6 +18048,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearGhost()
             self.clearManualBackgroundAnnotations()
         self.manualBackgroundToolbar.setVisible(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
 
     def autoSegm_cb(self, checked):
         if checked:
@@ -25840,7 +26030,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return action.button
     
     def setupAddPointsByClicking(self, toolButton, isLoadedDf, toolbar):
-        self.LeftClickButtons.append(toolButton)
+        self.leftClickButtons.append(toolButton)
         posData = self.data[self.pos_i]
         tableEndName = self.addPointsWin.clickEntryTableEndnameText
         if isLoadedDf is not None:
@@ -26969,7 +27159,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 toolbutton = self.allOverlayToolbuttons[ch]
                 toolbutton.setChecked(checked)
             
-            self.setOverlayItemsOpacities()
+            self.setOverlayImages()
     
     def updateTransparentOverlayRgba(self, *args, **kwargs):
         self.setOverlayImages()
@@ -26978,8 +27168,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         opacity = float(transparent)
         opacity = opacity if opacity < 1.0 else 0.999
         self.rgbaImg1.setOpacity(opacity)
-        
+
         if transparent:
+            self.rgbaImg1.setVisible(True)
             self.img1.setOpacity(0.001, applyToLinked=False)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
@@ -26987,25 +27178,48 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.imgGrad.sigLevelsChanged.connect(
                 self.updateTransparentOverlayRgba
             )
-        
-        for channel, items in self.overlayLayersItems.items():
-            imageItem, lutItem, alphaSB = items[:3]
-            if transparent:
-                alphaSB.valueChanged.disconnect()
-                alphaSB.valueChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                lutItem.sigLookupTableChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                lutItem.sigLevelsChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                imageItem.setOpacity(0)
+            
+            for channel, items in self.overlayLayersItems.items():
+                imageItem, lutItem, alphaSB = items[:3]
+                if transparent:
+                    alphaSB.valueChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    lutItem.sigLookupTableChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    lutItem.sigLevelsChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    imageItem.setOpacity(0)
+        else:
+            self.rgbaImg1.clear()
+            self.rgbaImg1.setVisible(False)
+            self.img1.setOpacity(1.0, applyToLinked=False)
+            for channel, items in self.overlayLayersItems.items():
+                imageItem, lutItem, alphaSB = items[:3]
+                imageItem.setOpacity(1.0)
+                try:
+                    lutItem.sigLookupTableChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
+                try:
+                    lutItem.sigLevelsChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
+                try:
+                    alphaSB.valueChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
 
-        if not transparent:
             self.setOverlayItemsOpacities()
-        
+
         self.setOverlayImages()
         
     def overlay_cb(self, checked):
@@ -27631,13 +27845,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             return obj_slice
     
-    def setOverlayImages(self, frame_i=None):
+    def setOverlayImages(self, frame_i=None, mode=None):
         if not self.overlayButton.isChecked():
             return
         
         posData = self.data[self.pos_i]
         if posData.ol_data is None:
             return
+        
+        if mode is None:
+            if self.overlayToolbar.isAlphaEncodedIntensity():
+                mode = 'intensity_to_alpha'
+            elif self.overlayToolbar.isTransparent():
+                mode = 'transparent'
+            else:
+                mode = 'normal'
         
         rgba_imgs_info = {}
         for filename in posData.ol_data:
@@ -27652,7 +27874,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             ol_img = self.getOlImg(filename, frame_i=frame_i)
 
-            if self.overlayToolbar.isTransparent():
+            if mode == 'transparent' or mode == 'intensity_to_alpha':
                 toolbutton = items[3]
                 if not toolbutton.isChecked():
                     continue
@@ -27674,8 +27896,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
                 imageItem.setImage(ol_img)
         
-        if not self.overlayToolbar.isTransparent():
-            return            
+        if not (mode == 'transparent' or mode == 'intensity_to_alpha'):
+            self.rgbaImg1.clear()
+            self.rgbaImg1.setVisible(False)
+            return
+
+        self.rgbaImg1.setVisible(True)
         
         alpha_values = []
         images = []
@@ -27685,8 +27911,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             alpha_values.append(alpha_val)
             images.append(ol_img)
             luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
-        
-        weights = colors.hierarchical_weights(alpha_values)
         
         if self.baseLayerToolbutton.isChecked():
             image1 = self._getImageupdateAllImages()
@@ -27706,12 +27930,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.imgGrad.gradient.getLookupTable(256, alpha=255)/255
             )
             luts.append(baseLut)
+            
+        if mode == 'intensity_to_alpha':
+            # get base image item lut
+            if self.baseLayerToolbutton.isChecked():
+                base_img = images.pop()
+                base_lut = luts.pop()
+            else:
+                base_img = np.zeros_like(images[0])
+                base_lut = None
+                
+            rgba_merge = colors.combine_grayscale_images_with_alpha(
+                base_img=base_img,
+                images=images,
+                alphas=alpha_values,
+                luts=luts,
+                base_lut=base_lut
+            )
+            self.rgbaImg1.setImage(rgba_merge)
+            return
         
         images_rgba = []
         for img, lut in zip(images, luts):
             rgba = colors.grayscale_apply_lut(img, lut)            
             images_rgba.append(rgba)
         
+        weights = colors.hierarchical_weights(alpha_values)
         rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
         self.rgbaImg1.setImage(rgba_merge)
     
@@ -31194,7 +31438,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         if self._rtTrackerName == 'CellACDC_normal_division':
             tracked_lost_IDs = add_info['mothers']
+            protected_new_IDs = add_info['daughters']
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
+            protected_new_IDs_frame = self.protected_new_IDs.get(posData.frame_i, set())
+            protected_new_IDs_frame.update(protected_new_IDs)
+            self.protected_new_IDs[posData.frame_i] = protected_new_IDs_frame
             assignments = add_info['assignments']
             if add_info['to_track_tracked_objs_2nd_step'] is not None:
                 new_objs_1st_step_new, lost_objs_1st_step_new = add_info[
@@ -31277,13 +31525,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if annotInfo is None:
             return
         
-        # IDs_set = posData.rp.IDs_set
+        self.ax1_trackerMovementAgainstPrevLinesItem.clear()
+        self.yellowContourScatterItem.clear()
+        IDs_set = posData.rp.IDs_set
 
         new_objs_1st_step, lost_objs_1st_step = annotInfo
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
             # guard against removed cells
-            # if newObj.label not in IDs_set:
-            #     continue
+            # ID is actually not present in current frame !DO not use newObj, it is stale!
+            if lostObj.label not in IDs_set: 
+                continue
             allContours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -33677,6 +33928,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         lutItem.setGradient(gradient)
     
     def setOpacityOverlayLayersItems(self, value, imageItem=None, scrollbar=None):
+        if self.overlayToolbar.isTransparent():
+            return
+
         if scrollbar is None:
             scrollbar = imageItem.alphaScrollBar
 
@@ -33684,10 +33938,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         toolbutton = self.allOverlayToolbuttons[channel]
         if not toolbutton.isChecked() or not toolbutton.isVisible():
             return
-        
+
         if value is None:
             value = scrollbar.value()
-            
+
         if imageItem is None:
             imageItem = scrollbar.imageItem
             alpha = value/scrollbar.maximum()
@@ -33695,7 +33949,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             alpha = value/scrollbar.maximum()
         else:
             alpha = value
-        
+
         alpha_values = []
         activeOverlayImageItems = []
         for items in self.overlayLayersItems.values():
@@ -33707,14 +33961,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             else:
                 alpha_values.append(alphaSB.value()/alphaSB.maximum())
-            
+
             activeOverlayImageItems.append(imgItem)
-        
+
+        if not alpha_values:
+            self.img1.setOpacity(1.0, applyToLinked=False)
+            return
+
         opacities = colors.hierarchical_weights(alpha_values)[::-1]
-        
+
         for i, imgItem in enumerate(activeOverlayImageItems):
             imgItem.setOpacity(opacities[i+1])
-            
+
         self.img1.setOpacity(opacities[0], applyToLinked=False)
         
     def showInExplorer_cb(self):

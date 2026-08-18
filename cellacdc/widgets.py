@@ -3163,6 +3163,7 @@ class ToolBar(QToolBar):
         super().__init__(*args, **kwargs)
         
         self.widgetsWithShortcut = {}
+        self.widgetsForActions = {}
         
         for child in self.children(): 
             if child.objectName() == 'qt_toolbar_ext_button':
@@ -3211,10 +3212,12 @@ class ToolBar(QToolBar):
         spinbox.action = self.addWidget(spinbox)
         return spinbox
     
-    def addButton(self, icon_str: str, text='', checkable=False):
+    def addButton(self, icon_str: str, text='', checkable=False, ret_widget=False):
         action = QAction(QIcon(icon_str), text, self)
         action.setCheckable(checkable)
-        self.addAction(action)
+        widget = self.addAction(action)
+        if ret_widget:
+            return action, widget
         return action
 
     def addComboBox(self, items=None, label=''):
@@ -3324,7 +3327,7 @@ class CopyLostObjectToolbar(ToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
         
-        action = self.addButton(':copyContour_all.svg')
+        action, widget = self.addButton(':copyContour_all.svg', ret_widget=True)
         # action.setShortcut('Alt+C')
         action.keyPressShortcut = KeySequenceFromText('Alt+C')
         action.setToolTip(
@@ -3332,6 +3335,7 @@ class CopyLostObjectToolbar(ToolBar):
             'Shortcut: Alt+C'
         )
         self.widgetsWithShortcut['Copy all lost objects'] = action
+        self.widgetsForActions['Copy all lost objects'] = widget
         
         action.triggered.connect(self.emitSigCopyAllObjects)
         
@@ -11422,7 +11426,7 @@ class WhitelistIDsToolbar(ToolBar):
         )
 
         # add a view OG toggle
-        self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
+        self.viewOGToggle, viewOGWidget = self.addButton(':eye.svg', checkable=True, ret_widget=True)
         viewOGTooltip = (
             'View the non-whitelisted segmentation mask.\n\n'
             'You can activate this to add new IDs to the whitelist,\n'
@@ -11433,6 +11437,7 @@ class WhitelistIDsToolbar(ToolBar):
         self.viewOGToggle.setShortcut('Shift+K')
         key = 'View the non-whitelisted segmentation mask'
         self.widgetsWithShortcut[key] = self.viewOGToggle
+        self.widgetsForActions[key] = viewOGWidget
         
         self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
         self.emitViewOGIDs(True)
@@ -12187,11 +12192,23 @@ class OverlayToolbar(ToolBar):
         )
         
         self.transparencyCheckbox.setToolTip(
-            'Activate to achieve true pixel-wise transparency where '
-            'the pixel intensity is 0 or set to 0 using the '
-            'LUT sliders on the left of the images.\n\n'
-            'Since it is significantly slower, we recommended to activate this '
-            'only if you need to export images for figures.'
+            'Activate to hierarchically blend channels using relative weights '
+            'derived from the scrollbars.\n\n'
+            'Each scrollbar controls the balance between adjacent channels, ' 
+            'allowing you to fine-tune their contributions to the '
+            'final blended image.'
+        )
+        
+        self.alphaEncodedIntensityCheckbox = self.addCheckBox(
+            text='Alpha-encoded intensity (RGBA composite)'
+        )
+        self.alphaEncodedIntensityCheckbox.setToolTip(
+            'Activate to encode pixel intensity as alpha transparency: '
+            'pixels with zero intensity are fully transparent,\n'
+            '50% intensity corresponds to 50% opacity, '
+            'and maximum intensity is fully opaque.\n\n'
+            'This allows low-intensity regions to appear transparent and '
+            'creates the perception of seeing through these regions.'
         )
         
         self.addSeparator()
@@ -12205,10 +12222,29 @@ class OverlayToolbar(ToolBar):
             'will display only that channel in the overlay.'
         )
         
-        self.transparencyCheckbox.toggled.connect(self.sigSetTranspacency.emit)
+        self.transparencyCheckbox.toggled.connect(self.transparencyToggled)
         self.singleChannelCheckbox.toggled.connect(
             self.sigSetSingleChannel.emit
         )
+        self.alphaEncodedIntensityCheckbox.toggled.connect(
+            self.alphaEncodedIntensityToggled)
+        
+        
+    def alphaEncodedIntensityToggled(self, checked):
+        if checked:
+            self.transparencyCheckbox.blockSignals(True)
+            self.transparencyCheckbox.setChecked(True)
+            self.transparencyCheckbox.blockSignals(False)
+        transp_checked = self.transparencyCheckbox.isChecked()
+        self.sigSetTranspacency.emit(transp_checked)
+        
+    def transparencyToggled(self, checked):
+        if not checked:
+            self.alphaEncodedIntensityCheckbox.blockSignals(True)
+            self.alphaEncodedIntensityCheckbox.setChecked(False)
+            self.alphaEncodedIntensityCheckbox.blockSignals(False)
+        
+        self.sigSetTranspacency.emit(checked)
     
     def setTransparent(self, transparent: bool):
         self.transparencyCheckbox.setChecked(transparent)
@@ -12218,6 +12254,9 @@ class OverlayToolbar(ToolBar):
     
     def isSingleChannel(self):
         return self.singleChannelCheckbox.isChecked()
+    
+    def isAlphaEncodedIntensity(self):
+        return self.alphaEncodedIntensityCheckbox.isChecked()
 
 class OverlayChannelToolButton(GradientToolButton):
     def __init__(
