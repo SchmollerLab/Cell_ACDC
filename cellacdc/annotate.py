@@ -339,6 +339,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             return
         self._scaling = scaling_new
         self._invalidateCache()
+        self._generatePicture()
 
     def setExportZoom(self, zoom):
         if zoom is None:

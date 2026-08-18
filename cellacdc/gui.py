@@ -1285,7 +1285,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.settingsMenu.addAction(self.invertBwAction)
         self.settingsMenu.addAction(self.toggleColorSchemeAction)
         self.settingsMenu.addSeparator()
-        # self.settingsMenu.addAction(self.pxModeAction)
         editObjectTrackSettingsAction = self.settingsMenu.addAction(
             'Edit object track settings...'
         )
@@ -3253,32 +3252,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.gui_updateSwitchColorSchemeActionText()
         
-        # self.pxModeAction = widgets.CheckableAction(
-        #     'Fixed size text annotations'
-        # )
-        # self.pxModeAction.setChecked(True)
-        # pxModeTooltip = (
-        #     'When the text annotations are with fixed size they scale relative '
-        #     'to the object when zooming in/out (fixed size in pixels).\n'
-        #     'This is typically faster to render, but it makes annotations '
-        #     'smaller/larger when zooming in/out, respectively.\n\n'
-        #     'Try activating it to speed up the annotation of many objects '
-        #     'in high resolution mode.\n\n'
-        #     'After activating it, you might need to increase the font size '
-        #     'from the menu on the top menubar `Edit --> Font size`.'
-        # )
-        # self.pxModeAction.setToolTip(pxModeTooltip)
-        
         self.scalingLabelsAction = widgets.CheckableAction(
-            'Scale text annotations with zoom'
+            'Fix text annotations to screen size'
         )
-        scalingLabelsTooltip = (
-            'When activated, the text annotations scale when zooming in/out.\n'
-            'When deactivated, the text annotations have a fixed size, \n'
-            'and so zooming in/out does not change their size.'
+        scalingLabelsTooltip = html_utils.paragraph(
+            'When the text annotations are fixed to screen size, '
+            'they do not scale relative '
+            'to the objects when zooming in/out.'
         )
+            
         self.scalingLabelsAction.setToolTip(scalingLabelsTooltip)
-        checked = self._get_setting_value('scalingLabels', True, cast=bool)
+        checked = self._get_setting_value('scalingLabels', False, cast=bool)
         self.scalingLabelsAction.setChecked(checked)
         
         self.highLowResAction = widgets.CheckableAction(
@@ -3519,7 +3503,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.invertBwAction.toggled.connect(self.invertBw)
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
-        # self.pxModeAction.clicked.connect(self.pxModeActionToggled)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
         self.editAutoSaveIntervalAction.triggered.connect(
             self.autoSaveIntervalEditButton.click
@@ -4275,12 +4258,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if savedFontSize.find('pt') != -1:
             savedFontSize = savedFontSize[:-2]
         self.fontSize = int(savedFontSize)
-        if 'pxMode' not in self.df_settings.index:
-            # Users before introduction of pxMode had pxMode=False, but now 
-            # the new default is True. This requires larger font size.
-            self.fontSize = 2*self.fontSize
-            self.df_settings.at['pxMode', 'value'] = 1
-            self.df_settings.to_csv(settings_csv_path)
         self.fontSizeSpinBox.setValue(self.fontSize)
         self.fontSizeSpinBox.editingFinished.connect(self.changeFontSize) 
         self.fontSizeSpinBox.sigUpClicked.connect(self.changeFontSize)
@@ -5349,13 +5326,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         isHighResolution = self.highLowResAction.isChecked()
         # TextAnnotations' internal scaling flag counter-scales fonts to keep
         # their screen size fixed, so it is the inverse of the UI toggle.
-        scalingMode = not self.scalingLabelsAction.isChecked()
-        # pxMode = self.pxModeAction.isChecked()
+        scalingMode = self.scalingLabelsAction.isChecked()
         for ax in range(2):
             ax_textAnnot = annotate.TextAnnotations()
             ax_textAnnot.initFonts(self.fontSize)
             ax_textAnnot.createItems(
-                isHighResolution, allIDs, scalingMode=scalingMode#, pxMode=pxMode
+                isHighResolution, allIDs, scalingMode=scalingMode
             )
             self.textAnnot[ax] = ax_textAnnot
     
@@ -9773,19 +9749,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
         else:
             self.labelRoiCircularRadiusSpinbox.setDisabled(True)
-    
-    # def pxModeActionToggled(self, checked):
-    #     self.df_settings.at['pxMode', 'value'] = int(checked)
-    #     self.df_settings.to_csv(self.settings_csv_path)
-        
-    #     if not self.isDataLoaded:
-    #         return
-        
-    #     if self.highLowResAction.isChecked():
-    #         for ax in range(2):
-    #             self.textAnnot[ax].setPxMode(checked)
-        
-    #     self.updateAllImages()
     
     def relabelSequentialCallback(self): 
         mode = str(self.modeComboBox.currentText())
@@ -35289,7 +35252,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.logger.info(
             f'Switching to {mode} for the text annnotations...'
         )
-        # self.pxModeAction.setDisabled(not self.highLowResAction.isChecked())
         if not self.isDataLoaded:
             return
         
@@ -35297,7 +35259,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
         img_shape = self.img1.image.shape[:2]
-        scalingMode = not self.scalingLabelsAction.isChecked()
+        scalingMode = self.scalingLabelsAction.isChecked()
         self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape, 
                                            scalingMode=scalingMode)
         self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape, 
@@ -35319,7 +35281,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.isDataLoaded:
             return
         for annot in self.textAnnot.values():
-            annot.setScaling(not self.scalingLabelsAction.isChecked())
+            annot.setScaling(self.scalingLabelsAction.isChecked())
 
     def autoSaveClose(self):
         for worker, thread in self.autoSaveActiveWorkers:
