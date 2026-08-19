@@ -31117,6 +31117,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if unique_ID is None:
             unique_ID = self.setBrushID()
         
+        if self.track_frame_params is None:
+            self.initRealTimeTracker()
+        
         kwargs_total = {
             'unique_ID': unique_ID,
             'return_assignments': return_assignments,
@@ -31418,6 +31421,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             acdcTracker2stepsAnnotInfo is not None 
             ):
             new_objs_1st_step, lost_objs_1st_step = acdcTracker2stepsAnnotInfo
+        else:
+            new_objs_1st_step, lost_objs_1st_step = [], []
+            
         if clearAssignedObjsSecondStep:
             new_objs_1st_step, lost_objs_1st_step = [], []
             
