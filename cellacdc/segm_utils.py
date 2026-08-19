@@ -265,12 +265,13 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
         if fill_other_cells_with_background:
             indices_to_fill = np.where(box_curr_lab_other_IDs_grown != 0)
             box_background = box_curr_img[box_curr_lab_other_IDs_grown==0]
-            random_samples = np.random.choice(box_background, size=indices_to_fill[0].shape, replace=True)
-            box_curr_img[indices_to_fill] = random_samples
+            if box_background.size != 0:
+                random_samples = np.random.choice(box_background, size=indices_to_fill[0].shape, replace=True)
+                box_curr_img[indices_to_fill] = random_samples
         
         if debug:
             imgs_to_show[i].append(box_curr_img.copy())
-
+ 
         # Run model, give it the diameter of cell if possible
         if uses_diameter:
             diameters = []
