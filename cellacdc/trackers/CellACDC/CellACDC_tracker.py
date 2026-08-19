@@ -497,9 +497,8 @@ def track_frame(
     
     add_info = {
         'IoA_matrix': IoA_matrix,
-        'assignments': assignments,
+        'assignments': assignments if return_assignments else None,
         'tracked_IDs': tracked_IDs,
-        # 'IDs_prev': IDs_prev,
     }
     
     if dont_return_tracked_lab:
