@@ -15997,7 +15997,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if wl_init:
                     if self.whitelistCheckOriginalLabels(warning=False, frame_i=frame_i):
                         IDs_tot.update(posData.whitelist.originalLabsIDs[frame_i])
-                    if posData.whitelist.whitelistIDs[frame_i]:
+                    if posData.whitelist.whitelistIDs.get(frame_i):
                         IDs_tot.update(posData.whitelist.whitelistIDs[frame_i])
                 _max = max(IDs_tot, default=0)
                 if _max > newID:
@@ -16854,7 +16854,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         one of the IDs in ``affectedIDs``. If so, it triggers a pop-up asking the
         user whether to propagate the change to future frames.
         """
-        if isinstance(affectedIDs, (int, np.uint32)):
+        if isinstance(affectedIDs, (int, np.uint32, np.int32)):
             affectedIDs = {affectedIDs}
         
         if isinstance(affectedIDs, list) or isinstance(affectedIDs, tuple):
@@ -29855,7 +29855,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         display_rp_prev = self.get2DRP(frame_i=posData.frame_i -1)
         if posData.whitelist is not None and posData.whitelist.whitelistIDs is not None:
+            try:
             whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
+            except KeyError as e:
+                self.logger.warning(
+                    f'Failed to get whitelist for frame {posData.frame_i-1}: {e}'
+                )
+                whitelist = list(posData.IDs)
         else:
             whitelist = None
 

@@ -257,7 +257,7 @@ class Whitelist:
             if val is None:
                 wl_copy[key] = "None"
             else:
-                wl_copy[key] = list(val)
+                wl_copy[key] = list([int(v) for v in val])
         json.dump(wl_copy, open(whitelist_path, 'w+'), indent=4)
         
         for i, val in enumerate(self.new_centroids):
@@ -1327,8 +1327,11 @@ class WhitelistGUIElements:
             ts.append(time.perf_counter())
 
         ####
-        whitelist = posData.whitelist.get(frame_i=frame_i)
-        IDs_to_add_remove_provided = IDs_to_add is not None or IDs_to_remove is not None
+        whitelist = posData.whitelist.get(frame_i=frame_i, 
+                                          try_create_new_whitelists=True)
+        IDs_to_add_remove_provided = (
+            IDs_to_add is not None or IDs_to_remove is not None
+            )
         if not IDs_to_add_remove_provided:
             self.get_data()
             got_data = True
@@ -1797,6 +1800,10 @@ class WhitelistGUIElements:
 
         """
         #doesnt update the frame displayed, only wl
+        mode = self.modeComboBox.currentText()
+        if mode != 'Segmentation and Tracking':
+            return
+        
         try: # safety XD
             IDs_curr = IDs_curr.copy()
         except AttributeError:
