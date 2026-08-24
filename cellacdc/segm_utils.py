@@ -229,10 +229,15 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
     if standardPostProcessKwargs is None:
         standardPostProcessKwargs = {}
 
-    prev_rp = skimage.measure.regionprops(prev_lab)
+    try:
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+    except:
+        prev_rp = None
+    if prev_rp is None:
+        prev_rp = regionprops.acdcRegionprops(prev_lab, precache_centroids=False)
     prev_lab_shape = prev_lab.shape
 
-    bboxs = [get_box_coords(prev_rp, prev_lab_shape, ID, padding) for ID in IDs]
+    bboxs = [get_box_coords(prev_rp, prev_lab_shape, ID, padding) for ID in IDs if ID in prev_rp.IDs]
     IDs_bboxs, bboxs = find_overlapping_bboxs(IDs, bboxs)
     
     assigned_IDs = []

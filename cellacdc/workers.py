@@ -429,6 +429,7 @@ class SegForLostIDsWorker(QObject):
             missing_IDs = prev_IDs - posData.rp.IDs_set - set(tracked_lost_IDs)
 
             assigned_IDs_prev = assigned_IDs.copy()
+            
             # self.sigShowImageDebug.emit({
             # 'title': f'posData.lab  ({model_idx}) right before running single_cell_seg',
             # 'images': [posData.lab.copy()],
@@ -436,6 +437,7 @@ class SegForLostIDsWorker(QObject):
             #     })
             
             # self.logger.info('[SegForLostIDs] Running single-cell segmentation...')
+            
             out = segm_utils.single_cell_seg(
                 model, prev_lab, posData.lab, curr_img,
                 missing_IDs, new_unique_ID,

@@ -22514,7 +22514,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             k:v for k, v in assignments_new.items() if k != v
         }
         if not assignments_new:
-            assignments = dict()
             return None, assignments
         
         trackedIDs = list(assignments_new.values())
@@ -22530,7 +22529,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # update assignments
         assignments = {
-            old_ID: tracked_ID for old_ID, tracked_ID in assignments.items()
+            old_ID: _tracked_ID for old_ID, _tracked_ID in assignments.items()
             if old_ID != newID
         }
         assignments[newID] = trackedID
@@ -31053,7 +31052,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         the next frame (since the next frame was already validated). 
         As before, we assign the tracked ID (against the next frame) only if 
         not already existing in current frame (to avoid merging).    
-        """        
+        """
         if self.isSnapshot:
             return dict()
         
@@ -31082,9 +31081,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
-      
-        # assignments_new = dict()
-        # self.update_rp(assignments=assignments)
+        printl(assignments)
         for added_ID in added_IDs:
             
             # check if added ID is already present
@@ -31120,11 +31117,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if trackedID is None:
                     if clearAssignedObjsSecondStep:
                         self.clearAssignedObjsSecondStep()
+                    # clean assignment
+                    assignments.pop(added_ID, None)
                     continue
                 posData.lab[obj.slice][obj.image] = trackedID
+                printl(assignments)
         
             self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
-        
+        printl(assignments)
         self.update_rp(wl_update=wl_update, assignments=assignments)
         return assignments
             
