@@ -1076,7 +1076,7 @@ class WhitelistGUIElements:
 
             if frame_i > 0:
                 missing_IDs = (
-                    posData.IDs_set 
+                    set(posData.IDs) 
                     - posData.allData_li[frame_i-1]['regionprops'].IDs_set
                 )
                 self.trackManuallyAddedObject(
