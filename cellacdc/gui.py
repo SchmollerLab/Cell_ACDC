@@ -9522,17 +9522,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Preflight import on GUI thread; worker retries and handles failures.
         try:
             myutils.import_segment_module(model_name)
-        except Exception:
+        except Exception as e:
+            traceback_str = traceback.format_exc()
+            self.logger.error(
+                f"Error importing model '{model_name}': {e}\n{traceback_str}"
+            )
             pass
         finally:
             self._ackSegForLostIDsWorker('import_model')
 
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
+        if hasattr(self, 'segForLostIDsGPUSettings'):
+            if (
+                self.segForLostIDsGPUSettings.get('model_name') == model_name
+                and self.segForLostIDsGPUSettings.get('use_gpu') == use_gpu
+            ):
+                self.SegForLostIDsWorker.gpu_go = (
+                    self.segForLostIDsGPUSettings['gpu_go']
+                    )
+                self.SegForLostIDsWorker.dont_force_cpu = (
+                    self.segForLostIDsGPUSettings['dont_force_cpu']
+                    )
+                self._ackSegForLostIDsWorker('ask_install_gpu')
+                return
+        
         result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         self.SegForLostIDsWorker.gpu_go = result
         dont_force_cpu = myutils.check_gpu_available(
             model_name, use_gpu, do_not_warn=True)
         self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
+        self.segForLostIDsGPUSettings = {
+            'gpu_go': result,
+            'dont_force_cpu': dont_force_cpu,
+            'model_name': model_name,
+            'use_gpu': use_gpu,
+        }
         self._ackSegForLostIDsWorker('ask_install_gpu')
 
     def onSigStoreDataSegForLostIDsWorker(self, autosave):

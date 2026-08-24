@@ -365,10 +365,21 @@ class SegForLostIDsWorker(QObject):
                 return
 
             if not self.dont_force_cpu:
+                changed_smth = False
                 if 'device' in effective_init_kwargs:
-                    effective_init_kwargs = dict(effective_init_kwargs, device='cpu')
+                    effective_init_kwargs = dict(effective_init_kwargs, device=None)
+                    changed_smth = True
                 if 'use_gpu' in effective_init_kwargs:
                     effective_init_kwargs = dict(effective_init_kwargs, use_gpu=False)
+                    changed_smth = True
+                if 'device_type' in effective_init_kwargs:
+                    effective_init_kwargs = dict(effective_init_kwargs, device_type='cpu')
+                    changed_smth = True
+                if not changed_smth:
+                    self.logger.warning(
+                        f'Could not force {base_model_name} model to use CPU. '
+                        'Please check the model settings.'
+                    )
 
             try:
                 self.logger.info(f'Importing {base_model_name}...')
