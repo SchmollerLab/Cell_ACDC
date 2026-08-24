@@ -22482,15 +22482,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             nextLab = posData.allData_li[posData.frame_i+1]['labels']
         except IndexError:
             # This is last frame --> there are no future frames
-            assignments = dict()
             return None, assignments
         
         if nextLab is None:
-            assignments = dict()
             return None, assignments
         
         if obj is None:
-            assignments = dict()
             return None, assignments
              
         
@@ -22525,12 +22522,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         trackedID = trackedIDs[0]
         if trackedID == newID:
             # Object does not exist in future frame --> do not track
-            assignments = dict()
             return None, assignments
         
         if posData.rp.get_obj_from_ID(trackedID, warn=False) is not None:
             # Tracked ID already exists --> do not track to avoid merging
-            assignments = dict()
             return None, assignments
         
         # update assignments
@@ -29880,7 +29875,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         display_rp_prev = self.get2DRP(frame_i=posData.frame_i -1)
         if posData.whitelist is not None and posData.whitelist.whitelistIDs is not None:
             try:
-            whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
+                whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
             except KeyError as e:
                 self.logger.warning(
                     f'Failed to get whitelist for frame {posData.frame_i-1}: {e}'

@@ -481,9 +481,11 @@ class SegForLostIDsWorker(QObject):
 
             new_labs.append(posData.lab.copy())
             self.signals.progressBar.emit(1)
+            if self._debug:
+                print(f'Model {model_idx+1}: Assigned IDs: {assigned_IDs}, assignments: {assignments}, newly assigned IDs: {newly_assigned_IDs}')
             
-        global_areas = [obj.area for obj in posData.rp]
-        global_area_mean = np.mean(global_areas) if len(global_areas) > 0 else None
+        global_areas = [obj.area for obj in posData.allData_li[frame_i-1]['regionprops']]
+        global_area_mean = np.mean(global_areas)
         
         for i, (IDs_bboxs, bboxs) in enumerate(zip(IDs_bboxs_list, bboxs_list)):
             args_new = model_settings[i]['args_new']
@@ -502,20 +504,7 @@ class SegForLostIDsWorker(QObject):
                 model_bbox_lab_cleared = skimage.segmentation.clear_border(model_bbox_lab, buffer_size=1)
                 model_lab_rp = regionprops.acdcRegionprops(model_bbox_lab_cleared, precache_centroids=False)
 
-                original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max] # deepcopy(original_lab[box_x_min:box_x_max, box_y_min:box_y_max])
-                # original_bbox_lab_cleared_borders = skimage.segmentation.clear_border(original_bbox_lab)
-                # original_lab_rp = regionprops.acdcRegionprops(original_bbox_lab_cleared_borders, precache_centroids=False)
-
-
-                # areas = [obj.area for obj in original_lab_rp]
-                # if len(areas) > 0:
-                #     area_mean = np.mean(areas)
-                # elif global_area_mean is not None:
-                #     area_mean = global_area_mean
-                # else:
-                #     model_areas = [obj.area for obj in model_lab_rp]
-                #     area_mean = np.mean(model_areas) if len(model_areas) > 0 else None
-
+                original_bbox_lab = original_lab[box_x_min:box_x_max, box_y_min:box_y_max]
                 area_mean = global_area_mean
                 
                 skip_size_filter = area_mean is None
@@ -524,22 +513,39 @@ class SegForLostIDsWorker(QObject):
                     max_area = (1 + args_new['size_perc_diff']) * area_mean
 
                 filtered_IDs = []
+                if self._debug:
+                    filtered_not_found_curr_model = []
+                    filtered_size = []
+                    filtered_not_tracked = []
+
                 for obj in model_lab_rp:
                     if obj.label not in current_model_new_IDs: # make sure its an ID actually found by model and not prev model
+                        if self._debug:
+                            filtered_not_found_curr_model.append(obj.label)
                         continue
                     if not skip_size_filter and not (obj.area > min_area and obj.area < max_area):
+                        if self._debug:
+                            filtered_size.append(obj.label)
                         continue
                     if args_new['allow_only_tracked_cells'] and obj.label not in prev_IDs:
+                        if self._debug:
+                            filtered_not_tracked.append(obj.label)
                         continue
 
                     filtered_IDs.append(obj.label)
 
+                if self._debug:
+                    print(f'Filtered IDs for model {i+1}, bbox {j+1}: {filtered_IDs}')
+                    print(f'current_model_new_IDs: {current_model_new_IDs}')
+                    print(f'Filtered not found in current model: {filtered_not_found_curr_model}')
+                    print(f'Filtered by size: {filtered_size}')
+                    print(f'Filtered not tracked: {filtered_not_tracked}')
+                    
                 if filtered_IDs:
                     mask = np.isin(model_bbox_lab, filtered_IDs)
                     # make sure to not overwrite any existing IDs in the original lab
                     mask = np.logical_and(mask, original_bbox_lab == 0)
                     original_bbox_lab[mask] = model_bbox_lab[mask]
-                    # original_lab[box_x_min:box_x_max, box_y_min:box_y_max] = original_bbox_lab
 
             self.signals.progressBar.emit(1)
 
