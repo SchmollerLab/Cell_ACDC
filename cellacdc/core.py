@@ -2800,11 +2800,7 @@ def combine_channels_func(
         f'Saving combined {"segmentation" if output_as_segm else "image"} to '
         f'{save_filepath}'
     )
-    _log_printl_fallback(txt, logger_func)
-    
-
-    printl(save_filepath)
-    
+    _log_printl_fallback(txt, logger_func)    
     io.save_image_data( # handles saving img and segm
         save_filepath, output_img
     )

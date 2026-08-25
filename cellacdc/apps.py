@@ -9609,7 +9609,6 @@ will be applied (see below).<br><br>
             buttonsTexts = (correctButton, keepButton)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
-            printl(msg.cancel, msg.clickedButton == correctButton)
             if msg.cancel or msg.clickedButton == correctButton:
                 return None
         elif any(check_buds_S):

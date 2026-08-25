@@ -19190,8 +19190,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.progressWin = None
 
         # update RP and allData_li
-        printl(range(startFrameNum-1, stopFrameNum))
-
         posData = self.data[self.pos_i]
         for frame_i in range(startFrameNum-1, stopFrameNum):
             lab = posData.segm_data[frame_i]
@@ -31081,7 +31079,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
-        printl(assignments)
         for added_ID in added_IDs:
             
             # check if added ID is already present
@@ -31121,10 +31118,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     assignments.pop(added_ID, None)
                     continue
                 posData.lab[obj.slice][obj.image] = trackedID
-                printl(assignments)
         
             self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
-        printl(assignments)
         self.update_rp(wl_update=wl_update, assignments=assignments)
         return assignments
             
