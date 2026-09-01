@@ -55,7 +55,7 @@ from qtpy.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QButtonGroup, QActionGroup, QFileDialog, QAbstractSlider, QMessageBox, QWidget, QGridLayout, 
     QDockWidget, QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
-    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent 
+    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent, QApplication
 )
 
 import pyqtgraph as pg
