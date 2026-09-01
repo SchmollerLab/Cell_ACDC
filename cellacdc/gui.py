@@ -31383,6 +31383,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return_assignments=True
         )
         
+        # debugutils.print_call_stack()
+        # print(f'args: '
+        #       f'enforce={enforce}, DoManualEdit={DoManualEdit}, storeUndo={storeUndo}, '
+        #       f'prev_lab={prev_lab is not None}, prev_rp={prev_rp is not None}, '
+        #       f'return_lab={return_lab}, assign_unique_new_IDs={assign_unique_new_IDs},'
+        #       f'against_next={against_next}, specific_IDs={specific_IDs}, return_assignments={return_assignments}')
+        # print(f'Tracking done. Assignments: {assignments}')
         if DoManualEdit:
             # Correct tracking with manually changed IDs
             tracked_lab, assignments = self.manuallyEditTracking(tracked_lab, assignments)
