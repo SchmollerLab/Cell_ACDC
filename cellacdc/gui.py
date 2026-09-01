@@ -429,7 +429,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createLabWidgets()
         self.gui_createBottomWidgetsToBottomLayout()
 
-        mainContainer = QWidget()
+        mainContainer = widgets.GuiCentralWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = self.gui_createMainLayout()
@@ -443,10 +443,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.initShortcuts()
         self.show()
         QTimer.singleShot(100, self.resizeRangeWelcomeText)
-        # self.installEventFilter(self)
+        
+        self.app.installEventFilter(self)
         
         self.logger.info('GUI ready.')
     
+    def onMouseRelease(self):
+        if self.mergeIDsButton.isChecked() and self.xHoverImg is None:
+            # Mouse released outside of images --> clear free roi item
+            self.freeRoiItem.clear()
+
     def initGlobalAttr(self):
         self.setOverlayColors()
 
@@ -8098,6 +8104,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMouseDragImg1 = True
         
         elif (left_click or right_click) and canDrawMergeRegion:
+            self.freeRoiItem.clear()
+
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             self.freeRoiItem.addPoint(xdata, ydata)
@@ -14906,6 +14914,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 text='for the merged object.',
                 action='released the mouse button'
             )
+            if targetID is None:
+                self.freeRoiItem.clear()
+                return
         
         self.logger.info('Merging objects inside freehand region...')
         
@@ -15408,6 +15419,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.uncheckLeftClickButtons(self.mergeIDsButton)
             self.connectLeftClickButtons()
             self.mergeIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
+        else:
+            self.freeRoiItem.clear()
         
         self.mergeIDsToolbar.setVisible(checked)
 
@@ -35786,3 +35799,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.timestamp.updatePosViewRangeChanged(viewRange)
         
         self._viewRange = viewRange
+
+    def eventFilter(self, object, event):
+        if event.type() == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
+            self.onMouseRelease()
+        
+        return super().eventFilter(object, event)

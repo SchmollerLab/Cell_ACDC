@@ -1,4 +1,4 @@
-from qtpy.QtCore import PYQT6, Qt
+from qtpy.QtCore import PYQT6, Qt, QEvent
 
 from qtpy.QtWidgets import QAbstractSlider, QStyle
 
@@ -62,7 +62,14 @@ def QStyleSC_ScrollBarSubLine():
     else:
         return QStyle.SC_ScrollBarSubLine
     
-    
+
+def QEventTypeAttribute(name: str):
+    if PYQT6:
+        return getattr(QEvent.Type, name)
+    else:
+        return getattr(QEvent, name)
+
+
 if not PYQT6:
     mouse_button_names_mapper = {
         getattr(Qt, name): name
