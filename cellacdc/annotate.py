@@ -968,7 +968,6 @@ class TextAnnotations:
         isLineageAnnot = self.isLineageAnnot()
         rp_func = kwargs.get('rp_func')
         rp3D = kwargs.get('rp3D')
-        updateAllTextAnnotations = kwargs.get('updateAllTextAnnotations', True)
         
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if posData.cca_df is not None and acdc_df is not None:
@@ -1001,9 +1000,6 @@ class TextAnnotations:
             pos = (int(xc), int(yc))
             
             isNewObject = obj.label in posData.new_IDs
-            if not isNewObject and not updateAllTextAnnotations:
-                continue
-            
             objOpts = get_obj_text_annot_opts(
                 obj, acdc_df, isCcaAnnot, isNewObject,
                 isAnnotateNumZslices, isLineageAnnot,

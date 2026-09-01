@@ -24,6 +24,10 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Gao, X., et al. <i>The proportional scaling of mRNA and ribosome concentrations controls eukaryotic cell growth</i>. <b>Nat. Cell Biol.</b> (2026) DOI: <a href="https://doi.org/10.1038/s41556-026-02045-0">10.1038/s41556-026-02045-0</a>.</li><br>
+
+      <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in Caenorhabditis elegans by maintaining functional germline morphology</i>. <b>Development</b> (2026) DOI: <a href="https://doi.org/10.1242/dev.205442">10.1242/dev.205442</a>.</li><br>
+
       <li>Narduzzi, G., et al. <i>Weak interactions drive selective proteome demixing and tune the differential response to environmental perturbations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.22.739830">10.64898/2026.07.22.739830</a>.</li><br>
 
       <li>Smith, W., et al. <i>Proximity labeling at H3K9me3 reveals VRK-1 regulate global chromatin distribution in C. elegans</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.07.737140">10.64898/2026.07.07.737140</a>.</li><br>
@@ -44,8 +48,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 
       <li>Pabst, F. R., et al. <i>Methionine synthase reductase regulates heterochromatin independently of methionine synthesis through mitochondrial homeostasis</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.19.695597">10.64898/2025.12.19.695597</a>.</li><br>
 
-      <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>
-
       <li>Garrigós, V., et al. <i>Tsa1-Mediated Regulation of PKA Tunes Trehalose Metabolism in Saccharomyces cerevisiae</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.11.26.690464">10.1101/2025.11.26.690464</a>.</li><br>
 
       <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
@@ -53,8 +55,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Geetha, S. S., et al. <i>Bloom helicase contributes to successful crossover formation with both catalytic and structural roles in Caenorhabditis elegans meiosis</i>. <b> Nucleic Acids Res.</b> (2025) DOI: <a href="https://doi.org/10.1093/nar/gkaf1030">10.1093/nar/gkaf1030</a>.</li><br>
 
       <li>Akanksha, A., et al. <i>Microfluidic analysis of salt-stress-mediated antibiotic tolerance in Mycobacterium smegmatis</i>. <b>Lab on a Chip</b> (2025) DOI: <a href="https://doi.org/10.1039/D5LC00713E">10.1039/D5LC00713E</a>.</li><br>
-
-      <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in C. elegans by maintaining functional germline morphology</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683972">10.1101/2025.10.22.683972</a>.</li><br>
 
       <li>Proulx-Giraldeau, F. , et al. <i>Division Asymmetry Drives Cell Size Variability in Budding Yeast</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683920">10.1101/2025.10.22.683920</a>.</li><br>
 

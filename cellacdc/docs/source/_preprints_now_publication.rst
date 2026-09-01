@@ -6,6 +6,10 @@ The following preprints **have been published in a peer-reviewed journal**, and 
 .. raw:: html
 
     <ol>
+      <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>
+      
+      <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in C. elegans by maintaining functional germline morphology</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683972">10.1101/2025.10.22.683972</a>.</li><br>
+      
       <li>Wunder, T., et al. <i>Conserved and Lineage-Specific Roles of KEA-Mediated Ion Homeostasis in Chlamydomonas</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.03.692059">10.64898/2025.12.03.692059</a>.</li><br>
 
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.10.681508">10.1101/2025.10.10.681508</a>.</li><br>

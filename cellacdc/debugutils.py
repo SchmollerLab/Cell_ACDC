@@ -3,6 +3,8 @@ import atexit
 import linecache
 from collections import Counter, defaultdict
 
+from . import cellacdc_path, myutils
+
 import gc
 import psutil
 import time
@@ -175,7 +177,6 @@ def showRefGraph(object_str:str, debug:bool=True):
     try:
         import objgraph
     except ImportError:
-        from . import myutils
         conda_prefix, pip_prefix = myutils.get_pip_conda_prefix()
 
         print(f"objgraph is not installed. Install it with '{pip_prefix} objgraph' to use reference graph features, as well as https://www.graphviz.org/")
@@ -187,7 +188,6 @@ def showRefGraph(object_str:str, debug:bool=True):
     caller_line = inspect.currentframe().f_back.f_lineno
     timestap = datetime.datetime.now().strftime('%H_%M_%S')
 
-    from . import cellacdc_path
     ref_graph_path = os.path.join(
         os.path.dirname(cellacdc_path),
         '.ref_graphs'
