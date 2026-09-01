@@ -415,7 +415,11 @@ class normal_division_tracker:
 
         lost_rp_mapper = {
             obj.label: obj for obj in prev_rp
-            if obj.label not in self.tracked_IDs and obj.label not in daughters
+            if (
+                obj.label not in mothers
+                and obj.label not in self.tracked_IDs
+                and obj.label not in daughters
+            )
         }
 
         if not lost_rp_mapper:
