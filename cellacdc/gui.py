@@ -22542,7 +22542,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # make rp remporarliy not stale anymore
         rp.update_regionprops_via_assignments(assignments, lab) 
-        tracked_lab, assignments_new = self.trackFrame(
+        assignments_new = self.trackFrame(
             nextLab, nextRp, lab, rp, rp.IDs,
             assign_unique_new_IDs=False, return_assignments=True,
             specific_IDs=[newID], dont_return_tracked_lab=True,
