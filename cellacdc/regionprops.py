@@ -45,12 +45,19 @@ except Exception:
     )
 
 if msg and GUI_INSTALLED:
+    try:
+        from .config import parser_args
+        debug = parser_args['debug']
+    except Exception as err:
+        debug = False
+
     from qtpy.QtCore import QCoreApplication
     app = QCoreApplication.instance()
     try:
         app.mainWindow.logger.info(msg)
     except Exception as err:
-        traceback.print_exc()
+        if debug:
+            traceback.print_exc()
         pass
 
 # WARNING: Developers have already used
