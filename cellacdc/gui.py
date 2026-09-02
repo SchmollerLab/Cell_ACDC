@@ -19590,7 +19590,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for column in current_cca_df.columns:
             header = (
                 '================================================\n'
-                f'CURRENT vs STORED `{column}` column'
+                f'CURRENT vs STORED `{column}` column '
                 f'for frame number {posData.frame_i+1}:\n'
             )
             df_compare = current_cca_df[[column]].copy()
