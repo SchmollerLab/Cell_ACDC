@@ -4474,7 +4474,7 @@ def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
         grouped = df.groupby(t_col)
     else:
         grouped = [(0, df)]
-    
+
     for frame_i, df_frame in grouped:
         if z_col != 'None':
             df_frame[z_col] = df_frame[z_col].round().astype(int)
@@ -4509,8 +4509,18 @@ def load_df_points_layer(filepath):
         with pd.HDFStore(filepath) as h5:
             keys = h5.keys()
             dfs = [h5.get(key) for key in keys]
-        df = pd.concat(dfs, keys=keys, names=['h5_key'])
-    return df
+        df = pd.concat(dfs, keys=keys, names=['h5_key']).reset_index()
+        try:
+            df['frame_i'] = (
+                df['h5_key'].str.extract(r'/frame_(\d+)').astype(int)
+            )
+        except Exception as e:
+            from .config import parser_args
+            debug = parser_args['debug']
+            if debug:
+                traceback.print_exc()
+            pass
+    return df.reset_index()
 
 def get_unique_exp_paths(paths: List):
     unique_exp_paths = set()

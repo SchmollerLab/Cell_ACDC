@@ -22,7 +22,7 @@ import cv2
 import traceback
 from itertools import combinations, permutations
 from collections import namedtuple
-from natsort import natsorted
+from natsort import natsorted, natsort_keygen
 # from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
 from functools import partial
@@ -1011,17 +1011,37 @@ class AddPointsLayerDialog(QBaseDialog):
         self.tColName = widgets.QCenteredComboBox()
         self.tColName.addItem('None')
         self.tColName.label = QLabel('Frame index column: ')
+        self.tColRequiresGroupingCheckbox = QCheckBox('Group by unique values')
         layout.addWidget(self.tColName.label, row, 1)
         layout.addWidget(self.tColName, row, 2)
+        layout.addWidget(self.tColRequiresGroupingCheckbox, row, 4)
         self.fromTableRadiobutton.widgets.append(self.tColName)
         sectionWidgets.append(self.tColName.label)
         sectionWidgets.append(self.tColName)
+
+        tColNameTooltip = (
+'Select the column containing the frame index (starting from 0).\n\n'
+'Alternatively, you can select any column whose values identify the rows '
+'belonging to each frame.\n'
+'Each unique value is treated as a separate frame and assigned a frame index according to its order in the table.\n\n'
+'In the latter case, make sure to check the "Group by unique values" checkbox.'
+        )
+        self.tColName.label.setToolTip(tColNameTooltip)
+        self.tColName.setToolTip(tColNameTooltip)
+
+        tColGroupCheckboxTooltip = (
+'Check this box if the selected column does not contain frame indices, '
+'but rather contains values that identify the rows belonging to each frame.\n\n'
+'Each unique value will be treated as a separate frame and assigned a frame index according to its order in the table.'
+        )
+        self.tColRequiresGroupingCheckbox.setToolTip(tColGroupCheckboxTooltip)
 
         if SizeT == 1:
             self.tColName.clear()
             self.tColName.addItem('None')
             self.tColName.label.setVisible(False)
             self.tColName.setVisible(False)
+            self.tColRequiresGroupingCheckbox.setVisible(False)
         
         self.fromTableRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
         self.enableRadioButtonWidgets(False, sender=self.fromTableRadiobutton)
@@ -1363,7 +1383,11 @@ class AddPointsLayerDialog(QBaseDialog):
                 xColName = self.xColName.currentText()
                 yColName = self.yColName.currentText()
                 zColName = self.zColName.currentText()
-                
+                if self.tColRequiresGroupingCheckbox.isChecked():
+                    df = df.sort_values(by=tColName, key=natsort_keygen())
+                    df['frame_i'] = df.groupby(tColName, sort=False).ngroup()
+                    tColName = 'frame_i'
+
                 self.loadedDfInfo = {
                     'filepath': tablePath,
                     't': tColName, 
