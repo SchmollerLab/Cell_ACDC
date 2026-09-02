@@ -555,13 +555,13 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
     env_folderpath = sys.prefix
     python_version = f'{py_ver.major}.{py_ver.minor}.{py_ver.micro}'
     info_txts = [
-        f'Version {version}',
+        f'Version: {version}',
         f'Released on: {release_date}',
-        f'Installed in "{cellacdc_path}"',
+        f'Installed in: "{cellacdc_path}"',
         f'Environment folder: "{env_folderpath}"',
         f'User profile folder: "{user_profile_path}"',
         f'Settings folder: "{settings_folderpath}"',
-        f'Python {python_version}',
+        f'Python version: {python_version}',
         f'Platform: {platform.platform()}',
         f'System: {platform.system()}',
     ]
@@ -577,7 +577,7 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         info_txts.append(f'Icons from: "{qrc_resources_path}"')
         try:
             from qtpy import QtCore
-            info_txts.append(f'Qt {QtCore.__version__}')
+            info_txts.append(f'Qt version: {QtCore.__version__}')
         except Exception as err:
             info_txts.append('Qt: Not installed')
     
@@ -587,14 +587,24 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
     except Exception as err:
         pass
     
+    try:
+        remote_repos = get_git_remote_repos_names()
+        indentation = ' '*8
+        remote_repos_txt = '\n'.join(
+            [f'{indentation}* {repo}' for repo in remote_repos])
+        info_txts.append(f'Git remote repositories:\n{remote_repos_txt}')
+    except Exception as err:
+        pass
+
     info_txts.append(f'Working directory: {os.getcwd()}')
     
     if not cli_formatted_text:
         return info_txts
     
     info_txts = [f'  - {txt}' for txt in info_txts]
-    
-    max_len = max([len(txt) for txt in info_txts]) + 2
+    info_txt = '\n'.join(info_txts)
+    info_txts = [line.expandtabs() for line in info_txt.splitlines()]
+    max_len = max([len(line) for line in info_txts]) + 2
     
     formatted_info_txts = []
     for txt in info_txts:
@@ -1071,6 +1081,18 @@ def get_git_branch_name():
     )
     branch_name = output.decode().strip()
     return branch_name
+
+def get_git_remote_repos_names():
+    command = (
+        f'git -C "{cellacdc_installation_path}" remote -v'
+    )
+    output = _subprocess_run_command(
+        command, shell=False, callback='check_output'
+    )
+    remote_names = [
+        line.expandtabs() for line in output.decode().strip().splitlines()
+    ]
+    return remote_names
 
 def showInExplorer(path):
     if is_mac:

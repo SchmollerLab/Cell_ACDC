@@ -482,13 +482,14 @@ class mainWin(QMainWindow):
         helpMenu.addAction(self.showLogsAction)
         helpMenu.addAction(self.openUserProfileFolderAction)
         helpMenu.addSeparator()
-        helpMenu.addAction(self.aboutAction)
-        if SPOTMAX_INSTALLED:
-            helpMenu.addAction(self.aboutSmaxAction)
         helpMenu.addAction(self.updateACDCAction)
         if SPOTMAX_INSTALLED:
             helpMenu.addAction(self.updateSPOTMAXAction)
 
+        helpMenu.addSeparator()
+        helpMenu.addAction(self.aboutAction)
+        if SPOTMAX_INSTALLED:
+            helpMenu.addAction(self.aboutSmaxAction)
         
         utilsMenu.addAction(self.debugAction)
         self.debugAction.setVisible(parser_args['debug'])
