@@ -129,8 +129,7 @@ def calc_Io_matrix(
     IoA_matrix = np.zeros((len(IDs_curr_untracked), len(prev_rp)))
     rp_mapper = {obj.label: obj for obj in rp}
     idx_mapper = {ID: i for i, ID in enumerate(IDs_curr_untracked)}
-    idx_prev_mapper = {obj.label: i for i, obj in enumerate(prev_rp)}
-    for obj_prev in prev_rp:
+    for idx_prev, obj_prev in enumerate(prev_rp):
         if denom == 'area_prev':
             denom_val = obj_prev.area
         intersect_IDs, intersects = np.unique(
@@ -147,7 +146,6 @@ def calc_Io_matrix(
                 if denom_val == 0:
                     continue
             idx = idx_mapper.get(intersect_ID)
-            idx_prev = idx_prev_mapper.get(obj_prev.label)
             if idx is None:
                 continue
             IoA_matrix[idx, idx_prev] = I / denom_val
