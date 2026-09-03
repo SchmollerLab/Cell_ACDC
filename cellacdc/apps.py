@@ -1016,8 +1016,12 @@ class AddPointsLayerDialog(QBaseDialog):
         layout.addWidget(self.tColName, row, 2)
         layout.addWidget(self.tColRequiresGroupingCheckbox, row, 4)
         self.fromTableRadiobutton.widgets.append(self.tColName)
+        self.fromTableRadiobutton.widgets.append(
+            self.tColRequiresGroupingCheckbox
+        )
         sectionWidgets.append(self.tColName.label)
         sectionWidgets.append(self.tColName)
+        sectionWidgets.append(self.tColRequiresGroupingCheckbox)
 
         tColNameTooltip = (
 'Select the column containing the frame index (starting from 0).\n\n'
