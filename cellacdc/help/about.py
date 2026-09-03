@@ -3,6 +3,7 @@ import sys
 import cellacdc
 import platform
 from functools import partial
+import re
 
 from qtpy.QtWidgets import (
     QDialog, QLabel, QGridLayout, QHBoxLayout, QSpacerItem, QApplication, 
@@ -45,12 +46,23 @@ class QDialogAbout(QDialog):
         """)
         
         info_txts = get_info_version_text(cli_formatted_text=False)
-        for info_txt in info_txts:
-            paragraph = html_utils.paragraph(info_txt)
-            txt = f'{txt}{paragraph}'
+        info_txt = (
+            '<br>'.join(info_txts).replace('\n', '<br>').replace(' ', '&nbsp;')
+        )
 
-        titleLabel.setText(txt)
+        # Make bold text at first colon
+        info_txt_html = re.sub(
+            r'(^|<br>)(?!(&nbsp;)*\*&nbsp;)([^<:]+):',
+            r'\1<span style="font-weight: bold; font-size: 14px;">\3:</span>',
+            info_txt,
+        )
+        txt = f'{txt}{html_utils.paragraph(info_txt_html)}'
 
+        titleLabel.setTextInteractionFlags(
+            Qt.TextSelectableByMouse 
+            | Qt.TextBrowserInteraction 
+            | Qt.TextSelectableByKeyboard
+        )
         titleLabel.setText(txt)
         
         # '{next_version}.dev{distance}+{scm letter}{revision hash}'
