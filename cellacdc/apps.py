@@ -22,7 +22,7 @@ import cv2
 import traceback
 from itertools import combinations, permutations
 from collections import namedtuple
-from natsort import natsorted, natsort_keygen
+from natsort import natsorted
 # from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
 from functools import partial
@@ -1387,21 +1387,23 @@ class AddPointsLayerDialog(QBaseDialog):
                 xColName = self.xColName.currentText()
                 yColName = self.yColName.currentText()
                 zColName = self.zColName.currentText()
-                if self.tColRequiresGroupingCheckbox.isChecked():
-                    df = df.sort_values(by=tColName, key=natsort_keygen())
-                    df['frame_i'] = df.groupby(tColName, sort=False).ngroup()
-                    tColName = 'frame_i'
+
+                tColRequiresGrouping = (
+                    self.tColRequiresGroupingCheckbox.isChecked()
+                )
 
                 self.loadedDfInfo = {
                     'filepath': tablePath,
                     't': tColName, 
                     'z': zColName, 
                     'y': yColName, 
-                    'x': xColName
+                    'x': xColName,
+                    't_col_requires_grouping': tColRequiresGrouping
                 }
                 
                 self._df_to_pointsData(
-                    df, tColName, zColName, yColName, xColName
+                    df, tColName, zColName, yColName, xColName, 
+                    tColRequiresGrouping=tColRequiresGrouping
                 )
                     
             except Exception as e:
@@ -1472,9 +1474,12 @@ class AddPointsLayerDialog(QBaseDialog):
         self.keySequence = shortcutWidget.widget.keySequence
         self.close()
     
-    def _df_to_pointsData(self, df, tColName, zColName, yColName, xColName):
+    def _df_to_pointsData(
+            self, df, tColName, zColName, yColName, xColName, 
+            tColRequiresGrouping=False
+        ):
         self.pointsData = load.loaded_df_to_points_data(
-            df, tColName, zColName, yColName, xColName
+            df, tColName, zColName, yColName, xColName, t_col_requires_grouping=tColRequiresGrouping
         )
     
     def showEvent(self, event) -> None:

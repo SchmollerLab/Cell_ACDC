@@ -26206,11 +26206,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if not os.path.exists(filepath):
                     action.pointsData[self.pos_i] = {}
                 
-                df = load.load_df_points_layer(filepath)                
+                df = load.load_df_points_layer(filepath)    
+                t_col_requires_grouping = (
+                    action.loadedDfInfo.get('t_col_requires_grouping', False)
+                )            
                 action.pointsData[self.pos_i] = (
                     load.loaded_df_to_points_data(
-                        df, action.loadedDfInfo['t'], action.loadedDfInfo['z'], 
-                        action.loadedDfInfo['y'], action.loadedDfInfo['x']
+                        df, 
+                        action.loadedDfInfo['t'], 
+                        action.loadedDfInfo['z'], 
+                        action.loadedDfInfo['y'], 
+                        action.loadedDfInfo['x'],
+                        t_col_requires_grouping=t_col_requires_grouping
                     )
                 )
                 self.logLoadedTablePointsLayer(df, filename=filename)

@@ -19,7 +19,7 @@ from datetime import datetime
 from tifffile import TiffFile
 import tifffile
 import zipfile
-from natsort import natsorted
+from natsort import natsorted, natsort_keygen
 import time
 
 from functools import partial
@@ -4465,7 +4465,14 @@ def save_df_to_csv_temp_path(df, csv_filename, **to_csv_kwargs):
     df.to_csv(tempFilepath, **to_csv_kwargs)
     return tempFilepath
 
-def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
+def loaded_df_to_points_data(
+        df, t_col, z_col, y_col, x_col, t_col_requires_grouping=False
+    ):
+    if t_col_requires_grouping:
+        df = df.sort_values(by=t_col, key=natsort_keygen())
+        df['frame_i'] = df.groupby(t_col, sort=False).ngroup()
+        t_col = 'frame_i'
+
     points_data = {}
     if 'id' not in df.columns:
         df['id'] = ''
