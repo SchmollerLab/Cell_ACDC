@@ -72,9 +72,7 @@ def calc_Io_matrix(
         specific_IDs=None,
         denom: str='area_prev'
     ):
-    from cellacdc.regionprops import acdcRegionprops
-
-    specific_IDs = _normalize_specific_IDs(specific_IDs)
+specific_IDs = _normalize_specific_IDs(specific_IDs)
     if IDs_curr_untracked is None:
         IDs_curr_untracked = [obj.label for obj in rp]
     elif not isinstance(IDs_curr_untracked, list):
