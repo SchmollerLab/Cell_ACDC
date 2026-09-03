@@ -581,20 +581,22 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         except Exception as err:
             info_txts.append('Qt: Not installed')
     
-    try:
-        branch_name = get_git_branch_name()
-        info_txts.append(f'Git branch: "{branch_name}"')
-    except Exception as err:
-        pass
-    
-    try:
-        remote_repos = get_git_remote_repos_names()
-        indentation = ' '*8
-        remote_repos_txt = '\n'.join(
-            [f'{indentation}* {repo}' for repo in remote_repos])
-        info_txts.append(f'Git remote repositories:\n{remote_repos_txt}')
-    except Exception as err:
-        pass
+    from . import IS_CLONED
+    if IS_CLONED:
+        try:
+            branch_name = get_git_branch_name()
+            info_txts.append(f'Git branch: "{branch_name}"')
+        except Exception as err:
+            pass
+        
+        try:
+            remote_repos = get_git_remote_repos_names()
+            indentation = ' '*8
+            remote_repos_txt = '\n'.join(
+                [f'{indentation}* {repo}' for repo in remote_repos])
+            info_txts.append(f'Git remote repositories:\n{remote_repos_txt}')
+        except Exception as err:
+            pass
 
     info_txts.append(f'Working directory: {os.getcwd()}')
     
