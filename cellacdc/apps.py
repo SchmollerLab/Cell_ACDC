@@ -34,9 +34,7 @@ import skimage.draw
 import skimage.registration
 import skimage.color
 import skimage.segmentation
-from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg, NavigationToolbar2Tk
-)
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
