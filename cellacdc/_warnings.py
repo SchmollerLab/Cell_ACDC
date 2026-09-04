@@ -481,7 +481,7 @@ def warnAskAboutSaveSingleMotherBudPairsCcaDf(
         qparent, 'Partial cell cycle annotations', txt,
         buttonsTexts=(
             widgets.noPushButton('Save only fully annotated frames'),
-            widgets.savePushButton('Save partially annotated frames')
+            widgets.savePushButton('Save also partially annotated frames')
         ),
         detailsText=detailsText,
         details_expanded=False

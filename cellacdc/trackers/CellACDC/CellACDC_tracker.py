@@ -72,12 +72,8 @@ def calc_Io_matrix(
         specific_IDs=None,
         denom: str='area_prev'
     ):
-    from cellacdc.regionprops import acdcRegionprops
-
     specific_IDs = _normalize_specific_IDs(specific_IDs)
-    if IDs_curr_untracked is None and isinstance(rp, acdcRegionprops):
-        IDs_curr_untracked = rp.IDs
-    elif IDs_curr_untracked is None:
+    if IDs_curr_untracked is None:
         IDs_curr_untracked = [obj.label for obj in rp]
     elif not isinstance(IDs_curr_untracked, list):
         IDs_curr_untracked = list(IDs_curr_untracked)
@@ -87,11 +83,7 @@ def calc_Io_matrix(
             ID for ID in IDs_curr_untracked if ID in specific_IDs
         ]
 
-    if isinstance(prev_rp, acdcRegionprops):
-        IDs_prev = prev_rp.IDs
-    
-    else:
-        IDs_prev = [obj.label for obj in prev_rp]
+    IDs_prev = [obj.label for obj in prev_rp]
 
     if not IDs_curr_untracked:
         return np.zeros((0, len(prev_rp))), IDs_curr_untracked, IDs_prev
@@ -135,7 +127,7 @@ def calc_Io_matrix(
     IoA_matrix = np.zeros((len(IDs_curr_untracked), len(prev_rp)))
     rp_mapper = {obj.label: obj for obj in rp}
     idx_mapper = {ID: i for i, ID in enumerate(IDs_curr_untracked)}
-    for j, obj_prev in enumerate(prev_rp):
+    for idx_prev, obj_prev in enumerate(prev_rp):
         if denom == 'area_prev':
             denom_val = obj_prev.area
         intersect_IDs, intersects = np.unique(
@@ -154,7 +146,7 @@ def calc_Io_matrix(
             idx = idx_mapper.get(intersect_ID)
             if idx is None:
                 continue
-            IoA_matrix[idx, j] = I / denom_val
+            IoA_matrix[idx, idx_prev] = I / denom_val
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
 def assign(
@@ -449,7 +441,6 @@ def track_frame(
         IoA_thresh_aggr=IoA_thresh_aggr, daughters_list=daughters_list,
         specific_IDs=specific_IDs,
     )
-    
     if posData is None and unique_ID is None:
         unique_ID = max(
             (max(IDs_prev, default=0), max(all_curr_IDs, default=0))
