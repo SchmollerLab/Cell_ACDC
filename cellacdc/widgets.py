@@ -35,7 +35,7 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection, PYQT6, QRectF
+    QIODevice, QItemSelection, PYQT6, QRectF, QLineF
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -78,6 +78,7 @@ from . import fonts
 from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER, STANDARD_MOUSE_BUTTONS
 from . import _base_widgets
+from . import debugutils
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -484,8 +485,36 @@ class viewPushButton(PushButton):
 
 class infoPushButton(PushButton):
     def __init__(self, *args, **kwargs):
+        """
+        Button for displaying info. Provide `info_text` in kwargs to display a 
+        message box with the info text when clicked.
+        Provide `info_title` in kwargs to set the title of the message box. If 
+        `info_text` is not provided, the button will not display any message 
+        box.
+        """
+        if 'info_text' in kwargs:
+            self.info_text = kwargs.pop('info_text')
+        else:
+            self.info_text = None
+        if 'info_title' in kwargs:
+            self.info_title = kwargs.pop('info_title')
+        else:
+            self.info_title = 'Information'
+
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':info.svg'))
+        if self.info_text is not None:
+            self.clicked.connect(self.show_info)
+
+        
+    def show_info(self):
+        if self.info_text is None:
+            return
+        msg = myMessageBox(parent=self.parent())
+        txt = html_utils.paragraph(self.info_text)
+        msg.information(
+            self, self.info_title, txt
+        )
 
 class threeDPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -1746,7 +1775,7 @@ class VerticalResizeHline(QFrame):
 class GroupBox(QGroupBox):
     def __init__(self, *args, keyPressCallback=None):
         super().__init__(*args)
-        self.keyPressCallback = None
+        self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
     
     def keyPressEvent(self, event) -> None:
@@ -1757,10 +1786,19 @@ class GroupBox(QGroupBox):
         self.keyPressCallback()
 
 class CheckBox(QCheckBox):
-    def __init__(self, *args, keyPressCallback=None):
+    sigToggled = Signal(bool, object)
+
+    def __init__(self, *args, keyPressCallback=None,
+                 # rightclick_menu_func=None
+                 ):
         super().__init__(*args)
-        self.keyPressCallback = None
+        self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
+        self.toggled.connect(self.onToggled)
+        self._exclusiveCheckboxes: list[QCheckBox] = []
+        self._linkedCheckboxes: dict[str, QCheckBox] = {}
+        # if rightclick_menu_func is not None:
+        #     self.rightclick_menu = rightclick_menu_func(self)
     
     def keyPressEvent(self, event) -> None:
         event.ignore()
@@ -1768,6 +1806,39 @@ class CheckBox(QCheckBox):
             return
 
         self.keyPressCallback()
+    
+    def setExclusiveOnCheckCheckbox(self, checkbox: QCheckBox):
+        # Keep a list of checkboxes that needs to be unchecked when the `self`
+        # checkbox is checked --> see `onToggled` method
+        self._exclusiveCheckboxes.append(checkbox)
+    
+    def onToggled(self, checked: bool):
+        for checkbox in self._exclusiveCheckboxes:
+            if not checked:
+                continue
+
+            checkbox.setChecked(False)
+        
+        for checkbox in self._linkedCheckboxes.values():
+            checkbox.setChecked(checked)
+        
+        self.sigToggled.emit(checked, self)
+        
+    # def contextMenuEvent(self, event) -> None:
+    #     if self.rightclick_menu is not None:
+    #         self.rightclick_menu.exec_(event.globalPos())
+    
+    def setCheckedNoSignal(self, checked: bool):
+        self.blockSignals(True)
+        self.setChecked(checked)
+        self.blockSignals(False)
+    
+    def setLinkedCheckbox(self, checkbox: QCheckBox, linked: bool):
+        if linked:
+            self._linkedCheckboxes[checkbox.text()] = checkbox
+        else:
+            self._linkedCheckboxes.pop(checkbox.text(), None)
+            
 
 class ScrollArea(QScrollArea):
     sigLeaveEvent = Signal()
@@ -3092,6 +3163,7 @@ class ToolBar(QToolBar):
         super().__init__(*args, **kwargs)
         
         self.widgetsWithShortcut = {}
+        self.widgetsForActions = {}
         
         for child in self.children(): 
             if child.objectName() == 'qt_toolbar_ext_button':
@@ -3140,10 +3212,12 @@ class ToolBar(QToolBar):
         spinbox.action = self.addWidget(spinbox)
         return spinbox
     
-    def addButton(self, icon_str: str, text='', checkable=False):
+    def addButton(self, icon_str: str, text='', checkable=False, ret_widget=False):
         action = QAction(QIcon(icon_str), text, self)
         action.setCheckable(checkable)
-        self.addAction(action)
+        widget = self.addAction(action)
+        if ret_widget:
+            return action, widget
         return action
 
     def addComboBox(self, items=None, label=''):
@@ -3253,7 +3327,7 @@ class CopyLostObjectToolbar(ToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
         
-        action = self.addButton(':copyContour_all.svg')
+        action, widget = self.addButton(':copyContour_all.svg', ret_widget=True)
         # action.setShortcut('Alt+C')
         action.keyPressShortcut = KeySequenceFromText('Alt+C')
         action.setToolTip(
@@ -3261,6 +3335,7 @@ class CopyLostObjectToolbar(ToolBar):
             'Shortcut: Alt+C'
         )
         self.widgetsWithShortcut['Copy all lost objects'] = action
+        self.widgetsForActions['Copy all lost objects'] = widget
         
         action.triggered.connect(self.emitSigCopyAllObjects)
         
@@ -4358,7 +4433,7 @@ class FloatLineEdit(QLineEdit):
             self.setValue(0)  
     
     def setDecimals(self, decimals):
-        self._decimals = 6
+        self._decimals = decimals
 
     def castMinMax(self, value: int):
         if value > self._maximum:
@@ -4413,15 +4488,17 @@ class IntLineEdit(QLineEdit):
 
     def __init__(
             self, *args, notAllowed=None, allowNegative=True, initial=None,
-            readOnly=False
+            readOnly=False, maximum=None, minimum=None
         ):
         QLineEdit.__init__(self, *args)
         self.notAllowed = notAllowed
         if readOnly:
             self.setReadOnly(readOnly)
 
-        self._maximum = np.inf
-        self._minimum = -np.inf
+        maximum = maximum if maximum is not None else np.inf
+        minimum = minimum if minimum is not None else -np.inf
+        self._maximum = maximum
+        self._minimum = minimum
         
         self._regExp = r'\d+'
         if allowNegative:
@@ -11349,7 +11426,7 @@ class WhitelistIDsToolbar(ToolBar):
         )
 
         # add a view OG toggle
-        self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
+        self.viewOGToggle, viewOGWidget = self.addButton(':eye.svg', checkable=True, ret_widget=True)
         viewOGTooltip = (
             'View the non-whitelisted segmentation mask.\n\n'
             'You can activate this to add new IDs to the whitelist,\n'
@@ -11360,6 +11437,7 @@ class WhitelistIDsToolbar(ToolBar):
         self.viewOGToggle.setShortcut('Shift+K')
         key = 'View the non-whitelisted segmentation mask'
         self.widgetsWithShortcut[key] = self.viewOGToggle
+        self.widgetsForActions[key] = viewOGWidget
         
         self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
         self.emitViewOGIDs(True)
@@ -12114,11 +12192,23 @@ class OverlayToolbar(ToolBar):
         )
         
         self.transparencyCheckbox.setToolTip(
-            'Activate to achieve true pixel-wise transparency where '
-            'the pixel intensity is 0 or set to 0 using the '
-            'LUT sliders on the left of the images.\n\n'
-            'Since it is significantly slower, we recommended to activate this '
-            'only if you need to export images for figures.'
+            'Activate to hierarchically blend channels using relative weights '
+            'derived from the scrollbars.\n\n'
+            'Each scrollbar controls the balance between adjacent channels, ' 
+            'allowing you to fine-tune their contributions to the '
+            'final blended image.'
+        )
+        
+        self.alphaEncodedIntensityCheckbox = self.addCheckBox(
+            text='Alpha-encoded intensity (RGBA composite)'
+        )
+        self.alphaEncodedIntensityCheckbox.setToolTip(
+            'Activate to encode pixel intensity as alpha transparency: '
+            'pixels with zero intensity are fully transparent,\n'
+            '50% intensity corresponds to 50% opacity, '
+            'and maximum intensity is fully opaque.\n\n'
+            'This allows low-intensity regions to appear transparent and '
+            'creates the perception of seeing through these regions.'
         )
         
         self.addSeparator()
@@ -12132,10 +12222,29 @@ class OverlayToolbar(ToolBar):
             'will display only that channel in the overlay.'
         )
         
-        self.transparencyCheckbox.toggled.connect(self.sigSetTranspacency.emit)
+        self.transparencyCheckbox.toggled.connect(self.transparencyToggled)
         self.singleChannelCheckbox.toggled.connect(
             self.sigSetSingleChannel.emit
         )
+        self.alphaEncodedIntensityCheckbox.toggled.connect(
+            self.alphaEncodedIntensityToggled)
+        
+        
+    def alphaEncodedIntensityToggled(self, checked):
+        if checked:
+            self.transparencyCheckbox.blockSignals(True)
+            self.transparencyCheckbox.setChecked(True)
+            self.transparencyCheckbox.blockSignals(False)
+        transp_checked = self.transparencyCheckbox.isChecked()
+        self.sigSetTranspacency.emit(transp_checked)
+        
+    def transparencyToggled(self, checked):
+        if not checked:
+            self.alphaEncodedIntensityCheckbox.blockSignals(True)
+            self.alphaEncodedIntensityCheckbox.setChecked(False)
+            self.alphaEncodedIntensityCheckbox.blockSignals(False)
+        
+        self.sigSetTranspacency.emit(checked)
     
     def setTransparent(self, transparent: bool):
         self.transparencyCheckbox.setChecked(transparent)
@@ -12145,6 +12254,9 @@ class OverlayToolbar(ToolBar):
     
     def isSingleChannel(self):
         return self.singleChannelCheckbox.isChecked()
+    
+    def isAlphaEncodedIntensity(self):
+        return self.alphaEncodedIntensityCheckbox.isChecked()
 
 class OverlayChannelToolButton(GradientToolButton):
     def __init__(
@@ -12783,6 +12895,76 @@ class DummyWidget:
     
     def value(self):
         return
+    
+class FadingTrackItem(pg.GraphicsObject):
+    def __init__(self, points, frames, color=(255, 100, 0), n_fade=15,
+                 max_width=4, min_width=1, max_alpha=255, min_alpha=20):
+        super().__init__()
+        self.points = points
+        self.frames = frames
+        self.color = color
+        self.n_fade = max(n_fade, 1)
+        self.max_width, self.min_width = max_width, min_width
+        self.max_alpha, self.min_alpha = max_alpha, min_alpha
+        self._generate_picture()
+
+    def _generate_picture(self):
+        self.picture = QPicture()
+        painter = QPainter(self.picture)
+        n = len(self.points)
+        if n < 2:
+            painter.end()
+            return
+
+        head_frame = self.frames[-1]  # most recent frame in this track
+        point_cache = {}
+        pen_cache = {}
+
+        for i in range(n - 1):
+            f0, f1 = self.frames[i], self.frames[i + 1]
+            if f1 - f0 > 1:
+                # gap in tracking -- don't draw a line across it
+                continue
+
+            dist_from_head = head_frame - f1
+            frac = max(0.0, 1.0 - dist_from_head / self.n_fade)
+
+            alpha = int(self.min_alpha + frac * (self.max_alpha - self.min_alpha))
+            width = self.min_width + frac * (self.max_width - self.min_width)
+
+            pen_key = (alpha, width)
+            pen = pen_cache.get(pen_key)
+            if pen is None:
+                pen = QPen(QColor(*self.color, alpha))
+                pen.setWidthF(width)
+                pen.setCapStyle(Qt.RoundCap)
+                pen_cache[pen_key] = pen
+            painter.setPen(pen)
+
+            x0, y0 = self.points[i]
+            x1, y1 = self.points[i + 1]
+            p0_key = (x0, y0)
+            p1_key = (x1, y1)
+            p0 = point_cache.get(p0_key)
+            if p0 is None:
+                p0 = QPointF(x0, y0)
+                point_cache[p0_key] = p0
+            p1 = point_cache.get(p1_key)
+            if p1 is None:
+                p1 = QPointF(x1, y1)
+                point_cache[p1_key] = p1
+            painter.drawLine(p0, p1)
+        painter.end()
+
+    def paint(self, painter, *args):
+        painter.drawPicture(0, 0, self.picture)
+
+    def boundingRect(self):
+        if not self.points:
+            return QRectF()
+        xs = [p[0] for p in self.points]
+        ys = [p[1] for p in self.points]
+        return QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
 
 class GuiCentralWidget(QWidget):
     def __init__(self, parent=None, *args):

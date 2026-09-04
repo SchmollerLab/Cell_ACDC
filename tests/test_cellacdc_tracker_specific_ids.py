@@ -158,3 +158,40 @@ def test_normal_division_specific_ids_preserve_division_context():
     np.testing.assert_array_equal(tracked_lab, expected)
     assert add_info['mothers'] == {5}
     assert add_info['assignments'] == {7: 20}
+
+
+def test_normal_division_second_step_does_not_merge_existing_id():
+    prev_lab = np.array(
+        [
+            [5, 5, 0, 0, 0, 0],
+            [5, 5, 0, 0, 0, 0],
+        ],
+        dtype=np.uint16,
+    )
+    lab = np.array(
+        [
+            [0, 0, 0, 7, 7, 5],
+            [0, 0, 0, 7, 7, 5],
+        ],
+        dtype=np.uint16,
+    )
+
+    tracked_lab, add_info = NormalDivisionTracker().track_frame(
+        prev_lab,
+        lab,
+        IoA_thresh=0.8,
+        unique_ID=20,
+        return_assignments=True,
+        specific_IDs=[7],
+    )
+
+    expected = np.array(
+        [
+            [0, 0, 0, 20, 20, 5],
+            [0, 0, 0, 20, 20, 5],
+        ],
+        dtype=np.uint16,
+    )
+
+    np.testing.assert_array_equal(tracked_lab, expected)
+    assert add_info['assignments'] == {7: 20}

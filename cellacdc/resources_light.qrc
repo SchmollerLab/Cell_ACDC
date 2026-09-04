@@ -1,6 +1,8 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource>
-    
+
+    <file alias="hand.svg">resources/icons/hand.svg</file>
+    <file alias="crosshair.svg">resources/icons/crosshair.svg</file>
     <file alias="icon.ico">resources/icon_v2.ico</file>
     <file alias="logo.svg">resources/logo_v2.svg</file>
     <file alias="logo.png">resources/logo_v2.png</file>

@@ -28,21 +28,21 @@ def SliderPageStepAdd():
 
 def SliderPageStepSub():
     if PYQT6:
-        return QAbstractSlider.SliderAction.SliderPageStepAdd.value
+        return QAbstractSlider.SliderAction.SliderPageStepSub.value
     else:
-        return QAbstractSlider.SliderAction.SliderPageStepAdd
+        return QAbstractSlider.SliderAction.SliderPageStepSub
 
 def SliderToMinimum():
     if PYQT6:
-        return QAbstractSlider.SliderAction.SliderPageStepAdd.value
+        return QAbstractSlider.SliderAction.SliderToMinimum.value
     else:
-        return QAbstractSlider.SliderAction.SliderPageStepAdd
+        return QAbstractSlider.SliderAction.SliderToMinimum
 
 def SliderToMaximum():
     if PYQT6:
-        return QAbstractSlider.SliderAction.SliderPageStepAdd.value
+        return QAbstractSlider.SliderAction.SliderToMaximum.value
     else:
-        return QAbstractSlider.SliderAction.SliderPageStepAdd
+        return QAbstractSlider.SliderAction.SliderToMaximum
 
 def SliderMove():
     if PYQT6:

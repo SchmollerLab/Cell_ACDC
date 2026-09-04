@@ -388,11 +388,14 @@ class normal_division_tracker:
         IoA_matrix = add_info['IoA_matrix']
         self.assignments = add_info['assignments']
         self.tracked_IDs = add_info['tracked_IDs']
+        
+        # print(f"After tracking frame 1st step: assignments: {self.assignments}, tracked_IDs: {self.tracked_IDs}")
             
         if lost_IDs_search_range is None:
             return
         
         updated_rp = acdcRegionprops(self.tracked_lab, precache_centroids=False)
+        current_tracked_IDs = set(updated_rp.IDs)
       
         mothers = {self.IDs_prev[mother] for mother, _ in self.mother_daughters}
         daughters = set()
@@ -415,7 +418,11 @@ class normal_division_tracker:
 
         lost_rp_mapper = {
             obj.label: obj for obj in prev_rp
-            if obj.label not in self.tracked_IDs and obj.label not in daughters
+            if (
+                obj.label not in mothers
+                and obj.label not in self.tracked_IDs
+                and obj.label not in daughters
+            )
         }
 
         if not lost_rp_mapper:
@@ -467,8 +474,13 @@ class normal_division_tracker:
             if dist > lost_IDs_search_range:
                 continue
 
-            IDs_to_track.append(new_IDs_idx_to_obj_mapper[j].label)
-            tracked_IDs_2nd_step.append(lost_IDs_idx_to_obj_mapper[i].label)
+            ID_to_track = new_IDs_idx_to_obj_mapper[j].label
+            tracked_ID = lost_IDs_idx_to_obj_mapper[i].label
+            if tracked_ID in current_tracked_IDs:
+                continue
+
+            IDs_to_track.append(ID_to_track)
+            tracked_IDs_2nd_step.append(tracked_ID)
             if self._annot_obj_2nd_step:
                 objs_to_track.append(new_IDs_idx_to_obj_mapper[j])
                 tracked_objs_2nd_step.append(lost_IDs_idx_to_obj_mapper[i])
@@ -1463,7 +1475,7 @@ class tracker:
                     IoA_thresh_aggressive:float  = 0.5,
                     min_daughter:int = 2,
                     max_daughter:int = 2,
-                    lost_IDs_search_range: float = 0,
+                    lost_IDs_search_range: float = 30,
                     unique_ID: NotGUIParam =None,
                     return_assignments: NotGUIParam =False,
                     specific_IDs: NotGUIParam =None,
@@ -1529,14 +1541,23 @@ class tracker:
         IDs_prev = tracker.IDs_prev
         mothers = {IDs_prev[pair[0]] for pair in mother_daughters_pairs}
         assignments = tracker.assignments
+        IDs_curr_untracked = tracker.IDs_curr_untracked
+        daughters = {daughter
+                     for pair in mother_daughters_pairs 
+                     for daughter in pair[1]
+                     }
+        daughters = IoA_index_daughter_to_ID(
+            daughters, assignments, IDs_curr_untracked)
         if self._annot_obj_2nd_step:
             to_track_tracked_objs_2nd_step = tracker.to_track_tracked_objs_2nd_step
         add_info = {
             'mothers': mothers,
             'assignments': assignments,
+            'daughters': daughters,
             'to_track_tracked_objs_2nd_step': (to_track_tracked_objs_2nd_step 
                                                if self._annot_obj_2nd_step 
-                                               else None)
+                                               else None),
+            
         }
 
         if dont_return_tracked_lab:

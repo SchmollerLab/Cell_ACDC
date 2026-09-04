@@ -19,9 +19,13 @@ from . import is_mac, is_win
 from . import acdc_ffmpeg_path
 
 class ImageExporter(pyqtgraph.exporters.ImageExporter):
-    def __init__(self, item, background=(0, 0, 0, 0), dpi=100, save_pngs=True):
+    def __init__(
+            self, item, background=(0, 0, 0, 0), dpi=100,
+            save_pngs=True, crop_outer_padding=True
+        ):
         super().__init__(item)
         self._save_pngs = save_pngs
+        self._crop_outer_padding = crop_outer_padding
         
         self._dpi = dpi
         
@@ -109,7 +113,10 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
     def export(self, filepath):     
         no_ext_filepath, ext = os.path.splitext(filepath)
         svg_filepath = f'{no_ext_filepath}.svg'    
-        svg_exporter = SVGExporter(self.item)                  
+        svg_exporter = SVGExporter(self.item)
+        svg_exporter.params['width'] = self.params['width']
+        svg_exporter.params['height'] = self.params['height']
+        svg_exporter.params['background'] = self.params['background']
         svg_exporter.export(svg_filepath)
         self.svg_to_image(svg_filepath, filepath)
         
@@ -122,12 +129,13 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         img_rgba = skimage.io.imread(filepath)    
         img_rgba = self.crop_from_mask(img_rgba)
         
-        img_rgba = transformation.crop_outer_padding(
-            img_rgba, value=(0, 0, 0, 255)
-        )
-        img_rgba = transformation.crop_outer_padding(
-            img_rgba, value=(255, 255, 255, 255)
-        )
+        if self._crop_outer_padding:
+            img_rgba = transformation.crop_outer_padding(
+                img_rgba, value=(0, 0, 0, 255)
+            )
+            img_rgba = transformation.crop_outer_padding(
+                img_rgba, value=(255, 255, 255, 255)
+            )
 
         if self._save_pngs:
             skimage.io.imsave(filepath, img_rgba, check_contrast=False)
@@ -141,52 +149,131 @@ class SVGExporter(pyqtgraph.exporters.SVGExporter):
         super().__init__(item)
         self.parameters()['background'] = (0, 0, 0, 0)
 
+    def _current_view_zoom(self):
+        if hasattr(self.item, 'viewPixelSize'):
+            try:
+                zoom = self.item.viewPixelSize()[0]
+                return float(zoom)
+            except Exception:
+                pass
+
+        if hasattr(self.item, 'getViewBox'):
+            try:
+                viewbox = self.item.getViewBox()
+                if viewbox is not None:
+                    zoom = viewbox.viewPixelSize()[0]
+                    return float(zoom)
+            except Exception:
+                pass
+
+        return None
+
+    def _set_items_export_zoom(self, export_zoom):
+        for item in self.getPaintItems():
+            if hasattr(item, 'setExportZoom'):
+                item.setExportZoom(export_zoom)
+
+    def export(self, fileName=None, toBytes=False, copy=False):
+        # Mirror pyqtgraph ImageExporter resolution semantics: when exporting
+        # to a larger target than the on-screen view, reduce data-space zoom
+        # used by text so rendered pixel size remains consistent.
+        orig_target_rect = self.getTargetRect()
+        orig_width = float(orig_target_rect.width()) if orig_target_rect.width() else 0.0
+        requested_width = float(self.params['width'])
+        resolution_scale = (requested_width / orig_width) if orig_width > 0 else 1.0
+        current_zoom = self._current_view_zoom()
+
+        export_zoom = None
+        if current_zoom is not None and resolution_scale > 0:
+            export_zoom = current_zoom / resolution_scale
+
+        self._set_items_export_zoom(export_zoom)
+        try:
+            return super().export(fileName=fileName, toBytes=toBytes, copy=copy)
+        finally:
+            self._set_items_export_zoom(None)
+
 class VideoExporter:
     def __init__(self, avi_filepath, fps):
         self.writer = None
         self._avi_filepath = avi_filepath
         self._fps = fps
         self._fourcc = cv2.VideoWriter_fourcc(*'XVID')
+        self._frame_size = None
+
+    def _pad_to_even_shape(self, img_bgr):
+        height, width = img_bgr.shape[:-1]
+        pad_right = width % 2
+        pad_bottom = height % 2
+        if pad_right == 0 and pad_bottom == 0:
+            return img_bgr
+
+        return cv2.copyMakeBorder(
+            img_bgr,
+            0,
+            pad_bottom,
+            0,
+            pad_right,
+            cv2.BORDER_CONSTANT,
+            value=(0, 0, 0)
+        )
+
+    def _match_writer_frame_size(self, img_bgr):
+        target_width, target_height = self._frame_size
+        height, width = img_bgr.shape[:2]
+        if (width, height) == (target_width, target_height):
+            return img_bgr
+
+        raise ValueError(
+            'Exported frame size changed during video export after even-size '
+            f'padding. Expected {(target_width, target_height)}, got '
+            f'{(width, height)}. Video frames must keep a constant size.'
+        )
     
     def add_frame(self, img_bgr):
+        img_bgr = self._pad_to_even_shape(img_bgr)
+
         if self.writer is None:
             height, width = img_bgr.shape[:-1]
+            self._frame_size = (width, height)
             self.writer = cv2.VideoWriter(
                 self._avi_filepath, self._fourcc, self._fps, (width, height)
             )
+
+        img_bgr = self._match_writer_frame_size(img_bgr)
         self.writer.write(img_bgr)
     
     def release(self):
         self.writer.release()
     
-    def avi_to_mp4(self):
-        avi_to_mp4(self._avi_filepath)
+    def avi_to_mp4(self, crf=18):
+        avi_to_mp4(self._avi_filepath, crf=crf)
 
-def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None):
-    ffmep_exec_path = myutils.download_ffmpeg()
+def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None, crf=18):
+    ffmpeg_exec_path = myutils.download_ffmpeg()
     
     if out_filepath_mp4 is None:
         out_filepath_mp4 = in_filepath_avi.replace('.avi', '.mp4')
     
-    ffmep_exec_path = ffmep_exec_path.replace('\\', '/')
+    ffmpeg_exec_path = ffmpeg_exec_path.replace('\\', '/')
     out_filepath_mp4 = out_filepath_mp4.replace('\\', '/')
     in_filepath_avi = in_filepath_avi.replace('\\', '/')
     
     args = [
         '-i', f'{in_filepath_avi}', '-c:v', 'libx264', 
-        '-crf', '18', '-an', f'{out_filepath_mp4}'
+        '-crf', str(crf), '-an', f'{out_filepath_mp4}'
     ]
     
-    _run_ffmpeg(ffmep_exec_path, args)
+    _run_ffmpeg(ffmpeg_exec_path, args)
 
-def _run_ffmpeg(ffmep_exec_path, command_args):
+def _run_ffmpeg(ffmpeg_exec_path, command_args):
     import subprocess, os
     
     command_args_no_quotes = [
         arg.replace('"', '').replace("'", '') for arg in command_args
     ]
-    full_command = ' '.join(command_args_no_quotes)
-    full_command = f'{ffmep_exec_path} {full_command}'
+    full_command = ' '.join(command_args)
+    full_command = f'{ffmpeg_exec_path} {full_command}'
     
     separator = '-'*100
     print(

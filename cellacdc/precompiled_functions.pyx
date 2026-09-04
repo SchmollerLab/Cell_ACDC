@@ -1,6 +1,6 @@
 # precompiled_functions.pyx
 # cython: boundscheck=False, wraparound=False, cdivision=True
-# rand change to trigger gh actions: 2
+# rand change to trigger gh actions: 1
 import numpy as np
 cimport numpy as np
 from libc.limits cimport UINT_MAX
@@ -41,8 +41,7 @@ def find_all_objects_2D(np.uint32_t[:, :] label_img):
             if j + 1 > ce[label]: ce[label] = <unsigned int>(j + 1)
 
     if max_label == 0:
-        return [], []
-
+        return np.array([], dtype=np.uint32), np.empty((0, 4), dtype=np.uint32)
     # Collect present labels into compact numpy arrays (avoids per-label tuple allocation)
     cdef unsigned int n_labels = 0
     for lbl in range(1, max_label + 1):
@@ -106,7 +105,7 @@ def find_all_objects_3D(np.uint32_t[:, :, :] label_img):
                 if k + 1 > ce[label]: ce[label] = <unsigned int>(k + 1)
 
     if max_label == 0:
-        return [], []
+        return np.array([], dtype=np.uint32), np.empty((0, 6), dtype=np.uint32)
 
     # Collect present labels into compact numpy arrays (avoids per-label tuple allocation)
     cdef unsigned int n_labels = 0
@@ -491,3 +490,245 @@ def calc_IoA_matrix_3D(
             IoA_matrix[ci, pi] = I_val / denom_val
 
     return IoA_matrix
+
+
+def calc_centroids_2D(
+        np.uint32_t[:, :] label_img,
+        np.uint32_t[:] labels,
+        np.uint32_t[:, :] bboxes,
+):
+    """Bulk centroid computation restricted to each object's bbox.
+
+    Parameters
+    ----------
+    label_img : (Y, X) uint32 label image.
+    labels    : (n,) uint32 object labels.
+    bboxes    : (n, 4) uint32 -> (row_start, row_stop, col_start, col_stop),
+                same layout as returned by find_all_objects_2D.
+
+    Returns
+    -------
+    centroids : (n, 2) float64 -> (mean_row, mean_col), in `label_img` coords.
+    """
+    cdef Py_ssize_t n_labels = labels.shape[0]
+    cdef Py_ssize_t n, i, j
+    cdef Py_ssize_t r0, r1, c0, c1
+    cdef unsigned int label
+    cdef double sum_i, sum_j
+    cdef unsigned long long count
+
+    cdef np.ndarray[np.float64_t, ndim=2] centroids = np.empty((n_labels, 2), dtype=np.float64)
+
+    for n in range(n_labels):
+        label = labels[n]
+        r0 = <Py_ssize_t>bboxes[n, 0]
+        r1 = <Py_ssize_t>bboxes[n, 1]
+        c0 = <Py_ssize_t>bboxes[n, 2]
+        c1 = <Py_ssize_t>bboxes[n, 3]
+
+        sum_i = 0.0
+        sum_j = 0.0
+        count = 0
+
+        for i in range(r0, r1):
+            for j in range(c0, c1):
+                if label_img[i, j] == label:
+                    sum_i += <double>i
+                    sum_j += <double>j
+                    count += 1
+
+        centroids[n, 0] = sum_i / count
+        centroids[n, 1] = sum_j / count
+
+    return centroids
+
+
+def calc_centroids_3D(
+        np.uint32_t[:, :, :] label_img,
+        np.uint32_t[:] labels,
+        np.uint32_t[:, :] bboxes,
+):
+    """Bulk centroid computation restricted to each object's bbox (3D).
+
+    bboxes : (n, 6) uint32 -> (z0, z1, r0, r1, c0, c1), same layout as
+             returned by find_all_objects_3D.
+    """
+    cdef Py_ssize_t n_labels = labels.shape[0]
+    cdef Py_ssize_t n, i, j, k
+    cdef Py_ssize_t z0, z1, r0, r1, c0, c1
+    cdef unsigned int label
+    cdef double sum_i, sum_j, sum_k
+    cdef unsigned long long count
+
+    cdef np.ndarray[np.float64_t, ndim=2] centroids = np.empty((n_labels, 3), dtype=np.float64)
+
+    for n in range(n_labels):
+        label = labels[n]
+        z0 = <Py_ssize_t>bboxes[n, 0]
+        z1 = <Py_ssize_t>bboxes[n, 1]
+        r0 = <Py_ssize_t>bboxes[n, 2]
+        r1 = <Py_ssize_t>bboxes[n, 3]
+        c0 = <Py_ssize_t>bboxes[n, 4]
+        c1 = <Py_ssize_t>bboxes[n, 5]
+
+        sum_i = 0.0
+        sum_j = 0.0
+        sum_k = 0.0
+        count = 0
+
+        for i in range(z0, z1):
+            for j in range(r0, r1):
+                for k in range(c0, c1):
+                    if label_img[i, j, k] == label:
+                        sum_i += <double>i
+                        sum_j += <double>j
+                        sum_k += <double>k
+                        count += 1
+
+        centroids[n, 0] = sum_i / count
+        centroids[n, 1] = sum_j / count
+        centroids[n, 2] = sum_k / count
+
+    return centroids
+
+
+def color_norm_hsv_style(rgb, alpha_scale=1.0, calc_alpha=True):
+    """Normalize already bounded RGB values while preserving hue."""
+    cdef np.ndarray[np.float32_t, ndim=3] arr = np.asarray(rgb, dtype=np.float32)
+    cdef Py_ssize_t h = arr.shape[0]
+    cdef Py_ssize_t w = arr.shape[1]
+    cdef Py_ssize_t i, j
+    cdef float r, g, b, max_val, alpha_val
+
+    cdef np.ndarray[np.float32_t, ndim=3] norm_rgb = np.empty((h, w, 3), dtype=np.float32)
+    cdef np.ndarray[np.float32_t, ndim=3] alpha = np.empty((h, w, 1), dtype=np.float32)
+
+    for i in range(h):
+        for j in range(w):
+            r = arr[i, j, 0]
+            g = arr[i, j, 1]
+            b = arr[i, j, 2]
+            max_val = r
+            if g > max_val:
+                max_val = g
+            if b > max_val:
+                max_val = b
+
+            if max_val < 1e-6:
+                max_val = <float>1e-6
+
+            norm_rgb[i, j, 0] = r / max_val
+            norm_rgb[i, j, 1] = g / max_val
+            norm_rgb[i, j, 2] = b / max_val
+
+            if calc_alpha:
+                alpha_val = max_val * <float>alpha_scale
+                alpha[i, j, 0] = alpha_val
+
+    if calc_alpha:
+        return norm_rgb, alpha
+    return norm_rgb, None
+
+
+def combine_grayscale_images_with_alpha_cy(
+        base_img,
+        images,
+        alphas,
+        luts=None,
+        base_lut=None,
+):
+    """Composite already-normalized images using float16 RGB values."""
+    cdef np.ndarray[np.float32_t, ndim=2] base_arr = np.asarray(base_img, dtype=np.float32)
+    cdef Py_ssize_t h = base_arr.shape[0]
+    cdef Py_ssize_t w = base_arr.shape[1]
+    cdef Py_ssize_t n_imgs = len(images)
+    cdef Py_ssize_t i, j, k, c
+    cdef Py_ssize_t n_lut
+    cdef float alpha_scale
+    cdef float img_val, r, g, b, max_val, alpha_val, mix_val
+    cdef int lut_idx
+
+    if n_imgs == 0:
+        return np.repeat(base_arr[:, :, None], 3, axis=2).astype(np.float32)
+
+    cdef np.ndarray[np.float32_t, ndim=3] accumulated = np.zeros((h, w, 3), dtype=np.float32)
+    cdef np.ndarray[np.float32_t, ndim=2] total_alpha = np.zeros((h, w), dtype=np.float32)
+
+    cdef np.ndarray[np.float32_t, ndim=2] img_norm
+    cdef np.ndarray[np.float32_t, ndim=3] rgb_src
+    cdef np.ndarray[np.float32_t, ndim=2] lut_arr
+
+    for i in range(n_imgs):
+        img_norm = np.asarray(images[i], dtype=np.float32)
+        rgb_src = np.empty((h, w, 3), dtype=np.float32)
+
+        if luts is not None:
+            lut_arr = np.asarray(luts[i], dtype=np.float32)
+            n_lut = <Py_ssize_t>lut_arr.shape[0]
+            for j in range(h):
+                for k in range(w):
+                    img_val = img_norm[j, k]
+                    lut_idx = <int>(img_val * (n_lut - 1))
+                    rgb_src[j, k, 0] = lut_arr[lut_idx, 0]
+                    rgb_src[j, k, 1] = lut_arr[lut_idx, 1]
+                    rgb_src[j, k, 2] = lut_arr[lut_idx, 2]
+        else:
+            for j in range(h):
+                for k in range(w):
+                    img_val = img_norm[j, k]
+                    rgb_src[j, k, 0] = img_val
+                    rgb_src[j, k, 1] = img_val
+                    rgb_src[j, k, 2] = img_val
+
+        alpha_scale = <float>alphas[i]
+
+        for j in range(h):
+            for k in range(w):
+                r = <float>rgb_src[j, k, 0]
+                g = <float>rgb_src[j, k, 1]
+                b = <float>rgb_src[j, k, 2]
+                max_val = r
+                if g > max_val:
+                    max_val = g
+                if b > max_val:
+                    max_val = b
+
+                if max_val < 1e-6:
+                    max_val = <float>1e-6
+
+                alpha_val = max_val * alpha_scale
+
+                accumulated[j, k, 0] += alpha_val * (r / max_val)
+                accumulated[j, k, 1] += alpha_val * (g / max_val)
+                accumulated[j, k, 2] += alpha_val * (b / max_val)
+                total_alpha[j, k] += alpha_val
+                if total_alpha[j, k] > 1.0:
+                    total_alpha[j, k] = 1.0
+
+    cdef np.ndarray[np.float32_t, ndim=3] base_rgb
+    if base_lut is not None:
+        base_rgb = np.empty((h, w, 3), dtype=np.float32)
+        lut_arr = np.asarray(base_lut, dtype=np.float32)
+        n_lut = <Py_ssize_t>lut_arr.shape[0]
+        for j in range(h):
+            for k in range(w):
+                img_val = base_arr[j, k]
+                lut_idx = <int>(img_val * (n_lut - 1))
+                base_rgb[j, k, 0] = lut_arr[lut_idx, 0]
+                base_rgb[j, k, 1] = lut_arr[lut_idx, 1]
+                base_rgb[j, k, 2] = lut_arr[lut_idx, 2]
+    else:
+        base_rgb = np.repeat(base_arr[:, :, None], 3, axis=2).astype(np.float32)
+
+    cdef np.ndarray[np.float32_t, ndim=3] accumulated_norm
+    accumulated_norm, _ = color_norm_hsv_style(accumulated, alpha_scale=1.0, calc_alpha=False)
+
+    cdef np.ndarray[np.float32_t, ndim=3] result = np.empty((h, w, 3), dtype=np.float32)
+    for j in range(h):
+        for k in range(w):
+            alpha_val = total_alpha[j, k]
+            for c in range(3):
+                mix_val = <float>((<float>base_rgb[j, k, c]) * (1.0 - alpha_val) + accumulated_norm[j, k, c] * alpha_val)
+                result[j, k, c] = mix_val
+
+    return result
