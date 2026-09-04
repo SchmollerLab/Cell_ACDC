@@ -19,7 +19,7 @@ from datetime import datetime
 from tifffile import TiffFile
 import tifffile
 import zipfile
-from natsort import natsorted
+from natsort import natsorted, natsort_keygen
 import time
 
 from functools import partial
@@ -4465,7 +4465,14 @@ def save_df_to_csv_temp_path(df, csv_filename, **to_csv_kwargs):
     df.to_csv(tempFilepath, **to_csv_kwargs)
     return tempFilepath
 
-def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
+def loaded_df_to_points_data(
+        df, t_col, z_col, y_col, x_col, t_col_requires_grouping=False
+    ):
+    if t_col_requires_grouping:
+        df = df.sort_values(by=t_col, key=natsort_keygen())
+        df['frame_i'] = df.groupby(t_col, sort=False).ngroup()
+        t_col = 'frame_i'
+
     points_data = {}
     if 'id' not in df.columns:
         df['id'] = ''
@@ -4474,7 +4481,7 @@ def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
         grouped = df.groupby(t_col)
     else:
         grouped = [(0, df)]
-    
+
     for frame_i, df_frame in grouped:
         if z_col != 'None':
             df_frame[z_col] = df_frame[z_col].round().astype(int)
@@ -4494,10 +4501,10 @@ def loaded_df_to_points_data(df, t_col, z_col, y_col, x_col):
                 }
         else:
             points_data[frame_i] = {
-                'x': df[x_col].to_list(),
-                'y': df[y_col].to_list(), 
-                'id': df['id'].to_list(), 
-                'data': [row.to_string() for _, row in df.iterrows()]
+                'x': df_frame[x_col].to_list(),
+                'y': df_frame[y_col].to_list(), 
+                'id': df_frame['id'].to_list(), 
+                'data': [row.to_string() for _, row in df_frame.iterrows()]
             }
     return points_data
 
@@ -4509,8 +4516,18 @@ def load_df_points_layer(filepath):
         with pd.HDFStore(filepath) as h5:
             keys = h5.keys()
             dfs = [h5.get(key) for key in keys]
-        df = pd.concat(dfs, keys=keys, names=['h5_key'])
-    return df
+        df = pd.concat(dfs, keys=keys, names=['h5_key']).reset_index()
+        try:
+            df['frame_i'] = (
+                df['h5_key'].str.extract(r'/frame_(\d+)').astype(int)
+            )
+        except Exception as e:
+            from .config import parser_args
+            debug = parser_args['debug']
+            if debug:
+                traceback.print_exc()
+            pass
+    return df.reset_index()
 
 def get_unique_exp_paths(paths: List):
     unique_exp_paths = set()

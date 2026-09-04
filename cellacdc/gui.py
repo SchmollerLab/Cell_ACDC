@@ -25899,6 +25899,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             hideFromTableSection=onlyMouseClicks,
             hideManualEntrySection=onlyMouseClicks,
             hideWithMouseClicksSection=False,
+            SizeT=posData.SizeT,
             parent=self,
         )
         cmap = matplotlib.colormaps['gist_rainbow']
@@ -25931,12 +25932,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def logLoadedTablePointsLayer(self, df, filename: str):
         separator = f'-'*100
-        header = f'First 10 rows of loaded table - "{filename}":'
+        header = f'First 10 rows and 10 columns of loaded table - "{filename}":'
         footer = f'Number of points: {len(df)}'
         text = (
             f'{separator}\n'
             f'{header}\n\n'
-            f'{df.head(10)}\n\n'
+            f'{df.iloc[:10, :10]}\n\n'
             f'{footer}\n'
             f'{separator}'
         )
@@ -26186,6 +26187,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.pointsLayerClicksDfsToData(posData)
     
     def pointsLayerLoadedDfsToData(self):
+        self.logger.info('Generating points data from table...')
         posData = self.data[self.pos_i]
         for toolbar in self.pointsLayersToolbars:
             for action in toolbar.actions()[1:]:
@@ -26204,11 +26206,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if not os.path.exists(filepath):
                     action.pointsData[self.pos_i] = {}
                 
-                df = load.load_df_points_layer(filepath)                
+                df = load.load_df_points_layer(filepath)    
+                t_col_requires_grouping = (
+                    action.loadedDfInfo.get('t_col_requires_grouping', False)
+                )            
                 action.pointsData[self.pos_i] = (
                     load.loaded_df_to_points_data(
-                        df, action.loadedDfInfo['t'], action.loadedDfInfo['z'], 
-                        action.loadedDfInfo['y'], action.loadedDfInfo['x']
+                        df, 
+                        action.loadedDfInfo['t'], 
+                        action.loadedDfInfo['z'], 
+                        action.loadedDfInfo['y'], 
+                        action.loadedDfInfo['x'],
+                        t_col_requires_grouping=t_col_requires_grouping
                     )
                 )
                 self.logLoadedTablePointsLayer(df, filename=filename)
