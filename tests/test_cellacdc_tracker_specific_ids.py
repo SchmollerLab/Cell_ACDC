@@ -32,8 +32,8 @@ def test_calc_io_matrix_uses_regionprops_iteration_order_for_axes():
         ioa_matrix, current_ids, previous_ids
     )
 
-assert current_ids == [obj.label for obj in rp]
-assert previous_ids == [obj.label for obj in prev_rp]
+    assert current_ids == [obj.label for obj in rp]
+    assert previous_ids == [obj.label for obj in prev_rp]
     assert dict(zip(old_ids, tracked_ids)) == {1: 2, 2: 7, 7: 8, 8: 1}
 
 
