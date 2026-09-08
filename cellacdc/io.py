@@ -250,3 +250,27 @@ def move_separate_channels_tiffs_to_pos_folders(
                 except Exception as err:
                     pass
     return True
+
+def move_raw_microscopy_file(
+        src_filepath: os.PathLike,
+        dst_folderpath: os.PathLike,
+    ):
+    if not os.path.exists(dst_folderpath):
+        os.mkdir(dst_folderpath)
+
+    src_folderpath = os.path.dirname(src_filepath)
+    filename = os.path.basename(src_filepath)
+    filename_noext, ext = os.path.splitext(filename)
+    dst_filepath = os.path.join(dst_folderpath, filename)
+
+    shutil.move(src_filepath, dst_filepath)
+
+    src_related_folderpath = os.path.join(src_folderpath, f'_{filename_noext}_')
+
+    if not os.path.exists(src_related_folderpath):
+        return dst_filepath
+
+    shutil.move(src_related_folderpath, dst_folderpath)
+    
+
+    
