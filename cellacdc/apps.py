@@ -34,9 +34,7 @@ import skimage.draw
 import skimage.registration
 import skimage.color
 import skimage.segmentation
-from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg, NavigationToolbar2Tk
-)
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -1011,17 +1009,41 @@ class AddPointsLayerDialog(QBaseDialog):
         self.tColName = widgets.QCenteredComboBox()
         self.tColName.addItem('None')
         self.tColName.label = QLabel('Frame index column: ')
+        self.tColRequiresGroupingCheckbox = QCheckBox('Group by unique values')
         layout.addWidget(self.tColName.label, row, 1)
         layout.addWidget(self.tColName, row, 2)
+        layout.addWidget(self.tColRequiresGroupingCheckbox, row, 4)
         self.fromTableRadiobutton.widgets.append(self.tColName)
+        self.fromTableRadiobutton.widgets.append(
+            self.tColRequiresGroupingCheckbox
+        )
         sectionWidgets.append(self.tColName.label)
         sectionWidgets.append(self.tColName)
+        sectionWidgets.append(self.tColRequiresGroupingCheckbox)
+
+        tColNameTooltip = (
+'Select the column containing the frame index (starting from 0).\n\n'
+'Alternatively, you can select any column whose values identify the rows '
+'belonging to each frame.\n'
+'Each unique value is treated as a separate frame and assigned a frame index according to its order in the table.\n\n'
+'In the latter case, make sure to check the "Group by unique values" checkbox.'
+        )
+        self.tColName.label.setToolTip(tColNameTooltip)
+        self.tColName.setToolTip(tColNameTooltip)
+
+        tColGroupCheckboxTooltip = (
+'Check this box if the selected column does not contain frame indices, '
+'but rather contains values that identify the rows belonging to each frame.\n\n'
+'Each unique value will be treated as a separate frame and assigned a frame index according to its order in the table.'
+        )
+        self.tColRequiresGroupingCheckbox.setToolTip(tColGroupCheckboxTooltip)
 
         if SizeT == 1:
             self.tColName.clear()
             self.tColName.addItem('None')
             self.tColName.label.setVisible(False)
             self.tColName.setVisible(False)
+            self.tColRequiresGroupingCheckbox.setVisible(False)
         
         self.fromTableRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
         self.enableRadioButtonWidgets(False, sender=self.fromTableRadiobutton)
@@ -1363,17 +1385,23 @@ class AddPointsLayerDialog(QBaseDialog):
                 xColName = self.xColName.currentText()
                 yColName = self.yColName.currentText()
                 zColName = self.zColName.currentText()
-                
+
+                tColRequiresGrouping = (
+                    self.tColRequiresGroupingCheckbox.isChecked()
+                )
+
                 self.loadedDfInfo = {
                     'filepath': tablePath,
                     't': tColName, 
                     'z': zColName, 
                     'y': yColName, 
-                    'x': xColName
+                    'x': xColName,
+                    't_col_requires_grouping': tColRequiresGrouping
                 }
                 
                 self._df_to_pointsData(
-                    df, tColName, zColName, yColName, xColName
+                    df, tColName, zColName, yColName, xColName, 
+                    tColRequiresGrouping=tColRequiresGrouping
                 )
                     
             except Exception as e:
@@ -1444,9 +1472,12 @@ class AddPointsLayerDialog(QBaseDialog):
         self.keySequence = shortcutWidget.widget.keySequence
         self.close()
     
-    def _df_to_pointsData(self, df, tColName, zColName, yColName, xColName):
+    def _df_to_pointsData(
+            self, df, tColName, zColName, yColName, xColName, 
+            tColRequiresGrouping=False
+        ):
         self.pointsData = load.loaded_df_to_points_data(
-            df, tColName, zColName, yColName, xColName
+            df, tColName, zColName, yColName, xColName, t_col_requires_grouping=tColRequiresGrouping
         )
     
     def showEvent(self, event) -> None:
