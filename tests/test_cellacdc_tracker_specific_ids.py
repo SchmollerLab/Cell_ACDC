@@ -1,9 +1,40 @@
 import numpy as np
 from skimage.measure import regionprops
 
+from cellacdc.regionprops import acdcRegionprops
 from cellacdc.trackers.CellACDC import CellACDC_tracker
 from cellacdc.trackers.CellACDC_2steps.CellACDC_2steps_tracker import tracker as TwoStepsTracker
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import tracker as NormalDivisionTracker
+
+
+def test_calc_io_matrix_uses_regionprops_iteration_order_for_axes():
+    prev_lab = np.array(
+        [
+            [1, 2],
+            [7, 8],
+        ],
+        dtype=np.uint16,
+    )
+    lab = np.array(
+        [
+            [8, 1],
+            [2, 7],
+        ],
+        dtype=np.uint16,
+    )
+    prev_rp = acdcRegionprops(prev_lab, precache_centroids=False)
+    rp = acdcRegionprops(lab, precache_centroids=False)
+
+    ioa_matrix, current_ids, previous_ids = CellACDC_tracker.calc_Io_matrix(
+        lab, prev_lab, rp, prev_rp
+    )
+    old_ids, tracked_ids = CellACDC_tracker.assign(
+        ioa_matrix, current_ids, previous_ids
+    )
+
+    assert current_ids == [obj.label for obj in rp]
+    assert previous_ids == [obj.label for obj in prev_rp]
+    assert dict(zip(old_ids, tracked_ids)) == {1: 2, 2: 7, 7: 8, 8: 1}
 
 
 def test_track_frame_specific_ids_only_tracks_requested_current_ids():
