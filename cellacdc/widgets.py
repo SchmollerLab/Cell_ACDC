@@ -6315,6 +6315,7 @@ class navigateQScrollBar(ScrollBar):
         super().__init__(*args, **kwargs)
         self._disableCustomPressEvent = False
         self.signal_slot_mapper = {}
+        self._absoluteMaximum = None
 
     def disableCustomPressEvent(self):
         self._disableCustomPressEvent = True
@@ -6327,14 +6328,6 @@ class navigateQScrollBar(ScrollBar):
 
     def absoluteMaximum(self):
         return self._absoluteMaximum
-
-    def mousePressEvent(self, event):
-        super().mousePressEvent(event)
-        if self.maximum() == self._absoluteMaximum:
-            return
-
-        if self._disableCustomPressEvent:
-            return
     
     def setValueNoSignal(self, value):
         for signal_name, slot in self.signal_slot_mapper.items():
@@ -6346,6 +6339,25 @@ class navigateQScrollBar(ScrollBar):
         
         self.setSliderPosition(value)
         self.connectEvents(self.signal_slot_mapper)
+    
+    def handleMousePressEventFromAppFilter(self, event):
+        opt = QStyleOptionSlider()
+        self.initStyleOption(opt)
+
+        control = self.style().hitTestComplexControl(
+            QStyle.CC_ScrollBar,
+            opt,
+            event.position().toPoint(),
+            self,
+        )
+        isSliderSingleStepAddAction = (
+            event.button() == Qt.MouseButton.LeftButton 
+            and control == QStyle.SC_ScrollBarAddLine
+        )
+        isRangeZero = (self.maximum() - self.minimum()) == 0
+        if isSliderSingleStepAddAction and isRangeZero:
+            # Force trigger action step add when range is 0
+            self.triggerAction(QAbstractSlider.SliderSingleStepAdd)
     
     def connectEvents(self, signal_slot_mapper: dict):
         self.signal_slot_mapper = signal_slot_mapper
