@@ -34,9 +34,7 @@ import skimage.draw
 import skimage.registration
 import skimage.color
 import skimage.segmentation
-from matplotlib.backends.backend_tkagg import (
-    FigureCanvasTkAgg, NavigationToolbar2Tk
-)
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -1011,17 +1009,41 @@ class AddPointsLayerDialog(QBaseDialog):
         self.tColName = widgets.QCenteredComboBox()
         self.tColName.addItem('None')
         self.tColName.label = QLabel('Frame index column: ')
+        self.tColRequiresGroupingCheckbox = QCheckBox('Group by unique values')
         layout.addWidget(self.tColName.label, row, 1)
         layout.addWidget(self.tColName, row, 2)
+        layout.addWidget(self.tColRequiresGroupingCheckbox, row, 4)
         self.fromTableRadiobutton.widgets.append(self.tColName)
+        self.fromTableRadiobutton.widgets.append(
+            self.tColRequiresGroupingCheckbox
+        )
         sectionWidgets.append(self.tColName.label)
         sectionWidgets.append(self.tColName)
+        sectionWidgets.append(self.tColRequiresGroupingCheckbox)
+
+        tColNameTooltip = (
+'Select the column containing the frame index (starting from 0).\n\n'
+'Alternatively, you can select any column whose values identify the rows '
+'belonging to each frame.\n'
+'Each unique value is treated as a separate frame and assigned a frame index according to its order in the table.\n\n'
+'In the latter case, make sure to check the "Group by unique values" checkbox.'
+        )
+        self.tColName.label.setToolTip(tColNameTooltip)
+        self.tColName.setToolTip(tColNameTooltip)
+
+        tColGroupCheckboxTooltip = (
+'Check this box if the selected column does not contain frame indices, '
+'but rather contains values that identify the rows belonging to each frame.\n\n'
+'Each unique value will be treated as a separate frame and assigned a frame index according to its order in the table.'
+        )
+        self.tColRequiresGroupingCheckbox.setToolTip(tColGroupCheckboxTooltip)
 
         if SizeT == 1:
             self.tColName.clear()
             self.tColName.addItem('None')
             self.tColName.label.setVisible(False)
             self.tColName.setVisible(False)
+            self.tColRequiresGroupingCheckbox.setVisible(False)
         
         self.fromTableRadiobutton.toggled.connect(self.enableRadioButtonWidgets)
         self.enableRadioButtonWidgets(False, sender=self.fromTableRadiobutton)
@@ -1363,17 +1385,23 @@ class AddPointsLayerDialog(QBaseDialog):
                 xColName = self.xColName.currentText()
                 yColName = self.yColName.currentText()
                 zColName = self.zColName.currentText()
-                
+
+                tColRequiresGrouping = (
+                    self.tColRequiresGroupingCheckbox.isChecked()
+                )
+
                 self.loadedDfInfo = {
                     'filepath': tablePath,
                     't': tColName, 
                     'z': zColName, 
                     'y': yColName, 
-                    'x': xColName
+                    'x': xColName,
+                    't_col_requires_grouping': tColRequiresGrouping
                 }
                 
                 self._df_to_pointsData(
-                    df, tColName, zColName, yColName, xColName
+                    df, tColName, zColName, yColName, xColName, 
+                    tColRequiresGrouping=tColRequiresGrouping
                 )
                     
             except Exception as e:
@@ -1444,9 +1472,12 @@ class AddPointsLayerDialog(QBaseDialog):
         self.keySequence = shortcutWidget.widget.keySequence
         self.close()
     
-    def _df_to_pointsData(self, df, tColName, zColName, yColName, xColName):
+    def _df_to_pointsData(
+            self, df, tColName, zColName, yColName, xColName, 
+            tColRequiresGrouping=False
+        ):
         self.pointsData = load.loaded_df_to_points_data(
-            df, tColName, zColName, yColName, xColName
+            df, tColName, zColName, yColName, xColName, t_col_requires_grouping=tColRequiresGrouping
         )
     
     def showEvent(self, event) -> None:
@@ -9442,21 +9473,25 @@ class editCcaTableWidget(QDialog):
         return changes
 
     def applyToFutureFrames(self):        
-        txt = 'Enter <b>up to which frame</b> you want to apply the changes<br>'
+        txt = 'Enter <b>up to which frame number</b> you want to apply the changes<br>'
         win = NumericEntryDialog(
-            title='Stop frame', instructions=txt, parent=self, minValue=1, 
-            maxValue=self.SizeT, currentValue=self.current_frame_i
+            title='Stop frame', 
+            instructions=txt, 
+            parent=self, 
+            minValue=1, 
+            maxValue=self.SizeT, 
+            currentValue=self.current_frame_i+1
         )
         win.exec_()
         if win.cancel:
             return
         
-        stop_frame_i = win.value
+        stop_frame_n = win.value
         changes = self.getChanges()
         changes_format = myutils.format_cca_manual_changes(changes)
         detailsText = (
             f'Changes that will be applied from frame n. {self.current_frame_i+1}'
-            f' to frame n. {stop_frame_i+1}:\n\n{changes_format}'
+            f' to frame n. {stop_frame_n}:\n\n{changes_format}'
         )
         txt = html_utils.paragraph("""
 Use this feature with <b>caution</b>!<br><br>
@@ -9471,7 +9506,7 @@ will be applied (see below).<br><br>
         if msg.cancel:
             return
         
-        self.sigApplyChangesFutureFrames.emit(changes, stop_frame_i)     
+        self.sigApplyChangesFutureFrames.emit(changes, stop_frame_n)     
     
     def moreInfo(self, checked=True):
         desc = myutils.get_cca_colname_desc()
@@ -9602,12 +9637,14 @@ will be applied (see below).<br><br>
                 <b>makes downstream analysis easier</b>.<br><br>
                 What do you want to do?
             """)
-            correctButtonText = ' Fine, let me correct. '
-            keepButtonText = ' Keep the generation number that I chose. '
-            buttonsTexts = (correctButtonText, keepButtonText)
+            correctButton = widgets.editPushButton(' Fine, let me correct. ')
+            keepButton = widgets.WarningButton(
+                ' Keep the generation number that I chose. '
+            )
+            buttonsTexts = (correctButton, keepButton)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
-            if msg.cancel or msg.clickedButton == correctButtonText:
+            if msg.cancel or msg.clickedButton == correctButton:
                 return None
         elif any(check_buds_S):
             msg = widgets.myMessageBox(wrapText=False)
@@ -10253,7 +10290,7 @@ class NumericEntryDialog(QBaseDialog):
         ):
         super().__init__(parent=parent)
         self.setWindowTitle(title)
-        self.cancel = False
+        self.cancel = True
         mainLayout = QVBoxLayout()
         entryLayout = QHBoxLayout()
         cancelOkLayout = widgets.CancelOkButtonsLayout()
@@ -10278,6 +10315,9 @@ class NumericEntryDialog(QBaseDialog):
             entryLayout.addStretch(1)
             entryLayout.addWidget(self.entryWidget)
             entryLayout.addStretch(1)
+            entryLayout.setStretch(0, 1)
+            entryLayout.setStretch(1, 1)
+            entryLayout.setStretch(2, 1)
         
         mainLayout.addLayout(entryLayout)
         mainLayout.addSpacing(20)
@@ -16500,6 +16540,41 @@ class ExportToVideoParametersDialog(QBaseDialog):
             self.saveFramesToggle, row, 1, alignment=Qt.AlignCenter
         )
         
+        if isTimelapseVideo:
+            row += 1
+            gridLayout.addWidget(QLabel('Video compression quality preset (crf)'), row, 0)
+            self.crf_widget = widgets.IntLineEdit(allowNegative=False, initial=23, 
+                                                minimum=0, maximum=51)
+            gridLayout.addWidget(self.crf_widget, row, 1)
+            info_txt = """
+            The range of the Constant Rate Factor (CRF) scale is 0-51, where 0 is lossless, 23 is the default, and 51 is worst quality possible.
+            <br><br> 
+            A <b>lower value</b> generally leads to a <b>higher quality</b>, 
+            and a subjectively sane range is 17-28.
+            <br><br>
+            Consider 17 or 18 to be 
+            visually lossless or nearly so; it should look the same or nearly 
+            the same as the input but it isn't technically lossless.
+            <br><br>
+            The range is exponential, so increasing the CRF value 
+            +6 results in roughly half the bitrate / file size, while -6 leads 
+            to roughly twice the bitrate.
+            <br><br>
+            Choose the highest CRF value that still provides an acceptable 
+            quality. If the output looks good, but the video file size is too big for you, try a higher value. If it looks bad, choose a lower value.
+            <br><br>
+            For more information, see 
+            <a href="https://trac.ffmpeg.org/wiki/Encode/H.264#crf">
+            this page</a>.
+            """
+            infobutton = widgets.infoPushButton(
+                info_text=info_txt, 
+                info_title='Constant Rate Factor (CRF) information'
+                )
+            gridLayout.addWidget(infobutton, row, 2)
+        else:
+            self.crf_widget = None
+        
         gridLayout.setColumnStretch(0, 0)
         gridLayout.setColumnStretch(1, 1)
         gridLayout.setColumnStretch(2, 0)
@@ -16600,6 +16675,7 @@ class ExportToVideoParametersDialog(QBaseDialog):
             'save_pngs':  self.saveFramesToggle.isChecked(),
             'is_timelapse': self.isTimelapseVideo,
             'dpi': self.dpiWidget.value(),
+            'crf': self.crf_widget.value() if self.crf_widget is not None else None
         }
         return preferences
     
@@ -18877,6 +18953,7 @@ class ViewCcaTableWindow(pdDataFrameWidget):
 class ObjectCountDialog(QBaseDialog):
     sigShowEvent = Signal()
     sigUpdateCounts = Signal()
+    sigClose = Signal(object)
     
     def __init__(
             self, 
@@ -19032,6 +19109,9 @@ class ObjectCountDialog(QBaseDialog):
     def ok_cb(self):
         self.cancel = False
         self.close()
+    
+    def closeEvent(self, event):
+        self.sigClose.emit(event)
 
 class PreProcessRecipeDialog(QBaseDialog):
     sigApplyImage = Signal(object)
@@ -20646,31 +20726,15 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         formLayout.addFormWidget(self.lengthWidget, row=row)
 
         row += 1
-        againstPrevInfoTxt = html_utils.paragraph(
-            'When enabled, each object is linked only to its position in the '
-            'immediately previous frame. '
-            'When disabled, the full track history up to "Track length" is drawn. '
-            'Is mutually exclusive with all other options!'
-        )
-        self.againstPrevToggle = widgets.Toggle()
-        self.againstPrevWidget = widgets.formWidget(
-            self.againstPrevToggle,
-            labelTextLeft='Only against previous frame: ',
-            parent=self,
-            stretchWidget=False,
-            valueGetterName='isChecked',
-            addInfoButton=True,
-            infoTxt=againstPrevInfoTxt,
-        )
-        formLayout.addFormWidget(self.againstPrevWidget, row=row)
-
-        row += 1
         colorInfoTxt = html_utils.paragraph(
             'RGB color used for cell movement tracks. '
             'This affects both line color and fade rendering.'
         )
-        self.colorButton = widgets.myColorButton(color=(255, 100, 0))
-        self.colorButton.clicked.disconnect()
+        self.colorButton = widgets.myColorButton(color=tuple(settings['color']))
+        try:
+            self.colorButton.clicked.disconnect()
+        except TypeError:
+            pass
         self.colorButton.clicked.connect(self.selectColor)
         self.colorWidget = widgets.formWidget(
             self.colorButton,
@@ -20769,6 +20833,111 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             infoTxt=minAlphaInfoTxt,
         )
         formLayout.addFormWidget(self.minAlphaWidget, row=row)
+        
+        row += 1
+        againstPrevInfoTxt = html_utils.paragraph(
+            'When enabled, each object is linked only to its position in the '
+            'immediately previous frame. '
+            'When disabled, the full track history up to "Track length" is drawn. '
+            'Is mutually exclusive with all other options!'
+        )
+        self.againstPrevToggle = widgets.Toggle()
+        self.againstPrevWidget = widgets.formWidget(
+            self.againstPrevToggle,
+            labelTextLeft='Only against previous frame: ',
+            parent=self,
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+            infoTxt=againstPrevInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevWidget, row=row)
+
+        row += 1
+        againstPrevLineColorInfoTxt = html_utils.paragraph(
+            'RGB color of the line connecting each object to its previous-frame '
+            'position when "Only against previous frame" is enabled.'
+        )
+        self.againstPrevLineColorButton = widgets.myColorButton(
+            color=tuple(settings['against_prev_line_color'])
+        )
+        try:
+            self.againstPrevLineColorButton.clicked.disconnect()
+        except TypeError:
+            pass
+        self.againstPrevLineColorButton.clicked.connect(
+            lambda: self.selectColor(self.againstPrevLineColorButton)
+        )
+        self.againstPrevLineColorWidget = widgets.formWidget(
+            self.againstPrevLineColorButton,
+            labelTextLeft='Against-prev line color: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=againstPrevLineColorInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevLineColorWidget, row=row)
+
+        row += 1
+        againstPrevLineWidthInfoTxt = html_utils.paragraph(
+            'Thickness of the line connecting each object to its previous-frame '
+            'position when "Only against previous frame" is enabled.'
+        )
+        self.againstPrevLineWidthSpinBox = widgets.SpinBox()
+        self.againstPrevLineWidthSpinBox.setMinimum(1)
+        self.againstPrevLineWidthSpinBox.setMaximum(100)
+        self.againstPrevLineWidthWidget = widgets.formWidget(
+            self.againstPrevLineWidthSpinBox,
+            labelTextLeft='Against-prev line thickness: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=againstPrevLineWidthInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevLineWidthWidget, row=row)
+
+        row += 1
+        againstPrevContourColorInfoTxt = html_utils.paragraph(
+            'RGB color of previous-frame contours when "Only against previous '
+            'frame" is enabled.'
+        )
+        self.againstPrevContourColorButton = widgets.myColorButton(
+            color=tuple(settings['against_prev_contour_color'])
+        )
+        try:
+            self.againstPrevContourColorButton.clicked.disconnect()
+        except TypeError:
+            pass
+        self.againstPrevContourColorButton.clicked.connect(
+            lambda: self.selectColor(self.againstPrevContourColorButton)
+        )
+        self.againstPrevContourColorWidget = widgets.formWidget(
+            self.againstPrevContourColorButton,
+            labelTextLeft='Against-prev contour color: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=againstPrevContourColorInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevContourColorWidget, row=row)
+
+        row += 1
+        againstPrevContourWidthInfoTxt = html_utils.paragraph(
+            'Thickness of previous-frame contours when "Only against previous '
+            'frame" is enabled.'
+        )
+        self.againstPrevContourWidthSpinBox = widgets.SpinBox()
+        self.againstPrevContourWidthSpinBox.setMinimum(1)
+        self.againstPrevContourWidthSpinBox.setMaximum(100)
+        self.againstPrevContourWidthWidget = widgets.formWidget(
+            self.againstPrevContourWidthSpinBox,
+            labelTextLeft='Against-prev contour thickness: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=againstPrevContourWidthInfoTxt,
+        )
+        formLayout.addFormWidget(self.againstPrevContourWidthWidget, row=row)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -20780,18 +20949,40 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.lengthSpinBox.valueChanged.connect(self.emitValuesChanged)
-        self.againstPrevToggle.toggled.connect(self.emitValuesChanged)
+        self.againstPrevToggle.toggled.connect(self._againstPrevToggled)
         self.nFadeSpinBox.valueChanged.connect(self.emitValuesChanged)
         self.maxWidthSpinBox.valueChanged.connect(self._maxWidthChanged)
         self.minWidthSpinBox.valueChanged.connect(self._minWidthChanged)
         self.maxAlphaSpinBox.valueChanged.connect(self._maxAlphaChanged)
         self.minAlphaSpinBox.valueChanged.connect(self._minAlphaChanged)
         self.colorButton.sigColorChanging.connect(self.emitValuesChanged)
+        self.againstPrevLineColorButton.sigColorChanging.connect(self.emitValuesChanged)
+        self.againstPrevLineWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
+        self.againstPrevContourColorButton.sigColorChanging.connect(self.emitValuesChanged)
+        self.againstPrevContourWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
+
+        self._historyTrackWidgets = (
+            self.lengthWidget,
+            self.colorWidget,
+            self.nFadeWidget,
+            self.maxWidthWidget,
+            self.minWidthWidget,
+            self.maxAlphaWidget,
+            self.minAlphaWidget,
+        )
+        self._againstPrevOnlyWidgets = (
+            self.againstPrevLineColorWidget,
+            self.againstPrevLineWidthWidget,
+            self.againstPrevContourColorWidget,
+            self.againstPrevContourWidthWidget,
+        )
 
         self._isSyncing = False
         self.setValues(settings)
 
     def setValues(self, settings: dict):
+        settings = dict(settings)
+
         self.lengthSpinBox.setValue(int(settings['length']))
         self.againstPrevToggle.setChecked(bool(settings['against_prev']))
         self.colorButton.setColor(tuple(settings['color']))
@@ -20800,10 +20991,27 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.minWidthSpinBox.setValue(int(settings['min_width']))
         self.maxAlphaSpinBox.setValue(int(settings['max_alpha_perc']))
         self.minAlphaSpinBox.setValue(int(settings['min_alpha_perc']))
+        self.againstPrevLineColorButton.setColor(
+            tuple(settings['against_prev_line_color'])
+        )
+        self.againstPrevLineWidthSpinBox.setValue(
+            int(settings['against_prev_line_width'])
+        )
+        self.againstPrevContourColorButton.setColor(
+            tuple(settings['against_prev_contour_color'])
+        )
+        self.againstPrevContourWidthSpinBox.setValue(
+            int(settings['against_prev_contour_width'])
+        )
         self._syncRanges()
+        self._updateRelevantOptionsState()
 
     def values(self):
         r, g, b, _ = self.colorButton.color().getRgb()
+        line_r, line_g, line_b, _ = self.againstPrevLineColorButton.color().getRgb()
+        cont_r, cont_g, cont_b, _ = (
+            self.againstPrevContourColorButton.color().getRgb()
+        )
         return {
             'length': int(self.lengthSpinBox.value()),
             'against_prev': bool(self.againstPrevToggle.isChecked()),
@@ -20813,7 +21021,38 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             'min_width': int(self.minWidthSpinBox.value()),
             'max_alpha_perc': int(self.maxAlphaSpinBox.value()),
             'min_alpha_perc': int(self.minAlphaSpinBox.value()),
+            'against_prev_line_color': (
+                int(line_r), int(line_g), int(line_b)
+            ),
+            'against_prev_line_width': int(self.againstPrevLineWidthSpinBox.value()),
+            'against_prev_contour_color': (
+                int(cont_r), int(cont_g), int(cont_b)
+            ),
+            'against_prev_contour_width': (
+                int(self.againstPrevContourWidthSpinBox.value())
+            ),
         }
+
+    def _againstPrevToggled(self, checked):
+        self._updateRelevantOptionsState()
+        self.emitValuesChanged()
+
+    def _updateRelevantOptionsState(self):
+        is_against_prev = self.againstPrevToggle.isChecked()
+
+        def _set_row_disabled(form_widget, disabled):
+            form_widget.setDisabled(disabled)
+            # `formWidget.setDisabled` may not disable the inner control when the
+            # control is wrapped in a layout (stretchWidget=False).
+            try:
+                form_widget.widget.setDisabled(disabled)
+            except Exception:
+                pass
+
+        for widget in self._historyTrackWidgets:
+            _set_row_disabled(widget, is_against_prev)
+        for widget in self._againstPrevOnlyWidgets:
+            _set_row_disabled(widget, not is_against_prev)
 
     def _syncRanges(self):
         if self._isSyncing:
@@ -20847,18 +21086,19 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
     def emitValuesChanged(self, *args):
         self.sigValuesChanged.emit(self.values())
 
-    def selectColor(self):
-        color = self.colorButton.color()
-        self.colorButton.origColor = color
-        self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
+    def selectColor(self, colorButton=None):
+        colorButton = self.colorButton if colorButton is None else colorButton
+        color = colorButton.color()
+        colorButton.origColor = color
+        colorButton.colorDialog.setCurrentColor(color)
+        colorButton.colorDialog.setWindowFlags(
             Qt.Window | Qt.WindowStaysOnTopHint
         )
-        self.colorButton.colorDialog.open()
+        colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
-        colorDialogTop = self.colorButton.colorDialog.pos().y()
-        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+        colorDialogTop = colorButton.colorDialog.pos().y()
+        colorButton.colorDialog.move(w+left+10, colorDialogTop)
 
     def ok_cb(self):
         self.cancel = False

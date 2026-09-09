@@ -47,12 +47,19 @@ except Exception:
     )
 
 if msg and GUI_INSTALLED:
+    try:
+        from .config import parser_args
+        debug = parser_args['debug']
+    except Exception as err:
+        debug = False
+
     from qtpy.QtCore import QCoreApplication
     app = QCoreApplication.instance()
     try:
         app.mainWindow.logger.info(msg)
     except Exception as err:
-        traceback.print_exc()
+        if debug:
+            traceback.print_exc()
         pass
 
 # WARNING: Developers have already used
@@ -924,9 +931,11 @@ class acdcRegionprops:
             # update centroids
             self._centroid_mapper.update(bbox_centers_mapper)
             
-            # remove from exact set if we updated the centroid
-            self._centroid_IDs_exact.difference_update(obj_to_update)
-
+            # invalidate exact centroid IDs if specific_IDs_update_centroids was not provided
+            if specific_IDs_update_centroids is None:
+                self._centroid_IDs_exact = set()
+            else:
+                self._centroid_IDs_exact.difference_update(specific_IDs_update_centroids)
         for obj in new_rp:
             self._copy_custom_rp_attributes(obj, old_rp_by_id.get(obj.label))
 
@@ -1235,7 +1244,11 @@ class acdcRegionprops:
                     objs=[obj for obj in new_objs if obj.label in obj_to_update]
                 )
             )
-            self._centroid_IDs_exact.difference_update(obj_to_update)
+            # invalidate exact centroid IDs if specific_IDs_update_centroids was not provided
+            if specific_IDs is None:
+                self._centroid_IDs_exact = set()
+            else:
+                self._centroid_IDs_exact.difference_update(specific_IDs)
 
         self._rp = unaffected_rp + new_objs
         self._set_label_image(lab)

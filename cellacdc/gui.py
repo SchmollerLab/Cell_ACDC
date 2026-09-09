@@ -47,8 +47,8 @@ from qtpy.QtCore import (
     QThread, QMutex, QWaitCondition, QSettings, PYQT6,
 )
 from qtpy.QtGui import (
-    QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
-    QFont, QKeyEvent, QMouseEvent
+    QIcon, QKeySequence, QCursor, QGuiApplication, QPen, QPixmap, QColor,
+    QFont, QKeyEvent, QMouseEvent, QPainter
 )
 from qtpy.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
@@ -129,6 +129,28 @@ CHECKBOX_OPTION_MUTUALLY_EXCLUSIVE_GROUPS = (
     ('Contours', 'Segm. masks'),
     ('IDs', 'Lineage info', 'Cell cycle info')
 )
+CHECKBOX_OPTION_TOOLTIPS = {
+    'Contours': '''Show contour outlines of segmentation masks. Customize 
+    appearance by right clicking on the image. By default, "internal" 
+    contours are not shown. This can be toggled by the option in the 
+    bottom left menu.''',
+    'Segm. masks': '''Show segmentation masks as a semi-transparent overlay. 
+    Customize by right clicking on the image.''',
+    'IDs': '''Show IDs of the current segmentation mask. Can be slow for many 
+    objects in a single frame''',
+    'Lineage info': '''Show information about the lineage for each displayed 
+    object, linked to the "Normal Division: Lineage Tree" mode.''',
+    'Cell cycle info': '''Show information about the lineage and cell cycle 
+    stage for each displayed object. Linked to the "Cell cycle analysis" mode 
+    for asymmetrically dividing cells.''',
+    'Mother-daughter line': '''Show lines between mothers and daughters, for both 
+    "Normal Division: Lineage Tree" and "Cell cycle analysis" mode. Customize 
+    by right clicking on the image.''',
+    'Object tracks': '''Show tracks of objects in current frame. Customize 
+    by right clicking on the bottom part of the GUI or through "Settings" in 
+    the top ribbon.'''
+}
+
 CHECKBOX_OPTION_DEFAULT_VALUES = {
     0: {'Contours', 'IDs'},
     1: {'Segm. masks', 'IDs'}
@@ -136,6 +158,12 @@ CHECKBOX_OPTION_DEFAULT_VALUES = {
 
 GREEN_HEX = _palettes.green()
 ORANGE_HEX = _palettes.orange()
+
+MIRRORED_CURSOR_PG_SYMBOL = 'd'
+TOOL_SIZE_CURSOR = 52
+TOTAL_SIZE_CURSOR = 128
+CENTER_SIZE_CURSOR = 64
+FINAL_SIZE_CURSOR = 32
 
 RP_OPT_NUM_CELLS_MIN = 30 # th for trying to do local updates to regionprops, rp becomes slow for high num of cells
 RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops, 
@@ -259,8 +287,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """Initializer."""
 
         super().__init__(parent)
-        
-        app.installEventFilter(self)
 
         self._version = version
 
@@ -367,6 +393,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.storeStateWorker = None
         self.AutoPilot = None
         self.widgetsWithShortcut = {}
+        self.widgetsForActions = {}
         self.invertBwAlreadyCalledOnce = False
         self.zoomOutKeyValue = Qt.Key_H
         self.preprocWorker = None
@@ -382,6 +409,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.defaultMouseShortcuts = dict()
         self.widgetsPersistentShortcut = dict()
         self.doubleSpaceBarState = False
+        self.protected_new_IDs = dict()
         
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
@@ -404,7 +432,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         self.checkableButtons = []
-        self.LeftClickButtons = []
+        self.leftClickButtons = []
         self.toolsActiveInProj3Dsegm = set()
         self.customAnnotDict = {}
 
@@ -455,7 +483,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createImg2Widgets()
         self.gui_createBottomWidgetsToBottomLayout()
 
-        mainContainer = QWidget()
+        mainContainer = widgets.GuiCentralWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = self.gui_createMainLayout()
@@ -470,8 +498,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.show()
         QTimer.singleShot(100, self.resizeRangeWelcomeText)
         
+        self.app.installEventFilter(self)
+        
         self.logger.info('GUI ready.')
     
+    def onMouseRelease(self):
+        if self.mergeIDsButton.isChecked() and self.xHoverImg is None:
+            # Mouse released outside of images --> clear free roi item
+            self.freeRoiItem.clear()
+
     def initGlobalAttr(self):
         self.setOverlayColors()
 
@@ -519,6 +554,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.timestampDialog = None
         self.scaleBarDialog = None
         self.countObjsWindow = None
+        self.editCcaWidget = None
         
         self.annotateSingleMothBudPairState = {}
         self.initLabelRoiModelDialog = None
@@ -695,7 +731,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.df_settings.loc['is_bw_inverted'].astype(str)
                 )
             if 'fontSize' not in self.df_settings.index:
-                self.df_settings.at['fontSize', 'value'] = 12
+                self.df_settings.at['fontSize', 'value'] = 24
             if 'overlayColor' not in self.df_settings.index:
                 self.df_settings.at['overlayColor', 'value'] = '255-255-0'
             if 'how_normIntensities' not in self.df_settings.index:
@@ -887,22 +923,216 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return middle_click
 
     def gui_createCursors(self):
-        pixmap = QPixmap(":wand_cursor.svg")
-        self.wandCursor = QCursor(pixmap, 16, 16)
 
-        pixmap = QPixmap(":curv_cursor.svg")
-        self.curvCursor = QCursor(pixmap, 16, 16)
+        cursor_size = QSize(TOTAL_SIZE_CURSOR, TOTAL_SIZE_CURSOR)
+        self._toolCursorCenterPixmaps = {
+            'blank': QPixmap(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR),
+            'crosshair': QPixmap(":cross_cursor.svg").scaled(
+                QSize(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'wand': QPixmap(":wand_cursor.svg").scaled(
+                QSize(CENTER_SIZE_CURSOR*2, CENTER_SIZE_CURSOR*2), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'curvature': QPixmap(":curv_cursor.svg").scaled(
+                QSize(CENTER_SIZE_CURSOR*2, CENTER_SIZE_CURSOR*2), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'polyline': QPixmap(":addDelPolyLineRoi_cursor.svg").scaled(
+                QSize(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'default_no_lc': QPixmap(":crosshair.svg").scaled(
+                QSize(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+            'default_lc': QPixmap(":crosshair.svg").scaled(
+                QSize(CENTER_SIZE_CURSOR, CENTER_SIZE_CURSOR), 
+                Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ),
+        }
+        self._toolCursorCenterPixmaps['blank'].fill(Qt.transparent)
+        self._normalToolCursorPixmaps = {}
+        for isHoverImg1 in (True, False):
+            pixmap = QPixmap(cursor_size)
+            pixmap.fill(Qt.transparent)
+            self._normalToolCursorPixmaps[isHoverImg1] = pixmap
 
-        pixmap = QPixmap(":addDelPolyLineRoi_cursor.svg")
-        self.polyLineRoiCursor = QCursor(pixmap, 16, 16)
+        self.toolCursors = {}
+        self.leftClickCursorTools = ()
+        self.rightClickCursorTools = ()
+        self._cursorHoverImage = None
+
+    def gui_createToolCursorRegistry(self):
+        # Ordering mirrors the mutually exclusive click handling priority.
+        # pattern is: (tool_name, tool_button, display small icon, mode)
+        self.leftClickCursorTools = (
+            ('brush', self.brushButton, True, 'Segmentation and Tracking'),
+            ('eraser', self.eraserButton, True, 'Segmentation and Tracking'),
+            ('curvature', self.curvToolButton, False, 'Segmentation and Tracking'),
+            ('magic_wand', self.wandToolButton, False, 'Segmentation and Tracking'),
+            ('magic_prompts', self.magicPromptsToolButton, True, 'Segmentation and Tracking'),
+            ('label_roi', self.labelRoiButton, True, 'Segmentation and Tracking'),
+            ('ruler', self.rulerButton, True, 'Segmentation and Tracking'),
+            ('polyline_deletion_roi', self.addDelPolyLineRoiButton, True, 'Segmentation and Tracking'),
+            ('clear_region', self.clearFreehandRoiButton, True, 'Segmentation and Tracking'),
+            ('merge_ids', self.mergeIDsButton, True, 'Segmentation and Tracking'),
+            ('keep_ids', self.keepIDsButton, True, 'Segmentation and Tracking'),
+            ('whitelist_ids', self.whitelistIDsButton, True, 'Segmentation and Tracking'),
+            ('manual_background', self.manualBackgroundButton, True, 'Segmentation and Tracking'),
+            ('zoom_rectangle', self.zoomRectButton, True, 'Segmentation and Tracking'),
+            ('toggle_points_layer', self.togglePointsLayerAction, True, 'Segmentation and Tracking'),
+        )
+        self.rightClickCursorTools = (
+            ('separate_objects', self.separateBudButton, True, 'Segmentation and Tracking'),
+            ('fill_holes', self.fillHolesToolButton, True, 'Segmentation and Tracking'),
+            ('hull_contour', self.hullContToolButton, True, 'Segmentation and Tracking'),
+            ('move_object', self.moveLabelToolButton, True, 'Segmentation and Tracking'),
+            ('edit_id', self.editIDbutton, True, 'Segmentation and Tracking'),
+            ('merge_ids', self.mergeIDsButton, True, 'Segmentation and Tracking'),
+            ('keep_ids', self.keepIDsButton, True, 'Segmentation and Tracking'),
+            ('whitelist_ids', self.whitelistIDsButton, True, 'Segmentation and Tracking'),
+            ('exclude_from_analysis', self.binCellButton, True, 'Segmentation and Tracking'),
+            ('annotate_dead', self.ripCellButton, True, 'Segmentation and Tracking'),
+            ('assign_mother', self.assignBudMothButton, True, 'Segmentation and Tracking'),
+            ('set_history_known', self.setIsHistoryKnownButton, True, 'Segmentation and Tracking'),
+            ('manual_tracking', self.manualTrackingButton, True, 'Segmentation and Tracking'),
+            ('manual_background', self.manualBackgroundButton, True, 'Segmentation and Tracking'),
+            ('copy_lost_contour', self.copyLostObjButton, True, 'Segmentation and Tracking'),
+            ('curvature', self.curvToolButton, False, 'Segmentation and Tracking'),
+            ('label_roi', self.labelRoiButton, True, 'Segmentation and Tracking'),
+            ('magic_prompts', self.magicPromptsToolButton, True, 'Segmentation and Tracking'),
+            ('toggle_points_layer', self.togglePointsLayerAction, True, 'Segmentation and Tracking'),
+        )
+        cursor_tools = {
+            tool for _, tool, _, _ in (
+                self.leftClickCursorTools + self.rightClickCursorTools
+            )
+        }
+        for tool in cursor_tools:
+            tool.toggled.connect(self.gui_refreshToolCursor)
+
+    def gui_activeCursorTool(self, tools):
+        curr_mode = str(self.modeComboBox.currentText())
+        for name, tool, draw_icon, mode in tools:
+            if mode != curr_mode:
+                continue
+            if name == 'toggle_points_layer':
+                magicPromptsON = self.magicPromptsToolButton.isChecked()
+                pointsLayerON = self.togglePointsLayerAction.isChecked()
+                addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+                if (addPointsByClickingButton is not None 
+                    and (magicPromptsON or pointsLayerON)
+                    and addPointsByClickingButton.isChecked()):
+                    return 'toggle_points_layer', tool.icon()
+                else:
+                    continue
+            if tool.isChecked():
+                if draw_icon:
+                    return name, tool.icon()
+                else:
+                    return name, QIcon()
+
+        if self.customAnnotButton is not None and self.customAnnotButton.isChecked():
+            return 'custom_annotation', self.customAnnotButton.icon()
+
+        return None, QIcon()
+
+    def gui_getToolCursorCenter(self, left_name, right_name):
+        active_tools = {left_name, right_name}
+        isLeftClickActive = left_name is not None
+        overlay_cursor_tools = {
+            'brush', 'eraser'
+        }
+        if active_tools & overlay_cursor_tools:
+            center = 'blank'
+        elif (
+                'label_roi' in active_tools
+                and self.labelRoiIsCircularRadioButton.isChecked()
+            ):
+            center = 'blank'
+        elif 'magic_wand' in active_tools:
+            center = 'wand'
+        elif 'curvature' in active_tools:
+            center = 'curvature'
+        elif 'polyline_deletion_roi' in active_tools:
+            center = 'polyline'
+        elif 'toggle_points_layer' in active_tools:
+            center = 'crosshair'
+        elif isLeftClickActive:
+            center = 'default_lc'
+        else:
+            center = 'default_no_lc'
+        return center, self._toolCursorCenterPixmaps[center]
+
+    def gui_createToolCursor(self, isHoverImg1, left_tool, right_tool):
+        left_name, left_icon = left_tool
+        right_name, right_icon = right_tool
+        center_name, center_pixmap = self.gui_getToolCursorCenter(
+            left_name, right_name
+        )
+        key = (isHoverImg1, left_name, right_name, center_name)
+        cursor = self.toolCursors.get(key)
+        if cursor is not None:
+            return cursor
         
-        pixmap = QPixmap(":cross_cursor.svg")
-        self.addPointsCursor = QCursor(pixmap, 16, 16)
+        actual_center_size = center_pixmap.width()  # Assuming square pixmap
+
+        pixmap = self._normalToolCursorPixmaps[isHoverImg1].copy()
+        painter = QPainter(pixmap)
+
+        center = (TOTAL_SIZE_CURSOR - actual_center_size) // 2
+
+        # Calculate positions automatically
+        left_x = 0 # align left icon to the left edge
+        right_x = TOTAL_SIZE_CURSOR - TOOL_SIZE_CURSOR # align right icon to the right edge
+        tool_y = 0 # align both icons to the top edge
+
+        painter.drawPixmap(center, center, center_pixmap)
+
+        for icon, x in ((left_icon, left_x), (right_icon, right_x)):
+            if not icon.isNull():
+                tool_pixmap = icon.pixmap(QSize(TOOL_SIZE_CURSOR, TOOL_SIZE_CURSOR))
+                painter.drawPixmap(x, tool_y, tool_pixmap)
+
+        painter.end()
+
+        pixmap = pixmap.scaled(
+            QSize(FINAL_SIZE_CURSOR, FINAL_SIZE_CURSOR), Qt.KeepAspectRatio, Qt.SmoothTransformation
+        )
+        cursor = QCursor(pixmap, FINAL_SIZE_CURSOR // 2, FINAL_SIZE_CURSOR // 2)
+        self.toolCursors[key] = cursor
+        return cursor
+
+    def gui_getToolCursor(self, isHoverImg1):
+        left_tool = self.gui_activeCursorTool(self.leftClickCursorTools)
+        right_tool = self.gui_activeCursorTool(self.rightClickCursorTools)
+        return self.gui_createToolCursor(isHoverImg1, left_tool, right_tool)
+
+    def gui_setToolCursor(self, event, isHoverImg1):
+        if event.isExit():
+            return
+
+        self.gui_refreshToolCursor()
+
+    def gui_refreshToolCursor(self, *args):
+        isHoverImg1 = self._cursorHoverImage
+        if isHoverImg1 is None:
+            return
+
+        if self.app.overrideCursor() == Qt.SizeAllCursor:
+            return
+
+        cursor = self.gui_getToolCursor(isHoverImg1)
+        if self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(cursor)
+        else:
+            self.app.changeOverrideCursor(cursor)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
         menuBar.setNativeMenuBar(False)
-
         # File menu
         fileMenu = QMenu("&File", self)
         self.fileMenu = fileMenu
@@ -1068,11 +1298,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Settings menu
         self.settingsMenu = QMenu("Settings", self)
+        self.settingsMenu.setToolTipsVisible(True)
         menuBar.addMenu(self.settingsMenu)
         self.settingsMenu.addAction(self.invertBwAction)
         self.settingsMenu.addAction(self.toggleColorSchemeAction)
         self.settingsMenu.addSeparator()
-        # self.settingsMenu.addAction(self.pxModeAction)
         editObjectTrackSettingsAction = self.settingsMenu.addAction(
             'Edit object track settings...'
         )
@@ -1080,6 +1310,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setAnnotateObjTrackSettings 
         )
         self.settingsMenu.addAction(self.highLowResAction)
+        self.settingsMenu.addAction(self.scalingLabelsAction)
         self.settingsMenu.addAction(self.editShortcutsAction)
         self.settingsMenu.addAction(self.showMirroredCursorAction)
         self.settingsMenu.addSeparator()
@@ -1193,7 +1424,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rulerButton.setCheckable(True)
         navigateToolBar.addWidget(self.rulerButton)
         self.checkableButtons.append(self.rulerButton)
-        self.LeftClickButtons.append(self.rulerButton)
+        self.leftClickButtons.append(self.rulerButton)
 
         # fluorescence image color widget
         colorsToolBar = widgets.ToolBar("Colors", self)
@@ -1282,7 +1513,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.brushButton.setCheckable(True)
         editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
-        self.LeftClickButtons.append(self.brushButton)
+        self.leftClickButtons.append(self.brushButton)
         self.brushButton.keyPressShortcut = Qt.Key_B
         self.widgetsWithShortcut['Brush'] = self.brushButton
         self.manulAnnotToolButtons.add(self.brushButton)
@@ -1295,7 +1526,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.eraserButton.keyPressShortcut = Qt.Key_X
         self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
-        self.LeftClickButtons.append(self.eraserButton)
+        self.leftClickButtons.append(self.eraserButton)
         self.manulAnnotToolButtons.add(self.eraserButton)
 
         self.curvToolButton = QToolButton(self)
@@ -1303,7 +1534,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.curvToolButton.setCheckable(True)
         self.curvToolButton.setShortcut('C')
         self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
-        self.LeftClickButtons.append(self.curvToolButton)
+        self.leftClickButtons.append(self.curvToolButton)
         # self.functionsNotTested3D.append(self.curvToolButton)
         self.widgetsWithShortcut['Curvature tool'] = self.curvToolButton
         # self.checkableButtons.append(self.curvToolButton)
@@ -1314,7 +1545,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.wandToolButton.setCheckable(True)
         self.wandToolButton.setShortcut('Ctrl+D')
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
-        self.LeftClickButtons.append(self.wandToolButton)
+        self.leftClickButtons.append(self.wandToolButton)
         self.checkableButtons.append(self.eraserButton)
         self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
         
@@ -1336,7 +1567,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.toolsActiveInProj3Dsegm.add(self.clearFreehandRoiButton)
         
         self.checkableButtons.append(self.clearFreehandRoiButton)
-        self.LeftClickButtons.append(self.clearFreehandRoiButton)
+        self.leftClickButtons.append(self.clearFreehandRoiButton)
         
         self.drawClearRegionAction = editToolBar.addWidget(
             self.clearFreehandRoiButton
@@ -1368,7 +1599,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.labelRoiButton.setCheckable(True)
         self.labelRoiButton.setShortcut('L')
         self.labelRoiButton.action = editToolBar.addWidget(self.labelRoiButton)
-        self.LeftClickButtons.append(self.labelRoiButton)
+        self.leftClickButtons.append(self.labelRoiButton)
         self.checkableButtons.append(self.labelRoiButton)
         self.checkableQButtonsGroup.addButton(self.labelRoiButton)
         self.widgetsWithShortcut['Label ROI'] = self.labelRoiButton
@@ -1392,7 +1623,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
         self.segmentToolAction.setShortcut('R')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
-        editToolBar.addAction(self.segmentToolAction)
+        widget = editToolBar.addAction(self.segmentToolAction)
+        self.widgetsForActions['Repeat segmentation'] = widget
+
 
         self.segForLostIDsButton = QToolButton(self)
         self.segForLostIDsButton.setIcon(QIcon(":segForLostIDs.svg"))
@@ -1410,7 +1643,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.manualBackgroundButton.setIcon(QIcon(":manual_background.svg"))
         self.manualBackgroundButton.setCheckable(True)
         self.manualBackgroundButton.setShortcut('G')
-        self.LeftClickButtons.append(self.manualBackgroundButton)
+        self.leftClickButtons.append(self.manualBackgroundButton)
         self.checkableButtons.append(self.manualBackgroundButton)
         self.checkableQButtonsGroup.addButton(self.manualBackgroundButton)
         self.widgetsWithShortcut['Manual background'] = self.manualBackgroundButton
@@ -1428,7 +1661,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.widgetsWithShortcut['Delete all objects outside segm'] = (
             self.delObjsOutSegmMaskAction
         )
-        editToolBar.addAction(self.delObjsOutSegmMaskAction)
+        widget = editToolBar.addAction(self.delObjsOutSegmMaskAction)
+        self.widgetsForActions['Delete all objects outside segm'] = widget
+
 
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
@@ -1466,7 +1701,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.expandLabelToolButton.action = editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
         self.checkableButtons.append(self.expandLabelToolButton)
-        self.LeftClickButtons.append(self.expandLabelToolButton)
+        self.leftClickButtons.append(self.expandLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
         self.widgetsWithShortcut['Expand/shrink label'] = self.expandLabelToolButton
 
@@ -1503,7 +1738,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
-        self.LeftClickButtons.append(self.mergeIDsButton)
+        self.leftClickButtons.append(self.mergeIDsButton)
 
         self.keepIDsButton = QToolButton(self)
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
@@ -1524,7 +1759,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistIDsButton.setShortcut('Ctrl+Shift+W')
         self.checkableButtons.append(self.whitelistIDsButton)
         self.checkableQButtonsGroup.addButton(self.whitelistIDsButton)
-        self.LeftClickButtons.append(self.whitelistIDsButton)
+        self.leftClickButtons.append(self.whitelistIDsButton)
         # self.functionsNotTested3D.append(self.whitelistIDsButton)
         self.widgetsWithShortcut['Select objects to add to a tracking whitelist'] = (
             self.whitelistIDsButton
@@ -1587,8 +1822,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.delNewObjAction.toolbar = editToolBar
         # self.functionsNotTested3D.append(self.delNewObjAction) so id this doesnt work in 3d i dont know anymore
 
-        editToolBar.addAction(self.repeatTrackingAction)
-        
+        widget = editToolBar.addAction(self.repeatTrackingAction)
+        self.widgetsForActions['Repeat Tracking'] = widget
+
         self.manualTrackingAction = editToolBar.addWidget(
             self.manualTrackingButton
         )
@@ -1693,12 +1929,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             "Next"
         )
         
-        
+        ok_num_widgets = [1]
         for name, button in self.widgetsWithShortcut.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
@@ -1711,8 +1947,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for name, button in self.keepToolActiveNames.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
@@ -1722,15 +1958,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for name, button in self.applyToolNewFrameButtons.items():
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
-            res = self._setupRightClickMenuOnButton(button)
-            if res[0] is False or res[1] != 1:
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
             action = self.applyToolNewFrameActions[name]
             menu.addAction(action)
             
-    def _setupRightClickMenuOnButton(self, target):
+    def _setupRightClickMenuOnButton(self, target, name):
         if hasattr(target, 'rightClickMenu') and target.rightClickMenu is not None:
             return True, 1
         
@@ -1738,6 +1974,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         target.rightClickMenu = menu
         widgets = None
         if isinstance(target, QAction):
+            if name in self.widgetsForActions:
+                widgets = [self.widgetsForActions[name]]
             if hasattr(target, 'associatedWidgets'):
                 widgets = target.associatedWidgets()
             elif hasattr(target, 'widgetsforAction'):
@@ -1750,7 +1988,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     and obj is not target.parent
                     ]
             if widgets is None or len(widgets) == 0:
-                return False, len(widgets) if widgets is not None else 0
+                return False, 0
             else:    
                 for w in widgets:
                     self._installRightClickFilter(w, menu)
@@ -2487,6 +2725,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         for name, action in self.copyLostObjToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
+        for name, widget in self.copyLostObjToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
 
         self.copyLostObjToolbar.sigCopyAllObjects.connect(
             self.copyAllLostObjects
@@ -2515,6 +2755,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         for name, action in self.whitelistIDsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
+        for name, widget in self.whitelistIDsToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
         
         self.addToolBar(Qt.TopToolBarArea, self.whitelistIDsToolbar)
         self.whitelistIDsToolbar.setVisible(False)
@@ -2583,6 +2825,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         secondLevelToolbar.setMovable(False)
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
+
+        self.gui_createToolCursorRegistry()
         
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -2879,7 +3123,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
         self.zoomRectButton.setCheckable(True)
         self.zoomRectButton.setShortcut('Shift+Z')
-        self.LeftClickButtons.append(self.zoomRectButton)
+        self.leftClickButtons.append(self.zoomRectButton)
         self.checkableButtons.append(self.zoomRectButton)
         self.checkableQButtonsGroup.addButton(self.zoomRectButton)
         self.widgetsWithShortcut['Zoom to rectangular area'] = (
@@ -2942,7 +3186,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.repeatTrackingAction.setShortcut('Shift+T')
         self.widgetsWithShortcut['Repeat Tracking'] = self.repeatTrackingAction
-        
 
         self.editRtTrackerParamsAction = QAction(
             'Edit real-time tracker parameters...', self
@@ -3027,21 +3270,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.gui_updateSwitchColorSchemeActionText()
         
-        # self.pxModeAction = widgets.CheckableAction(
-        #     'Fixed size text annotations'
-        # )
-        # self.pxModeAction.setChecked(True)
-        # pxModeTooltip = (
-        #     'When the text annotations are with fixed size they scale relative '
-        #     'to the object when zooming in/out (fixed size in pixels).\n'
-        #     'This is typically faster to render, but it makes annotations '
-        #     'smaller/larger when zooming in/out, respectively.\n\n'
-        #     'Try activating it to speed up the annotation of many objects '
-        #     'in high resolution mode.\n\n'
-        #     'After activating it, you might need to increase the font size '
-        #     'from the menu on the top menubar `Edit --> Font size`.'
-        # )
-        # self.pxModeAction.setToolTip(pxModeTooltip)
+        self.scalingLabelsAction = widgets.CheckableAction(
+            'Fix text annotations to screen size'
+        )
+        scalingLabelsTooltip = html_utils.paragraph(
+            'When the text annotations are fixed to screen size, '
+            'they do not scale relative '
+            'to the objects when zooming in/out.'
+        )
+            
+        self.scalingLabelsAction.setToolTip(scalingLabelsTooltip)
+        checked = self._get_setting_value('scalingLabels', False, cast=bool)
+        self.scalingLabelsAction.setChecked(checked)
         
         self.highLowResAction = widgets.CheckableAction(
             'High resolution text annotations'
@@ -3052,6 +3292,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Not recommended with a number of segmented objects > 500.\n\n'
         )
         self.highLowResAction.setToolTip(highLowResTooltip)
+        checked = self._get_setting_value('highLowRes', True, cast=bool)
+        self.highLowResAction.setChecked(checked)
         
         self.editAutoSaveIntervalAction = QAction(
             'Change autosave interval (minutes or frames)...', self
@@ -3188,7 +3430,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.addDelPolyLineRoiButton.setIcon(QIcon(":addDelPolyLineRoi.svg"))
         
         self.checkableButtons.append(self.addDelPolyLineRoiButton)
-        self.LeftClickButtons.append(self.addDelPolyLineRoiButton)
+        self.leftClickButtons.append(self.addDelPolyLineRoiButton)
        
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
@@ -3269,6 +3511,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
         self.highLowResAction.clicked.connect(self.highLowResToggled)
+        self.scalingLabelsAction.clicked.connect(self.scalingLabelsToggled)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
@@ -3278,7 +3521,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.invertBwAction.toggled.connect(self.invertBw)
         self.toggleColorSchemeAction.triggered.connect(self.onToggleColorScheme)
-        # self.pxModeAction.clicked.connect(self.pxModeActionToggled)
         self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
         self.editAutoSaveIntervalAction.triggered.connect(
             self.autoSaveIntervalEditButton.click
@@ -4034,12 +4276,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if savedFontSize.find('pt') != -1:
             savedFontSize = savedFontSize[:-2]
         self.fontSize = int(savedFontSize)
-        if 'pxMode' not in self.df_settings.index:
-            # Users before introduction of pxMode had pxMode=False, but now 
-            # the new default is True. This requires larger font size.
-            self.fontSize = 2*self.fontSize
-            self.df_settings.at['pxMode', 'value'] = 1
-            self.df_settings.to_csv(settings_csv_path)
         self.fontSizeSpinBox.setValue(self.fontSize)
         self.fontSizeSpinBox.editingFinished.connect(self.changeFontSize) 
         self.fontSizeSpinBox.sigUpClicked.connect(self.changeFontSize)
@@ -4075,6 +4311,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             if checkbox is None:
                 continue
+
+            if name in CHECKBOX_OPTION_TOOLTIPS:
+                txt = CHECKBOX_OPTION_TOOLTIPS[name]
+                txt = html_utils.paragraph(txt)
+                checkbox.setToolTip(txt)
 
             self.annotOptionsCheckboxes[ax][name] = checkbox
             checkbox.sigToggled.connect(
@@ -4174,7 +4415,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateViewBox(ax)
 
     def onLineageInfo(self, checked, checkbox, ax=0):
-        self.setAnnotInfoMode(checked)
+        self.textAnnot[ax].setLineageAnnot(checked)
+        if checked:
+            self.setAllTextAnnotations()
+        else:
+            self.textAnnot[ax].clear()
+            self.updateViewBox(ax)
 
     def onCellCycleInfo(self, checked, checkbox, ax=0):
         self.textAnnot[ax].setCcaAnnot(checked)
@@ -5018,24 +5264,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         allIDs, posData = core.count_objects_and_init_rps(
             posData, self.logger.info)
-        
-        self.highLowResAction.setChecked(True)
-        numItems = len(allIDs)
-        if numItems > 1500:
-            cancel, switchToLowRes = _warnings.warnTooManyItems(
-                self, numItems, self.progressWin
-            )
-            if cancel:
-                self.progressWin.workerFinished = True
-                self.progressWin.close()
-                self.progressWin = None
-                self.loadingDataAborted()
-                return
-            if switchToLowRes:
-                self.highLowResAction.setChecked(False)
-            # else:
-                # # Many items requires pxMode active to be fast enough
-                # self.pxModeAction.setChecked(True)
 
         self.logger.info(f'Creating graphical items...')
 
@@ -5114,12 +5342,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_createTextAnnotItems(self, allIDs):
         self.textAnnot = {}
         isHighResolution = self.highLowResAction.isChecked()
-        # pxMode = self.pxModeAction.isChecked()
+        # TextAnnotations' internal scaling flag counter-scales fonts to keep
+        # their screen size fixed, so it is the inverse of the UI toggle.
+        scalingMode = self.scalingLabelsAction.isChecked()
         for ax in range(2):
             ax_textAnnot = annotate.TextAnnotations()
             ax_textAnnot.initFonts(self.fontSize)
             ax_textAnnot.createItems(
-                isHighResolution, allIDs#, pxMode=pxMode
+                isHighResolution, allIDs, scalingMode=scalingMode
             )
             self.textAnnot[ax] = ax_textAnnot
     
@@ -5469,7 +5699,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             
             ax1_segm_overlay = self.annotOverlaySegmMaskCheckbox(ax=1)
-            if ax1_segm_overlay:
+            if ax1_segm_overlay and self.labelsLayerRightImg.image is not None:
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
             
@@ -6528,8 +6758,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.gui_hoverEventImg1(event, isHoverImg1=False)
         setMirroredCursor = (
-            self.app.overrideCursor() is None and not event.isExit()
-            and self.showMirroredCursorAction.isChecked()
+            not event.isExit() and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -6563,6 +6792,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData = self.data[self.pos_i]
         except AttributeError:
             return
+
+        self._cursorHoverImage = None if event.isExit() else isHoverImg1
         
         # Update x, y, value label bottom right
         if not event.isExit():
@@ -6578,7 +6809,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        cursorsInfo = self.gui_setCursor(modifiers, event)
+        cursorsInfo = self.gui_setCursor(modifiers, event, isHoverImg1)
         self.highlightHoverLostObj(modifiers, event)
         
         drawRulerLine = (
@@ -6692,8 +6923,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.hoverEventDrawSpline(event)
         
         setMirroredCursor = (
-            self.app.overrideCursor() is None and not event.isExit()
-            and isHoverImg1 and self.showMirroredCursorAction.isChecked()
+            not event.isExit() and isHoverImg1
+            and self.showMirroredCursorAction.isChecked()
         )
         if setMirroredCursor:
             x, y = event.pos()
@@ -6742,18 +6973,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             pass
 
         self.ax2_cursor = pg.ScatterPlotItem(
-            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16, tip=None
+            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+            pen=pg.mkPen('w', width=1),
+            brush=pg.mkBrush((255, 255, 255, 70)), 
+            size=FINAL_SIZE_CURSOR // 2, tip=None
         )
         self.ax2.addItem(self.ax2_cursor)
 
         self.ax1_cursor = pg.ScatterPlotItem(
-            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16, tip=None
+            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+            pen=pg.mkPen('w', width=1),
+            brush=pg.mkBrush((255, 255, 255, 70)), 
+            size=FINAL_SIZE_CURSOR // 2, tip=None
         )
         self.ax1.addItem(self.ax1_cursor)
 
-    def gui_setCursor(self, modifiers, event):
+    def gui_setCursor(self, modifiers, event, isHoverImg1=True):
         noModifier = modifiers == Qt.NoModifier
         shift = modifiers == Qt.ShiftModifier
         ctrl = modifiers == Qt.ControlModifier
@@ -6838,36 +7073,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         setPanImageCursor = alt and not event.isExit()
         if setPanImageCursor and overrideCursor is None:
             self.app.setOverrideCursor(Qt.SizeAllCursor)
-        elif setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setWandCursor and overrideCursor is None:
-            self.app.setOverrideCursor(self.wandCursor)
-        elif setLabelRoiCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setCurvCursor and overrideCursor is None:
-            self.app.setOverrideCursor(self.curvCursor)
-        elif setCustomAnnotCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setAddDelPolyLineCursor:
-            self.app.setOverrideCursor(self.polyLineRoiCursor)
-        elif setCustomAnnotCursor:
+        elif not event.isExit():
+            self.gui_setToolCursor(event, isHoverImg1)
+
+        if setCustomAnnotCursor:
             x, y = event.pos()
-            self.highlightHoverID(x, y)        
-        elif setKeepObjCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)        
-        elif setManualTrackingCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setManualBackgroundCursor and overrideCursor is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
-        elif setAddPointCursor:
-            self.app.setOverrideCursor(self.addPointsCursor)
-        elif setZoomRectCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
-        elif setEditIDCursor and overrideCursor is None:
-            if shift:
-                self.app.setOverrideCursor(Qt.CrossCursor)
-            else:
-                self.app.restoreOverrideCursor()
+            self.highlightHoverID(x, y)
         
         return {
             'setBrushCursor': setBrushCursor,
@@ -6918,6 +7129,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData = self.data[self.pos_i]
         except AttributeError:
             return
+
+        self._cursorHoverImage = None if event.isExit() else False
             
         if not event.isExit():
             self.xHoverImg, self.yHoverImg = event.pos()
@@ -6950,8 +7163,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             and (noModifier or shift or ctrl)
             and self.labelRoiIsCircularRadioButton.isChecked()
         )
-        if setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
-            self.app.setOverrideCursor(Qt.CrossCursor)
 
         setMoveLabelCursor = (
             self.moveLabelToolButton.isChecked() and not event.isExit()
@@ -6973,8 +7184,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.keepIDsButton.isChecked() and not event.isExit()
             and noModifier
         )
-        if setKeepObjCursor and self.app.overrideCursor() is None:
-            self.app.setOverrideCursor(Qt.PointingHandCursor)
+        if not setPanImageCursor and not event.isExit():
+            self.gui_setToolCursor(event, isHoverImg1=False)
 
         # Update x, y, value label bottom right
         if not event.isExit():
@@ -8136,6 +8347,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMouseDragImg1 = True
         
         elif (left_click or right_click) and canDrawMergeRegion:
+            self.freeRoiItem.clear()
+
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             self.freeRoiItem.addPoint(xdata, ydata)
@@ -8786,6 +8999,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         acdc_df_frame.at[ID, 'parent_ID_tree'] = new_mother # update mother in the df, no need to propagate or stuff lile this
         # dont need to update alldata_li as acdc_df_frame is just a view
         self.drawAllLineageTreeLines()
+        self.setAllTextAnnotations()
 
     def annotate_unknown_lineage_action(self, posData, event, ydata, xdata):
         """
@@ -8812,6 +9026,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
         acdc_df_frame.at[ID, 'parent_ID_tree'] = -1
         self.drawAllLineageTreeLines()
+        self.setAllTextAnnotations()
 
     def gui_addCreatedAxesItems(self):
         self.ax1.addItem(self.ax1_contoursImageItem)
@@ -9313,17 +9528,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Preflight import on GUI thread; worker retries and handles failures.
         try:
             myutils.import_segment_module(model_name)
-        except Exception:
+        except Exception as e:
+            traceback_str = traceback.format_exc()
+            self.logger.error(
+                f"Error importing model '{model_name}': {e}\n{traceback_str}"
+            )
             pass
         finally:
             self._ackSegForLostIDsWorker('import_model')
 
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
+        if hasattr(self, 'segForLostIDsGPUSettings'):
+            if (
+                self.segForLostIDsGPUSettings.get('model_name') == model_name
+                and self.segForLostIDsGPUSettings.get('use_gpu') == use_gpu
+            ):
+                self.SegForLostIDsWorker.gpu_go = (
+                    self.segForLostIDsGPUSettings['gpu_go']
+                    )
+                self.SegForLostIDsWorker.dont_force_cpu = (
+                    self.segForLostIDsGPUSettings['dont_force_cpu']
+                    )
+                self._ackSegForLostIDsWorker('ask_install_gpu')
+                return
+        
         result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
         self.SegForLostIDsWorker.gpu_go = result
         dont_force_cpu = myutils.check_gpu_available(
             model_name, use_gpu, do_not_warn=True)
         self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
+        self.segForLostIDsGPUSettings = {
+            'gpu_go': result,
+            'dont_force_cpu': dont_force_cpu,
+            'model_name': model_name,
+            'use_gpu': use_gpu,
+        }
         self._ackSegForLostIDsWorker('ask_install_gpu')
 
     def onSigStoreDataSegForLostIDsWorker(self, autosave):
@@ -9388,10 +9627,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
             wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
         ):
-        self.update_rp(draw=draw, debug=debug, # og stuff
-                       assignments=assignments, deletionIDs=deletionIDs, # very quick upates, rp labels are changed but rest is same
-                       specific_IDs=specific_IDs, use_curr_view=use_curr_view, use_bbox=use_bbox, preloaded_bbox=preloaded_bbox, # for local updates to PR
-                       wl_update=wl_update, wl_track_og_curr=wl_track_og_curr,wl_update_lab=wl_update_lab, # wl stuff
+        self.update_rp(draw=True, debug=False, # og stuff
+                       assignments=None, deletionIDs=None, # very quick upates, rp labels are changed but rest is same
+                       specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
+                       wl_update=True, wl_track_og_curr=False,wl_update_lab=False, # wl stuff
                        )
         waitcond.wakeAll()
 
@@ -9554,19 +9793,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
         else:
             self.labelRoiCircularRadiusSpinbox.setDisabled(True)
-    
-    # def pxModeActionToggled(self, checked):
-    #     self.df_settings.at['pxMode', 'value'] = int(checked)
-    #     self.df_settings.to_csv(self.settings_csv_path)
-        
-    #     if not self.isDataLoaded:
-    #         return
-        
-    #     if self.highLowResAction.isChecked():
-    #         for ax in range(2):
-    #             self.textAnnot[ax].setPxMode(checked)
-        
-    #     self.updateAllImages()
     
     def relabelSequentialCallback(self): 
         mode = str(self.modeComboBox.currentText())
@@ -12616,11 +12842,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         prev_IDs = posData.allData_li[frame_i-1]['regionprops'].IDs
         curr_IDs = posData.IDs
-        new_IDs = list(set(curr_IDs) - set(prev_IDs))
+        
+        protected_new_IDs = self.protected_new_IDs.get(frame_i, [])
+        new_IDs = list(set(curr_IDs) - set(prev_IDs) - set(protected_new_IDs))
 
         lab = posData.lab
-        del_mask = np.isin(lab, new_IDs)
-        lab[del_mask] = 0
+        lab[np.isin(lab, new_IDs)] = 0
         posData.lab = lab
         
         self.update_rp(deletionIDs=new_IDs)
@@ -13333,7 +13560,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return txt
     
     def getActiveToolButton(self):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             if button.isChecked():
                 return button
     
@@ -14186,7 +14413,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.update_z_slice(nearest_nonzero_z)
 
     def disconnectLeftClickButtons(self):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             try:
                 button.toggled.disconnect()
             except Exception as e:
@@ -14194,7 +14421,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 pass
 
     def uncheckLeftClickButtons(self, sender):
-        for button in self.LeftClickButtons:
+        for button in self.leftClickButtons:
             if button != sender:
                 button.setChecked(False)
         
@@ -14877,6 +15104,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 text='for the merged object.',
                 action='released the mouse button'
             )
+            if targetID is None:
+                self.freeRoiItem.clear()
+                return
         
         self.logger.info('Merging objects inside freehand region...')
         
@@ -15377,8 +15607,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.uncheckLeftClickButtons(self.mergeIDsButton)
             self.connectLeftClickButtons()
             self.mergeIDsToolbar.setOnlyCurrentZsliceEnabled(self.isSegm3D)
+        else:
+            self.freeRoiItem.clear()
         
         self.mergeIDsToolbar.setVisible(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
 
     def acceptMergeMultipleIDs(self, IDs):
         if not self.mergeIDsButton.isChecked():
@@ -15458,7 +15691,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.lab[obj.slice][obj.image] = target_id
 
             bbox = self.update_rp_get_bbox(
-                specific_IDs=unique_ids, use_bbox=True
+                specific_IDs=unique_ids + [target_id], use_bbox=True
             )
             self.update_rp(
                 specific_IDs=unique_ids + [target_id],
@@ -15680,6 +15913,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.showEditIDwidgets(checked)
         self.enableSizeSpinbox(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
     
     def showEditIDwidgets(self, visible):
         self.editIDLabelAction.setVisible(visible)
@@ -15798,7 +16032,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if wl_init:
                     if self.whitelistCheckOriginalLabels(warning=False, frame_i=frame_i):
                         IDs_tot.update(posData.whitelist.originalLabsIDs[frame_i])
-                    if posData.whitelist.whitelistIDs[frame_i]:
+                    if posData.whitelist.whitelistIDs.get(frame_i):
                         IDs_tot.update(posData.whitelist.whitelistIDs[frame_i])
                 _max = max(IDs_tot, default=0)
                 if _max > newID:
@@ -15876,6 +16110,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.app.restoreOverrideCursor()
         
         self.showEditIDwidgets(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
 
     def updateHoverLabelCursor(self, x, y):
         if x is None:
@@ -15960,6 +16195,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         self.showEditIDwidgets(checked)
         self.enableSizeSpinbox(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
     
     def storeCurrentAnnotationsOptions(self):
         self.storeCurrentAnnotOptions(0)
@@ -16311,6 +16547,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if ev.key() == Qt.Key_End:
             self.onKeyEnd()
+            
+        for name, key in self.widgetsPersistentShortcut.items():
+            if not key == ev.key():
+                continue
+            action = self.widgetsWithShortcut[name]
+            success = False
+            if hasattr(action, 'click'):
+                action.click()
+            elif hasattr(action, 'trigger'):
+                action.trigger()
+            break
         
         modifiers = ev.modifiers()
         isAltModifier = modifiers == Qt.AltModifier
@@ -16630,7 +16877,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 obj = posData.rp.get_obj_from_ID(ID)
                 posData.lab[obj.slice][obj.image] = self.firstID
             
-            preloaded_bbox = self.update_rp_get_bbox(specific_IDs=IDs_to_merge,use_bbox=True) # use old RP to get the correct bbox
+            specific_IDs = [ID for ID in IDs_to_merge if ID in IDs]
+            preloaded_bbox = self.update_rp_get_bbox(
+                specific_IDs=specific_IDs, use_bbox=True
+                ) # use old RP to get the correct bbox
             specific_IDs = [*IDs_to_merge, self.firstID]
             self.update_rp(preloaded_bbox=preloaded_bbox, specific_IDs=specific_IDs)
             self.store_data(autosave=False)
@@ -16656,7 +16906,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         one of the IDs in ``affectedIDs``. If so, it triggers a pop-up asking the
         user whether to propagate the change to future frames.
         """
-        if isinstance(affectedIDs, (int, np.uint32)):
+        if isinstance(affectedIDs, (int, np.uint32, np.int32)):
             affectedIDs = {affectedIDs}
         
         if isinstance(affectedIDs, list) or isinstance(affectedIDs, tuple):
@@ -17829,6 +18079,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearGhost()
             self.clearManualBackgroundAnnotations()
         self.manualBackgroundToolbar.setVisible(checked)
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
 
     def autoSegm_cb(self, checked):
         if checked:
@@ -18968,8 +19219,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.progressWin = None
 
         # update RP and allData_li
-        printl(range(startFrameNum-1, stopFrameNum))
-
         posData = self.data[self.pos_i]
         for frame_i in range(startFrameNum-1, stopFrameNum):
             lab = posData.segm_data[frame_i]
@@ -19348,7 +19597,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for column in current_cca_df.columns:
             header = (
                 '================================================\n'
-                f'CURRENT vs STORED `{column}` column'
+                f'CURRENT vs STORED `{column}` column '
                 f'for frame number {posData.frame_i+1}:\n'
             )
             df_compare = current_cca_df[[column]].copy()
@@ -19758,21 +20007,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if posData.frame_i != 0:
             return True
         
-        editCcaWidget = apps.editCcaTableWidget(
+        self.navigateScrollBar.setDisabled(True)
+        self.navSpinBox.setDisabled(True)
+
+        self.editCcaWidget = apps.editCcaTableWidget(
             posData.cca_df, posData.SizeT, parent=self,
             title='Initialize cell cycle annotations'
         )
-        editCcaWidget.sigApplyChangesFutureFrames.connect(
+        self.editCcaWidget.sigApplyChangesFutureFrames.connect(
             self.applyManualCcaChangesFutureFrames
         )
-        editCcaWidget.exec_()
-        if editCcaWidget.cancel:
+        self.editCcaWidget.exec_()
+        if self.editCcaWidget.cancel:
             self.resetNavigateFramesScrollbar()
+            self.editCcaWidget = None
+            self.navigateScrollBar.setDisabled(False)
+            self.navSpinBox.setDisabled(False)
             return False
         
         if posData.cca_df is not None:
             is_cca_same_as_stored = (
-                (posData.cca_df == editCcaWidget.cca_df).all(axis=None)
+                (posData.cca_df == self.editCcaWidget.cca_df).all(axis=None)
             )
             if not is_cca_same_as_stored:
                 reinit_cca = self.warnEditingWithCca_df(
@@ -19782,9 +20037,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if reinit_cca:
                     self.resetCcaFuture(0)
                     
-        posData.cca_df = editCcaWidget.cca_df
+        posData.cca_df = self.editCcaWidget.cca_df
         self.store_cca_df()
         
+        self.editCcaWidget = None
+        self.navigateScrollBar.setDisabled(False)
+        self.navSpinBox.setDisabled(False)
+
         return True
     
     def askInitLinTreeFirstFrame(self):
@@ -19820,6 +20079,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return False
     
     def next_frame(self, warn=True):        
+        if self.editCcaWidget is not None:
+            self.editCcaWidget.show()
+            self.editCcaWidget.raise_()
+            self.editCcaWidget.activateWindow()
+            self.logger.info(
+                '[WARNING]: dialogue to initialize cell cycle annotations '
+                'is open. Cannot navigate frames'
+            )
+            return
+
         proceed = self.checkIfFutureFrameManualAnnotPastFrames()
         if not proceed:
             return
@@ -21506,14 +21775,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if singleMove:
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         elif action == SliderMove:
+            if self.zSliceScrollBarStartedMoving and self.isSegm3D:
+                self.clearAx1Items(onlyHideText=True)
+                self.clearAx2Items(onlyHideText=True)
             posData = self.data[self.pos_i]
             idx = (posData.filename, posData.frame_i)
             z = self.zSliceScrollBar.sliderPosition()
             if self.switchPlaneCombobox.depthAxes() == 'z': 
                 posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.zSliceSpinbox.setValueNoEmit(z+1)
+            img = self._getImageupdateAllImages(None)
+            self.img1.setCurrentZsliceIndex(z)
+            self.img1.setImage(
+                img, next_frame_image=self.nextFrameImage(),
+                scrollbar_value=posData.frame_i+2
+            )
+            try:
+                self.setOverlayImages()
+            except Exception as err:
+                pass
+            
+            if self.labelsGrad.showLabelsImgAction.isChecked():
+                self.img2.setImage(posData.lab, z=z, autoLevels=False)
+            self.updateViewerWindow()
+            self.setTextAnnotZsliceScrolling()
+            self.setGraphicalAnnotZsliceScrolling()
+            self.setOverlayLabelsItems()
+            self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
-            self.updateAllImages()
+            self.highlightSearchedID(self.highlightedID, force=True)
             
     def maxProjToggleActionTriggered(self):
         posData = self.data[self.pos_i]
@@ -22106,14 +22396,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setAllIDs()
 
     def navigateSpinboxValueChanged(self, value):
-        self.navigateScrollBar.setSliderPosition(value)
-        if self.isSnapshot:
+        if self.isSnapshot:        
+            self.navigateScrollBar.setSliderPosition(value)
             self.navigateScrollBarStartedMoving = True
             self.PosScrollBarMoved(value)
         else:
-            self.navigateScrollBarStartedMoving = True
-            self.framesScrollBarMoved(value)
-    
+            self.navigateScrollBar.setValueNoSignal(value)
+
     def navigateSpinboxEditingFinished(self):
         if self.isSnapshot:
             self.PosScrollBarReleased()
@@ -22183,24 +22472,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n-1
-        if posData.allData_li[posData.frame_i]['labels'] is None:
-            if posData.frame_i < len(posData.segm_data):
-                posData.lab = posData.segm_data[posData.frame_i]
-            else:
-                posData.lab = np.zeros_like(posData.segm_data[0])
-            rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
-            posData.rp = rp
-            posData.IDs = []
-            posData.allData_li[posData.frame_i]['regionprops'] = rp
-        else:
-            posData.lab = posData.allData_li[posData.frame_i]['labels']
-            posData.rp = posData.allData_li[posData.frame_i]['regionprops']
-
-        posData.IDs = posData.rp.IDs
+        self.get_data()
         self.updateLostNewCurrentIDs()
         self.updateAllImages()
         self.updateFramePosLabel()
         self.updateViewerWindow()
+        self.updateTimestampFrame()
         self.updateHighlightedAxis()
         self.navigateScrollBarStartedMoving = False
 
@@ -22221,7 +22498,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
+        if do_store_data:
+            self.updateLostNewCurrentIDs()
+        self.updateLostNewCurrentIDs()
         self.updateAllImages()
+        if do_store_data: 
+            self.updateFramePosLabel()
+            self.updateViewerWindow()
+            self.updateHighlightedAxis()
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
@@ -22247,15 +22531,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             nextLab = posData.allData_li[posData.frame_i+1]['labels']
         except IndexError:
             # This is last frame --> there are no future frames
-            assignments = dict()
             return None, assignments
         
         if nextLab is None:
-            assignments = dict()
             return None, assignments
         
         if obj is None:
-            assignments = dict()
             return None, assignments
              
         
@@ -22282,7 +22563,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             k:v for k, v in assignments_new.items() if k != v
         }
         if not assignments_new:
-            assignments = dict()
             return None, assignments
         
         trackedIDs = list(assignments_new.values())
@@ -22290,17 +22570,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         trackedID = trackedIDs[0]
         if trackedID == newID:
             # Object does not exist in future frame --> do not track
-            assignments = dict()
             return None, assignments
         
         if posData.rp.get_obj_from_ID(trackedID, warn=False) is not None:
             # Tracked ID already exists --> do not track to avoid merging
-            assignments = dict()
             return None, assignments
         
         # update assignments
         assignments = {
-            old_ID: tracked_ID for old_ID, tracked_ID in assignments.items()
+            old_ID: _tracked_ID for old_ID, _tracked_ID in assignments.items()
             if old_ID != newID
         }
         assignments[newID] = trackedID
@@ -24168,6 +24446,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if from_frame_i in frames:
                 posData.acdc_df = posData.acdc_df.loc[:from_frame_i]
         
+        if posData.frame_i == from_frame_i:
+            self.removeCcaAnnotationsCurrentFrame()
+
         self.resetWillDivideInfo()
         
     def resetSingleMotherBudPairsCcaInfo(self, from_frame_i):
@@ -24719,7 +25000,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 mother_obj = prev_rp.get_obj_from_ID(lin_tree_df_ID['parent_ID_tree'])
 
                 emerg_frame_i = lin_tree_df_ID['emerg_frame_i']
-                isNew = emerg_frame_i == frame_i
+                isNew = False
 
                 self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
 
@@ -25121,6 +25402,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif local_rp_update:
             # first get current view
             if preloaded_bbox is None:
+                # returns false if requirement for this opt. branch is not met
                 preloaded_bbox = self.update_rp_get_bbox(use_bbox=use_bbox, 
                                                          use_curr_view=use_curr_view,
                                                          specific_IDs=specific_IDs)
@@ -25132,7 +25414,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # so be careful!
             else:
                 rp.update_regionprops(
-                    lab
+                    lab, specific_IDs_update_centroids=specific_IDs
                 )
         else:
             rp.update_regionprops(
@@ -25740,6 +26022,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             hideFromTableSection=onlyMouseClicks,
             hideManualEntrySection=onlyMouseClicks,
             hideWithMouseClicksSection=False,
+            SizeT=posData.SizeT,
             parent=self,
         )
         cmap = matplotlib.colormaps['gist_rainbow']
@@ -25772,12 +26055,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def logLoadedTablePointsLayer(self, df, filename: str):
         separator = f'-'*100
-        header = f'First 10 rows of loaded table - "{filename}":'
+        header = f'First 10 rows and 10 columns of loaded table - "{filename}":'
         footer = f'Number of points: {len(df)}'
         text = (
             f'{separator}\n'
             f'{header}\n\n'
-            f'{df.head(10)}\n\n'
+            f'{df.iloc[:10, :10]}\n\n'
             f'{footer}\n'
             f'{separator}'
         )
@@ -25794,7 +26077,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     return action.button
     
     def setupAddPointsByClicking(self, toolButton, isLoadedDf, toolbar):
-        self.LeftClickButtons.append(toolButton)
+        self.leftClickButtons.append(toolButton)
         posData = self.data[self.pos_i]
         tableEndName = self.addPointsWin.clickEntryTableEndnameText
         if isLoadedDf is not None:
@@ -26027,6 +26310,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.pointsLayerClicksDfsToData(posData)
     
     def pointsLayerLoadedDfsToData(self):
+        self.logger.info('Generating points data from table...')
         posData = self.data[self.pos_i]
         for toolbar in self.pointsLayersToolbars:
             for action in toolbar.actions()[1:]:
@@ -26045,11 +26329,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if not os.path.exists(filepath):
                     action.pointsData[self.pos_i] = {}
                 
-                df = load.load_df_points_layer(filepath)                
+                df = load.load_df_points_layer(filepath)    
+                t_col_requires_grouping = (
+                    action.loadedDfInfo.get('t_col_requires_grouping', False)
+                )            
                 action.pointsData[self.pos_i] = (
                     load.loaded_df_to_points_data(
-                        df, action.loadedDfInfo['t'], action.loadedDfInfo['z'], 
-                        action.loadedDfInfo['y'], action.loadedDfInfo['x']
+                        df, 
+                        action.loadedDfInfo['t'], 
+                        action.loadedDfInfo['z'], 
+                        action.loadedDfInfo['y'], 
+                        action.loadedDfInfo['x'],
+                        t_col_requires_grouping=t_col_requires_grouping
                     )
                 )
                 self.logLoadedTablePointsLayer(df, filename=filename)
@@ -26923,7 +27214,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 toolbutton = self.allOverlayToolbuttons[ch]
                 toolbutton.setChecked(checked)
             
-            self.setOverlayItemsOpacities()
+            self.setOverlayImages()
     
     def updateTransparentOverlayRgba(self, *args, **kwargs):
         self.setOverlayImages()
@@ -26932,8 +27223,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         opacity = float(transparent)
         opacity = opacity if opacity < 1.0 else 0.999
         self.rgbaImg1.setOpacity(opacity)
-        
+
         if transparent:
+            self.rgbaImg1.setVisible(True)
             self.img1.setOpacity(0.001, applyToLinked=False)
             self.imgGrad.sigLookupTableChanged.connect(
                 self.updateTransparentOverlayRgba
@@ -26941,25 +27233,48 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.imgGrad.sigLevelsChanged.connect(
                 self.updateTransparentOverlayRgba
             )
-        
-        for channel, items in self.overlayLayersItems.items():
-            imageItem, lutItem, alphaSB = items[:3]
-            if transparent:
-                alphaSB.valueChanged.disconnect()
-                alphaSB.valueChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                lutItem.sigLookupTableChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                lutItem.sigLevelsChanged.connect(
-                    self.updateTransparentOverlayRgba
-                )
-                imageItem.setOpacity(0)
+            
+            for channel, items in self.overlayLayersItems.items():
+                imageItem, lutItem, alphaSB = items[:3]
+                if transparent:
+                    alphaSB.valueChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    lutItem.sigLookupTableChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    lutItem.sigLevelsChanged.connect(
+                        self.updateTransparentOverlayRgba
+                    )
+                    imageItem.setOpacity(0)
+        else:
+            self.rgbaImg1.clear()
+            self.rgbaImg1.setVisible(False)
+            self.img1.setOpacity(1.0, applyToLinked=False)
+            for channel, items in self.overlayLayersItems.items():
+                imageItem, lutItem, alphaSB = items[:3]
+                imageItem.setOpacity(1.0)
+                try:
+                    lutItem.sigLookupTableChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
+                try:
+                    lutItem.sigLevelsChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
+                try:
+                    alphaSB.valueChanged.disconnect(
+                        self.updateTransparentOverlayRgba
+                    )
+                except:
+                    pass
 
-        if not transparent:
             self.setOverlayItemsOpacities()
-        
+
         self.setOverlayImages()
         
     def overlay_cb(self, checked):
@@ -27011,12 +27326,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             self.countObjsWindow.sigShowEvent.connect(self.updateObjectCounts)
             self.countObjsWindow.sigUpdateCounts.connect(self.updateObjectCounts)
-        
+            self.countObjsWindow.sigClose.connect(self.countObjsWindowClosed)
         if checked:
             self.countObjsWindow.show()
         else:
             self.countObjsWindow.hide()
     
+    def countObjsWindowClosed(self, event):
+        event.ignore()
+        self.countObjsButton.setChecked(False)
+
     def showLabelRoiContextMenu(self, event):
         menu = QMenu(self.labelRoiButton)
         action = QAction('Re-initialize magic labeller model...')
@@ -27316,6 +27635,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         self.contoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
     
+    def initOverlayLabelsContoursImages(self):
+        posData = self.data[self.pos_i]
+        z_slice = self.z_lab()
+        img = posData.img_data[posData.frame_i]
+        Y, X = img[z_slice].shape[-2:]
+        
+        self.overlayLabelsContoursImages = {}
+        for segmEndname in self.drawModeOverlayLabelsChannels.keys():
+            overlayLabelsContoursImage = np.zeros((Y, X, 4), dtype=np.uint8)
+            self.overlayLabelsContoursImages[segmEndname] = (
+                overlayLabelsContoursImage
+            )
+
+    
     def initLostObjContoursImage(self):
         posData = self.data[self.pos_i]
         z_slice = self.z_lab()
@@ -27477,6 +27810,68 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             return True
 
+            
+    # This funciton actually returns if its visible, not only on z slice
+    # def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
+    #     if obj_bbox is None:
+    #         return False
+
+    #     cutout = self.ax1ViewRange(integers=True)
+    #     (x1, x2), (y1, y2) = cutout
+    #     view_x_min, view_x_max = min(x1, x2), max(x1, x2)
+    #     view_y_min, view_y_max = min(y1, y2), max(y1, y2)
+
+    #     if self.isSegm3D and len(obj_bbox) == 6:
+    #         depthAxes = self.switchPlaneCombobox.depthAxes()
+    #         min_z, min_y, min_x, max_z, max_y, max_x = obj_bbox
+    #         if depthAxes == 'z':
+    #             obj_x_min, obj_x_max = min_x, max_x
+    #             obj_y_min, obj_y_max = min_y, max_y
+    #         elif depthAxes == 'y':
+    #             obj_x_min, obj_x_max = min_x, max_x
+    #             obj_y_min, obj_y_max = min_z, max_z
+    #         else:
+    #             obj_x_min, obj_x_max = min_y, max_y
+    #             obj_y_min, obj_y_max = min_z, max_z
+    #     else:
+    #         min_y, min_x, max_y, max_x = obj_bbox
+    #         obj_x_min, obj_x_max = min_x, max_x
+    #         obj_y_min, obj_y_max = min_y, max_y
+
+    #     intersects_view = (
+    #         obj_x_max > view_x_min and view_x_max > obj_x_min
+    #         and obj_y_max > view_y_min and view_y_max > obj_y_min
+    #     )
+    #     if not intersects_view:
+    #         return False
+
+    #     if z_slice is None:
+    #         z_slice = self.z_lab()
+
+    #     if self.isSegm3D and len(obj_bbox) == 6:
+    #         zProjHow = self.zProjComboBox.currentText()
+    #         isZslice = zProjHow == 'single z-slice'
+    #         if not isZslice:
+    #             return True
+
+    #         depthAxes = self.switchPlaneCombobox.depthAxes()
+    #         min_z, min_y, min_x, max_z, max_y, max_x = obj_bbox
+
+    #         if depthAxes == 'z':
+    #             min_val, max_val = min_z, max_z
+    #             val = z_slice
+    #         elif depthAxes == 'y':
+    #             min_val, max_val = min_y, max_y
+    #             val = z_slice[-1]
+    #         else:
+    #             min_val, max_val = min_x, max_x
+    #             val = z_slice[-1]
+
+    #         return min_val <= val < max_val
+
+    #     return True
+
+
     def getObjImage(self, obj_image, obj_bbox, z_slice=None):
         if self.isSegm3D and len(obj_bbox)==6:
             zProjHow = self.zProjComboBox.currentText()
@@ -27505,13 +27900,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             return obj_slice
     
-    def setOverlayImages(self, frame_i=None):
+    def setOverlayImages(self, frame_i=None, mode=None):
         if not self.overlayButton.isChecked():
             return
         
         posData = self.data[self.pos_i]
         if posData.ol_data is None:
             return
+        
+        if mode is None:
+            if self.overlayToolbar.isAlphaEncodedIntensity():
+                mode = 'intensity_to_alpha'
+            elif self.overlayToolbar.isTransparent():
+                mode = 'transparent'
+            else:
+                mode = 'normal'
         
         rgba_imgs_info = {}
         for filename in posData.ol_data:
@@ -27526,7 +27929,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             ol_img = self.getOlImg(filename, frame_i=frame_i)
 
-            if self.overlayToolbar.isTransparent():
+            if mode == 'transparent' or mode == 'intensity_to_alpha':
                 toolbutton = items[3]
                 if not toolbutton.isChecked():
                     continue
@@ -27548,8 +27951,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.rescaleIntensitiesLut(setImage=False, imageItem=imageItem)
                 imageItem.setImage(ol_img)
         
-        if not self.overlayToolbar.isTransparent():
-            return            
+        if not (mode == 'transparent' or mode == 'intensity_to_alpha'):
+            self.rgbaImg1.clear()
+            self.rgbaImg1.setVisible(False)
+            return
+
+        self.rgbaImg1.setVisible(True)
         
         alpha_values = []
         images = []
@@ -27559,8 +27966,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             alpha_values.append(alpha_val)
             images.append(ol_img)
             luts.append(lutItem.gradient.getLookupTable(256, alpha=255)/255)
-        
-        weights = colors.hierarchical_weights(alpha_values)
         
         if self.baseLayerToolbutton.isChecked():
             image1 = self._getImageupdateAllImages()
@@ -27580,12 +27985,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.imgGrad.gradient.getLookupTable(256, alpha=255)/255
             )
             luts.append(baseLut)
+            
+        if mode == 'intensity_to_alpha':
+            # get base image item lut
+            if self.baseLayerToolbutton.isChecked():
+                base_img = images.pop()
+                base_lut = luts.pop()
+            else:
+                base_img = np.zeros_like(images[0])
+                base_lut = None
+                
+            rgba_merge = colors.combine_grayscale_images_with_alpha(
+                base_img=base_img,
+                images=images,
+                alphas=alpha_values,
+                luts=luts,
+                base_lut=base_lut
+            )
+            self.rgbaImg1.setImage(rgba_merge)
+            return
         
         images_rgba = []
         for img, lut in zip(images, luts):
             rgba = colors.grayscale_apply_lut(img, lut)            
             images_rgba.append(rgba)
         
+        weights = colors.hierarchical_weights(alpha_values)
         rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
         self.rgbaImg1.setImage(rgba_merge)
     
@@ -28423,8 +28848,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if init:
             self.initTempLayerBrush(ID, ax=ax)
         
-        contours = self.annotContourCheckbox(ax)
-        if contours:
+        if self.isContoursChecked(ax):
             brushImage = self.brushImage
         else:
             brushImage = self.tempLayerImg1.image
@@ -28434,7 +28858,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             brushImage[toLocalSlice][mask] = ID
         
-        if contours:
+        if self.isContoursChecked(ax):
             brushMask = np.ascontiguousarray((brushImage > 0), dtype=np.uint8)
 
             objContour = core.get_obj_contours(
@@ -28866,7 +29290,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if (msg.clickedButton == removeAnnotButton) and cell_cycle_stage_present:
             self.resetFutureCcaColCurrentFrame()
-            self.resetCcaFuture(posData.frame_i+1)
+            self.resetCcaFuture(posData.frame_i)
             self.updateAllImages()
         elif (msg.clickedButton == removeAnnotButton) and lineage_tree_present:
             self.resetLin_tree_future()
@@ -29507,7 +29931,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         display_rp_prev = self.get2DRP(frame_i=posData.frame_i -1)
         if posData.whitelist is not None and posData.whitelist.whitelistIDs is not None:
-            whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
+            try:
+                whitelist = posData.whitelist.whitelistIDs[posData.frame_i-1]
+            except KeyError as e:
+                self.logger.warning(
+                    f'Failed to get whitelist for frame {posData.frame_i-1}: {e}'
+                )
+                whitelist = list(posData.IDs)
         else:
             whitelist = None
 
@@ -29666,6 +30096,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if enforceAll:
             return False
 
+        try:
+            posData.new_IDs = [
+                ID for ID in posData.new_IDs
+                if curr_df.at[ID, 'is_history_known']
+                and curr_df.at[ID, 'cell_cycle_stage'] == 'S'
+            ]
+        except Exception as err:
+            printl(curr_df)
+
         lastVisited = False
         posData.new_IDs = [
             ID for ID in posData.new_IDs
@@ -29765,8 +30204,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def clearAnnotItems(self):
         self.textAnnot[0].clear()
         self.textAnnot[1].clear()
-        
-    def get2DRP(self, pos_i=None, frame_i=None, slice_i=None, zProjHow=None, depthAxes=None):
+
+    def get2DRP(
+            self, 
+            pos_i=None, 
+            frame_i=None, 
+            slice_i=None, 
+            zProjHow=None, 
+            depthAxes=None,
+        ):
         posData = self.data[self.pos_i if pos_i is None else pos_i]
         frame_i = posData.frame_i if frame_i is None else frame_i
 
@@ -29806,11 +30252,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return rp_2D
 
     # @exec_time
-    def setAllTextAnnotations(
-            self, 
-            labelsToSkip=None, 
-            updateAllTextAnnotations=True
-        ):
+    def setAllTextAnnotations(self, labelsToSkip=None):
         self.setLostNewOldPrevIDs()
         posData = self.data[self.pos_i]
         
@@ -29823,8 +30265,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             getCurrentZfunc=self.z_lab, 
             getObjCentroidFunc=self.getObjCentroid,
             rp_func=self.get2DRP,
-            rp3D=posData.rp,
-            updateAllTextAnnotations=updateAllTextAnnotations
+            rp3D=posData.rp
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
@@ -29833,8 +30274,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getObjCentroidFunc=self.getObjCentroid,
             rp_func=self.get2DRP,
-            rp3D=posData.rp,
-            updateAllTextAnnotations=updateAllTextAnnotations
+            rp3D=posData.rp
         )
         self.textAnnot[0].update()
         self.textAnnot[1].update()
@@ -29968,7 +30408,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def updateAllImages(
             self, image=None, computePointsLayers=True, computeContours=True,
-            updateLookuptable=True, updateAllTextAnnotations=True
+            updateLookuptable=True
         ):
         self.clearAllItems()
 
@@ -29994,9 +30434,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.update_rp()
 
         # Annotate ID and draw contours
-        self.setAllTextAnnotations(
-            updateAllTextAnnotations=updateAllTextAnnotations
-        )    
+        self.setAllTextAnnotations()    
         self.setAllContoursImages(
             compute=False
         )
@@ -30197,27 +30635,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.overlayLabelsButton.isChecked():
             self.hideOverlayLabelsItems(specific=specific)
             return
-        
+
         if specific is None:
             specific = self.drawModeOverlayLabelsChannels.keys()
+        
+        if not hasattr(self, 'overlayLabelsContoursImages'):
+            self.initOverlayLabelsContoursImages()
 
         for segmEndname in specific:
             drawMode = self.drawModeOverlayLabelsChannels[segmEndname]
+            overlayLabelsContoursImage = (
+                self.overlayLabelsContoursImages[segmEndname]
+            )
+            overlayLabelsContoursImage[:] = 0
             ol_lab = self.getOverlayLabelsData(segmEndname)
             items = self.overlayLabelsItems[segmEndname]
             imageItem, contoursItem, gradItem = items
-            contoursItem.clear()
+            contours = []
             if drawMode == 'Draw contours':
-                for obj in self._acdcRegionProps(
-                    ol_lab, precache_centroids=False
-                ):
-                    contours = self.getObjContours(
+                rp = self._acdcRegionProps(ol_lab, precache_centroids=False)
+                for obj in rp:
+                    contours_obj = self.getObjContours(
                         obj,
                         all_external=True,
                         include_internal=self.showAllContoursToggle.isChecked()
                     )
-                    for cont in contours:
-                        contoursItem.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
+                    contours.extend(contours_obj)
+                cv2.drawContours(
+                    overlayLabelsContoursImage, 
+                    contours, 
+                    -1, 
+                    self.contLineColor, 
+                    self.contLineWeight
+                )
+                contoursItem.setImage(overlayLabelsContoursImage)
             elif drawMode == 'Overlay labels':
                 imageItem.setImage(ol_lab, autoLevels=False)
         self.showOverlayLabelsItems(specific=specific)
@@ -30236,28 +30687,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not self.isSegm3D:
                 zStackImg = self.data[0].SizeZ > 1
                 if zStackImg:
-                    selected_z_stack = self.zSliceScrollBar.sliderPosition()
+                    z_slice = self.zSliceScrollBar.sliderPosition()
                 else:
-                    selected_z_stack = 0
-                out = posData.ol_labels_data['combined segm.'][posData.frame_i][selected_z_stack]
+                    z_slice = 0
+                ol_labels_data = posData.ol_labels_data['combined segm.']
+                out = ol_labels_data[posData.frame_i][z_slice]
                 return out.astype(np.uint32)
         
-        if self.isSegm3D:
+        ol_labels_data = posData.ol_labels_data[segmEndname][posData.frame_i]
+        if ol_labels_data.ndim == 3:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if isZslice:
                 z = self.zSliceScrollBar.sliderPosition()
-                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i][z]
+                ol_lab = ol_labels_data[z]
                 if comb_seg:
                     ol_lab = ol_lab.astype(np.uint32)
                 return ol_lab
             else:
-                ol_lab = posData.ol_labels_data[segmEndname][posData.frame_i].max(axis=0)
+                ol_lab = ol_labels_data.max(axis=0)
                 if comb_seg:
                     ol_lab = ol_lab.astype(np.uint32)
                 return ol_lab
         else:
-            return posData.ol_labels_data[segmEndname][posData.frame_i]
+            return ol_labels_data
     
     def loadOverlayLabelsData(self, segmEndname, pos_i=None):
         if pos_i is None:
@@ -30269,6 +30722,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if segmEndname == 'combined segm.':
              posData.ol_labels_data['combined segm.'] = posData.combine_img_data
              return
+        
         filePath, filename = load.get_path_from_endname(
             segmEndname, posData.images_path
         )
@@ -30276,12 +30730,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         labelsData = np.load(filePath)['arr_0']
         if posData.SizeT == 1:
             labelsData = labelsData[np.newaxis]
+
         if self.isSegm3D and labelsData.ndim == 3:
             # 2D segm --> stack to 3D
             T, Y, X = labelsData.shape
             repeat = [labelsData]*posData.SizeZ
             labelsData = np.stack(repeat, axis=1)
-        
 
         posData.ol_labels_data[segmEndname] = labelsData
 
@@ -30648,7 +31102,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         the next frame (since the next frame was already validated). 
         As before, we assign the tracked ID (against the next frame) only if 
         not already existing in current frame (to avoid merging).    
-        """        
+        """
         if self.isSnapshot:
             return dict()
         
@@ -30677,9 +31131,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Track only new object
         prevIDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
-      
-        # assignments_new = dict()
-        # self.update_rp(assignments=assignments)
         for added_ID in added_IDs:
             
             # check if added ID is already present
@@ -30715,11 +31166,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if trackedID is None:
                     if clearAssignedObjsSecondStep:
                         self.clearAssignedObjsSecondStep()
+                    # clean assignment
+                    assignments.pop(added_ID, None)
                     continue
                 posData.lab[obj.slice][obj.image] = trackedID
         
             self.keepOnlyNewIDAssignedObjsSecondStep(trackedID)
-        
         self.update_rp(wl_update=wl_update, assignments=assignments)
         return assignments
             
@@ -30730,6 +31182,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ):
         if unique_ID is None:
             unique_ID = self.setBrushID()
+        
+        if self.track_frame_params is None:
+            self.initRealTimeTracker()
         
         kwargs_total = {
             'unique_ID': unique_ID,
@@ -30754,26 +31209,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ):
         from .trackers.CellACDC import CellACDC_tracker
         
-        handle_specific_IDs_self  = False
-        return_assignments_og = return_assignments
-        dont_return_tracked_lab_og = dont_return_tracked_lab
-        does_it_have_specific_IDs_kwarg = (
-            specific_IDs is not None
-            and (
-                self.trackWithYeazAction.isChecked()
-                or (
-                    self.realTimeTracker_kwargs is not None 
-                    and 'specific_IDs' not in self.realTimeTracker_kwargs
-                )
-            )
-        )
-        if does_it_have_specific_IDs_kwarg:
-            # Yeaz tracker or custom tracker without specific_IDs functionality
-            return_assignments = True
-            dont_return_tracked_lab = True
-            handle_specific_IDs_self = True
-            curr_lab_backup = curr_lab.copy()
-
         if self.trackWithAcdcAction.isChecked():
             tracked_result = CellACDC_tracker.track_frame(
                 prev_lab, prev_rp, curr_lab, curr_rp,
@@ -30793,10 +31228,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             tracked_result = self.trackFrameCustomTracker(
-                prev_lab, curr_lab, prev_rp, curr_rp, 
-                specific_IDs=specific_IDs, unique_ID=unique_ID,
-                dont_return_tracked_lab=dont_return_tracked_lab, 
-                return_assignments=return_assignments
+                prev_lab, curr_lab, prev_rp, curr_rp, specific_IDs=specific_IDs, unique_ID=unique_ID,
+                dont_return_tracked_lab=dont_return_tracked_lab, return_assignments=return_assignments
             )
 
         # Check if tracker also returns additional info
@@ -30818,11 +31251,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 assignments = add_info # its just assignements
         else:
             tracked_lab = tracked_result
-        if (
-            not return_assignments_og 
-            and not dont_return_tracked_lab_og 
-            and not handle_specific_IDs_self
-            ):
+        
+        if not return_assignments and not dont_return_tracked_lab:
             return tracked_lab
 
         # get assignments
@@ -30835,34 +31265,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     assignments[old_lab] = new_lab
                 except:
                     import pdb; pdb.set_trace()
-                    
-        if handle_specific_IDs_self:
-            # Filter assignments to only include specific_IDs
-            assignments = {old_ID: new_ID 
-                           for old_ID, new_ID in assignments.items()
-                           if old_ID in specific_IDs
-                           and new_ID not in curr_rp.IDs_set # avoid merging
-                           }
-                    
-        
-        if dont_return_tracked_lab_og:
+
+        if dont_return_tracked_lab:
             return assignments
-        
-        if handle_specific_IDs_self:
-            # apply assignments to tracked_lab
-            for old_ID, new_ID in assignments.items():
-                if old_ID not in specific_IDs:
-                    continue
-
-                if old_ID == new_ID:
-                    continue # nothing to do
-                obj_curr = curr_rp.get_obj_from_ID(old_ID)
-                curr_lab_backup[obj_curr.slice][obj_curr.image] = new_ID
-            tracked_lab = curr_lab_backup
-                    
-        if not return_assignments_og and not dont_return_tracked_lab_og:
-            return tracked_lab
-
         return tracked_lab, assignments
     
     def clearAssignedObjsSecondStep(self):
@@ -30996,6 +31401,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return_assignments=True
         )
         
+        # debugutils.print_call_stack()
+        # print(f'args: '
+        #       f'enforce={enforce}, DoManualEdit={DoManualEdit}, storeUndo={storeUndo}, '
+        #       f'prev_lab={prev_lab is not None}, prev_rp={prev_rp is not None}, '
+        #       f'return_lab={return_lab}, assign_unique_new_IDs={assign_unique_new_IDs},'
+        #       f'against_next={against_next}, specific_IDs={specific_IDs}, return_assignments={return_assignments}')
+        # print(f'Tracking done. Assignments: {assignments}')
         if DoManualEdit:
             # Correct tracking with manually changed IDs
             tracked_lab, assignments = self.manuallyEditTracking(tracked_lab, assignments)
@@ -31015,8 +31427,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         QTimer.singleShot(50, partial(
             self.statusBarLabel.setText, staturBarLabelText
         ))
-        if return_assignments:
+        if return_assignments and return_lab:
+            return tracked_lab, assignments
+        elif return_assignments:
             return assignments
+        elif return_lab:
+            return tracked_lab
 
     def handleAdditionalInfoRealTimeTracker(
         self, prev_rp, add_info,
@@ -31031,15 +31447,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                   ) else None
         if (
             acdcTracker2stepsAnnotInfo is not None 
-            or not clearAssignedObjsSecondStep
             ):
             new_objs_1st_step, lost_objs_1st_step = acdcTracker2stepsAnnotInfo
         else:
             new_objs_1st_step, lost_objs_1st_step = [], []
             
+        if clearAssignedObjsSecondStep:
+            new_objs_1st_step, lost_objs_1st_step = [], []
+            
         if self._rtTrackerName == 'CellACDC_normal_division':
             tracked_lost_IDs = add_info['mothers']
+            protected_new_IDs = add_info['daughters']
             self.setTrackedLostCentroids(prev_rp, tracked_lost_IDs)
+            protected_new_IDs_frame = self.protected_new_IDs.get(posData.frame_i, set())
+            protected_new_IDs_frame.update(protected_new_IDs)
+            self.protected_new_IDs[posData.frame_i] = protected_new_IDs_frame
             assignments = add_info['assignments']
             if add_info['to_track_tracked_objs_2nd_step'] is not None:
                 new_objs_1st_step_new, lost_objs_1st_step_new = add_info[
@@ -31122,13 +31544,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if annotInfo is None:
             return
         
-        # IDs_set = posData.rp.IDs_set
+        self.ax1_trackerMovementAgainstPrevLinesItem.clear()
+        self.yellowContourScatterItem.clear()
+        IDs_set = posData.rp.IDs_set
 
         new_objs_1st_step, lost_objs_1st_step = annotInfo
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
             # guard against removed cells
-            # if newObj.label not in IDs_set:
-            #     continue
+            # ID is actually not present in current frame !DO not use newObj, it is stale!
+            if lostObj.label not in IDs_set: 
+                continue
             allContours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -31147,38 +31572,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_trackerMovementAgainstPrevLinesItem.addPoints(xx, yy)
             
+    def _get_setting_value(self, index_name, default, cast=int):
+        if self.df_settings is None or index_name not in self.df_settings.index:
+            return default
+        value = self.df_settings.at[index_name, 'value']
+        if cast is bool:
+            return value in ('Yes', 'True') if isinstance(value, str) else bool(value)
+        try:
+            return cast(value)
+        except Exception:
+            printl(f"Warning: Could not cast setting '{index_name}' value '{value}' to {cast}. Using default '{default}'.")
+            return default
+        
     def initannotateObjTrackSettings(self):
         if hasattr(self, 'annotateObjTrackSettings'):
             return
-        if (self.df_settings is not None
-            and 'annotateObjTrackLength' in self.df_settings.index):
-            self.annotateObjTrackSettings = {
-                'length': int(self.df_settings.at[
-                    'annotateObjTrackLength', 'value']),
-                'against_prev': (self.df_settings.at[
-                    'annotateObjTrackAgainstPrev', 'value']) == 'True',
-                'n_fade': int(self.df_settings.at[
-                    'annotateObjTrackNFade', 'value']),
-                'max_width': int(self.df_settings.at[
-                    'annotateObjTrackMaxWidth', 'value']),
-                'min_width': int(self.df_settings.at[
-                    'annotateObjTrackMinWidth', 'value']),
-                'max_alpha_perc': int(self.df_settings.at[
-                    'annotateObjTrackMaxAlphaPerc', 'value']),
-                'min_alpha_perc': int(self.df_settings.at[
-                    'annotateObjTrackMinAlphaPerc', 'value']),
-            }
-            color = self.df_settings.at[
-                'annotateObjTrackColor', 'value']
-            
-            parts = color.lstrip('(').rstrip(')').split(',')
-            parts = [int(p.strip()) for p in parts]
-            
-            
-            self.annotateObjTrackSettings['color'] = parts
-            return
-      
-        self.annotateObjTrackSettings = {
+
+        default_settings = {
             'length': 5,
             'against_prev': False,
             'color': (255, 100, 0),
@@ -31187,7 +31597,94 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'min_width': 1,
             'max_alpha_perc': 100,
             'min_alpha_perc': 10,
+            'against_prev_line_color': (255, 165, 0),
+            'against_prev_line_width': 2,
+            'against_prev_contour_color': (245, 184, 0),
+            'against_prev_contour_width': 2,
         }
+
+        def _parse_color_setting(value, default):
+            if value is None:
+                return tuple(default)
+            if isinstance(value, str):
+                parts = value.lstrip('(').rstrip(')').split(',')
+                parts = [int(p.strip()) for p in parts if p.strip()]
+                if len(parts) >= 3:
+                    return tuple(parts[:3])
+                return tuple(default)
+
+            try:
+                return tuple(int(v) for v in value[:3])
+            except Exception:
+                return tuple(default)
+
+        if (self.df_settings is not None
+            and 'annotateObjTrackLength' in self.df_settings.index):
+            self.annotateObjTrackSettings = {
+                'length': self._get_setting_value(
+                    'annotateObjTrackLength', default_settings['length']
+                ),
+                'against_prev': self._get_setting_value(
+                    'annotateObjTrackAgainstPrev',
+                    default_settings['against_prev'],
+                    cast=bool
+                ),
+                'n_fade': self._get_setting_value(
+                    'annotateObjTrackNFade', default_settings['n_fade']
+                ),
+                'max_width': self._get_setting_value(
+                    'annotateObjTrackMaxWidth', default_settings['max_width']
+                ),
+                'min_width': self._get_setting_value(
+                    'annotateObjTrackMinWidth', default_settings['min_width']
+                ),
+                'max_alpha_perc': self._get_setting_value(
+                    'annotateObjTrackMaxAlphaPerc',
+                    default_settings['max_alpha_perc']
+                ),
+                'min_alpha_perc': self._get_setting_value(
+                    'annotateObjTrackMinAlphaPerc',
+                    default_settings['min_alpha_perc']
+                ),
+                'against_prev_line_width': self._get_setting_value(
+                    'annotateObjTrackAgainstPrevLineWidth',
+                    default_settings['against_prev_line_width']
+                ),
+                'against_prev_contour_width': self._get_setting_value(
+                    'annotateObjTrackAgainstPrevContourWidth',
+                    default_settings['against_prev_contour_width']
+                ),
+            }
+            color = self.df_settings.at['annotateObjTrackColor', 'value']
+            self.annotateObjTrackSettings['color'] = _parse_color_setting(
+                color, default=default_settings['color']
+            )
+            against_prev_line_color = self._get_setting_value(
+                'annotateObjTrackAgainstPrevLineColor',
+                default_settings['against_prev_line_color'],
+                cast=str
+            )
+            self.annotateObjTrackSettings['against_prev_line_color'] = (
+                _parse_color_setting(
+                    against_prev_line_color,
+                    default=default_settings['against_prev_line_color']
+                )
+            )
+
+            against_prev_contour_color = self._get_setting_value(
+                'annotateObjTrackAgainstPrevContourColor',
+                default_settings['against_prev_contour_color'],
+                cast=str
+            )
+            self.annotateObjTrackSettings['against_prev_contour_color'] = (
+                _parse_color_setting(
+                    against_prev_contour_color,
+                    default=default_settings['against_prev_contour_color']
+                )
+            )
+            return
+
+        self.annotateObjTrackSettings = dict(default_settings)
         
     def setAnnotateObjTrackSettings(self, *args):
         self.initannotateObjTrackSettings()
@@ -31230,6 +31727,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.df_settings.at[
             'annotateObjTrackMinAlphaPerc', 'value'
             ] = self.annotateObjTrackSettings['min_alpha_perc']
+        self.df_settings.loc[
+            'annotateObjTrackAgainstPrevLineColor', 'value'
+            ] = str(self.annotateObjTrackSettings['against_prev_line_color'])
+        self.df_settings.loc[
+            'annotateObjTrackAgainstPrevLineWidth', 'value'
+            ] = self.annotateObjTrackSettings['against_prev_line_width']
+        self.df_settings.loc[
+            'annotateObjTrackAgainstPrevContourColor', 'value'
+            ] = str(self.annotateObjTrackSettings['against_prev_contour_color'])
+        self.df_settings.loc[
+            'annotateObjTrackAgainstPrevContourWidth', 'value'
+            ] = self.annotateObjTrackSettings['against_prev_contour_width']
         self.df_settings.to_csv(self.settings_csv_path)
         
     def onSetAnnotateObjTrackSettingsSigValuesChanged(self, settings):
@@ -31246,6 +31755,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def getMovementAgainstPrevScatterItem(self, ax: int):
         itemName = f'ax{ax+1}_movementAgainstPrevScatterItem'
         return getattr(self, itemName)
+
+    def _setAgainstPrevAppearance(self, ax: int, settings: dict):
+        line_item = self.getMovementAgainstPrevLinesItem(ax)
+        contour_item = self.getMovementAgainstPrevScatterItem(ax)
+
+        line_color = tuple(settings['against_prev_line_color'])
+        contour_color = tuple(settings['against_prev_contour_color'])
+        line_width = max(1, int(settings['against_prev_line_width']))
+        contour_width = max(1, int(settings['against_prev_contour_width']))
+
+        appearance_key = (
+            line_color,
+            line_width,
+            contour_color,
+            contour_width,
+        )
+        cache = getattr(self, '_againstPrevAppearanceCache', {})
+        if cache.get(ax) == appearance_key:
+            return
+
+        line_item.setBrush(pg.mkBrush((*line_color, 255)))
+        line_item.setSize(line_width)
+
+        contour_item.setBrush(pg.mkBrush((*contour_color, 150)))
+        contour_item.setPen(pg.mkPen(contour_color, width=1))
+        contour_item.setSize(contour_width)
+        cache[ax] = appearance_key
+        self._againstPrevAppearanceCache = cache
 
     def annotateAllObjectTracks(self, settings=None):
         if settings is None:
@@ -31271,7 +31808,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if settings['against_prev'] is True:
             for ax in to_annotate_ax:
-                self.annotateObjTrackAgainstPrev(ax)
+                self.annotateObjTrackAgainstPrev(ax, settings=settings)
             return
                 
         posData = self.data[self.pos_i]
@@ -31345,7 +31882,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # tracksPlotItem.clear()
             tracksPlotItem.hide()
             
-    def annotateObjTrackAgainstPrev(self, ax: int):        
+    def annotateObjTrackAgainstPrev(self, ax: int, settings: dict=None):
+        self.initannotateObjTrackSettings()
+        settings = settings or self.annotateObjTrackSettings
+        self._setAgainstPrevAppearance(ax, settings)
+
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
         
@@ -31358,6 +31899,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        if rp is None or prev_rp is None:
+            self.logger.warning(
+                f"[WARNING] rp or prev rp could not be retrieved"
+            )
+            return
         for ID in rp.IDs:
             obj = rp.get_obj_from_ID(ID)
             obj_prev = prev_rp.get_obj_from_ID(ID, warn=False)
@@ -32554,28 +33100,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 action.setCheckable(True)
             action.toggled.connect(self.addOverlayLabelsToggled)
             self.overlayLabelsContextMenu.addAction(action)
-        
-        self.overlayLabelsContextMenu.addSeparator()
-        action = QAction('Edit appearance...', self.overlayLabelsContextMenu)
-        action.triggered.connect(self.editOverlayLabelsAppearance)
-        self.overlayLabelsContextMenu.addAction(action)
-    
-    def editOverlayLabelsAppearance(self, *args):
-        segmEndname = list(self.overlayLabelsItems.keys())[0]
-        contoursItem = self.overlayLabelsItems[segmEndname][1]
-        win = apps.OverlayLabelsAppearanceDialog(
-            scatterPlotItem=contoursItem, parent=self
-        )
-        win.exec_()
-        if win.cancel:
-            return
-        
-        brush = win.properties['brush']
-        pen = win.properties['pen']
-        for items in self.overlayLabelsItems.values():
-            imageItem, contoursItem, gradItem = items
-            contoursItem.setBrush(brush, update=False)
-            contoursItem.setPen(pen)
     
     def createOverlayLabelsItems(self, segmEndnames):
         selectActionGroup = QActionGroup(self)
@@ -32604,15 +33128,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             self.mainLayout.addWidget(gradItem, 0, 0)
 
-            contoursItem = pg.ScatterPlotItem()
-            color = colors.get_complementary_color(self.contLineColor)
-            r, g, b, a = colors.rgba_str_to_values(color)
-            qcolor = QColor(r, g, b, a)
-            contoursItem.setData(
-                [], [], symbol='s', pxMode=False, size=self.contLineWeight*2,
-                brush=pg.mkBrush(color=qcolor),
-                pen=pg.mkPen(width=3, color=qcolor), tip=None
-            )
+            contoursItem = pg.ImageItem()
 
             items = (imageItem, contoursItem, gradItem)
             self.overlayLabelsItems[segmEndname] = items
@@ -32634,6 +33150,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         drawMode = action.text()
         if segmEndname in self.drawModeOverlayLabelsChannels:
             self.drawModeOverlayLabelsChannels[segmEndname] = drawMode
+            items = self.overlayLabelsItems[segmEndname]
+            imageItem, contoursItem, gradItem = items
+            if drawMode == 'Draw contours':
+                imageItem.clear()
+            else:
+                contoursItem.clear()
             self.setOverlayLabelsItems()
     
     def overlayChannelToggled(self, checked):
@@ -33084,69 +33606,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lutItem.gradient.menu.addAction(action)
         lutItem.gradient.menu.addSeparator()
 
-        annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
-        ID_menu = annotationMenu.addMenu('IDs')
-        self.annotSettingsIDmenu = QActionGroup(annotationMenu)
-        labID_action = QAction("Show label's ID")
-        labID_action.setCheckable(True)
-        labID_action.setChecked(True)
-        labID_action.toggled.connect(self.annotLabelIDtreeToggled)
-        treeID_action = QAction("Show tree's ID")
-        treeID_action.setCheckable(True)
-        treeID_action.toggled.connect(self.annotLabelIDtreeToggled)
-        self.annotSettingsIDmenu.addAction(labID_action)
-        self.annotSettingsIDmenu.addAction(treeID_action)
-        ID_menu.addAction(labID_action)
-        ID_menu.addAction(treeID_action)
+        # annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
+        # ID_menu = annotationMenu.addMenu('IDs')
+        # self.annotSettingsIDmenu = QActionGroup(annotationMenu)
+        # labID_action = QAction("Show label's ID")
+        # labID_action.setCheckable(True)
+        # labID_action.setChecked(True)
+        # labID_action.toggled.connect(self.annotLabelIDtreeToggled)
+        # treeID_action = QAction("Show tree's ID")
+        # treeID_action.setCheckable(True)
+        # treeID_action.toggled.connect(self.annotLabelIDtreeToggled)
+        # self.annotSettingsIDmenu.addAction(labID_action)
+        # self.annotSettingsIDmenu.addAction(treeID_action)
+        # ID_menu.addAction(labID_action)
+        # ID_menu.addAction(treeID_action)
 
-        ID_menu = annotationMenu.addMenu('Generation number')
-        self.annotSettingsGenNumMenu = QActionGroup(annotationMenu)
-        gen_num_action = QAction("Show default generation number")
-        gen_num_action.setCheckable(True)
-        gen_num_action.setChecked(True)
-        gen_num_action.toggled.connect(self.annotGenNumTreeToggled)
-        tree_gen_num_action = QAction("Show tree generation number")
-        tree_gen_num_action.setCheckable(True)
-        tree_gen_num_action.toggled.connect(self.annotGenNumTreeToggled)
-        self.annotSettingsGenNumMenu.addAction(gen_num_action)
-        self.annotSettingsGenNumMenu.addAction(tree_gen_num_action)
-        ID_menu.addAction(gen_num_action)
-        ID_menu.addAction(tree_gen_num_action)
+        # ID_menu = annotationMenu.addMenu('Generation number')
+        # self.annotSettingsGenNumMenu = QActionGroup(annotationMenu)
+        # gen_num_action = QAction("Show default generation number")
+        # gen_num_action.setCheckable(True)
+        # gen_num_action.setChecked(True)
+        # gen_num_action.toggled.connect(self.annotGenNumTreeToggled)
+        # tree_gen_num_action = QAction("Show tree generation number")
+        # tree_gen_num_action.setCheckable(True)
+        # tree_gen_num_action.toggled.connect(self.annotGenNumTreeToggled)
+        # self.annotSettingsGenNumMenu.addAction(gen_num_action)
+        # self.annotSettingsGenNumMenu.addAction(tree_gen_num_action)
+        # ID_menu.addAction(gen_num_action)
+        # ID_menu.addAction(tree_gen_num_action)
 
-    def annotGenNumTreeToggled(self, checked):
-        self.textAnnot[0].setGenNumTreeAnnotationsEnabled(checked)
+    # def annotGenNumTreeToggled(self, checked):
+    #     self.textAnnot[0].setGenNumTreeAnnotationsEnabled(checked)
     
-    def annotLabelIDtreeToggled(self, checked):
-        self.textAnnot[0].setLabelTreeAnnotationsEnabled(checked)
+    # def annotLabelIDtreeToggled(self, checked):
+    #     self.textAnnot[0].setLabelTreeAnnotationsEnabled(checked)
 
     def setDoNotAnnotate(self, checked):
         self.annotDoNotAnntoateCheckbox(0).setChecked(checked)
         self.annotDoNotAnntoateCheckbox(1).setChecked(checked)
-
-    def setAnnotInfoMode(self, checked):
-        if checked:
-            for action in self.annotSettingsIDmenu.actions():
-                if action.text().find('tree') != -1:
-                    self.textAnnot[0].setLabelTreeAnnotationsEnabled(True)
-                    action.setChecked(True)
-                    break
-            for action in self.annotSettingsGenNumMenu.actions():
-                if action.text().find('tree') != -1:
-                    self.textAnnot[0].setGenNumTreeAnnotationsEnabled(True)
-                    action.setChecked(True)
-                    break
-        else:
-            for action in self.annotSettingsIDmenu.actions():
-                if action.text().find('tree') == -1:
-                    action.setChecked(False)
-                    self.textAnnot[0].setLabelTreeAnnotationsEnabled(False)
-                    break
-            for action in self.annotSettingsGenNumMenu.actions():
-                if action.text().find('tree') == -1:
-                    action.setChecked(False)
-                    self.textAnnot[0].setGenNumTreeAnnotationsEnabled(False)
-                    break
-        self.setAllTextAnnotations()
 
     def setEnabledAnnotCheckBoxesLeftZdepthAxes(self):
         if not self.isSegm3D:
@@ -33167,14 +33664,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return True
 
         out = _warnings.warnTooManyNewItems(self, num_objects, self)
-        cancel, switchToLowRes, deactivateAnnot = out
+        cancel, deactivateAnnot = out
         if cancel:
             return False
-
-        if switchToLowRes:
-            self.highLowResAction.setChecked(False)
-            self.changeTextResolution()
-            return True
         
         if deactivateAnnot:
             self.annotIDsCheckbox(0).setChecked(False)
@@ -33197,7 +33689,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             0: self.annotOptionsToRestore[0].copy(),
             1: self.annotOptionsToRestore[1].copy(),
         }
-        self.annotCellCycleInfoCheckbox(0).setChecked(True)
+        self.annotLineageInfoCheckbox(0).setChecked(True)
         self.annotIDsCheckbox(0).setChecked(False)
         self.annotMotherDaughterLineCheckbox(0).setChecked(True)
         
@@ -33455,6 +33947,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         lutItem.setGradient(gradient)
     
     def setOpacityOverlayLayersItems(self, value, imageItem=None, scrollbar=None):
+        if self.overlayToolbar.isTransparent():
+            return
+
         if scrollbar is None:
             scrollbar = imageItem.alphaScrollBar
 
@@ -33462,10 +33957,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         toolbutton = self.allOverlayToolbuttons[channel]
         if not toolbutton.isChecked() or not toolbutton.isVisible():
             return
-        
+
         if value is None:
             value = scrollbar.value()
-            
+
         if imageItem is None:
             imageItem = scrollbar.imageItem
             alpha = value/scrollbar.maximum()
@@ -33473,7 +33968,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             alpha = value/scrollbar.maximum()
         else:
             alpha = value
-        
+
         alpha_values = []
         activeOverlayImageItems = []
         for items in self.overlayLayersItems.values():
@@ -33485,14 +33980,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             else:
                 alpha_values.append(alphaSB.value()/alphaSB.maximum())
-            
+
             activeOverlayImageItems.append(imgItem)
-        
+
+        if not alpha_values:
+            self.img1.setOpacity(1.0, applyToLinked=False)
+            return
+
         opacities = colors.hierarchical_weights(alpha_values)[::-1]
-        
+
         for i, imgItem in enumerate(activeOverlayImageItems):
             imgItem.setOpacity(opacities[i+1])
-            
+
         self.img1.setOpacity(opacities[0], applyToLinked=False)
         
     def showInExplorer_cb(self):
@@ -34138,7 +34637,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.exportToVideoImageExporter = exporters.ImageExporter(
             self.ax1, 
             save_pngs=preferences['save_pngs'], 
-            dpi=preferences['dpi']
+            dpi=preferences['dpi'],
+            crop_outer_padding=False,
         )
         self.exportToVideoExporter = exporters.VideoExporter(
             preferences['avi_filepath'], preferences['fps']
@@ -34211,7 +34711,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         conversion_to_mp4_successful = True
         if self.exportToVideoPreferences['filepath'].endswith('.mp4'):
             try:
-                self.exportToVideoExporter.avi_to_mp4()
+                self.exportToVideoExporter.avi_to_mp4(
+                    crf=self.exportToVideoPreferences['crf']
+                    )
                 try:
                     os.remove(self.exportToVideoPreferences['avi_filepath'])
                 except Exception as err:
@@ -34806,7 +35308,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.logger.info(
             f'Switching to {mode} for the text annnotations...'
         )
-        # self.pxModeAction.setDisabled(not self.highLowResAction.isChecked())
         if not self.isDataLoaded:
             return
         
@@ -34814,13 +35315,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         allIDs = posData.allIDs
         img_shape = self.img1.image.shape[:2]
-        self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape)
-        self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape)
+        scalingMode = self.scalingLabelsAction.isChecked()
+        self.textAnnot[0].changeResolution(mode, allIDs, self.ax1, img_shape, 
+                                           scalingMode=scalingMode)
+        self.textAnnot[1].changeResolution(mode, allIDs, self.ax2, img_shape, 
+                                           scalingMode=scalingMode)
         self.updateAllImages()
     
     def highLowResToggled(self, clicked=True):
         self.changeTextResolution()
-    
+        self.df_settings.at[
+            'highLowRes', 'value'
+            ] = self.highLowResAction.isChecked()
+        self.df_settings.to_csv(self.settings_csv_path)
+        
+    def scalingLabelsToggled(self, clicked=True):
+        self.df_settings.at[
+            'scalingLabels', 'value'
+            ] = self.scalingLabelsAction.isChecked()
+        self.df_settings.to_csv(self.settings_csv_path)
+        if not self.isDataLoaded:
+            return
+        for annot in self.textAnnot.values():
+            annot.setScaling(self.scalingLabelsAction.isChecked())
+
     def autoSaveClose(self):
         for worker, thread in self.autoSaveActiveWorkers:
             worker._stop()
@@ -35394,13 +35912,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # settings.setValue("windowState", self.saveState())
     
     def saveAnnotationOptions(self):
+        if not hasattr(self, 'annotOptionsToRestore'):
+            return
+        
         self.storeCurrentAnnotationsOptions()
         for ax, states in self.annotOptionsToRestore.items():
             for name, checked in states.items():
                 self.df_settings.at[f'{name};;{ax}', 'value'] = (
                     'checked' if checked else 'not_checked'
                 )
-                self.df_settings.to_csv(settings_csv_path)
+                self.df_settings.to_csv(self.settings_csv_path)
 
     def storeDefaultAndCustomColors(self):
         c = self.overlayButton.palette().button().color().name()
@@ -35668,3 +36189,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.timestamp.updatePosViewRangeChanged(viewRange)
         
         self._viewRange = viewRange
+
+    def eventFilter(self, object, event):
+        if event.type() == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
+            self.onMouseRelease()
+        
+        return super().eventFilter(object, event)

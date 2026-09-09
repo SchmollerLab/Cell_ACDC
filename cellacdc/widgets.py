@@ -289,9 +289,9 @@ class PushButton(QPushButton):
         self.setSizePolicy(sp)
     
     def eventFilter(self, object, event):
-        if event.type() == QEvent.Type.HoverEnter:
+        if event.type() == QtScoped.QEventTypeAttribute('HoverEnter'):
             self.setFlat(False)
-        elif event.type() == QEvent.Type.HoverLeave:
+        elif event.type() == QtScoped.QEventTypeAttribute('HoverLeave'):
             self.setFlat(True)
         return False
     
@@ -485,8 +485,36 @@ class viewPushButton(PushButton):
 
 class infoPushButton(PushButton):
     def __init__(self, *args, **kwargs):
+        """
+        Button for displaying info. Provide `info_text` in kwargs to display a 
+        message box with the info text when clicked.
+        Provide `info_title` in kwargs to set the title of the message box. If 
+        `info_text` is not provided, the button will not display any message 
+        box.
+        """
+        if 'info_text' in kwargs:
+            self.info_text = kwargs.pop('info_text')
+        else:
+            self.info_text = None
+        if 'info_title' in kwargs:
+            self.info_title = kwargs.pop('info_title')
+        else:
+            self.info_title = 'Information'
+
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':info.svg'))
+        if self.info_text is not None:
+            self.clicked.connect(self.show_info)
+
+        
+    def show_info(self):
+        if self.info_text is None:
+            return
+        msg = myMessageBox(parent=self.parent())
+        txt = html_utils.paragraph(self.info_text)
+        msg.information(
+            self, self.info_title, txt
+        )
 
 class threeDPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -976,7 +1004,7 @@ class ElidingLineEdit(QLineEdit):
         event.accept()
     
     def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
-        isFocusIn = a1.type() == QEvent.Type.FocusIn
+        isFocusIn = a1.type() == QtScoped.QEventTypeAttribute('FocusIn')
         if isFocusIn and (self.isReadOnly() or not self.isEnabled()):
             self.clearFocus()
             return True
@@ -1071,12 +1099,12 @@ class ScrollBar(QScrollBar):
         self.setContextMenuPolicy(Qt.NoContextMenu)
     
     def eventFilter(self, object, event) -> bool:
-        if event.type() == QEvent.Type.Wheel:
+        if event.type() == QtScoped.QEventTypeAttribute('Wheel'):
             return True
-        elif event.type() == QEvent.Type.MouseButtonPress:
+        elif event.type() == QtScoped.QEventTypeAttribute('MouseButtonPress'):
             # Filter right-click to prevent context menu
             return event.button() == Qt.MouseButton.RightButton
-        elif event.type() == QEvent.Type.MouseButtonRelease:
+        elif event.type() == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
             # Filter right-click to prevent context menu
             return event.button() == Qt.MouseButton.RightButton
         return False
@@ -1732,14 +1760,14 @@ class VerticalResizeHline(QFrame):
         return super().mouseReleaseEvent(event)
     
     def eventFilter(self, object, event):
-        if event.type() == QEvent.Type.Enter:
+        if event.type() == QtScoped.QEventTypeAttribute('Enter'):
             self.setLineWidth(0)
             self.setMidLineWidth(self._height)
             pal = self.palette()
             pal.setColor(QPalette.ColorRole.WindowText, QColor(BASE_COLOR))
             self.setPalette(pal)
             # self.setStyleSheet('background-color: #4d4d4d') 
-        elif event.type() == QEvent.Type.Leave:
+        elif event.type() == QtScoped.QEventTypeAttribute('Leave'):
             self.setMidLineWidth(0)
             self.setLineWidth(1)
         return False
@@ -1760,15 +1788,17 @@ class GroupBox(QGroupBox):
 class CheckBox(QCheckBox):
     sigToggled = Signal(bool, object)
 
-    def __init__(self, *args, keyPressCallback=None, rightclick_menu_func=None):
+    def __init__(self, *args, keyPressCallback=None,
+                 # rightclick_menu_func=None
+                 ):
         super().__init__(*args)
         self.keyPressCallback = keyPressCallback
         self.setFocusPolicy(Qt.NoFocus)
         self.toggled.connect(self.onToggled)
         self._exclusiveCheckboxes: list[QCheckBox] = []
         self._linkedCheckboxes: dict[str, QCheckBox] = {}
-        if rightclick_menu_func is not None:
-            self.rightclick_menu = rightclick_menu_func(self)
+        # if rightclick_menu_func is not None:
+        #     self.rightclick_menu = rightclick_menu_func(self)
     
     def keyPressEvent(self, event) -> None:
         event.ignore()
@@ -1794,10 +1824,9 @@ class CheckBox(QCheckBox):
         
         self.sigToggled.emit(checked, self)
         
-    def contextMenuEvent(self, event) -> None:
-        print('contextMenuEvent')
-        if self.rightclick_menu is not None:
-            self.rightclick_menu.exec_(event.globalPos())
+    # def contextMenuEvent(self, event) -> None:
+    #     if self.rightclick_menu is not None:
+    #         self.rightclick_menu.exec_(event.globalPos())
     
     def setCheckedNoSignal(self, checked: bool):
         self.blockSignals(True)
@@ -1876,14 +1905,14 @@ class ScrollArea(QScrollArea):
         self.setFixedHeight(height)
 
     def eventFilter(self, object, event: QEvent):
-        if event.type() == QEvent.Type.Leave:
+        if event.type() == QtScoped.QEventTypeAttribute('Leave'):
             self.sigLeaveEvent.emit()
 
         if object != self.containerWidget:
             return False
         
-        isResize = event.type() == QEvent.Type.Resize
-        isShow = event.type() == QEvent.Type.Show
+        isResize = event.type() == QtScoped.QEventTypeAttribute('Resize')
+        isShow = event.type() == QtScoped.QEventTypeAttribute('Show')
         if isResize and self.isOnlyVertical:
             self._resizeHorizontal()
         elif isShow and self.resizeVerticalOnShow:
@@ -1929,7 +1958,7 @@ class QCenteredComboBox(QComboBox):
     
     def eventFilter(self, lineEdit, event):
         # Reimplement show popup on click
-        if event.type() == QEvent.Type.MouseButtonPress and self.isEnabled():
+        if event.type() == QtScoped.QEventTypeAttribute('MouseButtonPress') and self.isEnabled():
             if self._isPopupVisibile:
                 self.hidePopup()
                 self._isPopupVisibile = False
@@ -2367,7 +2396,7 @@ class mySpinBox(QSpinBox):
         super().__init__(*args)
     
     def event(self, event):
-        if event.type()==QEvent.Type.KeyPress and event.key() == Qt.Key_Tab:
+        if event.type()==QtScoped.QEventTypeAttribute('KeyPress') and event.key() == Qt.Key_Tab:
             self.sigTabEvent.emit(event, self)
             return True
 
@@ -3134,6 +3163,7 @@ class ToolBar(QToolBar):
         super().__init__(*args, **kwargs)
         
         self.widgetsWithShortcut = {}
+        self.widgetsForActions = {}
         
         for child in self.children(): 
             if child.objectName() == 'qt_toolbar_ext_button':
@@ -3182,10 +3212,12 @@ class ToolBar(QToolBar):
         spinbox.action = self.addWidget(spinbox)
         return spinbox
     
-    def addButton(self, icon_str: str, text='', checkable=False):
+    def addButton(self, icon_str: str, text='', checkable=False, ret_widget=False):
         action = QAction(QIcon(icon_str), text, self)
         action.setCheckable(checkable)
-        self.addAction(action)
+        widget = self.addAction(action)
+        if ret_widget:
+            return action, widget
         return action
 
     def addComboBox(self, items=None, label=''):
@@ -3295,7 +3327,7 @@ class CopyLostObjectToolbar(ToolBar):
     def __init__(self, *args) -> None:
         super().__init__(*args)
         
-        action = self.addButton(':copyContour_all.svg')
+        action, widget = self.addButton(':copyContour_all.svg', ret_widget=True)
         # action.setShortcut('Alt+C')
         action.keyPressShortcut = KeySequenceFromText('Alt+C')
         action.setToolTip(
@@ -3303,6 +3335,7 @@ class CopyLostObjectToolbar(ToolBar):
             'Shortcut: Alt+C'
         )
         self.widgetsWithShortcut['Copy all lost objects'] = action
+        self.widgetsForActions['Copy all lost objects'] = widget
         
         action.triggered.connect(self.emitSigCopyAllObjects)
         
@@ -3742,7 +3775,7 @@ class Toggle(QCheckBox):
     def eventFilter(self, object, event):
         # To get the actual position of the circle we need to wait that
         # the widget is visible before setting the state
-        if event.type() == QEvent.Type.Show and self.requestedState is not None:
+        if event.type() == QtScoped.QEventTypeAttribute('Show') and self.requestedState is not None:
             self.setChecked(self.requestedState)
         return False
 
@@ -3894,7 +3927,7 @@ class ShortcutLineEdit(QLineEdit):
         self._allowMouseButtons = allowMouseButtons
         
     def eventFilter(self, obj, event):
-        if event.type() == QEvent.Type.MouseButtonPress:
+        if event.type() == QtScoped.QEventTypeAttribute('MouseButtonPress'):
             button = event.button()
             if (
                     self._allowMouseButtons 
@@ -4354,7 +4387,7 @@ class ReadOnlyLineEdit(QLineEdit):
         self.installEventFilter(self)
     
     def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
-        if a1.type() == QEvent.Type.FocusIn:
+        if a1.type() == QtScoped.QEventTypeAttribute('FocusIn'):
             return True
         return super().eventFilter(a0, a1)
 
@@ -4400,7 +4433,7 @@ class FloatLineEdit(QLineEdit):
             self.setValue(0)  
     
     def setDecimals(self, decimals):
-        self._decimals = 6
+        self._decimals = decimals
 
     def castMinMax(self, value: int):
         if value > self._maximum:
@@ -4455,15 +4488,17 @@ class IntLineEdit(QLineEdit):
 
     def __init__(
             self, *args, notAllowed=None, allowNegative=True, initial=None,
-            readOnly=False
+            readOnly=False, maximum=None, minimum=None
         ):
         QLineEdit.__init__(self, *args)
         self.notAllowed = notAllowed
         if readOnly:
             self.setReadOnly(readOnly)
 
-        self._maximum = np.inf
-        self._minimum = -np.inf
+        maximum = maximum if maximum is not None else np.inf
+        minimum = minimum if minimum is not None else -np.inf
+        self._maximum = maximum
+        self._minimum = minimum
         
         self._regExp = r'\d+'
         if allowNegative:
@@ -5341,9 +5376,9 @@ class expandCollapseButton(PushButton):
         self.sigClicked.emit()
 
     def eventFilter(self, object, event):
-        if event.type() == QEvent.Type.HoverEnter:
+        if event.type() == QtScoped.QEventTypeAttribute('HoverEnter'):
             self.setFlat(False)
-        elif event.type() == QEvent.Type.HoverLeave:
+        elif event.type() == QtScoped.QEventTypeAttribute('HoverLeave'):
             self.setFlat(True)
         return False
 
@@ -6118,7 +6153,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.sigAddTimestamp.emit(self.addTimestampAction.isChecked())
     
     def gradientMenuEventFilter(self, object, event):
-        if event.type() == QEvent.Type.MouseMove:
+        if event.type() == QtScoped.QEventTypeAttribute('MouseMove'):
             hoveredAction = self.gradient.menu.actionAt(event.pos())
             isActionEntered = (
                 hoveredAction != self.lastHoveredAction
@@ -9704,7 +9739,7 @@ class ComboBox(QComboBox):
         self.installEventFilter(self)
     
     def eventFilter(self, object, event) -> bool:
-        if object == self and event.type() == QEvent.Type.Wheel:
+        if object == self and event.type() == QtScoped.QEventTypeAttribute('Wheel'):
             # Forward event to parent so QScrollArea can scroll
             QApplication.sendEvent(self.parent(), event)
             return True  # Consume for the combo itself
@@ -11403,7 +11438,7 @@ class WhitelistIDsToolbar(ToolBar):
         )
 
         # add a view OG toggle
-        self.viewOGToggle = self.addButton(':eye.svg', checkable=True)
+        self.viewOGToggle, viewOGWidget = self.addButton(':eye.svg', checkable=True, ret_widget=True)
         viewOGTooltip = (
             'View the non-whitelisted segmentation mask.\n\n'
             'You can activate this to add new IDs to the whitelist,\n'
@@ -11414,6 +11449,7 @@ class WhitelistIDsToolbar(ToolBar):
         self.viewOGToggle.setShortcut('Shift+K')
         key = 'View the non-whitelisted segmentation mask'
         self.widgetsWithShortcut[key] = self.viewOGToggle
+        self.widgetsForActions[key] = viewOGWidget
         
         self.viewOGToggle.toggled.connect(self.emitViewOGIDs)
         self.emitViewOGIDs(True)
@@ -12168,11 +12204,23 @@ class OverlayToolbar(ToolBar):
         )
         
         self.transparencyCheckbox.setToolTip(
-            'Activate to achieve true pixel-wise transparency where '
-            'the pixel intensity is 0 or set to 0 using the '
-            'LUT sliders on the left of the images.\n\n'
-            'Since it is significantly slower, we recommended to activate this '
-            'only if you need to export images for figures.'
+            'Activate to hierarchically blend channels using relative weights '
+            'derived from the scrollbars.\n\n'
+            'Each scrollbar controls the balance between adjacent channels, ' 
+            'allowing you to fine-tune their contributions to the '
+            'final blended image.'
+        )
+        
+        self.alphaEncodedIntensityCheckbox = self.addCheckBox(
+            text='Alpha-encoded intensity (RGBA composite)'
+        )
+        self.alphaEncodedIntensityCheckbox.setToolTip(
+            'Activate to encode pixel intensity as alpha transparency: '
+            'pixels with zero intensity are fully transparent,\n'
+            '50% intensity corresponds to 50% opacity, '
+            'and maximum intensity is fully opaque.\n\n'
+            'This allows low-intensity regions to appear transparent and '
+            'creates the perception of seeing through these regions.'
         )
         
         self.addSeparator()
@@ -12186,10 +12234,29 @@ class OverlayToolbar(ToolBar):
             'will display only that channel in the overlay.'
         )
         
-        self.transparencyCheckbox.toggled.connect(self.sigSetTranspacency.emit)
+        self.transparencyCheckbox.toggled.connect(self.transparencyToggled)
         self.singleChannelCheckbox.toggled.connect(
             self.sigSetSingleChannel.emit
         )
+        self.alphaEncodedIntensityCheckbox.toggled.connect(
+            self.alphaEncodedIntensityToggled)
+        
+        
+    def alphaEncodedIntensityToggled(self, checked):
+        if checked:
+            self.transparencyCheckbox.blockSignals(True)
+            self.transparencyCheckbox.setChecked(True)
+            self.transparencyCheckbox.blockSignals(False)
+        transp_checked = self.transparencyCheckbox.isChecked()
+        self.sigSetTranspacency.emit(transp_checked)
+        
+    def transparencyToggled(self, checked):
+        if not checked:
+            self.alphaEncodedIntensityCheckbox.blockSignals(True)
+            self.alphaEncodedIntensityCheckbox.setChecked(False)
+            self.alphaEncodedIntensityCheckbox.blockSignals(False)
+        
+        self.sigSetTranspacency.emit(checked)
     
     def setTransparent(self, transparent: bool):
         self.transparencyCheckbox.setChecked(transparent)
@@ -12199,6 +12266,9 @@ class OverlayToolbar(ToolBar):
     
     def isSingleChannel(self):
         return self.singleChannelCheckbox.isChecked()
+    
+    def isAlphaEncodedIntensity(self):
+        return self.alphaEncodedIntensityCheckbox.isChecked()
 
 class OverlayChannelToolButton(GradientToolButton):
     def __init__(
@@ -12907,3 +12977,8 @@ class FadingTrackItem(pg.GraphicsObject):
         xs = [p[0] for p in self.points]
         ys = [p[1] for p in self.points]
         return QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+
+class GuiCentralWidget(QWidget):
+    def __init__(self, parent=None, *args):
+        super().__init__(parent, *args)
+    

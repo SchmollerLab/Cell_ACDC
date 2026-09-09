@@ -1,9 +1,40 @@
 import numpy as np
 from skimage.measure import regionprops
 
+from cellacdc.regionprops import acdcRegionprops
 from cellacdc.trackers.CellACDC import CellACDC_tracker
 from cellacdc.trackers.CellACDC_2steps.CellACDC_2steps_tracker import tracker as TwoStepsTracker
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import tracker as NormalDivisionTracker
+
+
+def test_calc_io_matrix_uses_regionprops_iteration_order_for_axes():
+    prev_lab = np.array(
+        [
+            [1, 2],
+            [7, 8],
+        ],
+        dtype=np.uint16,
+    )
+    lab = np.array(
+        [
+            [8, 1],
+            [2, 7],
+        ],
+        dtype=np.uint16,
+    )
+    prev_rp = acdcRegionprops(prev_lab, precache_centroids=False)
+    rp = acdcRegionprops(lab, precache_centroids=False)
+
+    ioa_matrix, current_ids, previous_ids = CellACDC_tracker.calc_Io_matrix(
+        lab, prev_lab, rp, prev_rp
+    )
+    old_ids, tracked_ids = CellACDC_tracker.assign(
+        ioa_matrix, current_ids, previous_ids
+    )
+
+    assert current_ids == [obj.label for obj in rp]
+    assert previous_ids == [obj.label for obj in prev_rp]
+    assert dict(zip(old_ids, tracked_ids)) == {1: 2, 2: 7, 7: 8, 8: 1}
 
 
 def test_track_frame_specific_ids_only_tracks_requested_current_ids():
@@ -118,43 +149,80 @@ def test_two_steps_specific_ids_can_match_selected_new_object_to_lost_previous_i
     assert add_info['assignments'] == {7: 5}
 
 
-# def test_normal_division_specific_ids_preserve_division_context():
-#     prev_lab = np.array(
-#         [
-#             [5, 5, 5, 5],
-#             [5, 5, 5, 5],
-#         ],
-#         dtype=np.uint16,
-#     )
-#     lab = np.array(
-#         [
-#             [7, 7, 8, 8],
-#             [7, 7, 8, 8],
-#         ],
-#         dtype=np.uint16,
-#     )
+def test_normal_division_specific_ids_preserve_division_context():
+    prev_lab = np.array(
+        [
+            [5, 5, 5, 5],
+            [5, 5, 5, 5],
+        ],
+        dtype=np.uint16,
+    )
+    lab = np.array(
+        [
+            [7, 7, 8, 8],
+            [7, 7, 8, 8],
+        ],
+        dtype=np.uint16,
+    )
 
-#     tracked_lab, add_info = NormalDivisionTracker().track_frame(
-#         prev_lab,
-#         lab,
-#         IoA_thresh=0.8,
-#         IoA_thresh_daughter=0.25,
-#         IoA_thresh_aggressive=0.5,
-#         min_daughter=2,
-#         max_daughter=2,
-#         unique_ID=20,
-#         return_assignments=True,
-#         specific_IDs=[7],
-#     )
+    tracked_lab, add_info = NormalDivisionTracker().track_frame(
+        prev_lab,
+        lab,
+        IoA_thresh=0.8,
+        IoA_thresh_daughter=0.25,
+        IoA_thresh_aggressive=0.5,
+        min_daughter=2,
+        max_daughter=2,
+        unique_ID=20,
+        return_assignments=True,
+        specific_IDs=[7],
+    )
 
-#     expected = np.array(
-#         [
-#             [20, 20, 8, 8],
-#             [20, 20, 8, 8],
-#         ],
-#         dtype=np.uint16,
-#     )
+    expected = np.array(
+        [
+            [20, 20, 8, 8],
+            [20, 20, 8, 8],
+        ],
+        dtype=np.uint16,
+    )
 
-#     np.testing.assert_array_equal(tracked_lab, expected)
-#     assert add_info['mothers'] == {5}
-#     assert add_info['assignments'] == {7: 20}
+    np.testing.assert_array_equal(tracked_lab, expected)
+    assert add_info['mothers'] == {5}
+    assert add_info['assignments'] == {7: 20}
+
+
+def test_normal_division_second_step_does_not_merge_existing_id():
+    prev_lab = np.array(
+        [
+            [5, 5, 0, 0, 0, 0],
+            [5, 5, 0, 0, 0, 0],
+        ],
+        dtype=np.uint16,
+    )
+    lab = np.array(
+        [
+            [0, 0, 0, 7, 7, 5],
+            [0, 0, 0, 7, 7, 5],
+        ],
+        dtype=np.uint16,
+    )
+
+    tracked_lab, add_info = NormalDivisionTracker().track_frame(
+        prev_lab,
+        lab,
+        IoA_thresh=0.8,
+        unique_ID=20,
+        return_assignments=True,
+        specific_IDs=[7],
+    )
+
+    expected = np.array(
+        [
+            [0, 0, 0, 20, 20, 5],
+            [0, 0, 0, 20, 20, 5],
+        ],
+        dtype=np.uint16,
+    )
+
+    np.testing.assert_array_equal(tracked_lab, expected)
+    assert add_info['assignments'] == {7: 20}

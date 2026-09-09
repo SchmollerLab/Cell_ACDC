@@ -17,7 +17,7 @@ if GUI_INSTALLED:
     
     from . import plot
     
-    from qtpy.QtGui import QFont, QPicture, QPainter, QColor, QPen
+    from qtpy.QtGui import QFont, QPicture, QPainter, QColor, QPen, QImage, QTransform
     from qtpy.QtCore import QRectF, QPointF, Qt, QLineF
 
 INVERTIBLE_COLOR_NAMES = [
@@ -30,18 +30,14 @@ font_bold_path = os.path.join(
     cellacdc_path, 'resources', 'fonts', f'{FONT_FAMILY}-Bold.ttf'
 )
 
+ZOOM_BUCKET_PERC_CHANGE_THRESHOLD = 0.1 # 0.5 would be the lowest 
+# percentage where it would do something (every second step), but IDK if its 
+# really worth it
+
 def get_obj_text_label_annot(
-        obj, acdc_df: pd.DataFrame, is_tree_annot: bool, add_num_zslices: bool
+        obj, add_num_zslices: bool
     ) -> str:
-    if is_tree_annot and acdc_df is not None:
-        try:
-            annot_label = acdc_df.at[obj.label, 'Cell_ID_tree']
-        except Exception as err:
-            # print(traceback.format_exc())
-            annot_label = obj.label
-    else:
-        annot_label = obj.label
-    
+    annot_label = obj.label
     if not add_num_zslices:
         return str(annot_label)
     
@@ -49,62 +45,94 @@ def get_obj_text_label_annot(
     return f'{annot_label} ({num_z_slices})'
 
 def get_obj_text_cca_annot(
-        obj, acdc_df: pd.DataFrame, is_tree_annot: bool,     
-        moth_bud_pairs_cca=None
+        obj, acdc_df: pd.DataFrame,
+        moth_bud_pairs_cca=None,
+        is_tree_annot: bool=False,
     ) -> str:
-    ID = obj.label
-    try:
-        cca_df_obj = moth_bud_pairs_cca.loc[ID].copy()
-    except Exception as e:
-        try:
-            cca_df_obj = acdc_df.loc[ID]
-        except Exception as e:
-            return str(ID), None
     
-    try:
+    ID = obj.label
+    if not is_tree_annot:
+        if moth_bud_pairs_cca is not None and ID in moth_bud_pairs_cca.index:
+            cca_df_obj = moth_bud_pairs_cca.loc[ID]
+        elif ID in acdc_df.index:
+            cca_df_obj = acdc_df.loc[ID]
+        else:
+            return str(ID), None
+        
+        if 'cell_cycle_stage' not in cca_df_obj:
+            return str(ID), None
         ccs = cca_df_obj['cell_cycle_stage']
-    except Exception as err:
-        return str(ID), None 
 
-    try:
+        if 'generation_num' not in cca_df_obj:
+            return str(ID), None
         generation_num = int(cca_df_obj['generation_num'])
-    except Exception as e:
-        return str(ID), None
+    
+    else:
+        if ID not in acdc_df.index:
+            return str(ID), None
+        cca_df_obj = acdc_df.loc[ID]
+        
+        if 'Cell_ID_tree' in cca_df_obj:
+            displ_ID = cca_df_obj['Cell_ID_tree']
+        else:
+            displ_ID = ID
+        
+        if 'generation_num_tree' not in cca_df_obj:
+            return str(displ_ID), None
+        generation_num = cca_df_obj['generation_num_tree']
+        if generation_num is None or pd.isna(generation_num):
+            generation_num = -1
+        generation_num = int(float(generation_num))
     
     generation_num = 'ND' if generation_num==-1 else generation_num
-    if is_tree_annot:
-        try:
-            generation_num = cca_df_obj['generation_num_tree']
-        except Exception as e:
-            generation_num = generation_num
 
-    txt = f'{ccs}-{generation_num}'
+    if not is_tree_annot:
+        txt = f'{ccs}-{generation_num}'
+    else:
+        txt = f'{displ_ID} ({generation_num})'
 
     is_history_known = cca_df_obj['is_history_known']
-    if not is_history_known:
+    if pd.notna(is_history_known) and not is_history_known:
         txt = f'{txt}?'
 
     return txt, cca_df_obj
 
+def get_obj_color_cca_annot(cca_df_obj, frame_i):    
+    ccs = cca_df_obj['cell_cycle_stage']
+    relationship = cca_df_obj['relationship']
+    is_bud = relationship == 'bud'
+    emerg_frame_i = int(cca_df_obj['emerg_frame_i'])
+    bud_emerged_now = (emerg_frame_i == frame_i) and is_bud
+
+    bold = bud_emerged_now
+
+    # Check if it will divide to use orange instead of red
+    bud_will_divide = False
+    if ccs == 'S' and is_bud:
+        bud_will_divide = cca_df_obj['will_divide'] > 0
+
+    if bud_will_divide:
+        color_name = 'bud_will_divide'
+    elif ccs == 'S':
+        if relationship == 'mother':
+            color_name = 'S_phase_mother'
+        else:
+            color_name = 'S_phase_bud'
+    elif ccs == 'G1':
+        color_name = 'G1_phase'
+        
+    return color_name, bold
+
 def get_obj_text_annot_opts(
         obj, acdc_df: pd.DataFrame, is_cca_annot: bool, is_new_obj: bool, 
-        add_num_zslices: bool, is_label_tree_annot: bool, 
-        is_gen_num_tree_annot: bool, frame_i: int,
-        moth_bud_pairs_cca=None
+        add_num_zslices: bool, is_lineage_annot: bool, 
+        frame_i: int, moth_bud_pairs_cca=None
     ) -> dict: 
-    if acdc_df is None or not is_cca_annot:
-        bold = False
-        if is_new_obj:
-            color_name = 'new_object'
-        else:
-            color_name = 'label'
-        text = get_obj_text_label_annot(
-            obj, acdc_df, is_label_tree_annot, add_num_zslices
-        )
-    else:
+    if acdc_df is not None and is_cca_annot:
         text, cca_df_obj = get_obj_text_cca_annot(
-            obj, acdc_df, is_gen_num_tree_annot, 
-            moth_bud_pairs_cca=moth_bud_pairs_cca
+            obj, acdc_df,
+            moth_bud_pairs_cca=moth_bud_pairs_cca,
+            is_tree_annot=False
         )
         if cca_df_obj is None:
             if is_new_obj:
@@ -114,28 +142,36 @@ def get_obj_text_annot_opts(
             opts = {'text': text, 'color_name': color_name, 'bold': False}
             return opts
         
-        ccs = cca_df_obj['cell_cycle_stage']
-        relationship = cca_df_obj['relationship']
-        is_bud = relationship == 'bud'
-        emerg_frame_i = int(cca_df_obj['emerg_frame_i'])
-        bud_emerged_now = (emerg_frame_i == frame_i) and is_bud
-
-        bold = bud_emerged_now
-
-        # Check if it will divide to use orange instead of red
-        bud_will_divide = False
-        if ccs == 'S' and is_bud:
-            bud_will_divide = cca_df_obj['will_divide'] > 0
-
-        if bud_will_divide:
-            color_name = 'bud_will_divide'
-        elif ccs == 'S':
-            if relationship == 'mother':
-                color_name = 'S_phase_mother'
+        color_name, bold = get_obj_color_cca_annot(cca_df_obj, frame_i)
+            
+    elif acdc_df is not None and is_lineage_annot:
+        text, cca_df_obj = get_obj_text_cca_annot(
+            obj, acdc_df,
+            is_tree_annot=True
+        )
+        if cca_df_obj is None:
+            if is_new_obj:
+                color_name = 'new_object'
             else:
-                color_name = 'S_phase_bud'
-        elif ccs == 'G1':
-            color_name = 'G1_phase'
+                color_name = 'label'
+            opts = {'text': text, 'color_name': color_name, 'bold': False}
+            return opts
+        
+        bold = is_new_obj and (cca_df_obj['parent_ID_tree'] == -1)
+        if is_new_obj:
+            color_name = 'new_object'
+        else:
+            color_name = 'label'
+        
+    else:
+        bold = False
+        if is_new_obj:
+            color_name = 'new_object'
+        else:
+            color_name = 'label'
+        text = get_obj_text_label_annot(
+            obj, add_num_zslices
+        )
         
     opts = {'text': text, 'color_name': color_name, 'bold': bold}
 
@@ -144,14 +180,18 @@ def get_obj_text_annot_opts(
 class TextAnnotationsImageItem(pg.ImageItem):
     def __init__(self, **kargs):
         super().__init__(**kargs)
+        self.texts = []
+        self.annotData = []
+        self.highlighterItem = None
     
     def initFonts(self, fontSize):
         self.fontSize = fontSize
         self.fontRegular = ImageFont.truetype(font_path, fontSize)
         self.fontBold = ImageFont.truetype(font_bold_path, fontSize)
-        self.highlighterItem = TextAnnotationsScatterItem(
-            size=self.fontSize, pxMode=False
-        )
+        if self.highlighterItem is None:
+            self.highlighterItem = TextAnnotationsScatterItem(
+                size=self.fontSize, pxMode=False
+            )
         self.highlighterItem.initFonts(fontSize)
         self.highlighterItem.initSymbols(range(10))
     
@@ -164,17 +204,25 @@ class TextAnnotationsImageItem(pg.ImageItem):
         self.pilDraw = ImageDraw.Draw(self.pilImage)
     
     def clearImage(self):
-        self.pilDraw.rectangle([(0,0), self.pilDraw.im.size], fill=(0,0,0,0))
+        try:
+            self.pilDraw.rectangle([(0,0), self.pilDraw.im.size], fill=(0,0,0,0))
+        except Exception as e:
+            pass
     
     def clearData(self):
         self.clearImage()
         self.setOpacity(1.0)
-        self.highlighterItem.setData([], [])
+        if self.highlighterItem is not None:
+            self.highlighterItem.clearData()
         self.texts = []
         self.annotData = []
+
+    def clear(self):
+        self.clearData()
+        self.setVisible(False)
     
     def update(self):
-        pass
+        super().update()
     
     def appendData(self, data, text):
         self.annotData.append(data)
@@ -204,7 +252,8 @@ class TextAnnotationsImageItem(pg.ImageItem):
 
     def setColors(self, colors):
         self._colors = colors.copy()
-        self.highlighterItem.setColors(colors)
+        if self.highlighterItem is not None:
+            self.highlighterItem.setColors(colors)
     
     def initSymbols(self, allIDs):
         pass
@@ -222,9 +271,14 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
     (addObjAnnot, appendData, draw, highlightObject, removeHighlightObject,
     grayOutAnnotations, setColors, etc.) so it's a drop-in swap.
     """
-    def __init__(self, size=10, pxMode=False, anchor=(0.5, 0.5)):
+    def __init__(self, size=10, pxMode=False, anchor=(0.5, 0.5), scalingMode=False):
         super().__init__()
         self._pxMode = pxMode
+        self._scaling = scalingMode
+        self._exporting = False
+        self._exportTargetZoom = None
+        self._exportViewRect = None
+        self._forcedExportZoom = None
         self._anchor = anchor
         self.picture = QPicture()
         self._boundingRect = QRectF()
@@ -232,17 +286,28 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         self.texts = []      # kept parallel to annotData for API compatibility
         self.initFonts(size)
         self.setPxMode(pxMode)
-
+        self.zoom = None
+        self._zoomBucket = None
+        self._cachedScaleFactor = None
+        self.cached_picture = None
+        self._cached_view_rect = QRectF()
+        self._curr_zoom_bucket = None
+        self._rectsZoomBucket = None
+        self._pictureTargetZoom = None
+        
     # ---- setup / config, API-compatible no-ops where the atlas is gone ----
 
     def initFonts(self, fontSize):
         self.fontSize = fontSize
+        
         self.fontBold = QFont(FONT_FAMILY)
         self.fontBold.setBold(True)
         self.fontBold.setPixelSize(fontSize)
 
         self.fontRegular = QFont(FONT_FAMILY)
         self.fontRegular.setPixelSize(fontSize)
+        
+        self._invalidateCache()
 
     def init(self, *args):
         pass
@@ -268,6 +333,52 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
             pg.GraphicsObject.GraphicsItemFlag.ItemIgnoresTransformations, False
         )
 
+    def setScaling(self, scaling):
+        scaling_new = bool(scaling)
+        if self._scaling == scaling_new:
+            return
+        self._scaling = scaling_new
+        self._invalidateCache()
+        self._generatePicture()
+
+    def setExportZoom(self, zoom):
+        if zoom is None:
+            self._forcedExportZoom = None
+            return
+        try:
+            zoom = float(zoom)
+        except (TypeError, ValueError):
+            self._forcedExportZoom = None
+            return
+        self._forcedExportZoom = zoom if zoom > 0 else None
+
+    def setExportMode(self, export, opts=None):
+        self._exporting = bool(export)
+        if not export:
+            self._exportTargetZoom = None
+            self._exportViewRect = None
+            return
+
+        # Capture zoom before export rendering starts. During SVG item painting
+        # the viewbox can be unavailable, so this keeps scaling behavior stable.
+        self._exportTargetZoom = self._forcedExportZoom
+        if self._exportTargetZoom is None:
+            self._exportTargetZoom = self._currentViewZoom()
+
+        # Cache view-range bounds before export starts, since during SVG paint
+        # the viewbox may be unavailable.
+        viewbox = self.getViewBox()
+        if viewbox is not None:
+            self._exportViewRect = QRectF(viewbox.viewRect())
+        else:
+            self._exportViewRect = None
+
+        # Exporters provide a painter with a different transform stack than the
+        # interactive view. The cached subset/image path reconstructs that
+        # transform approximately and can shift or mis-scale text, so export
+        # should always use direct vector/text drawing instead.
+        self._invalidateCache()
+
     def setColors(self, colors):
         self._colors = colors.copy()
         self._brushes = {}
@@ -275,6 +386,7 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         for name, color in self._colors.items():
             self._brushes[name] = pg.mkBrush(color)
             self._pens[name] = pg.mkPen(color[:3], width=1)
+        self._invalidateCache()
 
     def pens(self):
         return self._pens
@@ -310,49 +422,382 @@ class TextAnnotationsScatterItem(pg.GraphicsObject):
         return objData
 
     def draw(self):
-        self._generatePicture()
+        target_zoom = self._currentViewZoom() if self._scaling else self.zoom
+        self._generatePicture(target_zoom=target_zoom)
 
     # ---- rendering ----
 
-    def _generatePicture(self):
+    def _invalidateCache(self):
+        self.zoom = None
+        self._zoomBucket = None
+        self.cached_picture = None
+        self._cached_view_rect = QRectF()
+
+    def _effective_font_size(self, target_zoom):
+        if target_zoom is None:
+            return self.fontSize
+        if self._scaling:
+            return max(self.fontSize * target_zoom, 1.0)
+        return self.fontSize
+
+    def _font_for(self, objData, target_zoom=None):
+        font_size = self._effective_font_size(target_zoom)
+        base_font = self.fontBold if objData.get('bold') else self.fontRegular
+        font = QFont(base_font)
+        font.setPixelSize(max(int(round(font_size)), 1))
+        return font
+
+    def _currentViewZoom(self):
+        viewbox = self.getViewBox()
+        if viewbox is None:
+            return None
+        return viewbox.viewPixelSize()[0]
+
+    def _draw_pos_for(self, painter, objData, text):
+        x, y = objData['pos']
+        fm = painter.fontMetrics()
+        rect = fm.boundingRect(text)
+        return QPointF(
+            x - rect.width() / 2,
+            y + rect.height() / 2 - fm.descent(),
+        ), rect, fm
+
+
+    def _zoomBucketFor(self, target_zoom):
+        if target_zoom is None:
+            return None
+        
+        # if zoom becomes excessive, we don't want to zoom in too deep
+        effective_font_size = self._effective_font_size(target_zoom)
+        effective_rendered_font_px = effective_font_size / target_zoom
+        if effective_rendered_font_px > 2500:
+            if self._curr_zoom_bucket is not None:
+                return self._curr_zoom_bucket
+            
+        rendered_font_px = self.fontSize / target_zoom
+        requested_bucket = max(int(round(rendered_font_px / 2.0) * 2), 1)
+        if self._curr_zoom_bucket is None:
+            self._curr_zoom_bucket = requested_bucket
+            return self._curr_zoom_bucket
+        
+        perc_change = abs(requested_bucket - self._curr_zoom_bucket) / self._curr_zoom_bucket
+        if perc_change > ZOOM_BUCKET_PERC_CHANGE_THRESHOLD:
+            self._curr_zoom_bucket = requested_bucket
+        return self._curr_zoom_bucket
+    # zoom buckets are basically for 2 step font size changes so they are 
+    # always even
+
+    def _expandedCacheRect(self, exposed_rect):
+        if exposed_rect.isNull():
+            return QRectF()
+        x_margin = max(exposed_rect.width() * 0.25, 1.0)
+        y_margin = max(exposed_rect.height() * 0.25, 1.0)
+        expanded_rect = exposed_rect.adjusted(
+            -x_margin, -y_margin, x_margin, y_margin
+        )
+        return expanded_rect.intersected(self._boundingRect)
+
+    def _drawSubset(self, painter, source_rect=None, target_zoom=None):
+        if source_rect is not None and source_rect.isNull():
+            return
+
+        if source_rect is not None:
+            painter.save()
+            painter.setClipRect(source_rect, Qt.ClipOperation.IntersectClip)
+
+        for objData in self.annotData:
+            text = objData.get('text')
+            if text is None:
+                continue
+
+            font = self._font_for(objData, target_zoom=target_zoom)
+            painter.setFont(font)
+            draw_pos, rect, fm = self._draw_pos_for(painter, objData, text)
+            text_rect = QRectF(
+                draw_pos.x(),
+                draw_pos.y() - rect.height() + fm.descent(),
+                rect.width(),
+                rect.height(),
+            )
+            if source_rect is not None and not text_rect.intersects(source_rect):
+                continue
+
+            color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
+            painter.setPen(QColor(*color))
+            painter.drawText(draw_pos, text)
+
+        if source_rect is not None:
+            painter.restore()
+
+    def _textRectForObj(self, painter, objData, text, target_zoom=None):
+        painter.setFont(self._font_for(objData, target_zoom=target_zoom))
+        draw_pos, rect, fm = self._draw_pos_for(painter, objData, text)
+        return QRectF(
+            draw_pos.x(),
+            draw_pos.y() - rect.height() + fm.descent(),
+            rect.width(),
+            rect.height(),
+        )
+
+    def _doesAnyTextTouchCurrentBounds(self, painter, target_zoom=None):
+        if self._boundingRect.isNull():
+            return True
+
+        left = self._boundingRect.left()
+        right = self._boundingRect.right()
+        top = self._boundingRect.top()
+        bottom = self._boundingRect.bottom()
+        eps = 0.5
+
+        for idx, objData in enumerate(self.annotData):
+            text = objData.get('text')
+            if text is None and idx < len(self.texts):
+                text = self.texts[idx]
+            if not text:
+                continue
+
+            text_rect = self._textRectForObj(
+                painter, objData, text, target_zoom=target_zoom
+            )
+            touches_outline = (
+                text_rect.left() <= left + eps
+                or text_rect.right() >= right - eps
+                or text_rect.top() <= top + eps
+                or text_rect.bottom() >= bottom - eps
+            )
+            if touches_outline:
+                return True
+
+        return False
+
+    def _cachePaddingFor(self, painter, target_zoom=None):
+        # Use measured text extents so long labels are not clipped when
+        # the cache is generated for only a subset of the visible area.
+        max_half_width = 0.0
+        max_half_height = 0.0
+        for objData in self.annotData:
+            text = objData.get('text')
+            if not text:
+                continue
+
+            painter.setFont(self._font_for(objData, target_zoom=target_zoom))
+            rect = painter.fontMetrics().boundingRect(text)
+            max_half_width = max(max_half_width, rect.width() / 2)
+            max_half_height = max(max_half_height, rect.height() / 2)
+
+        base_pad = max(self._effective_font_size(target_zoom), 1.0)
+        x_pad = max(base_pad, max_half_width + 2.0)
+        y_pad = max(base_pad, max_half_height + 2.0)
+        return x_pad, y_pad
+
+    def _refreshCachedPicture(self, painter, target_zoom, source_rect, zoom_bucket):
+        if (
+            self._boundingRect.isNull()
+            or source_rect.isNull()
+            or target_zoom is None
+        ):
+            self.cached_picture = None
+            self._cached_view_rect = QRectF()
+            self._zoomBucket = None
+            return
+
+        x_pad, y_pad = self._cachePaddingFor(painter, target_zoom=target_zoom)
+        draw_rect = source_rect.adjusted(-x_pad, -y_pad, x_pad, y_pad)
+
+        device_rect = painter.worldTransform().mapRect(draw_rect)
+        logical_width = abs(device_rect.width())
+        logical_height = abs(device_rect.height())
+        if logical_width <= 0 or logical_height <= 0:
+            self.cached_picture = None
+            self._cached_view_rect = QRectF()
+            self._zoomBucket = None
+            return
+
+        device = painter.device()
+        if device is not None and hasattr(device, 'devicePixelRatioF'):
+            dpr = float(device.devicePixelRatioF())
+        else:
+            dpr = 1.0
+        dpr = max(dpr, 1.0)
+
+        width = max(int(round(logical_width * dpr)), 1)
+        height = max(int(round(logical_height * dpr)), 1)
+
+        cached_picture = QImage(
+            width, height, QImage.Format.Format_ARGB32_Premultiplied
+        )
+        cached_picture.fill(0)
+
+        cache_painter = QPainter(cached_picture)
+        if not cache_painter.isActive():
+            self.cached_picture = None
+            self._cached_view_rect = QRectF()
+            self._zoomBucket = None
+            return
+
+        cache_painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        scale_x = (logical_width * dpr) / draw_rect.width()
+        scale_y = (logical_height * dpr) / draw_rect.height()
+        transform = QTransform()
+        transform.scale(scale_x, scale_y)
+        transform.translate(-draw_rect.left(), -draw_rect.top())
+        cache_painter.setWorldTransform(transform)
+        self._drawSubset(cache_painter, draw_rect, target_zoom=target_zoom)
+        cache_painter.end()
+
+        self.cached_picture = cached_picture
+        self._cached_view_rect = draw_rect
+        self._zoomBucket = zoom_bucket
+        self.zoom = target_zoom
+
+    def _generatePicture(self, target_zoom=None):
+        if target_zoom is None:
+            if self._scaling:
+                target_zoom = self._currentViewZoom()
+            if target_zoom is None:
+                target_zoom = self.zoom
+
         self.picture = QPicture()
         painter = QPainter(self.picture)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
-        xs, ys = [], []
+        rects = []
         for idx, objData in enumerate(self.annotData):
             text = objData.get('text')
             if text is None and idx < len(self.texts):
                 text = self.texts[idx]
 
-            font = self.fontBold if objData.get('bold') else self.fontRegular
+            font = self._font_for(objData, target_zoom=target_zoom)
             painter.setFont(font)
             color = self._colors.get(objData.get('color_name'), (255, 255, 255, 255))
             painter.setPen(QColor(*color))
 
-            x, y = objData['pos']
-            fm = painter.fontMetrics()
-            rect = fm.boundingRect(text)
             # Center the text on (x, y), matching the 'mm' anchor used by
             # the low-res PIL-based item.
-            draw_x = x - rect.width() / 2
-            draw_y = y + rect.height() / 2 - fm.descent()
-            painter.drawText(QPointF(draw_x, draw_y), text)
+            draw_pos, rect, fm = self._draw_pos_for(painter, objData, text)
+            painter.drawText(draw_pos, text)
 
-            xs.extend([x - rect.width() / 2, x + rect.width() / 2])
-            ys.extend([y - rect.height() / 2, y + rect.height() / 2])
+            objData['_draw_pos'] = draw_pos
+            objData['_rect'] = QRectF(
+                draw_pos.x(),
+                draw_pos.y() - rect.height() + fm.descent(),
+                rect.width(),
+                rect.height(),
+            )
+            rects.append(objData['_rect'])
 
         painter.end()
 
-        self._boundingRect = (
-            QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
-            if xs else QRectF()
-        )
+        if rects:
+            pad = max(2, self.fontSize // 4)
+            bounds = QRectF(rects[0])
+            for rect in rects[1:]:
+                bounds = bounds.united(rect)
+            self._boundingRect = bounds.adjusted(-pad, -pad, pad, pad)
+        else:
+            self._boundingRect = QRectF()
+        self._rectsZoomBucket = self._zoomBucketFor(target_zoom)
+        self._pictureTargetZoom = target_zoom
+        self._invalidateCache()
         self.prepareGeometryChange()
         self.update()
 
     def paint(self, painter, *args):
-        painter.drawPicture(0, 0, self.picture)
+        if self._boundingRect.isNull() or not self.annotData:
+            return
+
+        if self._exporting:
+            target_zoom = None
+            if self._scaling:
+                target_zoom = self._exportTargetZoom
+                if target_zoom is None:
+                    target_zoom = self._currentViewZoom()
+
+            export_source_rect = self._exportViewRect
+            if export_source_rect is None:
+                viewbox = self.getViewBox()
+                if viewbox is not None:
+                    export_source_rect = viewbox.viewRect()
+
+            # Draw directly in export mode so font sizing is evaluated against
+            # the export painter state instead of replayed picture commands.
+            self._drawSubset(
+                painter,
+                source_rect=export_source_rect,
+                target_zoom=target_zoom,
+            )
+            return
+
+        if self.picture.isNull():
+            self._generatePicture()
+            if self.picture.isNull():
+                return
+
+        viewbox = self.getViewBox()
+        target_zoom = viewbox.viewPixelSize()[0] if viewbox is not None else None
+        zoom_bucket = self._zoomBucketFor(target_zoom)
+        bucket_changed = (
+            self._scaling
+            and (
+                (zoom_bucket is not None and self._rectsZoomBucket != zoom_bucket)
+                or self._rectsZoomBucket is None
+            )
+        )
+        if bucket_changed:
+            prev_bucket = self._rectsZoomBucket
+            is_zooming_out = (
+                prev_bucket is None
+                or zoom_bucket < prev_bucket
+            )
+            if is_zooming_out and self._doesAnyTextTouchCurrentBounds(
+                painter, target_zoom=target_zoom
+            ):
+                # Rebuild only when zooming out pushes text against the
+                # current annotation bounds.
+                self._generatePicture(target_zoom=target_zoom)
+            else:
+                # No boundary risk at this bucket: avoid costly full redraw.
+                self._rectsZoomBucket = zoom_bucket
+                self._pictureTargetZoom = target_zoom
+
+        render_zoom = target_zoom
+        if self._scaling and self._pictureTargetZoom is not None:
+            # If we skipped picture regeneration, keep rendering text at the
+            # existing picture zoom to accept pixelation without geometry
+            # mismatches that can hide labels.
+            render_zoom = self._pictureTargetZoom
+
+        visible_rect = (
+            viewbox.viewRect().intersected(self._boundingRect)
+            if viewbox is not None else self._boundingRect
+        )
+        if visible_rect.isNull():
+            return
+
+        if (
+            self.cached_picture is None
+            or zoom_bucket is None
+            or self._zoomBucket != zoom_bucket
+            or not self._cached_view_rect.contains(visible_rect)
+        ):
+            cache_rect = self._expandedCacheRect(visible_rect)
+            self._refreshCachedPicture(painter, render_zoom, cache_rect, zoom_bucket)
+
+        if self.cached_picture is None:
+            painter.drawPicture(0, 0, self.picture)
+            return
+
+        cache_width = self.cached_picture.width()
+        cache_height = self.cached_picture.height()
+        source_rect = QRectF(
+            ((visible_rect.left() - self._cached_view_rect.left())
+             / self._cached_view_rect.width()) * cache_width,
+            ((visible_rect.top() - self._cached_view_rect.top())
+             / self._cached_view_rect.height()) * cache_height,
+            (visible_rect.width() / self._cached_view_rect.width()) * cache_width,
+            (visible_rect.height() / self._cached_view_rect.height()) * cache_height,
+        )
+        painter.drawImage(visible_rect, self.cached_picture, source_rect)
 
     def boundingRect(self):
         return self._boundingRect
@@ -410,9 +855,7 @@ class TextAnnotations:
         self._isLabelAnnot = False
         self._isCcaAnnot = False
         self._isAnnotateNumZslices = False
-        self._isLabelTreeAnnotation = False
-        self._isGenNumTreeAnnotation = False
-        self._isGenNumTreeAnnotation = False
+        self._isLineageAnnot = False
     
     def initFonts(self, fontSize):
         self.fontSize = fontSize
@@ -422,8 +865,8 @@ class TextAnnotations:
     
     def clear(self):
         self.item.clear()
-        if hasattr(self.item, 'highlighterItem'):
-            self.item.highlighterItem.setData([], [])
+        if hasattr(self.item, 'highlighterItem') and self.item.highlighterItem is not None:
+            self.item.highlighterItem.clearData()
     
     def invertBlackAndWhite(self):
         invertedColors = {
@@ -435,10 +878,10 @@ class TextAnnotations:
 
         self.setColors(**invertedColors)
 
-    def createItems(self, isHighResolution, allIDs, pxMode=False):
+    def createItems(self, isHighResolution, allIDs, pxMode=False, scalingMode=False):
         self._pxMode = pxMode
         if isHighResolution:
-            self._createHighResolutionItems(allIDs, pxMode=pxMode)
+            self._createHighResolutionItems(allIDs, pxMode=pxMode, scalingMode=scalingMode)
         else:
             self._createLowResolutionItem()        
         
@@ -446,9 +889,9 @@ class TextAnnotations:
         self.item = TextAnnotationsImageItem()
         self.setFontSize(self.fontSize, [])
     
-    def _createHighResolutionItems(self, allIDs, pxMode=False):
+    def _createHighResolutionItems(self, allIDs, pxMode=False, scalingMode=False):
         self.item = TextAnnotationsScatterItem(
-            size=self.fontSize, pxMode=pxMode
+            size=self.fontSize, pxMode=pxMode, scalingMode=scalingMode
         )
         self.setFontSize(self.fontSize, allIDs)
     
@@ -462,10 +905,10 @@ class TextAnnotations:
         self.item.initFonts(fontSize)
         self.item.initSizes()
   
-    def changeResolution(self, mode, allIDs, ax, img_shape):
+    def changeResolution(self, mode, allIDs, ax, img_shape, scalingMode=False):
         self.removeFromPlotItem(ax)
         highRes = True if mode == 'high' else False        
-        self.createItems(highRes, allIDs, pxMode=self._pxMode)
+        self.createItems(highRes, allIDs, pxMode=self._pxMode, scalingMode=scalingMode)
         self.initItem(img_shape)
         self.item.setColors(self.colors())
         self.item.clearData()
@@ -507,7 +950,8 @@ class TextAnnotations:
         if isinstance(self.item, TextAnnotationsImageItem):
             self.item.clearImage()
             self.item.setOpacity(1.0)
-            self.item.highlighterItem.setData([], [])
+            if self.item.highlighterItem is not None:
+                self.item.highlighterItem.clearData()
 
         annotData = []
         texts = []
@@ -521,11 +965,9 @@ class TextAnnotations:
         getObjCentroidFunc = kwargs.get('getObjCentroidFunc')
         isCcaAnnot = self.isCcaAnnot()
         isAnnotateNumZslices = self.isAnnotateNumZslices()
-        isLabelTreeAnnotation = self.isLabelTreeAnnotation()
-        isGenNumTreeAnnotation = self.isGenNumTreeAnnotation()
+        isLineageAnnot = self.isLineageAnnot()
         rp_func = kwargs.get('rp_func')
         rp3D = kwargs.get('rp3D')
-        updateAllTextAnnotations = kwargs.get('updateAllTextAnnotations', True)
         
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if posData.cca_df is not None and acdc_df is not None:
@@ -535,7 +977,7 @@ class TextAnnotations:
         
         if acdc_df is None and posData.cca_df is not None:
             acdc_df = posData.cca_df
-        
+    
         moth_bud_pairs_cca = (
             posData.allData_li[posData.frame_i].get('moth_bud_pairs_cca')
         )
@@ -558,13 +1000,10 @@ class TextAnnotations:
             pos = (int(xc), int(yc))
             
             isNewObject = obj.label in posData.new_IDs
-            if not isNewObject and not updateAllTextAnnotations:
-                continue
-            
             objOpts = get_obj_text_annot_opts(
                 obj, acdc_df, isCcaAnnot, isNewObject,
-                isAnnotateNumZslices, isLabelTreeAnnotation, 
-                isGenNumTreeAnnotation, posData.frame_i,
+                isAnnotateNumZslices, isLineageAnnot,
+                posData.frame_i,
                 moth_bud_pairs_cca=moth_bud_pairs_cca
             )
             
@@ -655,7 +1094,7 @@ class TextAnnotations:
         self.item.grayOutAnnotations(IDsToSkip=IDsToSkip)
 
     def isDisabled(self):
-        _isEnabled = self._isLabelAnnot or self._isCcaAnnot
+        _isEnabled = self._isLabelAnnot or self._isCcaAnnot or self._isAnnotateNumZslices or self._isLineageAnnot
         return (not _isEnabled)
     
     def setColors(
@@ -704,26 +1143,31 @@ class TextAnnotations:
     def isAnnotateNumZslices(self):
         return self._isAnnotateNumZslices
     
-    def setLabelTreeAnnotationsEnabled(self, isTreeAnnotations):
-        self._isLabelTreeAnnotation = isTreeAnnotations
+    def setLineageAnnot(self, isTreeAnnotations):
+        self._isLineageAnnot = isTreeAnnotations
     
-    def setGenNumTreeAnnotationsEnabled(self, isTreeAnnotations):
-        self._isGenNumTreeAnnotation = isTreeAnnotations
-    
-    def isLabelTreeAnnotation(self):
-        return self._isLabelTreeAnnotation
-
-    def isGenNumTreeAnnotation(self):
-        return self._isGenNumTreeAnnotation
+    def isLineageAnnot(self):
+        return self._isLineageAnnot
     
     def setPxMode(self, mode):
         self.item.setPxMode(mode)
+
+    def setScaling(self, scaling):
+        self._scaling = bool(scaling)
+        if hasattr(self.item, 'setScaling'):
+            self.item.setScaling(scaling)
     
     def update(self):
         self.item.update()
         
     def clear(self):
+        if hasattr(self.item, 'clearData'):
+            self.item.clearData()
+        elif hasattr(self.item, 'clear'):
+            self.item.clear()
         self.item.setVisible(False)
+        if hasattr(self.item, 'highlighterItem') and self.item.highlighterItem is not None:
+            self.item.highlighterItem.clearData()
         
         
 class FadingTracksItem(pg.GraphicsObject):
