@@ -31119,7 +31119,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         tracked_lab, assignments = self.tracking(
             enforce=True, assign_unique_new_IDs=False, return_lab=True,
             specific_IDs=added_IDs, return_assignments=True,
-            against_next=posData.frame_i==0
+            against_next=posData.frame_i==0,
+            clearAssignedObjsSecondStep=clearAssignedObjsSecondStep,
+            
         )
         
         # RP not updated after tracking!!!
@@ -31271,6 +31273,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return tracked_lab, assignments
     
     def clearAssignedObjsSecondStep(self):
+        debugutils.print_call_stack()
         posData = self.data[self.pos_i]
         posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
     
@@ -31352,7 +31355,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             storeUndo=False, prev_lab=None, prev_rp=None,
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True, wl_update=True,
-            against_next=False, specific_IDs=None , return_assignments=False
+            against_next=False, specific_IDs=None , return_assignments=False,
+            clearAssignedObjsSecondStep=True,
         ):
         posData = self.data[self.pos_i]
         return_tuple = (
@@ -31398,7 +31402,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             prev_lab, prev_rp, posData.lab, posData.rp, posData.IDs,
             assign_unique_new_IDs=assign_unique_new_IDs,
             unique_ID=unique_ID, specific_IDs=specific_IDs,
-            return_assignments=True
+            return_assignments=True, 
+            clearAssignedObjsSecondStep=clearAssignedObjsSecondStep,
         )
         
         # debugutils.print_call_stack()
@@ -31453,6 +31458,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             new_objs_1st_step, lost_objs_1st_step = [], []
             
         if clearAssignedObjsSecondStep:
+            debugutils.print_call_stack()
             new_objs_1st_step, lost_objs_1st_step = [], []
             
         if self._rtTrackerName == 'CellACDC_normal_division':
@@ -31488,6 +31494,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return assignments
     
     def keepOnlyNewIDAssignedObjsSecondStep(self, trackedID):
+        return
         posData = self.data[self.pos_i]
         annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
         
@@ -31513,6 +31520,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.annotateAssignedObjsAcdcTrackerSecondStep()
     
     def updateAssignedObjsAcdcTrackerSecondStep(self, newID):
+        return
         posData = self.data[self.pos_i]
         annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
         if annotInfo is None:
