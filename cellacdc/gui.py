@@ -1829,7 +1829,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.manualTrackingButton
         )
 
-        self.functionsNotTested3D.append(self.repeatTrackingAction)
+        # self.functionsNotTested3D.append(self.repeatTrackingAction)
         self.functionsNotTested3D.append(self.manualTrackingAction)
 
         self.reinitLastSegmFrameAction = QAction(self)
@@ -16488,7 +16488,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         ):
             return False
-            
+        
+        if (
+                ev.type() == QEvent.MouseButtonPress
+                and obj == self.navigateScrollBar 
+            ):
+            self.navigateScrollBar.handleMousePressEventFromAppFilter(ev)
+
         # handle presistant shortcuts (for multiple shportcuts)
         if ev.type() == QEvent.Type.KeyPress: 
             for name, key in self.widgetsPersistentShortcut.items():
@@ -17432,6 +17438,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         msg.warning(self, 'Invalid input for tracker', txt)
     
     def repeatTracking(self):
+        self.logger.info('Tracking current frame...')
         posData = self.data[self.pos_i]
         tracked_lab, assignments = self.tracking(
             enforce=True, 
@@ -31348,7 +31355,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             against_next=False, specific_IDs=None , return_assignments=False
         ):
         posData = self.data[self.pos_i]
-        return_tuple = (None, None) if return_assignments and return_lab else None
+        return_tuple = (
+            (None, None) if return_assignments and return_lab else None
+        )
         if self.doSkipTracking(against_next, enforce):
             self.setLostNewOldPrevIDs()
             return return_tuple
