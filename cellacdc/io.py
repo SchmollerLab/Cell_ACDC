@@ -271,6 +271,8 @@ def move_raw_microscopy_file(
         return dst_filepath
 
     shutil.move(src_related_folderpath, dst_folderpath)
+
+    return dst_filepath
     
 
     
