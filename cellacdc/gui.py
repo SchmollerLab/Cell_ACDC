@@ -31273,7 +31273,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return tracked_lab, assignments
     
     def clearAssignedObjsSecondStep(self):
-        debugutils.print_call_stack()
         posData = self.data[self.pos_i]
         posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
     
@@ -31458,7 +31457,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             new_objs_1st_step, lost_objs_1st_step = [], []
             
         if clearAssignedObjsSecondStep:
-            debugutils.print_call_stack()
             new_objs_1st_step, lost_objs_1st_step = [], []
             
         if self._rtTrackerName == 'CellACDC_normal_division':
