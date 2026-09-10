@@ -1,7 +1,7 @@
 from qtpy.QtCore import (
     Qt, QTimer, QEventLoop
 )
-from qtpy.QtWidgets import QWidget
+from qtpy.QtWidgets import QWidget, QAction, QToolButton
 import functools
 
 class QWhileLoop:
@@ -45,16 +45,24 @@ class QControlBlink:
         self.stopTimer.timeout.connect(self.stop)
         self.stopTimer.start(self.duration_ms)
     
+    def _setStyleSheet(self, style):
+        if isinstance(self._widget, QAction):
+            for widget in self._widget.associatedObjects():
+                if isinstance(widget, QToolButton):
+                    widget.setStyleSheet(style)
+        else:
+            self._widget.setStyleSheet(style)
+
     def timerCallback(self):
         if self.blinkON:
-            self._widget.setStyleSheet('background-color: orange')
+            self._setStyleSheet('background-color: orange')
         else:
-            self._widget.setStyleSheet('background-color: none')
+            self._setStyleSheet('background-color: none')
         self.blinkON = not self.blinkON
 
     def stop(self):
         self.timer.stop()
-        self._widget.setStyleSheet('background-color: none')
+        self._setStyleSheet('background-color: none')
 
 def hide_and_delete_layout(layout):
     # Hide all widgets in the layout

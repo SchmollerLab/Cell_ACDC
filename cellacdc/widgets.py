@@ -35,13 +35,13 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection, PYQT6, QRectF, QLineF
+    QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage, QCursor, QPicture
+    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -54,7 +54,7 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-    QButtonGroup, QStyleOptionSlider
+    QButtonGroup, QStyleOptionSlider, QCompleter
 )
 import qtpy.compat
 
@@ -79,6 +79,8 @@ from .acdc_regex import float_regex
 from .config import PREPROCESS_MAPPER, STANDARD_MOUSE_BUTTONS
 from . import _base_widgets
 from . import debugutils
+from . import rst_utils
+from . import tooltips_rst_filepath
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -12982,3 +12984,164 @@ class GuiCentralWidget(QWidget):
     def __init__(self, parent=None, *args):
         super().__init__(parent, *args)
     
+    
+class ButtonSearchCompleter(QSortFilterProxyModel):
+    """Custom filter that searches button name AND tooltip."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._filterText = ''
+
+    def setFilterText(self, text):
+        self._filterText = text.lower()
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        if not self._filterText:
+            return True
+
+        model = self.sourceModel()
+        index = model.index(source_row, 0, source_parent)
+
+        # Get both name and tooltip from the model
+        name = model.data(index, Qt.DisplayRole) or ''
+        tooltip = model.data(index, Qt.UserRole) or ''
+
+        # Match against both fields
+        return (
+            self._filterText in name.lower()
+            or self._filterText in tooltip.lower()
+        )
+
+
+class ButtonSearchWidget(QWidget):
+
+    sigTriggerBlink = Signal(str)
+
+    def __init__(self):
+        super().__init__()
+
+        self.buttons_data = {}
+
+        self.init_ui()
+
+    def init_ui(self):
+        # Parse the file
+        buttons = rst_utils.parse_rst_file(tooltips_rst_filepath)
+
+        # Create model
+        model = QStandardItemModel()
+
+        for button in buttons:
+            item = QStandardItem(
+                f"{button['name']} ({button['id']})"
+            )
+
+            # Store tooltip for searching
+            item.setData(button['tooltip'], Qt.UserRole)
+
+            # Store ID for later
+            item.setData(button['id'], Qt.UserRole + 1)
+
+            model.appendRow(item)
+
+            self.buttons_data[button['id']] = button
+
+        # Proxy model performs the actual filtering
+        self.proxy_model = ButtonSearchCompleter()
+        self.proxy_model.setSourceModel(model)
+        self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+
+        # Completer
+        self.completer = QCompleter(self.proxy_model, self)
+
+        # Use a popup so arrow-key navigation works normally
+        self.completer.setCompletionMode(QCompleter.PopupCompletion)
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+
+        # Search field
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search buttons...")
+        self.search_input.setCompleter(self.completer)
+
+        self.search_input.textChanged.connect(
+            self.on_search_text_changed
+        )
+
+        # QCompleter handles selection from the popup, including
+        # keyboard navigation and Enter.
+        self.completer.activated[QModelIndex].connect(
+            self.on_completion_activated
+        )
+
+        # Only used when Enter is pressed while the popup isn't active.
+        self.search_input.returnPressed.connect(
+            self.on_return_pressed
+        )
+
+        # Layout
+        layout = QVBoxLayout(self)
+        layout.addWidget(self.search_input)
+        self.setLayout(layout)
+
+    def on_search_text_changed(self, text):
+        """Filter the model and update the completer popup."""
+
+        self.proxy_model.setFilterText(text)
+
+        # QCompleter normally performs its own prefix matching
+        # against DisplayRole. We don't want that because our proxy
+        # already searches both name and tooltip.
+        #
+        # Setting an empty prefix tells QCompleter to display all
+        # rows accepted by the proxy model.
+        self.completer.setCompletionPrefix('')
+
+        if text:
+            self.completer.complete()
+        else:
+            self.completer.popup().hide()
+
+    def on_completion_activated(self, index):
+        """Handle selection from the completer popup.
+
+        This is triggered both by mouse selection and by keyboard
+        selection (e.g. Down/Up followed by Enter).
+        """
+
+        text = index.data(Qt.DisplayRole)
+        self.on_button_selected(text)
+
+    def on_return_pressed(self):
+        """Handle Enter when the completer popup isn't active."""
+
+        if not self.search_input.text():
+            return
+
+        popup = self.completer.popup()
+
+        # If the popup isn't visible, fall back to the first
+        # filtered result.
+        if self.proxy_model.rowCount() == 1:
+            index = self.proxy_model.index(0, 0)
+            text = index.data(Qt.DisplayRole)
+            self.on_button_selected(text)
+
+    def on_button_selected(self, text):
+        """Handle when user selects a button from dropdown."""
+
+        if not text:
+            text = self.search_input.text()
+
+        # Format:
+        # "Button Name (buttonId)"
+        #
+        # Extract the ID from the final parentheses.
+        match = re.search(r'\((\w+)\)$', text)
+
+        if match:
+            button_id = match.group(1)
+
+            self.search_input.clear()
+
+            self.sigTriggerBlink.emit(button_id)
