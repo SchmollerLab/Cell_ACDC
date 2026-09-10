@@ -3002,6 +3002,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             action.removeAnnot = False
             self.warnEditingWithAnnotActions[key] = action
             warningsMenu.addAction(action)
+            
+        warningsMenu.addSeparator()
+        
+        checked= self._get_setting_value(
+            "autoClearAssignedObjectsSecondStep",
+            True,
+            cast=bool
+        )
+        
+        self.autoClearAssignedObjectsSecondStepAction = QAction()
+        self.autoClearAssignedObjectsSecondStepAction.setText('Automatically clear assigned objects in second step')
+        self.autoClearAssignedObjectsSecondStepAction.setCheckable(True)
+        self.autoClearAssignedObjectsSecondStepAction.setChecked(checked)
+        self.autoClearAssignedObjectsSecondStepAction.triggered.connect(
+            lambda checked: self._set_setting_value("autoClearAssignedObjectsSecondStep", checked)
+        )
+        warningsMenu.addAction(self.autoClearAssignedObjectsSecondStepAction)
 
 
     def gui_createStatusBar(self):
@@ -22523,7 +22540,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def trackNewIDtoNewIDsFutureFrame(
         self, newID, obj, assignments, 
-        clearAssignedObjsSecondStep=True
+        clearAssignedObjsSecondStep=False
         ):
         # here RP is stale
         posData = self.data[self.pos_i]
@@ -25345,9 +25362,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                              'use_curr_view or use_bbox, preloaded_bbox can be used '
                              'at a time')
         
-        if (
-                not isinstance(specific_IDs, (list, set, np.ndarray)) 
-                and specific_IDs is not None
+        if (not isinstance(specific_IDs, (list, set, np.ndarray)) 
+            and specific_IDs is not None
             ):
             specific_IDs = [specific_IDs]
         elif specific_IDs is not None and len(specific_IDs) == 0:
@@ -25431,7 +25447,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.IDs = rp.IDs
         
         self.update_rp_metadata(draw=draw, frame_i = frame_i)        
-
         if not (wl_update and not unvisited):
             return
 
@@ -31077,7 +31092,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def trackManuallyAddedObject(
             self, added_IDs: List[int] | int | Set[int], isNewID: bool,
             wl_update:bool=True, wl_track_og_curr:bool=False,
-            clearAssignedObjsSecondStep=True,
+            clearAssignedObjsSecondStep=False,
         ):
         """Track object added manually on frame that was already visited.
 
@@ -31207,7 +31222,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, prev_lab, prev_rp, curr_lab, curr_rp, curr_IDs,
             assign_unique_new_IDs=True, specific_IDs=None, unique_ID=None,
             dont_return_tracked_lab=False, return_assignments=False,
-            clearAssignedObjsSecondStep=True
+            clearAssignedObjsSecondStep=False
         ):
         from .trackers.CellACDC import CellACDC_tracker
         
@@ -31272,9 +31287,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return assignments
         return tracked_lab, assignments
     
-    def clearAssignedObjsSecondStep(self):
-        posData = self.data[self.pos_i]
-        posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
+    def clearAssignedObjsSecondStep(self, force=False):
+        checked = self.autoClearAssignedObjectsSecondStepAction.isChecked()
+        if checked or force:
+            posData = self.data[self.pos_i]
+            posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = None
     
     def trackSubsetIDs(self, subsetIDs: Iterable[int]):
         posData = self.data[self.pos_i]
@@ -31355,7 +31372,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return_lab=False, assign_unique_new_IDs=True,
             separateByLabel=True, wl_update=True,
             against_next=False, specific_IDs=None , return_assignments=False,
-            clearAssignedObjsSecondStep=True,
+            clearAssignedObjsSecondStep=False,
         ):
         posData = self.data[self.pos_i]
         return_tuple = (
@@ -31440,7 +31457,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def handleAdditionalInfoRealTimeTracker(
         self, prev_rp, add_info,
-        clearAssignedObjsSecondStep=True
+        clearAssignedObjsSecondStep=False
         ):
         assignments = None
         posData = self.data[self.pos_i]
@@ -31457,7 +31474,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             new_objs_1st_step, lost_objs_1st_step = [], []
             
         if clearAssignedObjsSecondStep:
-            new_objs_1st_step, lost_objs_1st_step = [], []
+            self.clearAssignedObjsSecondStep()
             
         if self._rtTrackerName == 'CellACDC_normal_division':
             tracked_lost_IDs = add_info['mothers']
@@ -31518,7 +31535,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # self.annotateAssignedObjsAcdcTrackerSecondStep()
     
     def updateAssignedObjsAcdcTrackerSecondStep(self, newID):
-        return
         posData = self.data[self.pos_i]
         annotInfo = posData.acdcTracker2stepsAnnotInfo.get(posData.frame_i)
         if annotInfo is None:
@@ -31560,6 +31576,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # ID is actually not present in current frame !DO not use newObj, it is stale!
             if lostObj.label not in IDs_set: 
                 continue
+            
+            ID_in_lab = posData.lab[newObj.slice][newObj.image][0] # get the current lab of the object
+            if ID_in_lab != lostObj.label:
+                continue
+            
             allContours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -31578,6 +31599,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_trackerMovementAgainstPrevLinesItem.addPoints(xx, yy)
             
+    # settings helper
     def _get_setting_value(self, index_name, default, cast=int):
         if self.df_settings is None or index_name not in self.df_settings.index:
             return default
@@ -31589,6 +31611,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         except Exception:
             printl(f"Warning: Could not cast setting '{index_name}' value '{value}' to {cast}. Using default '{default}'.")
             return default
+        
+    def _set_setting_value(self, index_name, value):
+        if self.df_settings is None:
+            return
+        self.df_settings.at[index_name, 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
         
     def initannotateObjTrackSettings(self):
         if hasattr(self, 'annotateObjTrackSettings'):
