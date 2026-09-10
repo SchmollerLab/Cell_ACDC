@@ -303,7 +303,6 @@ class normal_division_tracker:
         from cellacdc.trackers.CellACDC.CellACDC_tracker import (
             track_frame as track_frame_base
         )
-
         self.to_track_tracked_objs_2nd_step = None
         if lab is None:
             lab = self.segm_video[frame_i]
@@ -371,6 +370,11 @@ class normal_division_tracker:
             aggr_track=self.aggr_track,
             IoA_thresh_aggr=self.IoA_thresh_aggressive,
             IDs_curr_untracked=self.IDs_curr_untracked,
+            # `all_curr_IDs` must be the FULL current frame's IDs (not the
+            # `specific_IDs`-restricted subset above) so that the 1st step's
+            # merge-avoidance correctly rejects tracking a subset object to
+            # an ID that is already used by another, untouched object.
+            all_curr_IDs=full_curr_IDs,
             IDs_prev=self.IDs_prev,
             return_all=True,
             mother_daughters=self.mother_daughters,
@@ -388,13 +392,14 @@ class normal_division_tracker:
         IoA_matrix = add_info['IoA_matrix']
         self.assignments = add_info['assignments']
         self.tracked_IDs = add_info['tracked_IDs']
-        
-        # print(f"After tracking frame 1st step: assignments: {self.assignments}, tracked_IDs: {self.tracked_IDs}")
             
         if lost_IDs_search_range is None:
             return
         
-        updated_rp = acdcRegionprops(self.tracked_lab, precache_centroids=False)
+        updated_rp = acdcRegionprops(
+            self.tracked_lab, 
+            precache_centroids=False
+            )
         current_tracked_IDs = set(updated_rp.IDs)
       
         mothers = {self.IDs_prev[mother] for mother, _ in self.mother_daughters}
@@ -416,11 +421,16 @@ class normal_division_tracker:
         prev_rp_mapper = {obj.label: obj for obj in prev_rp 
                           if obj.label not in mothers}
 
+        # Use `current_tracked_IDs` (labels actually present in the tracked
+        # lab) rather than `self.tracked_IDs`, since the latter only reflects
+        # the `specific_IDs`-restricted subset considered in the 1st step and
+        # would otherwise treat already-tracked IDs from outside that subset
+        # as still lost, making them available again for the 2nd step.
         lost_rp_mapper = {
             obj.label: obj for obj in prev_rp
             if (
                 obj.label not in mothers
-                and obj.label not in self.tracked_IDs
+                and obj.label not in current_tracked_IDs
                 and obj.label not in daughters
             )
         }
@@ -463,13 +473,13 @@ class normal_division_tracker:
 
         dist_matrix = np.linalg.norm(diff_weighted, axis=2)
 
-        assignments = scipy.optimize.linear_sum_assignment(dist_matrix)
+        row_ind, col_ind = scipy.optimize.linear_sum_assignment(dist_matrix)
         IDs_to_track = []
         tracked_IDs_2nd_step = []
         if self._annot_obj_2nd_step:
             objs_to_track = []
             tracked_objs_2nd_step = []
-        for i, j in zip(*assignments):
+        for i, j in zip(row_ind, col_ind):
             dist = dist_matrix[i, j]
             if dist > lost_IDs_search_range:
                 continue
@@ -488,16 +498,18 @@ class normal_division_tracker:
         if not IDs_to_track:
             return
 
-        # Only touch self.tracked_lab / write to the video array when it
-        # actually exists (dont_return_tracked_lab=False).
-        if not dont_return_tracked_lab:
-            self.tracked_lab = lab_replace_values(
-                self.tracked_lab,
-                updated_rp,
-                IDs_to_track,
-                tracked_IDs_2nd_step
-            )
-            self.tracked_video[frame_i] = self.tracked_lab
+        # self.tracked_lab always exists here: `_dont_return_tracked_lab` is
+        # forced to False above whenever `lost_IDs_search_range` is not None,
+        # so it must be kept in sync with `self.assignments` below, otherwise
+        # the two become inconsistent with each other (using the original
+        # `dont_return_tracked_lab` flag here would wrongly skip this).
+        self.tracked_lab = lab_replace_values(
+            self.tracked_lab,
+            updated_rp,
+            IDs_to_track,
+            tracked_IDs_2nd_step
+        )
+        self.tracked_video[frame_i] = self.tracked_lab
 
         if self._annot_obj_2nd_step:
             self.to_track_tracked_objs_2nd_step = (
@@ -507,7 +519,16 @@ class normal_division_tracker:
         assignments_step_2 = dict(zip(IDs_to_track, tracked_IDs_2nd_step))
         current_frame_IDs = {obj.label for obj in self.rp}
         if specific_IDs is not None:
-            current_frame_IDs.intersection_update(specific_IDs)
+            # Keep IDs affected by the 2nd step even if they are outside
+            # `specific_IDs`: they can be objects that were NOT requested to
+            # be tracked but still got relabelled as a side effect (e.g. an
+            # ID that was already present elsewhere and thus got a new,
+            # unique ID during the 1st step's merge-avoidance). Dropping them
+            # here would leave `self.assignments` out of sync with the
+            # actual changes applied to `self.tracked_lab`.
+            current_frame_IDs.intersection_update(
+                set(specific_IDs) | set(assignments_step_2)
+            )
 
         merged_assignments = {}
         for current_ID in current_frame_IDs:

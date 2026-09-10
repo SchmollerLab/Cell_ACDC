@@ -226,3 +226,105 @@ def test_normal_division_second_step_does_not_merge_existing_id():
 
     np.testing.assert_array_equal(tracked_lab, expected)
     assert add_info['assignments'] == {7: 20}
+
+
+def test_normal_division_second_step_does_not_reuse_already_tracked_lost_id():
+    # Regression test: tracking two newly drawn objects one at a time (as the
+    # GUI does when the user draws missing cells individually) must not let
+    # the second-step distance matching re-offer a lost ID that was already
+    # assigned to the first object, even if it is the nearest candidate.
+    prev_lab = np.array(
+        [
+            [5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6],
+            [5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6],
+        ],
+        dtype=np.uint16,
+    )
+
+    tracker = NormalDivisionTracker()
+
+    # First draw: raw ID 9, closest to lost ID 5.
+    lab_draw1 = np.array(
+        [
+            [0, 0, 9, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 9, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        ],
+        dtype=np.uint16,
+    )
+    tracked_lab_1, add_info_1 = tracker.track_frame(
+        prev_lab,
+        lab_draw1,
+        IoA_thresh=0.8,
+        lost_IDs_search_range=20,
+        unique_ID=100,
+        return_assignments=True,
+        specific_IDs=[9],
+    )
+    assert add_info_1['assignments'] == {9: 5}
+
+    # Second draw: raw ID 10, nearer to lost ID 5 (already used above) than
+    # to the remaining lost ID 6, but 5 must not be available anymore.
+    lab_draw2 = tracked_lab_1.copy()
+    lab_draw2[:, 4:6] = 10
+    tracked_lab_2, add_info_2 = tracker.track_frame(
+        prev_lab,
+        lab_draw2,
+        IoA_thresh=0.8,
+        lost_IDs_search_range=20,
+        unique_ID=200,
+        return_assignments=True,
+        specific_IDs=[10],
+    )
+
+    expected = tracked_lab_1.copy()
+    expected[:, 4:6] = 6
+
+    np.testing.assert_array_equal(tracked_lab_2, expected)
+    assert add_info_2['assignments'] == {10: 6}
+
+
+def test_normal_division_first_step_does_not_merge_into_already_present_id():
+    # Regression test: a newly drawn object that overlaps with a lost ID's
+    # old position must not be tracked to that ID if the ID is already used
+    # by another, untouched object elsewhere in the current frame (this used
+    # to create a duplicate/merged label because `specific_IDs` restricted
+    # the current IDs used for merge-avoidance to just the drawn object).
+    # Instead, it should fall through to the 2nd step and match the actual
+    # remaining lost ID, keeping `assignments` consistent with `tracked_lab`.
+    prev_lab = np.array(
+        [
+            [5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6],
+            [5, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 6],
+        ],
+        dtype=np.uint16,
+    )
+    # Raw ID 9 (newly drawn) overlaps lost ID 5's old position, but ID 5 is
+    # already present, untouched, elsewhere in the current frame.
+    lab = np.array(
+        [
+            [9, 9, 0, 0, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0],
+            [9, 9, 0, 0, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0],
+        ],
+        dtype=np.uint16,
+    )
+
+    tracked_lab, add_info = NormalDivisionTracker().track_frame(
+        prev_lab,
+        lab,
+        IoA_thresh=0.8,
+        lost_IDs_search_range=20,
+        unique_ID=100,
+        return_assignments=True,
+        specific_IDs=[9],
+    )
+
+    expected = np.array(
+        [
+            [6, 6, 0, 0, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0],
+            [6, 6, 0, 0, 0, 0, 5, 5, 0, 0, 0, 0, 0, 0],
+        ],
+        dtype=np.uint16,
+    )
+
+    np.testing.assert_array_equal(tracked_lab, expected)
+    assert add_info['assignments'] == {9: 6}
