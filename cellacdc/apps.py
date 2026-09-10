@@ -20938,6 +20938,25 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             infoTxt=againstPrevContourWidthInfoTxt,
         )
         formLayout.addFormWidget(self.againstPrevContourWidthWidget, row=row)
+        
+        row += 1
+        showOnlyVisible3DInfoTxt = html_utils.paragraph(
+            'Show only visible objects in 3D view.'
+        )
+        self.showOnlyVisible3DCheckBox = widgets.Toggle()
+        self.showOnlyVisible3DCheckBox.setChecked(
+            settings['3D_show_only_visible']
+        )
+        self.showOnlyVisible3DWidget = widgets.formWidget(
+            self.showOnlyVisible3DCheckBox,
+            labelTextLeft='3D show only visible: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=showOnlyVisible3DInfoTxt,
+        )
+        formLayout.addFormWidget(self.showOnlyVisible3DWidget, row=row)
+        row += 1
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -20960,6 +20979,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.againstPrevLineWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
         self.againstPrevContourColorButton.sigColorChanging.connect(self.emitValuesChanged)
         self.againstPrevContourWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
+        self.showOnlyVisible3DCheckBox.stateChanged.connect(self.emitValuesChanged)
 
         self._historyTrackWidgets = (
             self.lengthWidget,
@@ -21003,6 +21023,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.againstPrevContourWidthSpinBox.setValue(
             int(settings['against_prev_contour_width'])
         )
+        self.showOnlyVisible3DCheckBox.stateChanged.connect(self.emitValuesChanged)
         self._syncRanges()
         self._updateRelevantOptionsState()
 
@@ -21031,6 +21052,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             'against_prev_contour_width': (
                 int(self.againstPrevContourWidthSpinBox.value())
             ),
+            '3D_show_only_visible': bool(self.showOnlyVisible3DCheckBox.isChecked()),
         }
 
     def _againstPrevToggled(self, checked):

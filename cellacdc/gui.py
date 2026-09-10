@@ -31635,6 +31635,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'against_prev_line_width': 2,
             'against_prev_contour_color': (245, 184, 0),
             'against_prev_contour_width': 2,
+            '3D_show_only_visible': False
         }
 
         def _parse_color_setting(value, default):
@@ -31716,6 +31717,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     default=default_settings['against_prev_contour_color']
                 )
             )
+            self.annotateObjTrackSettings['3D_show_only_visible'] = (
+                self._get_setting_value(
+                    'annotateObjTrack3DShowOnlyVisible',
+                    default_settings['3D_show_only_visible'],
+                    cast=bool
+                )
+            )
             return
 
         self.annotateObjTrackSettings = dict(default_settings)
@@ -31773,6 +31781,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.df_settings.loc[
             'annotateObjTrackAgainstPrevContourWidth', 'value'
             ] = self.annotateObjTrackSettings['against_prev_contour_width']
+        self.df_settings.loc[
+            'annotateObjTrack3DShowOnlyVisible', 'value'
+            ] = self.annotateObjTrackSettings['3D_show_only_visible']
         self.df_settings.to_csv(self.settings_csv_path)
         
     def onSetAnnotateObjTrackSettingsSigValuesChanged(self, settings):
@@ -31854,6 +31865,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         rp = posData.rp
         for ID in rp.IDs:
             obj = rp.get_obj_from_ID(ID)
+            if settings['3D_show_only_visible'] and self.isSegm3D:
+                if not self.isObjVisible(obj.bbox):
+                    continue
             centroids[ID] = {frame_i: self.getObjCentroid(
                 rp.get_centroid(ID, as_ints=True, exact=True)
                 )}
