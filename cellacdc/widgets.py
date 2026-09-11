@@ -14,6 +14,7 @@ import logging
 import textwrap
 import random
 import cv2
+from difflib import SequenceMatcher
 from functools import partial
 from math import ceil
 
@@ -12990,105 +12991,59 @@ class GuiCentralWidget(QWidget):
 class ButtonSearchCompleter(QSortFilterProxyModel):
     """Filter button names and tooltips, prioritizing name matches."""
 
+    FUZZY_THRESHOLD = 0.75
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._filterText = ''
-        self._allowFuzzy = False
 
     def setFilterText(self, text):
         self._filterText = text.lower()
-        self._allowFuzzy = self._exactMatchCount() < 1
         self.invalidateFilter()
         self.sort(0)
 
-    def _exactMatchCount(self):
-        if not self._filterText:
-            return 0
-
-        model = self.sourceModel()
-        if model is None:
-            return 0
-
-        count = 0
-        for row in range(model.rowCount()):
-            index = model.index(row, 0)
-            name = (model.data(index, Qt.DisplayRole) or '').lower()
-            tooltip = (model.data(index, Qt.UserRole) or '').lower()
-            if self._filterText in name or self._filterText in tooltip:
-                count += 1
-        return count
-
     def lessThan(self, left, right):
-        left_priority = self._matchPriority(left)
-        right_priority = self._matchPriority(right)
-        if left_priority != right_priority:
-            return left_priority < right_priority
+        left_score = self._matchScore(left)
+        right_score = self._matchScore(right)
+        if left_score != right_score:
+            return left_score < right_score
         return left.row() < right.row()
 
-    def _matchPriority(self, index):
-        name = index.data(Qt.DisplayRole) or ''
-        name = name.lower()
-        if name.startswith(self._filterText):
-            return 0
-        if self._filterText in name:
-            return 1
+    def _matchScore(self, index):
+        name = (index.data(Qt.DisplayRole) or '').lower()
         tooltip = (index.data(Qt.UserRole) or '').lower()
+        if name.startswith(self._filterText):
+            return 0, 0
+        if self._filterText in name:
+            return 1, 0
+        if tooltip.startswith(self._filterText):
+            return 2, 0
         if self._filterText in tooltip:
-            return 2
-        if self._hasSingleEditMatch(name):
-            return 3
-        return 4
+            return 3, 0
 
-    def _hasSingleEditMatch(self, text):
+        name_similarity = self._similarity(name)
+        tooltip_similarity = self._similarity(tooltip)
+        if name_similarity >= tooltip_similarity:
+            return 4, -name_similarity
+        return 5, -tooltip_similarity
+
+    def _similarity(self, text):
         query = self._filterText
         text = text.lower()
-        min_length = max(1, len(query) - 1)
-        max_length = len(query) + 1
+        if not query or not text:
+            return 0.0
 
-        for start in range(len(text)):
-            for length in range(min_length, max_length + 1):
-                candidate = text[start:start + length]
-                if len(candidate) != length:
-                    continue
-                if self._isWithinSingleEdit(query, candidate):
-                    return True
-        return False
-
-    @staticmethod
-    def _isWithinSingleEdit(left, right):
-        if abs(len(left) - len(right)) > 1:
-            return False
-
-        if len(left) == len(right):
-            differing = [
-                idx for idx, chars in enumerate(zip(left, right))
-                if chars[0] != chars[1]
-            ]
-            if len(differing) <= 1:
-                return True
-            if len(differing) == 2:
-                first, second = differing
-                return (
-                    second == first + 1
-                    and left[first] == right[second]
-                    and left[second] == right[first]
-                )
-            return False
-
-        shorter, longer = sorted((left, right), key=len)
-        short_idx = 0
-        long_idx = 0
-        edits = 0
-        while short_idx < len(shorter) and long_idx < len(longer):
-            if shorter[short_idx] == longer[long_idx]:
-                short_idx += 1
-                long_idx += 1
-                continue
-            edits += 1
-            long_idx += 1
-            if edits > 1:
-                return False
-        return True
+        matcher = SequenceMatcher(None, query, text)
+        best_ratio = 0.0
+        for query_start, text_start, _ in matcher.get_matching_blocks():
+            start = max(text_start - query_start, 0)
+            candidate = text[start:start + len(query)]
+            ratio = SequenceMatcher(None, query, candidate).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+            if best_ratio == 1.0:
+                break
+        return best_ratio
 
     def filterAcceptsRow(self, source_row, source_parent):
         if not self._filterText:
@@ -13101,17 +13056,9 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         name = model.data(index, Qt.DisplayRole) or ''
         tooltip = model.data(index, Qt.UserRole) or ''
 
-        # Match against both fields
-        exact_match = (
-            self._filterText in name.lower()
-            or self._filterText in tooltip.lower()
-        )
-        if exact_match or not self._allowFuzzy:
-            return exact_match
-
         return (
-            self._hasSingleEditMatch(name)
-            or self._hasSingleEditMatch(tooltip)
+            self._similarity(name) >= self.FUZZY_THRESHOLD
+            or self._similarity(tooltip) >= self.FUZZY_THRESHOLD
         )
 
 
