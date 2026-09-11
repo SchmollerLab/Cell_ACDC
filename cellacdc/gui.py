@@ -5368,6 +5368,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ax_textAnnot.createItems(
                 isHighResolution, allIDs, scalingMode=scalingMode
             )
+            ax_textAnnot.setZValue(1)
             self.textAnnot[ax] = ax_textAnnot
     
     def gui_addOverlayLayerItems(self):
@@ -10817,6 +10818,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             endFrame_i, oldIDnewIDMapper, includeUnvisited,
             shift=shift, merging_IDs=merging_IDs
         )
+        
+        self.annotateAllObjectTracks()
     
     def getLastHoveredID(self):
         if self.xHoverImg is None:
@@ -31972,16 +31975,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.getMovementAgainstPrevScatterItem(ax)
         )
         movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
-        rp = posData.rp
-        prev_rp = posData.allData_li[frame_i-1]['regionprops']
-        if rp is None or prev_rp is None:
+        rp_2D = self.get2DRP()
+        prev_rp_2D = self.get2DRP(frame_i=frame_i-1)
+        rp_3D = posData.rp
+        if rp_2D is None or prev_rp_2D is None:
             self.logger.warning(
                 f"[WARNING] rp or prev rp could not be retrieved"
             )
             return
-        for ID in rp.IDs:
-            obj = rp.get_obj_from_ID(ID)
-            obj_prev = prev_rp.get_obj_from_ID(ID, warn=False)
+
+        for ID in rp_2D.IDs:
+            obj = rp_2D.get_obj_from_ID(ID)    
+            obj_prev = prev_rp_2D.get_obj_from_ID(ID, warn=False)
             if obj_prev is None:
                 continue
 
@@ -31989,17 +31994,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 obj_prev,
                 all_external=True,
                 include_internal=self.showAllContoursToggle.isChecked()
-            ) 
+            )
+            obj_3D = rp_3D.get_obj_from_ID(ID, warn=False)
             for objContours in allContours:
-                isObjVisible = self.isObjVisible(obj.bbox)
+                isObjVisible = self.isObjVisible(obj_3D.bbox)
                 if not isObjVisible:
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
                 movementAgainstPrevScatterItem.addPoints(xx, yy)
                 
-            y1, x1 = self.getObjCentroid(obj_prev.centroid)
-            y2, x2 = self.getObjCentroid(obj.centroid)
+            y1, x1 = obj_prev.centroid
+            y2, x2 = obj.centroid
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             movementAgainstPrevLinesItem.addPoints(xx, yy)
                                 

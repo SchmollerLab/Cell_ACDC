@@ -20842,6 +20842,23 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             infoTxt=minAlphaInfoTxt,
         )
         formLayout.addFormWidget(self.minAlphaWidget, row=row)
+        row += 1
+        showOnlyVisible3DInfoTxt = html_utils.paragraph(
+            'Show only visible objects in 3D view.'
+        )
+        self.showOnlyVisible3DCheckBox = widgets.Toggle()
+        self.showOnlyVisible3DCheckBox.setChecked(
+            settings['3D_show_only_visible']
+        )
+        self.showOnlyVisible3DWidget = widgets.formWidget(
+            self.showOnlyVisible3DCheckBox,
+            labelTextLeft='3D show only visible: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=showOnlyVisible3DInfoTxt,
+        )
+        formLayout.addFormWidget(self.showOnlyVisible3DWidget, row=row)
         
         row += 1
         againstPrevInfoTxt = html_utils.paragraph(
@@ -20947,24 +20964,6 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             infoTxt=againstPrevContourWidthInfoTxt,
         )
         formLayout.addFormWidget(self.againstPrevContourWidthWidget, row=row)
-        
-        row += 1
-        showOnlyVisible3DInfoTxt = html_utils.paragraph(
-            'Show only visible objects in 3D view.'
-        )
-        self.showOnlyVisible3DCheckBox = widgets.Toggle()
-        self.showOnlyVisible3DCheckBox.setChecked(
-            settings['3D_show_only_visible']
-        )
-        self.showOnlyVisible3DWidget = widgets.formWidget(
-            self.showOnlyVisible3DCheckBox,
-            labelTextLeft='3D show only visible: ',
-            parent=self,
-            stretchWidget=False,
-            addInfoButton=True,
-            infoTxt=showOnlyVisible3DInfoTxt,
-        )
-        formLayout.addFormWidget(self.showOnlyVisible3DWidget, row=row)
         row += 1
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
@@ -20998,6 +20997,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             self.minWidthWidget,
             self.maxAlphaWidget,
             self.minAlphaWidget,
+            self.showOnlyVisible3DWidget,
         )
         self._againstPrevOnlyWidgets = (
             self.againstPrevLineColorWidget,

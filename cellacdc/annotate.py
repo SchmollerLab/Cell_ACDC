@@ -1168,6 +1168,9 @@ class TextAnnotations:
         self.item.setVisible(False)
         if hasattr(self.item, 'highlighterItem') and self.item.highlighterItem is not None:
             self.item.highlighterItem.clearData()
+            
+    def setZValue(self, z):
+        self.item.setZValue(z)
         
         
 class FadingTracksItem(pg.GraphicsObject):
