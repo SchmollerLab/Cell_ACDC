@@ -486,6 +486,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createBottomWidgets()
         self.gui_createImg2Widgets()
         self.gui_createBottomWidgetsToBottomLayout()
+        self.registerSearchControls()
 
         mainContainer = widgets.GuiCentralWidget()
         self.setCentralWidget(mainContainer)
@@ -4327,6 +4328,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.quickSettingsGroupbox.setLayout(layout)
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
         self.quickSettingsLayout.addStretch(1)
+
+    def registerSearchControls(self):
+        annotation_display_controls = (
+            ('Contours', self.annotContourCheckbox(0)),
+            ('Segm. masks', self.annotOverlaySegmMaskCheckbox(0)),
+            ('IDs', self.annotIDsCheckbox(0)),
+            ('Lineage information', self.annotLineageInfoCheckbox(0)),
+            ('Cell cycle info', self.annotCellCycleInfoCheckbox(0)),
+            (
+                'Mother-daughter line',
+                self.annotMotherDaughterLineCheckbox(0),
+            ),
+            ('Object tracks', self.annotObjectTracksCheckbox(0)),
+            ('Do not annotate', self.annotDoNotAnntoateCheckbox(0)),
+        )
+        quick_settings_controls = (
+            ('View pre-processed image', self.viewPreprocDataToggle),
+            ('View combined channels', self.viewCombineChannelDataToggle),
+            ('Autosave segmentation', self.autoSaveToggle),
+            ('Autosave annotations', self.autoSaveAnnotToggle),
+            ('Autosave interval', self.autoSaveIntervalEditButton),
+            ('Cell cycle annotation checker', self.ccaIntegrCheckerToggle),
+            ('Annotate lost objects', self.annotLostObjsToggle),
+            ('Show all contours', self.showAllContoursToggle),
+            ('Font size', self.fontSizeSpinBox),
+        )
+        self.searchWidget.addItems(
+            annotation_display_controls + quick_settings_controls
+        )
 
     def showAllContoursToggled(self):
         if not self.isDataLoaded:
@@ -36303,8 +36333,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self._viewRange = viewRange
 
-    def onSearchTriggerBlink(self, button_id):
-        button = getattr(self, button_id, None)
+    def onSearchTriggerBlink(self, target):
+        button = getattr(self, target, None) if isinstance(target, str) else target
         if button is None:
             return
         

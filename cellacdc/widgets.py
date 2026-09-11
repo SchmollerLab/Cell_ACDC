@@ -13064,7 +13064,7 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
 
 class ButtonSearchWidget(QWidget):
 
-    sigTriggerBlink = Signal(str)
+    sigTriggerBlink = Signal(object)
 
     def __init__(self):
         super().__init__()
@@ -13078,7 +13078,8 @@ class ButtonSearchWidget(QWidget):
         buttons = rst_utils.get_tooltips_from_docs(for_search=True)
 
         # Create model
-        model = QStandardItemModel()
+        self.model = QStandardItemModel()
+        self._items_by_name = {}
 
         for button in buttons:
             item = QStandardItem(
@@ -13091,13 +13092,14 @@ class ButtonSearchWidget(QWidget):
             # Store ID for later
             item.setData(button['id'], Qt.UserRole + 1)
 
-            model.appendRow(item)
+            self.model.appendRow(item)
 
             self.buttons_data[button['id']] = button
+            self._items_by_name[button['name'].strip().casefold()] = item
 
         # Proxy model performs the actual filtering
         self.proxy_model = ButtonSearchCompleter()
-        self.proxy_model.setSourceModel(model)
+        self.proxy_model.setSourceModel(self.model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
 
         # Search field
@@ -13140,6 +13142,37 @@ class ButtonSearchWidget(QWidget):
         layout.setSpacing(0)  # Remove spacing
         layout.addWidget(self.search_input)
         self.setLayout(layout)
+
+    def addItems(self, items):
+        """Add or update search entries from ``(name, target)`` tuples."""
+        for name, target in items:
+            normalized_name = name.strip().casefold()
+            if not normalized_name:
+                continue
+
+            tooltip_getter = getattr(target, 'toolTip', None)
+            tooltip = tooltip_getter() if callable(tooltip_getter) else ''
+            shortcut_getter = getattr(target, 'shortcut', None)
+            shortcut = shortcut_getter() if callable(shortcut_getter) else None
+            shortcut_text = shortcut.toString() if shortcut is not None else ''
+            search_text = tooltip.strip()
+            if shortcut_text and shortcut_text not in search_text:
+                search_text = f'{search_text}\nShortcut: {shortcut_text}'.strip()
+
+            item = self._items_by_name.get(normalized_name)
+            if item is None:
+                item = QStandardItem(name)
+                self.model.appendRow(item)
+                self._items_by_name[normalized_name] = item
+            elif search_text:
+                documented_text = item.data(Qt.UserRole) or ''
+                search_text = f'{documented_text}\n{search_text}'.strip()
+
+            if search_text:
+                item.setData(search_text, Qt.UserRole)
+            item.setData(target, Qt.UserRole + 2)
+
+        self.proxy_model.invalidateFilter()
 
     def set_height_based_on(self, reference_widget):
         """Set the height of the search input based on another widget's height."""
@@ -13229,8 +13262,13 @@ class ButtonSearchWidget(QWidget):
                 return
             index = self.proxy_model.index(0, 0)
 
-        text = index.data(Qt.DisplayRole)
-        self.on_button_selected(text)
+        target = index.data(Qt.UserRole + 2)
+        if target is not None:
+            self.search_input.clear()
+            self.sigTriggerBlink.emit(target)
+        else:
+            text = index.data(Qt.DisplayRole)
+            self.on_button_selected(text)
         self.popup.hide()
 
     def eventFilter(self, obj, event):
