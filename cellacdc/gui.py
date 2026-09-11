@@ -1938,7 +1938,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
             res = self._setupRightClickMenuOnButton(button, name)
-            if res[0] is False or res[1] not in ok_num_widgets:
+            if res[0] is False or res[1] not in ok_num_widgets and self.debug:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
@@ -16515,10 +16515,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
     def eventFilter(self, obj, ev):
         if not getattr(self, 'isDataLoaded', False):
-            return False
+            return super().eventFilter(obj, ev)
 
+        if ev.type() == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
+            self.onMouseRelease()
+        
         widgetWithFocus = QApplication.focusWidget()
-        printl(widgetWithFocus)
         if widgetWithFocus is not None:
             widgetClassesFilteringEvent = (
                 'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox'
@@ -16527,9 +16529,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 widgetWithFocus.inherits(cls) 
                 for cls in widgetClassesFilteringEvent
             ])
-            printl(widgetWithFocus, isFocusFilteringEvent)
             if isFocusFilteringEvent:
-                return False
+                return super().eventFilter(obj, ev)
         
         if (
                 ev.type() == QEvent.MouseButtonPress
@@ -16540,18 +16541,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # handle presistant shortcuts (for multiple shportcuts)
         if ev.type() == QEvent.Type.KeyPress: 
             for name, key in self.widgetsPersistentShortcut.items():
-                printl(name, key, ev.key())
                 if not key == ev.key():
                     continue
                 action = self.widgetsWithShortcut[name]
-                printl(action)
                 if hasattr(action, 'click'):
                     action.click()
                 elif hasattr(action, 'trigger'):
                     action.trigger()
                 return True
 
-        return False
+        return super().eventFilter(obj, ev)
         
     @exception_handler
     def keyPressEvent(self, ev):        
@@ -36286,9 +36285,3 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.timestamp.updatePosViewRangeChanged(viewRange)
         
         self._viewRange = viewRange
-
-    def eventFilter(self, object, event):
-        if event.type() == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
-            self.onMouseRelease()
-        
-        return super().eventFilter(object, event)
