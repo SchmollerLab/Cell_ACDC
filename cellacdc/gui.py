@@ -10772,6 +10772,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         if UndoFutFrames is None:
+            self.annotateAllObjectTracks()
             return
 
         if shift and self.isSegm3D:
@@ -10868,6 +10869,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         if not applyFutFrames and not doPropagateUnvisited:
+            self.annotateAllObjectTracks()
             return
 
         self.changeIDfutureFrames(
