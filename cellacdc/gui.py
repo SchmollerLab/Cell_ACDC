@@ -1934,7 +1934,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if name in NAMES_TO_IGNORE_ERROR:
                 continue
             res = self._setupRightClickMenuOnButton(button, name)
-            if res[0] is False or res[1] not in ok_num_widgets:
+            if res[0] is False or res[1] not in ok_num_widgets and self.debug:
                 print(f"Error setting up right click menu for: {name}")
                 print(f"Number of associated widgets: {res[1]}")
             menu = button.rightClickMenu
