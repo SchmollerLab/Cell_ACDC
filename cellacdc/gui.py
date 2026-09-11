@@ -1136,6 +1136,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        self.initMenuBar = menuBar
         menuBar.setNativeMenuBar(False)
         # File menu
         fileMenu = QMenu("&File", self)
@@ -1335,16 +1336,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.aboutAction)
         self.helpMenu = helpMenu
 
-    def gui_createToolBars(self):
-        # search tool bar
-        searchToolBar = widgets.ToolBar("Search", self)
-        searchToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
-        self.addToolBar(searchToolBar)
         self.searchWidget = widgets.ButtonSearchWidget()
         self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
-        searchToolBar.addWidget(self.searchWidget)
-        self.searchToolBar = searchToolBar
+        menuBar.setCornerWidget(self.searchWidget)
         
+
+
+    def gui_createToolBars(self):        
         # File toolbar
         fileToolBar = self.addToolBar("File")
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -36079,6 +36077,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.mainWin.showAllWindows()
         # self.setFocus()
         self.activateWindow()
+        self.searchWidget.set_height_based_on(self.initMenuBar)
     
     def super_show(self):
         super().show()

@@ -13136,8 +13136,15 @@ class ButtonSearchWidget(QWidget):
 
         # Layout
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)  # Remove all margins (left, top, right, bottom)
+        layout.setSpacing(0)  # Remove spacing
         layout.addWidget(self.search_input)
         self.setLayout(layout)
+
+    def set_height_based_on(self, reference_widget):
+        """Set the height of the search input based on another widget's height."""
+        height_curr = reference_widget.sizeHint().height()
+        self.search_input.setFixedHeight(int(height_curr / 1.7))
 
     def on_search_text_changed(self, text):
         """Filter the model and update the popup."""
