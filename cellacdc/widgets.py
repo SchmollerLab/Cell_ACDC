@@ -54,7 +54,7 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-    QButtonGroup, QStyleOptionSlider, QCompleter
+    QButtonGroup, QStyleOptionSlider
 )
 import qtpy.compat
 
@@ -13052,31 +13052,31 @@ class ButtonSearchWidget(QWidget):
         self.proxy_model.setSourceModel(model)
         self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
 
-        # Completer
-        self.completer = QCompleter(self.proxy_model, self)
-
-        # Use a popup so arrow-key navigation works normally
-        self.completer.setCompletionMode(QCompleter.PopupCompletion)
-        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
-
         # Search field
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search buttons...")
-        self.search_input.setCompleter(self.completer)
+        self.search_input.installEventFilter(self)
 
-        self.search_input.textChanged.connect(
+        # Custom popup (replaces QCompleter so we can fully control
+        # when search vs. navigation happen). Parented to the top-level
+        # window (not a separate Qt.Popup window) so it never steals
+        # OS-level keyboard focus away from the search field.
+        self.popup = QListView(self.window())
+        self.popup.setFocusPolicy(Qt.NoFocus)
+        self.popup.setModel(self.proxy_model)
+        self.popup.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.popup.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.popup.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.popup.setMouseTracking(True)
+        self.popup.clicked.connect(self.on_popup_clicked)
+        self.popup.setSizePolicy
+        self.popup.hide()
+
+        # `textEdited` only fires on actual user keystrokes, not on
+        # programmatic setText() (used by arrow-key navigation below),
+        # so typing re-filters but navigating doesn't.
+        self.search_input.textEdited.connect(
             self.on_search_text_changed
-        )
-
-        # QCompleter handles selection from the popup, including
-        # keyboard navigation and Enter.
-        self.completer.activated[QModelIndex].connect(
-            self.on_completion_activated
-        )
-
-        # Only used when Enter is pressed while the popup isn't active.
-        self.search_input.returnPressed.connect(
-            self.on_return_pressed
         )
 
         # Layout
@@ -13085,47 +13085,98 @@ class ButtonSearchWidget(QWidget):
         self.setLayout(layout)
 
     def on_search_text_changed(self, text):
-        """Filter the model and update the completer popup."""
+        """Filter the model and update the popup."""
 
         self.proxy_model.setFilterText(text)
 
-        # QCompleter normally performs its own prefix matching
-        # against DisplayRole. We don't want that because our proxy
-        # already searches both name and tooltip.
-        #
-        # Setting an empty prefix tells QCompleter to display all
-        # rows accepted by the proxy model.
-        self.completer.setCompletionPrefix('')
+        if not text or self.proxy_model.rowCount() == 0:
+            self.popup.hide()
+            return
 
-        if text:
-            self.completer.complete()
-        else:
-            self.completer.popup().hide()
+        self.popup.setCurrentIndex(self.proxy_model.index(0, 0))
+        self.show_popup()
 
-    def on_completion_activated(self, index):
-        """Handle selection from the completer popup.
+    def show_popup(self):
+        """Position and show the popup below the search field."""
 
-        This is triggered both by mouse selection and by keyboard
-        selection (e.g. Down/Up followed by Enter).
-        """
+        global_point = self.search_input.mapToGlobal(
+            self.search_input.rect().bottomLeft()
+        )
+        point = self.popup.parentWidget().mapFromGlobal(global_point)
+        self.popup.move(point)
+        self.popup.setFixedWidth(self.search_input.width())
+
+        row_height = self.popup.sizeHintForRow(0)
+        if row_height <= 0:
+            row_height = 20
+        visible_rows = min(self.proxy_model.rowCount(), 5)
+        self.popup.setFixedHeight(row_height * visible_rows + 4)
+
+        self.popup.show()
+        self.popup.raise_()
+        self.search_input.setFocus()
+
+    def navigate(self, direction):
+        """Move the popup selection without re-triggering the search."""
+
+        if not self.popup.isVisible():
+            return
+
+        row_count = self.proxy_model.rowCount()
+        if row_count == 0:
+            return
+
+        current_row = self.popup.currentIndex().row()
+        new_row = min(max(current_row + direction, 0), row_count - 1)
+        new_index = self.proxy_model.index(new_row, 0)
+
+        self.popup.setCurrentIndex(new_index)
+        self.popup.scrollTo(new_index)
+
+        # setText() here does not emit textEdited, so the search is
+        # not re-triggered by navigation.
+        self.search_input.setText(new_index.data(Qt.DisplayRole))
+
+    def on_popup_clicked(self, index):
+        self.confirm_selection(index)
+
+    def confirm_selection(self, index=None):
+        """Emit sigTriggerBlink for the currently selected/matched entry."""
+
+        if index is None or not index.isValid():
+            index = self.popup.currentIndex() if self.popup.isVisible() else None
+
+        if index is None or not index.isValid():
+            # Fall back to the single remaining filtered result, if any.
+            if self.proxy_model.rowCount() != 1:
+                return
+            index = self.proxy_model.index(0, 0)
 
         text = index.data(Qt.DisplayRole)
         self.on_button_selected(text)
+        self.popup.hide()
 
-    def on_return_pressed(self):
-        """Handle Enter when the completer popup isn't active."""
+    def eventFilter(self, obj, event):
+        if obj is self.search_input and event.type() == QEvent.KeyPress:
+            key = event.key()
+            if key == Qt.Key_Down:
+                self.navigate(1)
+                return True
+            elif key == Qt.Key_Up:
+                self.navigate(-1)
+                return True
+            elif key in (Qt.Key_Return, Qt.Key_Enter):
+                self.confirm_selection()
+                return True
+            elif key == Qt.Key_Escape:
+                self.popup.hide()
+        elif obj is self.search_input and event.type() == QEvent.FocusOut:
+            # The popup is a plain child widget (not an auto-dismissing
+            # Qt.Popup), so hide it manually once the field is no longer
+            # focused.
+            self.popup.hide()
 
-        if not self.search_input.text():
-            return
-
-        popup = self.completer.popup()
-
-        # If the popup isn't visible, fall back to the first
-        # filtered result.
-        if self.proxy_model.rowCount() == 1:
-            index = self.proxy_model.index(0, 0)
-            text = index.data(Qt.DisplayRole)
-            self.on_button_selected(text)
+        return super().eventFilter(obj, event)
 
     def on_button_selected(self, text):
         """Handle when user selects a button from dropdown."""
