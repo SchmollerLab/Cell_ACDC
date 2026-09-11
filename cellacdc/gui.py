@@ -968,8 +968,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Ordering mirrors the mutually exclusive click handling priority.
         # pattern is: (tool_name, tool_button, display small icon, mode)
         self.leftClickCursorTools = (
-            ('brush', self.brushButton, True, 'Segmentation and Tracking'),
-            ('eraser', self.eraserButton, True, 'Segmentation and Tracking'),
+            ('brush', self.brushButton, False, 'Segmentation and Tracking'),
+            ('eraser', self.eraserButton, False, 'Segmentation and Tracking'),
             ('curvature', self.curvToolButton, False, 'Segmentation and Tracking'),
             ('magic_wand', self.wandToolButton, False, 'Segmentation and Tracking'),
             ('magic_prompts', self.magicPromptsToolButton, True, 'Segmentation and Tracking'),
@@ -1042,9 +1042,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_getToolCursorCenter(self, left_name, right_name):
         active_tools = {left_name, right_name}
         isLeftClickActive = left_name is not None
-        overlay_cursor_tools = {
-            'brush', 'eraser'
-        }
+        overlay_cursor_tools = set() #{
+            # 'brush', 'eraser'
+        #}
         if active_tools & overlay_cursor_tools:
             center = 'blank'
         elif (
