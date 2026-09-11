@@ -403,7 +403,7 @@ def track_frame(
         IoA_thresh_aggr=None, IDs_prev=None, return_prev_IDs=False,
         mother_daughters=None, denom_overlap_matrix = 'area_prev',
         return_assignments=False, specific_IDs=None, 
-        dont_return_tracked_lab=False
+        dont_return_tracked_lab=False, all_curr_IDs=None
     ):
     from cellacdc.regionprops import acdcRegionprops
     
@@ -411,14 +411,21 @@ def track_frame(
         # Skip empty frames
         return lab
 
-    all_curr_IDs = (
-        list(IDs_curr_untracked)
-        if IDs_curr_untracked is not None else None
-    )
-    if isinstance(rp, acdcRegionprops) and all_curr_IDs is None:
-        all_curr_IDs = rp.IDs
-    elif all_curr_IDs is None:
-        all_curr_IDs = [obj.label for obj in rp]
+    # `all_curr_IDs` is used for merge-avoidance (see `_filter_subset_assignments`)
+    # and must reflect every ID present in the current frame, not just the
+    # (possibly `specific_IDs`-restricted) `IDs_curr_untracked`. Callers that
+    # only track a subset of IDs can pass the full current IDs explicitly here.
+    if all_curr_IDs is None:
+        all_curr_IDs = (
+            list(IDs_curr_untracked)
+            if IDs_curr_untracked is not None else None
+        )
+        if isinstance(rp, acdcRegionprops) and all_curr_IDs is None:
+            all_curr_IDs = rp.IDs
+        elif all_curr_IDs is None:
+            all_curr_IDs = [obj.label for obj in rp]
+        elif not isinstance(all_curr_IDs, list):
+            all_curr_IDs = list(all_curr_IDs)
     elif not isinstance(all_curr_IDs, list):
         all_curr_IDs = list(all_curr_IDs)
 
@@ -480,9 +487,8 @@ def track_frame(
     
     add_info = {
         'IoA_matrix': IoA_matrix,
-        'assignments': assignments,
+        'assignments': assignments if return_assignments else None,
         'tracked_IDs': tracked_IDs,
-        # 'IDs_prev': IDs_prev,
     }
     
     if dont_return_tracked_lab:

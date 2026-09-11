@@ -2800,11 +2800,7 @@ def combine_channels_func(
         f'Saving combined {"segmentation" if output_as_segm else "image"} to '
         f'{save_filepath}'
     )
-    _log_printl_fallback(txt, logger_func)
-    
-
-    printl(save_filepath)
-    
+    _log_printl_fallback(txt, logger_func)    
     io.save_image_data( # handles saving img and segm
         save_filepath, output_img
     )
@@ -3042,7 +3038,7 @@ def _compute_all_obj_to_obj_contour_dist_pairs(
 def convexity_defects(img, eps_percent):
     img = img.astype(np.uint8)
     contours, _ = cv2.findContours(img,2,1)
-    cnt = contours[0]
+    cnt = max(contours, key=cv2.contourArea)
     cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
     hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
     defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
