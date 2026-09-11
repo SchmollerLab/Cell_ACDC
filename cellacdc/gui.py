@@ -971,8 +971,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Ordering mirrors the mutually exclusive click handling priority.
         # pattern is: (tool_name, tool_button, display small icon, mode)
         self.leftClickCursorTools = (
-            ('brush', self.brushButton, True, 'Segmentation and Tracking'),
-            ('eraser', self.eraserButton, True, 'Segmentation and Tracking'),
+            ('brush', self.brushButton, False, 'Segmentation and Tracking'),
+            ('eraser', self.eraserButton, False, 'Segmentation and Tracking'),
             ('curvature', self.curvToolButton, False, 'Segmentation and Tracking'),
             ('magic_wand', self.wandToolButton, False, 'Segmentation and Tracking'),
             ('magic_prompts', self.magicPromptsToolButton, True, 'Segmentation and Tracking'),
@@ -1045,9 +1045,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_getToolCursorCenter(self, left_name, right_name):
         active_tools = {left_name, right_name}
         isLeftClickActive = left_name is not None
-        overlay_cursor_tools = {
-            'brush', 'eraser'
-        }
+        overlay_cursor_tools = set() #{
+            # 'brush', 'eraser'
+        #}
         if active_tools & overlay_cursor_tools:
             center = 'blank'
         elif (
@@ -5380,6 +5380,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ax_textAnnot.createItems(
                 isHighResolution, allIDs, scalingMode=scalingMode
             )
+            ax_textAnnot.setZValue(1)
             self.textAnnot[ax] = ax_textAnnot
     
     def gui_addOverlayLayerItems(self):
@@ -10829,6 +10830,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             endFrame_i, oldIDnewIDMapper, includeUnvisited,
             shift=shift, merging_IDs=merging_IDs
         )
+        
+        self.annotateAllObjectTracks()
     
     def getLastHoveredID(self):
         if self.xHoverImg is None:
@@ -16513,13 +16516,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not getattr(self, 'isDataLoaded', False):
             return False
 
-        focus = QApplication.focusWidget()
-        if focus is not None and any(
-            focus.inherits(cls) for cls in (
+        widgetWithFocus = QApplication.focusWidget()
+        printl(widgetWithFocus)
+        if widgetWithFocus is not None:
+            widgetClassesFilteringEvent = (
                 'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox'
             )
-        ):
-            return False
+            isFocusFilteringEvent = any([
+                widgetWithFocus.inherits(cls) 
+                for cls in widgetClassesFilteringEvent
+            ])
+            printl(widgetWithFocus, isFocusFilteringEvent)
+            if isFocusFilteringEvent:
+                return False
         
         if (
                 ev.type() == QEvent.MouseButtonPress
@@ -16530,9 +16539,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # handle presistant shortcuts (for multiple shportcuts)
         if ev.type() == QEvent.Type.KeyPress: 
             for name, key in self.widgetsPersistentShortcut.items():
+                printl(name, key, ev.key())
                 if not key == ev.key():
                     continue
                 action = self.widgetsWithShortcut[name]
+                printl(action)
                 if hasattr(action, 'click'):
                     action.click()
                 elif hasattr(action, 'trigger'):
@@ -28245,17 +28256,36 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Ctrl+Y': ('Redo', self.redoAction),
             'Ctrl+Shift+A': ('Autopilot', self.autoPilotButton),
             'Ctrl+F': ('Find ID', self.findIdAction),
-            'Ctrl+T': ('Track current frame with real-time tracker', self.repeatTrackingMenuAction),
-            'Alt+Shift+T': ('Track multiple frames with selected tracker', self.repeatTrackingVideoAction),
-            'Ctrl+K': ('Customize keyboard shortcuts', self.editShortcutsAction),
-            'Ctrl+M': ('Show mirrored cursor on images', self.showMirroredCursorAction),
-            'Ctrl+Shift+P': ('Edit cell cycle annotations', self.manuallyEditCcaAction),
+            'Ctrl+T': (
+                'Track current frame with real-time tracker', 
+                self.repeatTrackingMenuAction
+            ),
+            'Alt+Shift+T': (
+                'Track multiple frames with selected tracker', 
+                self.repeatTrackingVideoAction
+            ),
+            'Ctrl+K': (
+                'Customize keyboard shortcuts', self.editShortcutsAction
+            ),
+            'Ctrl+M': (
+                'Show mirrored cursor on images', self.showMirroredCursorAction
+            ),
+            'Ctrl+Shift+P': (
+                'Edit cell cycle annotations', self.manuallyEditCcaAction
+            ),
             'Ctrl+P': ('View cell cycle annotations', self.viewCcaTableAction),
             'Shift+S': ('Randomly shuffle colormap', self.shuffleCmapAction),
-            'Alt+Shift+S': ('Greedily shuffle colormap', self.greedyShuffleCmapAction),
+            'Alt+Shift+S': (
+                'Greedily shuffle colormap', self.greedyShuffleCmapAction
+            ),
             'Alt+Shift+P': ('Pre-processing', self.preprocessAction),
-            'Alt+Shift+C': ('Combine channels and segmentation files', self.combineChannelsAction),
-            'Ctrl+L': ('Relabel IDs sequentially', self.relabelSequentialAction),
+            'Alt+Shift+C': (
+                'Combine channels and segmentation files', 
+                self.combineChannelsAction
+            ),
+            'Ctrl+L': (
+                'Relabel IDs sequentially', self.relabelSequentialAction
+            ),
             'Left': 'Go to previous frame',
             'Right': 'Go to next frame',
         }
@@ -31961,16 +31991,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.getMovementAgainstPrevScatterItem(ax)
         )
         movementAgainstPrevLinesItem = self.getMovementAgainstPrevLinesItem(ax)
-        rp = posData.rp
-        prev_rp = posData.allData_li[frame_i-1]['regionprops']
-        if rp is None or prev_rp is None:
+        rp_2D = self.get2DRP()
+        prev_rp_2D = self.get2DRP(frame_i=frame_i-1)
+        rp_3D = posData.rp
+        if rp_2D is None or prev_rp_2D is None:
             self.logger.warning(
                 f"[WARNING] rp or prev rp could not be retrieved"
             )
             return
-        for ID in rp.IDs:
-            obj = rp.get_obj_from_ID(ID)
-            obj_prev = prev_rp.get_obj_from_ID(ID, warn=False)
+
+        for ID in rp_2D.IDs:
+            obj = rp_2D.get_obj_from_ID(ID)    
+            obj_prev = prev_rp_2D.get_obj_from_ID(ID, warn=False)
             if obj_prev is None:
                 continue
 
@@ -31978,17 +32010,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 obj_prev,
                 all_external=True,
                 include_internal=self.showAllContoursToggle.isChecked()
-            ) 
+            )
+            obj_3D = rp_3D.get_obj_from_ID(ID, warn=False)
             for objContours in allContours:
-                isObjVisible = self.isObjVisible(obj.bbox)
+                isObjVisible = self.isObjVisible(obj_3D.bbox)
                 if not isObjVisible:
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
                 movementAgainstPrevScatterItem.addPoints(xx, yy)
                 
-            y1, x1 = self.getObjCentroid(obj_prev.centroid)
-            y2, x2 = self.getObjCentroid(obj.centroid)
+            y1, x1 = obj_prev.centroid
+            y2, x2 = obj.centroid
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             movementAgainstPrevLinesItem.addPoints(xx, yy)
                                 

@@ -14816,9 +14816,18 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout = QGridLayout()
         
         conflict_prefix = 'Conflict with '
-        all_names = list(widgetsWithShortcut.keys()) + list(self.new_hard_shortcuts.keys())
+        all_names = (
+            list(widgetsWithShortcut.keys()) 
+            + list(self.new_hard_shortcuts.keys())
+        )
         longest_name = max(all_names, key=len)
-        self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name if not isinstance(name, tuple) else name[0]}</font>'
+        self.conflict_text_formatter = (
+            lambda name: (
+                '<font color="red">'
+                f'{conflict_prefix}'
+                f'{name if not isinstance(name, tuple) else name[0]}'
+                '</font>'
+        ))
         longest_conflict_text = self.conflict_text_formatter(longest_name)
 
         doc = QTextDocument()
@@ -20833,6 +20842,23 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             infoTxt=minAlphaInfoTxt,
         )
         formLayout.addFormWidget(self.minAlphaWidget, row=row)
+        row += 1
+        showOnlyVisible3DInfoTxt = html_utils.paragraph(
+            'Show only visible objects in 3D view.'
+        )
+        self.showOnlyVisible3DCheckBox = widgets.Toggle()
+        self.showOnlyVisible3DCheckBox.setChecked(
+            settings['3D_show_only_visible']
+        )
+        self.showOnlyVisible3DWidget = widgets.formWidget(
+            self.showOnlyVisible3DCheckBox,
+            labelTextLeft='3D show only visible: ',
+            parent=self,
+            stretchWidget=False,
+            addInfoButton=True,
+            infoTxt=showOnlyVisible3DInfoTxt,
+        )
+        formLayout.addFormWidget(self.showOnlyVisible3DWidget, row=row)
         
         row += 1
         againstPrevInfoTxt = html_utils.paragraph(
@@ -20938,24 +20964,6 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             infoTxt=againstPrevContourWidthInfoTxt,
         )
         formLayout.addFormWidget(self.againstPrevContourWidthWidget, row=row)
-        
-        row += 1
-        showOnlyVisible3DInfoTxt = html_utils.paragraph(
-            'Show only visible objects in 3D view.'
-        )
-        self.showOnlyVisible3DCheckBox = widgets.Toggle()
-        self.showOnlyVisible3DCheckBox.setChecked(
-            settings['3D_show_only_visible']
-        )
-        self.showOnlyVisible3DWidget = widgets.formWidget(
-            self.showOnlyVisible3DCheckBox,
-            labelTextLeft='3D show only visible: ',
-            parent=self,
-            stretchWidget=False,
-            addInfoButton=True,
-            infoTxt=showOnlyVisible3DInfoTxt,
-        )
-        formLayout.addFormWidget(self.showOnlyVisible3DWidget, row=row)
         row += 1
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
@@ -20989,6 +20997,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
             self.minWidthWidget,
             self.maxAlphaWidget,
             self.minAlphaWidget,
+            self.showOnlyVisible3DWidget,
         )
         self._againstPrevOnlyWidgets = (
             self.againstPrevLineColorWidget,
