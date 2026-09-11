@@ -11846,7 +11846,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     qparent=self
                 )
                 blinker.start()
-                blinkers.append(blinker)
+                self.blinkers.append(blinker)
                 return
 
         # Store cca_df for undo action
