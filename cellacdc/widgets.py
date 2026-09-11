@@ -12997,7 +12997,7 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
 
     def setFilterText(self, text):
         self._filterText = text.lower()
-        self._allowFuzzy = self._exactMatchCount() < 5
+        self._allowFuzzy = self._exactMatchCount() < 1
         self.invalidateFilter()
         self.sort(0)
 
