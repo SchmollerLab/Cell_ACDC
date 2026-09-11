@@ -16498,13 +16498,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not getattr(self, 'isDataLoaded', False):
             return False
 
-        focus = QApplication.focusWidget()
-        if focus is not None and any(
-            focus.inherits(cls) for cls in (
+        widgetWithFocus = QApplication.focusWidget()
+        printl(widgetWithFocus)
+        if widgetWithFocus is not None:
+            widgetClassesFilteringEvent = (
                 'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox'
             )
-        ):
-            return False
+            isFocusFilteringEvent = any([
+                widgetWithFocus.inherits(cls) 
+                for cls in widgetClassesFilteringEvent
+            ])
+            printl(widgetWithFocus, isFocusFilteringEvent)
+            if isFocusFilteringEvent:
+                return False
         
         if (
                 ev.type() == QEvent.MouseButtonPress
@@ -16515,9 +16521,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # handle presistant shortcuts (for multiple shportcuts)
         if ev.type() == QEvent.Type.KeyPress: 
             for name, key in self.widgetsPersistentShortcut.items():
+                printl(name, key, ev.key())
                 if not key == ev.key():
                     continue
                 action = self.widgetsWithShortcut[name]
+                printl(action)
                 if hasattr(action, 'click'):
                     action.click()
                 elif hasattr(action, 'trigger'):
@@ -28229,17 +28237,36 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Ctrl+Y': ('Redo', self.redoAction),
             'Ctrl+Shift+A': ('Autopilot', self.autoPilotButton),
             'Ctrl+F': ('Find ID', self.findIdAction),
-            'Ctrl+T': ('Track current frame with real-time tracker', self.repeatTrackingMenuAction),
-            'Alt+Shift+T': ('Track multiple frames with selected tracker', self.repeatTrackingVideoAction),
-            'Ctrl+K': ('Customize keyboard shortcuts', self.editShortcutsAction),
-            'Ctrl+M': ('Show mirrored cursor on images', self.showMirroredCursorAction),
-            'Ctrl+Shift+P': ('Edit cell cycle annotations', self.manuallyEditCcaAction),
+            'Ctrl+T': (
+                'Track current frame with real-time tracker', 
+                self.repeatTrackingMenuAction
+            ),
+            'Alt+Shift+T': (
+                'Track multiple frames with selected tracker', 
+                self.repeatTrackingVideoAction
+            ),
+            'Ctrl+K': (
+                'Customize keyboard shortcuts', self.editShortcutsAction
+            ),
+            'Ctrl+M': (
+                'Show mirrored cursor on images', self.showMirroredCursorAction
+            ),
+            'Ctrl+Shift+P': (
+                'Edit cell cycle annotations', self.manuallyEditCcaAction
+            ),
             'Ctrl+P': ('View cell cycle annotations', self.viewCcaTableAction),
             'Shift+S': ('Randomly shuffle colormap', self.shuffleCmapAction),
-            'Alt+Shift+S': ('Greedily shuffle colormap', self.greedyShuffleCmapAction),
+            'Alt+Shift+S': (
+                'Greedily shuffle colormap', self.greedyShuffleCmapAction
+            ),
             'Alt+Shift+P': ('Pre-processing', self.preprocessAction),
-            'Alt+Shift+C': ('Combine channels and segmentation files', self.combineChannelsAction),
-            'Ctrl+L': ('Relabel IDs sequentially', self.relabelSequentialAction),
+            'Alt+Shift+C': (
+                'Combine channels and segmentation files', 
+                self.combineChannelsAction
+            ),
+            'Ctrl+L': (
+                'Relabel IDs sequentially', self.relabelSequentialAction
+            ),
             'Left': 'Go to previous frame',
             'Right': 'Go to next frame',
         }

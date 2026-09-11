@@ -14816,9 +14816,18 @@ class ShortcutEditorDialog(QBaseDialog):
         entriesLayout = QGridLayout()
         
         conflict_prefix = 'Conflict with '
-        all_names = list(widgetsWithShortcut.keys()) + list(self.new_hard_shortcuts.keys())
+        all_names = (
+            list(widgetsWithShortcut.keys()) 
+            + list(self.new_hard_shortcuts.keys())
+        )
         longest_name = max(all_names, key=len)
-        self.conflict_text_formatter = lambda name: f'<font color="red">{conflict_prefix}{name if not isinstance(name, tuple) else name[0]}</font>'
+        self.conflict_text_formatter = (
+            lambda name: (
+                '<font color="red">'
+                f'{conflict_prefix}'
+                f'{name if not isinstance(name, tuple) else name[0]}'
+                '</font>'
+        ))
         longest_conflict_text = self.conflict_text_formatter(longest_name)
 
         doc = QTextDocument()
