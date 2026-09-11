@@ -238,6 +238,7 @@ def single_cell_seg(model, prev_lab, curr_lab, curr_img,
     prev_lab_shape = prev_lab.shape
 
     bboxs = [get_box_coords(prev_rp, prev_lab_shape, ID, padding) for ID in IDs if ID in prev_rp.IDs]
+    IDs = [ID for ID in IDs if ID in prev_rp.IDs]
     IDs_bboxs, bboxs = find_overlapping_bboxs(IDs, bboxs)
     
     assigned_IDs = []
