@@ -21612,16 +21612,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
             self.zSliceSpinbox.setMaximum(self.data[0].SizeZ)
             self.SizeZlabel.setText(f'/{self.data[0].SizeZ}')
-            try:
-                self.zSliceScrollBar.actionTriggered.disconnect()
-                self.zSliceScrollBar.sliderReleased.disconnect()
-                self.zProjComboBox.currentTextChanged.disconnect()
-                self.zProjComboBox.activated.disconnect()
-                self.switchPlaneCombobox.sigPlaneChanged.disconnect()
-                self.launch3dViewerButton.toggled.disconnect()
-                self.zProjLockViewButton.toggled.disconnect()
-            except Exception as e:
-                pass
+            qutils.tryDisconnectSignal(self.zSliceScrollBar, 'actionTriggered')
+            qutils.tryDisconnectSignal(self.zSliceScrollBar, 'sliderReleased' )
+            qutils.tryDisconnectSignal(self.zProjComboBox, 'currentTextChanged')
+            qutils.tryDisconnectSignal(self.zProjComboBox, 'activated')
+            qutils.tryDisconnectSignal(
+                self.switchPlaneCombobox, 'sigPlaneChanged'
+            )
+            qutils.tryDisconnectSignal(self.launch3dViewerButton, 'toggled')
+            qutils.tryDisconnectSignal(self.zProjLockViewButton, 'toggled')
             self.zSliceScrollBar.actionTriggered.connect(
                 self.zSliceScrollBarActionTriggered
             )

@@ -43,6 +43,7 @@ from . import autopilot, workers
 from . import recentPaths_path
 from . import urls
 from . import io
+from . import qutils
 from .help import about
 from . import fonts
 
@@ -502,13 +503,27 @@ class dataPrepWin(QMainWindow):
                                      'median z-proj.'])
         self.zProjComboBox.setDisabled(True)
 
+        self.zProjLockViewButton = widgets.LockPushButton()
+        self.zProjLockViewButton.setCheckable(True)
+        self.zProjLockViewButton.setToolTip(
+            'If active, the selected z-slice view is applied to all frames'
+        )
+        self.zProjLockViewButton.setDisabled(True)
+
         self.img_Widglayout.addWidget(navSB_label, 0, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.navigateScrollbar, 0, 1, 1, 30)
+        self.img_Widglayout.addWidget(self.navigateScrollbar, 0, 1)
 
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1, 1, 30)
+        self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1)
 
-        self.img_Widglayout.addWidget(self.zProjComboBox, 1, 31, 1, 1)
+        self.img_Widglayout.addWidget(self.zProjComboBox, 1, 2)
+
+        self.img_Widglayout.addWidget(self.zProjLockViewButton, 1, 3)
+
+        self.img_Widglayout.setColumnStretch(0, 0)
+        self.img_Widglayout.setColumnStretch(1, 1)
+        self.img_Widglayout.setColumnStretch(2, 0)
+        self.img_Widglayout.setColumnStretch(3, 0)
 
         self.img_Widglayout.setContentsMargins(100, 0, 20, 0)
 
@@ -612,6 +627,51 @@ class dataPrepWin(QMainWindow):
             self.navigateScrollbarValueChanged
         )
 
+    def zSlice(self, posData, frame_i):
+        df = posData.segmInfo_df
+        idx = (posData.filename, frame_i)
+        try:
+            stored_z = df.at[idx, 'z_slice_used_dataPrep']
+        except Exception as e:
+            duplicated_idx = df.index.duplicated()
+            posData.segmInfo_df = df[~duplicated_idx]
+            stored_z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
+        
+        if not self.zProjLockViewButton.isChecked():
+            self.zSliceScrollBar.blockSignals(True)
+            self.zSliceScrollBar.setSliderPosition(stored_z)
+            self.zSliceScrollBar.blockSignals(False)
+            return stored_z
+        
+        current_z = self.zSliceScrollBar.sliderPosition()
+        if stored_z == current_z:
+            return stored_z
+        
+        # With lock button we use the z-slice of the slider and we store it
+        posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep'] = current_z
+        self.save_segmInfo_df_pos()
+
+        return current_z
+
+    def zProjHow(self, posData, frame_i):
+        idx = (posData.filename, frame_i)
+        storedZprojHow = posData.segmInfo_df.at[idx, 'which_z_proj']
+        if not self.zProjLockViewButton.isChecked():
+            self.zProjComboBox.blockSignals(True)
+            self.zProjComboBox.setCurrentText(storedZprojHow)
+            self.zProjComboBox.blockSignals(False)
+            return storedZprojHow
+        
+        currentZprojHow = self.zProjComboBox.currentText()
+        if storedZprojHow == currentZprojHow:
+            return storedZprojHow
+        
+        # With lock button we use the projection of the combobox and we store it
+        posData.segmInfo_df.at[idx, 'which_z_proj'] = currentZprojHow
+        self.save_segmInfo_df_pos()
+
+        return currentZprojHow
+
     def getImage(self, posData, img_data, frame_i, force_z=None):
         if posData.SizeT > 1:
             img = img_data[frame_i].copy()
@@ -622,27 +682,12 @@ class dataPrepWin(QMainWindow):
                 self.z_label.setText(f'z-slice  {force_z+1}/{posData.SizeZ}')
                 img = img[force_z]
                 return img
+            
             df =  posData.segmInfo_df
             idx = (posData.filename, frame_i)
-            try:
-                z = df.at[idx, 'z_slice_used_dataPrep']
-            except Exception as e:
-                duplicated_idx = df.index.duplicated()
-                posData.segmInfo_df = df[~duplicated_idx]
-                z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
-                
-            zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj']
-            try:
-                self.zProjComboBox.currentTextChanged.disconnect()
-            except TypeError:
-                pass
-            self.zProjComboBox.setCurrentText(zProjHow)
-            self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
-
+            z = self.zSlice(posData, frame_i)
+            zProjHow = self.zProjHow(posData, frame_i)
             if zProjHow == 'single z-slice':
-                self.zSliceScrollBar.valueChanged.disconnect()
-                self.zSliceScrollBar.setSliderPosition(z)
-                self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
                 self.z_label.setText(f'z-slice  {z+1}/{posData.SizeZ}')
                 img = img[z]
             elif zProjHow == 'max z-projection':
@@ -652,6 +697,9 @@ class dataPrepWin(QMainWindow):
             elif zProjHow == 'median z-proj.':
                 img = np.median(img, axis=0)
         return img
+
+    def zProjLockViewToggled(self, checked):
+        ...
 
     @exception_handler
     def update_img(self):
@@ -1418,18 +1466,18 @@ class dataPrepWin(QMainWindow):
             self.cropZtool = None
     
     def cropZtoolvalueChanged(self, whichZ, z):
-        self.zSliceScrollBar.valueChanged.disconnect()
+        self.zSliceScrollBar.blockSignals(True)
         self.zSliceScrollBar.setValue(z)
-        self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+        self.zSliceScrollBar.blockSignals(False)
         posData = self.data[self.pos_i]
         img = self.getImage(posData, posData.img_data, self.frame_i, force_z=z)
         self.img.setImage(img)
 
     def cropZtoolReset(self):
         posData = self.data[self.pos_i]
-        self.cropZtool.sigZvalueChanged.disconnect()
+        self.cropZtool.blockSignals(True)
         self.cropZtool.updateScrollbars(0, posData.SizeZ)
-        self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
+        self.cropZtool.blockSignals(False)
 
     def updateCropZtool(self):
         posData = self.data[self.pos_i]
@@ -1448,9 +1496,9 @@ class dataPrepWin(QMainWindow):
         except KeyError:
             upper_z = posData.SizeZ
 
-        self.cropZtool.sigZvalueChanged.disconnect()
+        self.cropZtool.blockSignals(True)
         self.cropZtool.updateScrollbars(lower_z, upper_z)
-        self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
+        self.cropZtool.blockSignals(False)
 
     def cropZtoolClosed(self):
         self.cropZtool = None
@@ -2113,18 +2161,18 @@ class dataPrepWin(QMainWindow):
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
         posData = self.data[0]
-        try:
-            self.zSliceScrollBar.valueChanged.disconnect()
-            self.zProjComboBox.currentTextChanged.disconnect()
-        except Exception as e:
-            pass
+        qutils.tryDisconnectSignal(self.zSliceScrollBar, 'valueChanged')
+        qutils.tryDisconnectSignal(self.zProjComboBox, 'currentTextChanged')
+        qutils.tryDisconnectSignal(self.zProjLockViewButton, 'toggled')
         if posData.SizeZ > 1:
             self.z_label.setDisabled(False)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.setDisabled(False)
+            self.zProjLockViewButton.setDisabled(False)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
             self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
+            self.zProjLockViewButton.toggled.connect(self.zProjLockViewToggled)
             if posData.SizeT > 1:
                 self.interpAction.setEnabled(True)
             self.ZbackAction.setEnabled(True)
@@ -2137,6 +2185,7 @@ class dataPrepWin(QMainWindow):
             self.zSliceScrollBar.setDisabled(True)
             self.zProjComboBox.setDisabled(True)
             self.z_label.setDisabled(True)
+            self.zProjLockViewButton.setDisabled(True)
 
     def update_z_slice(self, z):
         if self.zProjComboBox.currentText() == 'single z-slice':
@@ -2144,18 +2193,12 @@ class dataPrepWin(QMainWindow):
             df = posData.segmInfo_df
             idx = (posData.filename, self.frame_i)
             posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep'] = z
-            posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.update_img()
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
 
     def updateZproj(self, how):
         posData = self.data[self.pos_i]
-        for frame_i in range(self.frame_i, posData.SizeT):
-            df = posData.segmInfo_df
-            idx = (posData.filename, self.frame_i)
-            posData.segmInfo_df.at[idx, 'which_z_proj'] = how
-            posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
         if how == 'single z-slice':
             self.zSliceScrollBar.setDisabled(False)
             self.z_label.setStyleSheet('color: black')
@@ -2164,14 +2207,6 @@ class dataPrepWin(QMainWindow):
             self.zSliceScrollBar.setDisabled(True)
             self.z_label.setStyleSheet('color: gray')
             self.update_img()
-
-        # Apply same z-proj to future pos
-        if posData.SizeT == 1:
-            for posData in self.data[self.pos_i+1:]:
-                idx = (posData.filename, self.frame_i)
-                posData.segmInfo_df.at[idx, 'which_z_proj'] = how
-
-        self.save_segmInfo_df_pos()
 
     def save_segmInfo_df_pos(self):
         # Launch a separate thread to save to csv and keep gui responsive
