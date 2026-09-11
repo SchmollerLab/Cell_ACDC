@@ -3216,6 +3216,8 @@ class ToolBar(QToolBar):
         action = QAction(QIcon(icon_str), text, self)
         action.setCheckable(checkable)
         widget = self.addAction(action)
+        if widget is None:
+            widget = self.widgetForAction(action)
         if ret_widget:
             return action, widget
         return action

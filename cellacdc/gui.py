@@ -394,6 +394,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.AutoPilot = None
         self.widgetsWithShortcut = {}
         self.widgetsForActions = {}
+        self.customRightClickItems = dict()
         self.invertBwAlreadyCalledOnce = False
         self.zoomOutKeyValue = Qt.Key_H
         self.preprocWorker = None
@@ -1257,7 +1258,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.addCustomPromptModelAction
         )
 
-        SegmMenu.addAction(self.EditSegForLostIDsSetSettings)
+        SegmMenu.addAction(self.editSegForLostIDsSetSettings)
         SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
         SegmMenu.addAction(self.relabelSequentialAction)
@@ -1635,6 +1636,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.segForLostIDsButton.clicked.connect(
             self.segForLostIDsButtonClicked
         )
+        self.customRightClickItems['Segment for lost IDs'] = (
+            self.segForLostIDsButton, [self.editSegForLostIDsSetSettings]
+            )
 
         # self.SegForLostIDsButton.setShortcut('U')
         # self.widgetsWithShortcut['Unknown lineage (lineage tree)'] = self.SegForLostIDsButton
@@ -1965,6 +1969,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             menu = button.rightClickMenu
             action = self.applyToolNewFrameActions[name]
             menu.addAction(action)
+            
+        # add custom right click items for some settings
+        for name, (button, actions) in self.customRightClickItems.items():
+            if name in NAMES_TO_IGNORE_ERROR:
+                continue
+            res = self._setupRightClickMenuOnButton(button, name)
+            if res[0] is False or res[1] not in ok_num_widgets:
+                print(f"Error setting up right click menu for: {name}")
+                print(f"Number of associated widgets: {res[1]}")
+            menu = button.rightClickMenu
+            for action in actions:
+                menu.addAction(action)
             
     def _setupRightClickMenuOnButton(self, target, name):
         if hasattr(target, 'rightClickMenu') and target.rightClickMenu is not None:
@@ -3191,10 +3207,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.postProcessSegmAction.setDisabled(True)
         self.postProcessSegmAction.setCheckable(True)
 
-        self.EditSegForLostIDsSetSettings = QAction(
+        self.editSegForLostIDsSetSettings = QAction(
             "Edit settings for Segmenting lost IDs...", self
         )
-        self.EditSegForLostIDsSetSettings.triggered.connect(
+        self.editSegForLostIDsSetSettings.triggered.connect(
             self.SegForLostIDsSetSettings
         )
 

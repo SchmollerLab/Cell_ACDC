@@ -637,7 +637,11 @@ def combine_grayscale_images_with_alpha_cy(
         luts=None,
         base_lut=None,
 ):
-    """Composite already-normalized images using float16 RGB values."""
+    """Composite already-normalized images using float16 RGB values.
+    Input images MUST be already normalized to the range [0, 1], and CANNOT
+    include NaN values. LUTs, if provided, CANNOT be negative.
+    I.E. use the ACDC luts and images.
+    """
     cdef np.ndarray[np.float32_t, ndim=2] base_arr = np.asarray(base_img, dtype=np.float32)
     cdef Py_ssize_t h = base_arr.shape[0]
     cdef Py_ssize_t w = base_arr.shape[1]
