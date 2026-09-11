@@ -13027,7 +13027,7 @@ class ButtonSearchWidget(QWidget):
 
     def init_ui(self):
         # Parse the file
-        buttons = rst_utils.parse_rst_file(tooltips_rst_filepath)
+        buttons = rst_utils.get_tooltips_from_docs(for_search=True)
 
         # Create model
         model = QStandardItemModel()
@@ -13055,13 +13055,16 @@ class ButtonSearchWidget(QWidget):
         # Search field
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search buttons...")
+        # add stretch to make the search input expand
+        self.search_input.setFixedWidth(250)
         self.search_input.installEventFilter(self)
 
         # Custom popup (replaces QCompleter so we can fully control
-        # when search vs. navigation happen). Parented to the top-level
-        # window (not a separate Qt.Popup window) so it never steals
-        # OS-level keyboard focus away from the search field.
-        self.popup = QListView(self.window())
+        # when search vs. navigation happen). Reparented to the actual
+        # top-level window right before showing (see show_popup) instead
+        # of a separate Qt.Popup window, so it never steals OS-level
+        # keyboard focus away from the search field.
+        self.popup = QListView()
         self.popup.setFocusPolicy(Qt.NoFocus)
         self.popup.setModel(self.proxy_model)
         self.popup.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -13069,7 +13072,11 @@ class ButtonSearchWidget(QWidget):
         self.popup.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.popup.setMouseTracking(True)
         self.popup.clicked.connect(self.on_popup_clicked)
-        self.popup.setSizePolicy
+        
+        # Enable scrollbar when content exceeds max height
+        self.popup.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.popup.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        
         self.popup.hide()
 
         # `textEdited` only fires on actual user keystrokes, not on
@@ -13099,19 +13106,34 @@ class ButtonSearchWidget(QWidget):
     def show_popup(self):
         """Position and show the popup below the search field."""
 
+        # Reparent to the current top-level window each time: at
+        # construction ButtonSearchWidget may not be embedded in its
+        # final parent yet, so self.window() could still be itself,
+        # clipping the popup to its own small bounds.
+        window = self.window()
+        if self.popup.parentWidget() is not window:
+            self.popup.setParent(window)
+
         global_point = self.search_input.mapToGlobal(
             self.search_input.rect().bottomLeft()
         )
-        point = self.popup.parentWidget().mapFromGlobal(global_point)
+        point = window.mapFromGlobal(global_point)
         self.popup.move(point)
         self.popup.setFixedWidth(self.search_input.width())
-
+ 
+        # Calculate height for maximum 5 visible rows
         row_height = self.popup.sizeHintForRow(0)
         if row_height <= 0:
-            row_height = 20
-        visible_rows = min(self.proxy_model.rowCount(), 5)
-        self.popup.setFixedHeight(row_height * visible_rows + 4)
-
+            row_height = 20  # Fallback default height
+        
+        # Show max 5 items, scrollbar appears if more results
+        max_visible_rows = 5
+        visible_rows = min(self.proxy_model.rowCount(), max_visible_rows)
+        popup_height = row_height * visible_rows + 4  # +4 for spacing/borders
+        
+        self.popup.setMaximumHeight(popup_height)
+        self.popup.setMinimumHeight(popup_height)
+ 
         self.popup.show()
         self.popup.raise_()
         self.search_input.setFocus()
@@ -13159,17 +13181,20 @@ class ButtonSearchWidget(QWidget):
     def eventFilter(self, obj, event):
         if obj is self.search_input and event.type() == QEvent.KeyPress:
             key = event.key()
-            if key == Qt.Key_Down:
+            popup_visible = self.popup.isVisible()
+            if key == Qt.Key_Down and popup_visible:
                 self.navigate(1)
                 return True
-            elif key == Qt.Key_Up:
+            elif key == Qt.Key_Up and popup_visible:
                 self.navigate(-1)
                 return True
-            elif key in (Qt.Key_Return, Qt.Key_Enter):
+            elif key in (Qt.Key_Return, Qt.Key_Enter) and popup_visible:
                 self.confirm_selection()
                 return True
-            elif key == Qt.Key_Escape:
+            elif key == Qt.Key_Escape and popup_visible:
                 self.popup.hide()
+                return True
+            # Popup closed: let the line edit handle the key normally
         elif obj is self.search_input and event.type() == QEvent.FocusOut:
             # The popup is a plain child widget (not an auto-dismissing
             # Qt.Popup), so hide it manually once the field is no longer

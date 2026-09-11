@@ -79,7 +79,7 @@ def autoLineBreak(text, length): #automatic line breaking for tooltips. Keeps in
 
     return '\n'.join(lines)
 
-def get_tooltips_from_docs(): 
+def get_tooltips_from_docs(for_search=False): 
     # gets tooltips for GUI from .\Cell_ACDC\docs\source\tooltips.rst
     var_pattern = r"\|(\S*)\|"
     shortcut_pattern = r"\*\*(\".*\")\):\*\*"
@@ -100,7 +100,10 @@ def get_tooltips_from_docs():
     non_empty_lines = [line.replace("\n", "") for line in lines if line.strip()] #also removes \n from lines
     lines = non_empty_lines
 
-    tipdict = {}
+    if not for_search:
+        tipdict = {}
+    else:
+        tipdict = []
 
     for i, line in enumerate(lines):
         match = re.search(var_pattern, line)
@@ -153,83 +156,92 @@ def get_tooltips_from_docs():
                     appSameLine = False
 
                 desc += entry
-            desc = autoLineBreak(desc, 60)
-            desc = format_bullet_points(desc)
-            desc = format_number_list(desc)
+                
+            if not for_search:
+                desc = autoLineBreak(desc, 60)
+                desc = format_bullet_points(desc)
+                desc = format_number_list(desc)
 
-            tipdict[name] = f"Name: {title}\nShortcut: {shortcut}\n\n{desc}"
+                tipdict[name] = f"Name: {title}\nShortcut: {shortcut}\n\n{desc}"
+            else:
+                tipdict.append({
+                    'name': title,
+                    'shortcut': shortcut,
+                    'tooltip': desc,
+                    'id': name
+                })
     return tipdict
 
-def parse_rst_file(filepath):
-    """
-    Extract button names and tooltips from Cell-ACDC RST file.
+# def parse_rst_file(filepath):
+#     """
+#     Extract button names and tooltips from Cell-ACDC RST file.
     
-    Handles multiple formats:
-    - * **Button name (** |buttonId| **"Shortcut"):** Tooltip
-    - * **Button name (** |buttonId| **):** Tooltip (no shortcut)
-    - Multi-line tooltips with | continuation
-    """
-    buttons = []
+#     Handles multiple formats:
+#     - * **Button name (** |buttonId| **"Shortcut"):** Tooltip
+#     - * **Button name (** |buttonId| **):** Tooltip (no shortcut)
+#     - Multi-line tooltips with | continuation
+#     """
+#     buttons = []
     
-    with open(filepath, 'r', encoding='utf-8') as f:
-        content = f.read()
+#     with open(filepath, 'r', encoding='utf-8') as f:
+#         content = f.read()
     
-    # Split by bullet points (lines starting with *)
-    # Match the full entry including multi-line continuations
-    pattern = r'\*\s+\|?\s*\*\*(.+?)\s*\(\*\*\s*\|(\w+)\|\s*\*\*(?:"([^"]*)")?\)\:\*\*\s+(.+?)(?=\n\s*\*\s+\|?|\n\n[A-Za-z]|\Z)'
+#     # Split by bullet points (lines starting with *)
+#     # Match the full entry including multi-line continuations
+#     pattern = r'\*\s+\|?\s*\*\*(.+?)\s*\(\*\*\s*\|(\w+)\|\s*\*\*(?:"([^"]*)")?\)\:\*\*\s+(.+?)(?=\n\s*\*\s+\|?|\n\n[A-Za-z]|\Z)'
     
-    matches = re.finditer(pattern, content, re.DOTALL | re.MULTILINE)
+#     matches = re.finditer(pattern, content, re.DOTALL | re.MULTILINE)
     
-    for match in matches:
-        button_name = match.group(1).strip()
-        button_id = match.group(2).strip()
-        shortcut = match.group(3).strip() if match.group(3) else ""
-        tooltip_raw = match.group(4).strip()
+#     for match in matches:
+#         button_name = match.group(1).strip()
+#         button_id = match.group(2).strip()
+#         shortcut = match.group(3).strip() if match.group(3) else ""
+#         tooltip_raw = match.group(4).strip()
         
-        # Clean up the tooltip: remove RST formatting
-        tooltip = clean_rst_text(tooltip_raw)
+#         # Clean up the tooltip: remove RST formatting
+#         tooltip = clean_rst_text(tooltip_raw)
         
-        buttons.append({
-            'name': button_name,
-            'id': button_id,
-            'shortcut': shortcut,
-            'tooltip': tooltip
-        })
+#         buttons.append({
+#             'name': button_name,
+#             'id': button_id,
+#             'shortcut': shortcut,
+#             'tooltip': tooltip
+#         })
     
-    return buttons
+#     return buttons
  
  
-def clean_rst_text(text):
-    """Remove RST markup and formatting from text"""
-    # Remove RST literal blocks (.. code-block::)
-    text = re.sub(r'\.\.\s+\w+::', '', text)
+# def clean_rst_text(text):
+#     """Remove RST markup and formatting from text"""
+#     # Remove RST literal blocks (.. code-block::)
+#     text = re.sub(r'\.\.\s+\w+::', '', text)
     
-    # Remove image references |iconName|
-    text = re.sub(r'\|(\w+)\|', r'\1', text)
+#     # Remove image references |iconName|
+#     text = re.sub(r'\|(\w+)\|', r'\1', text)
     
-    # Remove hyperlink targets (.. _target:)
-    text = re.sub(r'\.\.\s+_\w+:', '', text)
+#     # Remove hyperlink targets (.. _target:)
+#     text = re.sub(r'\.\.\s+_\w+:', '', text)
     
-    # Remove bold/italic formatting
-    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    text = re.sub(r'~~(.+?)~~', r'\1', text)
+#     # Remove bold/italic formatting
+#     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+#     text = re.sub(r'~~(.+?)~~', r'\1', text)
     
-    # Remove inline literals (backticks)
-    text = re.sub(r'``(.+?)``', r'\1', text)
+#     # Remove inline literals (backticks)
+#     text = re.sub(r'``(.+?)``', r'\1', text)
     
-    # Clean up bullet points (leading * in multi-line content)
-    text = re.sub(r'^\s*\*\s+', '', text, flags=re.MULTILINE)
+#     # Clean up bullet points (leading * in multi-line content)
+#     text = re.sub(r'^\s*\*\s+', '', text, flags=re.MULTILINE)
     
-    # Clean up RST line continuation markers (| at start of line)
-    text = re.sub(r'\n\s*\|\s+', ' ', text)
+#     # Clean up RST line continuation markers (| at start of line)
+#     text = re.sub(r'\n\s*\|\s+', ' ', text)
     
-    # Replace multiple newlines with space (collapse multi-line entries)
-    text = re.sub(r'\n+', ' ', text)
+#     # Replace multiple newlines with space (collapse multi-line entries)
+#     text = re.sub(r'\n+', ' ', text)
     
-    # Clean up multiple spaces to single space
-    text = re.sub(r'\s+', ' ', text)
+#     # Clean up multiple spaces to single space
+#     text = re.sub(r'\s+', ' ', text)
     
-    # Remove leading/trailing whitespace
-    text = text.strip()
+#     # Remove leading/trailing whitespace
+#     text = text.strip()
     
-    return text
+#     return text
