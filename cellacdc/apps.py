@@ -13455,6 +13455,9 @@ class QDialogModelParams(QDialog):
         heightInitParams = (
             self.initParamsScrollArea.minimumHeightNoScrollbar()
         )
+        self.initParamsScrollArea.setMinimumHeight(
+            heightInitParams
+        )
         heightLeft = 70 + buttonHeight
         heightCenter = heightInitParams
         heightRight = 0

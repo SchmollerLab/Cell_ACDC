@@ -269,9 +269,6 @@ def avi_to_mp4(in_filepath_avi, out_filepath_mp4=None, crf=18):
 def _run_ffmpeg(ffmpeg_exec_path, command_args):
     import subprocess, os
     
-    command_args_no_quotes = [
-        arg.replace('"', '').replace("'", '') for arg in command_args
-    ]
     full_command = ' '.join(command_args)
     full_command = f'{ffmpeg_exec_path} {full_command}'
     
@@ -291,6 +288,9 @@ def _run_ffmpeg(ffmpeg_exec_path, command_args):
         args_ffmpeg_executable = [f'chmod 755 {ffmpeg_exec_path}']
         subprocess.check_call(args_ffmpeg_executable, shell=True)
 
+    command_args_no_quotes = [
+        arg.replace('"', '').replace("'", '') for arg in command_args
+    ]
     command_str = ' '.join(command_args)
     command_no_quotes_str = ' '.join(command_args_no_quotes)
     

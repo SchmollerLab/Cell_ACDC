@@ -1167,11 +1167,8 @@ class bioFormatsWorker(QObject):
         
         rawFilePath = os.path.join(self.raw_src_path, filename)
         raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
-        if not os.path.exists(raw_path):
-            os.mkdir(raw_path)
-        dst = os.path.join(raw_path, filename)
         try:
-            shutil.move(rawFilePath, dst)
+            io.move_raw_microscopy_file(rawFilePath, raw_path)
             return raw_path
         except PermissionError as e:
             self.progress.emit(e)

@@ -1,8 +1,11 @@
+from  typing import Literal
+import functools
+
 from qtpy.QtCore import (
     Qt, QTimer, QEventLoop
 )
 from qtpy.QtWidgets import QWidget, QAction, QToolButton
-import functools
+
 
 class QWhileLoop:
     def __init__(
@@ -138,3 +141,14 @@ def insert_row(layout, insert_at, new_widget, col=0, dont_shift_other_cols=False
                 layout.removeItem(item)
                 layout.addItem(item, row + 1, loc_col)
     layout.addWidget(new_widget, insert_at, col)
+
+def tryDisconnectSignal(
+        widget, 
+        signal, 
+        error: Literal['ignore', 'raise'] ='ignore'
+    ):
+    try:
+        getattr(widget, signal).disconnect()
+    except Exception as err:
+        if error == 'raise':
+            raise err
