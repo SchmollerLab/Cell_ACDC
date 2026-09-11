@@ -440,11 +440,6 @@ class dataPrepWin(QMainWindow):
             'File --> Open or Open recent to start the process')
         self.graphLayout.addItem(self.titleLabel, row=0, col=1)
 
-        # Current frame text
-        # self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
-        # self.frameLabel.setText(' ')
-        # self.graphLayout.addItem(self.frameLabel, row=2, col=1)
-
     def gui_addPlotItems(self):
         # Image Item
         # blankImage = np.full((512,512,3), darkBkgrColor)
@@ -454,7 +449,6 @@ class dataPrepWin(QMainWindow):
 
     def removeAllItems(self):
         self.ax1.clear()
-        # self.frameLabel.setText(' ')
 
     def removeFreeRoi(self):
         self.freeRoiItem.clear()
@@ -506,7 +500,11 @@ class dataPrepWin(QMainWindow):
         self.zProjLockViewButton = widgets.LockPushButton()
         self.zProjLockViewButton.setCheckable(True)
         self.zProjLockViewButton.setToolTip(
-            'If active, the selected z-slice view is applied to all frames'
+            'If active (lock closed), '
+            'the selected z-slice view is applied to all frames or Positions.\n\n'
+            'IMPORTANT: The z-slice/projection mode are stored as the view '
+            'to use for segmentation\n'
+            'only when you visit the frame/Position.'
         )
         self.zProjLockViewButton.setDisabled(True)
 
@@ -605,9 +603,6 @@ class dataPrepWin(QMainWindow):
     def updateNavigateItems(self):
         posData = self.data[self.pos_i]
         if self.num_pos > 1:
-            # self.frameLabel.setText(
-            #          f'Current position = {self.pos_i+1}/{self.num_pos} '
-            #          f'({posData.pos_foldername})')
             self.navigateSB_label.setText(f'Pos n. {self.pos_i+1}')
             try:
                 self.navigateScrollbar.valueChanged.disconnect()
@@ -615,8 +610,6 @@ class dataPrepWin(QMainWindow):
                 pass
             self.navigateScrollbar.setValue(self.pos_i+1)
         else:
-            # self.frameLabel.setText(
-            #          f'Current frame = {self.frame_i+1}/{self.num_frames}')
             self.navigateSB_label.setText(f'frame n. {self.frame_i+1}')
             try:
                 self.navigateScrollbar.valueChanged.disconnect()
@@ -2144,6 +2137,9 @@ class dataPrepWin(QMainWindow):
         return True
 
     def init_segmInfo_df(self):
+        self._saving_segmInfo_df = False
+        self._save_segmInfo_pending = False
+        
         self.pos_i = 0
         self.frame_i = 0
         for posData in self.data:
@@ -2163,7 +2159,7 @@ class dataPrepWin(QMainWindow):
         posData = self.data[0]
         qutils.tryDisconnectSignal(self.zSliceScrollBar, 'valueChanged')
         qutils.tryDisconnectSignal(self.zProjComboBox, 'currentTextChanged')
-        qutils.tryDisconnectSignal(self.zProjLockViewButton, 'toggled')
+        qutils.tryDisconnectSignal(self.zProjLockViewButton, 'sigToggled')
         if posData.SizeZ > 1:
             self.z_label.setDisabled(False)
             self.zSliceScrollBar.setDisabled(False)
@@ -2172,7 +2168,9 @@ class dataPrepWin(QMainWindow):
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
             self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
-            self.zProjLockViewButton.toggled.connect(self.zProjLockViewToggled)
+            self.zProjLockViewButton.sigToggled.connect(
+                self.zProjLockViewToggled
+            )
             if posData.SizeT > 1:
                 self.interpAction.setEnabled(True)
             self.ZbackAction.setEnabled(True)
@@ -2194,31 +2192,54 @@ class dataPrepWin(QMainWindow):
             idx = (posData.filename, self.frame_i)
             posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep'] = z
             self.update_img()
-            posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+            self.save_segmInfo_df_pos()
 
 
     def updateZproj(self, how):
         posData = self.data[self.pos_i]
+        idx = (posData.filename, self.frame_i)
+        posData.segmInfo_df.at[idx, 'which_z_proj'] = how
+        
         if how == 'single z-slice':
             self.zSliceScrollBar.setDisabled(False)
-            self.z_label.setStyleSheet('color: black')
+            self.z_label.setStyleSheet(None)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.z_label.setStyleSheet('color: gray')
             self.update_img()
 
+        self.save_segmInfo_df_pos()
+
+    def saveSegmInfoDfWorkerFinished(self):
+        self._saving_segmInfo_df = False
+
+        if self._save_segmInfo_pending:
+            self._save_segmInfo_pending = False
+            self.save_segmInfo_df_pos()
+        
     def save_segmInfo_df_pos(self):
-        # Launch a separate thread to save to csv and keep gui responsive
+        # If a save is already running, just mark that another save is pending.
+        if self._saving_segmInfo_df:
+            self._save_segmInfo_pending = True
+            return
+
+        self._save_segmInfo_pending = False
+        self._saving_segmInfo_df = True
+
         thread = QThread()
         worker = toCsvWorker()
         worker.setData(self.data)
         worker.moveToThread(thread)
+
         thread.started.connect(worker.run)
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(self.saveSegmInfoDfWorkerFinished)
         thread.finished.connect(thread.deleteLater)
+
         thread.start()
+
         self.saveSegmInfoWorkers.append((thread, worker))
 
     def useSameZ_fromHereBack(self, event):

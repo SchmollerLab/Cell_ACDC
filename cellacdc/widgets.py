@@ -358,6 +358,8 @@ class AssignNewIDButton(PushButton):
         self.setIcon(QIcon(':assign_new_id.svg'))
 
 class LockPushButton(PushButton):
+    sigToggled = Signal(bool)
+    
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':lock.svg'))
@@ -371,6 +373,8 @@ class LockPushButton(PushButton):
             self.setIcon(QIcon(':lock_closed.svg'))
         else:
             self.setIcon(QIcon(':lock_open.svg'))
+        
+        self.sigToggled.emit(checked)
     
     def setCheckable(self, checkable: bool):
         super().setCheckable(checkable)
