@@ -13311,7 +13311,7 @@ class ButtonSearchWidget(QWidget):
     def on_search_text_changed(self, text):
         """Filter the model and update the popup."""
         self.proxy_model.setFilterText(text)
-        if not text or self.proxy_model.rowCount() == 0:
+        if not text.strip() or self.proxy_model.rowCount() == 0:
             self.popup.hide()
             return
 
