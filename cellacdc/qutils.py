@@ -82,6 +82,7 @@ class QControlBlink(QObject):
         self.timer.stop()
         self.timer.deleteLater()
         self.timer = None
+        self.deleteLater()
         
 def hide_and_delete_layout(layout):
     # Hide all widgets in the layout
