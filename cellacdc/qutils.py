@@ -1,5 +1,6 @@
 from  typing import Literal
 import functools
+from qtpy.QtCore import QObject, Signal
 
 from qtpy.QtCore import (
     Qt, QTimer, QEventLoop
@@ -32,12 +33,14 @@ class QWhileLoop:
             self.max_duration_timer.stop()
         self.loop.exit()
 
-class QControlBlink:
+class QControlBlink(QObject):
+    sigIsDone = Signal() 
     def __init__(self, QWidgetToBlink: QWidget, duration_ms=2000, qparent=None) -> None:
         self.duration_ms = duration_ms
         self._widget = QWidgetToBlink
         self.qparent = qparent
         self.blinkON = False
+        super().__init__(qparent)
     
     def start(self):
         self.timer = QTimer(self.qparent)
@@ -50,7 +53,12 @@ class QControlBlink:
     
     def _setStyleSheet(self, style):
         if isinstance(self._widget, QAction):
-            for widget in self._widget.associatedObjects():
+            associated_objects = (
+                 self._widget.associatedObjects()
+                 if hasattr(self._widget, 'associatedObjects')
+                 else self._widget.associatedWidgets()
+            )
+            for widget in associated_objects:
                 if isinstance(widget, QToolButton):
                     widget.setStyleSheet(style)
         else:
@@ -66,7 +74,15 @@ class QControlBlink:
     def stop(self):
         self.timer.stop()
         self._setStyleSheet('background-color: none')
-
+        self.sigIsDone.emit()
+        self.stopTimer.stop()
+        self.stopTimer.deleteLater()
+        self.stopTimer = None
+        
+        self.timer.stop()
+        self.timer.deleteLater()
+        self.timer = None
+        
 def hide_and_delete_layout(layout):
     # Hide all widgets in the layout
     for i in reversed(range(layout.count())):

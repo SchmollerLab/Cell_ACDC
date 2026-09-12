@@ -486,7 +486,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createBottomWidgets()
         self.gui_createImg2Widgets()
         self.gui_createBottomWidgetsToBottomLayout()
-        self.registerSearchControls()
+        self.searchWidget.registerSearchControls()
 
         mainContainer = widgets.GuiCentralWidget()
         self.setCentralWidget(mainContainer)
@@ -1337,7 +1337,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.aboutAction)
         self.helpMenu = helpMenu
 
-        self.searchWidget = widgets.ButtonSearchWidget()
+        self.searchWidget = widgets.ButtonSearchWidget(self)
         self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
         menuBar.setCornerWidget(self.searchWidget)
         
@@ -4328,35 +4328,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.quickSettingsGroupbox.setLayout(layout)
         self.quickSettingsLayout.addWidget(self.quickSettingsGroupbox)
         self.quickSettingsLayout.addStretch(1)
-
-    def registerSearchControls(self):
-        annotation_display_controls = (
-            ('Contours', self.annotContourCheckbox(0)),
-            ('Segm. masks', self.annotOverlaySegmMaskCheckbox(0)),
-            ('IDs', self.annotIDsCheckbox(0)),
-            ('Lineage information', self.annotLineageInfoCheckbox(0)),
-            ('Cell cycle info', self.annotCellCycleInfoCheckbox(0)),
-            (
-                'Mother-daughter line',
-                self.annotMotherDaughterLineCheckbox(0),
-            ),
-            ('Object tracks', self.annotObjectTracksCheckbox(0)),
-            ('Do not annotate', self.annotDoNotAnntoateCheckbox(0)),
-        )
-        quick_settings_controls = (
-            ('View pre-processed image', self.viewPreprocDataToggle),
-            ('View combined channels', self.viewCombineChannelDataToggle),
-            ('Autosave segmentation', self.autoSaveToggle),
-            ('Autosave annotations', self.autoSaveAnnotToggle),
-            ('Autosave interval', self.autoSaveIntervalEditButton),
-            ('Cell cycle annotation checker', self.ccaIntegrCheckerToggle),
-            ('Annotate lost objects', self.annotLostObjsToggle),
-            ('Show all contours', self.showAllContoursToggle),
-            ('Font size', self.fontSizeSpinBox),
-        )
-        self.searchWidget.addItems(
-            annotation_display_controls + quick_settings_controls
-        )
 
     def showAllContoursToggled(self):
         if not self.isDataLoaded:
@@ -11846,6 +11817,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     qparent=self
                 )
                 blinker.start()
+                blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
                 self.blinkers.append(blinker)
                 return
 
@@ -14069,6 +14041,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             blinker.start()
             self.blinkers.append(blinker)
+            blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
+
             _warnings.warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=self)
             return
 
@@ -15002,6 +14976,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.copyLostObjToolbar.maxOverlapNumberControl,
                 qparent=self.mainWin
             )
+            blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
             blinker.start()
             self.blinkers.append(blinker)
 
@@ -27501,6 +27476,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         blinker.start()
         self.blinkers.append(blinker)
+        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
     
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
@@ -33677,6 +33653,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.labelRoiStopFrameNoSpinbox, 
             qparent=self
         )
+        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
         blinker.start()
         self.blinkers.append(blinker)
         msg = widgets.myMessageBox()
@@ -34935,6 +34912,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         blinker.start()
         self.blinkers.append(blinker)
+        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
         
         cancel, activateTransparencyMode = (
             _warnings.warnAskTransparencyModeNeededForExport(
@@ -36342,4 +36320,5 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         blinker = qutils.QControlBlink(button, qparent=self)
         blinker.start()
         self.blinkers.append(blinker)
+        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
         

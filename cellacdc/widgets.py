@@ -12988,54 +12988,98 @@ class FadingTrackItem(pg.GraphicsObject):
         xs = [p[0] for p in self.points]
         ys = [p[1] for p in self.points]
         return QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
-
+    
 class GuiCentralWidget(QWidget):
     def __init__(self, parent=None, *args):
         super().__init__(parent, *args)
-    
-    
+
 class ButtonSearchCompleter(QSortFilterProxyModel):
     """Filter button names and tooltips, prioritizing name matches."""
 
-    FUZZY_THRESHOLD = 0.75
+    SEARCH_NAME_ROLE = Qt.UserRole + 3
+    SYNONYMS_ROLE = Qt.UserRole + 4
+    SECONDARY_NAME_ROLE = Qt.UserRole + 1
+    TOOLTIP_ROLE = Qt.UserRole
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self._filterText = ''
+        self.FUZZY_THRESHOLD = 0.5
+        self._scoreCache = {}
 
     def setFilterText(self, text):
-        self._filterText = text.lower()
-        self.invalidateFilter()
-        self.sort(0)
+        self._filterText = text.strip().casefold()
+        self.refresh()
+
+    def refresh(self):
+        """Clear cached scores and re-apply filtering and sorting."""
+        self._scoreCache.clear()
+        # self.invalidateFilter()
+        self.invalidate()
+        
+    def _getScore(self, index):
+        cache_key = (index.row(), self._filterText)
+        score = self._scoreCache.get(cache_key)
+        if score is None:
+            score = self._matchScore(index)
+            self._scoreCache[cache_key] = score
+        return score
 
     def lessThan(self, left, right):
-        left_score = self._matchScore(left)
-        right_score = self._matchScore(right)
-        if left_score != right_score:
-            return left_score < right_score
+        left_score = self._getScore(left)
+        right_score = self._getScore(right)
+        
+        primary_left, secondary_left = left_score
+        primary_right, secondary_right = right_score
+        
+        if primary_left != primary_right:
+            return primary_left < primary_right
+        
+        if secondary_left != secondary_right:
+            return secondary_left < secondary_right
+        
         return left.row() < right.row()
 
+    def filterAcceptsRow(self, source_row, source_parent):
+        if not self._filterText:
+            return True
+        
+        index = self.sourceModel().index(source_row, 0, source_parent)
+        score = self._getScore(index)
+        return score[0] < 7
+    
     def _matchScore(self, index):
-        name = (index.data(Qt.DisplayRole) or '').lower()
-        tooltip = (index.data(Qt.UserRole) or '').lower()
-        if name.startswith(self._filterText):
-            return 0, 0
-        if self._filterText in name:
-            return 1, 0
-        if tooltip.startswith(self._filterText):
-            return 2, 0
-        if self._filterText in tooltip:
-            return 3, 0
+        names = [
+            index.data(self.SEARCH_NAME_ROLE) or '',
+            index.data(self.SECONDARY_NAME_ROLE) or '',
+        ]
+        names.extend(index.data(self.SYNONYMS_ROLE) or [])
 
-        name_similarity = self._similarity(name)
+        if any(name == self._filterText for name in names):
+            return 0, 0
+        if any(name.startswith(self._filterText) for name in names):
+            return 1, 0
+        if any(self._filterText in name for name in names):
+            return 2, 0
+
+        best_similarity = max((self._similarity(name) for name in names), default=0.0)
+        if best_similarity >= self.FUZZY_THRESHOLD:
+            return 3, -best_similarity
+
+        tooltip = index.data(Qt.UserRole) or ''
+        if tooltip.startswith(self._filterText):
+            return 4, 0
+        if self._filterText in tooltip:
+            return 5, 0
+
         tooltip_similarity = self._similarity(tooltip)
-        if name_similarity >= tooltip_similarity:
-            return 4, -name_similarity
-        return 5, -tooltip_similarity
+        if tooltip_similarity >= self.FUZZY_THRESHOLD:
+            return 6, -tooltip_similarity
+
+        return 7, 0
 
     def _similarity(self, text):
         query = self._filterText
-        text = text.lower()
         if not query or not text:
             return 0.0
 
@@ -13045,35 +13089,18 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
             start = max(text_start - query_start, 0)
             candidate = text[start:start + len(query)]
             ratio = SequenceMatcher(None, query, candidate).ratio()
-            if ratio > best_ratio:
-                best_ratio = ratio
+            best_ratio = max(best_ratio, ratio)
             if best_ratio == 1.0:
                 break
         return best_ratio
-
-    def filterAcceptsRow(self, source_row, source_parent):
-        if not self._filterText:
-            return True
-
-        model = self.sourceModel()
-        index = model.index(source_row, 0, source_parent)
-
-        # Get both name and tooltip from the model
-        name = model.data(index, Qt.DisplayRole) or ''
-        tooltip = model.data(index, Qt.UserRole) or ''
-
-        return (
-            self._similarity(name) >= self.FUZZY_THRESHOLD
-            or self._similarity(tooltip) >= self.FUZZY_THRESHOLD
-        )
-
 
 class ButtonSearchWidget(QWidget):
 
     sigTriggerBlink = Signal(object)
 
-    def __init__(self):
+    def __init__(self, guiWin):
         super().__init__()
+        self.guiWin = guiWin
 
         self.buttons_data = {}
 
@@ -13083,30 +13110,21 @@ class ButtonSearchWidget(QWidget):
         # Parse the file
         buttons = rst_utils.get_tooltips_from_docs(for_search=True)
 
-        # Create model
-        self.model = QStandardItemModel()
-        self._items_by_name = {}
-
+        self._search_records = {}
         for button in buttons:
-            item = QStandardItem(
-                f"{button['name']} ({button['id']})"
-            )
-
-            # Store tooltip for searching
-            item.setData(button['tooltip'], Qt.UserRole)
-
-            # Store ID for later
-            item.setData(button['id'], Qt.UserRole + 1)
-
-            self.model.appendRow(item)
-
+            normalized_name = button['name'].strip().casefold()
+            self._search_records[normalized_name] = {
+                'display': f"{button['name']} ({button['id']})",
+                'search_name': normalized_name,
+                'synonyms': self._synonymsForName(button['name']),
+                'tooltip': button['tooltip'],
+                'button_id': button['id'],
+                'target': None,
+            }
             self.buttons_data[button['id']] = button
-            self._items_by_name[button['name'].strip().casefold()] = item
 
-        # Proxy model performs the actual filtering
-        self.proxy_model = ButtonSearchCompleter()
-        self.proxy_model.setSourceModel(self.model)
-        self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        self.model, self._items_by_name = self._build_source_model()
+        self.proxy_model = self._build_proxy_model(self.model)
 
         # Search field
         self.search_input = QLineEdit()
@@ -13123,7 +13141,14 @@ class ButtonSearchWidget(QWidget):
         self.popup = QListView()
         self.popup.setFocusPolicy(Qt.NoFocus)
         self.popup.setModel(self.proxy_model)
-        self.popup.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        try:
+            self.popup.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        except:
+            pass
+        try:
+            self.popup.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        except:
+            pass
         self.popup.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.popup.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.popup.setMouseTracking(True)
@@ -13148,6 +13173,55 @@ class ButtonSearchWidget(QWidget):
         layout.setSpacing(0)  # Remove spacing
         layout.addWidget(self.search_input)
         self.setLayout(layout)
+        
+    def registerSearchControls(self):
+        annotation_display_controls = (
+            ('Contours', self.guiWin.annotContourCheckbox(0)),
+            ('Segm. masks', self.guiWin.annotOverlaySegmMaskCheckbox(0)),
+            ('IDs', self.guiWin.annotIDsCheckbox(0)),
+            ('Lineage information', self.guiWin.annotLineageInfoCheckbox(0)),
+            ('Cell cycle info', self.guiWin.annotCellCycleInfoCheckbox(0)),
+            (
+                'Mother-daughter line',
+                self.guiWin.annotMotherDaughterLineCheckbox(0),
+            ),
+            ('Object tracks', self.guiWin.annotObjectTracksCheckbox(0)),
+            ('Do not annotate', self.guiWin.annotDoNotAnntoateCheckbox(0)),
+        )
+        quick_settings_controls = (
+            ('View pre-processed image', self.guiWin.viewPreprocDataToggle),
+            ('View combined channels', self.guiWin.viewCombineChannelDataToggle),
+            ('Autosave segmentation', self.guiWin.autoSaveToggle),
+            ('Autosave annotations', self.guiWin.autoSaveAnnotToggle),
+            ('Autosave interval', self.guiWin.autoSaveIntervalEditButton),
+            ('Cell cycle annotation checker', self.guiWin.ccaIntegrCheckerToggle),
+            ('Annotate lost objects', self.guiWin.annotLostObjsToggle),
+            ('Show all contours', self.guiWin.showAllContoursToggle),
+            ('Font size', self.guiWin.fontSizeSpinBox),
+        )
+        self.addItems(
+            annotation_display_controls + quick_settings_controls
+        )
+        
+    def synonyms(self):
+        return {
+            'Segm.': 'Segmentation',
+            'Edit ID': 'Change ID',
+        }
+
+    def _synonymsForName(self, name):
+        normalized_name = name.strip().casefold()
+        aliases = []
+        for phrase, synonym in self.synonyms().items():
+            normalized_phrase = phrase.strip().casefold()
+            if normalized_phrase not in normalized_name:
+                continue
+            aliases.append(
+                normalized_name.replace(
+                    normalized_phrase, synonym.strip().casefold()
+                )
+            )
+        return aliases
 
     def addItems(self, items):
         """Add or update search entries from ``(name, target)`` tuples."""
@@ -13158,6 +13232,7 @@ class ButtonSearchWidget(QWidget):
 
             tooltip_getter = getattr(target, 'toolTip', None)
             tooltip = tooltip_getter() if callable(tooltip_getter) else ''
+            tooltip = html_utils.to_plain_text(tooltip)
             shortcut_getter = getattr(target, 'shortcut', None)
             shortcut = shortcut_getter() if callable(shortcut_getter) else None
             shortcut_text = shortcut.toString() if shortcut is not None else ''
@@ -13165,20 +13240,68 @@ class ButtonSearchWidget(QWidget):
             if shortcut_text and shortcut_text not in search_text:
                 search_text = f'{search_text}\nShortcut: {shortcut_text}'.strip()
 
-            item = self._items_by_name.get(normalized_name)
-            if item is None:
-                item = QStandardItem(name)
-                self.model.appendRow(item)
-                self._items_by_name[normalized_name] = item
+            record = self._search_records.get(normalized_name)
+            if record is None:
+                record = {
+                    'display': name,
+                    'search_name': normalized_name,
+                    'synonyms': self._synonymsForName(name),
+                    'tooltip': '',
+                    'button_id': None,
+                    'target': None,
+                }
+                self._search_records[normalized_name] = record
             elif search_text:
-                documented_text = item.data(Qt.UserRole) or ''
+                documented_text = record['tooltip'] or ''
                 search_text = f'{documented_text}\n{search_text}'.strip()
 
             if search_text:
-                item.setData(search_text, Qt.UserRole)
-            item.setData(target, Qt.UserRole + 2)
+                record['tooltip'] = search_text
+            record['target'] = target
 
-        self.proxy_model.invalidateFilter()
+        self._rebuild_models()
+
+    def _build_source_model(self):
+        model = QStandardItemModel()
+        items_by_name = {}
+        for search_name, record in self._search_records.items():
+            item = QStandardItem(record['display'])
+            item.setData(
+                record['tooltip'], 
+                ButtonSearchCompleter.TOOLTIP_ROLE
+                )
+            item.setData(
+                record['button_id'],
+                ButtonSearchCompleter.SECONDARY_NAME_ROLE
+            )
+            item.setData(
+                record.get('synonyms', []),
+                ButtonSearchCompleter.SYNONYMS_ROLE,
+            )
+            item.setData(record['target'], Qt.UserRole + 2)
+            item.setData(
+                search_name,
+                ButtonSearchCompleter.SEARCH_NAME_ROLE,
+            )
+            model.appendRow(item)
+            items_by_name[search_name] = item
+            
+        return model, items_by_name
+
+    def _build_proxy_model(self, model):
+        proxy_model = ButtonSearchCompleter()
+        proxy_model.setSourceModel(model)
+        proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+        proxy_model.setDynamicSortFilter(True)
+        proxy_model.sort(0, Qt.AscendingOrder)
+        return proxy_model
+
+    def _rebuild_models(self):
+        """Rebuild source and proxy models from explicit search records."""
+        self.model, self._items_by_name = self._build_source_model()
+        self.proxy_model = self._build_proxy_model(self.model)
+        self.popup.setModel(self.proxy_model)
+        self.proxy_model.setFilterText(self.search_input.text())
 
     def set_height_based_on(self, reference_widget):
         """Set the height of the search input based on another widget's height."""
@@ -13187,9 +13310,7 @@ class ButtonSearchWidget(QWidget):
 
     def on_search_text_changed(self, text):
         """Filter the model and update the popup."""
-
         self.proxy_model.setFilterText(text)
-
         if not text or self.proxy_model.rowCount() == 0:
             self.popup.hide()
             return
@@ -13248,10 +13369,6 @@ class ButtonSearchWidget(QWidget):
 
         self.popup.setCurrentIndex(new_index)
         self.popup.scrollTo(new_index)
-
-        # setText() here does not emit textEdited, so the search is
-        # not re-triggered by navigation.
-        self.search_input.setText(new_index.data(Qt.DisplayRole))
 
     def on_popup_clicked(self, index):
         self.confirm_selection(index)
@@ -13320,3 +13437,4 @@ class ButtonSearchWidget(QWidget):
             self.search_input.clear()
 
             self.sigTriggerBlink.emit(button_id)
+            
