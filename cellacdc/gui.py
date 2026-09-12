@@ -101,6 +101,7 @@ from .plot import imshow
 from . import gui_utils
 from . import gui_combine
 from .config import STANDARD_MOUSE_BUTTONS
+from . import rst_utils
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -314,7 +315,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.original_df_lin_tree_i = None
 
     def setTooltips(self):
-        tooltips = load.get_tooltips_from_docs()
+        tooltips = rst_utils.get_tooltips_from_docs()
 
         for key, tooltip in tooltips.items():
             setShortcut = getattr(self, key).shortcut().toString()
@@ -412,6 +413,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.doubleSpaceBarState = False
         self.protected_new_IDs = dict()
         
+        self.blinkers = []
+        
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2
@@ -483,6 +486,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createBottomWidgets()
         self.gui_createImg2Widgets()
         self.gui_createBottomWidgetsToBottomLayout()
+        self.searchWidget.registerSearchControls()
 
         mainContainer = widgets.GuiCentralWidget()
         self.setCentralWidget(mainContainer)
@@ -1133,6 +1137,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        self.initMenuBar = menuBar
         menuBar.setNativeMenuBar(False)
         # File menu
         fileMenu = QMenu("&File", self)
@@ -1332,7 +1337,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.aboutAction)
         self.helpMenu = helpMenu
 
-    def gui_createToolBars(self):
+        self.searchWidget = widgets.ButtonSearchWidget(self)
+        self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
+        menuBar.setCornerWidget(self.searchWidget)
+        
+
+
+    def gui_createToolBars(self):        
         # File toolbar
         fileToolBar = self.addToolBar("File")
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -10732,6 +10743,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         if UndoFutFrames is None:
+            self.annotateAllObjectTracks()
             return
 
         if shift and self.isSegm3D:
@@ -10828,6 +10840,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         if not applyFutFrames and not doPropagateUnvisited:
+            self.annotateAllObjectTracks()
             return
 
         self.changeIDfutureFrames(
@@ -11799,11 +11812,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 htmlTxt = f'<font color="orange">{warn_text}</font>'
                 self.titleLabel.setText(htmlTxt)
                 self.logger.info(warn_text)
-                self.blinker = qutils.QControlBlink(
+                blinker = qutils.QControlBlink(
                     self.annotateSingleMotherBudPairButton, 
                     qparent=self
                 )
-                self.blinker.start()
+                blinker.start()
+                blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
+                self.blinkers.append(blinker)
                 return
 
         # Store cca_df for undo action
@@ -14020,11 +14035,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
     def manualEditCca(self, checked=True):
         if self.annotateSingleMotherBudPairButton.isChecked():
-            self.blinker = qutils.QControlBlink(
+            blinker = qutils.QControlBlink(
                 self.annotateSingleMotherBudPairButton, 
                 qparent=self
             )
-            self.blinker.start()
+            blinker.start()
+            self.blinkers.append(blinker)
+            blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
+
             _warnings.warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=self)
             return
 
@@ -14954,11 +14972,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
 
         if output.get('overlap_warning', False):
-            self.blinker = qutils.QControlBlink(
+            blinker = qutils.QControlBlink(
                 self.copyLostObjToolbar.maxOverlapNumberControl,
                 qparent=self.mainWin
             )
-            self.blinker.start()
+            blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
+            blinker.start()
+            self.blinkers.append(blinker)
 
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp() # global op and obj added, no opt imo unless difference pic
@@ -27451,10 +27471,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         msg.information(self, 'Custom promptable model added', info_txt)
     
     def segmWithPromptableModelActionTriggered(self):
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.magicPromptsToolButton, qparent=self
         )
-        self.blinker.start()
+        blinker.start()
+        self.blinkers.append(blinker)
+        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
     
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
@@ -33627,11 +33649,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if start_n <= stop_n:
             return True
         
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.labelRoiStopFrameNoSpinbox, 
             qparent=self
         )
-        self.blinker.start()
+        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
+        blinker.start()
+        self.blinkers.append(blinker)
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             Stop frame number is less than start frame number!<br><br>
@@ -34883,10 +34907,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.overlayToolbar.isTransparent():
             return True
         
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.overlayToolbar.transparencyCheckbox, qparent=self
         )
-        self.blinker.start()
+        blinker.start()
+        self.blinkers.append(blinker)
+        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
         
         cancel, activateTransparencyMode = (
             _warnings.warnAskTransparencyModeNeededForExport(
@@ -36060,6 +36086,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.mainWin.showAllWindows()
         # self.setFocus()
         self.activateWindow()
+        self.searchWidget.set_height_based_on(self.initMenuBar)
     
     def super_show(self):
         super().show()
@@ -36284,3 +36311,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.timestamp.updatePosViewRangeChanged(viewRange)
         
         self._viewRange = viewRange
+
+    def onSearchTriggerBlink(self, target):
+        button = getattr(self, target, None) if isinstance(target, str) else target
+        if button is None:
+            return
+        
+        blinker = qutils.QControlBlink(button, qparent=self)
+        blinker.start()
+        self.blinkers.append(blinker)
+        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
+        
