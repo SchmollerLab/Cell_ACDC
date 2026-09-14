@@ -34,7 +34,6 @@ jobs:
       - name: Build extension
         run: |
           python -m pip install --upgrade "setuptools>=77" cython numpy
-          # Remove existing binaries so only the freshly built one remains for upload
           python -c "
           import os, glob
           for f in glob.glob('cellacdc/precompiled/*.so') + glob.glob('cellacdc/precompiled/*.pyd'):
@@ -94,14 +93,10 @@ jobs:
 
         - name: Create PR with precompiled binaries
           env:
-            GH_TOKEN: ${{ secrets.GITHUB_TOKEN  }}
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           run: |
             BASE_BRANCH=${{ github.ref_name }}
             PR_BRANCH="ci/precompiled-binaries-${BASE_BRANCH}"
-            
-            # Authenticate git with the token
-            git config --global credential.helper store
-            echo "https://x-access-token:${GH_TOKEN}@github.com" > ~/.git-credentials
             
             # Checkout PR branch (create if doesn't exist)
             git fetch origin "$PR_BRANCH" 2>/dev/null && git checkout "$PR_BRANCH" || git checkout -b "$PR_BRANCH"
@@ -114,18 +109,47 @@ jobs:
             git add cellacdc/precompiled/__init__.py
             
             FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
+            echo "Files to commit: $FILE_COUNT"
             
-            if [ "$FILE_COUNT" -eq 0 ] || git diff --cached --quiet; then
+            if [ "$FILE_COUNT" -eq 0 ]; then
+              echo "No precompiled files found, skipping"
+              exit 0
+            fi
+            
+            if git diff --cached --quiet; then
               echo "No changes to commit"
               exit 0
             fi
             
-            git commit -m "ci: update precompiled Cython extensions [skip ci]"
+            git commit -m "ci: update precompiled Cython extensions"
             git push -u origin "$PR_BRANCH"
             
+            # Create or update PR
             gh pr create \
               --base "$BASE_BRANCH" \
               --head "$PR_BRANCH" \
               --title "ci: update precompiled Cython extensions" \
               --body "Automated update of precompiled Cython extensions for all platforms and Python versions." \
-              --label "automated" 2>/dev/null || echo "PR already exists"
+              --label "automated" \
+              2>/dev/null || echo "PR already exists"
+
+        - name: Commit precompiled binaries on other branches
+          if: github.ref_name != 'main'
+          run: |
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) -print0 | xargs -0 git add -f
+            git add cellacdc/precompiled/__init__.py
+            FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
+            echo "Files to commit: $FILE_COUNT"
+            if [ "$FILE_COUNT" -eq 0 ]; then
+              echo "No precompiled files found, skipping commit"
+              exit 0
+            fi
+            if git diff --cached --quiet; then
+              echo "No changes to commit"
+              exit 0
+            fi
+            git commit -m "ci: update precompiled Cython extensions [skip ci]"
+            git pull --rebase origin ${{ github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }}
