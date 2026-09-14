@@ -13129,9 +13129,11 @@ class ButtonSearchWidget(QWidget):
         # Search field
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search buttons...")
+        self.search_input.setFocusPolicy(Qt.ClickFocus)
         # add stretch to make the search input expand
         self.search_input.setFixedWidth(250)
         self.search_input.installEventFilter(self)
+        QApplication.instance().installEventFilter(self)
 
         # Custom popup (replaces QCompleter so we can fully control
         # when search vs. navigation happen). Reparented to the actual
@@ -13356,7 +13358,6 @@ class ButtonSearchWidget(QWidget):
  
         self.popup.show()
         self.popup.raise_()
-        self.search_input.setFocus()
 
     def navigate(self, direction):
         """Move the popup selection without re-triggering the search."""
@@ -13400,6 +13401,16 @@ class ButtonSearchWidget(QWidget):
         self.popup.hide()
 
     def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress:
+            clicked_search = obj is self.search_input
+            clicked_popup = obj is self.popup
+            if isinstance(obj, QWidget):
+                clicked_search |= self.search_input.isAncestorOf(obj)
+                clicked_popup |= self.popup.isAncestorOf(obj)
+            if not clicked_search and not clicked_popup:
+                self.popup.hide()
+                self.search_input.clearFocus()
+
         if obj is self.search_input and event.type() == QEvent.KeyPress:
             key = event.key()
             popup_visible = self.popup.isVisible()
