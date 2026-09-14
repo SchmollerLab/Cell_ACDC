@@ -97,7 +97,7 @@ jobs:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           run: |
             BASE_BRANCH=${{ github.ref_name }}
-            PR_BRANCH="ci/precompiled-binaries-${BASE_BRANCH}"
+            PR_BRANCH="ci/precompiled-binaries-${{ github.run_id }}"
             
             git config --global credential.helper store
             echo "https://x-access-token:${GITHUB_TOKEN}@github.com" > ~/.git-credentials
