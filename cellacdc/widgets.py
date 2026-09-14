@@ -13204,10 +13204,15 @@ class ButtonSearchWidget(QWidget):
         )
         
     def synonyms(self):
-        return {
+        synonyms = {
             'Segm.': 'Segmentation',
-            'Edit ID': 'Change ID',
+            'Edit': 'Change',
+            'ID': 'IDs',
+            'ID': 'cell',
+            'ID': 'object',
         }
+        synonyms.update({v: k for k, v in synonyms.items()})
+        return synonyms
 
     def _synonymsForName(self, name):
         normalized_name = name.strip().casefold()
