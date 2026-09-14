@@ -92,6 +92,7 @@ jobs:
             fi
 
         - name: Create PR with precompiled binaries
+          if: github.ref_name == 'main'
           env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           run: |
