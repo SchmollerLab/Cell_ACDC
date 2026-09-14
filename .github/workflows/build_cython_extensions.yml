@@ -94,7 +94,7 @@ jobs:
 
         - name: Create PR with precompiled binaries
           env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            GITHUB_TOKEN: ${{ secrets.PR_MANAGEMENT  }}
           run: |
             BASE_BRANCH=${{ github.ref_name }}
             PR_BRANCH="ci/precompiled-binaries-${BASE_BRANCH}"
