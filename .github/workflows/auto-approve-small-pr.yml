@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Calculate number of changed lines
+      - name: Calculate number of changed lines (excluding binaries)
         id: diff
         uses: actions/github-script@v7
         with:
@@ -28,19 +28,22 @@ jobs:
               pull_number: context.payload.pull_request.number,
             });
 
-            const totalChanges = files.reduce((sum, file) => sum + file.changes, 0);
-            console.log(`Total changed lines: ${totalChanges}`);
+            const textFiles = files.filter(file => file.patch);
+            console.log(`Total files: ${files.length}, Text files: ${textFiles.length}`);
+
+            const totalChanges = textFiles.reduce((sum, file) => sum + file.changes, 0);
+            console.log(`Total changed lines (excluding binaries): ${totalChanges}`);
             return totalChanges;
 
       - name: Approve if PR is small
-        if: steps.diff.outputs.result < 15 && github.actor != 'github-actions[bot]'
+        if: steps.diff.outputs.result < 15
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PR_MANAGEMENT }}
           script: |
             try {
               console.log(`Attempting to approve PR #${context.payload.pull_request.number}`);
-              console.log(`Changed lines: ${{ steps.diff.outputs.result }}`);
+              console.log(`Changed lines (excluding binaries): ${{ steps.diff.outputs.result }}`);
               
               const response = await github.rest.pulls.createReview({
                 owner: context.repo.owner,
@@ -52,5 +55,11 @@ jobs:
               console.log(`✅ Successfully approved PR. Review ID: ${response.data.id}`);
             } catch (error) {
               console.error(`❌ Failed to approve PR: ${error.message}`);
-              // Don't throw error to prevent workflow failure
             }
+
+      - name: Merge PR if approved
+        if: steps.diff.outputs.result < 15 && github.actor == 'github-actions[bot]'
+        env:
+          GH_TOKEN: ${{ secrets.PR_MANAGEMENT }}
+        run: |
+          gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch

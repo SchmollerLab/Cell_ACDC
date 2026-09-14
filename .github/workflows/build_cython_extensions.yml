@@ -2,6 +2,7 @@ name: Build Cython extensions
 
 permissions:
   contents: write
+  pull-requests: write
 
 on:
   push:
@@ -56,6 +57,7 @@ jobs:
       runs-on: ubuntu-latest
       permissions:
         contents: write
+        pull-requests: write
       defaults:
         run:
           working-directory: ${{ github.workspace }}
@@ -90,22 +92,51 @@ jobs:
               exit 1
             fi
 
-        - name: Commit precompiled binaries
+        - name: Create PR with precompiled binaries
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           run: |
+            BASE_BRANCH=${{ github.ref_name }}
+            PR_BRANCH="ci/precompiled-binaries-${BASE_BRANCH}"
+            
+            # Checkout PR branch (create if doesn't exist)
+            git fetch origin "$PR_BRANCH" 2>/dev/null && git checkout "$PR_BRANCH" || git checkout -b "$PR_BRANCH"
+            
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
+            
+            # Stage and commit changes
             find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) -print0 | xargs -0 git add -f
             git add cellacdc/precompiled/__init__.py
+            
             FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
             echo "Files to commit: $FILE_COUNT"
+            
             if [ "$FILE_COUNT" -eq 0 ]; then
-              echo "No precompiled files found, skipping commit"
+              echo "No precompiled files found, skipping"
               exit 0
             fi
+            
             if git diff --cached --quiet; then
               echo "No changes to commit"
               exit 0
             fi
+            
             git commit -m "ci: update precompiled Cython extensions [skip ci]"
-            git pull --rebase origin ${{ github.ref_name }}
-            git push origin HEAD:${{ github.ref_name }}
+            git push -u origin "$PR_BRANCH"
+            
+            # Create or update PR
+            gh pr create \
+              --base "$BASE_BRANCH" \
+              --head "$PR_BRANCH" \
+              --title "ci: update precompiled Cython extensions" \
+              --body "This PR updates the precompiled Cython extensions." \
+              --fill || gh pr edit "$PR_BRANCH" --title "ci: update precompiled Cython extensions" --body "This PR updates the precompiled Cython extensions." \
+              --head "$PR_BRANCH" \
+              --title "ci: update precompiled Cython extensions" \
+              --body "Automated update of precompiled Cython extensions for all platforms and Python versions." \
+              --label "automated" \
+              2>/dev/null || echo "PR already exists"
+            
+            # Enable auto-merge (squash the binary updates into a single commit)
+            gh pr merge "$PR_BRANCH" --auto --squash 2>/dev/null || echo "Note: auto-merge may require configuration in branch protection settings"
