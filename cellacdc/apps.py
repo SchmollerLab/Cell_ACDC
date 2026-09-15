@@ -10083,6 +10083,7 @@ class QLineEditDialog(QDialog):
                 entryWidget.textChanged[str].connect(self.onTextChanged)
         entryWidget.setFont(fonts.font)
         entryWidget.setAlignment(Qt.AlignCenter)
+        entryWidget.selectAll()
 
         self.entryWidget = entryWidget
 
