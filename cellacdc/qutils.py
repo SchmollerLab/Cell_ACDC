@@ -1,10 +1,12 @@
 from  typing import Literal
 import functools
+from qtpy.QtCore import QObject, Signal
 
 from qtpy.QtCore import (
     Qt, QTimer, QEventLoop
 )
-from qtpy.QtWidgets import QWidget
+from qtpy.QtWidgets import QWidget, QAction, QToolButton
+
 
 class QWhileLoop:
     def __init__(
@@ -31,33 +33,64 @@ class QWhileLoop:
             self.max_duration_timer.stop()
         self.loop.exit()
 
-class QControlBlink:
+class QControlBlink(QObject):
     def __init__(self, QWidgetToBlink: QWidget, duration_ms=2000, qparent=None) -> None:
         self.duration_ms = duration_ms
         self._widget = QWidgetToBlink
         self.qparent = qparent
         self.blinkON = False
+        self.original_style = self._getStyleSheet()
+        super().__init__(qparent)
     
     def start(self):
-        self.timer = QTimer(self.qparent)
+        self.timer = QTimer(self)
         self.timer.timeout.connect(self.timerCallback)
         self.timer.start(100)
 
-        self.stopTimer = QTimer(self.qparent)
+        self.stopTimer = QTimer(self)
+        self.stopTimer.setSingleShot(True)
         self.stopTimer.timeout.connect(self.stop)
         self.stopTimer.start(self.duration_ms)
     
+    def _setStyleSheet(self, style):
+        if isinstance(self._widget, QAction):
+            associated_objects = (
+                 self._widget.associatedObjects()
+                 if hasattr(self._widget, 'associatedObjects')
+                 else self._widget.associatedWidgets()
+            )
+            for widget in associated_objects:
+                if isinstance(widget, QToolButton):
+                    widget.setStyleSheet(style)
+        else:
+            self._widget.setStyleSheet(style)
+            
+    def _getStyleSheet(self):
+        if isinstance(self._widget, QAction):
+            associated_objects = (
+                 self._widget.associatedObjects()
+                 if hasattr(self._widget, 'associatedObjects')
+                 else self._widget.associatedWidgets()
+            )
+            for widget in associated_objects:
+                if isinstance(widget, QToolButton):
+                    return widget.styleSheet()
+            return ''
+        else:
+            return self._widget.styleSheet()
+
     def timerCallback(self):
         if self.blinkON:
-            self._widget.setStyleSheet('background-color: orange')
+            self._setStyleSheet('background-color: orange')
         else:
-            self._widget.setStyleSheet('background-color: none')
+            self._setStyleSheet('background-color: none')
         self.blinkON = not self.blinkON
 
     def stop(self):
         self.timer.stop()
-        self._widget.setStyleSheet('background-color: none')
-
+        self._setStyleSheet(self.original_style)
+        self.deleteLater()
+        
 def hide_and_delete_layout(layout):
     # Hide all widgets in the layout
     for i in reversed(range(layout.count())):

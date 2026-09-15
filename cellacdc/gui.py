@@ -101,6 +101,7 @@ from .plot import imshow
 from . import gui_utils
 from . import gui_combine
 from .config import STANDARD_MOUSE_BUTTONS
+from . import rst_utils
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -314,7 +315,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.original_df_lin_tree_i = None
 
     def setTooltips(self):
-        tooltips = load.get_tooltips_from_docs()
+        tooltips = rst_utils.get_tooltips_from_docs()
 
         for key, tooltip in tooltips.items():
             setShortcut = getattr(self, key).shortcut().toString()
@@ -335,6 +336,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             getattr(self, key).setToolTip(tooltip)
             getattr(self, key)._tooltip = tooltip
+            
+            # add custom addition to the search input tooltip
+            if key == "searchAction":
+                self.searchWidget.setToolTip(tooltip)
 
     def run(self, module='acdc_gui', logs_path=None):                
         self.setWindowIcon()
@@ -412,6 +417,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.doubleSpaceBarState = False
         self.protected_new_IDs = dict()
         
+        
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2
@@ -483,6 +489,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createBottomWidgets()
         self.gui_createImg2Widgets()
         self.gui_createBottomWidgetsToBottomLayout()
+        self.searchWidget.registerSearchControls()
 
         mainContainer = widgets.GuiCentralWidget()
         self.setCentralWidget(mainContainer)
@@ -1133,6 +1140,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        self.initMenuBar = menuBar
         menuBar.setNativeMenuBar(False)
         # File menu
         fileMenu = QMenu("&File", self)
@@ -1332,7 +1340,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.aboutAction)
         self.helpMenu = helpMenu
 
-    def gui_createToolBars(self):
+        self.searchWidget = widgets.ButtonSearchWidget(self)
+        self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
+        menuBar.setCornerWidget(self.searchWidget)
+        self.focusOnSearchAction = QAction("Search for ID or functionality", self)
+        self.focusOnSearchAction.setShortcut('Ctrl+F')
+        self.focusOnSearchAction.triggered.connect(
+            self.focusOnSearch
+        )
+        helpMenu.addAction(self.focusOnSearchAction)
+        self.searchWidget.sigSearchId.connect(
+            self.onSearchId
+        )
+        
+        
+    def gui_createToolBars(self):        
         # File toolbar
         fileToolBar = self.addToolBar("File")
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -1362,7 +1384,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
-        navigateToolBar.addAction(self.findIdAction)
+        navigateToolBar.addAction(self.searchAction)
         
         navigateToolBar.addWidget(self.zoomRectButton)
 
@@ -3148,9 +3170,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotButton.setCheckable(True)
         self.autoPilotButton.setShortcut('Ctrl+Shift+A')
         
-        self.findIdAction = QAction(self)
-        self.findIdAction.setIcon(QIcon(":find.svg"))
-        self.findIdAction.setShortcut('Ctrl+F')
+        self.searchAction = QAction(self)
+        self.searchAction.setIcon(QIcon(":find.svg"))
         
         self.zoomRectButton = QToolButton(self)
         self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
@@ -3934,7 +3955,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
-        self.findIdAction.triggered.connect(self.findID)
+        self.searchAction.triggered.connect(
+            partial(self.focusOnSearch, blinking=True)
+        )
         self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
         self.autoPilotButton.toggled.connect(self.autoPilotToggled)
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
@@ -10111,6 +10134,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.highlightSearchedID(ID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(ID)
+        is_obj_visible = self.isObjVisibleViewRange(obj.bbox)
+        if not is_obj_visible:
+            centroid = posData.rp.get_centroid(obj.label)
+            yc, xc = self.getObjCentroid(centroid)
+            pos = (int(xc), int(yc))
+            # set center of view to the lost object's position
+            self.ax1.setCenter(pos)        
+    
     
     def goToLostObjectID(self, lostID, color=(255, 165, 0, 255)):
         posData = self.data[self.pos_i]
@@ -10138,6 +10169,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.drawLostObjContoursImage(
             imageItem, contours, thickness=2, color=color
         )
+        
+        is_obj_visible = self.isObjVisibleViewRange(obj.bbox)
+        if not is_obj_visible:
+            centroid = prev_rp.get_centroid(obj.label)
+            yc, xc = self.getObjCentroid(centroid)
+            pos = (int(xc), int(yc))
+            # set center of view to the lost object's position
+            self.ax1.setCenter(pos)        
         
     def goToAcceptedLostObjectID(self, acceptedLostID):
         posData = self.data[self.pos_i]
@@ -10732,6 +10771,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         if UndoFutFrames is None:
+            self.annotateAllObjectTracks()
             return
 
         if shift and self.isSegm3D:
@@ -10828,6 +10868,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         if not applyFutFrames and not doPropagateUnvisited:
+            self.annotateAllObjectTracks()
             return
 
         self.changeIDfutureFrames(
@@ -11799,11 +11840,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 htmlTxt = f'<font color="orange">{warn_text}</font>'
                 self.titleLabel.setText(htmlTxt)
                 self.logger.info(warn_text)
-                self.blinker = qutils.QControlBlink(
+                blinker = qutils.QControlBlink(
                     self.annotateSingleMotherBudPairButton, 
                     qparent=self
                 )
-                self.blinker.start()
+                blinker.start()
                 return
 
         # Store cca_df for undo action
@@ -14020,11 +14061,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
     def manualEditCca(self, checked=True):
         if self.annotateSingleMotherBudPairButton.isChecked():
-            self.blinker = qutils.QControlBlink(
+            blinker = qutils.QControlBlink(
                 self.annotateSingleMotherBudPairButton, 
                 qparent=self
             )
-            self.blinker.start()
+            blinker.start()
+
             _warnings.warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=self)
             return
 
@@ -14954,11 +14996,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
 
         if output.get('overlap_warning', False):
-            self.blinker = qutils.QControlBlink(
+            blinker = qutils.QControlBlink(
                 self.copyLostObjToolbar.maxOverlapNumberControl,
                 qparent=self.mainWin
             )
-            self.blinker.start()
+            blinker.start()
 
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp() # global op and obj added, no opt imo unless difference pic
@@ -15383,7 +15425,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         if self.ax1BrushHoverID in posData.IDs:
             obj = posData.rp.get_obj_from_ID(self.ax1BrushHoverID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 return
 
             display_rp = self.get2DRP()
@@ -16305,6 +16347,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if pos.y()>=0:
                 self.gui_raiseBottomLayoutContextMenu(event)
         if event.button() not in STANDARD_MOUSE_BUTTONS:
+            if not self.isDataLoaded:
+                self.logger.warning(
+                    'Data not loaded yet. Key pressing events are not connected.'
+                )
+                return
             for name, button in self.mouseBindings.items():
                 if not button == event.button():
                     continue
@@ -16553,7 +16600,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return super().eventFilter(obj, ev)
         
     @exception_handler
-    def keyPressEvent(self, ev):        
+    def keyPressEvent(self, ev):
         ctrl = ev.modifiers() == Qt.ControlModifier
         if ctrl and ev.key() == Qt.Key_D:
             self.resizeLeaveSpaceTerminalBelow()
@@ -16568,11 +16615,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 printl('[ERROR]: Error with "_q_debug" module. See Traceback above.')
                 pass
 
+        modifiers = ev.modifiers()
+        isAltModifier = modifiers == Qt.AltModifier
+        isCtrlModifier = modifiers == Qt.ControlModifier
+        isShiftModifier = modifiers == Qt.ShiftModifier
+
         if not self.isDataLoaded:
-            self.logger.warning(
-                'Data not loaded yet. Key pressing events are not connected.'
+            is_passable_keycombin = (
+                ev.key() == Qt.Key_Control
+                or ev.key() == Qt.Key_Alt
+                or ev.key() == Qt.Key_Shift
+                or ev.key() == Qt.Key_Escape
+                or (ev.key() == Qt.Key_F and isCtrlModifier)
             )
-            return
+            if not is_passable_keycombin:
+                self.logger.warning(
+                    'Data not loaded yet. Key pressing events are not connected.'
+                )
+                return
 
         if ev.key() == Qt.Key_Control:
             if not ctrl:
@@ -16602,10 +16662,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 action.trigger()
             break
         
-        modifiers = ev.modifiers()
-        isAltModifier = modifiers == Qt.AltModifier
-        isCtrlModifier = modifiers == Qt.ControlModifier
-        isShiftModifier = modifiers == Qt.ShiftModifier
+
         
         self.checkSetDelObjActionActive(ev)
         
@@ -18713,7 +18770,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     continue
                 obj = posData.rp.get_obj_from_ID(annotID)
                 acdc_df.at[annotID, state['name']] = 1
-                if not self.isObjVisible(obj.bbox):
+                if not self.isObjInCurrSlice(obj.bbox):
                     continue
                 y, x = self.getObjCentroid(
                     posData.rp.get_centroid(annotID, exact=True))
@@ -24965,8 +25022,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         except KeyError:
             return        
         
-        isObjVisible = self.isObjVisible(obj.bbox)
-        if not isObjVisible:
+        if not self.isObjInCurrSlice(obj.bbox):
             return
         
         ccs_ID = cca_df_ID['cell_cycle_stage']
@@ -25068,10 +25124,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if not ID:
             ID = obj.label
-        
-        isObjVisible = self.isObjVisible(obj.bbox)
-        
-        if not isObjVisible:
+                
+        if not self.isObjInCurrSlice(obj.bbox):
             return
 
         scatterItem = self.getMothBudLineScatterItem(ax, isNew)
@@ -25556,7 +25610,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if obj.label not in self.keptObjectsIDs:
                 continue
 
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
 
             _slice = self.getObjSlice(obj.slice)
@@ -25854,7 +25908,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for obj in posData.rp:
             obj.excluded = obj.label in posData.binnedIDs
             obj.dead = obj.label in posData.ripIDs
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
             
             if obj.excluded:
@@ -27451,10 +27505,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         msg.information(self, 'Custom promptable model added', info_txt)
     
     def segmWithPromptableModelActionTriggered(self):
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.magicPromptsToolButton, qparent=self
         )
-        self.blinker.start()
+        blinker.start()
     
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
@@ -27819,7 +27873,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isOverlaySegmRightActive: 
             self.labelsLayerRightImg.setImage(currentLab2D, autoLevels=False)
 
-    def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
+    def isObjInCurrSlice(self, obj_bbox, debug=False, z_slice=None):
         if z_slice is None:
             z_slice = self.z_lab()
             
@@ -28253,7 +28307,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Ctrl+Z': ('Undo', self.undoAction),
             'Ctrl+Y': ('Redo', self.redoAction),
             'Ctrl+Shift+A': ('Autopilot', self.autoPilotButton),
-            'Ctrl+F': ('Find ID', self.findIdAction),
+            'Ctrl+F': ('Search', self.focusOnSearchAction),
             'Ctrl+T': (
                 'Track current frame with real-time tracker', 
                 self.repeatTrackingMenuAction
@@ -29487,7 +29541,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         lut = np.zeros((2, 4), dtype=np.uint8)
         for _obj in posData.rp:
-            if not self.isObjVisible(_obj.bbox):
+            if not self.isObjInCurrSlice(_obj.bbox):
                 continue
             if _obj.label not in nonGrayedIDs:
                 continue
@@ -29598,8 +29652,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if obj is None:
             return
         
-        isObjVisible = self.isObjVisible(obj.bbox)
-        if not isObjVisible:
+        if not self.isObjInCurrSlice(obj.bbox):
             return
         
         if greyOthers:
@@ -30006,7 +30059,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             
             obj = prev_rp.get_obj_from_ID(lostID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
             obj_display = display_rp_prev.get_obj_from_ID(lostID)
 
@@ -30065,7 +30118,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             
             obj = prev_rp.get_obj_from_ID(tracked_lost_ID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
         
             obj = display_rp_prev.get_obj_from_ID(tracked_lost_ID)
@@ -30318,7 +30371,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.textAnnot[0].setAnnotations(
             posData=posData, 
             labelsToSkip=labelsToSkip, 
-            isVisibleCheckFunc=self.isObjVisible,
+            isVisibleCheckFunc=self.isObjInCurrSlice,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
@@ -30328,7 +30381,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
-            isVisibleCheckFunc=self.isObjVisible,
+            isVisibleCheckFunc=self.isObjInCurrSlice,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getObjCentroidFunc=self.getObjCentroid,
@@ -31631,8 +31684,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 include_internal=self.showAllContoursToggle.isChecked()
             ) 
             for objContours in allContours:
-                isObjVisible = self.isObjVisible(newObj.bbox)
-                if not isObjVisible:
+                if not self.isObjInCurrSlice(newObj.bbox):
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
@@ -31910,7 +31962,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for ID in rp.IDs:
             obj = rp.get_obj_from_ID(ID)
             if settings['3D_show_only_visible'] and self.isSegm3D:
-                if not self.isObjVisible(obj.bbox):
+                if not self.isObjInCurrSlice(obj.bbox):
                     continue
             centroids[ID] = {frame_i: self.getObjCentroid(
                 rp.get_centroid(ID, as_ints=True, exact=True)
@@ -32011,8 +32063,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             obj_3D = rp_3D.get_obj_from_ID(ID, warn=False)
             for objContours in allContours:
-                isObjVisible = self.isObjVisible(obj_3D.bbox)
-                if not isObjVisible:
+                if not self.isObjInCurrSlice(obj_3D.bbox):
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
@@ -33627,11 +33678,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if start_n <= stop_n:
             return True
         
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.labelRoiStopFrameNoSpinbox, 
             qparent=self
         )
-        self.blinker.start()
+        blinker.start()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             Stop frame number is less than start frame number!<br><br>
@@ -34883,10 +34934,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.overlayToolbar.isTransparent():
             return True
         
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.overlayToolbar.transparencyCheckbox, qparent=self
         )
-        self.blinker.start()
+        blinker.start()
         
         cancel, activateTransparencyMode = (
             _warnings.warnAskTransparencyModeNeededForExport(
@@ -36060,6 +36111,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.mainWin.showAllWindows()
         # self.setFocus()
         self.activateWindow()
+        self.searchWidget.set_height_based_on(self.initMenuBar)
     
     def super_show(self):
         super().show()
@@ -36284,3 +36336,52 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.timestamp.updatePosViewRangeChanged(viewRange)
         
         self._viewRange = viewRange
+
+    def onSearchTriggerBlink(self, target):
+        button = getattr(self, target, None) if isinstance(target, str) else target
+        if button is None:
+            return
+        
+        blinker = qutils.QControlBlink(button, qparent=self)
+        blinker.start()
+        
+    def onSearchId(self, ID):
+        if not self.isDataLoaded:
+            self.logger.warning(
+                'Data not loaded yet. Key pressing events are not connected.'
+            )
+        self.findID(ID=ID)
+        
+    def focusOnSearch(self, dummy=None, blinking=False):
+        self.searchWidget.search_input.setFocus()
+        if blinking:
+            blinker = qutils.QControlBlink(self.searchWidget, qparent=self)
+            blinker.start()
+
+    def isObjVisibleViewRange(self, bbox, viewRange=None):
+        if self.isSegm3D:
+            isObjInCurrSlice = self.isObjInCurrSlice(bbox)
+            if not isObjInCurrSlice:
+                return False
+
+            # bbox has, no matter what projection, always the entire object    
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            x0, y0, x1, y1, z0, z1 = bbox
+            if depthAxes == 'z':
+                a0, a1, b0, b1 = x0, x1, y0, y1
+            elif depthAxes == 'y':
+                a0, a1, b0, b1 = x0, x1, z0, z1
+            elif depthAxes == 'x':
+                a0, a1, b0, b1 = y0, y1, z0, z1
+
+        else:
+            a0, a1, b0, b1 = bbox
+            
+        if viewRange is None:
+            viewRange = self.ax1ViewRange()
+            
+        # 
+        view_a0, view_a1 = viewRange[0]
+        view_b0, view_b1 = viewRange[1]
+        
+        return not (a1 < view_a0 or a0 > view_a1 or b1 < view_b0 or b0 > view_b1)

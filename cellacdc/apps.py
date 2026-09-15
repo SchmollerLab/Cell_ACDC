@@ -10267,6 +10267,7 @@ class QLineEditDialog(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        QTimer.singleShot(10, self.entryWidget.selectAll)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()

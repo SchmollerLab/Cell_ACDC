@@ -466,7 +466,7 @@ class SegForLostIDsWorker(QObject):
             self.emitSigUpdateRP(wl_update=True, wl_track_og_curr=False)
             newly_assigned_IDs = set(assigned_IDs) - set(assigned_IDs_prev)
             assignments = self.emitTrackManuallyAddedObject(
-                newly_assigned_IDs, True, False, False
+                newly_assigned_IDs, True, True, False
             )
             if assignments is None:
                 assignments = {} 
