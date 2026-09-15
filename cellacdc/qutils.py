@@ -34,20 +34,21 @@ class QWhileLoop:
         self.loop.exit()
 
 class QControlBlink(QObject):
-    sigIsDone = Signal() 
     def __init__(self, QWidgetToBlink: QWidget, duration_ms=2000, qparent=None) -> None:
         self.duration_ms = duration_ms
         self._widget = QWidgetToBlink
         self.qparent = qparent
         self.blinkON = False
+        self.original_style = self._getStyleSheet()
         super().__init__(qparent)
     
     def start(self):
-        self.timer = QTimer(self.qparent)
+        self.timer = QTimer(self)
         self.timer.timeout.connect(self.timerCallback)
         self.timer.start(100)
 
-        self.stopTimer = QTimer(self.qparent)
+        self.stopTimer = QTimer(self)
+        self.stopTimer.setSingleShot(True)
         self.stopTimer.timeout.connect(self.stop)
         self.stopTimer.start(self.duration_ms)
     
@@ -63,6 +64,20 @@ class QControlBlink(QObject):
                     widget.setStyleSheet(style)
         else:
             self._widget.setStyleSheet(style)
+            
+    def _getStyleSheet(self):
+        if isinstance(self._widget, QAction):
+            associated_objects = (
+                 self._widget.associatedObjects()
+                 if hasattr(self._widget, 'associatedObjects')
+                 else self._widget.associatedWidgets()
+            )
+            for widget in associated_objects:
+                if isinstance(widget, QToolButton):
+                    return widget.styleSheet()
+            return ''
+        else:
+            return self._widget.styleSheet()
 
     def timerCallback(self):
         if self.blinkON:
@@ -73,15 +88,7 @@ class QControlBlink(QObject):
 
     def stop(self):
         self.timer.stop()
-        self._setStyleSheet('background-color: none')
-        self.sigIsDone.emit()
-        self.stopTimer.stop()
-        self.stopTimer.deleteLater()
-        self.stopTimer = None
-        
-        self.timer.stop()
-        self.timer.deleteLater()
-        self.timer = None
+        self._setStyleSheet(self.original_style)
         self.deleteLater()
         
 def hide_and_delete_layout(layout):

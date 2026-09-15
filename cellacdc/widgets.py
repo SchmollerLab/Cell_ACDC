@@ -13279,20 +13279,20 @@ class ButtonSearchWidget(QWidget):
         )
         
     def synonyms(self):
-        synonyms = {
-            'Segm.': 'Segmentation',
-            'Edit': 'Change',
-            'ID': 'IDs',
-            'ID': 'cell',
-            'ID': 'object',
-        }
-        synonyms.update({v: k for k, v in synonyms.items()})
+        synonyms = [
+            ('Segm.', 'Segmentation'),
+            ('Edit', 'Change'),
+            ('ID', 'IDs'),
+            ('ID', 'cell'),
+            ('ID', 'object'),
+        ]
+        synonyms += [(v, k) for k, v in synonyms]
         return synonyms
 
     def _synonymsForName(self, name):
         normalized_name = name.strip().casefold()
         aliases = []
-        for phrase, synonym in self.synonyms().items():
+        for phrase, synonym in self.synonyms():
             normalized_phrase = phrase.strip().casefold()
             if normalized_phrase not in normalized_name:
                 continue

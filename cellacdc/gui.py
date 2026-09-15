@@ -413,7 +413,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.doubleSpaceBarState = False
         self.protected_new_IDs = dict()
         
-        self.blinkers = []
         
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
@@ -11817,8 +11816,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     qparent=self
                 )
                 blinker.start()
-                blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
-                self.blinkers.append(blinker)
                 return
 
         # Store cca_df for undo action
@@ -14040,8 +14037,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 qparent=self
             )
             blinker.start()
-            self.blinkers.append(blinker)
-            blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
 
             _warnings.warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=self)
             return
@@ -14976,9 +14971,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.copyLostObjToolbar.maxOverlapNumberControl,
                 qparent=self.mainWin
             )
-            blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
             blinker.start()
-            self.blinkers.append(blinker)
 
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp() # global op and obj added, no opt imo unless difference pic
@@ -27475,8 +27468,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.magicPromptsToolButton, qparent=self
         )
         blinker.start()
-        self.blinkers.append(blinker)
-        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
     
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
@@ -33653,9 +33644,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.labelRoiStopFrameNoSpinbox, 
             qparent=self
         )
-        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
         blinker.start()
-        self.blinkers.append(blinker)
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             Stop frame number is less than start frame number!<br><br>
@@ -34911,8 +34900,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.overlayToolbar.transparencyCheckbox, qparent=self
         )
         blinker.start()
-        self.blinkers.append(blinker)
-        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
         
         cancel, activateTransparencyMode = (
             _warnings.warnAskTransparencyModeNeededForExport(
@@ -36319,6 +36306,4 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         blinker = qutils.QControlBlink(button, qparent=self)
         blinker.start()
-        self.blinkers.append(blinker)
-        blinker.sigIsDone.connect(lambda: self.blinkers.remove(blinker))
         
