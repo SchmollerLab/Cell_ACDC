@@ -36360,8 +36360,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def isObjVisibleViewRange(self, bbox, viewRange=None):
         if self.isSegm3D:
-            isObjInSlice = self.isObjInSlice(bbox)
-            if not isObjInSlice:
+            isObjInCurrSlice = self.isObjInCurrSlice(bbox)
+            if not isObjInCurrSlice:
                 return False
 
             # bbox has, no matter what projection, always the entire object    
