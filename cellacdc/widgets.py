@@ -12994,15 +12994,23 @@ class GuiCentralWidget(QWidget):
         super().__init__(parent, *args)
 
 class ButtonSearchCompleter(QSortFilterProxyModel):
-    """Filter button names and tooltips, prioritizing name matches."""
+    """Filter model rows using configurable name and tooltip roles."""
 
     SEARCH_NAME_ROLE = Qt.UserRole + 3
     SYNONYMS_ROLE = Qt.UserRole + 4
     SECONDARY_NAME_ROLE = Qt.UserRole + 1
     TOOLTIP_ROLE = Qt.UserRole
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, searchRoles=None, tooltipRole=TOOLTIP_ROLE):
         super().__init__(parent)
+        if searchRoles is None:
+            searchRoles = (
+                self.SEARCH_NAME_ROLE,
+                self.SECONDARY_NAME_ROLE,
+                self.SYNONYMS_ROLE,
+            )
+        self.searchRoles = tuple(searchRoles)
+        self.tooltipRole = tooltipRole
         self._filterText = ''
         self.FUZZY_THRESHOLD = 0.5
         self._scoreCache = {}
@@ -13049,11 +13057,15 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         return score[0] < 7
     
     def _matchScore(self, index):
-        names = [
-            index.data(self.SEARCH_NAME_ROLE) or '',
-            index.data(self.SECONDARY_NAME_ROLE) or '',
-        ]
-        names.extend(index.data(self.SYNONYMS_ROLE) or [])
+        names = []
+        for role in self.searchRoles:
+            value = index.data(role)
+            values = value if isinstance(value, (list, tuple, set)) else (value,)
+            names.extend(
+                str(name).strip().casefold()
+                for name in values
+                if name is not None and str(name).strip()
+            )
 
         if any(name == self._filterText for name in names):
             return 0, 0
@@ -13066,7 +13078,10 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         if best_similarity >= self.FUZZY_THRESHOLD:
             return 3, -best_similarity
 
-        tooltip = index.data(Qt.UserRole) or ''
+        tooltip = ''
+        if self.tooltipRole is not None:
+            tooltip = index.data(self.tooltipRole) or ''
+            tooltip = str(tooltip).casefold()
         if tooltip.startswith(self._filterText):
             return 4, 0
         if self._filterText in tooltip:
@@ -13095,33 +13110,89 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         return best_ratio
 
 class ButtonSearchWidget(QWidget):
+    """Search widget populated from documentation or caller-provided records.
+
+    Parameters
+    ----------
+    guiWin:
+        Optional GUI object used by :meth:`registerSearchControls`.
+    loadingType:
+        ``'rst'`` loads button metadata from the documentation. ``None``
+        starts with no records. Ignored when ``searchRecords`` is provided.
+    searchRecords:
+        Optional mapping of record keys to dictionaries. Each dictionary may
+        contain ``display``, ``search_name``, ``synonyms``, ``tooltip``,
+        ``button_id``, and ``target``. All fields are optional: the mapping key
+        is used as the default display and search name, while collections of
+        strings may be supplied as synonyms.
+    """
 
     sigTriggerBlink = Signal(object)
 
-    def __init__(self, guiWin):
+    def __init__(
+            self,
+            guiWin=None,
+            loadingType='rst',
+            searchRecords=None,
+        ):
         super().__init__()
         self.guiWin = guiWin
 
         self.buttons_data = {}
 
-        self.init_ui()
+        self.init_ui(loadingType=loadingType, searchRecords=searchRecords)
 
-    def init_ui(self):
-        # Parse the file
+    def _loadSearchRecordsFromRst(self):
         buttons = rst_utils.get_tooltips_from_docs(for_search=True)
-
-        self._search_records = {}
+        records = {}
         for button in buttons:
-            normalized_name = button['name'].strip().casefold()
-            self._search_records[normalized_name] = {
-                'display': f"{button['name']} ({button['id']})",
+            name = button['name']
+            button_id = button.get('id')
+            normalized_name = name.strip().casefold()
+            display = f'{name} ({button_id})' if button_id else name
+            records[normalized_name] = {
+                'display': display,
                 'search_name': normalized_name,
-                'synonyms': self._synonymsForName(button['name']),
-                'tooltip': button['tooltip'],
-                'button_id': button['id'],
+                'synonyms': self._synonymsForName(name),
+                'tooltip': button.get('tooltip', ''),
+                'button_id': button_id,
                 'target': None,
             }
-            self.buttons_data[button['id']] = button
+            if button_id is not None:
+                self.buttons_data[button_id] = button
+        return records
+
+    def _loadSearchRecords(self, loadingType, searchRecords):
+        if searchRecords is not None:
+            records = searchRecords
+        elif loadingType == 'rst':
+            records = self._loadSearchRecordsFromRst()
+        elif loadingType is None:
+            records = {}
+        else:
+            raise ValueError(f'Unsupported search loading type: {loadingType}')
+
+        normalized_records = {}
+        for record_key, source_record in records.items():
+            record = dict(source_record or {})
+            search_name = str(
+                record.get('search_name', record_key)
+            ).strip().casefold()
+            if not search_name:
+                continue
+            record['display'] = str(record.get('display', record_key))
+            record['search_name'] = search_name
+            record.setdefault('synonyms', [])
+            record.setdefault('tooltip', '')
+            record.setdefault('button_id', None)
+            record.setdefault('target', None)
+            normalized_records[search_name] = record
+        return normalized_records
+
+    def init_ui(self, loadingType='rst', searchRecords=None):
+        self._search_records = self._loadSearchRecords(
+            loadingType, searchRecords
+        )
 
         self.model, self._items_by_name = self._build_source_model()
         self.proxy_model = self._build_proxy_model(self.model)
@@ -13133,7 +13204,6 @@ class ButtonSearchWidget(QWidget):
         # add stretch to make the search input expand
         self.search_input.setFixedWidth(250)
         self.search_input.installEventFilter(self)
-        QApplication.instance().installEventFilter(self)
 
         # Custom popup (replaces QCompleter so we can fully control
         # when search vs. navigation happen). Reparented to the actual
@@ -13175,6 +13245,9 @@ class ButtonSearchWidget(QWidget):
         layout.setSpacing(0)  # Remove spacing
         layout.addWidget(self.search_input)
         self.setLayout(layout)
+        
+        QApplication.instance().installEventFilter(self)
+
         
     def registerSearchControls(self):
         annotation_display_controls = (
@@ -13274,18 +13347,18 @@ class ButtonSearchWidget(QWidget):
         for search_name, record in self._search_records.items():
             item = QStandardItem(record['display'])
             item.setData(
-                record['tooltip'], 
+                record.get('tooltip', ''),
                 ButtonSearchCompleter.TOOLTIP_ROLE
                 )
             item.setData(
-                record['button_id'],
+                record.get('button_id', None),
                 ButtonSearchCompleter.SECONDARY_NAME_ROLE
             )
             item.setData(
                 record.get('synonyms', []),
                 ButtonSearchCompleter.SYNONYMS_ROLE,
             )
-            item.setData(record['target'], Qt.UserRole + 2)
+            item.setData(record.get('target', None), Qt.UserRole + 2)
             item.setData(
                 search_name,
                 ButtonSearchCompleter.SEARCH_NAME_ROLE,
@@ -13399,14 +13472,21 @@ class ButtonSearchWidget(QWidget):
             text = index.data(Qt.DisplayRole)
             self.on_button_selected(text)
         self.popup.hide()
+        self.search_input.clearFocus()
 
     def eventFilter(self, obj, event):
         if event.type() == QEvent.MouseButtonPress:
-            clicked_search = obj is self.search_input
-            clicked_popup = obj is self.popup
-            if isinstance(obj, QWidget):
-                clicked_search |= self.search_input.isAncestorOf(obj)
-                clicked_popup |= self.popup.isAncestorOf(obj)
+            try:
+                global_pos = event.globalPosition().toPoint()
+            except AttributeError:
+                global_pos = event.globalPos()
+
+            clicked_search = self.search_input.rect().contains(
+                self.search_input.mapFromGlobal(global_pos)
+            )
+            clicked_popup = self.popup.isVisible() and self.popup.rect().contains(
+                self.popup.mapFromGlobal(global_pos)
+            )
             if not clicked_search and not clicked_popup:
                 self.popup.hide()
                 self.search_input.clearFocus()
@@ -13426,12 +13506,16 @@ class ButtonSearchWidget(QWidget):
             elif key == Qt.Key_Escape and popup_visible:
                 self.popup.hide()
                 return True
-            # Popup closed: let the line edit handle the key normally
+
         elif obj is self.search_input and event.type() == QEvent.FocusOut:
             # The popup is a plain child widget (not an auto-dismissing
             # Qt.Popup), so hide it manually once the field is no longer
             # focused.
-            self.popup.hide()
+            # self.popup.hide()
+            ...
+        elif obj is self.search_input and event.type() == QEvent.FocusIn:
+            # Show the popup when the search input gains focus
+            self.show_popup()
 
         return super().eventFilter(obj, event)
 
