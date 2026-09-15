@@ -13511,11 +13511,11 @@ class ButtonSearchWidget(QWidget):
             # The popup is a plain child widget (not an auto-dismissing
             # Qt.Popup), so hide it manually once the field is no longer
             # focused.
-            # self.popup.hide()
-            ...
+            self.popup.hide()
         elif obj is self.search_input and event.type() == QEvent.FocusIn:
             # Show the popup when the search input gains focus
-            self.show_popup()
+            curr_text = self.search_input.text()
+            self.on_search_text_changed(curr_text)
 
         return super().eventFilter(obj, event)
 
