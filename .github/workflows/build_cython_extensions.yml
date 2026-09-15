@@ -2,6 +2,7 @@ name: Build Cython extensions
 
 permissions:
   contents: write
+  pull-requests: write
 
 on:
   push:
@@ -33,6 +34,7 @@ jobs:
       - name: Build extension
         run: |
           python -m pip install --upgrade "setuptools>=77" cython numpy
+
           # Remove existing binaries so only the freshly built one remains for upload
           python -c "
           import os, glob
@@ -40,7 +42,9 @@ jobs:
               os.remove(f)
               print(f'Removed existing: {f}')
           "
+
           python "${{ github.workspace }}/precompile_functions.py" build_ext --inplace --build-temp "${{ github.workspace }}/build/temp"
+
           echo "Built binary:"
           ls cellacdc/precompiled/
 
@@ -52,60 +56,98 @@ jobs:
             cellacdc/precompiled/*.pyd
 
   commit:
-      needs: build
-      runs-on: ubuntu-latest
-      permissions:
-        contents: write
-      defaults:
-        run:
-          working-directory: ${{ github.workspace }}
-      steps:
-        - uses: actions/checkout@v6
-          with:
-            ref: ${{ github.ref_name }}
-            fetch-depth: 0
+    needs: build
+    runs-on: ubuntu-latest
 
-        - uses: actions/download-artifact@v6
-          with:
-            path: artifacts/
+    permissions:
+      contents: write
+      pull-requests: write
 
-        - name: Flatten artifacts into precompiled directory
-          run: |
-            mkdir -p cellacdc/precompiled
-            find artifacts -type f \( -name "*.pyd" -o -name "*.so" \) -exec cp {} cellacdc/precompiled/ \;
-            echo "Files copied:"
-            ls -la cellacdc/precompiled/
-            echo ""
-            echo "Total files:"
-            find cellacdc/precompiled/ -type f | grep -E '\.(pyd|so)$' | wc -l
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
 
-        - name: Validate artifact count
-          run: |
-            EXPECTED_COUNT=12
-            FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
-            echo "Expected files: $EXPECTED_COUNT"
-            echo "Found files: $FILE_COUNT"
-            if [ "$FILE_COUNT" -lt "$EXPECTED_COUNT" ]; then
-              echo "Missing binaries: expected at least $EXPECTED_COUNT, found $FILE_COUNT"
-              exit 1
-            fi
+    steps:
+      # Generate a token authenticated as the GitHub App.
+      # APP_CLIENT_ID is a repository variable.
+      # APP_PRIVATE_KEY is a repository secret.
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
-        - name: Commit precompiled binaries
-          run: |
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) -print0 | xargs -0 git add -f
-            git add cellacdc/precompiled/__init__.py
-            FILE_COUNT=$(find cellacdc/precompiled/ -type f \( -name "*.pyd" -o -name "*.so" \) | wc -l)
-            echo "Files to commit: $FILE_COUNT"
-            if [ "$FILE_COUNT" -eq 0 ]; then
-              echo "No precompiled files found, skipping commit"
-              exit 0
-            fi
-            if git diff --cached --quiet; then
-              echo "No changes to commit"
-              exit 0
-            fi
-            git commit -m "ci: update precompiled Cython extensions [skip ci]"
-            git pull --rebase origin ${{ github.ref_name }}
-            git push origin HEAD:${{ github.ref_name }}
+      # Use the App token for Git operations.
+      # This means the subsequent git push is authenticated as the App.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: actions/download-artifact@v6
+        with:
+          path: artifacts/
+
+      - name: Flatten artifacts into precompiled directory
+        run: |
+          mkdir -p cellacdc/precompiled
+
+          find artifacts -type f \( -name "*.pyd" -o -name "*.so" \) \
+            -exec cp {} cellacdc/precompiled/ \;
+
+          echo "Files copied:"
+          ls -la cellacdc/precompiled/
+
+          echo ""
+          echo "Total files:"
+          find cellacdc/precompiled/ -type f | grep -E '\.(pyd|so)$' | wc -l
+
+      - name: Validate artifact count
+        run: |
+          EXPECTED_COUNT=12
+
+          FILE_COUNT=$(find cellacdc/precompiled/ -type f \
+            \( -name "*.pyd" -o -name "*.so" \) | wc -l)
+
+          echo "Expected files: $EXPECTED_COUNT"
+          echo "Found files: $FILE_COUNT"
+
+          if [ "$FILE_COUNT" -lt "$EXPECTED_COUNT" ]; then
+            echo "Missing binaries: expected at least $EXPECTED_COUNT, found $FILE_COUNT"
+            exit 1
+          fi
+
+      - name: Commit precompiled binaries
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          find cellacdc/precompiled/ \
+            -type f \
+            \( -name "*.pyd" -o -name "*.so" \) \
+            -print0 | xargs -0 git add -f
+
+          git add cellacdc/precompiled/__init__.py
+
+          FILE_COUNT=$(find cellacdc/precompiled/ -type f \
+            \( -name "*.pyd" -o -name "*.so" \) | wc -l)
+
+          echo "Files to commit: $FILE_COUNT"
+
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "No precompiled files found, skipping commit"
+            exit 0
+          fi
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git commit -m "ci: update precompiled Cython extensions [skip ci]"
+
+          git pull --rebase origin ${{ github.ref_name }}
+
+          git push origin HEAD:${{ github.ref_name }}
