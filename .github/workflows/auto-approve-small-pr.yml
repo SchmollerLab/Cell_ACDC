@@ -13,7 +13,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Calculate number of changed lines (excluding binaries)
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Calculate number of changed lines
         id: diff
         uses: actions/github-script@v7
         with:
@@ -21,45 +28,40 @@ jobs:
           script: |
             console.log(`PR Number: ${context.payload.pull_request.number}`);
             console.log(`Repository: ${context.repo.owner}/${context.repo.repo}`);
-            
+
             const { data: files } = await github.rest.pulls.listFiles({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.payload.pull_request.number,
             });
 
-            const textFiles = files.filter(file => file.patch);
-            console.log(`Total files: ${files.length}, Text files: ${textFiles.length}`);
+            const totalChanges = files.reduce(
+              (sum, file) => sum + file.changes,
+              0
+            );
 
-            const totalChanges = textFiles.reduce((sum, file) => sum + file.changes, 0);
-            console.log(`Total changed lines (excluding binaries): ${totalChanges}`);
+            console.log(`Total changed lines: ${totalChanges}`);
             return totalChanges;
 
       - name: Approve if PR is small
-        if: steps.diff.outputs.result < 15
+        if: steps.diff.outputs.result < 15 && github.actor != 'github-actions[bot]'
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.PR_MANAGEMENT }}
+          github-token: ${{ steps.app-token.outputs.token }}
           script: |
             try {
               console.log(`Attempting to approve PR #${context.payload.pull_request.number}`);
-              console.log(`Changed lines (excluding binaries): ${{ steps.diff.outputs.result }}`);
-              
+              console.log(`Changed lines: ${{ steps.diff.outputs.result }}`);
+
               const response = await github.rest.pulls.createReview({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 pull_number: context.payload.pull_request.number,
                 event: "APPROVE"
               });
-              
-              console.log(`✅ Successfully approved PR. Review ID: ${response.data.id}`);
-            } catch (error) {
-              console.error(`❌ Failed to approve PR: ${error.message}`);
-            }
 
-      - name: Merge PR if approved
-        if: steps.diff.outputs.result < 15 && github.actor == 'github-actions[bot]'
-        env:
-          GH_TOKEN: ${{ secrets.PR_MANAGEMENT }}
-        run: |
-          gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch --auto
+              console.log(`Successfully approved PR. Review ID: ${response.data.id}`);
+            } catch (error) {
+              console.error(`Failed to approve PR: ${error.message}`);
+              // Don't throw error to prevent workflow failure
+            }
