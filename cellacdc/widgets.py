@@ -12998,6 +12998,7 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
 
     SEARCH_NAME_ROLE = Qt.UserRole + 3
     SYNONYMS_ROLE = Qt.UserRole + 4
+    PRIORITY_ROLE = Qt.UserRole + 5
     SECONDARY_NAME_ROLE = Qt.UserRole + 1
     TOOLTIP_ROLE = Qt.UserRole
 
@@ -13057,6 +13058,9 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         return score[0] < 7
     
     def _matchScore(self, index):
+        if index.data(self.PRIORITY_ROLE):
+            return -1, 0
+
         names = []
         for role in self.searchRoles:
             value = index.data(role)
@@ -13127,7 +13131,11 @@ class ButtonSearchWidget(QWidget):
         strings may be supplied as synonyms.
     """
 
+    ACTION_ROLE = Qt.UserRole + 6
+    ACTION_VALUE_ROLE = Qt.UserRole + 7
+
     sigTriggerBlink = Signal(object)
+    sigSearchId = Signal(int)
 
     def __init__(
             self,
@@ -13196,10 +13204,11 @@ class ButtonSearchWidget(QWidget):
 
         self.model, self._items_by_name = self._build_source_model()
         self.proxy_model = self._build_proxy_model(self.model)
+        self._search_id_item = None
 
         # Search field
         self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("Search buttons...")
+        self.search_input.setPlaceholderText("Search for functionality or IDs")
         self.search_input.setFocusPolicy(Qt.ClickFocus)
         # add stretch to make the search input expand
         self.search_input.setFixedWidth(250)
@@ -13390,13 +13399,31 @@ class ButtonSearchWidget(QWidget):
 
     def on_search_text_changed(self, text):
         """Filter the model and update the popup."""
-        self.proxy_model.setFilterText(text)
-        if not text.strip() or self.proxy_model.rowCount() == 0:
+        query = text.strip()
+        self._update_search_id_item(query)
+        self.proxy_model.setFilterText(query)
+        if not query or self.proxy_model.rowCount() == 0:
             self.popup.hide()
             return
 
         self.popup.setCurrentIndex(self.proxy_model.index(0, 0))
         self.show_popup()
+
+    def _update_search_id_item(self, query):
+        if self._search_id_item is not None:
+            self.model.removeRow(self._search_id_item.row())
+            self._search_id_item = None
+
+        if not query.isascii() or not query.isdecimal():
+            return
+
+        item = QStandardItem(f'Search for ID {query}')
+        item.setData(query, ButtonSearchCompleter.SEARCH_NAME_ROLE)
+        item.setData(True, ButtonSearchCompleter.PRIORITY_ROLE)
+        item.setData('search_id', self.ACTION_ROLE)
+        item.setData(int(query), self.ACTION_VALUE_ROLE)
+        self.model.insertRow(0, item)
+        self._search_id_item = item
 
     def show_popup(self):
         """Position and show the popup below the search field."""
@@ -13464,6 +13491,13 @@ class ButtonSearchWidget(QWidget):
                 return
             index = self.proxy_model.index(0, 0)
 
+        if index.data(self.ACTION_ROLE) == 'search_id':
+            self.sigSearchId.emit(index.data(self.ACTION_VALUE_ROLE))
+            self.search_input.clear()
+            self.popup.hide()
+            self.search_input.clearFocus()
+            return
+
         target = index.data(Qt.UserRole + 2)
         if target is not None:
             self.search_input.clear()
@@ -13503,8 +13537,10 @@ class ButtonSearchWidget(QWidget):
             elif key in (Qt.Key_Return, Qt.Key_Enter) and popup_visible:
                 self.confirm_selection()
                 return True
-            elif key == Qt.Key_Escape and popup_visible:
-                self.popup.hide()
+            elif key == Qt.Key_Escape:
+                if popup_visible:
+                    self.popup.hide()
+                self.search_input.clearFocus()
                 return True
 
         elif obj is self.search_input and event.type() == QEvent.FocusOut:

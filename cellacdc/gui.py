@@ -336,6 +336,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             getattr(self, key).setToolTip(tooltip)
             getattr(self, key)._tooltip = tooltip
+            
+            # add custom addition to the search input tooltip
+            if key == "searchAction":
+                self.searchWidget.setToolTip(tooltip)
 
     def run(self, module='acdc_gui', logs_path=None):                
         self.setWindowIcon()
@@ -1339,9 +1343,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.searchWidget = widgets.ButtonSearchWidget(self)
         self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
         menuBar.setCornerWidget(self.searchWidget)
+        self.focusOnSearchAction = QAction("Search for ID or functionality", self)
+        self.focusOnSearchAction.setShortcut('Ctrl+F')
+        self.focusOnSearchAction.triggered.connect(
+            self.focusOnSearch
+        )
+        helpMenu.addAction(self.focusOnSearchAction)
+        self.searchWidget.sigSearchId.connect(
+            self.onSearchId
+        )
         
-
-
+        
     def gui_createToolBars(self):        
         # File toolbar
         fileToolBar = self.addToolBar("File")
@@ -1372,7 +1384,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
-        navigateToolBar.addAction(self.findIdAction)
+        navigateToolBar.addAction(self.searchAction)
         
         navigateToolBar.addWidget(self.zoomRectButton)
 
@@ -3158,9 +3170,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotButton.setCheckable(True)
         self.autoPilotButton.setShortcut('Ctrl+Shift+A')
         
-        self.findIdAction = QAction(self)
-        self.findIdAction.setIcon(QIcon(":find.svg"))
-        self.findIdAction.setShortcut('Ctrl+F')
+        self.searchAction = QAction(self)
+        self.searchAction.setIcon(QIcon(":find.svg"))
         
         self.zoomRectButton = QToolButton(self)
         self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
@@ -3944,7 +3955,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
-        self.findIdAction.triggered.connect(self.findID)
+        self.searchAction.triggered.connect(
+            partial(self.focusOnSearch, blinking=True)
+        )
         self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
         self.autoPilotButton.toggled.connect(self.autoPilotToggled)
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
@@ -16318,6 +16331,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if pos.y()>=0:
                 self.gui_raiseBottomLayoutContextMenu(event)
         if event.button() not in STANDARD_MOUSE_BUTTONS:
+            if not self.isDataLoaded:
+                self.logger.warning(
+                    'Data not loaded yet. Key pressing events are not connected.'
+                )
+                return
             for name, button in self.mouseBindings.items():
                 if not button == event.button():
                     continue
@@ -16566,7 +16584,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return super().eventFilter(obj, ev)
         
     @exception_handler
-    def keyPressEvent(self, ev):        
+    def keyPressEvent(self, ev):
         ctrl = ev.modifiers() == Qt.ControlModifier
         if ctrl and ev.key() == Qt.Key_D:
             self.resizeLeaveSpaceTerminalBelow()
@@ -16581,11 +16599,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 printl('[ERROR]: Error with "_q_debug" module. See Traceback above.')
                 pass
 
+        modifiers = ev.modifiers()
+        isAltModifier = modifiers == Qt.AltModifier
+        isCtrlModifier = modifiers == Qt.ControlModifier
+        isShiftModifier = modifiers == Qt.ShiftModifier
+
         if not self.isDataLoaded:
-            self.logger.warning(
-                'Data not loaded yet. Key pressing events are not connected.'
+            is_passable_keycombin = (
+                ev.key() == Qt.Key_Control
+                or ev.key() == Qt.Key_Alt
+                or ev.key() == Qt.Key_Shift
+                or ev.key() == Qt.Key_Escape
+                or (ev.key() == Qt.Key_F and isCtrlModifier)
             )
-            return
+            if not is_passable_keycombin:
+                self.logger.warning(
+                    'Data not loaded yet. Key pressing events are not connected.'
+                )
+                return
 
         if ev.key() == Qt.Key_Control:
             if not ctrl:
@@ -16615,10 +16646,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 action.trigger()
             break
         
-        modifiers = ev.modifiers()
-        isAltModifier = modifiers == Qt.AltModifier
-        isCtrlModifier = modifiers == Qt.ControlModifier
-        isShiftModifier = modifiers == Qt.ShiftModifier
+
         
         self.checkSetDelObjActionActive(ev)
         
@@ -28266,7 +28294,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Ctrl+Z': ('Undo', self.undoAction),
             'Ctrl+Y': ('Redo', self.redoAction),
             'Ctrl+Shift+A': ('Autopilot', self.autoPilotButton),
-            'Ctrl+F': ('Find ID', self.findIdAction),
+            'Ctrl+F': ('Search', self.focusOnSearchAction),
             'Ctrl+T': (
                 'Track current frame with real-time tracker', 
                 self.repeatTrackingMenuAction
@@ -36307,3 +36335,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         blinker = qutils.QControlBlink(button, qparent=self)
         blinker.start()
         
+    def onSearchId(self, ID):
+        if not self.isDataLoaded:
+            self.logger.warning(
+                'Data not loaded yet. Key pressing events are not connected.'
+            )
+        self.findID(ID=ID)
+        
+    def focusOnSearch(self, dummy=None, blinking=False):
+        self.searchWidget.search_input.setFocus()
+        if blinking:
+            blinker = qutils.QControlBlink(self.searchWidget, qparent=self)
+            blinker.start()

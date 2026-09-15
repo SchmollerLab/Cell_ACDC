@@ -10083,7 +10083,6 @@ class QLineEditDialog(QDialog):
                 entryWidget.textChanged[str].connect(self.onTextChanged)
         entryWidget.setFont(fonts.font)
         entryWidget.setAlignment(Qt.AlignCenter)
-        entryWidget.selectAll()
 
         self.entryWidget = entryWidget
 
@@ -10268,6 +10267,7 @@ class QLineEditDialog(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        QTimer.singleShot(10, self.entryWidget.selectAll)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
