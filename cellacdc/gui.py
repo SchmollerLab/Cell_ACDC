@@ -10134,6 +10134,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.highlightSearchedID(ID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(ID)
+        is_obj_visible = self.isObjVisibleViewRange(obj.bbox)
+        if not is_obj_visible:
+            centroid = posData.rp.get_centroid(obj.label)
+            yc, xc = self.getObjCentroid(centroid)
+            pos = (int(xc), int(yc))
+            # set center of view to the lost object's position
+            self.ax1.setCenter(pos)        
+    
     
     def goToLostObjectID(self, lostID, color=(255, 165, 0, 255)):
         posData = self.data[self.pos_i]
@@ -10161,6 +10169,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.drawLostObjContoursImage(
             imageItem, contours, thickness=2, color=color
         )
+        
+        is_obj_visible = self.isObjVisibleViewRange(obj.bbox)
+        if not is_obj_visible:
+            centroid = prev_rp.get_centroid(obj.label)
+            yc, xc = self.getObjCentroid(centroid)
+            pos = (int(xc), int(yc))
+            # set center of view to the lost object's position
+            self.ax1.setCenter(pos)        
         
     def goToAcceptedLostObjectID(self, acceptedLostID):
         posData = self.data[self.pos_i]
@@ -15409,7 +15425,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         if self.ax1BrushHoverID in posData.IDs:
             obj = posData.rp.get_obj_from_ID(self.ax1BrushHoverID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 return
 
             display_rp = self.get2DRP()
@@ -18754,7 +18770,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     continue
                 obj = posData.rp.get_obj_from_ID(annotID)
                 acdc_df.at[annotID, state['name']] = 1
-                if not self.isObjVisible(obj.bbox):
+                if not self.isObjInCurrSlice(obj.bbox):
                     continue
                 y, x = self.getObjCentroid(
                     posData.rp.get_centroid(annotID, exact=True))
@@ -25006,8 +25022,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         except KeyError:
             return        
         
-        isObjVisible = self.isObjVisible(obj.bbox)
-        if not isObjVisible:
+        if not self.isObjInCurrSlice(obj.bbox):
             return
         
         ccs_ID = cca_df_ID['cell_cycle_stage']
@@ -25109,10 +25124,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if not ID:
             ID = obj.label
-        
-        isObjVisible = self.isObjVisible(obj.bbox)
-        
-        if not isObjVisible:
+                
+        if not self.isObjInCurrSlice(obj.bbox):
             return
 
         scatterItem = self.getMothBudLineScatterItem(ax, isNew)
@@ -25597,7 +25610,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if obj.label not in self.keptObjectsIDs:
                 continue
 
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
 
             _slice = self.getObjSlice(obj.slice)
@@ -25895,7 +25908,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for obj in posData.rp:
             obj.excluded = obj.label in posData.binnedIDs
             obj.dead = obj.label in posData.ripIDs
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
             
             if obj.excluded:
@@ -27860,7 +27873,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isOverlaySegmRightActive: 
             self.labelsLayerRightImg.setImage(currentLab2D, autoLevels=False)
 
-    def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
+    def isObjInCurrSlice(self, obj_bbox, debug=False, z_slice=None):
         if z_slice is None:
             z_slice = self.z_lab()
             
@@ -29528,7 +29541,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         lut = np.zeros((2, 4), dtype=np.uint8)
         for _obj in posData.rp:
-            if not self.isObjVisible(_obj.bbox):
+            if not self.isObjInCurrSlice(_obj.bbox):
                 continue
             if _obj.label not in nonGrayedIDs:
                 continue
@@ -29639,8 +29652,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if obj is None:
             return
         
-        isObjVisible = self.isObjVisible(obj.bbox)
-        if not isObjVisible:
+        if not self.isObjInCurrSlice(obj.bbox):
             return
         
         if greyOthers:
@@ -30047,7 +30059,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             
             obj = prev_rp.get_obj_from_ID(lostID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
             obj_display = display_rp_prev.get_obj_from_ID(lostID)
 
@@ -30106,7 +30118,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             
             obj = prev_rp.get_obj_from_ID(tracked_lost_ID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
         
             obj = display_rp_prev.get_obj_from_ID(tracked_lost_ID)
@@ -30359,7 +30371,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.textAnnot[0].setAnnotations(
             posData=posData, 
             labelsToSkip=labelsToSkip, 
-            isVisibleCheckFunc=self.isObjVisible,
+            isVisibleCheckFunc=self.isObjInCurrSlice,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
@@ -30369,7 +30381,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
-            isVisibleCheckFunc=self.isObjVisible,
+            isVisibleCheckFunc=self.isObjInCurrSlice,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getObjCentroidFunc=self.getObjCentroid,
@@ -31672,8 +31684,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 include_internal=self.showAllContoursToggle.isChecked()
             ) 
             for objContours in allContours:
-                isObjVisible = self.isObjVisible(newObj.bbox)
-                if not isObjVisible:
+                if not self.isObjInCurrSlice(newObj.bbox):
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
@@ -31951,7 +31962,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for ID in rp.IDs:
             obj = rp.get_obj_from_ID(ID)
             if settings['3D_show_only_visible'] and self.isSegm3D:
-                if not self.isObjVisible(obj.bbox):
+                if not self.isObjInCurrSlice(obj.bbox):
                     continue
             centroids[ID] = {frame_i: self.getObjCentroid(
                 rp.get_centroid(ID, as_ints=True, exact=True)
@@ -32052,8 +32063,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             obj_3D = rp_3D.get_obj_from_ID(ID, warn=False)
             for objContours in allContours:
-                isObjVisible = self.isObjVisible(obj_3D.bbox)
-                if not isObjVisible:
+                if not self.isObjInCurrSlice(obj_3D.bbox):
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
@@ -36347,3 +36357,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if blinking:
             blinker = qutils.QControlBlink(self.searchWidget, qparent=self)
             blinker.start()
+
+    def isObjVisibleViewRange(self, bbox, viewRange=None):
+        if self.isSegm3D:
+            isObjInSlice = self.isObjInSlice(bbox)
+            if not isObjInSlice:
+                return False
+
+            # bbox has, no matter what projection, always the entire object    
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            x0, y0, x1, y1, z0, z1 = bbox
+            if depthAxes == 'z':
+                a0, a1, b0, b1 = x0, x1, y0, y1
+            elif depthAxes == 'y':
+                a0, a1, b0, b1 = x0, x1, z0, z1
+            elif depthAxes == 'x':
+                a0, a1, b0, b1 = y0, y1, z0, z1
+
+        else:
+            a0, a1, b0, b1 = bbox
+            
+        if viewRange is None:
+            viewRange = self.ax1ViewRange()
+            
+        # 
+        view_a0, view_a1 = viewRange[0]
+        view_b0, view_b1 = viewRange[1]
+        
+        return not (a1 < view_a0 or a0 > view_a1 or b1 < view_b0 or b0 > view_b1)

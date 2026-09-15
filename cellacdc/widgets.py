@@ -7169,7 +7169,21 @@ class MainPlotItem(pg.PlotItem):
         mask_obj = mask_rp[0]
         ymin, xmin, ymax, xmax = mask_obj.bbox
         return (xmin, xmax), (ymin, ymax)
-            
+    
+    def setCenter(self, center):
+        center_x, center_y = center
+        viewbox = self.getViewBox()
+        x_min, x_max = viewbox.viewRange()[0]
+        y_min, y_max = viewbox.viewRange()[1]
+
+        x_span = x_max - x_min
+        y_span = y_max - y_min
+
+        viewbox.setRange(
+            xRange=(int(center_x - x_span/2), int(center_x + x_span/2)),
+            yRange=(int(center_y - y_span/2), int(center_y + y_span/2))
+        )
+        
 class sliderWithSpinBox(QWidget):
     sigValueChange = Signal(object)
     valueChanged = Signal(object)
