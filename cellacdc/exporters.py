@@ -127,6 +127,15 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         
         # Remove padding
         img_rgba = skimage.io.imread(filepath)    
+        if img_rgba.shape[-1] == 3:
+            # JPEG are RGB --> convert to RGBA
+            img_rgba_new = np.zeros(
+                (*img_rgba.shape[:2], 4), dtype=img_rgba.dtype
+            )
+            img_rgba_new[:, :, :3] = img_rgba
+            img_rgba_new[:, :, 4] = 255
+            img_rgba = img_rgba_new
+            
         img_rgba = self.crop_from_mask(img_rgba)
         
         if self._crop_outer_padding:

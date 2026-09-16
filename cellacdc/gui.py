@@ -32869,6 +32869,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             action.setChecked(True)
             action.setDisabled(True)
         
+        try:
+            self.addScaleBarAction.setChecked(False)
+        except Exception as err:
+            pass
+
+        try:
+            self.addTimestampAction.setChecked(False)
+        except Exception as err:
+            pass
+        
         return True
     
     def setBottomLayoutHeight(self):
@@ -35025,10 +35035,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
     
+    def setOverlaySegmMasksRgba(self):
+        # Use RGBA for overlay segm masks to make sure they are transparent
+        isOverlaySegmLeftActive = self.isOverlaySegmMaskChecked(0)
+        if not isOverlaySegmLeftActive:
+            return
+
+        posData = self.data[self.pos_i]
+        alpha = self.imgGrad.labelsAlphaSlider.value()
+        lut = self.labelsLayerImg1.lut
+        labRgba = lut[self.currentLab2D]
+        labRgba[:, :, 3] = round(255*alpha)
+
+        self.labelsLayerImg1.setImage(labRgba)
+        
     @disableWindow
     def exportToImage(self, preferences):      
         filepath = preferences['filepath']
         self.logger.info(f'Saving image to "{filepath}"...')
+
+        self.setOverlaySegmMasksRgba()
         
         if filepath.endswith('.svg'):
             exporter = exporters.SVGExporter(self.ax1)
@@ -35037,11 +35063,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
-        
-        self.setDisabled(False)
+
+        self.setOverlaySegmMasks()
+
         self.exportMaskImage[:] = 0
         self.exportMaskImageItem.setImage(self.exportMaskImage)
-        prompts.exportToImageFinished(filepath, qparent=self)
+
+        QTimer.singleShot(300, partial(
+            prompts.exportToImageFinished, filepath, qparent=self
+        ))
     
     def exportToImageTriggered(self):
         proceed = self.exportToCheckAskOverlay()
