@@ -441,8 +441,12 @@ class normal_division_tracker:
         new_rp_mapper = {
             obj.label: obj for obj in updated_rp
             if (
-                selected_tracked_IDs is None
-                or obj.label in selected_tracked_IDs
+                (
+                    selected_tracked_IDs is None
+                    or obj.label in selected_tracked_IDs
+                )
+                and obj.label not in mothers
+                and obj.label not in daughters
             )
             if prev_rp_mapper.get(obj.label) is None
         }
