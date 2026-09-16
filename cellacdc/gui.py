@@ -31063,6 +31063,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return
 
     def setLookingGoodTitle(self):
+        self._titleIDsPopupHtmlByLink.clear()
+        self.titleIDsPopup.hide()
         htmlTxt = (
             f'<a href="cellacdc-fireworks" '
             f'style="color: {self.titleColor};">Looking good!</a>'
@@ -31188,11 +31190,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             f'{pretxt}: '
             f'{self._titleClickableIDs(trim_IDs, color, category_key)}'
         )
+        wrapped_IDs = self._wrapTitleIDs(IDs)
         txt_full = (
             f'{pretxt}:<br>'
-            f'{self._titleClickableIDs(
-                self._wrapTitleIDs(IDs), color, category_key
-            )}'
+            f'{self._titleClickableIDs(wrapped_IDs, color, category_key)}'
         )
 
         txt = f'<font color="{color}">{txt}</font>'
@@ -36543,7 +36544,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             # bbox has, no matter what projection, always the entire object    
             depthAxes = self.switchPlaneCombobox.depthAxes()
-            x0, y0, z0, x1, y1, z1 = bbox
+            z0, y0, x0, z1, y1, x1 = bbox
             if depthAxes == 'z':
                 a0, a1, b0, b1 = x0, x1, y0, y1
             elif depthAxes == 'y':
@@ -36552,13 +36553,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 a0, a1, b0, b1 = y0, y1, z0, z1
 
         else:
-            a0, b0, a1, b1 = bbox
+            y0, x0, y1, x1 = bbox
+            a0, a1, b0, b1 = x0, x1, y0, y1
             
         if viewRange is None:
             viewRange = self.ax1ViewRange()
             
         # 
-        view_a0, view_a1 = viewRange[0]
-        view_b0, view_b1 = viewRange[1]
+        view_a0, view_a1 = viewRange[0] # x
+        view_b0, view_b1 = viewRange[1] # y
         
         return not (a1 < view_a0 or a0 > view_a1 or b1 < view_b0 or b0 > view_b1)
