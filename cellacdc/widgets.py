@@ -7776,6 +7776,13 @@ class ParentImageItem(BaseImageItem):
         super().setLookupTable(lut)
         # if self.linkedImageItem is not None:
         #     self.linkedImageItem.setLookupTable(lut)
+    
+    def setLevels(self, levels, **kwargs):
+        super().setLevels(levels, **kwargs)
+        if self.linkedImageItem is None:
+            return
+        
+        self.linkedImageItem.setLevels(levels, **kwargs)
 
 class ChildImageItem(BaseImageItem):
     def __init__(self, *args, linkedScrollbar=None, **kwargs):
