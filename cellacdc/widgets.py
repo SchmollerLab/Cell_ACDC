@@ -268,6 +268,20 @@ class QLog(QPlainTextEdit):
         super().closeEvent(event)
         self.sigClose.emit()
 
+class ValidLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def setInvalidStyleSheet(self):
+        self._validStyleSheet = self.styleSheet()
+        self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
+    
+    def setValidStyleSheet(self):
+        if not hasattr(self, '_validStyleSheet'):
+            self._validStyleSheet = self.styleSheet()
+
+        self.setStyleSheet(self._validStyleSheet)
+
 class PushButton(QPushButton):
     def __init__(
             self, *args, icon=None, alignIconLeft=False, 
@@ -962,7 +976,7 @@ class CustomAnnotationScatterPlotItem(BaseScatterPlotItem):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
 
-class ElidingLineEdit(QLineEdit):    
+class ElidingLineEdit(ValidLineEdit):    
     def __init__(self, parent=None, minWidth=None):
         super().__init__(parent)
         self._text = ''
@@ -1024,16 +1038,6 @@ class ElidingLineEdit(QLineEdit):
         self._elide = True
         super().focusOutEvent(event)
         self.setText(self._text)
-
-class ValidLineEdit(QLineEdit):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-    
-    def setInvalidStyleSheet(self):
-        self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
-    
-    def setValidStyleSheet(self):
-        self.setStyleSheet('')
 
 class KeepIDsLineEdit(ValidLineEdit):
     sigIDsChanged = Signal(list)
@@ -1647,7 +1651,7 @@ class filePathControl(QFrame):
         if elide:
             self.le = ElidingLineEdit()
         else:
-            self.le = QLineEdit()
+            self.le = ValidLineEdit()
             
         self.browseButton = browseFileButton(
             openFolder=browseFolder, title=fileManagerTitle, 
@@ -1678,6 +1682,12 @@ class filePathControl(QFrame):
     def showEvent(self, a0: QShowEvent) -> None:
         self.le.setFixedHeight(self.browseButton.height())
         return super().showEvent(a0)
+
+    def setInvalid(self, invalid: bool):
+        if invalid:
+            self.le.setInvalidStyleSheet()
+        else:
+            self.le.setValidStyleSheet()
 
 class FolderPathControl(filePathControl):
     def __init__(self, **kwargs):
@@ -3111,6 +3121,9 @@ class FormLayout(QGridLayout):
                     self.addWidget(item, row, col, alignment=alignment)
             except TypeError:
                 self.addLayout(item, row, col)
+        
+        self.setColumnStretch(0, 0)
+        self.setColumnStretch(1, 1)
 
 def macShortcutToWindows(shortcut: str):
     if shortcut is None:
@@ -4059,6 +4072,7 @@ class selectStartStopFrames(QGroupBox):
 class formWidget(QWidget):
     sigApplyButtonClicked = Signal(object)
     sigComputeButtonClicked = Signal(object)
+    sigCogButtonClicked = Signal(object)
 
     def __init__(
             self, widget,
@@ -4072,16 +4086,20 @@ class formWidget(QWidget):
             addApplyButton=False,
             addComputeButton=False,
             addActivateCheckbox=False,
+            addCogButton=False,
             key='',
             infoTxt='',
             valueGetterName='value',
             toolTip='',
+            wrapInfoTxt=False,
+            labelLeftSuffix='',
             parent=None
         ):
         QWidget.__init__(self, parent)
         self.widget = widget
         self.key = key
         self.infoTxt = infoTxt
+        self.wrapInfoTxt = wrapInfoTxt
         self.widgetAlignment = widgetAlignment
         self.valueGetterName = valueGetterName
 
@@ -4100,8 +4118,9 @@ class formWidget(QWidget):
             font = QFont()
             font.setPixelSize(13)
 
+        self.labelTextLeft = labelTextLeft
         self.labelLeft = QClickableLabel(widget)
-        self.labelLeft.setText(labelTextLeft)
+        self.labelLeft.setText(f'{labelTextLeft}{labelLeftSuffix}')
         self.labelLeft.setFont(font)
         self.items.append(self.labelLeft)
 
@@ -4159,6 +4178,12 @@ class formWidget(QWidget):
             computeButton.clicked.connect(self.computeButtonClicked)
             self.items.append(computeButton)
         
+        if addCogButton:
+            cogButton = setPushButton(self)
+            cogButton.clicked.connect(self.cogButtonClicked)
+            self.cogButton = cogButton
+            self.items.append(cogButton)
+
         self.activateCheckbox = None
         if addActivateCheckbox:
             self.activateCheckbox = QCheckBox('Activate')
@@ -4193,9 +4218,12 @@ class formWidget(QWidget):
 
     def computeButtonClicked(self):
         self.sigComputeButtonClicked.emit(self)
+    
+    def cogButtonClicked(self):
+        self.sigCogButtonClicked.emit(self)
 
     def showInfo(self):
-        msg = myMessageBox()
+        msg = myMessageBox(wrapText=self.wrapInfoTxt)
         msg.setIcon()
         msg.setWindowTitle(f'{self.labelLeft.text()} info')
         msg.addText(self.infoTxt)

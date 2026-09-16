@@ -82,7 +82,6 @@ class bioFormatsWorker(QObject):
     )
     critical = Signal(object)
     sigFinishedReadingSampleImageData = Signal(object)
-    sigAskUseSymLink = Signal()
 
     def __init__(
             self, raw_src_path, rawFilenames, exp_dst_path,
@@ -1032,13 +1031,6 @@ class bioFormatsWorker(QObject):
                             shutil.copy(file, dst)
                         except Exception as e:
                             self.progress.emit(e)
-
-    def emitAskUseSymLink(self):
-        self.mutex.lock()
-        self.sigAskUseSymLink.emit()
-        self.waitCond.wait(self.mutex)
-        self.mutex.unlock()
-        return self.cancel
     
     @worker_exception_handler
     def run(self):
@@ -1067,12 +1059,6 @@ class bioFormatsWorker(QObject):
                         self.cancelled = True
                         break
                 
-                if p == 0:
-                    cancel = self.emitAskUseSymLink()
-                    if cancel:
-                        self.cancelled = True
-                        break
-                
                 self.numPos = self.SizeS
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
@@ -1090,12 +1076,6 @@ class bioFormatsWorker(QObject):
             elif self.rawDataStruct == 1:
                 if not self.overWriteMetadata:
                     cancel = self.readMetadata(raw_src_path, filename)
-                    if cancel:
-                        self.cancelled = True
-                        break
-                
-                if p == 0:
-                    cancel = self.emitAskUseSymLink()
                     if cancel:
                         self.cancelled = True
                         break
@@ -1129,11 +1109,6 @@ class bioFormatsWorker(QObject):
                         javabridge.kill_vm()
                     self.finished.emit()
                     return
-                
-            cancel = self.emitAskUseSymLink()
-            if cancel:
-                self.cancelled = True
-                return
             
             self.numPos = len(self.posNums)
             self.numPosDigits = len(str(self.numPos))
@@ -1545,11 +1520,32 @@ class createDataStructWin(QMainWindow):
 
     @exception_handler
     def main(self):
-        self.log('Asking how raw data is structured...')
-        rawDataStruct, abort = self.askRawDataStruct()
-        if abort:
+        self.log('Asking to setup conversion process...')
+        win = apps.DataStructureSetupDialogue()
+        win.exec()
+        if win.cancel:
             self.close()
             return
+        
+        rawDataStruct = win.selectedOptions['Raw data structure']
+        raw_src_path = win.selectedOptions['Source folder with raw files']
+        exp_dst_path = win.selectedOptions['Destination folder']
+        loadEntirePosIntoRam = win.selectedOptions[
+            'Load entire field of view in RAM at once'
+        ]
+        move_raw_microscopy_files = win.selectedOptions[
+            'Move raw microscopy files'
+        ]
+        useSymLink = win.selectedOptions['Use symbolic links']
+
+        overwrite = win.actionsPosFoldersExisting['overwrite']
+        add_files = win.actionsPosFoldersExisting['add_files']
+        create_new = win.actionsPosFoldersExisting['create_new']
+        start_pos_n = win.actionsPosFoldersExisting['start_pos_n']
+
+        rawFilenames = win.actionsFilesSourceFolder['files']
+        self.moveOtherFiles = win.actionsFilesSourceFolder['moveOtherFiles']
+        self.copyOtherFiles = win.actionsFilesSourceFolder['copyOtherFiles']
 
         self.rawDataStruct = rawDataStruct
 
@@ -1557,74 +1553,14 @@ class createDataStructWin(QMainWindow):
             self.instructManualStruct()
             self.close()
             return
-
-        self.log('Instructing to move raw data...')
-        proceed = self.instructMoveRawFiles()
-        if not proceed:
-            self.close()
-            return
-
-        self.log(
-            'Asking to select the folder that contains the microscopy files...'
-        )
-        self.getMostRecentPath()
-        raw_src_path = QFileDialog.getExistingDirectory(
-            self, 'Select folder containing the microscopy files', 
-            self.MostRecentPath
-        )
-        self.addToRecentPaths(raw_src_path)
-
-        if raw_src_path == '':
-            self.close()
-            return
         
         self.log(f'Selected folder: "{raw_src_path}"')
-        
-        self.log(
-            'Checking file format of loaded files...'
-        )
-        rawFilenames = self.checkFileFormat(raw_src_path)
-        if not rawFilenames:
-            self.close()
-            return
-        
-        self.log(
-            'Checking file names of loaded files...'
-        )
-        proceed, rawFilenames = self.checkFileNames(rawFilenames, raw_src_path)
-        if not proceed:
-            self.close()
-            return
 
         if rawDataStruct == 2:
             proceed = self.attemptSeparateMultiChannel(rawFilenames)
             if not proceed:
                 self.close()
                 return
-
-        self.log(
-            'Asking in which folder to save the images files...'
-        )
-        exp_dst_path = QFileDialog.getExistingDirectory(
-            self, 'Select the folder in which to save the images files',
-            raw_src_path
-        )
-        if not exp_dst_path:
-            self.close()
-            return
-        
-        out = self.askPosFoldersExisting(exp_dst_path)
-        if out is None:
-            self.close()
-            return
-
-        overwrite, add_files, create_new, start_pos_n = out
-        
-        self.log('Instructing to move raw data...')
-        loadEntirePosIntoRam = self.askHowToLoadData()
-        if loadEntirePosIntoRam is None:
-            self.close()
-            return
         
         if not loadEntirePosIntoRam:
             self._installLazyLoadModules()
@@ -1632,17 +1568,8 @@ class createDataStructWin(QMainWindow):
         self.loadEntirePosIntoRam = loadEntirePosIntoRam
 
         self.addToRecentPaths(exp_dst_path)
-
         self.addPbar()
-        
         self.initBioIO(raw_src_path, rawFilenames)
-        
-        move_raw_microscopy_files = False
-        if exp_dst_path == raw_src_path:
-            move_raw_microscopy_files, cancel = self.askMoveRawMicroscopyFiles()
-            if cancel:
-                self.close()
-                return
 
         self.cancelButton.setEnabled(False)
         
@@ -1661,6 +1588,7 @@ class createDataStructWin(QMainWindow):
             create_new=create_new,
             start_pos_n=start_pos_n,
         )
+        self.worker.useSymLink = useSymLink
         if self.rawDataStruct == 2:
             self.worker.basename = self.basename
             self.worker.SizeS = self.SizeS
@@ -1681,25 +1609,9 @@ class createDataStructWin(QMainWindow):
         self.worker.critical.connect(self.workerCritical)
         self.worker.criticalError.connect(self.criticalBioFormats)
         self.worker.confirmMetadata.connect(self.askConfirmMetadata)
-        self.worker.sigAskUseSymLink.connect(self.askUseSymLink)
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
-    
-    def askMoveRawMicroscopyFiles(self):
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(f"""
-            At the end of the conversion process, do you want that Cell-ACDC  
-            <b>moves the raw microscopy files</b> <br>
-            to a sub-folder called <code>raw_microscopy_files</code>?
-        """)
-        _, doNotMoveButton, moveButton = msg.warning(
-            self, 'Too many objects', txt,
-            buttonsTexts=(
-                'Cancel', 'No, do not move the files', 'Yes, move the files'        
-            )
-        )
-        return msg.clickedButton == moveButton, msg.cancel
     
     def _installLazyLoadModules(self):
         myutils.check_install_package(
@@ -1808,278 +1720,6 @@ class createDataStructWin(QMainWindow):
     def log(self, text):
         self.logWin.appendPlainText(text)
         self.logger.info(text)
-
-    def askRawDataStruct(self):
-        infoText =  html_utils.paragraph(
-            'Select how you have your <b>raw microscopy files arranged</b>'
-        )
-        win = apps.QDialogCombobox(
-            'Raw data structure',
-            [
-                'Single microscopy file with multiple positions',
-                'One or more microscopy files, one for each position',
-                'One or more microscopy files, one for each channel',
-                'NONE of the above'
-            ],
-            infoText, CbLabel='', parent=self
-        )
-        win.exec_()
-        if not win.cancel:
-            self.log(f'Selected files arrangement: "{win.selectedItemText}"')
-        return win.selectedItemIdx, win.cancel
-
-    def instructMoveRawFiles(self):
-        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-        tip_admon = html_utils.to_admonition(
-            'If you have a single gray-scale TIFF file, '
-            'placing into a folder called <code>Images</code> will be enough.',
-            admonition_type='tip',
-        )
-        txt = html_utils.paragraph(f"""
-            Put all of the raw microscopy files from the <b>same experiment</b>
-            into an <b>empty folder</b> before closing this dialogue.<br><br>
-
-            Note that there should be <b>no other files</b> in this folder.<br><br>
-            
-            Microscopy files are those files that are typically generated 
-            by the microscope, for example '.czi' (Zeiss), '.nd2' (Nikon), 
-            '.lif' (Leica), etc.<br><br>
-            {tip_admon}
-        """
-        )
-        msg.information(
-            self, 'Microscopy files location', txt, 
-            buttonsTexts=('Cancel', widgets.okPushButton('Done'))
-        )
-        if msg.cancel:
-            return False
-        else:
-            return True
-
-    def askHowToLoadData(self):
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(
-            """
-            Do you want to load the entire position into RAM at once?
-            <br><br>
-            <b>NOTE:</b> Loading the entire position into RAM is much faster,
-            but it requires more memory.<br>
-            Keep an eye on the ram usage and, if Cell-ACDC crashes or RAM is 
-            full, you can re-start<br>
-            the process and select "Load one frame at a time".
-            """
-        )
-        _, loadFrameButton, loadPosButton = msg.warning(
-            self, 'Loading data', txt, 
-            buttonsTexts=(
-                'Cancel', 
-                widgets.twoDPushButton('No, load one frame (2D) at a time'), 
-                widgets.FutureAllPushButton('Yes, load entire position at once')
-            )
-        )
-        if msg.cancel:
-            return None
-
-        return msg.clickedButton == loadPosButton
-    
-    def warnSelectedPathEmpty(self, raw_src_path):
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(
-            f"""
-            The selected folder (see below) is either <b>empty</b> 
-            or does not contain any files.<br><br>
-            Please select a folder that contains raw microscopy files.<br><br>
-            Thank you for your patience!
-            """
-        )
-        msg.warning(
-            self, 'Empty folder', txt, 
-            commands=(raw_src_path, ),
-            path_to_browse=raw_src_path
-        )
-    
-    def checkFileFormat(self, raw_src_path):
-        self.moveOtherFiles = False
-        self.copyOtherFiles = False
-        ls = natsorted(myutils.listdir(raw_src_path))
-        files = [
-            filename for filename in ls
-            if os.path.isfile(os.path.join(raw_src_path, filename))
-        ]
-        if not files:
-            self.warnSelectedPathEmpty(raw_src_path)
-            return []
-        all_ext = [
-            os.path.splitext(filename)[1] for filename in ls
-            if os.path.isfile(os.path.join(raw_src_path, filename))
-        ]
-        counter = Counter(all_ext)
-        unique_ext = list(counter.keys())
-        is_ext_unique = len(unique_ext) == 1
-        most_common_ext, _ = counter.most_common(1)[0]
-        if not is_ext_unique:
-            if not most_common_ext:
-                most_common_ext_msg = '<empty>'
-            else:
-                most_common_ext_msg = most_common_ext
-            
-            msg = widgets.myMessageBox(showCentered=False)
-            txt = html_utils.paragraph(f"""
-                The following folder
-
-                <br><br><code>{raw_src_path}</code><br><br>
-
-                contains files with different file extensions 
-                (extensions detected: {unique_ext})<br><br>
-                However, the most common extension is 
-                <b>{most_common_ext_msg}</b>,
-                do you want to proceed with
-                loading only files with extension <b>{most_common_ext_msg}</b>?
-                <br>
-            """)
-            _, yesButton, noButton = msg.warning(
-                self, 'Multiple extensions detected', txt, 
-                buttonsTexts=(
-                    'Cancel', 'Yes, load only most common', 
-                    'No, load all files'
-                )
-            )
-            if msg.cancel:
-                return []
-            if msg.clickedButton == yesButton:
-                files = [
-                    filename for filename in files
-                    if os.path.splitext(filename)[1] == most_common_ext
-                ]
-                otherExt = [
-                    ext for ext in unique_ext if ext != most_common_ext]
-                files = self.askActionWithOtherFiles(files, otherExt)
-            else:
-                return files
-
-        if self.rawDataStruct == 0 and len(files) > 1:
-            files = self.warnMultipleFiles(files)
-
-        return files
-
-    def checkFileNames(self, raw_filenames, raw_src_path):
-        allowed = (
-            '.ome.tif',
-        )
-        for file in raw_filenames:
-            if not acdc_regex.is_alphanumeric_filename(file, allowed=allowed):
-                msg = widgets.myMessageBox(wrapText=False)
-                txt = html_utils.paragraph(
-                    f"""
-                    The filename <code>{file}</code> contains <b>invalid 
-                    characters</b>.<br><br>
-                    Valid characters are letters, numbers, spaces, underscores 
-                    and dashes.<br><br>
-                    Please stop the process, <b>rename the file</b>, 
-                    and try again, or choose one of the options below.<br><br>
-                    Thank you for your patience!
-                    """
-                )
-                renameWithUnderscoresButton = widgets.editPushButton(
-                    'Rename file (replace invalid characters with "_")'
-                )
-                renameWithDashesButton = widgets.editPushButton(
-                    'Rename file (replace invalid characters with "-")'
-                )
-                msg.warning(
-                    self, 'Invalid filename', txt, 
-                    path_to_browse=raw_src_path,
-                    buttonsTexts=(
-                        'Let me rename files myself', 
-                        renameWithUnderscoresButton, 
-                        renameWithDashesButton
-                    )
-                )
-                if msg.clickedButton == renameWithUnderscoresButton:
-                    self.log(
-                        'Renaming files to replace invalid characters with "_"...'
-                    )
-                    renamed_filenames = io.rename_files_replace_invalid_chars(
-                        raw_filenames, raw_src_path, replacement_char='_'
-                    )
-                    return True, renamed_filenames
-                elif msg.clickedButton == renameWithDashesButton:
-                    self.log(
-                        'Renaming files to replace invalid characters with "-"...'
-                    )
-                    renamed_filenames = io.rename_files_replace_invalid_chars(
-                        raw_filenames, raw_src_path, replacement_char='-'
-                    )
-                    return True, renamed_filenames
-                else:
-                    return False, []
-
-        return True, raw_filenames
-        
-    def askActionWithOtherFiles(self, files, otherExt):
-        self.moveOtherFiles = False
-        msg = QMessageBox(self)
-        msg.setWindowTitle('Action with the other files?')
-        txt = (f"""
-        <p style="font-size:11px">
-            What should I do with the other files (ext: {otherExt})
-            in the folder?<br><br>
-            <i>NOTE: Only the files with the same basename and position number
-            as the raw files will be moved or copied.</i>
-        </p>
-
-        """)
-        msg.setIcon(msg.Question)
-        msg.setText(txt)
-        leaveButton = QPushButton(
-                'Leave them where they are'
-        )
-        moveButton = QPushButton(
-                'Attempt MOVING to their Position folder'
-        )
-        copyButton = QPushButton(
-                'Attempt COPYING to their Position folder'
-        )
-        cancelButton = QPushButton(
-                'Cancel'
-        )
-        msg.addButton(leaveButton, msg.YesRole)
-        msg.addButton(moveButton, msg.NoRole)
-        msg.addButton(copyButton, msg.RejectRole)
-        msg.addButton(cancelButton, msg.ApplyRole)
-        msg.exec_()
-        if msg.clickedButton() == leaveButton:
-            self.moveOtherFiles = False
-            self.copyOtherFiles = False
-            return files
-        elif msg.clickedButton() == moveButton:
-            self.moveOtherFiles = True
-            self.copyOtherFiles = False
-            return files
-        elif msg.clickedButton() == copyButton:
-            self.moveOtherFiles = False
-            self.copyOtherFiles = True
-            return files
-        elif msg.clickedButton() == cancelButton:
-            return []
-
-
-    def warnMultipleFiles(self, files):
-        win = apps.QDialogCombobox(
-            'Multiple microscopy files detected!', files,
-             '<p style="font-size:13px">'
-             'You selected "Single microscopy file", '
-             'but the <b>folder contains multiple files</b>.<br>'
-             '</p>',
-             CbLabel='Select which file to load: ', parent=self,
-             iconPixmap=QtGui.QPixmap(':warning.svg')
-        )
-        win.exec_()
-        if win.cancel:
-            return []
-        else:
-            files = [win.selectedItemText]
-            return files
 
     def attemptSeparateMultiChannel(self, rawFilenames):
         self.chNames = set()
@@ -2193,77 +1833,6 @@ class createDataStructWin(QMainWindow):
         self.metadataDialogIsOpen = False
         self.worker.metadataWin = self.metadataWin
         self.waitCond.wakeAll()
-
-    def askUseSymLink(self):
-        msg = widgets.myMessageBox(wrapText=False)
-        important_text = ("""
-            If you choose to use symbolic links, the source data file(s) cannot 
-            be moved from their current location, otherwise the link will 
-            be broken.
-        """)
-        important_admon = html_utils.to_admonition(
-            important_text, admonition_type='important'
-        )
-        txt = html_utils.paragraph(f"""
-            Cell-ACDC can either copy the image data to TIFF or H5 files, or use 
-            symbolic links to the source image data.<br><br>
-            
-            A symbolic link is a special type of file that acts as a pointer or alias, 
-            referring to another file by its path rather than its content.<br><br>
-            
-            With symbolic links, <b>no image data will be copied</b> and only files 
-            you will generate later (e.g., segmentation data)<br>
-            will be created in the respective Position folders.<br>
-            {important_admon}<br>
-            What do you want to do?
-        """)
-        _, copyButton, useSymLinkButton = msg.question(
-            self, 'Use symbolic links?', txt, 
-            buttonsTexts=(
-                'Cancel', 
-                widgets.copyPushButton('Copy image data into Position folders'),
-                widgets.SegmentPushButton('Use symbolic links')
-            )
-        )
-        self.worker.useSymLink = msg.clickedButton == useSymLinkButton
-        self.worker.cancel = msg.cancel
-        self.waitCond.wakeAll()
-    
-    def askPosFoldersExisting(self, exp_dst_path):
-        pos_foldernames = myutils.get_pos_foldernames(exp_dst_path)
-        if not pos_foldernames:
-            return False, False, False, 1
-        
-        msg = widgets.myMessageBox(wrapText=False)
-        txt = html_utils.paragraph(
-            'The selected destination folder <b>already contains Position folders</b>.<br><br>'
-            'Do you want to <b>overwrite</b> all of its content, '
-            '<b>add files</b> to the existing Position folders,<br>'
-            'or <b>create new</b> Position folders?'
-        )
-        _, overwriteButton, addFilesButton, createNewButton = msg.warning(
-           self, 'Warning: existing Position folders detected!', txt,
-           buttonsTexts=(
-               'Cancel', 
-               'Overwrite', 
-               'Add image files to existing Positions', 
-               widgets.newFilePushButton('Create new Position folders'),
-            ),
-           path_to_browse=exp_dst_path
-        )
-        if msg.cancel:
-            return 
-        
-        overwrite = overwriteButton == msg.clickedButton
-        add_files = addFilesButton == msg.clickedButton
-        create_new = createNewButton == msg.clickedButton
-        
-        start_pos_n = 1
-        if create_new:
-            pos_ns = [int(pos.split('_')[-1]) for pos in pos_foldernames]
-            start_pos_n = max(pos_ns) + 1
-        
-        return overwrite, add_files, create_new, start_pos_n
 
     def closeEvent(self, event):
         self.logger.info('Closing data structure logger...')
