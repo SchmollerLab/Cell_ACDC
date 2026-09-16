@@ -13620,6 +13620,8 @@ class ButtonSearchWidget(QWidget):
             
     def _get_curr_IDs(self):
         guiWin = self.guiWin
+        if guiWin is None or not getattr(guiWin, 'isDataLoaded', False):
+            return ()
         posData = guiWin.data[guiWin.pos_i]
         IDs = posData.IDs
         return IDs

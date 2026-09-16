@@ -36350,6 +36350,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.logger.warning(
                 'Data not loaded yet. Key pressing events are not connected.'
             )
+            return
         self.findID(ID=ID)
         
     def focusOnSearch(self, dummy=None, blinking=False):
@@ -36359,14 +36360,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             blinker.start()
 
     def isObjVisibleViewRange(self, bbox, viewRange=None):
-        if self.isSegm3D:
+        if self.isSegm3D and len(bbox) == 6:
             isObjInCurrSlice = self.isObjInCurrSlice(bbox)
             if not isObjInCurrSlice:
                 return False
 
             # bbox has, no matter what projection, always the entire object    
             depthAxes = self.switchPlaneCombobox.depthAxes()
-            x0, y0, x1, y1, z0, z1 = bbox
+            x0, y0, z0, x1, y1, z1 = bbox
             if depthAxes == 'z':
                 a0, a1, b0, b1 = x0, x1, y0, y1
             elif depthAxes == 'y':
@@ -36375,7 +36376,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 a0, a1, b0, b1 = y0, y1, z0, z1
 
         else:
-            a0, a1, b0, b1 = bbox
+            a0, b0, a1, b1 = bbox
             
         if viewRange is None:
             viewRange = self.ax1ViewRange()
