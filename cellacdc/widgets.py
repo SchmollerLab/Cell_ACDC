@@ -28,6 +28,7 @@ from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 import matplotlib.pyplot as plt
 import matplotlib
 from matplotlib.backends.backend_agg import FigureCanvasAgg
+import natsort
 
 from qtpy.QtCore import (
     Signal, QTimer, Qt, QPoint, QUrl, Property,
@@ -7181,7 +7182,8 @@ class MainPlotItem(pg.PlotItem):
 
         viewbox.setRange(
             xRange=(int(center_x - x_span/2), int(center_x + x_span/2)),
-            yRange=(int(center_y - y_span/2), int(center_y + y_span/2))
+            yRange=(int(center_y - y_span/2), int(center_y + y_span/2)),
+            padding=0
         )
         
 class sliderWithSpinBox(QWidget):
@@ -13371,7 +13373,11 @@ class ButtonSearchWidget(QWidget):
     def _build_source_model(self):
         model = QStandardItemModel()
         items_by_name = {}
-        for search_name, record in self._search_records.items():
+        records = natsort.natsorted(
+            self._search_records.items(),
+            key=lambda item: item[1]['display'],
+        )
+        for search_name, record in records:
             item = QStandardItem(record['display'])
             item.setData(
                 record.get('tooltip', ''),
@@ -13457,7 +13463,10 @@ class ButtonSearchWidget(QWidget):
         item.setData('search_id', self.ACTION_ROLE)
         model.appendRow(item)
 
-        for ID in current_IDs:
+        sorted_IDs = natsort.natsorted(
+            current_IDs
+        )
+        for ID in sorted_IDs:
             item = QStandardItem(f'ID {ID}')
             item.setData(str(ID), ButtonSearchCompleter.SEARCH_NAME_ROLE)
             item.setData('search_id', self.ACTION_ROLE)
