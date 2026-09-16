@@ -3155,7 +3155,7 @@ class loadData:
             temp_folder, unsaved_acdc_df_filename
         )
         
-    def buildPaths(self):
+    def buildPaths(self, segm_endname='segm.npz'):
         if self.basename.endswith('_'):
             basename = self.basename
         else:
@@ -3166,7 +3166,7 @@ class loadData:
         self.align_npz_path = f'{base_path}{self.user_ch_name}_aligned.npz'
         self.align_old_path = f'{base_path}phc_aligned.npy'
         self.align_shifts_path = f'{base_path}align_shift.npy'
-        self.segm_npz_path = f'{base_path}segm.npz'
+        self.segm_npz_path = f'{base_path}{segm_endname}'
         self.last_tracked_i_path = f'{base_path}last_tracked_i.txt'
         self.acdc_output_csv_path = f'{base_path}acdc_output.csv'
         self.segmInfo_df_csv_path = f'{base_path}segmInfo.csv'
@@ -3177,7 +3177,8 @@ class loadData:
         self.metadata_csv_path = f'{base_path}metadata.csv'
         self.mot_events_path = f'{base_path}mot_events'
         self.mot_metrics_csv_path = f'{base_path}mot_metrics'
-        self.raw_segm_npz_path = f'{base_path}segm_raw.npz'
+        segm_raw_endname = segm_endname.replace('.npz', '_raw.npz')
+        self.raw_segm_npz_path = f'{base_path}{segm_raw_endname}'
         self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
         self.segm_hyperparams_ini_path = f'{base_path}segm_hyperparams.ini'
@@ -3189,7 +3190,9 @@ class loadData:
         self.sam_embeddings_path =(
             f'{base_path}{self.user_ch_name}_sam_embeddings.pt'
         )
-        self.tracked_lost_centroids_json_path = f'{base_path}tracked_lost_centroids.json'
+        self.tracked_lost_centroids_json_path = (
+            f'{base_path}tracked_lost_centroids.json'
+        )
         self.acdc_output_auto_csv_path = f'{base_path}acdc_output_auto.csv'
     
     def get_btrack_export_path(self):
