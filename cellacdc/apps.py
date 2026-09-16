@@ -21206,7 +21206,7 @@ as a single file containing multiple positions. If fields of view were acquired 
         )
         entriesLayout.addFormWidget(self.howRawDataStructFormWidget, row=row)
         self.howRawDataStructCombobox.currentTextChanged.connect(
-            howRawDataStructChanged
+            self.howRawDataStructChanged
         )
 
         row += 1
