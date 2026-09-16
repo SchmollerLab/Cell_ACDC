@@ -1044,11 +1044,10 @@ class bioFormatsWorker(QObject):
             
         self.cancelled = False
         self.isCriticalError = False
-        self.useSymLink = False
         for p, filename in enumerate(self.rawFilenames):
             # Move files to raw_microscopy_files folder
             raw_src_path = self.move_to_raw_microscopy_files_folder(
-                self.raw_src_path, filename    
+                self.raw_src_path, exp_dst_path, filename    
             )
 
             pos_n = p + self.start_pos_n
@@ -1097,7 +1096,7 @@ class bioFormatsWorker(QObject):
         if self.rawDataStruct == 2:
             for filename in self.rawFilenames:
                 raw_src_path = self.move_to_raw_microscopy_files_folder(
-                    self.raw_src_path, filename    
+                    self.raw_src_path, exp_dst_path, filename    
                 )
 
             filename = self.rawFilenames[0]
@@ -1127,24 +1126,25 @@ class bioFormatsWorker(QObject):
             javabridge.kill_vm()
         self.finished.emit()
     
-    def move_to_raw_microscopy_files_folder(self, raw_src_path, filename):
+    def move_to_raw_microscopy_files_folder(
+            self, raw_src_path, dst_folder_path, filename
+        ):
         # Move files to raw_microscopy_files folder
-        foldername = os.path.basename(raw_src_path)
-        
         if self.cancelled:
-            return raw_src_path
-        
-        if foldername == 'raw_microscopy_files':
             return raw_src_path
         
         if not self.move_raw_microscopy_files:
             return raw_src_path
         
-        rawFilePath = os.path.join(self.raw_src_path, filename)
-        raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
+        foldername = os.path.basename(raw_src_path)
+        if foldername == 'raw_microscopy_files':
+            return raw_src_path
+        
+        rawFilePath = os.path.join(raw_src_path, filename)
+        raw_dst_path = os.path.join(dst_folder_path, 'raw_microscopy_files')
         try:
-            io.move_raw_microscopy_file(rawFilePath, raw_path)
-            return raw_path
+            io.move_raw_microscopy_file(rawFilePath, raw_dst_path)
+            return raw_dst_path
         except PermissionError as e:
             self.progress.emit(e)
             return raw_src_path
@@ -1521,8 +1521,8 @@ class createDataStructWin(QMainWindow):
     @exception_handler
     def main(self):
         self.log('Asking to setup conversion process...')
-        win = apps.DataStructureSetupDialogue()
-        win.exec()
+        win = apps.DataStructureSetupDialogue(logger_func=self.log)
+        win.exec_()
         if win.cancel:
             self.close()
             return

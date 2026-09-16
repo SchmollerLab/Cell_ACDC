@@ -21142,9 +21142,10 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.close()
     
 class DataStructureSetupDialogue(QBaseDialog):
-    def __init__(self, parent=None):
+    def __init__(self, logger_func=print, parent=None):
         super().__init__(parent)
         
+        self.logger_func = logger_func
         self.cancel = True
         self.selectedOptions = None
         self.actionsPosFoldersExisting = {
@@ -21204,6 +21205,9 @@ as a single file containing multiple positions. If fields of view were acquired 
             labelLeftSuffix=': '
         )
         entriesLayout.addFormWidget(self.howRawDataStructFormWidget, row=row)
+        self.howRawDataStructCombobox.currentTextChanged.connect(
+            howRawDataStructChanged
+        )
 
         row += 1
         self.sourceFolderPathControl = widgets.FolderPathControl()
@@ -21326,7 +21330,7 @@ will be created in the respective Position folders.<br>
 
         infoText = html_utils.paragraph(f"""
 Choose whether to move raw microscopy files to a <code>raw_microscopy_files</code> sub-folder or not.<br><br>
-If you activate this options, at the end of the conversion process, Cell-ACDC will automatically move the raw microscopy files<br>
+If you activate this option, at the end of the conversion process, Cell-ACDC will automatically move the raw microscopy files<br>
 into a folder called <code>raw_microscopy_files</code> inside the destination folder.
 """)
         
@@ -21354,7 +21358,24 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         
         self.setLayout(mainLayout)
     
+    def howRawDataStructChanged(self, *args):
+        srcFolderPath = self.sourceFolderPathControl.path()
+        if not srcFolderPath:
+            return
+            
+        self.srcFolderPathSelected(srcFolderPath)
+
     def srcFolderPathSelected(self, srcFolderPath):
+        self.actionsFilesSourceFolder = {
+            'files': [],
+            'moveOtherFiles': False,
+            'copyOtherFiles': False,
+        }
+        if not os.path.isdir(srcFolderPath):
+            self.sourceFolderPathControl.setInvalid(True)
+            self.warnSourceFolderNotSetupCorrectly()
+            return
+        
         ls = natsorted(myutils.listdir(srcFolderPath))
         files = [
             filename for filename in ls
@@ -21441,7 +21462,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
                 return []
             
             if msg.clickedButton == renameWithUnderscoresButton:
-                self.log(
+                self.logger_func(
                     'Renaming files to replace invalid characters with "_"...'
                 )
                 renamed_filenames = io.rename_files_replace_invalid_chars(
@@ -21449,7 +21470,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
                 )
                 return renamed_filenames
             elif msg.clickedButton == renameWithDashesButton:
-                self.log(
+                self.logger_func(
                     'Renaming files to replace invalid characters with "-"...'
                 )
                 renamed_filenames = io.rename_files_replace_invalid_chars(
@@ -21643,7 +21664,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         """)
 
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Multiple extensions detected', txt)
+        msg.warning(self, 'Invalid source folder', txt)
     
     def warnDstFolderPathNotSelected(self):
         txt = html_utils.paragraph(f"""
@@ -21653,16 +21674,17 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         """)
 
         msg = widgets.myMessageBox(wrapText=False)
-        msg.warning(self, 'Multiple extensions detected', txt)
+        msg.warning(self, 'Invalid destination folder', txt)
 
     def ok_cb(self):
-        if not self.actionsFilesSourceFolder['files']:
-            self.warnSourceFolderNotSetupCorrectly()
-            return
-        
-        if not self.dstFolderPathFormWidget.widget.path():
-            self.warnDstFolderPathNotSelected()
-            return
+        if self.howRawDataStructFormWidget.widget.currentIndex() != 3:
+            if not self.actionsFilesSourceFolder['files']:
+                self.warnSourceFolderNotSetupCorrectly()
+                return
+            
+            if not self.dstFolderPathFormWidget.widget.path():
+                self.warnDstFolderPathNotSelected()
+                return
         
         self.cancel = False
         self.selectedOptions = {

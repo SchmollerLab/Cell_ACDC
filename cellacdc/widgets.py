@@ -273,7 +273,9 @@ class ValidLineEdit(QLineEdit):
         super().__init__(parent)
 
     def setInvalidStyleSheet(self):
-        self._validStyleSheet = self.styleSheet()
+        if not hasattr(self, '_validStyleSheet'):
+            self._validStyleSheet = self.styleSheet()
+            
         self.setStyleSheet(LINEEDIT_INVALID_ENTRY_STYLESHEET)
     
     def setValidStyleSheet(self):
