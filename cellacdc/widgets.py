@@ -13218,7 +13218,11 @@ class ButtonSearchWidget(QWidget):
 
         self.model, self._items_by_name = self._build_source_model()
         self.proxy_model = self._build_proxy_model(self.model)
-        self._search_id_item = None
+        self._controls_model = self.model
+        self._controls_proxy_model = self.proxy_model
+        self._IDs_model = None
+        self._IDs_proxy_model = None
+        self._IDs_in_model = None
 
         # Search field
         self.search_input = QLineEdit()
@@ -13403,6 +13407,8 @@ class ButtonSearchWidget(QWidget):
         """Rebuild source and proxy models from explicit search records."""
         self.model, self._items_by_name = self._build_source_model()
         self.proxy_model = self._build_proxy_model(self.model)
+        self._controls_model = self.model
+        self._controls_proxy_model = self.proxy_model
         self.popup.setModel(self.proxy_model)
         self.proxy_model.setFilterText(self.search_input.text())
 
@@ -13414,7 +13420,7 @@ class ButtonSearchWidget(QWidget):
     def on_search_text_changed(self, text):
         """Filter the model and update the popup."""
         query = text.strip()
-        self._update_search_id_item(query)
+        self._update_search_models(query)
         self.proxy_model.setFilterText(query)
         if not query or self.proxy_model.rowCount() == 0:
             self.popup.hide()
@@ -13423,21 +13429,44 @@ class ButtonSearchWidget(QWidget):
         self.popup.setCurrentIndex(self.proxy_model.index(0, 0))
         self.show_popup()
 
-    def _update_search_id_item(self, query):
-        if self._search_id_item is not None:
-            self.model.removeRow(self._search_id_item.row())
-            self._search_id_item = None
-
+    def _update_search_models(self, query):
         if not query.isascii() or not query.isdecimal():
+            if self.model is not self._controls_model:
+                self.model = self._controls_model
+                self.proxy_model = self._controls_proxy_model
+                self.popup.setModel(self.proxy_model)
             return
 
-        item = QStandardItem(f'Search for ID {query}')
+        current_IDs = tuple(self._get_curr_IDs())
+        if current_IDs != self._IDs_in_model:
+            self._rebuild_IDs_model(current_IDs)
+
+        item = self._IDs_model.item(0)
+        item.setText(f'Search for ID {query}')
         item.setData(query, ButtonSearchCompleter.SEARCH_NAME_ROLE)
+        item.setData(int(query), self.ACTION_VALUE_ROLE)
+
+        self.model = self._IDs_model
+        self.proxy_model = self._IDs_proxy_model
+        self.popup.setModel(self.proxy_model)
+
+    def _rebuild_IDs_model(self, current_IDs):
+        model = QStandardItemModel()
+        item = QStandardItem()
         item.setData(True, ButtonSearchCompleter.PRIORITY_ROLE)
         item.setData('search_id', self.ACTION_ROLE)
-        item.setData(int(query), self.ACTION_VALUE_ROLE)
-        self.model.insertRow(0, item)
-        self._search_id_item = item
+        model.appendRow(item)
+
+        for ID in current_IDs:
+            item = QStandardItem(f'ID {ID}')
+            item.setData(str(ID), ButtonSearchCompleter.SEARCH_NAME_ROLE)
+            item.setData('search_id', self.ACTION_ROLE)
+            item.setData(int(ID), self.ACTION_VALUE_ROLE)
+            model.appendRow(item)
+
+        self._IDs_model = model
+        self._IDs_proxy_model = self._build_proxy_model(model)
+        self._IDs_in_model = current_IDs
 
     def show_popup(self):
         """Position and show the popup below the search field."""
@@ -13587,4 +13616,11 @@ class ButtonSearchWidget(QWidget):
             self.search_input.clear()
 
             self.sigTriggerBlink.emit(button_id)
+            
+            
+    def _get_curr_IDs(self):
+        guiWin = self.guiWin
+        posData = guiWin.data[guiWin.pos_i]
+        IDs = posData.IDs
+        return IDs
             
