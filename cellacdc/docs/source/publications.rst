@@ -24,6 +24,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Ohsawa, S., et al. <i>Protein-driven colloid-osmotic pressure controls nuclear size, organization, and function</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.09.03.749057">10.64898/2026.09.03.749057</a>.</li><br>
+
       <li>Gao, X., et al. <i>The proportional scaling of mRNA and ribosome concentrations controls eukaryotic cell growth</i>. <b>Nat. Cell Biol.</b> (2026) DOI: <a href="https://doi.org/10.1038/s41556-026-02045-0">10.1038/s41556-026-02045-0</a>.</li><br>
 
       <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in Caenorhabditis elegans by maintaining functional germline morphology</i>. <b>Development</b> (2026) DOI: <a href="https://doi.org/10.1242/dev.205442">10.1242/dev.205442</a>.</li><br>
