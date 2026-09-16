@@ -3,6 +3,7 @@ import sys
 import os
 import shutil
 import re
+import textwrap
 import traceback
 import time
 from copy import deepcopy
@@ -42,7 +43,7 @@ from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from qtpy.QtCore import (
-    Qt, QPoint, QTextStream, QSize, QRect, QRectF,
+    Qt, QPoint, QPointF, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
     QThread, QMutex, QWaitCondition, QSettings, PYQT6,
 )
@@ -272,6 +273,19 @@ class RightClickMenuFilter(QObject):
                 return True  # swallow the event — don't let it fall through
                              # to the button's normal press handling
         return False  # everything else: pass through untouched
+
+class TitleIDsPopupEventFilter(QObject):
+    def __init__(self, enter_callback, leave_callback, parent=None):
+        super().__init__(parent)
+        self.enter_callback = enter_callback
+        self.leave_callback = leave_callback
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Enter:
+            self.enter_callback()
+        elif event.type() == QEvent.Leave:
+            self.leave_callback()
+        return False
       
 class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
              gui_combine.CombineGuiElements, 
@@ -4898,6 +4912,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.titleLabel = pg.LabelItem(
             justify='center', color=self.titleColor, size='14pt'
         )
+        self.titleLabel.item.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.titleLabel.item.linkActivated.connect(
+            self.titleLabelIDLinkActivated
+        )
+        self.titleLabel.item.linkHovered.connect(self.titleLabelIDLinkHovered)
+        self.titleIDsPopup = QLabel(flags=Qt.Tool | Qt.FramelessWindowHint)
+        self.titleIDsPopup.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.titleIDsPopup.linkActivated.connect(
+            self.titleLabelIDLinkActivated
+        )
+        self.titleIDsPopup.setStyleSheet(
+            'QLabel { background-color: palette(window); '
+            'border: 1px solid palette(mid); padding: 6px; }'
+        )
+        self.titleIDsPopupFilter = TitleIDsPopupEventFilter(
+            self._keepTitleIDsPopupOpen,
+            self._scheduleTitleIDsPopupHide,
+            parent=self,
+        )
+        self.titleIDsPopup.installEventFilter(self.titleIDsPopupFilter)
+        self.titleIDsPopupHideTimer = QTimer(self)
+        self.titleIDsPopupHideTimer.setSingleShot(True)
+        self.titleIDsPopupHideTimer.timeout.connect(self.titleIDsPopup.hide)
+        self._titleIDsPopupHtmlByLink = {}
+        self.fireworksOverlay = widgets.FireworksOverlay(self)
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)        
 
     def gui_createTextAnnotColors(self, r, g, b, custom=False):
@@ -10187,6 +10226,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         for ax in (self.ax1, self.ax2):
             self.updateLostTrackedContoursImage(ax=ax, tracked_lost_IDs=[acceptedLostID])
+            
+        is_obj_visible = self.isObjVisibleViewRange(obj.bbox)
+        if not is_obj_visible:
+            centroid = prev_rp.get_centroid(obj.label)
+            yc, xc = self.getObjCentroid(centroid)
+            pos = (int(xc), int(yc))
+            # set center of view to the lost object's position
+            self.ax1.setCenter(pos)
     
     def askGoToFrameFoundID(self, searchedID, frame_i_found):
         msg = widgets.myMessageBox(wrapText=False)
@@ -31000,7 +31047,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.new_IDs = []
             posData.old_IDs = []
             # posData.multiContIDs = set()
-            self.titleLabel.setText('Looking good!', color=self.titleColor)
+            self.setLookingGoodTitle()
             return []
         
         # elif self.modeComboBox.currentText() == 'Viewer':
@@ -31014,7 +31061,118 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs
         )
         return
+
+    def setLookingGoodTitle(self):
+        htmlTxt = (
+            f'<a href="cellacdc-fireworks" '
+            f'style="color: {self.titleColor};">Looking good!</a>'
+        )
+        self.titleLabel.setText(htmlTxt)
     
+
+    def titleLabelIDLinkActivated(self, link):
+        """ 
+        Handle clicks on title label ID links.
+        """
+        if link == 'cellacdc-fireworks':
+            self.fireworksOverlay.start()
+            return
+        if link.startswith('cellacdc-category:'):
+            self._showTitleIDsPopup(link)
+            return
+        prefix = 'cellacdc-id:'
+        if not link.startswith(prefix):
+            return
+        self.titleIDsPopup.hide()
+        ID_text = link[len(prefix):].split(':', 1)[0]
+        self.findID(ID=int(ID_text))
+
+    def titleLabelIDLinkHovered(self, link):
+        if not link:
+            self._scheduleTitleIDsPopupHide()
+            return
+        self._showTitleIDsPopup(link)
+
+    def _showTitleIDsPopup(self, link):
+        popup_html = self._titleIDsPopupHtmlByLink.get(link)
+        if popup_html is None:
+            return
+        self.titleIDsPopupHideTimer.stop()
+        self.titleIDsPopup.setText(popup_html)
+        self.titleIDsPopup.adjustSize()
+        self.titleIDsPopup.move(QCursor.pos() + QPoint(12, 12))
+        self.titleIDsPopup.show()
+
+    def _keepTitleIDsPopupOpen(self):
+        self.titleIDsPopupHideTimer.stop()
+
+    def _scheduleTitleIDsPopupHide(self):
+        self.titleIDsPopupHideTimer.start(200)
+
+    def _titleClickableIDs(self, IDs, color, category_key):
+        """Generate clickable HTML links for title IDs. 
+        Handles both IDs and "..."
+
+        Parameters
+        ----------
+        IDs : list of int
+            List of IDs to generate clickable links for.
+        color : str
+            Color to use for the HTML links.
+        category_key : int
+            Key representing the category for the IDs.
+
+        Returns
+        -------
+        str
+            HTML string containing clickable links for the IDs.
+        """
+        IDs_text = str(IDs)
+        IDs_html = re.sub(
+            r'(?<![\w.])-?\d+',
+            lambda match: (
+                f'<a href="cellacdc-id:{match.group(0)}:{category_key}" '
+                f'style="color: {color};">{match.group(0)}</a>'
+            ),
+            IDs_text,
+        )
+        category_link = f'cellacdc-category:{category_key}'
+        return IDs_html.replace(
+            '...',
+            f'<a href="{category_link}" style="color: {color};">...</a>',
+        )
+
+    def _wrapTitleIDs(self, IDs, width=60):
+        "Wrapping for tooltip."
+        return '<br>'.join(textwrap.wrap(
+            str(IDs), width=width, break_long_words=False,
+            break_on_hyphens=False,
+        ))
+
+    def _normalizeTitleIDs(self, IDs):
+        """Normalize a list of title IDs, converting numpy integers and 
+        formatted strings to standard integers or strings.
+
+        Parameters
+        ----------
+        IDs : list
+            List of title IDs to normalize.
+
+        Returns
+        -------
+        list
+            List of normalized title IDs.
+        """
+        normalized_IDs = []
+        for ID in IDs:
+            if isinstance(ID, np.integer):
+                normalized_IDs.append(int(ID))
+                continue
+            ID_text = re.sub(
+                r'np\.(?:u?int\d*)\((-?\d+)\)', r'\1', str(ID)
+            )
+            normalized_IDs.append(ID_text if isinstance(ID, str) else int(ID_text))
+        return normalized_IDs
 
     def setTitleFormatter(self, htmlTxt_li, htmlTxtFull_li, pretxt, color, IDs):
         if not IDs:
@@ -31023,12 +31181,32 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isinstance(IDs, set):
             IDs = list(IDs)
 
-        trim_IDs = myutils.get_trimmed_list(IDs)
-        txt = f'{pretxt}: {trim_IDs}'
-        txt_full = f'{pretxt}:<br>{IDs}'
+        IDs = self._normalizeTitleIDs(IDs)
+        category_key = len(htmlTxtFull_li)
+        trim_IDs = myutils.get_trimmed_list(IDs, max_num_digits=20)
+        txt = (
+            f'{pretxt}: '
+            f'{self._titleClickableIDs(trim_IDs, color, category_key)}'
+        )
+        txt_full = (
+            f'{pretxt}:<br>'
+            f'{self._titleClickableIDs(
+                self._wrapTitleIDs(IDs), color, category_key
+            )}'
+        )
 
         txt = f'<font color="{color}">{txt}</font>'
         txt_full = f'<font color="{color}">{txt_full}</font>'
+
+        # Generate and store HTML links for the title IDs. This is used for
+        # displaying the tooltip
+        link_pattern = rf'cellacdc-id:-?\d+:{category_key}'
+        for link in re.findall(link_pattern, txt):
+            self._titleIDsPopupHtmlByLink[link] = txt_full
+        for link in re.findall(link_pattern, txt_full):
+            self._titleIDsPopupHtmlByLink[link] = txt_full
+        category_link = f'cellacdc-category:{category_key}'
+        self._titleIDsPopupHtmlByLink[category_link] = txt_full
 
         htmlTxt_li.append(txt)
         htmlTxtFull_li.append(txt_full)
@@ -31039,6 +31217,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, 
             tracked_lost_IDs=None
         ):
+        self._titleIDsPopupHtmlByLink.clear()
+        self.titleIDsPopup.hide()
         if self.annotateSingleMotherBudPairButton.isChecked():
             mothID = self.annotateSingleMothBudPairState.get(
                 'mother_ID'
@@ -31145,17 +31325,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
 
         if not htmlTxt_li:
-            title = 'Looking good'
-            htmlTxt = f'<font color="{self.titleColor}">{title}</font>'
-            self.titleLabel.setText(htmlTxt)
-            self.titleLabel.setToolTip(htmlTxt)
+            self.setLookingGoodTitle()
+            self.titleLabel.setToolTip('Click for fireworks')
             return
 
         htmlTxt = ', '.join(htmlTxt_li)
-        htmlTxtFull = '<br>'.join(htmlTxtFull_li)
-
         self.titleLabel.setText(htmlTxt)
-        self.titleLabel.setToolTip(htmlTxtFull)
+        self.titleLabel.setToolTip('')
 
     def separateByLabelling(self, lab, rp, maxID=None):
         """

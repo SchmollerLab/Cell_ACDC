@@ -13635,3 +13635,86 @@ class ButtonSearchWidget(QWidget):
         IDs = posData.IDs
         return IDs
             
+            
+class FireworksOverlay(QWidget):
+    COLORS = (
+        (255, 80, 80), (255, 205, 70), (80, 220, 255),
+        (110, 255, 130), (255, 110, 220), (245, 245, 255),
+    )
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self.hide()
+        self.particles = []
+        self.timer = QTimer(self)
+        self.timer.setInterval(16)
+        self.timer.timeout.connect(self._advance)
+
+    def start(self):
+        self.setGeometry(self.parentWidget().rect())
+        self.particles.clear()
+        rng = np.random.default_rng()
+        width = max(1, self.width())
+        height = max(1, self.height())
+        for burst_i in range(6):
+            center_x = rng.uniform(width * 0.12, width * 0.88)
+            center_y = rng.uniform(height * 0.12, height * 0.65)
+            color = self.COLORS[burst_i % len(self.COLORS)]
+            delay = burst_i * 0.12
+            for angle in np.linspace(0, 2 * np.pi, 32, endpoint=False):
+                speed = rng.uniform(90, 230)
+                self.particles.append({
+                    'x': center_x,
+                    'y': center_y,
+                    'vx': math.cos(angle) * speed,
+                    'vy': math.sin(angle) * speed,
+                    'age': -delay,
+                    'life': rng.uniform(0.9, 1.5),
+                    'color': color,
+                    'size': rng.uniform(1.5, 3.5),
+                })
+        self.show()
+        self.raise_()
+        self.timer.start()
+
+    def _advance(self):
+        delta_time = self.timer.interval() / 1000
+        active = False
+        for particle in self.particles:
+            particle['age'] += delta_time
+            if particle['age'] < 0:
+                active = True
+                continue
+            if particle['age'] >= particle['life']:
+                continue
+            active = True
+            particle['x'] += particle['vx'] * delta_time
+            particle['y'] += particle['vy'] * delta_time
+            particle['vy'] += 150 * delta_time
+            particle['vx'] *= 0.985
+        if not active:
+            self.timer.stop()
+            self.hide()
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for particle in self.particles:
+            age = particle['age']
+            if age < 0 or age >= particle['life']:
+                continue
+            opacity = int(255 * (1 - age / particle['life']))
+            color = QColor(*particle['color'], opacity)
+            painter.setPen(QPen(color, particle['size']))
+            tail_scale = 0.035
+            painter.drawLine(
+                QPointF(particle['x'], particle['y']),
+                QPointF(
+                    particle['x'] - particle['vx'] * tail_scale,
+                    particle['y'] - particle['vy'] * tail_scale,
+                ),
+            )
