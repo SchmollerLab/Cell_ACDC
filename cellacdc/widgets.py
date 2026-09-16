@@ -1821,9 +1821,7 @@ class CheckBox(QCheckBox):
             if not checked:
                 continue
             
-            checkbox.blockSignals(True)
             checkbox.setChecked(False)
-            checkbox.blockSignals(False)
         
         for checkbox in self._linkedCheckboxes.values():
             checkbox.setChecked(checked)
