@@ -645,7 +645,7 @@ class segmWin(QMainWindow):
         for other_img_path in user_ch_file_paths:
             self._posData = load.loadData(other_img_path, user_ch_name, QParent=self)
             self._posData.getBasenameAndChNames(qparent=self)
-            self._posData.buildPaths()
+            self._posData.buildPaths(segm_endname=self.endFilenameSegm)
             self._posData.saveSegmHyperparams(
                 model_name, self.init_model_kwargs, self.model_kwargs, 
                 post_process_params=post_process_params, 
