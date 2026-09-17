@@ -1036,6 +1036,7 @@ class bioFormatsWorker(QObject):
     @worker_exception_handler
     def run(self):
         exp_dst_path = self.exp_dst_path
+        raw_src_path = self.raw_src_path
         
         if self.bioformats_backend == 'python-bioformats':
             import javabridge
@@ -1045,12 +1046,8 @@ class bioFormatsWorker(QObject):
             
         self.cancelled = False
         self.isCriticalError = False
-        for p, filename in enumerate(self.rawFilenames):
-            # Move files to raw_microscopy_files folder
-            raw_src_path = self.move_to_raw_microscopy_files_folder(
-                self.raw_src_path, exp_dst_path, filename    
-            )
 
+        for p, filename in enumerate(self.rawFilenames):
             pos_n = p + self.start_pos_n
             if self.rawDataStruct == 0:
                 if not self.overWriteMetadata:
@@ -1093,13 +1090,14 @@ class bioFormatsWorker(QObject):
 
             else:
                 break
+        
+        for p, filename in enumerate(self.rawFilenames):
+            # Move files to raw_microscopy_files folder
+            raw_src_path = self.move_to_raw_microscopy_files_folder(
+                self.raw_src_path, exp_dst_path, filename    
+            )
 
         if self.rawDataStruct == 2:
-            for filename in self.rawFilenames:
-                raw_src_path = self.move_to_raw_microscopy_files_folder(
-                    self.raw_src_path, exp_dst_path, filename    
-                )
-
             filename = self.rawFilenames[0]
             if not self.overWriteMetadata:
                 cancel = self.readMetadata(raw_src_path, filename)
@@ -1122,6 +1120,11 @@ class bioFormatsWorker(QObject):
                 if abort:
                     self.cancelled = True
                     break
+            
+            for filename in self.rawFilenames:
+                raw_src_path = self.move_to_raw_microscopy_files_folder(
+                    self.raw_src_path, exp_dst_path, filename    
+                )
 
         if self.bioformats_backend == 'python-bioformats':
             javabridge.kill_vm()
