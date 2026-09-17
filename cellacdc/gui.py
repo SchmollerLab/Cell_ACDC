@@ -4922,6 +4922,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.titleIDsPopup.linkActivated.connect(
             self.titleLabelIDLinkActivated
         )
+        self.titleIDsPopup.linkHovered.connect(
+            self.titleIDsPopupLinkHovered
+        )
         self.titleIDsPopup.setStyleSheet(
             'QLabel { background-color: palette(window); '
             'border: 1px solid palette(mid); padding: 6px; }'
@@ -10819,6 +10822,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if UndoFutFrames is None:
             self.annotateAllObjectTracks()
+            self.annotateAssignedObjsAcdcTrackerSecondStep()
             return
 
         if shift and self.isSegm3D:
@@ -10916,6 +10920,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if not applyFutFrames and not doPropagateUnvisited:
             self.annotateAllObjectTracks()
+            self.annotateAssignedObjsAcdcTrackerSecondStep()
             return
 
         self.changeIDfutureFrames(
@@ -10924,6 +10929,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         self.annotateAllObjectTracks()
+        self.annotateAssignedObjsAcdcTrackerSecondStep()
     
     def getLastHoveredID(self):
         if self.xHoverImg is None:
@@ -24213,7 +24219,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
-                self.titleLabel.setText(msg, color=self.titleColor)
+                self.setLookingGoodTitle()
                 self.get_data()
                 self.addMissingIDs_cca_df(posData)
                 self.store_cca_df()
@@ -24259,7 +24265,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if msg.clickedButton == yesButton:
                 self.addMissingIDs_cca_df(posData)
                 msg = 'Looking good!'
-                self.titleLabel.setText(msg, color=self.titleColor)
+                self.setLookingGoodTitle()
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.get_data()
@@ -24372,7 +24378,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 msg = 'Looking good!'
                 self.last_lin_tree_frame_i = last_lin_tree_frame_i
                 posData.frame_i = last_lin_tree_frame_i
-                self.titleLabel.setText(msg, color=self.titleColor)
+                self.setLookingGoodTitle()
                 self.get_data(lin_tree_init=False)
                 self.updateAllImages() # i dont think I need to change this
                 self.updateScrollbars() # i dont think I need to change this
@@ -24403,7 +24409,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )[0]
             if goTo_last_annotated_frame_i == msg.clickedButton:
                 msg = 'Looking good!'
-                self.titleLabel.setText(msg, color=self.titleColor)
+                self.setLookingGoodTitle()
                 self.last_lin_tree_frame_i = last_lin_tree_frame_i
                 posData.frame_i = last_lin_tree_frame_i
                 self.get_data(lin_tree_init=False)
@@ -30765,6 +30771,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.update_rp()
 
         self.annotateAllObjectTracks()
+        self.annotateAssignedObjsAcdcTrackerSecondStep()
         self.store_data(autosave=False)
         self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
         return delID_mask
@@ -31090,10 +31097,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.findID(ID=int(ID_text))
 
     def titleLabelIDLinkHovered(self, link):
+        self._setLinkCursor(self.titleLabel.item, link)
         if not link:
             self._scheduleTitleIDsPopupHide()
             return
         self._showTitleIDsPopup(link)
+
+    def titleIDsPopupLinkHovered(self, link):
+        self._setLinkCursor(self.titleIDsPopup, link)
+
+    def _setLinkCursor(self, target, link):
+        cursor = Qt.PointingHandCursor if link else Qt.ArrowCursor
+        target.setCursor(QCursor(cursor))
 
     def _showTitleIDsPopup(self, link):
         popup_html = self._titleIDsPopupHtmlByLink.get(link)
@@ -31230,22 +31245,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_to_restore = self.annotateSingleMothBudPairState.get(
                 'frame_i_to_restore'
             )
-            txt = (
-                f'Annotating mother-bud pair {(mothID, budID)} '
-                f'since frame n. {frame_to_restore+1}'
+            htmlTxt, htmlTxtFull = self.setTitleFormatter(
+                [], [], 'Annotating mother-bud pair: Mother', 'orange', [mothID]
             )
-            htmlTxt = f'<font color="orange">{txt}</font>'
+            htmlTxt, htmlTxtFull = self.setTitleFormatter(
+                htmlTxt, htmlTxtFull, 'Bud', 'orange', [budID]
+            )
+            htmlTxt = ", ".join(htmlTxt_li)
+            htmlTxt = (
+                htmlTxt 
+                + f'<font color="orange"> since frame n. {frame_to_restore+1}</font>'
+                )
             self.titleLabel.setText(htmlTxt)
             return
         
         if self.manualAnnotPastButton.isChecked():
             lockedID = self.editIDspinbox.value()
             frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
-            txt = (
-                f'Locked ID {lockedID} '
-                f'since frame n. {frame_to_restore+1}'
+            htmlTxt, htmlTxtFull = self.setTitleFormatter(
+                [], [], 'Locked ID', 'orange', [lockedID]
             )
-            htmlTxt = f'<font color="orange">{txt}</font>'
+            htmlTxt = htmlTxt[0]
+            htmlTxt = (
+                htmlTxt 
+                + f'<font color="orange"> since frame n. {frame_to_restore+1}</font>'
+                )
             self.titleLabel.setText(htmlTxt)
             return
         
@@ -31327,7 +31351,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if not htmlTxt_li:
             self.setLookingGoodTitle()
-            self.titleLabel.setToolTip('Click for fireworks')
             return
 
         htmlTxt = ', '.join(htmlTxt_li)
