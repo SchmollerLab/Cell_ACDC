@@ -6995,8 +6995,13 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
             if self.abort:
                 self.sigCancelled.emit()
                 return
+            
+            dtype = self.dtypeOut
+            prefix = self.prefixText
+            onlyUntilTracked = self.onlyUntilTracked
+            acdcOutputEndname = self.acdcOutputEndname
+            dstFolderPath = self.dstFolderPath
 
-            appendedName = self.appendedName
             self.signals.initProgressBar.emit(len(pos_foldernames))
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
@@ -7009,47 +7014,32 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                 )
 
                 images_path = os.path.join(exp_path, pos, 'Images')
-                endFilenameSegm = self.mainWin.endFilenameSegm
+                basename, chNames = myutils.getBasenameAndChNames(images_path)
                 ls = myutils.listdir(images_path)
-                file_path = [
+                imageFilepath = [
                     os.path.join(images_path, f) for f in ls 
-                    if f.endswith(f'{endFilenameSegm}.npz')
+                    if f == f'{basename}{selectedVideoEndname}'
                 ][0]
-                
-                posData = load.loadData(file_path, '')
+                image_data = load.load_image_file(imageFilepath)
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+                numFrames = len(image_data)
+                if onlyUntilTracked:
+                    acdc_df = load.load_acdc_df_file(
+                        images_path, 
+                        end_name_acdc_df_file=acdcOutputEndname
+                    )
+                    numFrames = acdc_df.index.get_level_values(0).max() + 1
 
-                posData.getBasenameAndChNames()
-                posData.buildPaths()
-
-                posData.loadOtherFiles(
-                    load_segm_data=True,
-                    load_acdc_df=True,
-                    load_metadata=True,
-                    end_filename_segm=endFilenameSegm
-                )
-                if posData.segm_data.ndim == 2:
-                    posData.segm_data = posData.segm_data[np.newaxis]
+                self.logger.log('Splitting video into single-frame TIFF files...')
                 
-                self.logger.log('Stacking 2D into 3D objects...')
-                
-                numFrames = len(posData.segm_data)
                 self.signals.sigInitInnerPbar.emit(numFrames)
-                T, Y, X = posData.segm_data.shape
-                newShape = (T, self.SizeZ, Y, X)
-                segmData2D = np.zeros(newShape, dtype=np.uint32)
-                for frame_i, lab in enumerate(posData.segm_data):
-                    stacked_lab = core.stack_2Dlab_to_3D(lab, self.SizeZ)
-                    segmData2D[frame_i] = stacked_lab
-
+                for frame_i in range(numFrames):
+                    img = myutils.convert_to_dtype(image_data[frame_i], dtype)
+                    t_str = str(frame_i).zfill(3)
+                    frame_filename = f'{prefix}{t_str}.tif'
+                    frame_filepath = os.path.join(dstFolderPath, frame_filename)
+                    skimage.io.imsave(frame_filepath)
                     self.signals.sigUpdateInnerPbar.emit(1)
-
-                self.logger.log('Saving stacked 3D segmentation file...')
-                segmFilename, ext = os.path.splitext(posData.segm_npz_path)
-                newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
-                segmData2D = np.squeeze(segmData2D)
-                io.savez_compressed(newSegmFilepath, segmData2D)
                 
                 self.signals.progressBar.emit(1)
 

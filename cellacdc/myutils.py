@@ -2783,8 +2783,11 @@ def float_img_to_dtype(img, dtype):
     )
 
 def convert_to_dtype(data: np.ndarray, dtype):
+    dtype = np.dtype(dtype)
+
     if data.dtype == dtype:
         return data
+    
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
         data = float_img_to_dtype(data, dtype)

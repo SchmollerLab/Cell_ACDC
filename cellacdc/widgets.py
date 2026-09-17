@@ -4202,10 +4202,18 @@ class formWidget(QWidget):
     
     def setDisabled(self, disabled: bool) -> None:
         for item in self.items:
-            try:
-                item.setDisabled(disabled)
-            except Exception as err:
-                pass
+            if isinstance(item, QHBoxLayout):
+                for i in range(item.count()):
+                    widget = item.itemAt(i).widget()
+                    try:
+                        widget.setDisabled(disabled)
+                    except Exception as err:
+                        pass
+            else:
+                try:
+                    item.setDisabled(disabled)
+                except Exception as err:
+                    pass
 
 class ToggleTerminalButton(PushButton):
     sigClicked = Signal(bool)

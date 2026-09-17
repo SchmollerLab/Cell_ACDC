@@ -21141,7 +21141,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.close()
 
 class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
-    def __init__(self, video_filepath=None, logger_func=print, parent=None):
+    def __init__(self, video_filepath, logger_func=print, parent=None):
         super().__init__(parent)
 
         self.logger_func = logger_func
@@ -21172,35 +21172,70 @@ class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
         )
         entriesLayout.addFormWidget(self.prefixFormWidget, row=row)
 
-        self.dtypeCombobox = None
-        if video_filepath is not None:
-            row += 1
-            dtypes = (
-                'uint8',
-                'uint16',
-                'uint32',
-                'float32',
-                'float64'
-            )
-            _, ext = os.path.splitext(video_filepath)
-            image_data = load.load_image_file(video_filepath)
-            self.dtypeCombobox = widgets.ComboBox()
-            self.dtypeCombobox.addItems(dtypes)
-            if ext != '.npz':
-                dtype = str(image_data.dtype)
-                if dtype not in dtypes:
-                    self.dtypeCombobox.setCurrentText('float64')
-                else:
-                    self.dtypeCombobox.setCurrentText(dtype)
+        row += 1
+        dtypes = (
+            'uint8',
+            'uint16',
+            'uint32',
+            'float32',
+            'float64'
+        )
+        _, ext = os.path.splitext(video_filepath)
+        image_data = load.load_image_file(video_filepath)
+        self.dtypeCombobox = widgets.ComboBox()
+        self.dtypeCombobox.addItems(dtypes)
+        if ext != '.npz':
+            dtype = str(image_data.dtype)
+            if dtype not in dtypes:
+                self.dtypeCombobox.setCurrentText('float64')
             else:
-                dtype = 'uint16'
                 self.dtypeCombobox.setCurrentText(dtype)
-            
-            self.dtypeFormWidget = widgets.formWidget(
-                self.dtypeCombobox, 
-                labelTextLeft='Data type of output TIFF files: ',
-            )
-            entriesLayout.addFormWidget(self.dtypeFormWidget, row=row)
+        else:
+            dtype = 'uint16'
+            self.dtypeCombobox.setCurrentText(dtype)
+        
+        self.dtypeFormWidget = widgets.formWidget(
+            self.dtypeCombobox, 
+            stretchWidget=False,
+            labelTextLeft='Data type of output TIFF files: ',
+        )
+        entriesLayout.addFormWidget(self.dtypeFormWidget, row=row)
+        
+        row += 1
+        infoText = html_utils.paragraph(f"""
+Choose whether to stop until the last frame that has been tracked.<br><br>
+The last tracked frame is the maximum `frame_i` present in the selected 
+`acdc_output.csv` file (see parameter below).
+""")
+        self.onlyUntilTrackedFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Only until tracked: ',
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+        )
+        entriesLayout.addFormWidget(self.onlyUntilTrackedFormWidget, row=row)
+        self.onlyUntilTrackedFormWidget.widget.toggled.connect(
+            self.onlyUntilTrackedToggled
+        )
+
+        row += 1
+        images_path = os.path.dirname(video_filepath)
+        acdcOutputFiles = load.get_acdc_output_files(images_path)
+        basename, chNames = myutils.getBasenameAndChNames(images_path)
+        acdcOutputEndnames = [f[len(basename):] for f in acdcOutputFiles]
+        self.acdcOutputEndnamesCombobox = widgets.ComboBox()
+        self.acdcOutputEndnamesCombobox.addItems(acdcOutputEndnames)
+        self.acdcOutputEndnamesFormWidget = widgets.formWidget(
+            self.acdcOutputEndnamesCombobox, 
+            stretchWidget=False,
+            labelTextLeft='`acdc_output` file with tracking info: ',
+        )
+        self.acdcOutputEndnamesFormWidget.setDisabled(True)
+        entriesLayout.addFormWidget(self.acdcOutputEndnamesFormWidget, row=row)
+        self.dtypeCombobox.setFixedWidth(
+            self.acdcOutputEndnamesCombobox.sizeHint().width()
+        )
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -21215,6 +21250,9 @@ class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
         
         self.setLayout(mainLayout)
     
+    def onlyUntilTrackedToggled(self, checked):
+        self.acdcOutputEndnamesFormWidget.setDisabled(not checked)
+
     def sizeHint(self):
         height = super().sizeHint().height()
         width = super().sizeHint().width()
@@ -21237,9 +21275,11 @@ class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
         
         self.dstFolderPath = self.dstFolderPathFormWidget.widget.path()
         self.prefixText = self.prefixLineEdit.prefix()
-        self.dtypeOut = None
-        if self.dtypeCombobox is not None:
-            self.dtypeOut = self.dtypeCombobox.currentText()
+        self.dtypeOut = self.dtypeCombobox.currentText()
+        self.onlyUntilTracked = (
+            self.onlyUntilTrackedFormWidget.widget.isChecked()
+        )
+        self.acdcOutputEndname = self.acdcOutputEndnamesCombobox.currentText()
         
         self.cancel = False
         self.close()

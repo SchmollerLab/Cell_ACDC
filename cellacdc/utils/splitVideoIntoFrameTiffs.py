@@ -51,6 +51,8 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         self.worker.dstFolderPath = win.dstFolderPath
         self.worker.prefixText = win.prefixText
         self.worker.dtypeOut = win.dtypeOut
+        self.worker.onlyUntilTracked = win.onlyUntilTracked
+        self.worker.acdcOutputEndname = win.acdcOutputEndname
         self.worker.waitCond.wakeAll()
 
     def workerCancelled(self):
