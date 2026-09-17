@@ -138,6 +138,7 @@ class signals(QObject):
     sigAskCopyCca = Signal(str)
     sigSelectFilesWithText = Signal(str, object, str, object)
     sigAskRunNow = Signal(object)
+    sigSelectVideoFile = Signal(object, object, bool)
 
 class AutoPilotWorker(QObject):
     finished = Signal()
@@ -2223,6 +2224,15 @@ class BaseWorkerUtil(QObject):
         self.mutex.unlock()
         return self.abort
     
+    def emitSelectVideoFile(self, exp_path, pos_foldernames, multiSelection):
+        self.mutex.lock()
+        self.signals.sigSelectVideoFile.emit(
+            exp_path, pos_foldernames, multiSelection
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
     def emitSelectFilesWithText(
             self, exp_path, pos_foldernames, with_text, ext=None
         ):
@@ -3491,10 +3501,10 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            abort = self.emitSelectFilesWithText(
+            cancel = self.emitSelectFilesWithText(
                 exp_path, pos_foldernames, 'imagej_rois', ext=('.zip', '.roi')
             )
-            if abort:
+            if cancel:
                 self.signals.finished.emit(self)
                 return
             
@@ -4888,11 +4898,11 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
             
             self.logger.log('Asking to select the CSV table file...')
             
-            abort = self.emitSelectFile(
+            cancel = self.emitSelectFile(
                 exp_path, 'Select CSV table file with coordinates to filter',
                 'CSV (*.csv)'
             )
-            if abort:
+            if cancel:
                 self.sigAborted.emit()
                 return
             
@@ -6943,4 +6953,104 @@ class CreateSymLinkToPosWinWorker(QObject):
                 )
                 self.signals.progressBar.emit(1)
                 
+        self.signals.finished.emit(self)
+
+class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
+    sigAskSetup = Signal(object)
+    sigCancelled = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    def emitAskSetup(self, exp_path, pos_foldernames, video_endname):
+        self.mutex.lock()
+        self.sigAskSetup.emit((exp_path, pos_foldernames, video_endname))
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = 'Select <b>video file to split</b>'
+            cancel = self.emitSelectVideoFile(
+                exp_path, pos_foldernames, False
+            )
+            if cancel:
+                self.sigCancelled.emit()
+                return
+            
+            selectedVideoEndname = self.selectedVideoEndname
+
+            # Emit ask setup parameters
+            self.mainWin.infoText = 'Setup video splitting process'
+            self.emitAskSetup(exp_path, pos_foldernames, selectedVideoEndname)
+            if self.abort:
+                self.sigCancelled.emit()
+                return
+
+            appendedName = self.appendedName
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameSegm = self.mainWin.endFilenameSegm
+                ls = myutils.listdir(images_path)
+                file_path = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f.endswith(f'{endFilenameSegm}.npz')
+                ][0]
+                
+                posData = load.loadData(file_path, '')
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+
+                posData.loadOtherFiles(
+                    load_segm_data=True,
+                    load_acdc_df=True,
+                    load_metadata=True,
+                    end_filename_segm=endFilenameSegm
+                )
+                if posData.segm_data.ndim == 2:
+                    posData.segm_data = posData.segm_data[np.newaxis]
+                
+                self.logger.log('Stacking 2D into 3D objects...')
+                
+                numFrames = len(posData.segm_data)
+                self.signals.sigInitInnerPbar.emit(numFrames)
+                T, Y, X = posData.segm_data.shape
+                newShape = (T, self.SizeZ, Y, X)
+                segmData2D = np.zeros(newShape, dtype=np.uint32)
+                for frame_i, lab in enumerate(posData.segm_data):
+                    stacked_lab = core.stack_2Dlab_to_3D(lab, self.SizeZ)
+                    segmData2D[frame_i] = stacked_lab
+
+                    self.signals.sigUpdateInnerPbar.emit(1)
+
+                self.logger.log('Saving stacked 3D segmentation file...')
+                segmFilename, ext = os.path.splitext(posData.segm_npz_path)
+                newSegmFilepath = f'{segmFilename}_{appendedName}.npz'
+                segmData2D = np.squeeze(segmData2D)
+                io.savez_compressed(newSegmFilepath, segmData2D)
+                
+                self.signals.progressBar.emit(1)
+
         self.signals.finished.emit(self)

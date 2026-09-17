@@ -54,6 +54,7 @@ from .utils import applyTrackFromTable as utilsApplyTrackFromTab
 from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
 from .utils import fillHolesInSegm
 from .utils import generateMothBudTotalTable as utilsGenerateMothBudTotTable
+from .utils import splitVideoIntoFrameTiffs as utilSplitVideoTiffs
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -410,6 +411,7 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.toImageJroiAction)
         convertMenu.addAction(self.fromImageJroiAction)
         convertMenu.addAction(self.toObjsCoordsAction)
+        convertMenu.addAction(self.splitVideoTiffsAction)
 
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
@@ -421,7 +423,8 @@ class mainWin(QMainWindow):
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
         trackingMenu.addAction(self.applyTrackingFromTableAction)
         trackingMenu.addAction(self.applyTrackingFromTrackMateXMLAction)
-        trackingMenu.addAction(self.toSymDivAction)        
+        trackingMenu.addAction(self.toSymDivAction)     
+        trackingMenu.addAction(self.splitVideoTiffsAction)   
         
         self.trackingMenu = trackingMenu
 
@@ -779,6 +782,9 @@ class mainWin(QMainWindow):
         self.stack2Dto3DsegmAction = QAction(
             'Stack 2D segmentation objects into 3D objects...'
         )  
+        self.splitVideoTiffsAction = QAction(
+            'Split video files into single-frame TIFFs...'
+        )  
         self.trackSubCellFeaturesAction = QAction(
             'Track and/or count sub-cellular objects (assign same ID as the '
             'cell they belong to)...'
@@ -896,6 +902,9 @@ class mainWin(QMainWindow):
         )
         self.stack2Dto3DsegmAction.triggered.connect(
             self.launchStack2Dto3DsegmActionUtil
+        )
+        self.splitVideoTiffsAction.triggered.connect(
+            self.launchSplitVideoIntoFrameTiffsUtil
         )
         self.fillHolesInSegmAction.triggered.connect(
             self.launchFillHolesActionUtil
@@ -1666,6 +1675,23 @@ class mainWin(QMainWindow):
             SizeZwin.value, parent=self
         )
         self.stack2DsegmWin.show()
+    
+    def launchSplitVideoIntoFrameTiffsUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Split video into single-frame TIFFs'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Split video into single-frame TIFFs'
+        infoText = 'Launching splitting video into single-frame TIFFs process...'
+        progressDialogueTitle = 'Splitting video into single-frame TIFFs'
+        self.splitVideoWin = utilSplitVideoTiffs.SplitVideoIntoFrameTiffsUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.splitVideoWin.show()
 
     def launchTrackSubCellFeaturesUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

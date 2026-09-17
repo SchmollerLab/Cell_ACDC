@@ -21139,4 +21139,107 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.settings = self.values()
         self.sigValuesChanged.emit(self.settings)
         self.close()
+
+class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
+    def __init__(self, video_filepath=None, logger_func=print, parent=None):
+        super().__init__(parent)
+
+        self.logger_func = logger_func
+        self.cancel = True
+
+        mainLayout = QVBoxLayout()
+        entriesLayout = widgets.FormLayout()
+
+        headerText = ("""
+<b>Split video into single-frame TIFFs setup</b><br><br>
+<i>Choose destination folder and conversion settings.</i>                     
+""")
+        headerLabel = QLabel(html_utils.paragraph(headerText))
+
+        row = 0
+        self.dstFolderPathControl = widgets.FolderPathControl()
+        self.dstFolderPathFormWidget = widgets.formWidget(
+            self.dstFolderPathControl, 
+            labelTextLeft='Destination folder: ',
+        )
+        entriesLayout.addFormWidget(self.dstFolderPathFormWidget, row=row)
+
+        row += 1
+        self.prefixLineEdit = widgets.PrefixFilenameLineEdit('000.tif')
+        self.prefixFormWidget = widgets.formWidget(
+            self.prefixLineEdit, 
+            labelTextLeft='Prefix for output TIFF files: ',
+        )
+        entriesLayout.addFormWidget(self.prefixFormWidget, row=row)
+
+        self.dtypeCombobox = None
+        if video_filepath is not None:
+            row += 1
+            dtypes = (
+                'uint8',
+                'uint16',
+                'uint32',
+                'float32',
+                'float64'
+            )
+            _, ext = os.path.splitext(video_filepath)
+            image_data = load.load_image_file(video_filepath)
+            self.dtypeCombobox = widgets.ComboBox()
+            self.dtypeCombobox.addItems(dtypes)
+            if ext != '.npz':
+                dtype = str(image_data.dtype)
+                if dtype not in dtypes:
+                    self.dtypeCombobox.setCurrentText('float64')
+                else:
+                    self.dtypeCombobox.setCurrentText(dtype)
+            else:
+                dtype = 'uint16'
+                self.dtypeCombobox.setCurrentText(dtype)
+            
+            self.dtypeFormWidget = widgets.formWidget(
+                self.dtypeCombobox, 
+                labelTextLeft='Data type of output TIFF files: ',
+            )
+            entriesLayout.addFormWidget(self.dtypeFormWidget, row=row)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        mainLayout.addWidget(headerLabel)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(entriesLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
     
+    def sizeHint(self):
+        height = super().sizeHint().height()
+        width = super().sizeHint().width()
+        return QSize(round(width*1.5), height)
+
+    def warnDstFolderPathNotSelected(self):
+        txt = html_utils.paragraph(f"""
+            The destination folder path is empty.<br><br>
+            Please select a destination folder for the output files.<br><br>
+            Thank you for your patience!
+        """)
+
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Invalid destination folder', txt)
+
+    def ok_cb(self):
+        if not self.dstFolderPathFormWidget.widget.path():
+            self.warnDstFolderPathNotSelected()
+            return
+        
+        self.dstFolderPath = self.dstFolderPathFormWidget.widget.path()
+        self.prefixText = self.prefixLineEdit.prefix()
+        self.dtypeOut = None
+        if self.dtypeCombobox is not None:
+            self.dtypeOut = self.dtypeCombobox.currentText()
+        
+        self.cancel = False
+        self.close()

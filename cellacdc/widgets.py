@@ -12994,4 +12994,36 @@ class FadingTrackItem(pg.GraphicsObject):
 class GuiCentralWidget(QWidget):
     def __init__(self, parent=None, *args):
         super().__init__(parent, *args)
+
+class PrefixFilenameLineEdit(QWidget):
+    def __init__(self, endNameLabel, *args):      
+        super().__init__(*args)
+
+        layout = QHBoxLayout()
+
+        self.le = alphaNumericLineEdit()
+        self.endnameLabel = QLabel()
+        self.setEndname(endNameLabel)
+
+        layout.addWidget(self.le)
+        layout.addWidget(self.endnameLabel)
+
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 0)
+
+        layout.setContentsMargins(5, 0, 5, 0)
+
+        self.setLayout(layout)
     
+    def setEndname(self, text: str):
+        self.endnameLabel.setText(text)
+    
+    def setText(self, text: str):
+        self.le.setText(text)
+    
+    def prefix(self):
+        return self.le.text()
+    
+    def fullFilename(self):
+        filename = f'{self.le.text()}{self.endnameLabel.text()}'
+        return filename
