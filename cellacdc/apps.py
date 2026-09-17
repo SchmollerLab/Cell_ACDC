@@ -14905,6 +14905,7 @@ class ShortcutEditorDialog(QBaseDialog):
             'keep_at_beginning': [],
             'other': [],
             '(lineage tree)': [],
+            '(cell cycle analysis)': [],
         }
 
         widgetsWithShortcut = self._groupAndSortShortcuts(
@@ -14915,6 +14916,7 @@ class ShortcutEditorDialog(QBaseDialog):
         # and the forbidden ones
         exclusivity_groups = {
             '(lineage tree)': [],
+            '(cell cycle analysis)': [],
             'other': [],
         }
         

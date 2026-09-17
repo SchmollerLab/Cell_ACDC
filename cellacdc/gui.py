@@ -1520,9 +1520,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateSingleMotherBudPairButton
         )
         self.checkableButtons.append(self.annotateSingleMotherBudPairButton)
-        self.widgetsWithShortcut['Annotate one mother-bud pair at the time'] = (
-            self.annotateSingleMotherBudPairButton
-        )
+        self.widgetsWithShortcut[
+            'Annotate one mother-bud pair at the time (cell cycle analysis)'
+                ] = (
+                self.annotateSingleMotherBudPairButton
+            )
         self.checkableQButtonsGroup.addButton(
             self.annotateSingleMotherBudPairButton
         )
@@ -1610,10 +1612,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearFreehandRoiButton
         )
 
-        self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
+        self.widgetsWithShortcut[
+            'Annotate mother/daughter pairing (cell cycle analysis)'] = (
             self.assignBudMothButton
         )
-        self.widgetsWithShortcut['Annotate unknown history'] = (
+        self.widgetsWithShortcut[
+            'Annotate unknown history (cell cycle analysis)'] = (
             self.setIsHistoryKnownButton
         )
         
