@@ -31255,7 +31255,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             htmlTxt, htmlTxtFull = self.setTitleFormatter(
                 htmlTxt, htmlTxtFull, 'Bud', 'orange', [budID]
             )
-            htmlTxt = ", ".join(htmlTxt_li)
+            htmlTxt = ", ".join(htmlTxt)
             htmlTxt = (
                 htmlTxt 
                 + f'<font color="orange"> since frame n. {frame_to_restore+1}</font>'
