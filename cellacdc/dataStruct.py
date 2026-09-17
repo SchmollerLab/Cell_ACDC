@@ -587,6 +587,7 @@ class bioFormatsWorker(QObject):
         )
         
         if not savePos:
+            self.progressPbar.emit(self.SizeC)
             return False
 
         pos_path = os.path.join(exp_dst_path, f'Position_{pos_n}')
