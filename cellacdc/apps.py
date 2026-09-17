@@ -14913,15 +14913,18 @@ class ShortcutEditorDialog(QBaseDialog):
         )
         
         # based on name, only check uniquness within these groups
-        # and the forbidden ones
+        # and the forbidden ones.
         exclusivity_groups = {
             '(lineage tree)': [],
             '(cell cycle analysis)': [],
             'other': [],
         }
         
-        exclusivity_groups['(lineage tree)'] = grouped_keys['(lineage tree)']
         exclusivity_groups['other'] = grouped_keys['other'] + grouped_keys['keep_at_beginning']
+        for key, value in grouped_keys.items():
+            if key not in ['keep_at_beginning', 'other']:
+                exclusivity_groups[key] = value
+                
         self.exclusivity_groups_reverse = {
             name: group for group, names in exclusivity_groups.items() for name in names
         }
@@ -14934,81 +14937,101 @@ class ShortcutEditorDialog(QBaseDialog):
             self.new_hard_shortcuts, keep_at_beginning, grouped_keys
         )
             
-        for items in enumerate(widgetsWithShortcut.items(), start=row):
-            row, (name, widget) = items
-            button = widgets.PushButton(self, flat=True)
-            try:
-                button.setIcon(widget.icon())
-            except:
-                pass
-            label = QLabel(f'{name}:')
-            shortcutLineEdit = widgets.ShortcutLineEdit(allowMouseButtons=True)
-            if mouseBindings is not None and name in mouseBindings:
-                mouse_button = mouseBindings[name]
-                btn_name = QtScoped.mouse_button_name(mouse_button)
-                shortcutLineEdit.setText(f'Mouse {btn_name}')
-                isShortcutKeyPress = False
-                isShortcutMouseButton = True
-            elif hasattr(widget, 'keyPressShortcut'):
-                shortcutLineEdit.key = widget.keyPressShortcut
-                shortcut = widgets.KeySequenceFromText(widget.keyPressShortcut)
-                isShortcutKeyPress = True
-                isShortcutMouseButton = False
-            else:
-                shortcut = widget.shortcut()
-                isShortcutKeyPress = False
-                isShortcutMouseButton = False
-                
-            if isShortcutMouseButton: # always false else mouseBindings is None
-                mouse_button = mouseBindings[name]
-                btn_name = QtScoped.mouse_button_name(mouse_button)
-                shortcutLineEdit.setText(f'Mouse {btn_name}')
-            else:
-                shortcutLineEdit.setText(shortcut.toString())
-                
-            shortcutLineEdit.textChanged.connect(self.shortcutChanged)
-            shortcutLineEdit.isShortcutKeyPress = isShortcutKeyPress
-            shortcutLineEdit.isShortcutMouseButton = isShortcutMouseButton
-            # trigger when clicked
-            shortcutLineEdit.clicked.connect(
-                self.setShortcutLineEditEventFilter
-            )
-            # clean up when focus is lost
-            shortcutLineEdit.editingFinished.connect(
-                self.releaseShortcutLineEditEventFilter
-            )
-            
-            entriesLayout.addWidget(button, row, 0)
-            entriesLayout.addWidget(label, row, 1)
-            entriesLayout.addWidget(shortcutLineEdit, row, 2)
-            shortcutLineEdit.name = name
-            self.shortcutLineEdits[name] = shortcutLineEdit
-            
-            warnConflictLabel = QLabel('')
-            self.shortcutLineEdits[name].warnConflictLabel = warnConflictLabel
-            entriesLayout.addWidget(warnConflictLabel, row, 4)
-            warnConflictLabel.setMinimumWidth(max_warn_width)
-            
-            if highlighted_shortcut is not None and name == highlighted_shortcut:
-                shortcutLineEdit.setStyleSheet(LINEEDIT_WARNING_STYLESHEET)
-            
-        row += 1
-        for items in enumerate(self.new_hard_shortcuts.items(), start=row):
-            row, (what, shortcut) = items
-            button = widgets.PushButton(self, flat=True)
-            if isinstance(what, str):
-                label = QLabel(f'{what}:')
-            else:
-                (name, widget) = what
+        print(widgetsWithShortcut)
+        for group, shortcuts in widgetsWithShortcut.items():
+            if not shortcuts:
+                continue
+            title = group.strip('()').replace('_', ' ').capitalize()
+            entriesLayout.addWidget(QLabel(f'<b>{title}</b>'), row, 0, 1, 5)
+            row += 1
+            for name, widget in shortcuts.items():
+                button = widgets.PushButton(self, flat=True)
                 try:
                     button.setIcon(widget.icon())
                 except:
                     pass
                 label = QLabel(f'{name}:')
-            lineEditTxt = QLabel(shortcut)
-            entriesLayout.addWidget(button, row, 0)
-            entriesLayout.addWidget(label, row, 1)
-            entriesLayout.addWidget(lineEditTxt, row, 2)
+                shortcutLineEdit = widgets.ShortcutLineEdit(
+                    allowMouseButtons=True
+                )
+                if mouseBindings is not None and name in mouseBindings:
+                    mouse_button = mouseBindings[name]
+                    btn_name = QtScoped.mouse_button_name(mouse_button)
+                    shortcutLineEdit.setText(f'Mouse {btn_name}')
+                    isShortcutKeyPress = False
+                    isShortcutMouseButton = True
+                elif hasattr(widget, 'keyPressShortcut'):
+                    shortcutLineEdit.key = widget.keyPressShortcut
+                    shortcut = widgets.KeySequenceFromText(
+                        widget.keyPressShortcut
+                    )
+                    isShortcutKeyPress = True
+                    isShortcutMouseButton = False
+                else:
+                    shortcut = widget.shortcut()
+                    isShortcutKeyPress = False
+                    isShortcutMouseButton = False
+
+                if isShortcutMouseButton:
+                    mouse_button = mouseBindings[name]
+                    btn_name = QtScoped.mouse_button_name(mouse_button)
+                    shortcutLineEdit.setText(f'Mouse {btn_name}')
+                else:
+                    shortcutLineEdit.setText(shortcut.toString())
+
+                shortcutLineEdit.textChanged.connect(self.shortcutChanged)
+                shortcutLineEdit.isShortcutKeyPress = isShortcutKeyPress
+                shortcutLineEdit.isShortcutMouseButton = isShortcutMouseButton
+                shortcutLineEdit.clicked.connect(
+                    self.setShortcutLineEditEventFilter
+                )
+                shortcutLineEdit.editingFinished.connect(
+                    self.releaseShortcutLineEditEventFilter
+                )
+
+                entriesLayout.addWidget(button, row, 0)
+                entriesLayout.addWidget(label, row, 1)
+                entriesLayout.addWidget(shortcutLineEdit, row, 2)
+                shortcutLineEdit.name = name
+                self.shortcutLineEdits[name] = shortcutLineEdit
+
+                warnConflictLabel = QLabel('')
+                shortcutLineEdit.warnConflictLabel = warnConflictLabel
+                entriesLayout.addWidget(warnConflictLabel, row, 4)
+                warnConflictLabel.setMinimumWidth(max_warn_width)
+
+                if (
+                        highlighted_shortcut is not None
+                        and name == highlighted_shortcut
+                    ):
+                    shortcutLineEdit.setStyleSheet(
+                        LINEEDIT_WARNING_STYLESHEET
+                    )
+                row += 1
+
+        for group, shortcuts in self.new_hard_shortcuts.items():
+            if not shortcuts:
+                continue
+            title = group.strip('()').replace('_', ' ').capitalize()
+            title = title + ' (not customizable)'
+            entriesLayout.addWidget(QLabel(f'<b>{title}</b>'), row, 0, 1, 5)
+            row += 1
+            for what, shortcut in shortcuts.items():
+                button = widgets.PushButton(self, flat=True)
+                if isinstance(what, str):
+                    label = QLabel(f'{what}:')
+                else:
+                    (name, widget) = what
+                    try:
+                        button.setIcon(widget.icon())
+                    except:
+                        pass
+                    label = QLabel(f'{name}:')
+                lineEditTxt = QLabel(shortcut)
+                entriesLayout.addWidget(button, row, 0)
+                entriesLayout.addWidget(label, row, 1)
+                entriesLayout.addWidget(lineEditTxt, row, 2)
+                row += 1
         
         entriesLayout.setColumnStretch(0, 0)
         entriesLayout.setColumnStretch(1, 0)
@@ -15045,21 +15068,24 @@ class ShortcutEditorDialog(QBaseDialog):
                 grouped_keys['keep_at_beginning'].append(actual_key)
             else:
                 for group_key in grouped_keys.keys():
-                    if group_key in key:
+                    if key.endswith(group_key) and group_key not in ['keep_at_beginning', 'other']:
                         grouped_keys[group_key].append(actual_key)
                         found = True
                         break
                 if not found:
                     grouped_keys['other'].append(actual_key)
 
-        widgets_with_shortcut_sorted = {}
+        grouped_shortcuts = {}
         for group, group_list in grouped_keys.items():
-            sorted_keys = natsorted(group_list, key=lambda x: x[0] if isinstance(x, tuple) else x)
-            widgets_with_shortcut_sorted.update({
+            sorted_keys = natsorted(
+                group_list,
+                key=lambda x: x[0] if isinstance(x, tuple) else x
+            )
+            grouped_shortcuts[group] = {
                 k: shortcuts_dict[k]
                 for k in sorted_keys
-            })
-        return widgets_with_shortcut_sorted
+            }
+        return grouped_shortcuts
         
     def setShortcutLineEditEventFilter(self):
         sender = self.sender()
@@ -15139,15 +15165,17 @@ class ShortcutEditorDialog(QBaseDialog):
                 )
             sender.conflictWith = name_other
             break
-        for name_other, shortcut_txt in self.new_hard_shortcuts.items():
-            if shortcut_txt == text:
-                # sender.setText('')
-                warnConflictLabel = getattr(sender, 'warnConflictLabel', None)
-                if warnConflictLabel is not None:
-                    warnConflictLabel.setText(
-                        self.conflict_text_formatter(name_other)
+        for shortcuts in self.new_hard_shortcuts.values():
+            for name_other, shortcut_txt in shortcuts.items():
+                if shortcut_txt == text:
+                    warnConflictLabel = getattr(
+                        sender, 'warnConflictLabel', None
                     )
-                break
+                    if warnConflictLabel is not None:
+                        warnConflictLabel.setText(
+                            self.conflict_text_formatter(name_other)
+                        )
+                    return
     
     def warnInvalidKeySequenceDelObjWithLeftClick(self):
         txt = html_utils.paragraph(
