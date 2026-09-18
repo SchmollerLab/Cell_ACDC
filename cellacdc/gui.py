@@ -15303,10 +15303,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         regionLab = posData.lab[(...,) + regionSlice].copy()
         if regionLab.ndim == 3:
             mask3d = np.zeros(regionLab.shape, dtype=bool)
-            if zRange is None:
-                mask3d[:] = mask
-            else:
-                mask3d[zRange[0]:zRange[1]] = mask
+            mask3d[:] = mask
             mask = mask3d
             
         if onlyEnclosed:
@@ -15315,9 +15312,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             regionLab[..., ~mask] = 0
-        
+            
         regionRp = self._acdcRegionProps(
-            regionLab, precache_centroids=False
+            regionLab,
+            precache_centroids=False
         )
         sourceIDs = [obj.label for obj in regionRp]
         
@@ -16779,7 +16777,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     ID=0
                 )
             if self.isSegm3D:
-                self.changeBrushID()   
+                self.changeBrushID()
+                
+        if isShiftModifier and self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isVisible():
+            self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state = (   
+                self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isChecked()
+            )
+            self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.setChecked(True)
         
         isAnyModifier = isAltModifier or isCtrlModifier or isShiftModifier
         if not isAnyModifier and self.overlayButton.isChecked():
@@ -16990,7 +16994,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             or ev.key() == Qt.Key_Control
             or ev.key() == Qt.Key_Backspace
             or self.delObjToolAction.isChecked()
-        )      
+        )
+
+        if (hasattr(self, 'mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state')
+        and self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state is not None
+        ):
+            self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.setChecked(
+                self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state
+            )
+            self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state = None
         
         if canRepeat and ev.isAutoRepeat():
             return

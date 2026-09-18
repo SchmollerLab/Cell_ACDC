@@ -468,7 +468,7 @@ Edit tools: Segmentation and tracking
 * **Edit ID (** |editIDbutton| **"N"):** Manually change ID of a cell by right-clicking on cell. When working with 3D segmentation masks, the default behaviour is to edit the ID in all z-slices. To edit the ID only on the viewed z-slice, hold "Shift" while right-clicking.
 * **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Ctrl+right-click to skip automatic attempt and go straight to manual mode. Use "Shift" while right-clicking to only apply the separation on the viewed z-slice when working with 3D segmentation masks.
 * **Merge IDs (** |mergeIDsButton| **"M"):** Merge multiple objects together. 
-    * Usage: Draw a freehand region to merge all objects present in that region. Drawing with right button will merge all objects touched by the ROI, while drawing with the left button will merge only objects fully enclosed by the ROI. Once activated, additional options will appear in a new toolbar. Check 'Only current z-slice' to only merge in current z-slice. Note that you don't need to close the ROI manually, it will be automatically closed once you release the mouse button.
+    * Usage: Draw a freehand region to merge all objects present in that region. Drawing with right button will merge all objects touched by the ROI, while drawing with the left button will merge only objects fully enclosed by the ROI. Once activated, additional options will appear in a new toolbar. Check 'Only current z-slice' to only merge in current z-slice. This can be toggled on by holding down "shift". Note that you don't need to close the ROI manually, it will be automatically closed once you release the mouse button. So when drawing lines with the right button, all objects touched by the line will be merged as the area is closed.
 * **Select objects to keep (** |keepIDsButton| **"K"):** Select the objects to keep. Press "Enter" to confirm selection or "Esc" to clear the selection. After confirming, all the NON selected objects will be deleted. Left-click on objects to keep.
 * **Select objects to add to the tracking whitelist (** |whitelistIDsButton| **"Ctr+K"):** Select objects to add to a tracking whitelist. Only objects in this list will be kept and tracked over time. You can add additional objects to the list an any point in time. Left-click on objects to add them to the whitelist.
 * **Remove object from analysis (** |binCellButton| **):** Annotate that a cell is removed from downstream analysis. ``is_cell_excluded`` set to ``True`` in ``acdc_output.csv`` table. Done by right-clicking.
@@ -518,3 +518,10 @@ Edit tools: Normal division: Lineage tree
 * **No tool selected (** |noToolLinTreeButton| **"N"):** No tool selected. Use this to deselect the current tool.
 * **Propagate changes (** |propagateLinTreeButton| **"P"):** Propagate changes in lineage tree. Use this to propagate changes in the lineage tree, especially after you moved to another frame without propagating first!
 * **View lineage tree info for current frame (** |viewLinTreeInfoButton| **"I"):** View lineage tree info for current frame.
+  
+
+
+
+
+
+
