@@ -21656,6 +21656,12 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
     def dstFolderPathSelected(self, dstFolderPath):
         pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
         if not pos_foldernames:
+            self.actionsPosFoldersExisting = {
+                'overwrite': False,
+                'add_files': False,
+                'create_new': False,
+                'start_pos_n': 1,
+            }
             self.dstFolderPathFormWidget.cogButton.hide()
             return
         
