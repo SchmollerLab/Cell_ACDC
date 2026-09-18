@@ -114,9 +114,6 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         no_ext_filepath, ext = os.path.splitext(filepath)
         svg_filepath = f'{no_ext_filepath}.svg'    
         svg_exporter = SVGExporter(self.item)
-        svg_exporter.params['width'] = self.params['width']
-        svg_exporter.params['height'] = self.params['height']
-        svg_exporter.params['background'] = self.params['background']
         svg_exporter.export(svg_filepath)
         self.svg_to_image(svg_filepath, filepath)
         
@@ -125,8 +122,18 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         except Exception as err:
             pass
         
-        # Remove padding
+        # Read image exported from SVG
         img_rgba = skimage.io.imread(filepath)    
+        if img_rgba.shape[-1] == 3:
+            # JPEG are RGB --> convert to RGBA
+            img_rgba_new = np.zeros(
+                (*img_rgba.shape[:2], 4), dtype=img_rgba.dtype
+            )
+            img_rgba_new[:, :, :3] = img_rgba
+            img_rgba_new[:, :, 3] = 255
+            img_rgba = img_rgba_new
+        
+         # Remove padding
         img_rgba = self.crop_from_mask(img_rgba)
         
         if self._crop_outer_padding:
@@ -138,7 +145,10 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
             )
 
         if self._save_pngs:
-            skimage.io.imsave(filepath, img_rgba, check_contrast=False)
+            img_to_save = img_rgba
+            if filepath.endswith('.jpeg'):
+                img_to_save = img_rgba[:, :, :3]
+            skimage.io.imsave(filepath, img_to_save, check_contrast=False)
 
         img_bgr = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2BGR)
         

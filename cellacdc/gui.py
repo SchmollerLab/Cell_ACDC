@@ -33124,6 +33124,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             action.setChecked(True)
             action.setDisabled(True)
         
+        try:
+            self.addScaleBarAction.setChecked(False)
+        except Exception as err:
+            pass
+
+        try:
+            self.addTimestampAction.setChecked(False)
+        except Exception as err:
+            pass
+        
         return True
     
     def setBottomLayoutHeight(self):
@@ -34980,6 +34990,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.exportToVideoNavVarIdxToRestore = (
                 self.zSliceScrollBar.sliderPosition()
             )
+
         self.exportToVideoCurrentNavVarIdx = (
             preferences['start_nav_var_num'] - 1
         )
@@ -35012,7 +35023,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.goToFrameNumber(self.exportToVideoCurrentNavVarIdx+1)                 
         else:
             self.update_z_slice(self.exportToVideoCurrentNavVarIdx)
-            
+        
+        self.setOverlaySegmMasksRgba()
         success = self.exportFrame()
         if success is None:
             self.exportingVideoCritical()
@@ -35045,16 +35057,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.logger.info('Exporting video process failed.')
     
-    def exportingFramesFinished(self):
-        if not self.exportToVideoPreferences['save_pngs']:
-            self.logger.info('Removing PNGs...')
-            try:
-                shutil.rmtree(self.exportToVideoPreferences['pngs_folderpath'])
-            except Exception as err:
-                pass
-            
+    def exportingFramesFinished(self):            
         self.logger.info('Saving video...')
-        
         self.exportToVideoExporter.release()
         
         # Run ffmpeg new process
@@ -35109,6 +35113,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.exportToVideoPreferences, conversion_to_mp4_successful, 
             qparent=self
         )
+
+        QTimer.singleShot(2000, self.removeExportVideoPngFolder)
+    
+    def removeExportVideoPngFolder(self):
+        try:
+            if not self.exportToVideoPreferences['save_pngs']:
+                self.logger.info('Removing PNGs...')
+                shutil.rmtree(self.exportToVideoPreferences['pngs_folderpath'])
+        except Exception as err:
+            traceback.print_exc()
+            pass
     
     def exportAddScaleBar(self, checked):
         self.addScaleBarAction.setChecked(checked)
@@ -35280,10 +35295,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
     
+    def setOverlaySegmMasksRgba(self):
+        # Use RGBA for overlay segm masks to make sure they are transparent
+        isOverlaySegmLeftActive = self.isOverlaySegmMaskChecked(0)
+        if not isOverlaySegmLeftActive:
+            return
+
+        posData = self.data[self.pos_i]
+        alpha = self.imgGrad.labelsAlphaSlider.value()
+        lut = self.labelsLayerImg1.lut
+        labRgba = lut[self.currentLab2D]
+        labRgba[:, :, 3] = np.round(labRgba[:, :, 3] * alpha).astype(np.uint8)
+
+        self.labelsLayerImg1.setImage(labRgba)
+        
     @disableWindow
     def exportToImage(self, preferences):      
         filepath = preferences['filepath']
         self.logger.info(f'Saving image to "{filepath}"...')
+
+        self.setOverlaySegmMasksRgba()
         
         if filepath.endswith('.svg'):
             exporter = exporters.SVGExporter(self.ax1)
@@ -35292,11 +35323,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         exporter.export(filepath)
         self.logger.info(f'Image saved.')
-        
-        self.setDisabled(False)
+
+        self.setOverlaySegmMasks()
+
         self.exportMaskImage[:] = 0
         self.exportMaskImageItem.setImage(self.exportMaskImage)
-        prompts.exportToImageFinished(filepath, qparent=self)
+
+        QTimer.singleShot(300, partial(
+            prompts.exportToImageFinished, filepath, qparent=self
+        ))
     
     def exportToImageTriggered(self):
         proceed = self.exportToCheckAskOverlay()
