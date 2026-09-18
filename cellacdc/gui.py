@@ -1038,7 +1038,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_activeCursorTool(self, tools):
         curr_mode = str(self.modeComboBox.currentText())
         for name, tool, draw_icon, mode in tools:
-            if mode != curr_mode:
+            if mode != curr_mode and not curr_mode == 'Snapshot':
                 continue
             if name == 'toggle_points_layer':
                 magicPromptsON = self.magicPromptsToolButton.isChecked()
