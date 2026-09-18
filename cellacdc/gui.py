@@ -3,6 +3,7 @@ import sys
 import os
 import shutil
 import re
+import textwrap
 import traceback
 import time
 from copy import deepcopy
@@ -42,7 +43,7 @@ from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from qtpy.QtCore import (
-    Qt, QPoint, QTextStream, QSize, QRect, QRectF,
+    Qt, QPoint, QPointF, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, Signal,
     QThread, QMutex, QWaitCondition, QSettings, PYQT6,
 )
@@ -101,6 +102,7 @@ from .plot import imshow
 from . import gui_utils
 from . import gui_combine
 from .config import STANDARD_MOUSE_BUTTONS
+from . import rst_utils
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -271,6 +273,19 @@ class RightClickMenuFilter(QObject):
                 return True  # swallow the event — don't let it fall through
                              # to the button's normal press handling
         return False  # everything else: pass through untouched
+
+class TitleIDsPopupEventFilter(QObject):
+    def __init__(self, enter_callback, leave_callback, parent=None):
+        super().__init__(parent)
+        self.enter_callback = enter_callback
+        self.leave_callback = leave_callback
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.Enter:
+            self.enter_callback()
+        elif event.type() == QEvent.Leave:
+            self.leave_callback()
+        return False
       
 class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
              gui_combine.CombineGuiElements, 
@@ -314,7 +329,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.original_df_lin_tree_i = None
 
     def setTooltips(self):
-        tooltips = load.get_tooltips_from_docs()
+        tooltips = rst_utils.get_tooltips_from_docs()
 
         for key, tooltip in tooltips.items():
             setShortcut = getattr(self, key).shortcut().toString()
@@ -335,6 +350,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             getattr(self, key).setToolTip(tooltip)
             getattr(self, key)._tooltip = tooltip
+            
+            # add custom addition to the search input tooltip
+            if key == "searchAction":
+                self.searchWidget.setToolTip(tooltip)
 
     def run(self, module='acdc_gui', logs_path=None):                
         self.setWindowIcon()
@@ -412,6 +431,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.doubleSpaceBarState = False
         self.protected_new_IDs = dict()
         
+        
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2
@@ -483,6 +503,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.gui_createBottomWidgets()
         self.gui_createImg2Widgets()
         self.gui_createBottomWidgetsToBottomLayout()
+        self.searchWidget.registerSearchControls()
 
         mainContainer = widgets.GuiCentralWidget()
         self.setCentralWidget(mainContainer)
@@ -1133,6 +1154,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        self.initMenuBar = menuBar
         menuBar.setNativeMenuBar(False)
         # File menu
         fileMenu = QMenu("&File", self)
@@ -1332,7 +1354,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.aboutAction)
         self.helpMenu = helpMenu
 
-    def gui_createToolBars(self):
+        self.searchWidget = widgets.ButtonSearchWidget(self)
+        self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
+        menuBar.setCornerWidget(self.searchWidget)
+        self.focusOnSearchAction = QAction("Search for ID or functionality", self)
+        self.focusOnSearchAction.setShortcut('Ctrl+F')
+        self.focusOnSearchAction.triggered.connect(
+            self.focusOnSearch
+        )
+        helpMenu.addAction(self.focusOnSearchAction)
+        self.searchWidget.sigSearchId.connect(
+            self.onSearchId
+        )
+        
+        
+    def gui_createToolBars(self):        
         # File toolbar
         fileToolBar = self.addToolBar("File")
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -1362,7 +1398,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
-        navigateToolBar.addAction(self.findIdAction)
+        navigateToolBar.addAction(self.searchAction)
         
         navigateToolBar.addWidget(self.zoomRectButton)
 
@@ -1484,9 +1520,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateSingleMotherBudPairButton
         )
         self.checkableButtons.append(self.annotateSingleMotherBudPairButton)
-        self.widgetsWithShortcut['Annotate one mother-bud pair at the time'] = (
-            self.annotateSingleMotherBudPairButton
-        )
+        self.widgetsWithShortcut[
+            'Annotate one mother-bud pair at the time (cell cycle analysis)'
+                ] = (
+                self.annotateSingleMotherBudPairButton
+            )
         self.checkableQButtonsGroup.addButton(
             self.annotateSingleMotherBudPairButton
         )
@@ -1574,10 +1612,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.clearFreehandRoiButton
         )
 
-        self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
+        self.widgetsWithShortcut[
+            'Annotate mother/daughter pairing (cell cycle analysis)'] = (
             self.assignBudMothButton
         )
-        self.widgetsWithShortcut['Annotate unknown history'] = (
+        self.widgetsWithShortcut[
+            'Annotate unknown history (cell cycle analysis)'] = (
             self.setIsHistoryKnownButton
         )
         
@@ -3148,9 +3188,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotButton.setCheckable(True)
         self.autoPilotButton.setShortcut('Ctrl+Shift+A')
         
-        self.findIdAction = QAction(self)
-        self.findIdAction.setIcon(QIcon(":find.svg"))
-        self.findIdAction.setShortcut('Ctrl+F')
+        self.searchAction = QAction(self)
+        self.searchAction.setIcon(QIcon(":find.svg"))
         
         self.zoomRectButton = QToolButton(self)
         self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
@@ -3934,7 +3973,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
-        self.findIdAction.triggered.connect(self.findID)
+        self.searchAction.triggered.connect(
+            partial(self.focusOnSearch, blinking=True)
+        )
         self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
         self.autoPilotButton.toggled.connect(self.autoPilotToggled)
         self.skipToNewIdAction.triggered.connect(self.skipForwardToNewID)        
@@ -4875,6 +4916,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.titleLabel = pg.LabelItem(
             justify='center', color=self.titleColor, size='14pt'
         )
+        self.titleLabel.item.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.titleLabel.item.linkActivated.connect(
+            self.titleLabelIDLinkActivated
+        )
+        self.titleLabel.item.linkHovered.connect(self.titleLabelIDLinkHovered)
+        self.titleIDsPopup = QLabel(flags=Qt.Tool | Qt.FramelessWindowHint)
+        self.titleIDsPopup.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        self.titleIDsPopup.linkActivated.connect(
+            self.titleLabelIDLinkActivated
+        )
+        self.titleIDsPopup.linkHovered.connect(
+            self.titleIDsPopupLinkHovered
+        )
+        self.titleIDsPopup.setStyleSheet(
+            'QLabel { background-color: palette(window); '
+            'border: 1px solid palette(mid); padding: 6px; }'
+        )
+        self.titleIDsPopupFilter = TitleIDsPopupEventFilter(
+            self._keepTitleIDsPopupOpen,
+            self._scheduleTitleIDsPopupHide,
+            parent=self,
+        )
+        self.titleIDsPopup.installEventFilter(self.titleIDsPopupFilter)
+        self.titleIDsPopupHideTimer = QTimer(self)
+        self.titleIDsPopupHideTimer.setSingleShot(True)
+        self.titleIDsPopupHideTimer.timeout.connect(self.titleIDsPopup.hide)
+        self._titleIDsPopupHtmlByLink = {}
+        self.fireworksOverlay = widgets.FireworksOverlay(self)
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)        
 
     def gui_createTextAnnotColors(self, r, g, b, custom=False):
@@ -10111,6 +10180,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.highlightSearchedID(ID)
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(ID)
+        is_obj_visible = self.isObjVisibleViewRange(obj.bbox)
+        if not is_obj_visible:
+            centroid = posData.rp.get_centroid(obj.label)
+            yc, xc = self.getObjCentroid(centroid)
+            pos = (int(xc), int(yc))
+            # set center of view to the lost object's position
+            self.ax1.setCenter(pos)        
+    
     
     def goToLostObjectID(self, lostID, color=(255, 165, 0, 255)):
         posData = self.data[self.pos_i]
@@ -10139,6 +10216,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             imageItem, contours, thickness=2, color=color
         )
         
+        is_obj_visible = self.isObjVisibleViewRange(obj.bbox)
+        if not is_obj_visible:
+            centroid = prev_rp.get_centroid(obj.label)
+            yc, xc = self.getObjCentroid(centroid)
+            pos = (int(xc), int(yc))
+            # set center of view to the lost object's position
+            self.ax1.setCenter(pos)        
+        
     def goToAcceptedLostObjectID(self, acceptedLostID):
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
@@ -10148,6 +10233,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         for ax in (self.ax1, self.ax2):
             self.updateLostTrackedContoursImage(ax=ax, tracked_lost_IDs=[acceptedLostID])
+            
+        is_obj_visible = self.isObjVisibleViewRange(obj.bbox)
+        if not is_obj_visible:
+            centroid = prev_rp.get_centroid(obj.label)
+            yc, xc = self.getObjCentroid(centroid)
+            pos = (int(xc), int(yc))
+            # set center of view to the lost object's position
+            self.ax1.setCenter(pos)
     
     def askGoToFrameFoundID(self, searchedID, frame_i_found):
         msg = widgets.myMessageBox(wrapText=False)
@@ -10732,6 +10825,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         if UndoFutFrames is None:
+            self.annotateAllObjectTracks()
+            self.annotateAssignedObjsAcdcTrackerSecondStep()
             return
 
         if shift and self.isSegm3D:
@@ -10828,6 +10923,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         if not applyFutFrames and not doPropagateUnvisited:
+            self.annotateAllObjectTracks()
+            self.annotateAssignedObjsAcdcTrackerSecondStep()
             return
 
         self.changeIDfutureFrames(
@@ -10836,6 +10933,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         
         self.annotateAllObjectTracks()
+        self.annotateAssignedObjsAcdcTrackerSecondStep()
     
     def getLastHoveredID(self):
         if self.xHoverImg is None:
@@ -11799,11 +11897,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 htmlTxt = f'<font color="orange">{warn_text}</font>'
                 self.titleLabel.setText(htmlTxt)
                 self.logger.info(warn_text)
-                self.blinker = qutils.QControlBlink(
+                blinker = qutils.QControlBlink(
                     self.annotateSingleMotherBudPairButton, 
                     qparent=self
                 )
-                self.blinker.start()
+                blinker.start()
                 return
 
         # Store cca_df for undo action
@@ -14020,11 +14118,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
     def manualEditCca(self, checked=True):
         if self.annotateSingleMotherBudPairButton.isChecked():
-            self.blinker = qutils.QControlBlink(
+            blinker = qutils.QControlBlink(
                 self.annotateSingleMotherBudPairButton, 
                 qparent=self
             )
-            self.blinker.start()
+            blinker.start()
+
             _warnings.warnEditCcaDisabledInAnnotSingleMothBudMode(qparent=self)
             return
 
@@ -14954,11 +15053,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
 
         if output.get('overlap_warning', False):
-            self.blinker = qutils.QControlBlink(
+            blinker = qutils.QControlBlink(
                 self.copyLostObjToolbar.maxOverlapNumberControl,
                 qparent=self.mainWin
             )
-            self.blinker.start()
+            blinker.start()
 
         self.copyAllLostObjectsWorkerLoop.exit()
         self.update_rp() # global op and obj added, no opt imo unless difference pic
@@ -15383,7 +15482,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         if self.ax1BrushHoverID in posData.IDs:
             obj = posData.rp.get_obj_from_ID(self.ax1BrushHoverID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 return
 
             display_rp = self.get2DRP()
@@ -16305,6 +16404,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if pos.y()>=0:
                 self.gui_raiseBottomLayoutContextMenu(event)
         if event.button() not in STANDARD_MOUSE_BUTTONS:
+            if not self.isDataLoaded:
+                self.logger.warning(
+                    'Data not loaded yet. Key pressing events are not connected.'
+                )
+                return
             for name, button in self.mouseBindings.items():
                 if not button == event.button():
                     continue
@@ -16553,7 +16657,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return super().eventFilter(obj, ev)
         
     @exception_handler
-    def keyPressEvent(self, ev):        
+    def keyPressEvent(self, ev):
         ctrl = ev.modifiers() == Qt.ControlModifier
         if ctrl and ev.key() == Qt.Key_D:
             self.resizeLeaveSpaceTerminalBelow()
@@ -16568,11 +16672,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 printl('[ERROR]: Error with "_q_debug" module. See Traceback above.')
                 pass
 
+        modifiers = ev.modifiers()
+        isAltModifier = modifiers == Qt.AltModifier
+        isCtrlModifier = modifiers == Qt.ControlModifier
+        isShiftModifier = modifiers == Qt.ShiftModifier
+
         if not self.isDataLoaded:
-            self.logger.warning(
-                'Data not loaded yet. Key pressing events are not connected.'
+            is_passable_keycombin = (
+                ev.key() == Qt.Key_Control
+                or ev.key() == Qt.Key_Alt
+                or ev.key() == Qt.Key_Shift
+                or ev.key() == Qt.Key_Escape
+                or (ev.key() == Qt.Key_F and isCtrlModifier)
             )
-            return
+            if not is_passable_keycombin:
+                self.logger.warning(
+                    'Data not loaded yet. Key pressing events are not connected.'
+                )
+                return
 
         if ev.key() == Qt.Key_Control:
             if not ctrl:
@@ -16602,10 +16719,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 action.trigger()
             break
         
-        modifiers = ev.modifiers()
-        isAltModifier = modifiers == Qt.AltModifier
-        isCtrlModifier = modifiers == Qt.ControlModifier
-        isShiftModifier = modifiers == Qt.ShiftModifier
+
         
         self.checkSetDelObjActionActive(ev)
         
@@ -18713,7 +18827,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     continue
                 obj = posData.rp.get_obj_from_ID(annotID)
                 acdc_df.at[annotID, state['name']] = 1
-                if not self.isObjVisible(obj.bbox):
+                if not self.isObjInCurrSlice(obj.bbox):
                     continue
                 y, x = self.getObjCentroid(
                     posData.rp.get_centroid(annotID, exact=True))
@@ -24109,7 +24223,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
-                self.titleLabel.setText(msg, color=self.titleColor)
+                self.setLookingGoodTitle()
                 self.get_data()
                 self.addMissingIDs_cca_df(posData)
                 self.store_cca_df()
@@ -24155,7 +24269,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if msg.clickedButton == yesButton:
                 self.addMissingIDs_cca_df(posData)
                 msg = 'Looking good!'
-                self.titleLabel.setText(msg, color=self.titleColor)
+                self.setLookingGoodTitle()
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.get_data()
@@ -24268,7 +24382,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 msg = 'Looking good!'
                 self.last_lin_tree_frame_i = last_lin_tree_frame_i
                 posData.frame_i = last_lin_tree_frame_i
-                self.titleLabel.setText(msg, color=self.titleColor)
+                self.setLookingGoodTitle()
                 self.get_data(lin_tree_init=False)
                 self.updateAllImages() # i dont think I need to change this
                 self.updateScrollbars() # i dont think I need to change this
@@ -24299,7 +24413,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )[0]
             if goTo_last_annotated_frame_i == msg.clickedButton:
                 msg = 'Looking good!'
-                self.titleLabel.setText(msg, color=self.titleColor)
+                self.setLookingGoodTitle()
                 self.last_lin_tree_frame_i = last_lin_tree_frame_i
                 posData.frame_i = last_lin_tree_frame_i
                 self.get_data(lin_tree_init=False)
@@ -24965,8 +25079,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         except KeyError:
             return        
         
-        isObjVisible = self.isObjVisible(obj.bbox)
-        if not isObjVisible:
+        if not self.isObjInCurrSlice(obj.bbox):
             return
         
         ccs_ID = cca_df_ID['cell_cycle_stage']
@@ -25068,10 +25181,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if not ID:
             ID = obj.label
-        
-        isObjVisible = self.isObjVisible(obj.bbox)
-        
-        if not isObjVisible:
+                
+        if not self.isObjInCurrSlice(obj.bbox):
             return
 
         scatterItem = self.getMothBudLineScatterItem(ax, isNew)
@@ -25556,7 +25667,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if obj.label not in self.keptObjectsIDs:
                 continue
 
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
 
             _slice = self.getObjSlice(obj.slice)
@@ -25854,7 +25965,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for obj in posData.rp:
             obj.excluded = obj.label in posData.binnedIDs
             obj.dead = obj.label in posData.ripIDs
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
             
             if obj.excluded:
@@ -27451,10 +27562,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         msg.information(self, 'Custom promptable model added', info_txt)
     
     def segmWithPromptableModelActionTriggered(self):
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.magicPromptsToolButton, qparent=self
         )
-        self.blinker.start()
+        blinker.start()
     
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
@@ -27819,7 +27930,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isOverlaySegmRightActive: 
             self.labelsLayerRightImg.setImage(currentLab2D, autoLevels=False)
 
-    def isObjVisible(self, obj_bbox, debug=False, z_slice=None):
+    def isObjInCurrSlice(self, obj_bbox, debug=False, z_slice=None):
         if z_slice is None:
             z_slice = self.z_lab()
             
@@ -28253,7 +28364,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Ctrl+Z': ('Undo', self.undoAction),
             'Ctrl+Y': ('Redo', self.redoAction),
             'Ctrl+Shift+A': ('Autopilot', self.autoPilotButton),
-            'Ctrl+F': ('Find ID', self.findIdAction),
+            'Ctrl+F': ('Search', self.focusOnSearchAction),
             'Ctrl+T': (
                 'Track current frame with real-time tracker', 
                 self.repeatTrackingMenuAction
@@ -29487,7 +29598,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         lut = np.zeros((2, 4), dtype=np.uint8)
         for _obj in posData.rp:
-            if not self.isObjVisible(_obj.bbox):
+            if not self.isObjInCurrSlice(_obj.bbox):
                 continue
             if _obj.label not in nonGrayedIDs:
                 continue
@@ -29598,8 +29709,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if obj is None:
             return
         
-        isObjVisible = self.isObjVisible(obj.bbox)
-        if not isObjVisible:
+        if not self.isObjInCurrSlice(obj.bbox):
             return
         
         if greyOthers:
@@ -30006,7 +30116,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             
             obj = prev_rp.get_obj_from_ID(lostID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
             obj_display = display_rp_prev.get_obj_from_ID(lostID)
 
@@ -30065,7 +30175,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 continue
             
             obj = prev_rp.get_obj_from_ID(tracked_lost_ID)
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
         
             obj = display_rp_prev.get_obj_from_ID(tracked_lost_ID)
@@ -30318,7 +30428,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.textAnnot[0].setAnnotations(
             posData=posData, 
             labelsToSkip=labelsToSkip, 
-            isVisibleCheckFunc=self.isObjVisible,
+            isVisibleCheckFunc=self.isObjInCurrSlice,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getCurrentZfunc=self.z_lab, 
@@ -30328,7 +30438,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.textAnnot[1].setAnnotations(
             posData=posData, labelsToSkip=labelsToSkip, 
-            isVisibleCheckFunc=self.isObjVisible,
+            isVisibleCheckFunc=self.isObjInCurrSlice,
             highlightedID=self.highlightedID, 
             annotateLost=self.annotLostObjsToggle.isChecked(), 
             getObjCentroidFunc=self.getObjCentroid,
@@ -30665,6 +30775,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.update_rp()
 
         self.annotateAllObjectTracks()
+        self.annotateAssignedObjsAcdcTrackerSecondStep()
         self.store_data(autosave=False)
         self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
         return delID_mask
@@ -30947,7 +31058,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             posData.new_IDs = []
             posData.old_IDs = []
             # posData.multiContIDs = set()
-            self.titleLabel.setText('Looking good!', color=self.titleColor)
+            self.setLookingGoodTitle()
             return []
         
         # elif self.modeComboBox.currentText() == 'Viewer':
@@ -30961,7 +31072,128 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lost_IDs, new_IDs, IDs_with_holes, tracked_lost_IDs
         )
         return
+
+    def setLookingGoodTitle(self):
+        self._titleIDsPopupHtmlByLink.clear()
+        self.titleIDsPopup.hide()
+        htmlTxt = (
+            f'<a href="cellacdc-fireworks" '
+            f'style="color: {self.titleColor};">Looking good!</a>'
+        )
+        self.titleLabel.setText(htmlTxt)
     
+
+    def titleLabelIDLinkActivated(self, link):
+        """ 
+        Handle clicks on title label ID links.
+        """
+        if link == 'cellacdc-fireworks':
+            self.fireworksOverlay.start()
+            return
+        if link.startswith('cellacdc-category:'):
+            self._showTitleIDsPopup(link)
+            return
+        prefix = 'cellacdc-id:'
+        if not link.startswith(prefix):
+            return
+        self.titleIDsPopup.hide()
+        ID_text = link[len(prefix):].split(':', 1)[0]
+        self.findID(ID=int(ID_text))
+
+    def titleLabelIDLinkHovered(self, link):
+        self._setLinkCursor(self.titleLabel.item, link)
+        if not link:
+            self._scheduleTitleIDsPopupHide()
+            return
+        self._showTitleIDsPopup(link)
+
+    def titleIDsPopupLinkHovered(self, link):
+        self._setLinkCursor(self.titleIDsPopup, link)
+
+    def _setLinkCursor(self, target, link):
+        cursor = Qt.PointingHandCursor if link else Qt.ArrowCursor
+        target.setCursor(QCursor(cursor))
+
+    def _showTitleIDsPopup(self, link):
+        popup_html = self._titleIDsPopupHtmlByLink.get(link)
+        if popup_html is None:
+            return
+        self.titleIDsPopupHideTimer.stop()
+        self.titleIDsPopup.setText(popup_html)
+        self.titleIDsPopup.adjustSize()
+        self.titleIDsPopup.move(QCursor.pos() + QPoint(12, 12))
+        self.titleIDsPopup.show()
+
+    def _keepTitleIDsPopupOpen(self):
+        self.titleIDsPopupHideTimer.stop()
+
+    def _scheduleTitleIDsPopupHide(self):
+        self.titleIDsPopupHideTimer.start(200)
+
+    def _titleClickableIDs(self, IDs, color, category_key):
+        """Generate clickable HTML links for title IDs. 
+        Handles both IDs and "..."
+
+        Parameters
+        ----------
+        IDs : list of int
+            List of IDs to generate clickable links for.
+        color : str
+            Color to use for the HTML links.
+        category_key : int
+            Key representing the category for the IDs.
+
+        Returns
+        -------
+        str
+            HTML string containing clickable links for the IDs.
+        """
+        IDs_text = str(IDs)
+        IDs_html = re.sub(
+            r'(?<![\w.])-?\d+',
+            lambda match: (
+                f'<a href="cellacdc-id:{match.group(0)}:{category_key}" '
+                f'style="color: {color};">{match.group(0)}</a>'
+            ),
+            IDs_text,
+        )
+        category_link = f'cellacdc-category:{category_key}'
+        return IDs_html.replace(
+            '...',
+            f'<a href="{category_link}" style="color: {color};">...</a>',
+        )
+
+    def _wrapTitleIDs(self, IDs, width=60):
+        "Wrapping for tooltip."
+        return '<br>'.join(textwrap.wrap(
+            str(IDs), width=width, break_long_words=False,
+            break_on_hyphens=False,
+        ))
+
+    def _normalizeTitleIDs(self, IDs):
+        """Normalize a list of title IDs, converting numpy integers and 
+        formatted strings to standard integers or strings.
+
+        Parameters
+        ----------
+        IDs : list
+            List of title IDs to normalize.
+
+        Returns
+        -------
+        list
+            List of normalized title IDs.
+        """
+        normalized_IDs = []
+        for ID in IDs:
+            if isinstance(ID, np.integer):
+                normalized_IDs.append(int(ID))
+                continue
+            ID_text = re.sub(
+                r'np\.(?:u?int\d*)\((-?\d+)\)', r'\1', str(ID)
+            )
+            normalized_IDs.append(ID_text if isinstance(ID, str) else int(ID_text))
+        return normalized_IDs
 
     def setTitleFormatter(self, htmlTxt_li, htmlTxtFull_li, pretxt, color, IDs):
         if not IDs:
@@ -30970,12 +31202,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if isinstance(IDs, set):
             IDs = list(IDs)
 
-        trim_IDs = myutils.get_trimmed_list(IDs)
-        txt = f'{pretxt}: {trim_IDs}'
-        txt_full = f'{pretxt}:<br>{IDs}'
+        IDs = self._normalizeTitleIDs(IDs)
+        category_key = len(htmlTxtFull_li)
+        trim_IDs = myutils.get_trimmed_list(IDs, max_num_digits=20)
+        txt = (
+            f'{pretxt}: '
+            f'{self._titleClickableIDs(trim_IDs, color, category_key)}'
+        )
+        wrapped_IDs = self._wrapTitleIDs(IDs)
+        txt_full = (
+            f'{pretxt}:<br>'
+            f'{self._titleClickableIDs(wrapped_IDs, color, category_key)}'
+        )
 
         txt = f'<font color="{color}">{txt}</font>'
         txt_full = f'<font color="{color}">{txt_full}</font>'
+
+        # Generate and store HTML links for the title IDs. This is used for
+        # displaying the tooltip
+        link_pattern = rf'cellacdc-id:-?\d+:{category_key}'
+        for link in re.findall(link_pattern, txt):
+            self._titleIDsPopupHtmlByLink[link] = txt_full
+        for link in re.findall(link_pattern, txt_full):
+            self._titleIDsPopupHtmlByLink[link] = txt_full
+        category_link = f'cellacdc-category:{category_key}'
+        self._titleIDsPopupHtmlByLink[category_link] = txt_full
 
         htmlTxt_li.append(txt)
         htmlTxtFull_li.append(txt_full)
@@ -30986,6 +31237,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, lost_IDs=None, new_IDs=None, IDs_with_holes=None, 
             tracked_lost_IDs=None
         ):
+        self._titleIDsPopupHtmlByLink.clear()
+        self.titleIDsPopup.hide()
         if self.annotateSingleMotherBudPairButton.isChecked():
             mothID = self.annotateSingleMothBudPairState.get(
                 'mother_ID'
@@ -30996,22 +31249,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             frame_to_restore = self.annotateSingleMothBudPairState.get(
                 'frame_i_to_restore'
             )
-            txt = (
-                f'Annotating mother-bud pair {(mothID, budID)} '
-                f'since frame n. {frame_to_restore+1}'
+            htmlTxt, htmlTxtFull = self.setTitleFormatter(
+                [], [], 'Annotating mother-bud pair: Mother', 'orange', [mothID]
             )
-            htmlTxt = f'<font color="orange">{txt}</font>'
+            htmlTxt, htmlTxtFull = self.setTitleFormatter(
+                htmlTxt, htmlTxtFull, 'Bud', 'orange', [budID]
+            )
+            htmlTxt = ", ".join(htmlTxt)
+            htmlTxt = (
+                htmlTxt 
+                + f'<font color="orange"> since frame n. {frame_to_restore+1}</font>'
+                )
             self.titleLabel.setText(htmlTxt)
             return
         
         if self.manualAnnotPastButton.isChecked():
             lockedID = self.editIDspinbox.value()
             frame_to_restore = self.manualAnnotState.get('frame_i_to_restore')
-            txt = (
-                f'Locked ID {lockedID} '
-                f'since frame n. {frame_to_restore+1}'
+            htmlTxt, htmlTxtFull = self.setTitleFormatter(
+                [], [], 'Locked ID', 'orange', [lockedID]
             )
-            htmlTxt = f'<font color="orange">{txt}</font>'
+            htmlTxt = htmlTxt[0]
+            htmlTxt = (
+                htmlTxt 
+                + f'<font color="orange"> since frame n. {frame_to_restore+1}</font>'
+                )
             self.titleLabel.setText(htmlTxt)
             return
         
@@ -31092,17 +31354,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
 
         if not htmlTxt_li:
-            title = 'Looking good'
-            htmlTxt = f'<font color="{self.titleColor}">{title}</font>'
-            self.titleLabel.setText(htmlTxt)
-            self.titleLabel.setToolTip(htmlTxt)
+            self.setLookingGoodTitle()
             return
 
         htmlTxt = ', '.join(htmlTxt_li)
-        htmlTxtFull = '<br>'.join(htmlTxtFull_li)
-
         self.titleLabel.setText(htmlTxt)
-        self.titleLabel.setToolTip(htmlTxtFull)
+        self.titleLabel.setToolTip('')
 
     def separateByLabelling(self, lab, rp, maxID=None):
         """
@@ -31631,8 +31888,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 include_internal=self.showAllContoursToggle.isChecked()
             ) 
             for objContours in allContours:
-                isObjVisible = self.isObjVisible(newObj.bbox)
-                if not isObjVisible:
+                if not self.isObjInCurrSlice(newObj.bbox):
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
@@ -31910,7 +32166,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         for ID in rp.IDs:
             obj = rp.get_obj_from_ID(ID)
             if settings['3D_show_only_visible'] and self.isSegm3D:
-                if not self.isObjVisible(obj.bbox):
+                if not self.isObjInCurrSlice(obj.bbox):
                     continue
             centroids[ID] = {frame_i: self.getObjCentroid(
                 rp.get_centroid(ID, as_ints=True, exact=True)
@@ -32011,8 +32267,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             obj_3D = rp_3D.get_obj_from_ID(ID, warn=False)
             for objContours in allContours:
-                isObjVisible = self.isObjVisible(obj_3D.bbox)
-                if not isObjVisible:
+                if not self.isObjInCurrSlice(obj_3D.bbox):
                     continue
                 xx = objContours[:,0] + 0.5
                 yy = objContours[:,1] + 0.5
@@ -33627,11 +33882,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if start_n <= stop_n:
             return True
         
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.labelRoiStopFrameNoSpinbox, 
             qparent=self
         )
-        self.blinker.start()
+        blinker.start()
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             Stop frame number is less than start frame number!<br><br>
@@ -34883,10 +35138,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.overlayToolbar.isTransparent():
             return True
         
-        self.blinker = qutils.QControlBlink(
+        blinker = qutils.QControlBlink(
             self.overlayToolbar.transparencyCheckbox, qparent=self
         )
-        self.blinker.start()
+        blinker.start()
         
         cancel, activateTransparencyMode = (
             _warnings.warnAskTransparencyModeNeededForExport(
@@ -36060,6 +36315,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.mainWin.showAllWindows()
         # self.setFocus()
         self.activateWindow()
+        self.searchWidget.set_height_based_on(self.initMenuBar)
     
     def super_show(self):
         super().show()
@@ -36284,3 +36540,54 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.timestamp.updatePosViewRangeChanged(viewRange)
         
         self._viewRange = viewRange
+
+    def onSearchTriggerBlink(self, target):
+        button = getattr(self, target, None) if isinstance(target, str) else target
+        if button is None:
+            return
+        
+        blinker = qutils.QControlBlink(button, qparent=self)
+        blinker.start()
+        
+    def onSearchId(self, ID):
+        if not self.isDataLoaded:
+            self.logger.warning(
+                'Data not loaded yet. Key pressing events are not connected.'
+            )
+            return
+        self.findID(ID=ID)
+        
+    def focusOnSearch(self, dummy=None, blinking=False):
+        self.searchWidget.search_input.setFocus()
+        if blinking:
+            blinker = qutils.QControlBlink(self.searchWidget, qparent=self)
+            blinker.start()
+
+    def isObjVisibleViewRange(self, bbox, viewRange=None):
+        if self.isSegm3D and len(bbox) == 6:
+            isObjInCurrSlice = self.isObjInCurrSlice(bbox)
+            if not isObjInCurrSlice:
+                return False
+
+            # bbox has, no matter what projection, always the entire object    
+            depthAxes = self.switchPlaneCombobox.depthAxes()
+            z0, y0, x0, z1, y1, x1 = bbox
+            if depthAxes == 'z':
+                a0, a1, b0, b1 = x0, x1, y0, y1
+            elif depthAxes == 'y':
+                a0, a1, b0, b1 = x0, x1, z0, z1
+            elif depthAxes == 'x':
+                a0, a1, b0, b1 = y0, y1, z0, z1
+
+        else:
+            y0, x0, y1, x1 = bbox
+            a0, a1, b0, b1 = x0, x1, y0, y1
+            
+        if viewRange is None:
+            viewRange = self.ax1ViewRange()
+            
+        # 
+        view_a0, view_a1 = viewRange[0] # x
+        view_b0, view_b1 = viewRange[1] # y
+        
+        return not (a1 < view_a0 or a0 > view_a1 or b1 < view_b0 or b0 > view_b1)
