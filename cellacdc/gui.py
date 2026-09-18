@@ -5919,7 +5919,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     splittedIDs = list(np.unique(manualSep.lab[changed_mask]))
                 elif self.isSegm3D and manualSep.lab.ndim == 2:
                     changed_mask = manualSep.lab != 0
-                    posData.lab[start_slice][changed_mask] = manualSep.lab[changed_mask]
+                    lab_2D = self.get_2Dlab(force_z=True)
+                    lab_2D[changed_mask] = manualSep.lab[changed_mask]
+                    self.set_2Dlab(lab_2D)
                     splittedIDs = list(np.unique(manualSep.lab[changed_mask]))
                 else:
                     lab2D = self.get_2Dlab(posData.lab)
