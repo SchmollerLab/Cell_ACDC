@@ -14937,7 +14937,6 @@ class ShortcutEditorDialog(QBaseDialog):
             self.new_hard_shortcuts, keep_at_beginning, grouped_keys
         )
             
-        print(widgetsWithShortcut)
         for group, shortcuts in widgetsWithShortcut.items():
             if not shortcuts:
                 continue
