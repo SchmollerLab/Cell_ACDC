@@ -114,9 +114,6 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
         no_ext_filepath, ext = os.path.splitext(filepath)
         svg_filepath = f'{no_ext_filepath}.svg'    
         svg_exporter = SVGExporter(self.item)
-        # svg_exporter.params['width'] = self.params['width']
-        # svg_exporter.params['height'] = self.params['height']
-        # svg_exporter.params['background'] = self.params['background']
         svg_exporter.export(svg_filepath)
         self.svg_to_image(svg_filepath, filepath)
         
