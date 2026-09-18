@@ -31757,7 +31757,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # First separate by labelling
         if separateByLabel:
             maxID = max(posData.IDs, default=1)
-            setRp = core.split_connected_components(
+            setRp = core_split_IDs.split_connected_components(
                 posData.lab, rp=posData.rp, max_ID=maxID
             )
             if setRp:

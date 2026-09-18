@@ -11254,7 +11254,6 @@ class manualSeparateGui(QMainWindow):
         self.current_slice = current_slice
         self.AllCutsCoords = self.sliceCutsCoords.setdefault(current_slice, [])
         self.updateImg()
-        self.splitObjectAlongCurve()
     
     def setSplitCurveCoords(self, xx, yy):
         lab = self.currentLab()
