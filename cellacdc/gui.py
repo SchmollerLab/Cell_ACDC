@@ -84,13 +84,13 @@ from . import _palettes
 from . import transformation
 from . import measure
 from . import cca_functions
-from . import data_structure_docs_url
 from . import exporters
 from . import preprocess
 from . import io
 from . import whitelist
 from . import cli
 from . import is_mac
+from . import urls
 from .cca_functions import _calc_rot_vol
 from .myutils import setupLogger, ArgSpec
 from .help import welcome, about
@@ -22183,20 +22183,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 idx = [(posData.filename, posData.frame_i)]
             posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-            
+
+        self.setZSliceWidgetsEnabled(how)
+
+        if how == 'single z-slice':
+            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+        else:
+            self.updateAllImages()
+
+    def setZSliceWidgetsEnabled(self, how):
         posData = self.data[self.pos_i]
         if how == 'single z-slice':
             self.zSliceScrollBar.setDisabled(False)
             self.zSliceSpinbox.setDisabled(False)
             self.zSliceCheckbox.setDisabled(False)
             self.setZprojDisabled(False)
-            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.zSliceSpinbox.setDisabled(True)
             self.zSliceCheckbox.setDisabled(True)
             self.setZprojDisabled(self.isSegm3D)
-            self.updateAllImages()
     
     def setZprojDisabled(self, disabled, storePrevState=False):
         self.combineChannelsAction.setDisabled(disabled)
@@ -28807,6 +28813,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             zProjHow = posData.segmInfo_df.loc[idx, 'which_z_proj_gui'].iloc[0] 
         
         self.zProjComboBox.setCurrentText(zProjHow)
+        self.setZSliceWidgetsEnabled(zProjHow)
         
         reconnect = False
         try:
@@ -33402,7 +33409,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         return images_paths
     
     def criticalInvalidPosFolder(self, exp_path):
-        href = html_utils.href_tag('here', data_structure_docs_url)
+        href = html_utils.href_tag('here', urls.data_structure_docs_url)
         txt = html_utils.paragraph(f"""
             The selected folder:<br><br>
             
@@ -33427,7 +33434,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         msg.addButton(helpButton)
         helpButton.clicked.disconnect()
         helpButton.clicked.connect(
-            partial(myutils.browse_url, data_structure_docs_url)
+            partial(myutils.browse_url, urls.data_structure_docs_url)
         )
         msg.addShowInFileManagerButton(exp_path)
         msg.critical(
