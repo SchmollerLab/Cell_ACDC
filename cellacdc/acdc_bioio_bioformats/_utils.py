@@ -1,6 +1,7 @@
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import argparse
 
@@ -288,3 +289,48 @@ def check_raise_exception(error_id):
     os.remove(error_path)
     
     raise err
+
+def load_bioformats_extensions():
+    readers_file = Path(__file__).parent / 'bioformats_readers.txt'
+
+    extensions = set()
+
+    with readers_file.open(encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+
+            if not line or line.startswith('#') or '#' not in line:
+                continue
+
+            _, extension_text = line.split('#', 1)
+
+            # Remove annotations
+            extension_text = extension_text.split('[', 1)[0]
+
+            for extension in extension_text.split(','):
+                extension = extension.strip().lower()
+
+                if (
+                    not extension
+                    or extension in {'...', 'various', 'no extension'}
+                    or ' ' in extension
+                ):
+                    continue
+
+                if not extension.startswith('.'):
+                    extension = '.' + extension
+
+                extensions.add(extension)
+
+    return extensions
+
+def get_supported_image_extensions():
+    import bioio
+
+    # Extensions supported by BioIO plugins installed in the environment
+    bioio_extensions = set(bioio.plugins.get_plugins(use_cache=True))
+
+    # Extensions advertised by Bio-Formats
+    bioformats_extensions = load_bioformats_extensions()
+
+    return bioio_extensions | bioformats_extensions

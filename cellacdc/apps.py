@@ -21330,7 +21330,7 @@ will be created in the respective Position folders.<br>
 
         infoText = html_utils.paragraph(f"""
 Choose whether to move raw microscopy files to a <code>raw_microscopy_files</code> sub-folder or not.<br><br>
-If you activate this option, before the conversion process starts, Cell-ACDC will automatically move the raw microscopy files<br>
+If you activate this option, before the conversion process, Cell-ACDC will automatically move the raw microscopy files<br>
 into a folder called <code>raw_microscopy_files</code> inside the destination folder.
 """)
         
@@ -21421,6 +21421,10 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         if not files: 
             return
         
+        proceed = self.checkFilesExtensions(files)
+        if not proceed:
+            return
+
         self.actionsFilesSourceFolder['files'] = files
 
     def checkFileNames(self, raw_filenames, raw_src_path):
@@ -21479,8 +21483,41 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
                 return renamed_filenames
             else:
                 return []
-
+            
         return raw_filenames
+
+    def checkFilesExtensions(self, raw_filenames):
+        from cellacdc.acdc_bioio_bioformats._utils import (
+            get_supported_image_extensions
+        )
+        extensions = get_supported_image_extensions()
+        not_supported_files = []
+        for filename in raw_filenames:
+            _, ext = os.path.splitext(filename)
+
+            if ext not in extensions:
+                not_supported_files.append(filename)
+        
+        if not_supported_files:
+            self.warnExtensionNotSupported(filename)
+            return False
+        
+        return True
+
+    def warnExtensionNotSupported(self, not_supported_files):
+        txt = html_utils.paragraph(f"""
+            The selected source folder contains files not supported by 
+            <code>bioio</code>.<br><br>
+            Please, select another folder or remove these files (see below).<br><br>
+            Thank you for your patience!<br><br>
+            Not supported files:
+        """)
+        detailsText = '<br>'.join(not_supported_files)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'File not supported', txt,
+            detailsText=detailsText
+        )
 
     def warnMultipleFileExtensions(
             self, 
