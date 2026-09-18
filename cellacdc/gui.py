@@ -25332,8 +25332,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 * (cutout[2][1] - cutout[2][0])
             )
         else:
+            depth = posData.SizeZ if self.isSegm3D else 1
             size = (
-                (cutout[0][1] - cutout[0][0]) 
+                depth
+                * (cutout[0][1] - cutout[0][0]) 
                 * (cutout[1][1] - cutout[1][0])
             )
         return size / single_timepoint_segm_size
