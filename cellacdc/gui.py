@@ -34735,6 +34735,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.exportToVideoNavVarIdxToRestore = (
                 self.zSliceScrollBar.sliderPosition()
             )
+
         self.exportToVideoCurrentNavVarIdx = (
             preferences['start_nav_var_num'] - 1
         )
@@ -34767,7 +34768,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.goToFrameNumber(self.exportToVideoCurrentNavVarIdx+1)                 
         else:
             self.update_z_slice(self.exportToVideoCurrentNavVarIdx)
-            
+        
+        self.setOverlaySegmMasksRgba()
         success = self.exportFrame()
         if success is None:
             self.exportingVideoCritical()
@@ -34800,16 +34802,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.logger.info('Exporting video process failed.')
     
-    def exportingFramesFinished(self):
-        if not self.exportToVideoPreferences['save_pngs']:
-            self.logger.info('Removing PNGs...')
-            try:
-                shutil.rmtree(self.exportToVideoPreferences['pngs_folderpath'])
-            except Exception as err:
-                pass
-            
+    def exportingFramesFinished(self):            
         self.logger.info('Saving video...')
-        
         self.exportToVideoExporter.release()
         
         # Run ffmpeg new process
@@ -34864,6 +34858,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.exportToVideoPreferences, conversion_to_mp4_successful, 
             qparent=self
         )
+
+        QTimer.singleShot(2000, self.removeExportVideoPngFolder)
+    
+    def removeExportVideoPngFolder(self):
+        try:
+            if not self.exportToVideoPreferences['save_pngs']:
+                self.logger.info('Removing PNGs...')
+                shutil.rmtree(self.exportToVideoPreferences['pngs_folderpath'])
+        except Exception as err:
+            traceback.print_exc()
+            pass
     
     def exportAddScaleBar(self, checked):
         self.addScaleBarAction.setChecked(checked)
@@ -35045,7 +35050,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         alpha = self.imgGrad.labelsAlphaSlider.value()
         lut = self.labelsLayerImg1.lut
         labRgba = lut[self.currentLab2D]
-        labRgba[:, :, 3] = round(255*alpha)
+        labRgba[:, :, 3] = np.round(labRgba[:, :, 3] * alpha).astype(np.uint8)
 
         self.labelsLayerImg1.setImage(labRgba)
         
