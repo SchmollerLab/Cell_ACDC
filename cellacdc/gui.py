@@ -5643,6 +5643,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
+        ctrl = modifiers == Qt.ControlModifier
         shift_regardless = bool(modifiers & Qt.ShiftModifier)
         isMod = alt
         posData = self.data[self.pos_i]
@@ -5654,6 +5655,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
         separateON = self.separateBudButton.isChecked()
+        zProjHow = self.zProjComboBox.currentText()
+        isZslice = zProjHow == 'single z-slice'
         self.typingEditID = False
 
         # Drag image if neither brush or eraser are On pressed
@@ -5839,7 +5842,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.storeUndoRedoStates(False)
             max_ID = max(posData.IDs, default=1)
 
-            if self.isSegm3D and not shift:
+            if self.isSegm3D and not ctrl and not (shift and isZslice):
                 z = self.zSliceScrollBar.sliderPosition()
                 posData.lab, splittedIDs = measure.separate_with_label(
                     posData.lab, posData.rp, [ID], max_ID, 
@@ -5932,7 +5935,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID in posData.lab:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
-                if not shift and self.isSegm3D:
+                if (shift and isZslice) and self.isSegm3D:
                     rp2D = self.rpCurr2D()
                     obj = rp2D.get_obj_from_ID(ID)
                 else: # shift hold or 2D from the getgo
@@ -5940,7 +5943,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
                 localFill = scipy.ndimage.binary_fill_holes(obj.image)
 
-                if not shift and self.isSegm3D:
+                if (shift and isZslice) and self.isSegm3D:
                     curr_z = self.zSliceScrollBar.sliderPosition()
                     posData.lab[curr_z][obj.slice][localFill] = ID
                 else:
@@ -5982,14 +5985,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID in posData.lab:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
-                if not shift and self.isSegm3D:
+                if (shift and isZslice) and self.isSegm3D:
                     rp2D = self.rpCurr2D()
                     obj = rp2D.get_obj_from_ID(ID)
                 else:
                     obj = posData.rp.get_obj_from_ID(ID)
 
                 localHull = skimage.morphology.convex_hull_image(obj.image)
-                if not shift and self.isSegm3D:
+                if (shift and isZslice) and self.isSegm3D:
                     curr_z = self.zSliceScrollBar.sliderPosition()
                     hull_lab = posData.lab[curr_z][obj.slice]
                 else:
