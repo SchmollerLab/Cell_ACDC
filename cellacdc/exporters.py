@@ -144,7 +144,10 @@ class ImageExporter(pyqtgraph.exporters.ImageExporter):
             )
 
         if self._save_pngs:
-            skimage.io.imsave(filepath, img_rgba, check_contrast=False)
+            img_to_save = img_rgba
+            if filepath.endswith('.jpeg'):
+                img_to_save = img_rgba[:, :, :3]
+            skimage.io.imsave(filepath, img_to_save, check_contrast=False)
 
         img_bgr = cv2.cvtColor(img_rgba, cv2.COLOR_RGBA2BGR)
         
