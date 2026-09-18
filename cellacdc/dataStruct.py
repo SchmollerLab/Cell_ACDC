@@ -1149,7 +1149,7 @@ class bioFormatsWorker(QObject):
         raw_dst_path = os.path.join(dst_folder_path, 'raw_microscopy_files')
         try:
             io.move_raw_microscopy_file(rawFilePath, raw_dst_path)
-            return raw_dst_path
+            return raw_dst_path, ''
         except PermissionError as e:
             return raw_src_path, traceback.format_exc()
 
@@ -1625,7 +1625,7 @@ class createDataStructWin(QMainWindow):
             <b>Moving raw microscopy files failed</b> because of a permission error (see details below).<br><br>
             Please, double-check your files 
             (manually undoing the move, if needed)<br>
-            and try again without letting Cell-ACDC moving the files.<br><br>
+            and try again without letting Cell-ACDC move the files.<br><br>
             Thank you for your patience!
         """)
         msg = widgets.myMessageBox(wrapText=False)

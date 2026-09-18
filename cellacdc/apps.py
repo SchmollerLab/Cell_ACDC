@@ -21423,6 +21423,11 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         )
         if not files: 
             return
+
+        if self.howRawDataStructCombobox.currentIndex() == 0 and len(files) > 1:
+            files = self.warnMultipleFiles(files)
+            if not files:
+                return
         
         files = self.checkFileNames(files, srcFolderPath)
         if not files: 
@@ -21683,6 +21688,12 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             ),
            path_to_browse=dstFolderPath
         )
+        self.actionsPosFoldersExisting = {
+            'overwrite': False,
+            'add_files': False,
+            'create_new': False,
+            'start_pos_n': 1
+        }
         if msg.cancel:
             return 
         
