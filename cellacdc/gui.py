@@ -25315,7 +25315,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         cutout = tuple(
             (min(r[0], r[1]), max(r[0], r[1])) for r in cutout
         )
-        if self.isSegm3D:
+        if len(cutout) > 2:
             (z_min, z_max), (y_min, y_max), (x_min, x_max) = cutout
             return (z_min, y_min, x_min, z_max, y_max, x_max)
         else:
@@ -25325,10 +25325,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def _get_perc_cutout_from_total_img(self, cutout):
         posData = self.data[self.pos_i]
         single_timepoint_segm_size = posData.getSingleTimepointSegmSize()
-        if self.isSegm3D:
-            size = (cutout[0][1] - cutout[0][0]) * (cutout[1][1] - cutout[1][0]) * (cutout[2][1] - cutout[2][0])
+        if len(cutout) > 2:
+            size = (
+                (cutout[0][1] - cutout[0][0]) 
+                * (cutout[1][1] - cutout[1][0]) 
+                * (cutout[2][1] - cutout[2][0])
+            )
         else:
-            size = (cutout[0][1] - cutout[0][0]) * (cutout[1][1] - cutout[1][0])
+            depth = posData.SizeZ if self.isSegm3D else 1
+            size = (
+                depth
+                * (cutout[0][1] - cutout[0][0]) 
+                * (cutout[1][1] - cutout[1][0])
+            )
         return size / single_timepoint_segm_size
     
     def update_rp_get_bbox(
