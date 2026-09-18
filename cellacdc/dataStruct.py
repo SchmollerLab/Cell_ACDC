@@ -75,6 +75,7 @@ class bioFormatsWorker(QObject):
     progressPbar = Signal(int)
     initPbar = Signal(int)
     criticalError = Signal(str, str, str)
+    sigMoveRawMicrFilesFailed = Signal(str)
     confirmMetadata = Signal(
         str, float, int, int, int, int,
         float, str, float, float, float,
@@ -1048,9 +1049,15 @@ class bioFormatsWorker(QObject):
         self.isCriticalError = False
 
         for filename in self.rawFilenames:
-            raw_src_path = self.move_to_raw_microscopy_files_folder(
+            raw_src_path, error = self.move_to_raw_microscopy_files_folder(
                 self.raw_src_path, exp_dst_path, filename    
             )
+            if error:
+                if self.bioformats_backend == 'python-bioformats':
+                    javabridge.kill_vm()
+                self.cancelled = True
+                self.sigMoveRawMicrFilesFailed.emit(error)
+                return
 
         for p, filename in enumerate(self.rawFilenames):
             pos_n = p + self.start_pos_n
@@ -1126,17 +1133,17 @@ class bioFormatsWorker(QObject):
     
     def move_to_raw_microscopy_files_folder(
             self, raw_src_path, dst_folder_path, filename
-        ):
+        ):    
         # Move files to raw_microscopy_files folder
         if self.cancelled:
-            return raw_src_path
+            return raw_src_path, ''
         
         if not self.move_raw_microscopy_files:
-            return raw_src_path
+            return raw_src_path, ''
         
         foldername = os.path.basename(raw_src_path)
         if foldername == 'raw_microscopy_files':
-            return raw_src_path
+            return raw_src_path, ''
         
         rawFilePath = os.path.join(raw_src_path, filename)
         raw_dst_path = os.path.join(dst_folder_path, 'raw_microscopy_files')
@@ -1144,8 +1151,7 @@ class bioFormatsWorker(QObject):
             io.move_raw_microscopy_file(rawFilePath, raw_dst_path)
             return raw_dst_path
         except PermissionError as e:
-            self.progress.emit(e)
-            return raw_src_path
+            return raw_src_path, traceback.format_exc()
 
 class createDataStructWin(QMainWindow):
     def __init__(
@@ -1606,11 +1612,26 @@ class createDataStructWin(QMainWindow):
         self.worker.progress.connect(self.log)
         self.worker.critical.connect(self.workerCritical)
         self.worker.criticalError.connect(self.criticalBioFormats)
+        self.worker.sigMoveRawMicrFilesFailed.connect(
+            self.moveRawMicroscopyFilesFailed
+        )
         self.worker.confirmMetadata.connect(self.askConfirmMetadata)
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
     
+    def moveRawMicroscopyFilesFailed(self, traceback_text):
+        txt = html_utils.paragraph(f"""
+            <b>Moving raw microscopy files failed</b> because of a permission error (see details below).<br><br>
+            Please, double-check your files 
+            (manually undoing the move, if needed)<br>
+            and try again without letting Cell-ACDC moving the files.<br><br>
+            Thank you for your patience!
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Moving files failed', txt, detailsText=traceback_text)
+        self.worker.finished.emit()
+
     def _installLazyLoadModules(self):
         myutils.check_install_package(
             'zarr',

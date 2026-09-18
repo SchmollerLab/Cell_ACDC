@@ -21405,6 +21405,13 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
                 if not files: 
                     return
             
+            files = self.checkFileNames(files, srcFolderPath)
+            if not files:
+                return
+            
+            if not self.checkFilesExtensions(files):
+                return
+            
             self.actionsFilesSourceFolder['files'] = files
             return
         
