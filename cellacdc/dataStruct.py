@@ -1047,6 +1047,11 @@ class bioFormatsWorker(QObject):
         self.cancelled = False
         self.isCriticalError = False
 
+        for filename in self.rawFilenames:
+            raw_src_path = self.move_to_raw_microscopy_files_folder(
+                self.raw_src_path, exp_dst_path, filename    
+            )
+
         for p, filename in enumerate(self.rawFilenames):
             pos_n = p + self.start_pos_n
             if self.rawDataStruct == 0:
@@ -1090,12 +1095,6 @@ class bioFormatsWorker(QObject):
 
             else:
                 break
-        
-        for p, filename in enumerate(self.rawFilenames):
-            # Move files to raw_microscopy_files folder
-            raw_src_path = self.move_to_raw_microscopy_files_folder(
-                self.raw_src_path, exp_dst_path, filename    
-            )
 
         if self.rawDataStruct == 2:
             filename = self.rawFilenames[0]
@@ -1120,11 +1119,6 @@ class bioFormatsWorker(QObject):
                 if abort:
                     self.cancelled = True
                     break
-            
-            for filename in self.rawFilenames:
-                raw_src_path = self.move_to_raw_microscopy_files_folder(
-                    self.raw_src_path, exp_dst_path, filename    
-                )
 
         if self.bioformats_backend == 'python-bioformats':
             javabridge.kill_vm()

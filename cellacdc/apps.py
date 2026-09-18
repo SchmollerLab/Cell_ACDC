@@ -21330,7 +21330,7 @@ will be created in the respective Position folders.<br>
 
         infoText = html_utils.paragraph(f"""
 Choose whether to move raw microscopy files to a <code>raw_microscopy_files</code> sub-folder or not.<br><br>
-If you activate this option, at the end of the conversion process, Cell-ACDC will automatically move the raw microscopy files<br>
+If you activate this option, before the conversion process starts, Cell-ACDC will automatically move the raw microscopy files<br>
 into a folder called <code>raw_microscopy_files</code> inside the destination folder.
 """)
         
