@@ -11187,7 +11187,7 @@ class manualSeparateGui(QMainWindow):
     
     def threePointsArcPressEvent(self, event):
         if self.countClicks == 0:
-            # join seperate IDs if already seperated
+            # join seperate IDs if already separated
             if len(self.rp) > 1:
                 self.joinAllIDs()
             x, y = event.pos().x(), event.pos().y()
@@ -11267,8 +11267,8 @@ class manualSeparateGui(QMainWindow):
             rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
             # rr, cc = skimage.draw.line(r0, c0, r1, c1)
             valid = (
-                (rr >= 0) & (rr < lab.shape[0])
-                & (cc >= 0) & (cc < lab.shape[1])
+                (rr > 0) & (rr < lab.shape[0] - 1)
+                & (cc > 0) & (cc < lab.shape[1] - 1)
             )
             rr, cc = rr[valid], cc[valid]
             nonzeroMask = lab[rr, cc]>0
@@ -11447,7 +11447,7 @@ class manualSeparateGui(QMainWindow):
         return split_ID
 
     def _trackedSplitID(self, rp):
-        if not self.is_3D_mode:
+        if not self.is_3D_mode or len(rp) < 2:
             return None, None
 
         neighboring_slices = [
@@ -11455,7 +11455,7 @@ class manualSeparateGui(QMainWindow):
             for z in (self.current_slice - 1, self.current_slice + 1)
             if 0 <= z < self.lab.shape[0]
         ]
-        candidates = dict()
+        candidates = []
         for obj in rp:
             for neighbor_lab in neighboring_slices:
                 overlapping_IDs = neighbor_lab[obj.slice][obj.image]

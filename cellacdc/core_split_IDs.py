@@ -741,7 +741,7 @@ def convexity_defects(img, eps_percent):
 
 def split_connected_components(lab, rp=None, max_ID=None):  
     if rp is None:
-        lab = skimage.measure.regionprops(lab)
+        rp = skimage.measure.regionprops(lab)
     
     if max_ID is None:
         max_ID = max([obj.label for obj in rp], default=1)

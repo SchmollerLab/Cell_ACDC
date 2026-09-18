@@ -16996,8 +16996,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             or self.delObjToolAction.isChecked()
         )
 
-        if (hasattr(self, 'mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state')
-        and self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state is not None
+        if (
+            ev.key() == Qt.Key_Shift
+            and not ev.isAutoRepeat()
+            and getattr(
+                self,
+                'mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state',
+                None,
+            ) is not None
         ):
             self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.setChecked(
                 self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state
@@ -36651,7 +36657,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'sep_IDs_is_overlay_active', True, bool
         )
         state['is_three_points_active'] = self._get_setting_value(
-            'sep_IDs_is_three_points_active', False, bool
+            'sep_IDs_is_three_points_active', True, bool
         )
         state['is_free_hand_active'] = self._get_setting_value(
             'is_free_hand_active', False, bool
