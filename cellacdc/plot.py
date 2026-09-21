@@ -138,6 +138,7 @@ def imshow(
         labels_overlays_luts: np.ndarray | List[np.ndarray]=None,
         points_coords: np.ndarray=None, 
         points_coords_df: pd.DataFrame | List[pd.DataFrame]=None,
+        points_coords_df_time_colname='',
         points_groups: List[str]=None,
         points_data: Union[np.ndarray, pd.DataFrame, pd.Series]=None,
         hide_axes: bool=True, 
@@ -233,7 +234,11 @@ def imshow(
         show_IDs=show_IDs,
     )
     if points_coords_df is not None:
-        win.drawPointsFromDf(points_coords_df, points_groups=points_groups) 
+        win.drawPointsFromDf(
+            points_coords_df, 
+            points_groups=points_groups,
+            points_coords_df_time_colname=points_coords_df_time_colname
+        ) 
     if points_coords is not None:
         points_coords = np.round(points_coords).astype(int)
         win.drawPoints(points_coords)

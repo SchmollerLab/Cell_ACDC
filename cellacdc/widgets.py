@@ -8662,7 +8662,7 @@ class ImShow(QBaseWindow):
                 imageItem.labContoursImageItem.setImage(
                     contours_overlay, autoLevels=False
                 )
-        
+    
         self.setPointsVisible(imageItem)
 
         self.updateIDs()
@@ -8789,15 +8789,40 @@ class ImShow(QBaseWindow):
         
         self.updateIDs()
 
+    def _drawPointsTimepoint(self, imageItem):
+        t = imageItem.ScrollBars[0].value()
+        if t == self._last_t:
+            return
+        
+        timepoint_coords_idx = np.nonzero(self.points_coords[:, 0] == t)
+        timepoint_coords = self.points_coords[timepoint_coords_idx]
+
+        for pointsItems in imageItem.pointsItems.values():
+            for p, pointsItem in enumerate(pointsItems):
+                z = pointsItem.z
+                z_coords_idx = np.nonzero(timepoint_coords[:, 1] == z)
+                z_coords = timepoint_coords[z_coords_idx]
+                xx = z_coords[:, 3] + self._offset
+                yy = z_coords[:, 2] + self._offset
+                pointsItem.setData(xx, yy)
+
+        self._last_t = t
+
     def setPointsVisible(self, imageItem):
         if not hasattr(imageItem, 'pointsItems'):
             return
         
-        first_coord = imageItem.ScrollBars[0].value()
-        isMaxProj = imageItem.ScrollBars[0].maxProjCheckbox.isChecked()
+        if self._n_dim == 3:
+            z_idx = 0
+        else:
+            z_idx = 1
+            self._drawPointsTimepoint(imageItem)
+
+        first_coord = imageItem.ScrollBars[z_idx].value()
+        isMaxProj = imageItem.ScrollBars[z_idx].maxProjCheckbox.isChecked()
         for pointsItems in imageItem.pointsItems.values():
-            for p, plotItem in enumerate(pointsItems):
-                plotItem.setVisible((isMaxProj) or (p == first_coord))
+            for p, pointsItem in enumerate(pointsItems):
+                pointsItem.setVisible((isMaxProj) or (p == first_coord))
     
     def setupStatusBar(self):
         self.statusbar = self.statusBar()
@@ -9178,7 +9203,8 @@ class ImShow(QBaseWindow):
     def drawPointsFromDf(
             self, 
             points_df: pd.DataFrame | List[pd.DataFrame], 
-            points_groups=None
+            points_groups=None,
+            points_coords_df_time_colname='',
         ):
         if not isinstance(points_df, (list, tuple)):
             points_df = [points_df]*len(self.PlotItems)
@@ -9215,6 +9241,10 @@ class ImShow(QBaseWindow):
                 if 'data' in df.columns:
                     data = df['data'].values
                 
+                if points_coords_df_time_colname:
+                    tt = df[points_coords_df_time_colname].values
+                    points_coords = np.column_stack((tt, points_coords))
+
                 self.drawPoints(
                     points_coords, 
                     colors=colors, 
@@ -9233,7 +9263,9 @@ class ImShow(QBaseWindow):
         ):  
         offset = 0.5 if np.issubdtype(points_coords.dtype, np.integer) else 0
         n_dim = points_coords.shape[1]
-        
+        self._n_dim = n_dim
+        self._offset = offset
+
         if idx is not None:
             PlotItems = [self.PlotItems[idx]]
             ImageItems = [self.ImageItems[idx]]
@@ -9288,6 +9320,41 @@ class ImShow(QBaseWindow):
                     plotItem.addItem(pointsItem)
                     pointsItem.setVisible(False)
                     imageItem.pointsItems[group].append(pointsItem)
+                self.setPointsVisible(imageItem)
+        elif n_dim == 4:
+            self.points_coords = points_coords
+            for p, plotItem in enumerate(PlotItems):
+                imageItem = ImageItems[p]
+                imageItem.pointsItems = defaultdict(list)
+                z_scrollbar = imageItem.ScrollBars[1]
+                self._last_t = 0
+                for first_coord in range(z_scrollbar.maximum()+1):
+                    coords_idx = np.nonzero(points_coords[:, 1] == first_coord)
+                    coords = points_coords[coords_idx]
+                    if colors is None:
+                         _colors = None
+                    else:
+                        _colors = np.asarray(colors)[coords_idx]
+                        if len(_colors) == 0:
+                            _colors = None
+                    
+                    _data = group
+                    if data is not None:
+                        _data = data[coords_idx]
+                        if len(_data) == 0:
+                            _data = group
+                    
+                    timepoint_coords = coords[coords[:, 0] == self._last_t]
+                    xx = coords[:, 3] + offset
+                    yy = coords[:, 2] + offset
+                    pointsItem = self._createPointsScatterItem(
+                        xx, yy, group, data=_data, colors=_colors
+                    )
+                    pointsItem.z = first_coord
+                    plotItem.addItem(pointsItem)
+                    pointsItem.setVisible(False)
+                    imageItem.pointsItems[group].append(pointsItem)
+            
                 self.setPointsVisible(imageItem)
     
     def setupDuplicatedCursors(self):
