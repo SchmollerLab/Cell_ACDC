@@ -8791,7 +8791,7 @@ class ImShow(QBaseWindow):
 
     def _drawPointsTimepoint(self, imageItem):
         t = imageItem.ScrollBars[0].value()
-        if t == self._last_t:
+        if t == imageItem._last_t:
             return
         
         timepoint_coords_idx = np.nonzero(self.points_coords[:, 0] == t)
@@ -8806,7 +8806,7 @@ class ImShow(QBaseWindow):
                 yy = z_coords[:, 2] + self._offset
                 pointsItem.setData(xx, yy)
 
-        self._last_t = t
+        imageItem._last_t = t
 
     def setPointsVisible(self, imageItem):
         if not hasattr(imageItem, 'pointsItems'):
@@ -9327,7 +9327,7 @@ class ImShow(QBaseWindow):
                 imageItem = ImageItems[p]
                 imageItem.pointsItems = defaultdict(list)
                 z_scrollbar = imageItem.ScrollBars[1]
-                self._last_t = 0
+                imageItem._last_t = 0
                 for first_coord in range(z_scrollbar.maximum()+1):
                     coords_idx = np.nonzero(points_coords[:, 1] == first_coord)
                     coords = points_coords[coords_idx]
@@ -9344,7 +9344,7 @@ class ImShow(QBaseWindow):
                         if len(_data) == 0:
                             _data = group
                     
-                    timepoint_coords = coords[coords[:, 0] == self._last_t]
+                    timepoint_coords = coords[coords[:, 0] == imageItem._last_t]
                     xx = coords[:, 3] + offset
                     yy = coords[:, 2] + offset
                     pointsItem = self._createPointsScatterItem(
