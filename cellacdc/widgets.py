@@ -9371,10 +9371,18 @@ class ImShow(QBaseWindow):
             imageItem.setOtherImagesCursors(self.cursors)
     
     def setPointsData(self, points_data):
+        if self._n_dim == 4:
+            time = self.points_coords[:, 0]
+            z_idx = 1
+        else:
+            time = [0]*len(self.points_coords)
+            z_idx = 0
+
         points_df = pd.DataFrame({
-            'z': self.points_coords[:, 0],
-            'y': self.points_coords[:, 1],
-            'x': self.points_coords[:, 2]
+            't': time,
+            'z': self.points_coords[:, z_idx],
+            'y': self.points_coords[:, z_idx+1],
+            'x': self.points_coords[:, z_idx+2]
         })
         if isinstance(points_data, pd.Series):
             points_df[points_data.name] = points_data.values
@@ -9388,18 +9396,25 @@ class ImShow(QBaseWindow):
             for i, values in enumerate(points_data):
                 points_df[f'col_{i}'] = values
 
-        self.points_df = points_df.set_index(['z', 'y', 'x']).sort_index()
+        self.points_df = points_df.set_index(['t', 'z', 'y', 'x']).sort_index()
         
         for p, plotItem in enumerate(self.PlotItems):
             imageItem = self.ImageItems[p]
             for pointsItems in imageItem.pointsItems.values():
                 for pointsItem in pointsItems:
-                    pointsItem.sigClicked.connect(self.pointsClicked)
+                    pointsItem.sigClicked.connect(
+                        partial(self.pointsClicked, imageItem)
+                    )
         
-    def pointsClicked(self, item, points, event):
+    def pointsClicked(self, item, points, event, imageItem):
+        if self._n_dim == 4:
+            t = imageItem.ScrollBars[0].value()
+        else:
+            t = 0
+
         point = points[0]
         x, y = point.pos()
-        coords = (item.z, int(y), int(x))
+        coords = (t, item.z, int(y), int(x))
         point_data = self.points_df.loc[[coords]]
         now = datetime.datetime.now().strftime('%H:%M:%S')
         print('*'*60)
