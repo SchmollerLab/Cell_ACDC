@@ -8,7 +8,11 @@ from qtpy.QtGui import (
     QIcon, QColor, QFont, QPainter, QPainterPath, QPen
 )
 
+import pyqtgraph as pg
+
 from cellacdc.widgets import ToolBar
+
+LABELS_TEXT_FONTSIZE = 10
 
 class VolumeRendererToolbar(ToolBar):
     sigHomeView = Signal()
@@ -92,8 +96,11 @@ class PointsLayersToolbar(ToolBar):
         self.addLabel('Points: ')
 
 class LabelsOverlay(QWidget):
-    def __init__(self, renderer):
+    def __init__(self, renderer, font_size=None, text_color='white'):
         super().__init__(renderer._canvas.native)
+
+        if font_size is None:
+            font_size = LABELS_TEXT_FONTSIZE
 
         self.renderer = renderer
 
@@ -103,12 +110,14 @@ class LabelsOverlay(QWidget):
         self.resize(renderer._canvas.native.size())
 
         self._font = QFont()
-        self._font.setPointSize(10)
-        self._font.setBold(True)
+        self._font.setPointSize(font_size)
+        self._font.setBold(False)
 
-        self._text_color = QColor("white")
-        self._outline_color = QColor("black")
-        self._outline_width = 2
+        self._text_color = pg.mkColor(text_color)
+
+        # Shadow settings
+        self._shadow_color = QColor(0, 0, 0, 180)
+        self._shadow_offset = QPoint(1, 1)
 
         self.show()
 
@@ -131,12 +140,18 @@ class LabelsOverlay(QWidget):
         self._text_color = QColor(color)
         self.update()
 
-    def setOutlineColor(self, color):
-        self._outline_color = QColor(color)
+    def setShadowColor(self, color):
+        self._shadow_color = QColor(color)
         self.update()
 
-    def setOutlineWidth(self, width: int):
-        self._outline_width = width
+    def setShadowOffset(self, dx: int, dy: int):
+        self._shadow_offset = QPoint(dx, dy)
+        self.update()
+
+    def setAnnotationsVisible(self, visible: bool):
+        for ann in self.renderer._label_annotations.values():
+            ann.visible = visible
+
         self.update()
 
     # -------------------------------------------------------------------------
@@ -160,9 +175,18 @@ class LabelsOverlay(QWidget):
             rect = metrics.boundingRect(text)
             rect.moveCenter(QPoint(int(x), int(y)))
 
-            path = QPainterPath()
-            path.addText(rect.bottomLeft(), self._font, text)
+            # Shadow
+            painter.setPen(self._shadow_color)
+            painter.drawText(
+                rect.translated(self._shadow_offset),
+                Qt.AlignCenter,
+                text,
+            )
 
-            painter.setPen(QPen(self._outline_color, self._outline_width))
-            painter.setBrush(self._text_color)
-            painter.drawPath(path)
+            # Foreground
+            painter.setPen(self._text_color)
+            painter.drawText(
+                rect,
+                Qt.AlignCenter,
+                text,
+            )

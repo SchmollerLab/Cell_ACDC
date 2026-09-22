@@ -198,6 +198,8 @@ class VolumeRendererWindow(QMainWindow):
             lab_volume, 
             cmap_name=None,
             gradient_item_state=None,
+            font_size=None,
+            text_color='white'
         ):
         from vispy.scene import visuals
         from .gl_blend import volume_gl_state
@@ -326,24 +328,74 @@ class VolumeRendererWindow(QMainWindow):
         
         self._right_vertical_layout.addWidget(display_mode_groupbox)
 
-        self._set_labels_text(self._rp)
+        if font_size is None:
+            font_size = _widgets.LABELS_TEXT_FONTSIZE
+
+        self._set_labels_text(self._rp, font_size)
 
         text_settings_groupbox = QGroupBox('Text settings')
         text_settings_layout = widgets.FormLayout()
         text_settings_groupbox.setLayout(text_settings_layout)
 
         row = 0
+        show_labels_text_toggle = widgets.Toggle()
+        show_labels_text_toggle.setChecked(True)
+        show_labels_text_form_widget = widgets.formWidget(
+            show_labels_text_toggle, 
+            labelTextLeft='Show IDs',
+            stretchWidget=False
+        )
+        text_settings_layout.addFormWidget(
+            show_labels_text_form_widget, row=row
+        )
+        show_labels_text_toggle.toggled.connect(
+            self._set_labels_text_visible
+        )
+
+        row += 1
         text_font_size_spinbox = widgets.SpinBox()
+        text_font_size_spinbox.setMinimum(1)
+        text_font_size_spinbox.setValue(font_size)
         text_font_size_form_widget = widgets.formWidget(
             text_font_size_spinbox, 
             labelTextLeft='Font size',
         )
+        text_font_size_spinbox.valueChanged.connect(
+            self._set_labels_text_font_size
+        )
         text_settings_layout.addFormWidget(text_font_size_form_widget, row=row)
+
+        row += 1
+        text_color_colorbutton = widgets.myColorButton(
+            parent=self, color=text_color
+        )
+        text_color_form_widget = widgets.formWidget(
+            text_color_colorbutton, 
+            labelTextLeft='Color',
+            stretchWidget=False
+        )
+        text_color_colorbutton.sigColorChanging.connect(
+            self._set_labels_text_color
+        )
+        text_color_colorbutton.colorDialog.setWindowFlags(
+            Qt.Window | Qt.WindowStaysOnTopHint
+        )
+        text_settings_layout.addFormWidget(text_color_form_widget, row=row)
+
 
         self._right_vertical_layout.addSpacing(10)
         self._right_vertical_layout.addWidget(text_settings_groupbox)
 
-    def _set_labels_text(self, rp):
+    def _set_labels_text_color(self, color_button):
+        self._labels_overlay.setTextColor(color_button.color())
+
+    def _set_labels_text_visible(self, checked: bool):
+        self._labels_overlay.setAnnotationsVisible(checked)
+
+    def _set_labels_text_font_size(self, font_size: int):
+        self._labels_overlay.setFontSize(font_size)
+
+    def _set_labels_text(self, rp, font_size: int):
         self._label_annotations = {}
 
         for obj in rp:
@@ -356,7 +408,7 @@ class VolumeRendererWindow(QMainWindow):
                 screen_xy=np.zeros(2, np.float32),
             )
 
-        self._labels_overlay = _widgets.LabelsOverlay(self)
+        self._labels_overlay = _widgets.LabelsOverlay(self, font_size=font_size)
 
         self._canvas.events.draw.connect(self._update_labels_overlay)
 
@@ -1102,6 +1154,8 @@ class VolumeRendererWindow(QMainWindow):
             voxel_size: tuple[float, float, float]=None,
             cmap_name: AcdcPyQtGraphColorMapName=None,
             gradient_item_state: dict=None,
+            font_size: int=None,
+            text_color='white',
             SizeZ: int=None
         ):
         if self._is_labels_set:
@@ -1147,7 +1201,9 @@ class VolumeRendererWindow(QMainWindow):
         self._init_lab_ui_items(
             self._lab, 
             cmap_name=cmap_name, 
-            gradient_item_state=gradient_item_state
+            gradient_item_state=gradient_item_state,
+            font_size=font_size,
+            text_color=text_color
         )
 
         if self._voxel_size_strides_transform is not None:
