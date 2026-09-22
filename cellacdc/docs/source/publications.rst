@@ -24,6 +24,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Chadha, Y., et al. <i>"Single-cell imaging reveals a key role of Bck2 in yeast cell size adaptation to nutrient challenges</i>. <b>Journal of Cell Biology</b> (2026) DOI: <a href="https://doi.org/10.1083/jcb.202410020">10.1083/jcb.202410020</a>.</li><br>
+
       <li>Ohsawa, S., et al. <i>Protein-driven colloid-osmotic pressure controls nuclear size, organization, and function</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.09.03.749057">10.64898/2026.09.03.749057</a>.</li><br>
 
       <li>Gao, X., et al. <i>The proportional scaling of mRNA and ribosome concentrations controls eukaryotic cell growth</i>. <b>Nat. Cell Biol.</b> (2026) DOI: <a href="https://doi.org/10.1038/s41556-026-02045-0">10.1038/s41556-026-02045-0</a>.</li><br>
@@ -79,8 +81,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Padovani, F. , et al. <i>SpotMAX: a generalist framework for multi-dimensional automatic spot detection and quantification</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.22.619610">10.1101/2024.10.22.619610</a>.</li><br>
 
       <li>Chatzitheodoridou, D., Bureik, D., Padovani, F., Nadimpalli, K. V. & Schmoller, K. M. <i>Decoupled transcript and protein concentrations ensure histone homeostasis in different nutrients</i>. <b>EMBO J.</b> 43, 5141–5168 (2024) DOI: <a href="https://doi.org/10.1038/s44318-024-00227-w">10.1038/s44318-024-00227-w</a>.</li><br>
-
-      <li>Chadha, Y., Kukhtevich, I. V., Padovani, F., Schneider, R. & Schmoller, K. M. <i>Single-cell imaging reveals a key role of Bck2 in budding yeast cell size adaptation to nutrient challenges</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.04.616606">10.1101/2024.10.04.616606</a>.</li><br>
 
       <li>Seel, A. , et al. <i>Regulation with cell size ensures mitochondrial DNA homeostasis during cell growth</i>. <b>Nat. Struct. Mol. Biol.</b> 30, 1549–1560 (2023) DOI: <a href="https://doi.org/10.1038/s41594-023-01091-8">10.1038/s41594-023-01091-8</a>.</li><br>
 
