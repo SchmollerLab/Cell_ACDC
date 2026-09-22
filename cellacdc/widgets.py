@@ -9205,6 +9205,7 @@ class ImShow(QBaseWindow):
             points_df: pd.DataFrame | List[pd.DataFrame], 
             points_groups=None,
             points_coords_df_time_colname='',
+            points_coords_df_zslice_colname='z'
         ):
         if not isinstance(points_df, (list, tuple)):
             points_df = [points_df]*len(self.PlotItems)
@@ -9227,7 +9228,7 @@ class ImShow(QBaseWindow):
                 yy = df['y'].values
                 xx = df['x'].values
                 points_coords = np.column_stack((yy, xx))
-                if 'z' in df.columns:
+                if points_coords_df_zslice_colname in df.columns:
                     zz = df['z'].values
                     points_coords = np.column_stack((zz, points_coords))
                 if len(group) == 1:
