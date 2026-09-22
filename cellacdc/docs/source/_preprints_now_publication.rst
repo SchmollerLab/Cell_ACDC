@@ -16,6 +16,8 @@ The following preprints **have been published in a peer-reviewed journal**, and 
 
       <li>Dengler, L. , et al. <i>When mitochondria fall apart: Unbalanced mitochondrial segregation triggers loss of mtDNA in the absence of mitochondrial fusion</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.05.13.653688">10.1101/2025.05.13.653688</a>.</li><br>
 
+      <li>Chadha, Y., Kukhtevich, I. V., Padovani, F., Schneider, R. & Schmoller, K. M. <i>Single-cell imaging reveals a key role of Bck2 in budding yeast cell size adaptation to nutrient challenges</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.04.616606">10.1101/2024.10.04.616606</a>.</li><br>
+
       <li>Kukhtevich, I. , et al. <i>The origin of septin ring size control in budding yeast</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.07.30.605628">10.1101/2024.07.30.605628</a>.</li><br>
 
     </ol>
