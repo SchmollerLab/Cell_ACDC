@@ -2,10 +2,10 @@ from qtpy.QtCore import (
     Signal, Qt
 )
 from qtpy.QtWidgets import (
-    QAction
+    QAction, QWidget
 )
 from qtpy.QtGui import (
-    QIcon,
+    QIcon, QPainter, QPen, QColor
 )
 
 from cellacdc.widgets import ToolBar
@@ -90,3 +90,35 @@ class PointsLayersToolbar(ToolBar):
         super().__init__(name, parent)
         
         self.addLabel('Points: ')
+
+class LabelsOverlay(QWidget):
+    def __init__(self, renderer):
+        super().__init__(renderer._canvas.native)
+
+        self.renderer = renderer
+
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.resize(renderer._canvas.native.size())
+        self.show()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+
+        # White text with black outline
+        painter.setPen(QPen(QColor("black"), 3))
+
+        for ann in self.renderer._label_annotations.values():
+            if not ann.visible:
+                continue
+
+            x, y = ann.screen_xy
+            text = ann.text
+
+            painter.setPen(QPen(Qt.black, 3))
+            painter.drawText(int(x + 1), int(y + 1), text)
+
+            painter.setPen(Qt.white)
+            painter.drawText(int(x), int(y), text)

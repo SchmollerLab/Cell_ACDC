@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from math import ceil
 
@@ -15,7 +15,7 @@ from qtpy.QtCore import (
 from qtpy.QtWidgets import (
     QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, 
     QGraphicsProxyWidget, QGroupBox, QCheckBox, QMenu, QRadioButton, 
-    QButtonGroup   
+    QButtonGroup
 )
 
 import pyqtgraph as pg
@@ -84,7 +84,18 @@ class _PointsLayer:
     
     df: pd.DataFrame | None=None
     text: vispy.scene.visuals.Text | None=None
-    
+
+@dataclass(slots=True)
+class LabelAnnotation:
+    label: int
+    text: str
+    xyz: np.ndarray
+    screen_xy: np.ndarray = field(
+        default_factory=lambda: np.zeros(2, dtype=np.float32)
+    )
+    visible: bool = True
+
+
 class VolumeRendererWindow(QMainWindow):
     """
     A standalone Qt window that displays a 3D z-stack volume using vispy.
@@ -124,6 +135,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_gradient_cmap_name = None
         self._lab_gradient_item_state = None
         self._lab_node = None
+        self._labels_overlay = None
         self._orig_lab = None
         self._canvas = None
         self._voxel_size = None
@@ -313,6 +325,57 @@ class VolumeRendererWindow(QMainWindow):
         display_mode_layout.addWidget(self._display_mode_focus_selected_rb)
         
         self._right_vertical_layout.addWidget(display_mode_groupbox)
+
+        self._set_labels_text(self._rp)
+
+        text_settings_groupbox = QGroupBox('Text settings')
+        text_settings_layout = QVBoxLayout()
+        text_settings_groupbox.setLayout(text_settings_layout)
+
+        self._right_vertical_layout.addSpacing(10)
+        self._right_vertical_layout.addWidget(text_settings_groupbox)
+
+    def _set_labels_text(self, rp):
+        self._label_annotations = {}
+
+        for obj in rp:
+            z, y, x = obj.centroid
+
+            self._label_annotations[obj.label] = LabelAnnotation(
+                label=obj.label,
+                text=str(obj.label),
+                xyz=np.array([x, y, z], np.float32),
+                screen_xy=np.zeros(2, np.float32),
+            )
+
+        self._labels_overlay = _widgets.LabelsOverlay(self)
+
+        self._canvas.events.draw.connect(self._update_labels_overlay)
+
+    def _update_labels_overlay(self, event=None):
+        if not self._label_annotations:
+            return
+
+        tr = self._lab_node.transforms.get_transform(
+            map_from="visual",
+            map_to="canvas",
+        )
+
+        pts = np.array(
+            [ann.xyz for ann in self._label_annotations.values()],
+            np.float32,
+        )
+
+        # if self._voxel_size_strides_transform is not None:
+        #     pts = self._voxel_size_strides_transform.map(pts)[:, :3]
+
+        canvas_pts = tr.map(pts)
+        canvas_pts /= canvas_pts[:, 3:4]
+
+        for ann, xy in zip(self._label_annotations.values(), canvas_pts[:, :2]):
+            ann.screen_xy[:] = xy
+
+        self._labels_overlay.update()
     
     def _display_mode_radio_button_toggled(
             self, button: QRadioButton, toggled: bool
@@ -330,6 +393,7 @@ class VolumeRendererWindow(QMainWindow):
             checkbox.blockSignals(True)
             checkbox.setChecked(checked)
             checkbox.blockSignals(False)
+            self._label_annotations[checkbox.obj.label].visible = checked
 
         self._update_display()
     
@@ -388,6 +452,7 @@ class VolumeRendererWindow(QMainWindow):
     def _update_display(self, exclude_lab=False, exclude_markers=False):
         if not exclude_lab:
             self._update_lab_node(update=False)
+            self._labels_overlay.update()
         
         if not exclude_markers:
             self._update_markers(update=False)
@@ -482,8 +547,11 @@ class VolumeRendererWindow(QMainWindow):
         
         _id = obj.label if checked else 0
         self._lab[obj.slice][obj.image] = _id
-        
+
+        self._label_annotations[obj.label].visible = checked
         self._lab_node.set_data(self._lab)
+        self._labels_overlay.update()
+
         self._update_display(exclude_lab=True)
     
     def _on_reset_lab_gradient(self, *args, **kwargs):        
@@ -1064,6 +1132,7 @@ class VolumeRendererWindow(QMainWindow):
                 f'Expected 3-D (Z, Y, X) labels array; got shape {lab.shape}')
         
         self._orig_lab = lab.copy()
+        self._orig_rp = skimage.measure.regionprops(self._orig_lab)
         self._lab = self._preprocess_lab(lab)
         self._rp = skimage.measure.regionprops(self._lab)
         
@@ -1079,8 +1148,6 @@ class VolumeRendererWindow(QMainWindow):
             self._set_voxel_size_strides_transform(voxel_size)
             
         self._is_labels_set = True
-        
-    set_segmentation_masks = set_labels
     
     def set_volume(
             self,
@@ -1427,3 +1494,9 @@ class VolumeRendererWindow(QMainWindow):
     
     def save_screenshot(self):
         ...
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        if hasattr(self, "_labels_overlay"):
+            self._labels_overlay.resize(self._canvas.native.size())
