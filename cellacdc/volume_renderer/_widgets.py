@@ -1,11 +1,11 @@
 from qtpy.QtCore import (
-    Signal, Qt
+    Signal, Qt, QPoint
 )
 from qtpy.QtWidgets import (
     QAction, QWidget
 )
 from qtpy.QtGui import (
-    QIcon, QPainter, QPen, QColor
+    QIcon, QColor, QFont, QPainter, QPainterPath, QPen
 )
 
 from cellacdc.widgets import ToolBar
@@ -101,14 +101,54 @@ class LabelsOverlay(QWidget):
         self.setAttribute(Qt.WA_TranslucentBackground)
 
         self.resize(renderer._canvas.native.size())
+
+        self._font = QFont()
+        self._font.setPointSize(10)
+        self._font.setBold(True)
+
+        self._text_color = QColor("white")
+        self._outline_color = QColor("black")
+        self._outline_width = 2
+
         self.show()
+
+    # -------------------------------------------------------------------------
+    # Public API
+    # -------------------------------------------------------------------------
+
+    def setFontSize(self, size: int):
+        self._font.setPointSize(size)
+        self.update()
+
+    def fontSize(self) -> int:
+        return self._font.pointSize()
+
+    def setBold(self, bold: bool):
+        self._font.setBold(bold)
+        self.update()
+
+    def setTextColor(self, color):
+        self._text_color = QColor(color)
+        self.update()
+
+    def setOutlineColor(self, color):
+        self._outline_color = QColor(color)
+        self.update()
+
+    def setOutlineWidth(self, width: int):
+        self._outline_width = width
+        self.update()
+
+    # -------------------------------------------------------------------------
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHint(QPainter.Antialiasing)
 
-        # White text with black outline
-        painter.setPen(QPen(QColor("black"), 3))
+        painter.setFont(self._font)
+
+        metrics = painter.fontMetrics()
 
         for ann in self.renderer._label_annotations.values():
             if not ann.visible:
@@ -117,8 +157,12 @@ class LabelsOverlay(QWidget):
             x, y = ann.screen_xy
             text = ann.text
 
-            painter.setPen(QPen(Qt.black, 3))
-            painter.drawText(int(x + 1), int(y + 1), text)
+            rect = metrics.boundingRect(text)
+            rect.moveCenter(QPoint(int(x), int(y)))
 
-            painter.setPen(Qt.white)
-            painter.drawText(int(x), int(y), text)
+            path = QPainterPath()
+            path.addText(rect.bottomLeft(), self._font, text)
+
+            painter.setPen(QPen(self._outline_color, self._outline_width))
+            painter.setBrush(self._text_color)
+            painter.drawPath(path)

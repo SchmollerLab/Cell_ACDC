@@ -329,8 +329,16 @@ class VolumeRendererWindow(QMainWindow):
         self._set_labels_text(self._rp)
 
         text_settings_groupbox = QGroupBox('Text settings')
-        text_settings_layout = QVBoxLayout()
+        text_settings_layout = widgets.FormLayout()
         text_settings_groupbox.setLayout(text_settings_layout)
+
+        row = 0
+        text_font_size_spinbox = widgets.SpinBox()
+        text_font_size_form_widget = widgets.formWidget(
+            text_font_size_spinbox, 
+            labelTextLeft='Font size',
+        )
+        text_settings_layout.addFormWidget(text_font_size_form_widget, row=row)
 
         self._right_vertical_layout.addSpacing(10)
         self._right_vertical_layout.addWidget(text_settings_groupbox)
