@@ -377,6 +377,12 @@
     :height: 16px
     :width: 16px
 
+.. |interpZButton| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/interpolate-Z.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/interpolate-Z.svg
+    :alt: interpZButton icon
+    :height: 16px
+    :width: 16px
+
 GUI tools
 =========
 
@@ -491,6 +497,7 @@ Edit tools: Segmentation and tracking
 * **Manual tracking (** |manualTrackingButton| **"T"):** Select ID to track and right-click on an object to assign that ID.
 * **Reset last segmented frame (** |reinitLastSegmFrameAction| **):** Reset last segmented frame to current one. NOTE: This will re-enable real-time tracking for all the future frames.
 * **Segment range of frames (** |labelRoiTrangeCheckbox| **):** Segment a range of frames with the "Magic labeller" tool. 
+* **Interpolate sparsely labelled Z volume (** |interpZButton| **"Shift+Q"):** Activate the interpolation of a 3D mask from sparse z-slice annotations mode. Draw on two or more slices (of the same object), then press "Enter" to automatically fill the slices in between. 
 
 Edit tools: Cell cycle analysis
 -------------------------------
