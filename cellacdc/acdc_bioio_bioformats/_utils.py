@@ -1,6 +1,8 @@
 import os
 import shutil
 import tempfile
+import traceback
+
 from pathlib import Path
 
 import argparse
@@ -268,27 +270,29 @@ def load_image_data_from_symlink(
     return img_data
 
 def dump_exception(err, error_id):
-    import pickle
     error_path = os.path.join(
-        bioio_sample_data_folderpath, f'error_{error_id}.pkl'
+        bioio_sample_data_folderpath,
+        f'error_{error_id}.txt'
     )
-    with open(error_path, 'wb') as file:
-        pickle.dump(err, file)
+
+    with open(error_path, 'w', encoding='utf-8') as file:
+        file.write(traceback.format_exc())
 
 def check_raise_exception(error_id):
-    import pickle
     error_path = os.path.join(
-        bioio_sample_data_folderpath, f'error_{error_id}.pkl'
+        bioio_sample_data_folderpath,
+        f'error_{error_id}.txt'
     )
+
     if not os.path.exists(error_path):
         return
-    
-    with open(error_path, "rb") as file:
-        err = pickle.load(file)
-    
+
+    with open(error_path, encoding='utf-8') as file:
+        traceback_text = file.read()
+
     os.remove(error_path)
-    
-    raise err
+
+    raise RuntimeError(traceback_text)
 
 def load_bioformats_extensions():
     readers_file = Path(__file__).parent / 'bioformats_readers.txt'
