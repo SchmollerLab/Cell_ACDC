@@ -14658,9 +14658,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def interpZConfirmTriggered(self):
         posData = self.data[self.pos_i]
         ID = self.editIDspinbox.value()
+        if ID == 0:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
 
         self.logger.info(f'Interpolating object ID = {ID}...')
         obj = posData.rp.get_obj_from_ID(ID)
+        if obj is None:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+        
         local_lab = posData.lab[obj.slice]
         local_mask_volume = local_lab == ID
         labelled_z_slices = np.flatnonzero(
