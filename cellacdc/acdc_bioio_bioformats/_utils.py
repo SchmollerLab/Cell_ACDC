@@ -3,6 +3,8 @@ import shutil
 import tempfile
 import traceback
 
+from importlib import import_module
+
 from pathlib import Path
 
 import argparse
@@ -338,3 +340,11 @@ def get_supported_image_extensions():
     bioformats_extensions = load_bioformats_extensions()
 
     return bioio_extensions | bioformats_extensions
+
+def import_reader(dotted_path: str):
+    module_path, _, object_name = dotted_path.rpartition(".")
+    if not module_path:
+        raise ValueError(f"Expected a dotted import path, got {dotted_path!r}")
+
+    module = import_module(module_path)
+    return getattr(module, object_name)

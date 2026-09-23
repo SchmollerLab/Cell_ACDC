@@ -6,6 +6,7 @@ import numpy as np
 from .. import printl
 from .. import colors
 from ..myutils import safe_get_or_call
+from . import _utils
 from . import install, EXTENSION_PACKAGE_MAPPER
 from . import EXTENSION_BIOIMAGE_KWARGS_MAPPER
 from . import EXTENSION_METADATA_ATTR_MAPPER
@@ -16,6 +17,10 @@ def set_reader(image_filepath, **kwargs):
     
     _, ext = os.path.splitext(image_filepath)
     if ext in EXTENSION_PACKAGE_MAPPER:
+        other_kwargs = EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
+        if 'reader' in other_kwargs:
+            reader_str = other_kwargs['reader']
+            other_kwargs['reader'] = _utils.import_reader(reader_str)
         return kwargs, EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
     
     try:
