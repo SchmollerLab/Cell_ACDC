@@ -14644,16 +14644,39 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def interpZModeToggled(self, checked):
         if not checked:
+            self.autoIDcheckbox.setDisabled(False)
             return
         
         if self.autoIDcheckbox.isChecked():
             self.autoIDcheckbox.setChecked(False)
-        else:
-            newID = self.setBrushID(return_val=True)
-            self.editIDspinbox.setValue(newID)
-    
+            self.autoIDcheckbox.setDisabled(True)
+
+        newID = self.setBrushID(return_val=True)
+        self.editIDspinbox.setValue(newID)
+
+    @exception_handler
     def interpZConfirmTriggered(self):
-        ...
+        posData = self.data[self.pos_i]
+        ID = self.editIDspinbox.value()
+
+        self.logger.info(f'Interpolating object ID = {ID}...')
+        obj = posData.rp.get_obj_from_ID(ID)
+        local_lab = posData.lab[obj.slice]
+        local_mask_volume = local_lab == ID
+        labelled_z_slices = np.flatnonzero(
+            np.any(local_mask_volume, axis=(1, 2))
+        )
+
+        local_mask_filled, _ = core.interpolate_unlabelled_z_slices(
+            local_mask_volume, labelled_z_slices
+        )
+
+        existing_objs_mask = np.logical_and(local_lab > 0, local_lab != ID)
+
+        local_mask_filled[existing_objs_mask] = False
+        posData.lab[obj.slice][local_mask_filled] = ID
+        self.update_rp(specific_IDs=ID, preloaded_bbox=obj.bbox)
+        self.updateAllImages()
 
     def autoIDtoggled(self, checked):
         self.editIDspinboxAction.setDisabled(checked)

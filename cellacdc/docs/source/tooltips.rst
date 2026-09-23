@@ -498,6 +498,8 @@ Edit tools: Segmentation and tracking
 * **Reset last segmented frame (** |reinitLastSegmFrameAction| **):** Reset last segmented frame to current one. NOTE: This will re-enable real-time tracking for all the future frames.
 * **Segment range of frames (** |labelRoiTrangeCheckbox| **):** Segment a range of frames with the "Magic labeller" tool. 
 * **Interpolate sparsely labelled Z volume (** |interpZButton| **"Shift+Q"):** Activate the interpolation of a 3D mask from sparse z-slice annotations mode. Draw on two or more slices (of the same object), then press "Enter" to automatically fill the slices in between. 
+    TIP: Make sure to draw the largest z-slice of the object because the filled 
+    object will have the same bounding-box of the input object.
 
 Edit tools: Cell cycle analysis
 -------------------------------
