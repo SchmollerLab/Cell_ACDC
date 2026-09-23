@@ -14685,6 +14685,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.update_rp(specific_IDs=ID, preloaded_bbox=obj.bbox)
         self.updateAllImages()
 
+        button = self.brushEraserToolBar.widgetForAction(
+            self.interpZConfirmAction
+        )
+        button.setStyleSheet(f'background-color: {GREEN_HEX}')
+
+        self.editIDspinbox.setValue(ID + 1)
+
+        QTimer.singleShot(2000, self.restoreInterpZConfirmActionColor)
+
+    def restoreInterpZConfirmActionColor(self):
+        color = self.defaultToolBarButtonColor
+        button = self.brushEraserToolBar.widgetForAction(
+            self.interpZConfirmAction
+        )
+        button.setStyleSheet(f'background-color: {color}')
+
     def autoIDtoggled(self, checked):
         self.editIDspinboxAction.setDisabled(checked)
         self.editIDLabelAction.setDisabled(checked)
