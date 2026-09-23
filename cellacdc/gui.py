@@ -14667,7 +14667,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if obj is None:
             _warnings.warnCannotInterpolateZVolume(self, ID)
             return
-        
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False) 
+
         local_lab = posData.lab[obj.slice]
         local_mask_volume = local_lab == ID
         labelled_z_slices = np.flatnonzero(
