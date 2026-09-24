@@ -15,7 +15,7 @@ from qtpy.QtCore import (
 from qtpy.QtWidgets import (
     QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, 
     QGraphicsProxyWidget, QGroupBox, QCheckBox, QMenu, QRadioButton, 
-    QButtonGroup
+    QButtonGroup, QGridLayout, QSpacerItem
 )
 
 import pyqtgraph as pg
@@ -117,6 +117,7 @@ class VolumeRendererWindow(QMainWindow):
             self, 
             app=None, 
             parent=None, 
+            parent_gui=None,
             version=None,
             title='Cell-ACDC - Volume Renderer',
             hide_on_close=False,
@@ -124,6 +125,7 @@ class VolumeRendererWindow(QMainWindow):
         ):
         """Initializer."""
         self._version = version
+        self._parent_gui = parent_gui
         self._logger_func = logger_func
         self._ui_initialised = False
         self._is_labels_set = False
@@ -135,7 +137,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_gradient_cmap_name = None
         self._lab_gradient_item_state = None
         self._lab_node = None
-        self._labels_overlay = None
+        self._labels_text_overlay = None
         self._orig_lab = None
         self._canvas = None
         self._voxel_size = None
@@ -145,6 +147,7 @@ class VolumeRendererWindow(QMainWindow):
         self._downsample_strides = None
         self._object_labels_list_buttongroup = None
         self._data_shape = None
+        self._frames_scrollbar_connected = False
         
         if app is None:
             app = QCoreApplication.instance()
@@ -201,19 +204,21 @@ class VolumeRendererWindow(QMainWindow):
             font_size=None,
             text_color='white'
         ):
+        self._init_frames_scrollbar(len(lab_volume))
+
         from vispy.scene import visuals
         from .gl_blend import volume_gl_state
         
         vmin, vmax = float(lab_volume.min()), float(lab_volume.max())
         
         self._lab_node = visuals.Volume(
-            lab_volume,
+            lab_volume[0],
             method="translucent",
             interpolation="nearest",
             parent=self._view.scene,
         )
         self._lab_node.clim = (vmin, vmax)
-        
+
         self._lab_opacity_slider = widgets.sliderWithSpinBox(
             title_loc='in_line', 
             isFloat=True, 
@@ -272,10 +277,12 @@ class VolumeRendererWindow(QMainWindow):
             lab_gradient_item.item.loadPreset(_DEFAULT_LABELS_CMAP_NAME)
             
         self._lab_node.opacity = self._lab_opacity_slider.value()
-        
+
+        frame_i = self._frames_scrollbar.value() - 1
         self._object_labels_list_buttongroup = QButtonGroup(self)
         self._object_labels_list_buttongroup.setExclusive(False)
-        for obj in self._rp:
+        self._obj_checkboxes_mapper = {}
+        for obj in self._rp[frame_i]:
             obj_checkbox = QCheckBox(f'{obj.label}')
             obj_checkbox.setChecked(True)
             obj_checkbox.obj = obj
@@ -285,6 +292,7 @@ class VolumeRendererWindow(QMainWindow):
                 partial(self._set_object_checked, obj=obj)
             )
             obj_checkbox.setDisabled(True)
+            self._obj_checkboxes_mapper[obj.label] = obj_checkbox
         
         self._object_labels_list_layout.addStretch(1)
         
@@ -293,6 +301,8 @@ class VolumeRendererWindow(QMainWindow):
             self._set_all_object_labels_list_checked
         )
         self._right_vertical_layout.addWidget(select_all_button)
+        self._select_all_button = select_all_button
+        self._select_all_button.setDisabled(True)
         
         self._right_vertical_layout.addSpacing(10)
         
@@ -331,7 +341,8 @@ class VolumeRendererWindow(QMainWindow):
         if font_size is None:
             font_size = _widgets.LABELS_TEXT_FONTSIZE
 
-        self._set_labels_text(self._rp, font_size)
+        frame_i = self._frames_scrollbar.value() - 1
+        self._set_labels_text(self._rp[frame_i], font_size)
 
         text_settings_groupbox = QGroupBox('Text settings')
         text_settings_layout = widgets.FormLayout()
@@ -363,6 +374,7 @@ class VolumeRendererWindow(QMainWindow):
         text_font_size_spinbox.valueChanged.connect(
             self._set_labels_text_font_size
         )
+        self._text_font_size_spinbox = text_font_size_spinbox
         text_settings_layout.addFormWidget(text_font_size_form_widget, row=row)
 
         row += 1
@@ -387,13 +399,13 @@ class VolumeRendererWindow(QMainWindow):
         self._right_vertical_layout.addWidget(text_settings_groupbox)
 
     def _set_labels_text_color(self, color_button):
-        self._labels_overlay.setTextColor(color_button.color())
+        self._labels_text_overlay.setTextColor(color_button.color())
 
     def _set_labels_text_visible(self, checked: bool):
-        self._labels_overlay.setAnnotationsVisible(checked)
+        self._labels_text_overlay.setAnnotationsVisible(checked)
 
     def _set_labels_text_font_size(self, font_size: int):
-        self._labels_overlay.setFontSize(font_size)
+        self._labels_text_overlay.setFontSize(font_size)
 
     def _set_labels_text(self, rp, font_size: int):
         self._label_annotations = {}
@@ -401,14 +413,21 @@ class VolumeRendererWindow(QMainWindow):
         for obj in rp:
             z, y, x = obj.centroid
 
+            visible = True
+            obj_checkbox = self._obj_checkboxes_mapper.get(obj.label)
+            if obj_checkbox is not None:
+                visible = obj_checkbox.isChecked()
             self._label_annotations[obj.label] = LabelAnnotation(
                 label=obj.label,
                 text=str(obj.label),
                 xyz=np.array([x, y, z], np.float32),
                 screen_xy=np.zeros(2, np.float32),
+                visible=visible,
             )
 
-        self._labels_overlay = _widgets.LabelsOverlay(self, font_size=font_size)
+        self._labels_text_overlay = _widgets.LabelsOverlay(
+            self, font_size=font_size
+        )
 
         self._canvas.events.draw.connect(self._update_labels_overlay)
 
@@ -435,7 +454,7 @@ class VolumeRendererWindow(QMainWindow):
         for ann, xy in zip(self._label_annotations.values(), canvas_pts[:, :2]):
             ann.screen_xy[:] = xy
 
-        self._labels_overlay.update()
+        self._labels_text_overlay.update()
     
     def _display_mode_radio_button_toggled(
             self, button: QRadioButton, toggled: bool
@@ -455,16 +474,18 @@ class VolumeRendererWindow(QMainWindow):
             checkbox.blockSignals(False)
             self._label_annotations[checkbox.obj.label].visible = checked
 
-        self._update_display()
+        self._update_lab_node(update=False)
+        self._labels_text_overlay.update()
     
     def _update_lab_node(self, update=True):
+        frame_i = self._frames_scrollbar.value() - 1
         for checkbox in self._object_labels_list_buttongroup.buttons(): 
             obj = checkbox.obj
             checked = checkbox.isChecked()
             _id = obj.label if checked else 0
-            self._lab[obj.slice][obj.image] = _id
+            self._lab[frame_i][obj.slice][obj.image] = _id
             
-        self._lab_node.set_data(self._lab)
+        self._lab_node.set_data(self._lab[frame_i])
         
         if update:
             self._canvas.update()
@@ -480,15 +501,16 @@ class VolumeRendererWindow(QMainWindow):
             self._canvas.update()
     
     def _update_volume_nodes(self, update=True):
+        frame_i = self._frames_scrollbar.value() - 1
         for channel_data in self._channels_data.values():
             if self._display_mode_show_all_rb.isChecked():
-                displayed_volume = channel_data._raw_volume
+                displayed_volume = channel_data._raw_volume[frame_i]
                 channel_data.node.set_data(displayed_volume)
                 continue
             
-            displayed_volume = channel_data.volume
+            displayed_volume = channel_data.volume[frame_i]
             if self._display_mode_focus_selected_rb.isChecked():
-                unselected_vals = channel_data._off_focus_volume
+                unselected_vals = channel_data._off_focus_volume[frame_i]
                 np.copyto(displayed_volume, unselected_vals)
             elif self._display_mode_hide_unselected_rb.isChecked():
                 displayed_volume[:] = 0
@@ -498,10 +520,9 @@ class VolumeRendererWindow(QMainWindow):
                 checked = checkbox.isChecked()
                 if not checked:
                     continue
-                
-                src_intensities = (
-                    channel_data._raw_volume[obj.slice][obj.image]
-                )
+
+                raw_vol = channel_data._raw_volume[frame_i]
+                src_intensities = raw_vol[obj.slice][obj.image]
                 displayed_volume[obj.slice][obj.image] = src_intensities
             
             channel_data.node.set_data(displayed_volume)
@@ -512,7 +533,12 @@ class VolumeRendererWindow(QMainWindow):
     def _update_display(self, exclude_lab=False, exclude_markers=False):
         if not exclude_lab:
             self._update_lab_node(update=False)
-            self._labels_overlay.update()
+            frame_i = self._frames_scrollbar.value() - 1
+            self._set_labels_text(
+                self._rp[frame_i], 
+                self._text_font_size_spinbox.value()
+            )
+            self._labels_text_overlay.update()
         
         if not exclude_markers:
             self._update_markers(update=False)
@@ -523,15 +549,10 @@ class VolumeRendererWindow(QMainWindow):
         
     def _init_points_layer_ui_items(
             self,
-            markers: vispy.scene.visuals.Markers,
-            name: str,
-            points_xyz: np.ndarray | None=None, # (N, [z, y, x]) voxel coordinates
-            labels: list[str] | None=None,
             color: vispy.color.Color='red',
             size: float=8.0,
             opacity: float=1.0,
             symbol: MarkerSymbols='disc',
-            points_df: pd.DataFrame | None=None,
         ):
         rgb_color = vispy.color.Color(color).rgb
         rgb_color = [round(val*255) for val in rgb_color]
@@ -586,11 +607,12 @@ class VolumeRendererWindow(QMainWindow):
 
     def _greedy_shuffle_lab_gradient_cmap(self):
         from vispy.color import Colormap as VisPyColormap
-        
+
+        frame_i = self._frames_scrollbar.value() - 1
         lut = self._lab_gradient_item.colorMap().getLookupTable(
             0.0, 1.0, self._lab_ncolors
         )
-        labels = [obj.label for obj in self._rp]
+        labels = [obj.label for obj in self._rp[frame_i]]
         greedy_lut = colors.get_greedy_lut(self._lab, lut, ids=labels)
         
         greedy_lut = np.array(greedy_lut) / 255.0
@@ -604,13 +626,14 @@ class VolumeRendererWindow(QMainWindow):
     def _set_object_checked(self, checked: bool, obj=None):
         if obj is None:
             return
-        
+
+        frame_i = self._frames_scrollbar.value() - 1
         _id = obj.label if checked else 0
-        self._lab[obj.slice][obj.image] = _id
+        self._lab[frame_i][obj.slice][obj.image] = _id
 
         self._label_annotations[obj.label].visible = checked
-        self._lab_node.set_data(self._lab)
-        self._labels_overlay.update()
+        self._lab_node.set_data(self._lab[frame_i])
+        self._labels_text_overlay.update()
 
         self._update_display(exclude_lab=True)
     
@@ -688,16 +711,51 @@ class VolumeRendererWindow(QMainWindow):
             self._object_labels_list_scrollarea
         )
         self._right_vertical_layout.addSpacing(10)
+
+        self._frames_scrollbar = widgets.ScrollBarWithNumericControl(
+            labelText='Frame n.', parent=self
+        )
+        self._frames_scrollbar.setMinimum(1)
+        self._frames_scrollbar.setValue(1)
+        self._frames_scrollbar.setVisible(False)
         
-        self._scene_layout = QHBoxLayout()
-        self._scene_layout.addWidget(lut_items_graphics_layout, stretch=0)
-        self._scene_layout.addWidget(self._canvas.native, stretch=10)
+        self._scene_layout = QGridLayout()
+
+        row = 0
+        self._scene_layout.addWidget(lut_items_graphics_layout, row, 0)
+        self._scene_layout.addWidget(self._canvas.native, row, 1)
         self._scene_layout.addLayout(
-            self._lab_gradient_item_layout, stretch=0
+            self._lab_gradient_item_layout, row, 2
         )
         self._scene_layout.addLayout(
-            self._right_vertical_layout, stretch=1
+            self._right_vertical_layout, row, 3
         )
+
+        row += 1
+        self._scene_layout.addItem(QSpacerItem(1, 5), row, 0)
+
+        row += 1
+        self._scene_layout.addWidget(self._frames_scrollbar, row, 0, 1, 2)
+
+        if self._parent_gui is not None:
+            self._sync_frames_scrollbar_main_gui_checkbox = QCheckBox(
+                'Sync with parent GUI'
+            )
+            self._scene_layout.addWidget(
+                self._sync_frames_scrollbar_main_gui_checkbox, 
+                row, 2, 1, 2,
+                alignment=Qt.AlignLeft
+            )
+            self._sync_frames_scrollbar_main_gui_checkbox.setChecked(True)
+            self._sync_frames_scrollbar_main_gui_checkbox.setVisible(False)
+            self._sync_frames_scrollbar_main_gui_checkbox.toggled.connect(
+                self._sync_frames_toggled
+            )
+            
+        self._scene_layout.setColumnStretch(0, 0)
+        self._scene_layout.setColumnStretch(1, 10)
+        self._scene_layout.setColumnStretch(2, 0)
+        self._scene_layout.setColumnStretch(3, 1)
         
         self._controls_groupbox = QGroupBox('Controls')
         self._controls_layout = widgets.FormLayout()
@@ -708,12 +766,17 @@ class VolumeRendererWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
         main_layout.addLayout(self._scene_layout)
+        main_layout.addSpacing(10)
         main_layout.addWidget(self._controls_groupbox)
         main_layout.setStretch(0, 10)
         main_layout.setStretch(1, 0)
         self.setCentralWidget(central)
         
         self._ui_initialised = True
+
+    def _sync_frames_toggled(self, checked):
+        if checked:
+            self._parent_gui.update3DViewer()
     
     def _set_object_labels_checkboxes_disabled(self, disabled=True):
         if disabled:
@@ -735,8 +798,9 @@ class VolumeRendererWindow(QMainWindow):
                 checkbox.setChecked(True)
             checkbox.setDisabled(disabled)
             checkbox.blockSignals(False)
+
+        self._select_all_button.setDisabled(disabled)
         
-    
     def _block_exec(self):
         if hasattr(self, 'loop'):
             self.loop.exit()
@@ -776,47 +840,52 @@ class VolumeRendererWindow(QMainWindow):
             return vol
         return np.ascontiguousarray(vol[::strides[0], ::strides[1], ::strides[2]])
     
-    def _preprocess_volume(self, volume: np.ndarray):
-        if volume.ndim != 3:
+    def _preprocess_volume(self, volume: np.ndarray):            
+        if volume.ndim != 4:
             raise ValueError(
-                f'Expected 3-D (Z, Y, X) array; got shape {volume.shape}')
+                f'Expected 4D (T, Z, Y, X) or 3D (Z, Y, X) array; got shape {volume.shape}'
+            )
         
-        self._SizeZ = len(volume)
+        self._SizeZ = len(volume[0])
         
         # copy=False avoids a redundant allocation when data is already float32
-        vol = volume.astype(np.float32, copy=False)
+        data = volume.astype(np.float32, copy=False)
 
         # Compute the value range on the full-resolution data BEFORE downsampling
         # so that stride-based subsampling cannot accidentally exclude extreme voxels
         # and cause incorrect normalisation (e.g. a single bright fluorescence spot
         # being dropped by the stride may lower the apparent maximum).
-        vmin, vmax = float(vol.min()), float(vol.max())
+        vmin, vmax = float(data.min()), float(data.max())
 
         # Downsample to fit GPU texture limits (after range is already captured).
         # Store the per-axis strides so set_voxel_scale can correct for
         # non-uniform compression (e.g. stride_x=4 while stride_z=1).
         max_tex = self._resolve_max_texture_3d()
-        if max(vol.shape) > max_tex:
-            vol = self._downsample(vol, max_tex)
-            self._last_max_tex = max_tex
+        if max(data[0].shape) > max_tex:
+            downsampled_data = []
+            for t, vol in enumerate(data):
+                vol = self._downsample(vol, max_tex)
+                downsampled_data.append(vol)
+
+            data = np.asarray(downsampled_data)
 
         # Normalise the (possibly downsampled) array using the full-resolution range.
         if vmax > vmin:
-            vol = (vol - vmin) / (vmax - vmin)
+            data = (data - vmin) / (vmax - vmin)
         else:
-            vol = np.zeros_like(vol)
+            data = np.zeros_like(data)
         
-        return vol
+        return data
     
-    def _preprocess_lab(self, lab: np.ndarray):
-        if lab.ndim != 3:
-            raise ValueError(
-                f'Expected 3-D (Z, Y, X) labels array; got shape {lab.shape}')
-        
+    def _preprocess_lab(self, lab_data: np.ndarray):
         max_tex = self._resolve_max_texture_3d()
-        lab = self._downsample(lab, max_tex)
-        
-        return lab
+        downsampled_lab = []
+        for t, lab in enumerate(lab_data):
+            ds_lab = self._downsample(lab, max_tex)
+            downsampled_lab.append(ds_lab)
+
+        downsampled_lab = np.asarray(downsampled_lab)
+        return downsampled_lab
     
     def _init_default_rgbs(self):
         self._default_rgbs = colors.overlay_rgbs.copy()
@@ -877,7 +946,7 @@ class VolumeRendererWindow(QMainWindow):
             self._lut_items_layout.addItem(reset_btn_proxy, row=1, col=c_idx)
             
             node = visuals.Volume(
-                volume,
+                volume[0],
                 method="mip",
                 parent=self._view.scene,
             )
@@ -891,14 +960,22 @@ class VolumeRendererWindow(QMainWindow):
             )
             toolbutton.action = self._toolbar.addWidget(toolbutton)
             toolbutton.setChecked(True)
-            
-            _raw_volume = volume.copy()
-            _off_focus_volume = skimage.filters.gaussian(_raw_volume, sigma=1.2)
-            p_raw = np.percentile(_raw_volume, 99.9)
-            p_blur = np.percentile(_off_focus_volume, 99.9)
-            if p_blur > 0:
-                _off_focus_volume *= (p_raw / p_blur)
-            _off_focus_volume *= 0.8
+
+            _raw_data = volume.copy()
+            _off_focus_data = []
+            for _raw_volume in _raw_data:
+                _off_focus_volume = skimage.filters.gaussian(
+                    _raw_volume, sigma=1.5
+                )
+                p_raw = np.percentile(_raw_volume, 99.9)
+                p_blur = np.percentile(_off_focus_volume, 99.9)
+                if p_blur > 0:
+                    _off_focus_volume *= (p_raw / p_blur)
+                _off_focus_volume *= 0.8
+                _off_focus_data.append(_off_focus_volume)
+
+            _raw_volume = _raw_data
+            _off_focus_volume = np.asarray(_off_focus_data)
 
             channel_data = _ChannelData(
                 node=node,
@@ -1087,8 +1164,15 @@ class VolumeRendererWindow(QMainWindow):
     
         face_color = vispy.color.Color(color, alpha=opacity*0.5)
         edge_color = vispy.color.Color(color, alpha=opacity)
-        
-        points_xyz = points_layer.points_xyz
+
+        markers = points_layer.markers
+        frame_i = self._frames_scrollbar.value() - 1
+        points_xyz = points_layer.points_t_xyz.get(frame_i)
+        if points_xyz is None:
+            markers.visible = False
+            return
+
+        markers.visible = True
         if self._orig_lab is not None:
             visible_label_ids = [
                 int(cb.text()) 
@@ -1098,7 +1182,7 @@ class VolumeRendererWindow(QMainWindow):
             visible = np.isin(points_layer._label_ids, visible_label_ids)
             points_xyz = points_xyz[visible]
 
-        markers = points_layer.markers
+        
         markers.set_data(
             points_xyz, 
             symbol=symbol,
@@ -1165,12 +1249,21 @@ class VolumeRendererWindow(QMainWindow):
                 'Only one labels volumes can be set'
             )
             return
+
+        if lab.ndim < 4:
+            # Add time dimension
+            lab = lab[np.newaxis]
+
+        if lab.ndim == 3 and SizeZ is None and self._SizeZ is None:
+            raise ValueError(
+                f'Labels array is 2D but SizeZ not set.'
+            )
         
-        if lab.ndim == 2:
+        if lab.ndim == 3:
             if SizeZ is None:
                 SizeZ = self._SizeZ
         
-            lab = np.array([lab]*SizeZ)
+            lab = np.asarray([np.asarray([lab_i]*SizeZ) for lab_i in lab])
         
         if self._data_shape is None:
             self._data_shape = lab.shape
@@ -1185,19 +1278,16 @@ class VolumeRendererWindow(QMainWindow):
         if lab.dtype == bool:
             lab = lab.astype(np.uint8)
         
-        if lab.ndim == 2 and SizeZ is None and self._SizeZ is None:
+        if lab.ndim != 4:
             raise ValueError(
-                f'Labels array is 2D but SizeZ not set.'
-            )
-        
-        if lab.ndim != 3:
-            raise ValueError(
-                f'Expected 3-D (Z, Y, X) labels array; got shape {lab.shape}')
+                f'Expected 4D (T, Z, Y, X) or 3D (Z, Y, X) labels array; got shape {lab.shape}')
         
         self._orig_lab = lab.copy()
-        self._orig_rp = skimage.measure.regionprops(self._orig_lab)
         self._lab = self._preprocess_lab(lab)
-        self._rp = skimage.measure.regionprops(self._lab)
+        self._rp = [
+            skimage.measure.regionprops(self._lab[frame_i]) 
+            for frame_i in range(len(self._lab))
+        ]
         
         self._init_lab_ui_items(
             self._lab, 
@@ -1214,8 +1304,51 @@ class VolumeRendererWindow(QMainWindow):
             self._lab_node.transform = self._voxel_size_strides_transform
         else:
             self._set_voxel_size_strides_transform(voxel_size)
-            
+
         self._is_labels_set = True
+
+    def _init_frames_scrollbar(self, num_frames):
+        self._frames_scrollbar.setVisible(num_frames > 1)
+        self._frames_scrollbar.setMaximum(num_frames)
+        if self._parent_gui is not None:
+            self._sync_frames_scrollbar_main_gui_checkbox.setVisible(
+                num_frames > 1
+            )
+        if self._frames_scrollbar_connected:
+            return
+
+        self._frames_scrollbar.sigValueChanged.connect(
+            self._frame_number_changed
+        )
+        self._frames_scrollbar_connected = True
+
+    def _frame_number_changed(self, frame_n: int):
+        for checkbox in self._object_labels_list_buttongroup.buttons():
+            self._object_labels_list_buttongroup.removeButton(checkbox)
+            self._object_labels_list_layout.removeWidget(checkbox)
+
+        frame_i = frame_n - 1
+        is_show_all = self._display_mode_show_all_rb.isChecked()
+        for obj in self._rp[frame_i]:
+            obj_checkbox = self._obj_checkboxes_mapper.get(obj.label)
+            if obj_checkbox is None:
+                obj_checkbox = QCheckBox(f'{obj.label}')
+                obj_checkbox.setChecked(True)
+                obj_checkbox.setDisabled(is_show_all)
+                self._obj_checkboxes_mapper[obj.label] = obj_checkbox
+            else:
+                obj_checkbox.toggled.disconnect()
+            obj_checkbox.obj = obj
+            self._object_labels_list_layout.addWidget(obj_checkbox)
+            self._object_labels_list_buttongroup.addButton(obj_checkbox)
+            obj_checkbox.toggled.connect(
+                partial(self._set_object_checked, obj=obj)
+            )
+
+        self._update_display()
+
+    def set_frame_number(self, frame_n: int):
+        self._frames_scrollbar.setValue(frame_n)
 
     def _set_labels_lut(self, lut: np.ndarray, update=True):
         from vispy.color import Colormap as VisPyColormap
@@ -1307,9 +1440,15 @@ class VolumeRendererWindow(QMainWindow):
             channel_names = list(volumes.keys())
             volumes = list(volumes.values())
         
+        for v, volume in enumerate(volumes):
+            if volume.ndim == 3:
+                # Add time axis
+                volume = volume[np.newaxis]
+            volumes[v] = volume
+
         if self._data_shape is None:
             self._data_shape = volumes[0].shape
-        
+
         for volume in volumes:
             if volume.shape != self._data_shape:
                 raise ValueError(
@@ -1364,15 +1503,18 @@ class VolumeRendererWindow(QMainWindow):
                 channel_data.node.transform = self._voxel_size_strides_transform
         else:
             self._set_voxel_size_strides_transform(voxel_size)
+
+        num_frames = len(volumes[0])
+        self._init_frames_scrollbar(num_frames)
         
         self._canvas.update()
     
     def add_points_layer(
             self,
             name: str,
-            points: np.ndarray | None=None, # (N, [z, y, x]) voxel coordinates
+            points: np.ndarray | None=None, # (N, [z, y, x]) voxel coordinates or (N, [t, z, y, x])
             points_df: pd.DataFrame | None=None,
-            zyx_columns_names: list[str] | None=None,
+            tzyx_columns_names: list[str] | None=None,
             labels: list[str] | None=None,
             color: vispy.color.Color='red',
             size: float=8.0,
@@ -1389,19 +1531,35 @@ class VolumeRendererWindow(QMainWindow):
             
         from vispy.scene import visuals
         
-        if zyx_columns_names is None:
-            zyx_columns_names = ['z', 'y', 'x']
-        
+        if tzyx_columns_names is None:
+            tzyx_columns_names = ['frame_i', 'z', 'y', 'x']
+
+        t_col_name = tzyx_columns_names
         if points_df is not None:
-            points_xyz = points_df[zyx_columns_names[::-1]].to_numpy()
+            points_t_xyz = {}
+            if t_col_name not in points_df.columns:
+                points_df[t_col_name] = 0
+            for t, points_df_t in points_df.groupby(t_col_name):
+                zyx_columns_names = tzyx_columns_names[1:]
+                points_xyz = points_df[zyx_columns_names[::-1]].to_numpy()
+                points_t_xyz[t] = points_xyz
         elif points is not None:
             points = np.asarray(points)
-            points_xyz = points[:, [2, 1, 0]]
+            if points.ndim == 3:
+                frames = [0]
+            else:
+                frames = np.unique(points[:, 0])
+            points_t_xyz = {}
+            for t in frames:
+                points_zyx = points[points[:, 0] == t]
+                points_xyz = points_zyx[:, [2, 1, 0]]
+                points_t_xyz[t] = points_xyz
         else:
             raise ValueError(
                 "Either 'points' or 'points_df' must be provided."
             ) 
-        
+
+        self._points_t_xyz = points_t_xyz
         face_color = vispy.color.Color(color, alpha=opacity*0.5)
         edge_color = vispy.color.Color(color, alpha=opacity)
         markers = visuals.Markers(
@@ -1409,14 +1567,17 @@ class VolumeRendererWindow(QMainWindow):
             spherical=True,
             scaling=scaling
         )
-        
-        markers.set_data(
-            points_xyz, 
-            symbol=symbol,
-            size=size,
-            face_color=face_color,
-            edge_color=edge_color
-        )
+
+        frame_i = self._frames_scrollbar.value() - 1
+        points_xyz = self._points_t_xyz.get(frame_i)
+        if points_xyz is not None:
+            markers.set_data(
+                points_xyz, 
+                symbol=symbol,
+                size=size,
+                face_color=face_color,
+                edge_color=edge_color
+            )
         
         markers.set_gl_state(depth_test=False)
         if self._voxel_size_transform is not None:
@@ -1425,28 +1586,24 @@ class VolumeRendererWindow(QMainWindow):
         _label_ids = None
         if self._orig_lab is not None:
             _label_ids = self._orig_lab[
+                frame_i,
                 points_xyz[:, 2], 
                 points_xyz[:, 1], 
                 points_xyz[:, 0], 
             ]
         
         ui_items = self._init_points_layer_ui_items(
-            markers,
-            name,
-            points_xyz, 
-            labels=labels,
             color=edge_color,
             size=size,
             opacity=opacity,
             symbol=symbol,
-            points_df=points_df
         )
         
         toolbutton, properties_dialog, context_menu = ui_items
         
         points_layer = _PointsLayer(
             name=name,
-            points_xyz=points_xyz, 
+            points_t_xyz=points_t_xyz, 
             _label_ids=_label_ids,
             labels=labels, 
             markers=markers,
@@ -1544,7 +1701,7 @@ class VolumeRendererWindow(QMainWindow):
         first_channel = list(self._channels_data.keys())[0]
         first_volume = self._channels_data[first_channel].volume
         first_node = self._channels_data[first_channel].node
-        Z, Y, X = first_volume.shape
+        T, Z, Y, X = first_volume.shape
 
         xyz_center = (X/2, Y/2, Z/2)     
         corners = np.array([
@@ -1577,5 +1734,11 @@ class VolumeRendererWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
 
-        if self._labels_overlay is not None:
-            self._labels_overlay.resize(self._canvas.native.size())
+        if self._labels_text_overlay is not None:
+            self._labels_text_overlay.resize(self._canvas.native.size())
+
+    def are_frames_synced(self):
+        if self._parent_gui is None:
+            return False
+        
+        return self._sync_frames_scrollbar_main_gui_checkbox.isChecked()

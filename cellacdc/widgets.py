@@ -13837,3 +13837,4 @@ class FireworksOverlay(QWidget):
                     particle['y'] - particle['vy'] * tail_scale,
                 ),
             )
+
