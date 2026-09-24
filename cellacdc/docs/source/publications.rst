@@ -24,15 +24,17 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Dengler, L., et al. <i>Swe1 delays cell cycle progression during impaired mitochondrial inheritance to promote mitochondrial homeostasis</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.09.18.752582">10.64898/2026.09.18.752582</a>.</li><br>
+
       <li>Chadha, Y., et al. <i>"Single-cell imaging reveals a key role of Bck2 in yeast cell size adaptation to nutrient challenges</i>. <b>Journal of Cell Biology</b> (2026) DOI: <a href="https://doi.org/10.1083/jcb.202410020">10.1083/jcb.202410020</a>.</li><br>
 
       <li>Ohsawa, S., et al. <i>Protein-driven colloid-osmotic pressure controls nuclear size, organization, and function</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.09.03.749057">10.64898/2026.09.03.749057</a>.</li><br>
 
       <li>Gao, X., et al. <i>The proportional scaling of mRNA and ribosome concentrations controls eukaryotic cell growth</i>. <b>Nat. Cell Biol.</b> (2026) DOI: <a href="https://doi.org/10.1038/s41556-026-02045-0">10.1038/s41556-026-02045-0</a>.</li><br>
 
-      <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in Caenorhabditis elegans by maintaining functional germline morphology</i>. <b>Development</b> (2026) DOI: <a href="https://doi.org/10.1242/dev.205442">10.1242/dev.205442</a>.</li><br>
-
       <li>Narduzzi, G., et al. <i>Weak interactions drive selective proteome demixing and tune the differential response to environmental perturbations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.22.739830">10.64898/2026.07.22.739830</a>.</li><br>
+
+      <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in Caenorhabditis elegans by maintaining functional germline morphology</i>. <b>Development</b> (2026) DOI: <a href="https://doi.org/10.1242/dev.205442">10.1242/dev.205442</a>.</li><br>
 
       <li>Smith, W., et al. <i>Proximity labeling at H3K9me3 reveals VRK-1 regulate global chromatin distribution in C. elegans</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.07.737140">10.64898/2026.07.07.737140</a>.</li><br>
 
@@ -43,6 +45,10 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Vandal, E. S., et al. <i>The role of cell growth rate on accumulation of the mitotic cyclin Cdc13 in fission yeast</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.05.14.724355">10.64898/2026.05.14.724355</a>.</li><br>
 
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>Cell Reports</b> (2026) DOI: <a href="https://doi.org/10.1016/j.celrep.2026.117304">10.1016/j.celrep.2026.117304</a>.</li><br>
+
+      <li>Wunder, T., et al. <i>Conserved and lineage-specific roles of KEA-mediated ion homeostasis in Chlamydomonas</i>. <b>Plant Physiology</b> (2026) DOI: <a href="https://doi.org/10.1093/plphys/kiag405">10.1093/plphys/kiag405</a>.</li><br>
+
+      <li>Dengler, L. , et al. <i>In the absence of mitochondrial fusion unequal segregation of mitochondria drives mtDNA loss</i>. <b>EMBO Reports</b> (2026) DOI: <a href="https://doi.org/10.1038/s44319-026-00794-5">10.1038/s44319-026-00794-5</a>.</li><br>
 
       <li>Benedikt, A. et al. <i>Retrograde signalling mediates cellular adaptation to mitochondrial DNA copy number alterations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.04.22.720057">10.64898/2026.04.22.720057</a>.</li><br>
 
