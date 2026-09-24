@@ -628,13 +628,7 @@ class VolumeRendererWindow(QMainWindow):
         self._lab_gradient_item.item.loadPreset(_DEFAULT_LABELS_CMAP_NAME)
     
     def _on_lab_gradient_changed(self, lab_gradient_item, update: bool=True):
-        cmap = colors.pg_to_vispy_cmap(
-            lab_gradient_item.colorMap(), transparent_zero=True,
-            n=self._lab_ncolors
-        )
-        self._lab_node.cmap = cmap
-        if update:
-            self._canvas.update()
+        self._random_shuffle_lab_gradient_cmap()
     
     def _on_lab_opacity_changed(
             self, 
@@ -1154,10 +1148,17 @@ class VolumeRendererWindow(QMainWindow):
             voxel_size: tuple[float, float, float]=None,
             cmap_name: AcdcPyQtGraphColorMapName=None,
             gradient_item_state: dict=None,
+            lut: np.ndarray=None,
             font_size: int=None,
             text_color='white',
             SizeZ: int=None
         ):
+        """
+        Parameters
+        ----------
+        lut:  np.ndarray of {``ColorMap.BYTE``}, default=None
+            The lookup table for the labels volume
+        """
         if self._is_labels_set:
             self._logger_func(
                 '[WARNING]: Labels already set. '
@@ -1206,12 +1207,26 @@ class VolumeRendererWindow(QMainWindow):
             text_color=text_color
         )
 
+        if lut is not None:
+            self._set_labels_lut(lut)
+
         if self._voxel_size_strides_transform is not None:
             self._lab_node.transform = self._voxel_size_strides_transform
         else:
             self._set_voxel_size_strides_transform(voxel_size)
             
         self._is_labels_set = True
+
+    def _set_labels_lut(self, lut: np.ndarray, update=True):
+        from vispy.color import Colormap as VisPyColormap
+
+        lut_float = np.array(lut) / 255.0
+        lut_float = colors.replace_background_rgba_lut(lut_float)
+        cmap = VisPyColormap(lut_float)
+
+        self._lab_node.cmap = cmap
+        if update:
+            self._canvas.update()
     
     def set_volume(
             self,
@@ -1562,5 +1577,5 @@ class VolumeRendererWindow(QMainWindow):
     def resizeEvent(self, event):
         super().resizeEvent(event)
 
-        if hasattr(self, "_labels_overlay"):
+        if self._labels_overlay is not None:
             self._labels_overlay.resize(self._canvas.native.size())

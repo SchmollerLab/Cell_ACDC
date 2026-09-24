@@ -3712,10 +3712,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lut_items_states=lut_items_states,
             voxel_size=voxel_size,
         )
+        lut_idxs = [0, *list(range(min(posData.IDs), max(posData.IDs)))]
+        lut = self.lut[lut_idxs]
         self._volume_renderer.set_labels(
             posData.lab,
             gradient_item_state=self.labelsGrad.item.saveState(),
-            SizeZ=posData.SizeZ
+            lut=lut,
+            SizeZ=posData.SizeZ,
+            font_size=self.fontSizeSpinBox.value(),
+            text_color=self.imgGrad.textColorButton.color(),
         ) 
         
         self.addPointsLayersToVolumeViewer(self._volume_renderer)
