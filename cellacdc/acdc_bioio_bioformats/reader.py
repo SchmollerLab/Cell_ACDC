@@ -18,9 +18,12 @@ def set_reader(image_filepath, **kwargs):
     _, ext = os.path.splitext(image_filepath)
     if ext in EXTENSION_PACKAGE_MAPPER:
         other_kwargs = EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
-        if 'reader' in other_kwargs:
-            reader_str = other_kwargs['reader']
-            other_kwargs['reader'] = _utils.import_reader(reader_str)
+        reader = other_kwargs.get('reader')
+        if isinstance(reader, str):
+            reader = _utils.import_reader(reader)
+            
+        if reader is not None:
+            other_kwargs['reader'] = reader
         return kwargs, EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
     
     try:

@@ -19,8 +19,6 @@ import h5py
 from cellacdc import myutils, bioio_sample_data_folderpath
 from cellacdc.config import ConfigParser
 
-from cellacdc.acdc_bioio_bioformats import ImageReader
-
 def setup_argparser():
     ap = argparse.ArgumentParser(
         prog='Cell-ACDC process', 
@@ -243,6 +241,8 @@ def load_image_data_from_symlink(
         cp_symlink: ConfigParser,
         channel_name: str, 
     ):
+    from cellacdc.acdc_bioio_bioformats import ImageReader
+    
     section_name = f'channel_name.{channel_name}'
     section = cp_symlink[section_name]
     source_filepath = section['source_filepath']
