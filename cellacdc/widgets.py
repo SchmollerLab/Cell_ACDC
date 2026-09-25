@@ -4336,7 +4336,6 @@ class DoubleSpinBox(QDoubleSpinBox):
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
-    sigValueChanged = Signal(int)
     sigUpClicked = Signal()
     sigDownClicked = Signal()
 
@@ -6501,11 +6500,13 @@ class myColorButton(pg.ColorButton):
         p.end()
     
     def enterEvent(self, event):
+        QApplication.instance().setOverrideCursor(Qt.PointingHandCursor)
         c = self._c + self._hoverDeltaC
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
     
     def leaveEvent(self, event):
+        QApplication.instance().restoreOverrideCursor()
         c = self._c
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
@@ -13836,3 +13837,4 @@ class FireworksOverlay(QWidget):
                     particle['y'] - particle['vy'] * tail_scale,
                 ),
             )
+

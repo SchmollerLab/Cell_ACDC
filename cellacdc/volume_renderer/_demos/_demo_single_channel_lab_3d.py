@@ -47,5 +47,5 @@ renderer.set_volumes(
     data,
     voxel_size=voxel_size
 )
-renderer.set_labels(lab) 
+renderer.set_labels(lab, font_size=12, text_color='white') 
 renderer.run()
