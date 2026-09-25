@@ -111,8 +111,10 @@ cellpose = [
     "cellpose>=4",
 ]
 stardist = [
-    "tensorflow<2.17",
-    "numpy<2.0.0",
+    "tensorflow<2.20",
+    "numpy<2.0",
+    "tifffile<2025",
+    "scipy<1.14",
     "stardist",
 ]
 yeaz = [
