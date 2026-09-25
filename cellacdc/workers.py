@@ -6999,6 +6999,7 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
             dtype = self.dtypeOut
             prefix = self.prefixText
             onlyUntilTracked = self.onlyUntilTracked
+            onlyUntilAnnotated = self.onlyUntilAnnotated
             acdcOutputEndname = self.acdcOutputEndname
             dstFolderPath = self.dstFolderPath
 
@@ -7023,12 +7024,20 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                 image_data = load.load_image_file(imageFilepath)
 
                 numFrames = len(image_data)
-                if onlyUntilTracked:
+                if onlyUntilTracked or onlyUntilTracked:
                     acdc_df = load.load_acdc_df_file(
                         images_path, 
                         end_name_acdc_df_file=acdcOutputEndname
                     )
-                    numFrames = acdc_df.index.get_level_values(0).max() + 1
+
+                if onlyUntilTracked:
+                    numFrames = acdc_df['frame_i'].max() + 1
+                elif onlyUntilAnnotated:
+                    ccs = acdc_df[['cell_cycle_stage']]
+                    last_index_cca_df = ccs.last_valid_index()
+                    numFrames = (
+                        acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
+                    )
 
                 self.logger.log('Splitting video into single-frame TIFF files...')
                 
@@ -7038,7 +7047,7 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                     t_str = str(frame_i).zfill(3)
                     frame_filename = f'{prefix}{t_str}.tif'
                     frame_filepath = os.path.join(dstFolderPath, frame_filename)
-                    skimage.io.imsave(frame_filepath)
+                    skimage.io.imsave(frame_filepath, img)
                     self.signals.sigUpdateInnerPbar.emit(1)
                 
                 self.signals.progressBar.emit(1)

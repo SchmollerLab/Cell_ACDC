@@ -21166,6 +21166,7 @@ class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
 
         row += 1
         self.prefixLineEdit = widgets.PrefixFilenameLineEdit('000.tif')
+        self.prefixLineEdit.setAlignment(Qt.AlignCenter)
         self.prefixFormWidget = widgets.formWidget(
             self.prefixLineEdit, 
             labelTextLeft='Prefix for output TIFF files: ',
@@ -21220,6 +21221,24 @@ The last tracked frame is the maximum `frame_i` present in the selected
         )
 
         row += 1
+        infoText = html_utils.paragraph(f"""
+Choose whether to stop until the last frame where the cell cycle/lineage has been annotated.<br><br>
+The last annotated frame is the maximum `frame_i` present in the "cell_cycle_stage" column in the selected 
+`acdc_output.csv` file (see parameter below).
+""")
+        self.onlyUntilAnnotatedFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Only until lineage annotated: ',
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+        )
+        entriesLayout.addFormWidget(self.onlyUntilAnnotatedFormWidget, row=row)
+        self.onlyUntilAnnotatedFormWidget.widget.toggled.connect(
+            self.onlyUntilTrackedToggled
+        )
+
+        row += 1
         images_path = os.path.dirname(video_filepath)
         acdcOutputFiles = load.get_acdc_output_files(images_path)
         basename, chNames = myutils.getBasenameAndChNames(images_path)
@@ -21229,7 +21248,7 @@ The last tracked frame is the maximum `frame_i` present in the selected
         self.acdcOutputEndnamesFormWidget = widgets.formWidget(
             self.acdcOutputEndnamesCombobox, 
             stretchWidget=False,
-            labelTextLeft='`acdc_output` file with tracking info: ',
+            labelTextLeft='`acdc_output` file with tracking/lineage info: ',
         )
         self.acdcOutputEndnamesFormWidget.setDisabled(True)
         entriesLayout.addFormWidget(self.acdcOutputEndnamesFormWidget, row=row)
@@ -21251,7 +21270,11 @@ The last tracked frame is the maximum `frame_i` present in the selected
         self.setLayout(mainLayout)
     
     def onlyUntilTrackedToggled(self, checked):
-        self.acdcOutputEndnamesFormWidget.setDisabled(not checked)
+        disabled = (
+            not self.onlyUntilTrackedFormWidget.widget.isChecked()
+            and not self.onlyUntilAnnotatedFormWidget.widget.isChecked()
+        )
+        self.acdcOutputEndnamesFormWidget.setDisabled(disabled)
 
     def sizeHint(self):
         height = super().sizeHint().height()
@@ -21278,6 +21301,9 @@ The last tracked frame is the maximum `frame_i` present in the selected
         self.dtypeOut = self.dtypeCombobox.currentText()
         self.onlyUntilTracked = (
             self.onlyUntilTrackedFormWidget.widget.isChecked()
+        )
+        self.onlyUntilAnnotated = (
+            self.onlyUntilAnnotatedFormWidget.widget.isChecked()
         )
         self.acdcOutputEndname = self.acdcOutputEndnamesCombobox.currentText()
         

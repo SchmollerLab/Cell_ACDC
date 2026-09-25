@@ -13023,6 +13023,9 @@ class PrefixFilenameLineEdit(QWidget):
 
         self.setLayout(layout)
     
+    def setAlignment(self, alignment):
+        self.le.setAlignment(alignment)
+
     def setEndname(self, text: str):
         self.endnameLabel.setText(text)
     

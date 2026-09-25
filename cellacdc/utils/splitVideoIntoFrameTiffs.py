@@ -26,7 +26,6 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         self.runWorker()
     
     def askSetupParams(self, *args):
-        printl(args)
         exp_path, pos_foldernames, video_endname = args[0]
         video_filepath = None
         for pos_folder in pos_foldernames:
@@ -52,6 +51,7 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         self.worker.prefixText = win.prefixText
         self.worker.dtypeOut = win.dtypeOut
         self.worker.onlyUntilTracked = win.onlyUntilTracked
+        self.worker.onlyUntilAnnotated = win.onlyUntilAnnotated
         self.worker.acdcOutputEndname = win.acdcOutputEndname
         self.worker.waitCond.wakeAll()
 
