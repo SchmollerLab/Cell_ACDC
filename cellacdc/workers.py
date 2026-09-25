@@ -7039,7 +7039,10 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                         acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
                     )
 
-                self.logger.log('Splitting video into single-frame TIFF files...')
+                self.logger.log(
+                    f'Splitting video into single-frame TIFF files '
+                    f'until frame n. {numFrames}...'
+                )
                 
                 self.signals.sigInitInnerPbar.emit(numFrames)
                 for frame_i in range(numFrames):
