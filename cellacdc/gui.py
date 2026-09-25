@@ -2482,6 +2482,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoIDcheckboxAction = brushEraserToolBar.addWidget(self.autoIDcheckbox)
         self.autoIDcheckboxAction.setVisible(False)
 
+        brushEraserToolBar.addSeparator()
+
+        self.interpZButton = QToolButton(self)
+        self.interpZButton.setIcon(QIcon(":interpolate-Z.svg"))
+        self.interpZButton.setCheckable(True)
+        self.interpZButton.setShortcut('Shift+Q')
+        self.interpZButton.action = brushEraserToolBar.addWidget(
+            self.interpZButton
+        )
+        self.widgetsWithShortcut['Interpolate sparsely labelled Z volume'] = (
+            self.interpZButton
+        )
+
+        self.interpZConfirmAction = QAction(self)
+        self.interpZConfirmAction.setIcon(QIcon(":greenTick.svg"))
+        self.interpZConfirmAction.setToolTip(
+            'Interpolate the mask between annotated z-slices.\n\n'
+            'Shortcut: "Enter"'
+        )
+        brushEraserToolBar.addAction(self.interpZConfirmAction)
+
+        brushEraserToolBar.addSeparator()
+
         self.brushSizeSpinbox = widgets.SpinBox(
             disableKeyPress=True,
             allowNegative=False
@@ -4081,6 +4104,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
+        self.interpZButton.toggled.connect(self.interpZModeToggled)
+        self.interpZConfirmAction.triggered.connect(
+            self.interpZConfirmTriggered
+        )
         self.autoIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
         self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
@@ -14615,6 +14642,68 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1_EraserX.setSize(value)
         self.setDiskMask()
     
+    def interpZModeToggled(self, checked):
+        if not checked:
+            self.autoIDcheckbox.setDisabled(False)
+            return
+        
+        if self.autoIDcheckbox.isChecked():
+            self.autoIDcheckbox.setChecked(False)
+            self.autoIDcheckbox.setDisabled(True)
+
+        newID = self.setBrushID(return_val=True)
+        self.editIDspinbox.setValue(newID)
+
+    @exception_handler
+    def interpZConfirmTriggered(self):
+        posData = self.data[self.pos_i]
+        ID = self.editIDspinbox.value()
+        if ID == 0:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
+        self.logger.info(f'Interpolating object ID = {ID}...')
+        obj = posData.rp.get_obj_from_ID(ID)
+        if obj is None:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False) 
+
+        local_lab = posData.lab[obj.slice]
+        local_mask_volume = local_lab == ID
+        labelled_z_slices = np.flatnonzero(
+            np.any(local_mask_volume, axis=(1, 2))
+        )
+
+        local_mask_filled, _ = core.interpolate_unlabelled_z_slices(
+            local_mask_volume, labelled_z_slices
+        )
+
+        existing_objs_mask = np.logical_and(local_lab > 0, local_lab != ID)
+
+        local_mask_filled[existing_objs_mask] = False
+        posData.lab[obj.slice][local_mask_filled] = ID
+        self.update_rp(specific_IDs=ID, preloaded_bbox=obj.bbox)
+        self.updateAllImages()
+
+        button = self.brushEraserToolBar.widgetForAction(
+            self.interpZConfirmAction
+        )
+        button.setStyleSheet(f'background-color: {GREEN_HEX}')
+
+        self.editIDspinbox.setValue(ID + 1)
+
+        QTimer.singleShot(2000, self.restoreInterpZConfirmActionColor)
+
+    def restoreInterpZConfirmActionColor(self):
+        color = self.defaultToolBarButtonColor
+        button = self.brushEraserToolBar.widgetForAction(
+            self.interpZConfirmAction
+        )
+        button.setStyleSheet(f'background-color: {color}')
+
     def autoIDtoggled(self, checked):
         self.editIDspinboxAction.setDisabled(checked)
         self.editIDLabelAction.setDisabled(checked)
@@ -16793,7 +16882,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 isLabelRoiCircActive
             )
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
-            if isTypingIDFunctionChecked:
+            if self.interpZButton.isChecked():
+                self.interpZConfirmAction.trigger()
+            elif isTypingIDFunctionChecked:
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
@@ -21619,7 +21710,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.resizeGui()
     
     def setVisible3DsegmWidgets(self):
-        pass
+        if not self.isSegm3D:
+            self.interpZButton.setChecked(False)
+
+        self.interpZButton.setVisible(self.isSegm3D)
+        self.interpZButton.action.setVisible(self.isSegm3D)
+        self.interpZConfirmAction.setVisible(self.isSegm3D)
+        self.interpZButton.action.setDisabled(not self.isSegm3D)
+        self.interpZButton.setDisabled(not self.isSegm3D)
 
     def resizeGuiAndAutoRange(self):
         self.resizeGui()
