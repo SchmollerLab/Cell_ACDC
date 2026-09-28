@@ -21839,6 +21839,7 @@ class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
         )
         _, ext = os.path.splitext(video_filepath)
         image_data = load.load_image_file(video_filepath)
+        self._SizeT = len(image_data)
         self.dtypeCombobox = widgets.ComboBox()
         self.dtypeCombobox.addItems(dtypes)
         if ext != '.npz':
@@ -21870,6 +21871,7 @@ The last tracked frame is the maximum `frame_i` present in the selected
             stretchWidget=False,
             valueGetterName='isChecked',
             addInfoButton=True,
+            infoTxt=infoText
         )
         entriesLayout.addFormWidget(self.onlyUntilTrackedFormWidget, row=row)
         self.onlyUntilTrackedFormWidget.widget.toggled.connect(
@@ -21888,6 +21890,7 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
             stretchWidget=False,
             valueGetterName='isChecked',
             addInfoButton=True,
+            infoTxt=infoText
         )
         entriesLayout.addFormWidget(self.onlyUntilAnnotatedFormWidget, row=row)
         self.onlyUntilAnnotatedFormWidget.widget.toggled.connect(
@@ -21896,6 +21899,7 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
 
         row += 1
         images_path = os.path.dirname(video_filepath)
+        self._images_path = images_path
         acdcOutputFiles = load.get_acdc_output_files(images_path)
         basename, chNames = myutils.getBasenameAndChNames(images_path)
         acdcOutputEndnames = [f[len(basename):] for f in acdcOutputFiles]
@@ -21911,6 +21915,27 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
         self.dtypeCombobox.setFixedWidth(
             self.acdcOutputEndnamesCombobox.sizeHint().width()
         )
+        self.acdcOutputEndnamesCombobox.currentTextChanged.connect(
+            self.acdcOutputEndnameChanged
+        )
+
+        row += 1
+        infoText = html_utils.paragraph(f"""
+            Enter number of frames to split.<br><br>
+            This number will overwrite the number of frames calculated with 
+            "Only until tracked" and "Only until annotated" options.
+        """)
+        self.untilFrameNumberFormWidget = widgets.formWidget(
+            widgets.SpinBox(), 
+            labelTextLeft='Number of frames to save: ',
+            addInfoButton=True,
+            infoTxt=infoText,
+            addActivateCheckbox=True,
+        )
+        self.untilFrameNumberFormWidget.widget.setMinimum(1)
+        self.untilFrameNumberFormWidget.widget.setMaximum(self._SizeT)
+        self.untilFrameNumberFormWidget.widget.setValue(self._SizeT)
+        entriesLayout.addFormWidget(self.untilFrameNumberFormWidget, row=row)
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -21931,6 +21956,30 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
             and not self.onlyUntilAnnotatedFormWidget.widget.isChecked()
         )
         self.acdcOutputEndnamesFormWidget.setDisabled(disabled)
+        if disabled:
+            self.untilFrameNumberFormWidget.widget.setValue(self._SizeT)
+            return
+
+        self.acdcOutputEndnameChanged(
+            self.acdcOutputEndnamesCombobox.currentText()
+        )
+
+    def acdcOutputEndnameChanged(self, acdcOutputEndname):
+        acdcOutputEndname = self.acdcOutputEndnamesCombobox.currentText()
+        acdc_df = load.load_acdc_df_file(
+            self._images_path, 
+            end_name_acdc_df_file=acdcOutputEndname
+        )
+        if self.onlyUntilTrackedFormWidget.widget.isChecked():
+            numFrames = acdc_df['frame_i'].max() + 1
+        else:
+            ccs = acdc_df[['cell_cycle_stage']]
+            last_index_cca_df = ccs.last_valid_index()
+            numFrames = (
+                acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
+            )
+
+        self.untilFrameNumberFormWidget.widget.setValue(numFrames)
 
     def sizeHint(self):
         height = super().sizeHint().height()
@@ -21962,6 +22011,26 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
             self.onlyUntilAnnotatedFormWidget.widget.isChecked()
         )
         self.acdcOutputEndname = self.acdcOutputEndnamesCombobox.currentText()
+        numFramesSpinbox = self.untilFrameNumberFormWidget.widget
+        self.numFramesToSplit = (
+            numFramesSpinbox.value()
+            if self.untilFrameNumberFormWidget.activateCheckbox.isChecked()
+            else None
+        )
         
         self.cancel = False
         self.close()
+
+class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
+    def __init__(self, video_filepath, logger_func=print, parent=None):
+        super().__init__(
+            video_filepath, 
+            logger_func=logger_func, 
+            parent=parent
+        )
+
+        self.prefixLineEdit.setText('t')
+        self.prefixLineEdit.setDisabled(True)
+
+        self.onlyUntilTrackedFormWidget.widget.setChecked(False)
+        self.onlyUntilAnnotatedFormWidget.widget.setChecked(True)

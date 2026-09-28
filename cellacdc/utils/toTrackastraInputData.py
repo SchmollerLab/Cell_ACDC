@@ -4,7 +4,7 @@ from .. import apps, myutils, workers, widgets, html_utils, printl
 
 from .base import NewThreadMultipleExpBaseUtil
 
-class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
+class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, title: str, infoText: str, 
             progressDialogueTitle: str, parent=None
@@ -17,7 +17,7 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         self.expPaths = expPaths
     
     def runWorker(self):
-        self.worker = workers.SplitVideoIntoFrameTiffs(self)
+        self.worker = workers.CreateTrackastraInputDataWorker(self)
         self.worker.sigAskSetup.connect(self.askSetupParams)
         self.worker.sigCancelled.connect(self.workerCancelled)
         super().runWorker(self.worker)
@@ -39,9 +39,8 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
             if video_filepath is not None:
                 break
         
-        win = apps.SetupSplitVideoIntoTiffsDialog(
-            video_filepath,
-            parent=self
+        win = apps.SetupCreateTrackastraInputDataDialog(
+            video_filepath, parent=self
         )
         win.exec_()
 
@@ -64,9 +63,9 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
     
     def workerFinished(self, worker, aborted=False):
         if aborted:
-            txt = '3D segmentation mask creation process aborted.'
+            txt = f'"{self._title}" process cancelled.'
         else:
-            txt = '3D segmentation mask creation process completed.'
+            txt = f'"{self._title}" process completed.'
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         if aborted:

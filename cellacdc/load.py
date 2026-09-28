@@ -4660,7 +4660,7 @@ def create_ctc_table_from_images_path(
         end_name_acdc_df_file=acdc_output_endname,
         return_path=True
     )
-    df_ctc = acdc_df # TODO: add code to convert acdc_df to df_ctc
+    df_ctc = core.acdc_df_to_ctc()
     if not save:
         return df_ctc, ''
     

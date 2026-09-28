@@ -3640,3 +3640,8 @@ def convex_hull_mask(mask: np.ndarray, slice_by_slice=True):
         mask[mask_obj.slice][z] = mask_obj_hull_z
     
     return mask
+
+def acdc_df_to_ctc(acdc_df):
+    # TODO: Converting acdc_df to ctc table
+    df_ctc = acdc_df[['generation_num']]
+    return df_ctc
