@@ -55,6 +55,7 @@ from .utils import applyTrackFromTrackMateXML as utilsApplyTrackFromTrackMate
 from .utils import fillHolesInSegm
 from .utils import generateMothBudTotalTable as utilsGenerateMothBudTotTable
 from .utils import splitVideoIntoFrameTiffs as utilSplitVideoTiffs
+from .utils import acdcOutputToCtcTable as utilAcdcToCtc
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -412,6 +413,7 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.fromImageJroiAction)
         convertMenu.addAction(self.toObjsCoordsAction)
         convertMenu.addAction(self.splitVideoTiffsAction)
+        convertMenu.addAction(self.acdcOutputToCtcAction)
 
         segmMenu = utilsMenu.addMenu('Segmentation')
         segmMenu.addAction(self.createConnected3Dsegm)
@@ -425,6 +427,7 @@ class mainWin(QMainWindow):
         trackingMenu.addAction(self.applyTrackingFromTrackMateXMLAction)
         trackingMenu.addAction(self.toSymDivAction)     
         trackingMenu.addAction(self.splitVideoTiffsAction)   
+        trackingMenu.addAction(self.acdcOutputToCtcAction)
         
         self.trackingMenu = trackingMenu
 
@@ -785,6 +788,9 @@ class mainWin(QMainWindow):
         self.splitVideoTiffsAction = QAction(
             'Split video files into single-frame TIFFs...'
         )  
+        self.acdcOutputToCtcAction = QAction(
+            'Create Cell Tracking Challenge (CTC) table from `acdc_output`...'
+        )
         self.trackSubCellFeaturesAction = QAction(
             'Track and/or count sub-cellular objects (assign same ID as the '
             'cell they belong to)...'
@@ -905,6 +911,9 @@ class mainWin(QMainWindow):
         )
         self.splitVideoTiffsAction.triggered.connect(
             self.launchSplitVideoIntoFrameTiffsUtil
+        )
+        self.acdcOutputToCtcAction.triggered.connect(
+            self.launchAcdcOutputToCtcTableUtil
         )
         self.fillHolesInSegmAction.triggered.connect(
             self.launchFillHolesActionUtil
@@ -1688,6 +1697,23 @@ class mainWin(QMainWindow):
         infoText = 'Launching splitting video into single-frame TIFFs process...'
         progressDialogueTitle = 'Splitting video into single-frame TIFFs'
         self.splitVideoWin = utilSplitVideoTiffs.SplitVideoIntoFrameTiffsUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.splitVideoWin.show()
+
+    def launchAcdcOutputToCtcTableUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Split video into single-frame TIFFs'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Create CTC table from `acdc_output` table'
+        infoText = 'Creating CTC table from `acdc_output` table...'
+        progressDialogueTitle = 'Creating CTC table from `acdc_output` table'
+        self.splitVideoWin = utilAcdcToCtc.ConvertAcdcOutputToCtcTableUtil(
             selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
             parent=self
         )

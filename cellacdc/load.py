@@ -4649,3 +4649,29 @@ def load_image_data_from_symlink(
     
     img_data = skimage.img_as_ubyte(img_data)
     return img_data
+
+def create_ctc_table_from_images_path(
+        images_path, 
+        acdc_output_endname='acdc_output',
+        save=True
+    ):
+    acdc_df, acdc_df_file_path = load_acdc_df_file(
+        images_path, 
+        end_name_acdc_df_file=acdc_output_endname,
+        return_path=True
+    )
+    df_ctc = acdc_df # TODO: add code to convert acdc_df to df_ctc
+    if not save:
+        return df_ctc, ''
+    
+    acdc_df_filename = os.path.basename(acdc_df_file_path)
+    df_ctc_filename = acdc_df_filename.replace('acdc_output', 'ctc')
+    df_ctc_filepath = os.path.join(
+        images_path, df_ctc_filename
+    )
+
+    df_ctc.to_csv(df_ctc_filepath)
+
+    return acdc_df, df_ctc_filepath
+
+    

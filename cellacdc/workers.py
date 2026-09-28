@@ -3118,11 +3118,11 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
     def run_iter_exp(self, exp_path, pos_foldernames, i, tot_exp):
         tot_pos = len(pos_foldernames)
         
-        abort = self.emitSelectAcdcOutputFiles(
+        cancel = self.emitSelectAcdcOutputFiles(
             exp_path, pos_foldernames, infoText=' to combine',
             allowSingleSelection=False
         )
-        if abort:
+        if cancel:
             self.sigAborted.emit()
             return
         
@@ -7052,6 +7052,70 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                     frame_filepath = os.path.join(dstFolderPath, frame_filename)
                     skimage.io.imsave(frame_filepath, img)
                     self.signals.sigUpdateInnerPbar.emit(1)
+                
+                self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)
+
+class CreateCtcTableFromAcdcOutput(BaseWorkerUtil):
+    sigCancelled = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    def emitAskSetup(self, exp_path, pos_foldernames, video_endname):
+        self.mutex.lock()
+        self.sigAskSetup.emit((exp_path, pos_foldernames, video_endname))
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = (
+                'Select <code>acdc_output</code> file(s) '
+                '<b>to convert to CTC table(s)</b>'
+            )
+            cancel = self.emitSelectAcdcOutputFiles(
+                exp_path, pos_foldernames, 
+                infoText=' to convert to CTC table',
+                allowSingleSelection=True
+            )
+            if cancel:
+                self.sigCancelled.emit()
+                return
+            
+            selectedAcdcOutputEndnames = self.mainWin.selectedAcdcOutputEndnames
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                for acdcOutEndname in selectedAcdcOutputEndnames:
+                    df_ctc, df_ctc_filepath = (
+                        load.create_ctc_table_from_images_path(
+                            images_path,
+                            acdc_output_endname=acdcOutEndname
+                        )
+                    )
+                    self.logger.log(f'CTC table saved at "{df_ctc_filepath}"')
                 
                 self.signals.progressBar.emit(1)
 
