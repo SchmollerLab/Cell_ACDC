@@ -21,7 +21,7 @@ except Exception as err:
 import cv2
 import traceback
 from itertools import combinations, permutations
-from collections import namedtuple
+from collections import namedtuple, Counter
 from natsort import natsorted
 # from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
@@ -4715,6 +4715,7 @@ class QDialogCombobox(QDialog):
 
         mainLayout.addLayout(infoLayout)
         mainLayout.addLayout(topLayout)
+        mainLayout.addSpacing(20)
         mainLayout.addLayout(bottomLayout)
         self.setLayout(mainLayout)
 
@@ -10267,6 +10268,7 @@ class QLineEditDialog(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        QTimer.singleShot(10, self.entryWidget.selectAll)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
@@ -14904,6 +14906,7 @@ class ShortcutEditorDialog(QBaseDialog):
             'keep_at_beginning': [],
             'other': [],
             '(lineage tree)': [],
+            '(cell cycle analysis)': [],
         }
 
         widgetsWithShortcut = self._groupAndSortShortcuts(
@@ -14911,14 +14914,18 @@ class ShortcutEditorDialog(QBaseDialog):
         )
         
         # based on name, only check uniquness within these groups
-        # and the forbidden ones
+        # and the forbidden ones.
         exclusivity_groups = {
             '(lineage tree)': [],
+            '(cell cycle analysis)': [],
             'other': [],
         }
         
-        exclusivity_groups['(lineage tree)'] = grouped_keys['(lineage tree)']
         exclusivity_groups['other'] = grouped_keys['other'] + grouped_keys['keep_at_beginning']
+        for key, value in grouped_keys.items():
+            if key not in ['keep_at_beginning', 'other']:
+                exclusivity_groups[key] = value
+                
         self.exclusivity_groups_reverse = {
             name: group for group, names in exclusivity_groups.items() for name in names
         }
@@ -14931,81 +14938,100 @@ class ShortcutEditorDialog(QBaseDialog):
             self.new_hard_shortcuts, keep_at_beginning, grouped_keys
         )
             
-        for items in enumerate(widgetsWithShortcut.items(), start=row):
-            row, (name, widget) = items
-            button = widgets.PushButton(self, flat=True)
-            try:
-                button.setIcon(widget.icon())
-            except:
-                pass
-            label = QLabel(f'{name}:')
-            shortcutLineEdit = widgets.ShortcutLineEdit(allowMouseButtons=True)
-            if mouseBindings is not None and name in mouseBindings:
-                mouse_button = mouseBindings[name]
-                btn_name = QtScoped.mouse_button_name(mouse_button)
-                shortcutLineEdit.setText(f'Mouse {btn_name}')
-                isShortcutKeyPress = False
-                isShortcutMouseButton = True
-            elif hasattr(widget, 'keyPressShortcut'):
-                shortcutLineEdit.key = widget.keyPressShortcut
-                shortcut = widgets.KeySequenceFromText(widget.keyPressShortcut)
-                isShortcutKeyPress = True
-                isShortcutMouseButton = False
-            else:
-                shortcut = widget.shortcut()
-                isShortcutKeyPress = False
-                isShortcutMouseButton = False
-                
-            if isShortcutMouseButton: # always false else mouseBindings is None
-                mouse_button = mouseBindings[name]
-                btn_name = QtScoped.mouse_button_name(mouse_button)
-                shortcutLineEdit.setText(f'Mouse {btn_name}')
-            else:
-                shortcutLineEdit.setText(shortcut.toString())
-                
-            shortcutLineEdit.textChanged.connect(self.shortcutChanged)
-            shortcutLineEdit.isShortcutKeyPress = isShortcutKeyPress
-            shortcutLineEdit.isShortcutMouseButton = isShortcutMouseButton
-            # trigger when clicked
-            shortcutLineEdit.clicked.connect(
-                self.setShortcutLineEditEventFilter
-            )
-            # clean up when focus is lost
-            shortcutLineEdit.editingFinished.connect(
-                self.releaseShortcutLineEditEventFilter
-            )
-            
-            entriesLayout.addWidget(button, row, 0)
-            entriesLayout.addWidget(label, row, 1)
-            entriesLayout.addWidget(shortcutLineEdit, row, 2)
-            shortcutLineEdit.name = name
-            self.shortcutLineEdits[name] = shortcutLineEdit
-            
-            warnConflictLabel = QLabel('')
-            self.shortcutLineEdits[name].warnConflictLabel = warnConflictLabel
-            entriesLayout.addWidget(warnConflictLabel, row, 4)
-            warnConflictLabel.setMinimumWidth(max_warn_width)
-            
-            if highlighted_shortcut is not None and name == highlighted_shortcut:
-                shortcutLineEdit.setStyleSheet(LINEEDIT_WARNING_STYLESHEET)
-            
-        row += 1
-        for items in enumerate(self.new_hard_shortcuts.items(), start=row):
-            row, (what, shortcut) = items
-            button = widgets.PushButton(self, flat=True)
-            if isinstance(what, str):
-                label = QLabel(f'{what}:')
-            else:
-                (name, widget) = what
+        for group, shortcuts in widgetsWithShortcut.items():
+            if not shortcuts:
+                continue
+            title = group.strip('()').replace('_', ' ').capitalize()
+            entriesLayout.addWidget(QLabel(f'<b>{title}</b>'), row, 0, 1, 5)
+            row += 1
+            for name, widget in shortcuts.items():
+                button = widgets.PushButton(self, flat=True)
                 try:
                     button.setIcon(widget.icon())
                 except:
                     pass
                 label = QLabel(f'{name}:')
-            lineEditTxt = QLabel(shortcut)
-            entriesLayout.addWidget(button, row, 0)
-            entriesLayout.addWidget(label, row, 1)
-            entriesLayout.addWidget(lineEditTxt, row, 2)
+                shortcutLineEdit = widgets.ShortcutLineEdit(
+                    allowMouseButtons=True
+                )
+                if mouseBindings is not None and name in mouseBindings:
+                    mouse_button = mouseBindings[name]
+                    btn_name = QtScoped.mouse_button_name(mouse_button)
+                    shortcutLineEdit.setText(f'Mouse {btn_name}')
+                    isShortcutKeyPress = False
+                    isShortcutMouseButton = True
+                elif hasattr(widget, 'keyPressShortcut'):
+                    shortcutLineEdit.key = widget.keyPressShortcut
+                    shortcut = widgets.KeySequenceFromText(
+                        widget.keyPressShortcut
+                    )
+                    isShortcutKeyPress = True
+                    isShortcutMouseButton = False
+                else:
+                    shortcut = widget.shortcut()
+                    isShortcutKeyPress = False
+                    isShortcutMouseButton = False
+
+                if isShortcutMouseButton:
+                    mouse_button = mouseBindings[name]
+                    btn_name = QtScoped.mouse_button_name(mouse_button)
+                    shortcutLineEdit.setText(f'Mouse {btn_name}')
+                else:
+                    shortcutLineEdit.setText(shortcut.toString())
+
+                shortcutLineEdit.textChanged.connect(self.shortcutChanged)
+                shortcutLineEdit.isShortcutKeyPress = isShortcutKeyPress
+                shortcutLineEdit.isShortcutMouseButton = isShortcutMouseButton
+                shortcutLineEdit.clicked.connect(
+                    self.setShortcutLineEditEventFilter
+                )
+                shortcutLineEdit.editingFinished.connect(
+                    self.releaseShortcutLineEditEventFilter
+                )
+
+                entriesLayout.addWidget(button, row, 0)
+                entriesLayout.addWidget(label, row, 1)
+                entriesLayout.addWidget(shortcutLineEdit, row, 2)
+                shortcutLineEdit.name = name
+                self.shortcutLineEdits[name] = shortcutLineEdit
+
+                warnConflictLabel = QLabel('')
+                shortcutLineEdit.warnConflictLabel = warnConflictLabel
+                entriesLayout.addWidget(warnConflictLabel, row, 4)
+                warnConflictLabel.setMinimumWidth(max_warn_width)
+
+                if (
+                        highlighted_shortcut is not None
+                        and name == highlighted_shortcut
+                    ):
+                    shortcutLineEdit.setStyleSheet(
+                        LINEEDIT_WARNING_STYLESHEET
+                    )
+                row += 1
+
+        for group, shortcuts in self.new_hard_shortcuts.items():
+            if not shortcuts:
+                continue
+            title = group.strip('()').replace('_', ' ').capitalize()
+            title = title + ' (not customizable)'
+            entriesLayout.addWidget(QLabel(f'<b>{title}</b>'), row, 0, 1, 5)
+            row += 1
+            for what, shortcut in shortcuts.items():
+                button = widgets.PushButton(self, flat=True)
+                if isinstance(what, str):
+                    label = QLabel(f'{what}:')
+                else:
+                    (name, widget) = what
+                    try:
+                        button.setIcon(widget.icon())
+                    except:
+                        pass
+                    label = QLabel(f'{name}:')
+                lineEditTxt = QLabel(shortcut)
+                entriesLayout.addWidget(button, row, 0)
+                entriesLayout.addWidget(label, row, 1)
+                entriesLayout.addWidget(lineEditTxt, row, 2)
+                row += 1
         
         entriesLayout.setColumnStretch(0, 0)
         entriesLayout.setColumnStretch(1, 0)
@@ -15042,21 +15068,24 @@ class ShortcutEditorDialog(QBaseDialog):
                 grouped_keys['keep_at_beginning'].append(actual_key)
             else:
                 for group_key in grouped_keys.keys():
-                    if group_key in key:
+                    if key.endswith(group_key) and group_key not in ['keep_at_beginning', 'other']:
                         grouped_keys[group_key].append(actual_key)
                         found = True
                         break
                 if not found:
                     grouped_keys['other'].append(actual_key)
 
-        widgets_with_shortcut_sorted = {}
+        grouped_shortcuts = {}
         for group, group_list in grouped_keys.items():
-            sorted_keys = natsorted(group_list, key=lambda x: x[0] if isinstance(x, tuple) else x)
-            widgets_with_shortcut_sorted.update({
+            sorted_keys = natsorted(
+                group_list,
+                key=lambda x: x[0] if isinstance(x, tuple) else x
+            )
+            grouped_shortcuts[group] = {
                 k: shortcuts_dict[k]
                 for k in sorted_keys
-            })
-        return widgets_with_shortcut_sorted
+            }
+        return grouped_shortcuts
         
     def setShortcutLineEditEventFilter(self):
         sender = self.sender()
@@ -15136,15 +15165,17 @@ class ShortcutEditorDialog(QBaseDialog):
                 )
             sender.conflictWith = name_other
             break
-        for name_other, shortcut_txt in self.new_hard_shortcuts.items():
-            if shortcut_txt == text:
-                # sender.setText('')
-                warnConflictLabel = getattr(sender, 'warnConflictLabel', None)
-                if warnConflictLabel is not None:
-                    warnConflictLabel.setText(
-                        self.conflict_text_formatter(name_other)
+        for shortcuts in self.new_hard_shortcuts.values():
+            for name_other, shortcut_txt in shortcuts.items():
+                if shortcut_txt == text:
+                    warnConflictLabel = getattr(
+                        sender, 'warnConflictLabel', None
                     )
-                break
+                    if warnConflictLabel is not None:
+                        warnConflictLabel.setText(
+                            self.conflict_text_formatter(name_other)
+                        )
+                    return
     
     def warnInvalidKeySequenceDelObjWithLeftClick(self):
         txt = html_utils.paragraph(
@@ -21140,6 +21171,631 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.sigValuesChanged.emit(self.settings)
         self.close()
 
+class DataStructureSetupDialogue(QBaseDialog):
+    def __init__(self, logger_func=print, parent=None):
+        super().__init__(parent)
+        
+        self.logger_func = logger_func
+        self.cancel = True
+        self.selectedOptions = None
+        self.actionsPosFoldersExisting = {
+            'overwrite': False,
+            'add_files': False,
+            'create_new': False,
+            'start_pos_n': 1
+        }
+        self.actionsFilesSourceFolder = {
+            'files': [],
+            'moveOtherFiles': False,
+            'copyOtherFiles': False
+        }
+        
+        mainLayout = QVBoxLayout()
+        entriesLayout = widgets.FormLayout()
+
+        headerText = ("""
+<b>Data conversion setup</b><br><br>
+<i>Choose your data structure, input and output folders, and conversion settings.</i>                     
+""")
+        headerLabel = QLabel(html_utils.paragraph(headerText))
+
+        gh_href = html_utils.href_tag('GitHub page', urls.issues_url)
+
+        row = 0
+        self.howRawDataStructCombobox = widgets.ComboBox()
+        options = [
+            'Single microscopy file with multiple positions',
+            'One or more microscopy files, one for each position',
+            'One or more microscopy files, one for each channel',
+            'NONE of the above'
+        ]
+        self.howRawDataStructCombobox.addItems(options)
+        infoOptions = [
+            'one file contains all positions/fields of view',
+            'each file contains a separate position/field of view',
+            'each file contains a separate imaging channel',
+            'Your data layout is not currently supported. '
+            f'Please report your setup on our {gh_href} '
+            'so we can add support for it',
+        ]
+        listTexts = [f'<b>{o}</b>: {i}.' for o, i in zip(options, infoOptions)]
+        infoText = html_utils.paragraph(f"""
+Select how your raw microscopy data is organized.<br><br>
+Typically, some microscopes (for example, Zeiss and Nikon systems) save an automated acquisition of multiple fields of view<br>
+as a single file containing multiple positions. If fields of view were acquired manually, each position is typically saved as a separate file.<br>
+{html_utils.to_list(listTexts)}
+""")
+        
+        self.howRawDataStructFormWidget = widgets.formWidget(
+            self.howRawDataStructCombobox, 
+            labelTextLeft='Raw data structure',
+            addInfoButton=True,
+            infoTxt=infoText,
+            wrapInfoTxt=False,
+            labelLeftSuffix=': '
+        )
+        entriesLayout.addFormWidget(self.howRawDataStructFormWidget, row=row)
+        self.howRawDataStructCombobox.currentTextChanged.connect(
+            self.howRawDataStructChanged
+        )
+
+        row += 1
+        self.sourceFolderPathControl = widgets.FolderPathControl()
+
+        noteText = ("""
+Microscopy files are those files that are typically generated 
+by the microscope,<br>for example '.czi' (Zeiss), '.nd2' (Nikon), 
+'.lif' (Leica), etc.
+""")
+        infoText = html_utils.paragraph(f"""
+Select the folder containing the raw microscopy files to convert.<br><br>
+Please make sure this folder contains <b>only microscopy files</b> and no other files or folders.<br><br>{html_utils.to_admonition(noteText)}                            
+""")
+        
+        self.sourceFolderPathFormWidget = widgets.formWidget(
+            self.sourceFolderPathControl, 
+            labelTextLeft='Source folder with raw files',
+            addInfoButton=True,
+            addCogButton=True,
+            infoTxt=infoText,
+            wrapInfoTxt=False,
+            labelLeftSuffix=': '
+        )
+        entriesLayout.addFormWidget(self.sourceFolderPathFormWidget, row=row)
+        myutils.setRetainSizePolicy(self.sourceFolderPathFormWidget.cogButton)
+        self.sourceFolderPathFormWidget.cogButton.hide()
+        self.sourceFolderPathFormWidget.sigCogButtonClicked.connect(
+            self.setupActionFilesSourceFolder
+        )
+        self.sourceFolderPathControl.sigValueChanged.connect(
+            self.srcFolderPathSelected
+        )
+
+        row += 1
+        self.dstFolderPathControl = widgets.FolderPathControl()
+
+        data_structure_url_href = html_utils.href_tag(
+            'documentation page', urls.data_structure_docs_url)
+
+        infoText = html_utils.paragraph(f"""
+Select the destination folder where Cell-ACDC will create the converted dataset.<br><br>
+The folder will contain one folder per position (called `Position_n`, where `n` is the position number), TIFF files, and the folder/file structure required by Cell-ACDC.<br><br>
+You can find more information about Cell-ACDC folder structure on our {data_structure_url_href}.                            
+""")
+        
+        self.dstFolderPathFormWidget = widgets.formWidget(
+            self.dstFolderPathControl, 
+            labelTextLeft='Destination folder',
+            addInfoButton=True,
+            addCogButton=True,
+            infoTxt=infoText,
+            wrapInfoTxt=False,
+            labelLeftSuffix=': '
+        )
+        entriesLayout.addFormWidget(self.dstFolderPathFormWidget, row=row)
+        myutils.setRetainSizePolicy(self.dstFolderPathFormWidget.cogButton)
+        self.dstFolderPathFormWidget.cogButton.hide()
+        self.dstFolderPathFormWidget.sigCogButtonClicked.connect(
+            self.setupActionPosFoldersExisting
+        )
+        self.dstFolderPathControl.sigValueChanged.connect(
+            self.dstFolderPathSelected
+        )
+        
+        row += 1
+
+        infoText = html_utils.paragraph(f"""
+Choose whether to load the entire position/field of view into RAM at once.<br><br>
+Loading the entire position into RAM is much faster, but it requires more memory.<br><br>
+Keep an eye on the ram usage and, if Cell-ACDC crashes or RAM is 
+full, you can re-start<br>
+the process and deactivate this option.
+""")
+        
+        self.loadEntirePosInRamFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Load entire field of view in RAM at once',
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+            infoTxt=infoText,
+            labelLeftSuffix=': '
+        )
+        entriesLayout.addFormWidget(self.loadEntirePosInRamFormWidget, row=row)
+
+        row += 1
+
+        important_text = ("""
+            If you choose to use symbolic links, the source data file(s) cannot 
+            be moved from their current location, otherwise the link will 
+            be broken.
+        """)
+        important_admon = html_utils.to_admonition(
+            important_text, admonition_type='important'
+        )
+        infoText = html_utils.paragraph(f"""
+Choose whether to use symbolic links or not.<br><br>
+Cell-ACDC can either copy the image data to TIFF or H5 files, or use 
+symbolic links to the source image data.<br><br>
+A symbolic link is a special type of file that acts as a pointer or alias, 
+referring to another file by its path rather than its content.<br><br>
+With symbolic links, <b>no image data will be copied</b> and only files 
+you will generate later (e.g., segmentation data)<br>
+will be created in the respective Position folders.<br>
+{important_admon}<br>
+""")
+        
+        self.useSymbolicLinksFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Use symbolic links',
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+            infoTxt=infoText,
+            labelLeftSuffix=': '
+        )
+        entriesLayout.addFormWidget(self.useSymbolicLinksFormWidget, row=row)
+
+        row += 1
+
+        infoText = html_utils.paragraph(f"""
+Choose whether to move raw microscopy files to a <code>raw_microscopy_files</code> sub-folder or not.<br><br>
+If you activate this option, before the conversion process, Cell-ACDC will automatically move the raw microscopy files<br>
+into a folder called <code>raw_microscopy_files</code> inside the destination folder.
+""")
+        
+        self.moveRawMicroscopyFilesFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Move raw microscopy files',
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+            infoTxt=infoText,
+            labelLeftSuffix=': '
+        )
+        entriesLayout.addFormWidget(self.moveRawMicroscopyFilesFormWidget, row=row)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        mainLayout.addWidget(headerLabel)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(entriesLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def howRawDataStructChanged(self, *args):
+        srcFolderPath = self.sourceFolderPathControl.path()
+        if not srcFolderPath:
+            return
+            
+        self.srcFolderPathSelected(srcFolderPath)
+
+    def srcFolderPathSelected(self, srcFolderPath):
+        self.actionsFilesSourceFolder = {
+            'files': [],
+            'moveOtherFiles': False,
+            'copyOtherFiles': False,
+        }
+        if not os.path.isdir(srcFolderPath):
+            self.sourceFolderPathControl.setInvalid(True)
+            self.warnSourceFolderNotSetupCorrectly()
+            return
+        
+        ls = natsorted(myutils.listdir(srcFolderPath))
+        files = [
+            filename for filename in ls
+            if os.path.isfile(os.path.join(srcFolderPath, filename))
+        ]
+        if not files:
+            self.sourceFolderPathControl.setInvalid(True)
+            self.warnSelectedPathEmpty(srcFolderPath)
+            return
+        
+        self.sourceFolderPathControl.setInvalid(False)
+        myutils.addToRecentPaths(srcFolderPath)
+
+        all_ext = [
+            os.path.splitext(filename)[1] for filename in ls
+            if os.path.isfile(os.path.join(srcFolderPath, filename))
+        ]
+        counter = Counter(all_ext)
+        unique_ext = list(counter.keys())
+        is_ext_unique = len(unique_ext) == 1
+        most_common_ext, _ = counter.most_common(1)[0]
+
+        if is_ext_unique:
+            rawDataStruct = self.howRawDataStructCombobox.currentIndex()
+            if rawDataStruct == 0 and len(files) > 1:
+                files = self.warnMultipleFiles(files)
+                if not files: 
+                    return
+            
+            files = self.checkFileNames(files, srcFolderPath)
+            if not files:
+                return
+            
+            if not self.checkFilesExtensions(files):
+                return
+            
+            self.actionsFilesSourceFolder['files'] = files
+            return
+        
+        files = self.warnMultipleFileExtensions(
+            srcFolderPath, 
+            files,
+            most_common_ext, 
+            unique_ext
+        )
+        if not files: 
+            return
+
+        if self.howRawDataStructCombobox.currentIndex() == 0 and len(files) > 1:
+            files = self.warnMultipleFiles(files)
+            if not files:
+                return
+        
+        files = self.checkFileNames(files, srcFolderPath)
+        if not files: 
+            return
+        
+        proceed = self.checkFilesExtensions(files)
+        if not proceed:
+            return
+
+        self.actionsFilesSourceFolder['files'] = files
+
+    def checkFileNames(self, raw_filenames, raw_src_path):
+        allowed = (
+            '.ome.tif',
+        )
+        for file in raw_filenames:
+            if is_alphanumeric_filename(file, allowed=allowed):
+                continue
+
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                f"""
+                The filename <code>{file}</code> contains <b>invalid 
+                characters</b>.<br><br>
+                Valid characters are letters, numbers, spaces, underscores 
+                and dashes.<br><br>
+                Please stop the process, <b>rename the file</b>, 
+                and try again, or choose one of the options below.<br><br>
+                Thank you for your patience!
+                """
+            )
+            renameWithUnderscoresButton = widgets.editPushButton(
+                'Rename file (replace invalid characters with "_")'
+            )
+            renameWithDashesButton = widgets.editPushButton(
+                'Rename file (replace invalid characters with "-")'
+            )
+            msg.warning(
+                self, 'Invalid filename', txt, 
+                path_to_browse=raw_src_path,
+                buttonsTexts=(
+                    'Let me rename files myself', 
+                    renameWithUnderscoresButton, 
+                    renameWithDashesButton
+                )
+            )
+            if msg.cancel:
+                return []
+            
+            if msg.clickedButton == renameWithUnderscoresButton:
+                self.logger_func(
+                    'Renaming files to replace invalid characters with "_"...'
+                )
+                renamed_filenames = io.rename_files_replace_invalid_chars(
+                    raw_filenames, raw_src_path, replacement_char='_'
+                )
+                return renamed_filenames
+            elif msg.clickedButton == renameWithDashesButton:
+                self.logger_func(
+                    'Renaming files to replace invalid characters with "-"...'
+                )
+                renamed_filenames = io.rename_files_replace_invalid_chars(
+                    raw_filenames, raw_src_path, replacement_char='-'
+                )
+                return renamed_filenames
+            else:
+                return []
+            
+        return raw_filenames
+
+    def checkFilesExtensions(self, raw_filenames):
+        from cellacdc.acdc_bioio_bioformats._utils import (
+            get_supported_image_extensions
+        )
+        extensions = get_supported_image_extensions()
+        not_supported_files = []
+        for filename in raw_filenames:
+            _, ext = os.path.splitext(filename)
+
+            if ext not in extensions:
+                not_supported_files.append(filename)
+        
+        if not_supported_files:
+            self.warnExtensionNotSupported(filename)
+            return False
+        
+        return True
+
+    def warnExtensionNotSupported(self, not_supported_files):
+        txt = html_utils.paragraph(f"""
+            The selected source folder contains files not supported by 
+            <code>bioio</code>.<br><br>
+            Please, select another folder or remove these files (see below).<br><br>
+            Thank you for your patience!<br><br>
+            Not supported files:
+        """)
+        detailsText = '<br>'.join(not_supported_files)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'File not supported', txt,
+            detailsText=detailsText
+        )
+
+    def warnMultipleFileExtensions(
+            self, 
+            srcFolderPath,
+            files,
+            most_common_ext, 
+            unique_ext,
+        ):
+        if not most_common_ext:
+            most_common_ext_msg = '<empty>'
+        else:
+            most_common_ext_msg = most_common_ext
+        
+        msg = widgets.myMessageBox(showCentered=False)
+        txt = html_utils.paragraph(f"""
+            The following folder<br>
+
+            <copiable>{srcFolderPath}</copiable>
+
+            contains files with different file extensions 
+            (extensions detected: {unique_ext})<br><br>
+            However, the most common extension is 
+            <b>{most_common_ext_msg}</b>,
+            do you want to proceed with
+            loading only files with extension <b>{most_common_ext_msg}</b>?
+            <br>
+        """)
+        _, yesButton, noButton = msg.warning(
+            self, 'Multiple extensions detected', txt, 
+            buttonsTexts=(
+                'Cancel', 'Yes, load only most common', 
+                'No, load all files'
+            )
+        )
+        if msg.cancel:
+            return []
+        
+        if msg.clickedButton == yesButton:
+            files = [
+                filename for filename in files
+                if os.path.splitext(filename)[1] == most_common_ext
+            ]
+            otherExt = [
+                ext for ext in unique_ext if ext != most_common_ext]
+            files = self.askActionWithOtherFiles(files, otherExt)
+
+        return files
+
+    def askActionWithOtherFiles(self, files, otherExt):
+        txt = html_utils.paragraph(f"""
+            What should I do with the other files (ext: {otherExt})
+            in the folder?<br><br>
+            <i>NOTE: Only the files with the same basename and position number
+            as the raw files will be moved or copied.</i>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        leaveButton = widgets.currentPushButton('Leave them where they are')
+        moveButton = widgets.movePushButton(
+            'Attempt MOVING to their Position folder'
+        )
+        copyButton = widgets.copyPushButton(
+            'Attempt COPYING to their Position folder'
+        )
+        msg.question(
+            self, 'Action with the other files?', txt,
+            buttonsTexts=(
+                'Cancel', leaveButton, moveButton, copyButton
+            )
+        )
+        if msg.cancel:
+            return []
+        
+        self.actionsFilesSourceFolder['moveOtherFiles'] = (
+            msg.clickedButton == moveButton
+        )
+        self.actionsFilesSourceFolder['copyOtherFiles'] = (
+            msg.clickedButton == copyButton
+        )
+
+        return files
+
+    def warnMultipleFiles(self, files):
+        infoText = html_utils.paragraph(
+            'You selected "Single microscopy file", '
+            'but the <b>folder contains multiple files</b>.<br>'
+        )
+        win = QDialogCombobox(
+            'Multiple microscopy files detected!', files, infoText,
+            CbLabel='Select which file to load: ', parent=self,
+            iconPixmap=QPixmap(':warning.svg')
+        )
+        win.exec_()
+        if win.cancel:
+            return []
+        else:
+            files = [win.selectedItemText]
+            return files
+
+    def warnSelectedPathEmpty(self, srcFolderPath):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            f"""
+            The selected folder (see below) is either <b>empty</b> 
+            or does not contain any files.<br><br>
+            Please select a folder that contains raw microscopy files.<br><br>
+            Thank you for your patience!
+            """
+        )
+        self.sourceFolderPathControl.le.setToolTip(
+            'Selected folder does not contain any files.\n\n'
+            'Please select a folder that contains raw microscopy files.'
+        )
+        msg.warning(
+            self, 'Empty folder', txt, 
+            commands=(srcFolderPath, ),
+            path_to_browse=srcFolderPath
+        )
+
+    def setupActionFilesSourceFolder(self):
+        # Not needed for now since the user can simply select the 
+        # folder again to trigger validation steps in srcFolderPathSelected
+        pass
+
+    def dstFolderPathSelected(self, dstFolderPath):
+        pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
+        if not pos_foldernames:
+            self.actionsPosFoldersExisting = {
+                'overwrite': False,
+                'add_files': False,
+                'create_new': False,
+                'start_pos_n': 1,
+            }
+            self.dstFolderPathFormWidget.cogButton.hide()
+            return
+        
+        self.dstFolderPathFormWidget.cogButton.show()
+        self.setupActionPosFoldersExisting()
+
+        self.blinker = qutils.QControlBlink(
+            self.dstFolderPathFormWidget.cogButton, qparent=self
+        )
+        self.blinker.start()
+
+
+    def setupActionPosFoldersExisting(self, *args):
+        dstFolderPath = self.dstFolderPathControl.path()
+        pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'The selected destination folder <b>already contains Position folders</b>.<br><br>'
+            'Do you want to <b>overwrite</b> all of its content, '
+            '<b>add files</b> to the existing Position folders,<br>'
+            'or <b>create new</b> Position folders?'
+        )
+        _, overwriteButton, addFilesButton, createNewButton = msg.warning(
+           self, 'Warning: existing Position folders detected!', txt,
+           buttonsTexts=(
+               'Cancel', 
+               'Overwrite', 
+               'Add image files to existing Positions', 
+               widgets.newFilePushButton('Create new Position folders'),
+            ),
+           path_to_browse=dstFolderPath
+        )
+        self.actionsPosFoldersExisting = {
+            'overwrite': False,
+            'add_files': False,
+            'create_new': False,
+            'start_pos_n': 1
+        }
+        if msg.cancel:
+            return 
+        
+        overwrite = overwriteButton == msg.clickedButton
+        add_files = addFilesButton == msg.clickedButton
+        create_new = createNewButton == msg.clickedButton
+        
+        start_pos_n = 1
+        if create_new:
+            pos_ns = [int(pos.split('_')[-1]) for pos in pos_foldernames]
+            start_pos_n = max(pos_ns) + 1
+        
+        self.actionsPosFoldersExisting['overwrite'] = overwrite
+        self.actionsPosFoldersExisting['add_files'] = add_files
+        self.actionsPosFoldersExisting['create_new'] = create_new
+        self.actionsPosFoldersExisting['start_pos_n'] = start_pos_n
+
+    def warnSourceFolderNotSetupCorrectly(self):
+        txt = html_utils.paragraph(f"""
+            The source folder path is not valid.<br><br>
+            Please select a source folder to go through the setup process.<br><br>
+            Thank you for your patience!
+        """)
+
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Invalid source folder', txt)
+    
+    def warnDstFolderPathNotSelected(self):
+        txt = html_utils.paragraph(f"""
+            The destination folder path is not valid.<br><br>
+            Please select a destination folder to go through the setup process.<br><br>
+            Thank you for your patience!
+        """)
+
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Invalid destination folder', txt)
+
+    def ok_cb(self):
+        if self.howRawDataStructFormWidget.widget.currentIndex() != 3:
+            if not self.actionsFilesSourceFolder['files']:
+                self.warnSourceFolderNotSetupCorrectly()
+                return
+            
+            if not self.dstFolderPathFormWidget.widget.path():
+                self.warnDstFolderPathNotSelected()
+                return
+        
+        self.cancel = False
+        self.selectedOptions = {
+            self.howRawDataStructFormWidget.labelTextLeft:
+                self.howRawDataStructFormWidget.widget.currentIndex(),
+            self.sourceFolderPathFormWidget.labelTextLeft:
+                self.sourceFolderPathFormWidget.widget.path(),
+            self.dstFolderPathFormWidget.labelTextLeft:
+                self.dstFolderPathFormWidget.widget.path(),
+            self.loadEntirePosInRamFormWidget.labelTextLeft:
+                self.loadEntirePosInRamFormWidget.widget.isChecked(),
+            self.useSymbolicLinksFormWidget.labelTextLeft:
+                self.useSymbolicLinksFormWidget.widget.isChecked(),
+            self.moveRawMicroscopyFilesFormWidget.labelTextLeft:
+                self.moveRawMicroscopyFilesFormWidget.widget.isChecked(),
+        }
+        
+        self.close()
+
+        
 class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
     def __init__(self, video_filepath, logger_func=print, parent=None):
         super().__init__(parent)

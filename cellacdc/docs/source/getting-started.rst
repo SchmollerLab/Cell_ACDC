@@ -503,7 +503,7 @@ To start editing, change the mode to **"Segmentation and Tracking"**.
 * **middle mouse button** (Windows) or **Cmd+Click** (MacOS): **delete** a cell ID.
 * **"Ctrl+P"**: Visualize **cell cycle annotations** in a **table**.
 * **"Ctrl+L"**: **Relabel** object IDs sequentially (1,2,3...etc).
-* **"Ctrl+F"**: **Search** and **highlight** specific object ID.
+* **"Ctrl+F"**: **Search** and **highlight** specific object ID by typing its ID or search for a functionality in Cell-ACDC.
 * **Right click** on any point in the picture to reveal **more options**. Most importantly, the option to show a **duplicate picture**. This is useful to both view the contours and the segmentation mask.
 * **"Spacebar"**: **Hide/show contours** or **segmentation masks** on left image
 * **Double tap a binding** for a tool to select the **"empowered" version**, which can **draw over any cells**. Otherwise, tools only influence the cell on which you start drawing. 

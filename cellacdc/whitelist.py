@@ -2026,7 +2026,7 @@ class WhitelistGUIElements:
             if obj.label not in current_whitelist:
                 continue
 
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjInCurrSlice(obj.bbox):
                 continue
 
             _slice = self.getObjSlice(obj.slice)

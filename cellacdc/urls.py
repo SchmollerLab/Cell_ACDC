@@ -27,3 +27,5 @@ bioformats_download_page = 'https://www.openmicroscopy.org/bio-formats/downloads
 install_pytorch = 'https://pytorch.org/get-started/locally/'
 
 fiji_downloads = 'https://imagej.net/software/fiji/downloads'
+
+data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure.html'

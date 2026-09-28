@@ -436,7 +436,6 @@ seg_for_lost_IDs_settings_path = os.path.join(settings_folderpath, 'seg_for_lost
 segm_recipes_path = os.path.join(settings_folderpath, 'segmentation_recipes')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 github_home_url = 'https://github.com/SchmollerLab/Cell_ACDC'
-data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure.html'
 moth_bud_tot_selected_columns_filepath = os.path.join(
     settings_folderpath, 'mother_bud_total_columns_selection.json'
 )

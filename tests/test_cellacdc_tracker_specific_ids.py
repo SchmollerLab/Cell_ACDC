@@ -191,6 +191,48 @@ def test_normal_division_specific_ids_preserve_division_context():
     assert add_info['assignments'] == {7: 20}
 
 
+def test_normal_division_second_step_does_not_track_daughters_as_lost_cells():
+    prev_lab = np.array(
+        [
+            [5, 5, 5, 5, 0, 0, 0, 0, 6, 6],
+            [5, 5, 5, 5, 0, 0, 0, 0, 6, 6],
+        ],
+        dtype=np.uint16,
+    )
+    lab = np.array(
+        [
+            [7, 7, 8, 8, 0, 0, 0, 0, 0, 0],
+            [7, 7, 8, 8, 0, 0, 0, 0, 0, 0],
+        ],
+        dtype=np.uint16,
+    )
+
+    tracked_lab, add_info = NormalDivisionTracker().track_frame(
+        prev_lab,
+        lab,
+        IoA_thresh=0.8,
+        IoA_thresh_daughter=0.25,
+        IoA_thresh_aggressive=0.5,
+        min_daughter=2,
+        max_daughter=2,
+        lost_IDs_search_range=20,
+        return_assignments=True,
+    )
+
+    expected = np.array(
+        [
+            [9, 9, 10, 10, 0, 0, 0, 0, 0, 0],
+            [9, 9, 10, 10, 0, 0, 0, 0, 0, 0],
+        ],
+        dtype=np.uint16,
+    )
+
+    np.testing.assert_array_equal(tracked_lab, expected)
+    assert add_info['mothers'] == {5}
+    assert add_info['daughters'] == [9, 10]
+    assert add_info['assignments'] == {7: 9, 8: 10}
+
+
 def test_normal_division_second_step_does_not_merge_existing_id():
     prev_lab = np.array(
         [

@@ -40,9 +40,9 @@
     :height: 16px
     :width: 16px
 
-.. |findIdAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/find.svg
+.. |searchAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/find.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/find.svg 
-    :alt: findIdAction icon
+    :alt: searchAction icon
     :height: 16px
     :width: 16px
 
@@ -399,7 +399,7 @@ File control
 
 View options
 ------------
-* **Find ID (** |findIdAction| **"Ctrl+F"):** Find and highlight ID. Press "Esc" to clear highlighted object.
+* **Search (** |searchAction| **"Ctrl+F"):** Find and highlight ID by typing its ID. As long as only numbers are in the search field, the first option is searching for an ID. Press enter to confirm the search. Press "Esc" to clear highlighted object. You can also **search for a functionality** in Cell-ACDC by typing its name.
 * **Zoom to rectangle (** |zoomRectButton| **"Shift+Z"):** Draw a rectangular area with left-click in order to zoom to that area. Right-click to cycle back to previously zoomed areas.
 * **Open Slideshow (** |slideshowButton| **"Ctrl+W"):** Opens slideshow.
 * **Launch 3D Viewer (** |launch3dViewerAction| **):** Launch 3D viewer for the currently visualised volume.
