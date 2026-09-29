@@ -21800,7 +21800,7 @@ class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
     def __init__(self, video_filepath, logger_func=print, parent=None):
         super().__init__(parent)
 
-        self.setTitle('Split video into single-frame TIFFs setup')
+        self.setWindowTitle('Split video into single-frame TIFFs setup')
 
         self.logger_func = logger_func
         self.cancel = True
@@ -22046,4 +22046,4 @@ class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
             )
         ))
 
-        self.setTitle('Generate Trackastra training data setup')
+        self.setWindowTitle('Generate Trackastra training data setup')
