@@ -3641,7 +3641,59 @@ def convex_hull_mask(mask: np.ndarray, slice_by_slice=True):
     
     return mask
 
-def acdc_df_to_ctc(acdc_df):
-    # TODO: Converting acdc_df to ctc table
-    df_ctc = acdc_df[['generation_num']]
-    return df_ctc
+def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
+    """Converts acdc_output dataframe into man_track.txt lineage 
+    information for the Cell Tracking Challenge (CTC) format.
+    Requires that lineage tree information was previously 
+    added to acdc_output.
+
+    Parameters:
+    ----------
+        acdc_output : pd.Dataframe
+            acdc_output dataframe with added lineage tree.
+        last_training_frame_i : int
+            the last frame_i that will be included 
+            into the man_track.txt output. 
+
+    Returns:
+        Dataframe in CTC format for converting to the man_track.txt file
+
+    """
+    if 'Cell_ID_tree' in acdc_output.columns:
+        list_of_cell_ID_trees = acdc_output['Cell_ID_tree'].unique()
+        output_df = pd.DataFrame(index=range(len(list_of_cell_ID_trees))
+                                 ,columns=["L","B","E","P"])
+        
+    # uses max segmented/tracked frame_i if no training window is selected
+        if last_training_frame_i is None:
+            last_training_frame_i = acdc_output["frame_i"].max()
+        
+    # goes through all cell_ID_trees to find  
+        # their parental cell_ID_tree and beginning + end frame_i
+        counter = 0
+        for i in list_of_cell_ID_trees:
+            subset = acdc_output.loc[acdc_output['Cell_ID_tree'] == i]
+            beginning = subset['frame_i'].min()
+            ending = subset['frame_i'].max()
+            parental = subset.iloc[0]['parent_ID_tree']
+            if parental == -1:
+                parental = 0
+                
+        # sorts out tracks beginning later than selected training window
+            if beginning > last_training_frame_i:
+                continue
+                
+        # changes track ending to the selected training window if neeeded
+            elif ending > last_training_frame_i:
+                ending = last_training_frame_i
+            
+            output_df.loc[counter, "L"] = i
+            output_df.loc[counter, "B"] = beginning
+            output_df.loc[counter, "E"] = ending
+            output_df.loc[counter, "P"] = parental
+            counter = counter + 1
+        output_clean = output_df.dropna()
+    else:
+        print('lineage tree table was not added to experiment')
+        output_clean = output_df
+    return output_clean
