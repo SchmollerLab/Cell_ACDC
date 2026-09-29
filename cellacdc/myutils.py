@@ -3529,9 +3529,11 @@ def check_install_package(
         if exact_version:
             check_pkg_exact_version(import_pkg_name, exact_version)
         if min_version:
-            check_pkg_version(import_pkg_name, min_version, include_lower_version)
+            check_pkg_version(
+                import_pkg_name, min_version, include_lower_version)
         if max_version:
-            check_pkg_max_version(import_pkg_name, max_version, include_higher_version)
+            check_pkg_max_version(
+                import_pkg_name, max_version, include_higher_version)
     except ModuleNotFoundError:
         proceed = _install_package_msg(
             pkg_name, 
