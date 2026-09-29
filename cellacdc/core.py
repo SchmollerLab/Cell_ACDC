@@ -3641,7 +3641,7 @@ def convex_hull_mask(mask: np.ndarray, slice_by_slice=True):
     
     return mask
 
-def create_CTC_tracking_file(acdc_output, last_training_frame_i):
+def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
     """Converts acdc_output dataframe into man_track.txt lineage 
     information for the Cell Tracking Challenge (CTC) format.
     Requires that lineage tree information was previously 
@@ -3654,9 +3654,6 @@ def create_CTC_tracking_file(acdc_output, last_training_frame_i):
         last_training_frame_i : int
             the last frame_i that will be included 
             into the man_track.txt output. 
-            
-            If set to 0: 
-                ses the maximum frame_i in acdc_output.
 
     Returns:
         Dataframe in CTC format for converting to the man_track.txt file
@@ -3668,7 +3665,7 @@ def create_CTC_tracking_file(acdc_output, last_training_frame_i):
                                  ,columns=["L","B","E","P"])
         
     # uses max segmented/tracked frame_i if no training window is selected
-        if last_training_frame_i == 0:
+        if last_training_frame_i is None:
             last_training_frame_i = acdc_output["frame_i"].max()
         
     # goes through all cell_ID_trees to find  

@@ -4236,10 +4236,18 @@ class formWidget(QWidget):
     
     def setDisabled(self, disabled: bool) -> None:
         for item in self.items:
-            try:
-                item.setDisabled(disabled)
-            except Exception as err:
-                pass
+            if isinstance(item, QHBoxLayout):
+                for i in range(item.count()):
+                    widget = item.itemAt(i).widget()
+                    try:
+                        widget.setDisabled(disabled)
+                    except Exception as err:
+                        pass
+            else:
+                try:
+                    item.setDisabled(disabled)
+                except Exception as err:
+                    pass
 
 class ToggleTerminalButton(PushButton):
     sigClicked = Signal(bool)
@@ -13836,3 +13844,39 @@ class FireworksOverlay(QWidget):
                     particle['y'] - particle['vy'] * tail_scale,
                 ),
             )
+
+class PrefixFilenameLineEdit(QWidget):
+    def __init__(self, endNameLabel, *args):      
+        super().__init__(*args)
+
+        layout = QHBoxLayout()
+
+        self.le = alphaNumericLineEdit()
+        self.endnameLabel = QLabel()
+        self.setEndname(endNameLabel)
+
+        layout.addWidget(self.le)
+        layout.addWidget(self.endnameLabel)
+
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 0)
+
+        layout.setContentsMargins(5, 0, 5, 0)
+
+        self.setLayout(layout)
+    
+    def setAlignment(self, alignment):
+        self.le.setAlignment(alignment)
+
+    def setEndname(self, text: str):
+        self.endnameLabel.setText(text)
+    
+    def setText(self, text: str):
+        self.le.setText(text)
+    
+    def prefix(self):
+        return self.le.text()
+    
+    def fullFilename(self):
+        filename = f'{self.le.text()}{self.endnameLabel.text()}'
+        return filename
