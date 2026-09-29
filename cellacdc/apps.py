@@ -65,7 +65,8 @@ from qtpy.QtWidgets import (
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
-    QListWidgetItem, QActionGroup, QHeaderView, QStyledItemDelegate
+    QListWidgetItem, QActionGroup, QHeaderView, QStyledItemDelegate,
+    QAbstractSlider
 )
 import qtpy.compat
 
@@ -10736,17 +10737,22 @@ class QtSelectItems(QDialog):
 class manualSeparateGui(QMainWindow):
     def __init__(
             self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
-            parent=None, loop=None, drawMode='threepoints_arc'
+            parent=None, loop=None, drawMode='threepoints_arc', start_slice=None,
+            mouseBindings=None, labelsLut=None, labelsAlpha=0.3
         ):
         super().__init__(parent)
         self.loop = loop
         self.cancel = True
         self.drawMode = drawMode
+        self.mouseBindings = mouseBindings or {}
+        self.labelsLut = labelsLut
+        self.labelsAlpha = labelsAlpha
         self._parent = parent
         self.lab = lab.copy()
         self.lab[lab!=ID] = 0
         self.ID = ID
-        self.img = skimage.exposure.equalize_adapthist(img/img.max())
+        img_max = img.max()
+        self.img = img/img_max if img_max else img.copy()
         self.IDcolor = IDcolor
         self.countClicks = 0
         self.prevLabs = []
@@ -10756,7 +10762,13 @@ class manualSeparateGui(QMainWindow):
         self.fontSize = fontSize
         self.AllCutsCoords = []
         self.setWindowTitle("Split object")
+        self.original_ID = ID
         # self.setGeometry(Left, Top, 850, 800)
+        
+        self.is_3D_mode = lab.ndim == 3
+        self.start_slice = start_slice if start_slice is not None else 0
+        self.current_slice = self.start_slice
+        self.sliceCutsCoords = {}
 
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -10843,6 +10855,17 @@ class manualSeparateGui(QMainWindow):
             'Shortcut: "S"'
         )
         self.swapIDsAction.setShortcut('S')
+
+        self.nextAction = QAction('Next z-slice', self)
+        self.nextAction.setShortcut(Qt.Key_Right)
+        self.prevAction = QAction('Previous z-slice', self)
+        self.prevAction.setShortcut(Qt.Key_Left)
+        self.addAction(self.nextAction)
+        self.addAction(self.prevAction)
+        self.widgetsWithShortcut = {
+            'Next': self.nextAction,
+            'Previous': self.prevAction
+        }
     
     def state(self):
         return {
@@ -10909,6 +10932,13 @@ class manualSeparateGui(QMainWindow):
         self.warnLabel = QLabel()
         editToolBar.addWidget(self.warnLabel)
         
+        if self.is_3D_mode:
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'Hold "Ctrl" to apply separation on all slices',
+                )
+            )
+        
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
@@ -10919,6 +10949,8 @@ class manualSeparateGui(QMainWindow):
         self.overlayButton.toggled.connect(self.toggleOverlay)
         self.imgGrad.sigLookupTableChanged.connect(self.histLUT_cb)
         self.swapIDsAction.triggered.connect(self.swapIDs)
+        self.nextAction.triggered.connect(self.nextSlice)
+        self.prevAction.triggered.connect(self.previousSlice)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -10942,6 +10974,10 @@ class manualSeparateGui(QMainWindow):
         # Image Item
         self.imgItem = pg.ImageItem(np.zeros((512,512)))
         self.ax.addItem(self.imgItem)
+
+        self.labelsLayer = widgets.BaseLabelsImageItem()
+        self.labelsLayer.setOpacity(self.labelsAlpha)
+        self.ax.addItem(self.labelsLayer)
 
         #Image histogram
         self.imgGrad = widgets.myHistogramLUTitem()
@@ -10978,7 +11014,7 @@ class manualSeparateGui(QMainWindow):
         alphaScrollBar.setFixedHeight(20)
         alphaScrollBar.setMinimum(0)
         alphaScrollBar.setMaximum(40)
-        alphaScrollBar.setValue(12)
+        alphaScrollBar.setValue(round(self.labelsAlpha*40))
         alphaScrollBar.setToolTip(
             'Control the alpha value of the overlay.\n'
             'alpha=0 results in NO overlay,\n'
@@ -10994,6 +11030,64 @@ class manualSeparateGui(QMainWindow):
         self.alphaScrollBar.hide()
         self.alphaScrollBar_label.hide()
 
+        self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
+        self.zSliceScrollBar.setMinimum(0)
+        self.zSliceScrollBar.setMaximum(self.lab.shape[0]-1)
+        self.zSliceScrollBar.setFixedHeight(20)
+        self.zSliceScrollBar.setValue(self.current_slice)
+        self.zSliceScrollBar.setToolTip('Navigate z-slices')
+        self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+        self.zSliceLabel = QLabel()
+        self.img_Widglayout.addWidget(
+            self.zSliceLabel, 1, 0, alignment=Qt.AlignCenter
+        )
+        self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1, 1, 20)
+        if not self.is_3D_mode:
+            self.zSliceLabel.hide()
+            self.zSliceScrollBar.hide()
+
+    def currentLab(self):
+        if self.is_3D_mode:
+            return self.lab[self.current_slice]
+        return self.lab
+
+    def currentImg(self):
+        if self.is_3D_mode and self.img.ndim == 3:
+            return self.img[self.current_slice]
+        return self.img
+
+    def update_z_slice(self, z):
+        self.current_slice = z
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(z, [])
+        self.countClicks = 0
+        self.curvHoverPlotItem.setData([], [])
+        self.lineHoverPlotItem.setData([], [])
+        self.curvAnchors.setData([], [])
+        self.freeHandItem.setData([], [])
+        self.zSliceLabel.setText(f'z-slice {z+1}/{self.lab.shape[0]}')
+        self.updateImg()
+
+    def nextSlice(self):
+        if self.is_3D_mode:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+
+    def previousSlice(self):
+        if self.is_3D_mode:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepSub
+            )
+
+    def mousePressEvent(self, event):
+        for name, button in self.mouseBindings.items():
+            if button != event.button() or name not in self.widgetsWithShortcut:
+                continue
+            self.widgetsWithShortcut[name].trigger()
+            event.accept()
+            return True
+        super().mousePressEvent(event)
+
     def gui_connectImgActions(self):
         self.imgItem.hoverEvent = self.gui_hoverEventImg
         self.imgItem.mousePressEvent = self.gui_mousePressEventImg
@@ -11005,7 +11099,7 @@ class manualSeparateGui(QMainWindow):
         try:
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
-            _img = self.lab
+            _img = self.currentLab()
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
@@ -11023,6 +11117,10 @@ class manualSeparateGui(QMainWindow):
     def gui_mousePressEventImg(self, event):
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
+
+        if not right_click and not left_click:
+            self.mousePressEvent(event)
+            return
 
         dragImg = (left_click)
 
@@ -11043,8 +11141,7 @@ class manualSeparateGui(QMainWindow):
         if self.freeHandAction.isChecked():
             self.countClicks = 0
             xx, yy = self.freeHandItem.getData()
-            self.setSplitCurveCoords(xx, yy)
-            self.splitObjectAlongCurve()
+            self.applySplitCurve(xx, yy)
             self.freeHandItem.setData([], [])
             self.curvAnchors.setData([], [])
     
@@ -11091,6 +11188,9 @@ class manualSeparateGui(QMainWindow):
     
     def threePointsArcPressEvent(self, event):
         if self.countClicks == 0:
+            # join seperate IDs if already separated
+            if len(self.rp) > 1:
+                self.joinAllIDs()
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             self.x0, self.y0 = xdata, ydata
@@ -11110,11 +11210,54 @@ class manualSeparateGui(QMainWindow):
             yy = [self.y0, ydata, self.y1]
             xi, yi = self.getSpline(xx, yy)
             yy, xx = np.round(yi).astype(int), np.round(xi).astype(int)
-            self.setSplitCurveCoords(xx, yy)
-            self.splitObjectAlongCurve()
+            self.applySplitCurve(xx, yy)
+            
+    def joinAllIDs(self):
+        original_ID = self.original_ID
+        self.storeUndoState()
+        lab = self.currentLab()
+        lab[lab != 0] = original_ID
+        self.updateImg()        
+
+    def applySplitCurve(self, xx, yy):
+        cut_all_slices = (
+            self.is_3D_mode
+            and QApplication.keyboardModifiers()
+            & Qt.ControlModifier
+        )
+        self.storeUndoState()
+        if not cut_all_slices:
+            if self.setSplitCurveCoords(xx, yy):
+                self.splitObjectAlongCurve()
+            return
+
+        current_slice = self.current_slice
+        split_ID = None
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(current_slice, [])
+        if self.setSplitCurveCoords(xx, yy):
+            split_ID = self.splitObjectAlongCurve()
+
+        directions = (
+            range(current_slice + 1, self.lab.shape[0]),
+            range(current_slice - 1, -1, -1),
+        )
+        for slices in directions:
+            reference_lab = self.lab[current_slice].copy()
+            for z in slices:
+                self.current_slice = z
+                self.AllCutsCoords = self.sliceCutsCoords.setdefault(z, [])
+                if not self.setSplitCurveCoords(xx, yy):
+                    continue
+                split_ID = self.splitObjectAlongCurve(
+                    split_ID=split_ID, reference_lab=reference_lab
+                )
+                reference_lab = self.currentLab().copy()
+        self.current_slice = current_slice
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(current_slice, [])
+        self.updateImg()
     
     def setSplitCurveCoords(self, xx, yy):
-        self.storeUndoState()
+        lab = self.currentLab()
         xxCurve, yyCurve = [], []
         for i, (r0, c0) in enumerate(zip(yy, xx)):
             if i == len(yy)-1:
@@ -11123,18 +11266,25 @@ class manualSeparateGui(QMainWindow):
             c1 = xx[i+1]
             rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
             # rr, cc = skimage.draw.line(r0, c0, r1, c1)
-            nonzeroMask = self.lab[rr, cc]>0
+            valid = (
+                (rr > 0) & (rr < lab.shape[0] - 1)
+                & (cc > 0) & (cc < lab.shape[1] - 1)
+            )
+            rr, cc = rr[valid], cc[valid]
+            nonzeroMask = lab[rr, cc]>0
             xxCurve.extend(cc[nonzeroMask])
             yyCurve.extend(rr[nonzeroMask])
+        if not xxCurve:
+            return False
         self.AllCutsCoords.append((yyCurve, xxCurve))
         for rr, cc in self.AllCutsCoords:
-            self.lab[rr, cc] = 0
-        self.lab = skimage.morphology.remove_small_objects(self.lab, 5)
+            lab[rr, cc] = 0
+        lab[:] = skimage.morphology.remove_small_objects(lab, 5)
+        return True
 
     def histLUT_cb(self, LUTitem):
         if self.overlayButton.isChecked():
-            overlay = self.getOverlay()
-            self.imgItem.setImage(overlay)
+            self.imgItem.setImage(self.currentImg())
 
     def swapIDs(self, checked=False):
         if len(self.rp) == 1:
@@ -11148,24 +11298,33 @@ class manualSeparateGui(QMainWindow):
         
         self.warnLabel.setText('')
         
-        obj1 = self.rp[0]
-        obj2 = self.rp[1]
+        obj1_ID = self.rp[0].label
+        obj2_ID = self.rp[1].label
+        obj1_mask = self.lab == obj1_ID
+        obj2_mask = self.lab == obj2_ID
         
-        self.lab[obj1.slice][obj1.image] = obj2.label
-        self.lab[obj2.slice][obj2.image] = obj1.label
+        self.lab[obj1_mask] = obj2_ID
+        self.lab[obj2_mask] = obj1_ID
         
         self.updateImg()
     
     def updateImg(self):
+        from . import regionprops as acdc_regionprops
+
         self.updateLookuptable()
-        rp = skimage.measure.regionprops(self.lab)
+        lab = self.currentLab()
+        rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
         self.rp = rp
 
         if self.overlayButton.isChecked():
-            overlay = self.getOverlay()
-            self.imgItem.setImage(overlay)
+            self.imgItem.setLookupTable(None)
+            self.imgItem.setImage(self.currentImg())
+            self.labelsLayer.show()
         else:
-            self.imgItem.setImage(self.lab)
+            self.imgItem.setLookupTable(self.lut)
+            self.imgItem.setImage(lab)
+            self.labelsLayer.hide()
+        self.labelsLayer.setImage(lab)
 
         # Draw ID on centroid of each label
         for labelItemID in self.labelItemsIDs:
@@ -11184,7 +11343,7 @@ class manualSeparateGui(QMainWindow):
 
     def zoomToObj(self):
         # Zoom to object
-        lab_mask = (self.lab>0).astype(np.uint8)
+        lab_mask = (self.currentLab()>0).astype(np.uint8)
         rp = skimage.measure.regionprops(lab_mask)
         obj = rp[0]
         min_row, min_col, max_row, max_col = obj.bbox
@@ -11194,47 +11353,67 @@ class manualSeparateGui(QMainWindow):
 
     def storeUndoState(self):
         self.prevLabs.append(self.lab.copy())
-        self.prevAllCutsCoords.append(self.AllCutsCoords.copy())
+        self.prevAllCutsCoords.append({
+            z: cuts.copy() for z, cuts in self.sliceCutsCoords.items()
+        })
         self.undoIdx += 1
         self.undoAction.setEnabled(True)
 
     def undo(self):
         self.undoIdx -= 1
+        if self.undoIdx < 0:
+            self.undoIdx = 0
+            return
         self.lab = self.prevLabs[self.undoIdx]
-        self.AllCutsCoords = self.prevAllCutsCoords[self.undoIdx]
+        self.sliceCutsCoords = self.prevAllCutsCoords[self.undoIdx]
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(
+            self.current_slice, []
+        )
         self.updateImg()
         if self.undoIdx == 0:
             self.undoAction.setEnabled(False)
             self.prevLabs = []
             self.prevAllCutsCoords = []
 
-    def splitObjectAlongCurve(self):
-        self.lab = skimage.measure.label(self.lab, connectivity=1)
+    def splitObjectAlongCurve(self, split_ID=None, reference_lab=None):
+        from . import regionprops as acdc_regionprops
+        lab = self.currentLab()
+        lab[:] = skimage.measure.label(lab, connectivity=1)
 
-        # Relabel largest object with original ID
-        rp = skimage.measure.regionprops(self.lab)
+        rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
         areas = [obj.area for obj in rp]
         IDs = [obj.label for obj in rp]
-        maxAreaIdx = areas.index(max(areas))
-        maxAreaID = IDs[maxAreaIdx]  
-        if self.ID not in self.lab:
-            self.lab[self.lab==maxAreaID] = self.ID
+        tracked_obj_ID, tracked_split_ID = None, None
+        if split_ID is None and reference_lab is None:
+            tracked_obj_ID, tracked_split_ID = self._trackedSplitID(rp)
+        if tracked_obj_ID is not None:
+            original_ID = next(ID for ID in IDs if ID != tracked_obj_ID)
+            split_ID = tracked_split_ID
+        elif reference_lab is None:
+            original_ID = IDs[areas.index(max(areas))]
         else:
-            tempID = self.lab.max() + 1
-            self.lab[self.lab==maxAreaID] = tempID
-            self.lab[self.lab==self.ID] = maxAreaID
-            self.lab[self.lab==tempID] = self.ID
+            overlaps = [
+                np.count_nonzero(reference_lab[obj.slice][obj.image] == self.ID)
+                for obj in rp
+            ]
+            original_ID = IDs[overlaps.index(max(overlaps))]
+
+        if original_ID != self.ID:
+            tempID = lab.max() + 1
+            lab[lab==original_ID] = tempID
+            lab[lab==self.ID] = original_ID
+            lab[lab==tempID] = self.ID
 
         # Keep only the two largest objects
         larger_areas = nlargest(2, areas)
         larger_ids = [rp[areas.index(area)].label for area in larger_areas]
         for obj in rp:
             if obj.label not in larger_ids:
-                self.lab[tuple(obj.coords.T)] = 0
+                lab[tuple(obj.coords.T)] = 0
 
-        rp = skimage.measure.regionprops(self.lab)
+            rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
 
-        if self._parent is not None:
+        if self._parent is not None and split_ID is None:
             self._parent.setBrushID()
         # Use parent window setBrushID function for all other IDs
         for obj in rp:
@@ -11242,12 +11421,14 @@ class manualSeparateGui(QMainWindow):
                 break
             if obj.label == self.ID:
                 continue
-            posData = self._parent.data[self._parent.pos_i]
-            posData.brushID += 1
-            self.lab[obj.slice][obj.image] = posData.brushID
+            if split_ID is None:
+                posData = self._parent.data[self._parent.pos_i]
+                posData.brushID += 1
+                split_ID = posData.brushID
+            lab[obj.slice][obj.image] = split_ID
 
         # Replace 0s on the cutting curve with IDs
-        self.cutLab = self.lab.copy()
+        self.cutLab = lab.copy()
         for rr, cc in self.AllCutsCoords:
             for y, x in zip(rr, cc):
                 top_row = self.cutLab[y+1, x-1:x+2]
@@ -11259,17 +11440,54 @@ class manualSeparateGui(QMainWindow):
                 allNeigh.append(left_col)
                 allNeigh.extend(right_col)
                 newID = max(allNeigh)
-                self.lab[y,x] = newID
+                lab[y,x] = newID
 
-        self.rp = skimage.measure.regionprops(self.lab)
+            self.rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
         self.updateImg()
+        return split_ID
+
+    def _trackedSplitID(self, rp):
+        if not self.is_3D_mode or len(rp) < 2:
+            return None, None
+
+        neighboring_slices = [
+            self.lab[z]
+            for z in (self.current_slice - 1, self.current_slice + 1)
+            if 0 <= z < self.lab.shape[0]
+        ]
+        candidates = []
+        for obj in rp:
+            for neighbor_lab in neighboring_slices:
+                overlapping_IDs = neighbor_lab[obj.slice][obj.image]
+                overlapping_IDs = overlapping_IDs[
+                    (overlapping_IDs != 0) & (overlapping_IDs != self.ID)
+                ]
+                IDs, counts = np.unique(overlapping_IDs, return_counts=True)
+                candidates.extend(
+                    (count, obj.label, ID) for ID, count in zip(IDs, counts)
+                )
+
+        if not candidates:
+            return None, None
+        _, obj_ID, split_ID = max(candidates)
+        return obj_ID, split_ID
 
     def updateLookuptable(self):
         # Lookup table
+        lab = self.currentLab()
         self.cmap = colors.getFromMatplotlib('viridis')
         self.lut = self.cmap.getLookupTable(0,1,self.lab.max()+1)
         self.lut[0] = [25,25,25]
         self.lut[self.ID] = self.IDcolor
+        if self.labelsLut is None or len(self.labelsLut) <= lab.max():
+            labelsLut = np.zeros((len(self.lut), 4), dtype=np.uint8)
+            labelsLut[:, :3] = self.lut
+            labelsLut[:, 3] = 255
+            labelsLut[0] = [0, 0, 0, 0]
+        else:
+            labelsLut = self.labelsLut
+        self.labelsLayer.setLevels([0, len(labelsLut)])
+        self.labelsLayer.setLookupTable(labelsLut)
         if self.overlayButton.isChecked():
             self.imgItem.setLookupTable(None)
         else:
@@ -11285,32 +11503,10 @@ class manualSeparateGui(QMainWindow):
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             self.ok_cb(True)
 
-    def getOverlay(self):
-        # Rescale intensity based on hist ticks values
-        min = self.imgGrad.gradient.listTicks()[0][1]
-        max = self.imgGrad.gradient.listTicks()[1][1]
-        img = skimage.exposure.rescale_intensity(self.img, in_range=(min, max))
-        alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
-
-        # Convert img and lab to RGBs
-        rgb_shape = (self.lab.shape[0], self.lab.shape[1], 3)
-        labRGB = np.zeros(rgb_shape)
-        labRGB[self.lab>0] = [1, 1, 1]
-        imgRGB = skimage.color.gray2rgb(img)
-        overlay = imgRGB*(1.0-alpha) + labRGB*alpha
-
-        # Color eaach label
-        for obj in self.rp:
-            rgb = self.lut[obj.label]/255
-            overlay[obj.slice][obj.image] *= rgb
-
-        # Convert (0,1) to (0,255)
-        overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
-        return overlay
-
     def alphaScrollBarMoved(self, alpha_int):
-        overlay = self.getOverlay()
-        self.imgItem.setImage(overlay)
+        self.labelsLayer.setOpacity(
+            alpha_int/self.alphaScrollBar.maximum()
+        )
 
     def toggleOverlay(self, checked):
         if checked:
