@@ -7118,6 +7118,8 @@ class CreateCtcTableFromAcdcOutput(BaseWorkerUtil):
 
 class CreateTrackastraInputDataWorker(BaseWorkerUtil):
     sigAskSetup = Signal(object)
+    sigWarnPartialDstPosFolderFound = Signal(str, str)
+    sigAskDstFolderExist = Signal(str)
     sigCancelled = Signal()
 
     def __init__(self, mainWin):
@@ -7130,13 +7132,35 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
         self.mutex.unlock()
         return self.abort
 
+    def emitWarnPartialDstPosFolderFound(self, dstFolderPath, pos_num_str):
+        self.mutex.lock()
+        self.sigWarnPartialDstPosFolderFound.emit(dstFolderPath, pos_num_str)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def emitAskDstFolderExist(self, videoDstFolderPath):
+        self.mutex.lock()
+        self.sigAskDstFolderExist.emit(videoDstFolderPath)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
     @worker_exception_handler
     def run(self):
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
         self.signals.initProgressBar.emit(0)
-        exp_digits = max(2, len(str(tot_exp)))
+        tot_num_pos = 0
+        for exp_path, pos_foldernames in expPaths.items():
+            tot_num_pos += len(pos_foldernames)
+        tot_digits = max(2, len(str(tot_num_pos)))
+        src_paths_info = {
+            'generated_folder': [],
+            'source_position_folder': []    
+        }
+        k = 0
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
             tot_pos = len(pos_foldernames)
@@ -7168,29 +7192,53 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                 acdcOutputEndname = self.acdcOutputEndname
                 dstFolderPath = self.dstFolderPath
 
-            exp_num_str = f'{i+1}'.zfill(exp_digits)
-            videoDstFolderPath = os.path.join(
-                dstFolderPath, exp_num_str
-            )
-            os.makedirs(videoDstFolderPath)
-
-            gtDstFolderPath = os.path.join(
-                dstFolderPath, f'{exp_num_str}_GT', 'TRA'
-            )
-            os.makedirs(gtDstFolderPath)
-
             self.signals.initProgressBar.emit(len(pos_foldernames))
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.sigCancelled.emit()
                     return
 
+                pos_path = os.path.join(exp_path, pos)
+                pos_num_str = f'{k+1}'.zfill(tot_digits)
+                videoDstFolderPath = os.path.join(
+                    dstFolderPath, pos_num_str
+                )
+                gtDstFolderPath = os.path.join(
+                    dstFolderPath, f'{pos_num_str}_GT', 'TRA'
+                )
+
+                partial_dst_pos_found = (
+                    os.path.exists(videoDstFolderPath)
+                    ^ os.path.exists(gtDstFolderPath)
+                ) 
+                if partial_dst_pos_found:
+                    self.emitWarnPartialDstPosFolderFound(
+                        dstFolderPath, pos_num_str
+                    )
+                    self.sigCancelled.emit()
+                    return
+
+                if os.path.exists(videoDstFolderPath):
+                    self.emitAskDstFolderExist(videoDstFolderPath)
+                    if self.abort:
+                        self.sigCancelled.emit()
+                        return
+                    
+                    io.delete_folder_content(videoDstFolderPath)
+                    io.delete_folder_content(gtDstFolderPath)
+
+                os.makedirs(videoDstFolderPath, exist_ok=True)
+                os.makedirs(gtDstFolderPath, exist_ok=True)
+
+                src_paths_info['generated_folder'].append(videoDstFolderPath)
+                src_paths_info['source_position_folder'].append(pos_path)
+            
                 self.logger.log(
                     f'Processing experiment n. {i+1}/{tot_exp}, '
                     f'{pos} ({p+1}/{tot_pos})'
                 )
 
-                images_path = os.path.join(exp_path, pos, 'Images')
+                images_path = os.path.join(pos_path, 'Images')
                 basename, chNames = myutils.getBasenameAndChNames(images_path)
                 ls = myutils.listdir(images_path)
                 imageFilepath = [
@@ -7279,5 +7327,13 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                 )
                 
                 self.signals.progressBar.emit(1)
+
+                k += 1
+
+        df_src_path = pd.DataFrame(src_paths_info)
+        df_src_path.to_csv(
+            os.path.join(dstFolderPath, '_source_paths.txt'),
+            index=False
+        )
 
         self.signals.finished.emit(self)

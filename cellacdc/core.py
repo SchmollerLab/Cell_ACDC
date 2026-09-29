@@ -3659,41 +3659,47 @@ def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
         Dataframe in CTC format for converting to the man_track.txt file
 
     """
-    if 'Cell_ID_tree' in acdc_output.columns:
-        list_of_cell_ID_trees = acdc_output['Cell_ID_tree'].unique()
-        output_df = pd.DataFrame(index=range(len(list_of_cell_ID_trees))
-                                 ,columns=["L","B","E","P"])
+    acdc_output = acdc_output.reset_index()
+    
+    if 'Cell_ID_tree' not in acdc_output.columns:
+        raise KeyError(
+            '`Cell_ID_tree` column not found in acdc_output table.'
+        )
+
+    list_of_cell_ID_trees = acdc_output['Cell_ID_tree'].unique()
+    output_df = pd.DataFrame(
+        index=range(len(list_of_cell_ID_trees)),
+        columns=["L","B","E","P"]
+    )
         
     # uses max segmented/tracked frame_i if no training window is selected
-        if last_training_frame_i is None:
-            last_training_frame_i = acdc_output["frame_i"].max()
+    if last_training_frame_i is None:
+        last_training_frame_i = acdc_output["frame_i"].max()
         
     # goes through all cell_ID_trees to find  
-        # their parental cell_ID_tree and beginning + end frame_i
-        counter = 0
-        for i in list_of_cell_ID_trees:
-            subset = acdc_output.loc[acdc_output['Cell_ID_tree'] == i]
-            beginning = subset['frame_i'].min()
-            ending = subset['frame_i'].max()
-            parental = subset.iloc[0]['parent_ID_tree']
-            if parental == -1:
-                parental = 0
-                
-        # sorts out tracks beginning later than selected training window
-            if beginning > last_training_frame_i:
-                continue
-                
-        # changes track ending to the selected training window if neeeded
-            elif ending > last_training_frame_i:
-                ending = last_training_frame_i
+    # their parental cell_ID_tree and beginning + end frame_i
+    counter = 0
+    for i in list_of_cell_ID_trees:
+        subset = acdc_output.loc[acdc_output['Cell_ID_tree'] == i]
+        beginning = subset['frame_i'].min()
+        ending = subset['frame_i'].max()
+        parental = subset.iloc[0]['parent_ID_tree']
+        if parental == -1:
+            parental = 0
             
-            output_df.loc[counter, "L"] = i
-            output_df.loc[counter, "B"] = beginning
-            output_df.loc[counter, "E"] = ending
-            output_df.loc[counter, "P"] = parental
-            counter = counter + 1
-        output_clean = output_df.dropna()
-    else:
-        print('lineage tree table was not added to experiment')
-        output_clean = output_df
+    # sorts out tracks beginning later than selected training window
+        if beginning > last_training_frame_i:
+            continue
+            
+    # changes track ending to the selected training window if neeeded
+        elif ending > last_training_frame_i:
+            ending = last_training_frame_i
+        
+        output_df.loc[counter, "L"] = i
+        output_df.loc[counter, "B"] = beginning
+        output_df.loc[counter, "E"] = ending
+        output_df.loc[counter, "P"] = parental
+        counter = counter + 1
+    output_clean = output_df.dropna()
+    
     return output_clean

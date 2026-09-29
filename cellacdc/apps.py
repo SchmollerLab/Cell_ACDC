@@ -21800,6 +21800,8 @@ class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
     def __init__(self, video_filepath, logger_func=print, parent=None):
         super().__init__(parent)
 
+        self.setTitle('Split video into single-frame TIFFs setup')
+
         self.logger_func = logger_func
         self.cancel = True
 
@@ -21811,6 +21813,8 @@ class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
 <i>Choose destination folder and conversion settings.</i>                     
 """)
         headerLabel = QLabel(html_utils.paragraph(headerText))
+        self._headerLabel = headerLabel
+        self._headerText = headerText
 
         row = 0
         self.dstFolderPathControl = widgets.FolderPathControl()
@@ -22034,3 +22038,12 @@ class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
 
         self.onlyUntilTrackedFormWidget.widget.setChecked(False)
         self.onlyUntilAnnotatedFormWidget.widget.setChecked(True)
+
+        self._headerLabel.setText(html_utils.paragraph(
+            self._headerText.replace(
+                'Split video into single-frame TIFFs setup',
+                'Generate Trackastra training data setup'
+            )
+        ))
+
+        self.setTitle('Generate Trackastra training data setup')
