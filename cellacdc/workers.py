@@ -7318,7 +7318,10 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                 self.logger.log(
                     f'Saving CTC table to {df_ctc_filepath}...'
                 )
-                df_ctc = core.acdc_df_to_ctc(acdc_df)
+                df_ctc = core.acdc_df_to_ctc(
+                    acdc_df,
+                    last_training_frame_i=numFrames-1
+                )
                 df_ctc.to_csv(
                     df_ctc_filepath,
                     sep=" ",
