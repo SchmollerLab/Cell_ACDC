@@ -3838,6 +3838,9 @@ class Toggle(QCheckBox):
 
         if initial is not None:
             self.setChecked(initial)
+        
+        self.setFixedHeight(self.sizeHint().height())
+        self.setFixedWidth(self.sizeHint().width())
 
     def sizeHint(self):
         return QSize(36, 18)
@@ -3924,8 +3927,11 @@ class Toggle(QCheckBox):
         # set no pen
         p.setPen(Qt.NoPen)
 
+        width = self.sizeHint().width()
+        height = self.sizeHint().height()
+
         # draw rectangle
-        rect = QRect(0, 0, self.width(), self.height())
+        rect = QRect(0, 0, width, height)
 
         if not self.isChecked():
             # Draw background
