@@ -1617,7 +1617,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             z = posData.zSliceSegmentation(filename, frame_i)
             
             foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
-            
             df = measurements.add_custom_metrics(
                 df, rp, channel, foregr_data, 
                 custom_metrics_params[channel], 

@@ -1367,6 +1367,8 @@ class ComputeMetricsWorker(QObject):
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
         self.mainWin = mainWin
+        self.runNowAlreadyAsked = False
+        self.doInitKernel = True
 
     def emitSelectSegmFiles(self, exp_path, pos_foldernames):
         self.mutex.lock()
@@ -1460,12 +1462,13 @@ class ComputeMetricsWorker(QObject):
             else:
                 for p, posData in enumerate(posDatas):
                     self.allPosDataInputs[p]['stopFrameNum'] = 1
-            
-            self.kernel = cli.ComputeMeasurementsKernel(
-                self.logger, 
-                self.mainWin.log_path, 
-                False,
-            )
+
+            if self.doInitKernel:
+                self.kernel = cli.ComputeMeasurementsKernel(
+                    self.logger, 
+                    self.mainWin.log_path, 
+                    False,
+                )
             
             # Iterate pos and calculate metrics
             numPos = len(self.allPosDataInputs)
@@ -1546,11 +1549,13 @@ class ComputeMetricsWorker(QObject):
         self.mutex.unlock()
     
     def emitSigAskRunNow(self):
+        if self.runNowAlreadyAsked:
+            return
+
         self.mutex.lock()
         self.signals.sigAskRunNow.emit(self)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-        
     
 class loadDataWorker(QObject):
     def __init__(self, mainWin, user_ch_file_paths, user_ch_name, firstPosData):
@@ -6494,6 +6499,7 @@ class saveDataWorker(QObject):
                     save_metrics=self.mainWin.save_metrics,
                     last_cca_frame_i=self.mainWin.save_cca_until_frame_i
                 )
+                printl('end')
             else:
                 self.saveAcdcDf(posData, end_i)
                 
