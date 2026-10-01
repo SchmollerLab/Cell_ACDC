@@ -4007,6 +4007,34 @@ class select_exp_folder:
         self.values = values
         return values
 
+    def get_values_spotmax_exists(self, exp_path):
+        self.exp_path = exp_path
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        self.pos_foldernames = pos_foldernames
+        values = []
+        for pos in pos_foldernames:
+            pos_path = os.path.join(exp_path, pos)
+            pos_status = myutils.get_pos_status_spotmax(pos_path)
+            values.append(f'{pos}{pos_status}')
+        self.values = values
+        return values
+    
+    def get_values_acdc_and_spotmax(self, exp_path):
+        self.exp_path = exp_path
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        self.pos_foldernames = pos_foldernames
+        values = []
+        for pos in pos_foldernames:
+            pos_path = os.path.join(exp_path, pos)
+            pos_status_smax = myutils.get_pos_status_spotmax(pos_path)
+            pos_status_acdc = myutils.get_pos_status_acdc(pos_path)
+            value = (
+                f'{pos}{pos_status_acdc}{pos_status_smax}'
+                .replace(') (', ' - ')
+            )
+            values.append(value)
+        return values
+            
     def _close(self):
         val = self.pos_n_sv.get()
         idx = list(self.values).index(val)
