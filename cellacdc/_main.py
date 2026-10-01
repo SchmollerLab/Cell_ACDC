@@ -1100,122 +1100,24 @@ class mainWin(QMainWindow):
         
         return posPath
 
-    def getSelectedExpPaths(
-            self, utilityName, 
-            exp_folderpath=None, 
-            custom_txt=None
-        ):
-        # self._debug()
-        
-        if exp_folderpath is None:
-            self.logger.info('Asking to select experiment folders...')
-            msg = widgets.myMessageBox()
-            if custom_txt:
-                txt = html_utils.paragraph(custom_txt)
-            else:
-                txt = html_utils.paragraph("""
-                    After you click "Ok" on this dialog you will be asked
-                    to <b>select the experiment folders</b>, one by one.<br><br>
-                    Next, you will be able to <b>choose specific Positions</b>
-                    from each selected experiment.
-                """)
-            msg.information(
-                self, f'{utilityName}', txt,
-                buttonsTexts=('Cancel', 'Ok')
-            )
-            if msg.cancel:
-                self.logger.info(f'{utilityName} aborted by the user.')
-                return
-        
-        expPaths = {}
-        mostRecentPath = myutils.getMostRecentPath()
-        warn_exp_already_selected = True
-        while True:
-            if exp_folderpath is None:
-                exp_path = qtpy.compat.getexistingdirectory(
-                    parent=self, 
-                    caption='Select experiment folder containing Position_n folders',
-                    basedir=mostRecentPath,
-                    # options=QFileDialog.DontUseNativeDialog
-                )
-                if not exp_path:
-                    break
-                myutils.addToRecentPaths(exp_path)
-            else: 
-                exp_path = exp_folderpath
-            selected_path = exp_path
-            baseFolder = os.path.basename(exp_path)
-            isPosFolder = myutils.is_pos_folderpath(exp_path)
-            isImagesFolder = baseFolder == 'Images'
-            if isImagesFolder:
-                posPath = os.path.dirname(exp_path)
-                posFolders = [os.path.basename(posPath)]
-                exp_path = os.path.dirname(posPath)
-                selected_exp_paths = {exp_path:posFolders}
-            elif isPosFolder:
-                posPath = exp_path
-                posFolders = [os.path.basename(posPath)]
-                exp_path = os.path.dirname(exp_path)
-                selected_exp_paths = {exp_path:posFolders}
-            else:
-                self.logger.info(f'Scanning selected folder "{exp_path}"...')
-                selected_exp_paths = path.get_posfolderpaths_walk(exp_path)
-                if not selected_exp_paths:
-                    cancel = self.warnNoValidExpPaths(exp_path)
-                    if cancel:
-                        self.logger.info(f'{utilityName} aborted by the user.')
-                        return
-                    continue
-            
-            is_multi_pos = False
-            for exp_path, pos_folders in selected_exp_paths.items():
-                if exp_path in expPaths:
-                    if warn_exp_already_selected:
-                        proceed = self.warnExpPathAlreadySelected(
-                            selected_path, exp_path
-                        )
-                        if not proceed:
-                            self.logger.info(f'{utilityName} aborted by the user.')
-                            return
-                        warn_exp_already_selected = False
-                    expPaths[exp_path].extend(pos_folders)
-                else:
-                    expPaths[exp_path] = pos_folders
-                
-                if len(pos_folders) > 1 and not is_multi_pos:
-                    is_multi_pos = True
-            
-            mostRecentPath = exp_path
-            msg = widgets.myMessageBox(wrapText=False)
-            txt = html_utils.paragraph("""
-                Do you want to select <b>additional experiment folders</b>?
-            """)
-            noButton, yesButton = msg.question(
-                self, 'Select additional experiments?', txt,
-                buttonsTexts=('No', 'Yes')
-            )
-            if msg.clickedButton == noButton:
-                break
-        
-        if not expPaths:
-            self.logger.info(f'{utilityName} aborted by the user.')
+    def getSelectedExpPaths(self, utilityName, **kwargs):
+        selectFoldersWin = apps.SelectFoldersToAnalyse(
+            parent=self, 
+            instructionsText=
+                'Select experiment folders to process',
+            askSelectPosFolders=True,
+            title='Cell-ACDC utility - Select experiment folders to process',
+            callingModule='Utility'
+        )
+        selectFoldersWin.exec_()
+        if selectFoldersWin.cancel:
+            self.logger.info(f'{utilityName} cancelled by the user.')
             return
-
-        if len(expPaths) > 1 or is_multi_pos:
-            infoPaths = self.getInfoPosStatus(expPaths, utilityName)
-            selectPosWin = apps.selectPositionsMultiExp(
-                expPaths, 
-                infoPaths=infoPaths, 
-                parent=self
-            )
-            selectPosWin.exec_()
-            if selectPosWin.cancel:
-                self.logger.info(f'{utilityName} aborted by the user.')
-                return
-            selectedExpPaths = selectPosWin.selectedPaths
-        else:
-            selectedExpPaths = expPaths
         
+        selectedExpPaths = (
+            selectFoldersWin.selectedExpFolderToPosFoldernamesMapper
+        )
+
         return selectedExpPaths
     
     def warnNoValidExpPaths(self, selected_path):
@@ -1547,16 +1449,8 @@ class mainWin(QMainWindow):
 
     def launchCombineChannelsUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
-        custom_txt = """
-                    After you click "Ok" on this dialog you will be asked
-                    to <b>select the experiment folders</b>, one by one.<br><br>
-                    If you select multiple, later you will only be able to choose
-                    channels which are <b>present in all</b> positions you slected, and the
-                    recepies will be applied to all of them.
-                """
         selectedExpPaths = self.getSelectedExpPaths(
             'Combine and manipulate channels and/or segmentation files',
-            custom_txt=custom_txt
         )
         if selectedExpPaths is None:
             return
