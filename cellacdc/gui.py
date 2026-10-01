@@ -136,7 +136,7 @@ CHECKBOX_OPTION_NAME_TO_LAYOUT_LOC_MAPPER = {
 }
 CHECKBOX_OPTION_MUTUALLY_EXCLUSIVE_GROUPS = (
     ('Contours', 'Segm. masks'),
-    ('IDs', 'Lineage info', 'Cell cycle info')
+    ('IDs', 'Lineage info', 'Cell cycle info'),
 )
 CHECKBOX_OPTION_TOOLTIPS = {
     'Contours': '''Show contour outlines of segmentation masks. Customize 
@@ -4393,6 +4393,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 txt = html_utils.paragraph(txt)
                 checkbox.setToolTip(txt)
 
+            if slot is None:
+                continue
+
             self.annotOptionsCheckboxes[ax][name] = checkbox
             checkbox.sigToggled.connect(
                 partial(getattr(self, slot), ax=ax)
@@ -4404,7 +4407,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 checkbox2 = self.annotOptionsCheckboxes[ax][name2]
                 checkbox1.setExclusiveOnCheckCheckbox(checkbox2)
                 checkbox2.setExclusiveOnCheckCheckbox(checkbox1)
-
+        
         doNotAnnotateCheckbox = (
             self.annotOptionsCheckboxes[ax]['Do not annotate']
         )
@@ -4520,11 +4523,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.annotateAllObjectTracks()
 
     def onDoNotAnnotateChecked(self, checked, checkbox, ax=0):
-        # Placeholder function, might be useful in the future.
-        # Since unchecking "Do not annotate" automatically unchecks all 
-        # active options, everything is cleared in the unchecked checkboxes 
-        # connected slots --> nothing needed here.
-        pass
+        if checked:
+            for name, isChecked in checkbox.exclusiveCheckboxesStates.items():
+                self.annotOptionsToRestore[ax][name] = isChecked
+        else:
+            self.restoreAnnotOptions(ax)
 
     def gui_createBottomWidgets(self):
         self.annotOptionsCheckboxes = defaultdict(dict)
