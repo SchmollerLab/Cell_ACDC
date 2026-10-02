@@ -4647,7 +4647,7 @@ class _metricsQGBox(QGroupBox):
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
             equations=None, addDelButton=False, delButtonMetricsDesc=None,
-            parent=None, addCalcForEachZsliceToggle=False
+            parent=None, addCalcForEachZsliceToggle=False, isBkgrValues=False
         ):
         QGroupBox.__init__(self, parent)
         
@@ -4655,7 +4655,9 @@ class _metricsQGBox(QGroupBox):
         r, g, b, a = highlightRgba
         self._highlightStylesheetColor = f'rgb({r}, {g}, {b})'
         
+        self._updatingCheckboxes = False
         self._parent = parent
+        self.isBkgrValues = isBkgrValues
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
         self.favourite_funcs = favourite_funcs
@@ -4799,12 +4801,31 @@ class _metricsQGBox(QGroupBox):
         self.sigDelClicked.emit(button.colname, button._layout)
     
     def toggled_cb(self, checked):
+        alreadyWarnedRequired = False
         for checkbox in self.checkBoxes:
+            if self.isBkgrValues and alreadyWarnedRequired:
+                checkbox.blockSignals(True)
+
             if not checked:
                 self.checkedState[checkbox] = checkbox.isChecked()
                 checkbox.setChecked(False)
             else:
-                checkbox.setChecked(self.checkedState[checkbox])
+                checkbox.setChecked(
+                    self.checkedState[checkbox]
+                )
+            
+            cannotBeUnchecked = (
+                hasattr(checkbox, 'isRequired')
+                and checkbox.isRequired
+                and not checked
+            )
+            if not alreadyWarnedRequired:
+                alreadyWarnedRequired = cannotBeUnchecked
+            
+            if cannotBeUnchecked and alreadyWarnedRequired:
+                checkbox.setChecked(True)
+            
+            checkbox.blockSignals(False)
 
     def checkFavouriteFuncs(self, checked=True, isZstack=False):
         self.doNotWarn = True
@@ -4878,7 +4899,8 @@ class channelMetricsQGBox(QGroupBox):
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack,
+            isBkgrValues=True
         )
         self.bkgrValsQGBox = bkgrValsQGBox
 
@@ -4894,6 +4916,7 @@ class channelMetricsQGBox(QGroupBox):
             checkbox.toggled.connect(self.standardMetricToggled)
             self.standardMetricToggled(checkbox.isChecked(), checkbox=checkbox)
         
+        self.bkgrAlreadyWarned = False
         for bkgrCheckbox in bkgrValsQGBox.checkBoxes:
             bkgrCheckbox.toggled.connect(self.backgroundMetricToggled)
 
@@ -5103,10 +5126,10 @@ class channelMetricsQGBox(QGroupBox):
         if checkbox.isChecked():
             return
         
+        checkbox.setChecked(True)
         if self.doNotWarn:
             return
-        
-        checkbox.setChecked(True)
+
         txt = html_utils.paragraph("""
             <b>This background value cannot be unchecked</b> because it is required 
             by the <code>_amount</code> and <code>_concentration</code> measurements 
