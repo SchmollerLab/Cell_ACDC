@@ -4886,6 +4886,7 @@ class channelMetricsQGBox(QGroupBox):
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
 
         self.uncheckAndDisableDataPrepIfPosNotPrepped(posData)
+        self.uncheckAndDisableManualBkgrIfNotPresent(posData)
 
         self.groupboxes = [metricsQGBox, bkgrValsQGBox]
 
@@ -4975,6 +4976,21 @@ class channelMetricsQGBox(QGroupBox):
             checkbox.setChecked(False)
             checkbox.isDataPrepDisabled = True
     
+    def uncheckAndDisableManualBkgrIfNotPresent(self, posData):
+        # Uncheck and disable dataprep metrics if pos is not prepped
+        if posData is None:
+            return
+
+        if posData.manualBackgroundLab is not None:
+            return
+
+        for checkbox in self.checkBoxes:
+            if checkbox.text().find('manualBkgr') == -1:
+                continue
+
+            checkbox.setChecked(False)
+            checkbox.isManualBkgrDisabled = True
+    
     def _warnDataPrepCannotBeChecked(self):
         if self.doNotWarn:
             return
@@ -4983,6 +4999,20 @@ class channelMetricsQGBox(QGroupBox):
             not select any background ROI at the data prep step.<br><br>
 
             You can read more details about data prep metrics by clicking 
+            on the info button besides the measurement's name.<br><br>
+
+            Thank you for you patience!
+        """)
+        msg = myMessageBox(showCentered=False)
+        msg.warning(self, 'Metric cannot be saved', txt)
+    
+    def _warnManualBkgrCannotBeChecked(self):
+        if self.doNotWarn:
+            return
+        txt = html_utils.paragraph("""
+            <b>Measurements requiring manual background cannot be saved</b> because you did not setup any manual background ROI in the module 3 GUI.<br><br>
+
+            You can read more details about manual background metrics by clicking 
             on the info button besides the measurement's name.<br><br>
 
             Thank you for you patience!
@@ -5020,6 +5050,14 @@ class channelMetricsQGBox(QGroupBox):
                 return
             checkbox.setChecked(False)
             self._warnDataPrepCannotBeChecked()
+            return
+        
+        if hasattr(checkbox, 'isManualBkgrDisabled'):
+            # Warn that user cannot check data prep metrics and uncheck it
+            if not checkbox.isChecked():
+                return
+            checkbox.setChecked(False)
+            self._warnManualBkgrCannotBeChecked()
             return
 
         self.sigCheckboxToggled.emit(checkbox)
