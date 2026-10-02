@@ -130,6 +130,9 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.worker.signals.sigSelectFile.connect(
             self.selectFile
         )  
+        self.worker.signals.sigSelectVideoFile.connect(
+            self.selectVideoFile
+        ) 
         self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
         self.worker.signals.sigInitInnerPbar.connect(self.workerInitInnerPbar)
@@ -177,6 +180,38 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         msg.warning(self, 'Permission error', err_msg)
         self.worker.waitCond.wakeAll()
     
+    def selectVideoFile(self, exp_path, pos_foldernames, multiSelection: bool):
+        valid_extensions = {'.tif', '.tiff', '.h5', '.npz'}
+        all_video_files_endnames = set()
+        for pos_folder in pos_foldernames:
+            images_path = os.path.join(exp_path, pos_folder, 'Images')
+            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            for file in myutils.listdir(images_path):
+                filename, ext = os.path.splitext(file)
+                if ext not in valid_extensions:
+                    continue
+
+                endname = file[len(basename):]
+                all_video_files_endnames.add(endname)
+        
+        all_video_files_endnames = natsorted(all_video_files_endnames)
+
+        win = widgets.QDialogListbox(
+            'Select video file',
+            'Select video file to load:\n',
+            all_video_files_endnames, 
+            multiSelection=multiSelection, 
+            parent=self
+        )
+        win.exec_()
+        if win.cancel:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+
+        self.worker.selectedVideoEndname = win.selectedItemsText[0]
+        self.worker.waitCond.wakeAll()
+
     def selectAcdcOutputTables(
             self, exp_path, pos_foldernames, infoText, allowSingleSelection,
             multiSelection

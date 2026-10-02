@@ -324,10 +324,16 @@ class PushButton(QPushButton):
         self._text = text
         self.setStyleSheet('text-align:left;')
         self.setLayout(QGridLayout())
-        textLabel = QLabel(self._text)
-        textLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        textLabel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self._layout().addWidget(textLabel)
+
+        self.textLabel = QLabel(self._text)
+        self.textLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.textLabel.setAttribute(
+            Qt.WA_TransparentForMouseEvents,
+            True
+        )
+
+        self._layout().addWidget(self.textLabel)
+
         super().show()
     
     def confirmAction(self):
@@ -718,27 +724,66 @@ class LessThanPushButton(PushButton):
 
 class showDetailsButton(PushButton):
     sigToggled = Signal(bool)
-    
-    def __init__(self, *args, txt='Show details...', parent=None):
-        super().__init__(txt, parent)
-        # self.setText(txt)
+
+    def __init__(
+            self, *args, txt='Show details...', parent=None, underline=False
+        ):
+        super().__init__(parent)
+
         self.txt = txt
+        self.checkedText = txt.replace('Show', 'Hide')
+
         self.checkedIcon = QIcon(':hideUp.svg')
         self.uncheckedIcon = QIcon(':showDown.svg')
-        self.setIcon(self.uncheckedIcon)
-        self.toggled.connect(self.onClicked)
+
         self.setCheckable(True)
-        w = self.sizeHint().width() + 10
-        self.setFixedWidth(w)
+
+        # Keep the button from using QPushButton's icon/text layout
+        self.setIcon(QIcon())
+        self.setText('')
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(4)
+
+        # Fixed-size icon area
+        self.iconLabel = QLabel()
+        self.iconLabel.setFixedSize(12, 8)
+        self.iconLabel.setAlignment(Qt.AlignCenter)
+        self.iconLabel.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        # Text
+        self.textLabel = QLabel(self.txt)
+        self.textLabel.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.textLabel.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        if underline:
+            font = self.textLabel.font()
+            font.setUnderline(True)
+            self.textLabel.setFont(font)
+
+        layout.addWidget(self.iconLabel)
+        layout.addWidget(self.textLabel)
+        layout.addStretch()
+
+        self.setIconSize(QSize(12, 8))
+
+        self._setIcon(self.uncheckedIcon)
+
+        self.toggled.connect(self.onClicked)
+
+    def _setIcon(self, icon):
+        pixmap = icon.pixmap(QSize(12, 8))
+        self.iconLabel.setPixmap(pixmap)
 
     def onClicked(self, checked):
         if checked:
-            self.setText(self.txt.replace('Show', 'Hide'))
-            self.setIcon(self.checkedIcon)
+            self.textLabel.setText(self.checkedText)
+            self._setIcon(self.checkedIcon)
         else:
-            self.setText(self.txt)
-            self.setIcon(self.uncheckedIcon)
-        
+            self.textLabel.setText(self.txt)
+            self._setIcon(self.uncheckedIcon)
+
         self.sigToggled.emit(checked)
 
 class cancelPushButton(PushButton):
@@ -3793,6 +3838,9 @@ class Toggle(QCheckBox):
 
         if initial is not None:
             self.setChecked(initial)
+        
+        self.setFixedHeight(self.sizeHint().height())
+        self.setFixedWidth(self.sizeHint().width())
 
     def sizeHint(self):
         return QSize(36, 18)
@@ -3879,8 +3927,11 @@ class Toggle(QCheckBox):
         # set no pen
         p.setPen(Qt.NoPen)
 
+        width = self.sizeHint().width()
+        height = self.sizeHint().height()
+
         # draw rectangle
-        rect = QRect(0, 0, self.width(), self.height())
+        rect = QRect(0, 0, width, height)
 
         if not self.isChecked():
             # Draw background
@@ -4236,10 +4287,18 @@ class formWidget(QWidget):
     
     def setDisabled(self, disabled: bool) -> None:
         for item in self.items:
-            try:
-                item.setDisabled(disabled)
-            except Exception as err:
-                pass
+            if isinstance(item, QHBoxLayout):
+                for i in range(item.count()):
+                    widget = item.itemAt(i).widget()
+                    try:
+                        widget.setDisabled(disabled)
+                    except Exception as err:
+                        pass
+            else:
+                try:
+                    item.setDisabled(disabled)
+                except Exception as err:
+                    pass
 
 class ToggleTerminalButton(PushButton):
     sigClicked = Signal(bool)
@@ -13836,3 +13895,39 @@ class FireworksOverlay(QWidget):
                     particle['y'] - particle['vy'] * tail_scale,
                 ),
             )
+
+class PrefixFilenameLineEdit(QWidget):
+    def __init__(self, endNameLabel, *args):      
+        super().__init__(*args)
+
+        layout = QHBoxLayout()
+
+        self.le = alphaNumericLineEdit()
+        self.endnameLabel = QLabel()
+        self.setEndname(endNameLabel)
+
+        layout.addWidget(self.le)
+        layout.addWidget(self.endnameLabel)
+
+        layout.setStretch(0, 1)
+        layout.setStretch(1, 0)
+
+        layout.setContentsMargins(5, 0, 5, 0)
+
+        self.setLayout(layout)
+    
+    def setAlignment(self, alignment):
+        self.le.setAlignment(alignment)
+
+    def setEndname(self, text: str):
+        self.endnameLabel.setText(text)
+    
+    def setText(self, text: str):
+        self.le.setText(text)
+    
+    def prefix(self):
+        return self.le.text()
+    
+    def fullFilename(self):
+        filename = f'{self.le.text()}{self.endnameLabel.text()}'
+        return filename

@@ -1368,6 +1368,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.searchWidget.sigSearchId.connect(
             self.onSearchId
         )
+        self.searchWidget.setMinimumHeight(
+            self.searchWidget.sizeHint().height()
+        )
         
         
     def gui_createToolBars(self):        
@@ -6959,7 +6962,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        cursorsInfo = self.gui_setCursor(modifiers, event, isHoverImg1)
+        cursorsInfo = self.gui_setCursor(
+            modifiers, event, isHoverImg1=isHoverImg1
+        )
         self.highlightHoverLostObj(modifiers, event)
         
         drawRulerLine = (
