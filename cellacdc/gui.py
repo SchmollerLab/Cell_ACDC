@@ -438,7 +438,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.doubleSpaceBarState = False
         self.protected_new_IDs = dict()
         
-        
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2

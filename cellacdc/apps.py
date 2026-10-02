@@ -2056,7 +2056,7 @@ class SetMeasurementsDialog(QBaseDialog):
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
             allPosData=None, is_concat=False, isSingleSelection=False,
-            state=None
+            state=None, addDoNotAskAgainCheckbox=False
         ):
         super().__init__(parent=parent)
         
@@ -2074,18 +2074,27 @@ class SetMeasurementsDialog(QBaseDialog):
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
         self.doNotWarn = False
+        self.doNotAskAgain = False
 
         self.setWindowTitle('Set measurements')
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
         
-        searchLayout = QHBoxLayout()
+        topLayout = QHBoxLayout()
+
+        
+        self.doNotAskAgainCheckbox = QCheckBox(
+            'Use the same selection for the next selected experiment folders'
+        )
+        self.doNotAskAgainCheckbox.setVisible(addDoNotAskAgainCheckbox)
+        topLayout.addWidget(self.doNotAskAgainCheckbox)
         
         searchLineEdit = widgets.SearchLineEdit()
-        searchLayout.addStretch(5)
-        searchLayout.addWidget(searchLineEdit)
-        searchLayout.setStretch(1, 3)
+        topLayout.addStretch(5)
+        topLayout.addWidget(searchLineEdit)
+        topLayout.setStretch(0, 0)
+        topLayout.setStretch(2, 3)
         
         mainScrollArea = widgets.ScrollArea()
         mainScrollAreaWidget = QWidget()
@@ -2277,7 +2286,7 @@ class SetMeasurementsDialog(QBaseDialog):
 
         self.okButton = okButton
 
-        layout.addLayout(searchLayout)
+        layout.addLayout(topLayout)
         layout.addSpacing(10)
         # layout.addLayout(groupsLayout)
         layout.addWidget(mainScrollArea)
@@ -3072,6 +3081,7 @@ class SetMeasurementsDialog(QBaseDialog):
         if self.allPos_acdc_df_cols is None:
             self.saveLastSelection()
             self.cancel = False
+            self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
             self.close()
             self.sigClosed.emit()
             return
@@ -3118,8 +3128,10 @@ class SetMeasurementsDialog(QBaseDialog):
             if cancel:
                 return
 
+        
         self.saveLastSelection()
         self.cancel = False  
+        self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
         self.close()
         self.sigClosed.emit()
         
@@ -4569,7 +4581,7 @@ class QDialogWorkerProgress(QDialog):
         abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f'{title} ({abort_text} to cancel process)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -11959,7 +11971,7 @@ class QDialogPbar(QDialog):
         abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f'{title} ({abort_text} to cancel process)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()

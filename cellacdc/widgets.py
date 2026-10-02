@@ -4647,7 +4647,7 @@ class _metricsQGBox(QGroupBox):
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
             equations=None, addDelButton=False, delButtonMetricsDesc=None,
-            parent=None, addCalcForEachZsliceToggle=False
+            parent=None, addCalcForEachZsliceToggle=False, isBkgrValues=False
         ):
         QGroupBox.__init__(self, parent)
         
@@ -4655,7 +4655,9 @@ class _metricsQGBox(QGroupBox):
         r, g, b, a = highlightRgba
         self._highlightStylesheetColor = f'rgb({r}, {g}, {b})'
         
+        self._updatingCheckboxes = False
         self._parent = parent
+        self.isBkgrValues = isBkgrValues
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
         self.favourite_funcs = favourite_funcs
@@ -4799,12 +4801,31 @@ class _metricsQGBox(QGroupBox):
         self.sigDelClicked.emit(button.colname, button._layout)
     
     def toggled_cb(self, checked):
+        alreadyWarnedRequired = False
         for checkbox in self.checkBoxes:
+            if self.isBkgrValues and alreadyWarnedRequired:
+                checkbox.blockSignals(True)
+
             if not checked:
                 self.checkedState[checkbox] = checkbox.isChecked()
                 checkbox.setChecked(False)
             else:
-                checkbox.setChecked(self.checkedState[checkbox])
+                checkbox.setChecked(
+                    self.checkedState[checkbox]
+                )
+            
+            cannotBeUnchecked = (
+                hasattr(checkbox, 'isRequired')
+                and checkbox.isRequired
+                and not checked
+            )
+            if not alreadyWarnedRequired:
+                alreadyWarnedRequired = cannotBeUnchecked
+            
+            if cannotBeUnchecked and alreadyWarnedRequired:
+                checkbox.setChecked(True)
+            
+            checkbox.blockSignals(False)
 
     def checkFavouriteFuncs(self, checked=True, isZstack=False):
         self.doNotWarn = True
@@ -4878,7 +4899,8 @@ class channelMetricsQGBox(QGroupBox):
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack,
+            isBkgrValues=True
         )
         self.bkgrValsQGBox = bkgrValsQGBox
 
@@ -4886,6 +4908,7 @@ class channelMetricsQGBox(QGroupBox):
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
 
         self.uncheckAndDisableDataPrepIfPosNotPrepped(posData)
+        self.uncheckAndDisableManualBkgrIfNotPresent(posData)
 
         self.groupboxes = [metricsQGBox, bkgrValsQGBox]
 
@@ -4893,6 +4916,7 @@ class channelMetricsQGBox(QGroupBox):
             checkbox.toggled.connect(self.standardMetricToggled)
             self.standardMetricToggled(checkbox.isChecked(), checkbox=checkbox)
         
+        self.bkgrAlreadyWarned = False
         for bkgrCheckbox in bkgrValsQGBox.checkBoxes:
             bkgrCheckbox.toggled.connect(self.backgroundMetricToggled)
 
@@ -4975,6 +4999,21 @@ class channelMetricsQGBox(QGroupBox):
             checkbox.setChecked(False)
             checkbox.isDataPrepDisabled = True
     
+    def uncheckAndDisableManualBkgrIfNotPresent(self, posData):
+        # Uncheck and disable dataprep metrics if pos is not prepped
+        if posData is None:
+            return
+
+        if posData.manualBackgroundLab is not None:
+            return
+
+        for checkbox in self.checkBoxes:
+            if checkbox.text().find('manualBkgr') == -1:
+                continue
+
+            checkbox.setChecked(False)
+            checkbox.isManualBkgrDisabled = True
+    
     def _warnDataPrepCannotBeChecked(self):
         if self.doNotWarn:
             return
@@ -4983,6 +5022,20 @@ class channelMetricsQGBox(QGroupBox):
             not select any background ROI at the data prep step.<br><br>
 
             You can read more details about data prep metrics by clicking 
+            on the info button besides the measurement's name.<br><br>
+
+            Thank you for you patience!
+        """)
+        msg = myMessageBox(showCentered=False)
+        msg.warning(self, 'Metric cannot be saved', txt)
+    
+    def _warnManualBkgrCannotBeChecked(self):
+        if self.doNotWarn:
+            return
+        txt = html_utils.paragraph("""
+            <b>Measurements requiring manual background cannot be saved</b> because you did not setup any manual background ROI in the module 3 GUI.<br><br>
+
+            You can read more details about manual background metrics by clicking 
             on the info button besides the measurement's name.<br><br>
 
             Thank you for you patience!
@@ -5020,6 +5073,14 @@ class channelMetricsQGBox(QGroupBox):
                 return
             checkbox.setChecked(False)
             self._warnDataPrepCannotBeChecked()
+            return
+        
+        if hasattr(checkbox, 'isManualBkgrDisabled'):
+            # Warn that user cannot check data prep metrics and uncheck it
+            if not checkbox.isChecked():
+                return
+            checkbox.setChecked(False)
+            self._warnManualBkgrCannotBeChecked()
             return
 
         self.sigCheckboxToggled.emit(checkbox)
@@ -5065,10 +5126,10 @@ class channelMetricsQGBox(QGroupBox):
         if checkbox.isChecked():
             return
         
+        checkbox.setChecked(True)
         if self.doNotWarn:
             return
-        
-        checkbox.setChecked(True)
+
         txt = html_utils.paragraph("""
             <b>This background value cannot be unchecked</b> because it is required 
             by the <code>_amount</code> and <code>_concentration</code> measurements 
