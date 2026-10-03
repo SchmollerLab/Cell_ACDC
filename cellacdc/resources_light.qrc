@@ -73,6 +73,7 @@
     <file alias="drawFreeRoi.svg">resources/icons/drawFreeRoi.svg</file>
     <file alias="threepoints_arc.svg">resources/icons/threepoints_arc.svg</file>
     <file alias="3d.svg">resources/icons/3d.svg</file>
+    <file alias="interpolate-Z.svg">resources/icons/interpolate-Z.svg</file>
     <file alias="2d.svg">resources/icons/2d.svg</file>
     <file alias="close.svg">resources/icons/close.svg</file>
     <file alias="lock.svg">resources/icons/lock.svg</file>
