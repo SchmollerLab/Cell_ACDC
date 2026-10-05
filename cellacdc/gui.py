@@ -14673,7 +14673,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         self.logger.info(f'Interpolating object ID = {ID}...')
-        obj = posData.rp.get_obj_from_ID(ID)
+        obj = posData.rp.get_obj_from_ID(ID, warn=False)
         if obj is None:
             _warnings.warnCannotInterpolateZVolume(self, ID)
             return
