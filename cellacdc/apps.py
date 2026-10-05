@@ -13,6 +13,8 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 import numpy as np
 import scipy.interpolate
+
+from cellacdc import core_split_IDs
 try:
     import tkinter as tk
 except Exception as err:
@@ -10938,6 +10940,18 @@ class manualSeparateGui(QMainWindow):
                     'Hold "Ctrl" to apply separation on all slices',
                 )
             )
+            
+            
+        self.use2DsepAction = QToolButton(self)
+        self.use2DsepAction.setIcon(QIcon(":separate-bud-2D.svg"))
+        self.use2DsepAction.setToolTip(
+            'Use 2D automatic separation on the current slice'
+        )
+        editToolBar.addWidget(self.use2DsepAction)
+        
+        if not self.is_3D_mode:
+            self.use2DsepAction.setEnabled(False)
+            self.use2DsepAction.hide()
         
 
     def gui_connectActions(self):
@@ -10951,6 +10965,40 @@ class manualSeparateGui(QMainWindow):
         self.swapIDsAction.triggered.connect(self.swapIDs)
         self.nextAction.triggered.connect(self.nextSlice)
         self.prevAction.triggered.connect(self.previousSlice)
+        self.use2DsepAction.clicked.connect(self.use2Dsep)
+
+    def use2Dsep(self):
+        lab = self.currentLab()
+        if not np.any(lab == self.ID):
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'The selected object is not present on this z-slice',
+                    font_color='red'
+                )
+            )
+            return
+
+        max_ID = int(self.lab.max())
+        if self._parent is not None:
+            posData = self._parent.data[self._parent.pos_i]
+            max_ID = max(max_ID, max(posData.IDs, default=1))
+
+        result, success, _ = core_split_IDs.split_along_convexity_defects(
+            self.ID, lab.copy(), max_ID
+        )
+        if not success:
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'Automatic separation was not successful',
+                    font_color='red'
+                )
+            )
+            return
+
+        self.storeUndoState()
+        lab[:] = result
+        self.warnLabel.setText('')
+        self.updateImg()
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
