@@ -7064,7 +7064,7 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                     try:
                         ccs = acdc_df[['cell_cycle_stage']]
                     except KeyError:
-                        ccs = acdc_df[['generation_num_tree ']]
+                        ccs = acdc_df[['generation_num_tree']]
                     last_index_cca_df = ccs.last_valid_index()
                     numFrames = (
                         acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
@@ -7314,7 +7314,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                     try:
                         ccs = acdc_df[['cell_cycle_stage']]
                     except KeyError:
-                        ccs = acdc_df[['generation_num_tree ']]
+                        ccs = acdc_df[['generation_num_tree']]
                     last_index_cca_df = ccs.last_valid_index()
                     numFrames = (
                         acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
