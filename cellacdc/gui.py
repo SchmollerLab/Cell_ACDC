@@ -14643,7 +14643,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setDiskMask()
     
     def interpZModeToggled(self, checked):
+        if checked:
+            self.autoIDcheckbox.stateToRestore = self.autoIDcheckbox.isChecked()
+
         if not checked:
+            try:
+                self.autoIDcheckbox.setChecked(
+                    self.autoIDcheckbox.stateToRestore
+                )
+            except Exception as err:
+                pass
+
             self.autoIDcheckbox.setDisabled(False)
             return
         
