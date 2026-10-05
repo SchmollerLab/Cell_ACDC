@@ -10931,6 +10931,20 @@ class manualSeparateGui(QMainWindow):
         
         editToolBar.addAction(self.swapIDsAction)
         
+        self.use2DsepAction = QToolButton(self)
+        self.use2DsepAction.setIcon(QIcon(":separate-bud-2D.svg"))
+        self.use2DsepAction.setToolTip(
+            'Use 2D automatic separation on the current slice'
+            'Shortcut: A'
+        )
+        editToolBar.addWidget(self.use2DsepAction)
+        
+        if not self.is_3D_mode:
+            self.use2DsepAction.setEnabled(False)
+            self.use2DsepAction.hide()
+            
+        self.use2DsepAction.setShortcut('A')
+        
         self.warnLabel = QLabel()
         editToolBar.addWidget(self.warnLabel)
         
@@ -10942,16 +10956,7 @@ class manualSeparateGui(QMainWindow):
             )
             
             
-        self.use2DsepAction = QToolButton(self)
-        self.use2DsepAction.setIcon(QIcon(":separate-bud-2D.svg"))
-        self.use2DsepAction.setToolTip(
-            'Use 2D automatic separation on the current slice'
-        )
-        editToolBar.addWidget(self.use2DsepAction)
-        
-        if not self.is_3D_mode:
-            self.use2DsepAction.setEnabled(False)
-            self.use2DsepAction.hide()
+
         
 
     def gui_connectActions(self):
