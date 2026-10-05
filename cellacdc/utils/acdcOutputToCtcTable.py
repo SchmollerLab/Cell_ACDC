@@ -60,9 +60,9 @@ class ConvertAcdcOutputToCtcTableUtil(NewThreadMultipleExpBaseUtil):
     
     def workerFinished(self, worker, aborted=False):
         if aborted:
-            txt = '3D segmentation mask creation process aborted.'
+            txt = f'{self.windowTitle()} process cancelled.'
         else:
-            txt = '3D segmentation mask creation process completed.'
+            txt = f'{self.windowTitle()} process completed.'
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         if aborted:

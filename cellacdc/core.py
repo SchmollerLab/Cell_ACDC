@@ -3661,6 +3661,13 @@ def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
     """
     acdc_output = acdc_output.reset_index()
     
+    is_normal_lineage_tree = (
+        'generation_num_tree' in acdc_output.columns
+        and 'Cell_ID_tree' not in  acdc_output.columns
+    )
+    if is_normal_lineage_tree:
+        acdc_output['Cell_ID_tree'] = acdc_output['Cell_ID']
+
     if 'Cell_ID_tree' not in acdc_output.columns:
         raise KeyError(
             '`Cell_ID_tree` column not found in acdc_output table.'
