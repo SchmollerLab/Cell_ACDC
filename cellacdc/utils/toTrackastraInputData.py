@@ -57,7 +57,7 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
             Do you want to continue?
         """)
         msg.warning(
-            self, 'Destination fodler exists', txt,
+            self, 'Destination folder exists', txt,
             buttonsTexts=(
                 'Cancel', 'Yes, overwrite existing content'
             ),
@@ -104,6 +104,7 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
 
     def workerCancelled(self):
         self.workerFinished(None, aborted=True)
+        self.worker.finished.emit(self.worker)
     
     def workerFinished(self, worker, aborted=False):
         if aborted:

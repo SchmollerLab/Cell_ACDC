@@ -6958,6 +6958,7 @@ class CreateSymLinkToPosWinWorker(QObject):
 class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
     sigAskSetup = Signal(object)
     sigCancelled = Signal()
+    sigAskDstFolderExist = Signal(str)
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
@@ -6969,12 +6970,24 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
         self.mutex.unlock()
         return self.abort
 
+    def emitAskDstFolderExist(self, videoDstFolderPath):
+        self.mutex.lock()
+        self.sigAskDstFolderExist.emit(videoDstFolderPath)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
     @worker_exception_handler
     def run(self):
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
         self.signals.initProgressBar.emit(0)
+        tot_num_pos = 0
+        for exp_path, pos_foldernames in expPaths.items():
+            tot_num_pos += len(pos_foldernames)
+        tot_digits = max(2, len(str(tot_num_pos)))
+        k = 0
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
             tot_pos = len(pos_foldernames)
@@ -7014,6 +7027,19 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                     f'{pos} ({p+1}/{tot_pos})'
                 )
 
+                pos_num_str = f'{k+1}'.zfill(tot_digits)
+                videoDstFolderPath = os.path.join(
+                    dstFolderPath, pos_num_str
+                )
+
+                if os.path.exists(videoDstFolderPath):
+                    self.emitAskDstFolderExist(videoDstFolderPath)
+                    if self.abort:
+                        self.sigCancelled.emit()
+                        return
+                    
+                    io.delete_folder_content(videoDstFolderPath)
+
                 images_path = os.path.join(exp_path, pos, 'Images')
                 basename, chNames = myutils.getBasenameAndChNames(images_path)
                 ls = myutils.listdir(images_path)
@@ -7024,7 +7050,7 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                 image_data = load.load_image_file(imageFilepath)
 
                 numFrames = len(image_data)
-                if onlyUntilTracked or onlyUntilTracked:
+                if onlyUntilTracked or onlyUntilAnnotated:
                     acdc_df = load.load_acdc_df_file(
                         images_path, 
                         end_name_acdc_df_file=acdcOutputEndname
@@ -7035,7 +7061,10 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                 elif onlyUntilTracked:
                     numFrames = acdc_df['frame_i'].max() + 1
                 elif onlyUntilAnnotated:
-                    ccs = acdc_df[['cell_cycle_stage']]
+                    try:
+                        ccs = acdc_df[['cell_cycle_stage']]
+                    except KeyError:
+                        ccs = acdc_df[['generation_num_tree ']]
                     last_index_cca_df = ccs.last_valid_index()
                     numFrames = (
                         acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
@@ -7051,11 +7080,15 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
                     img = myutils.convert_to_dtype(image_data[frame_i], dtype)
                     t_str = str(frame_i).zfill(3)
                     frame_filename = f'{prefix}{t_str}.tif'
-                    frame_filepath = os.path.join(dstFolderPath, frame_filename)
+                    frame_filepath = os.path.join(
+                        videoDstFolderPath, frame_filename
+                    )
                     skimage.io.imsave(frame_filepath, img)
                     self.signals.sigUpdateInnerPbar.emit(1)
                 
                 self.signals.progressBar.emit(1)
+
+                k += 1
 
         self.signals.finished.emit(self)
 
@@ -7264,6 +7297,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                         '[WARNING]: Segmentation file ending with '
                         f'"{segmEndname}" not found in "{images_path}".'
                     )
+                    self.sigCancelled.emit()
                     return
 
                 numFrames = len(image_data)
@@ -7277,7 +7311,10 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                 elif onlyUntilTracked:
                     numFrames = acdc_df['frame_i'].max() + 1
                 elif onlyUntilAnnotated:
-                    ccs = acdc_df[['cell_cycle_stage']]
+                    try:
+                        ccs = acdc_df[['cell_cycle_stage']]
+                    except KeyError:
+                        ccs = acdc_df[['generation_num_tree ']]
                     last_index_cca_df = ccs.last_valid_index()
                     numFrames = (
                         acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
@@ -7304,8 +7341,19 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                     f'Splitting segmentation into single-frame GT TIFF files '
                     f'until frame n. {numFrames}...'
                 )
+                acdc_df = acdc_df.set_index('frame_i')
                 for frame_i in range(numFrames):
-                    lab = segm_data[frame_i].astype(np.uint16)
+                    cca_df_frame_i = acdc_df.loc[frame_i]
+                    lab = segm_data[frame_i]
+                    if np.any(lab > np.iinfo(np.uint16).max):
+                        raise ValueError(
+                            'Segmentation IDs exceed the uint16 range; '
+                            'remap mask and CTC IDs consistently before export.'
+                        )
+                    lab = lab.astype(np.uint16)
+                    lab = core.replace_Cell_ID_with_Cell_ID_tree(
+                        lab, cca_df_frame_i
+                    )
                     t_str = str(frame_i).zfill(t_digits)
                     lab_filename = f'man_track{t_str}.tif'
                     lab_filepath = os.path.join(

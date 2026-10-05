@@ -3665,8 +3665,15 @@ def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
         raise KeyError(
             '`Cell_ID_tree` column not found in acdc_output table.'
         )
+        if 'parent_ID_tree' not in acdc_output.columns:
+            raise KeyError(
+                '`parent_ID_tree` column not found in acdc_output table.'
+            )
+        acdc_output['Cell_ID_tree'] = acdc_output['Cell_ID']
 
-    list_of_cell_ID_trees = acdc_output['Cell_ID_tree'].unique()
+    list_of_cell_ID_trees = acdc_output.loc[
+        acdc_output['Cell_ID_tree'] > 0, 'Cell_ID_tree'
+    ].unique()
     output_df = pd.DataFrame(
         index=range(len(list_of_cell_ID_trees)),
         columns=["L","B","E","P"]
@@ -3702,4 +3709,18 @@ def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
         counter = counter + 1
     output_clean = output_df.dropna()
     
-    return output_clean
+    return output_clean.astype(np.int64)
+
+def replace_Cell_ID_with_Cell_ID_tree(
+        lab: np.ndarray, 
+        cca_df_frame_i: pd.DataFrame
+    ):
+    if 'Cell_ID_tree' not in cca_df_frame_i:
+        return lab
+    
+    old_values = cca_df_frame_i['Cell_ID'].values
+    new_values = cca_df_frame_i['Cell_ID_tree'].values
+
+    lab_new = np_replace_values(lab, old_values, new_values)
+
+    return lab_new

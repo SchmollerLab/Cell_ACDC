@@ -21977,7 +21977,10 @@ The last annotated frame is the maximum `frame_i` present in the "cell_cycle_sta
         if self.onlyUntilTrackedFormWidget.widget.isChecked():
             numFrames = acdc_df['frame_i'].max() + 1
         else:
-            ccs = acdc_df[['cell_cycle_stage']]
+            try:
+                ccs = acdc_df[['cell_cycle_stage']]
+            except KeyError:
+                ccs = acdc_df[['generation_num_tree ']]
             last_index_cca_df = ccs.last_valid_index()
             numFrames = (
                 acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1

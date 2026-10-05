@@ -56,6 +56,7 @@ class ConvertAcdcOutputToCtcTableUtil(NewThreadMultipleExpBaseUtil):
 
     def workerCancelled(self):
         self.workerFinished(None, aborted=True)
+        self.worker.finished.emit(self.worker)
     
     def workerFinished(self, worker, aborted=False):
         if aborted:

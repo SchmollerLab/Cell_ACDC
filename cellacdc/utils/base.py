@@ -201,7 +201,8 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             'Select video file to load:\n',
             all_video_files_endnames, 
             multiSelection=multiSelection, 
-            parent=self
+            parent=self,
+            allowEmptySelection=False
         )
         win.exec_()
         if win.cancel:

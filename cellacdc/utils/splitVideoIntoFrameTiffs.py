@@ -20,8 +20,29 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
         self.worker = workers.SplitVideoIntoFrameTiffs(self)
         self.worker.sigAskSetup.connect(self.askSetupParams)
         self.worker.sigCancelled.connect(self.workerCancelled)
+        self.worker.sigAskDstFolderExist.connect(
+            self.askDstFolderExist
+        )
         super().runWorker(self.worker)
     
+    def askDstFolderExist(self, videoDstFolderPath):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            The position folder below already exists!<br><br>
+            If you continue, the content will be removed before 
+            saving the new TIFF files.<br><br>
+            Do you want to continue?
+        """)
+        msg.warning(
+            self, 'Destination folder exists', txt,
+            buttonsTexts=(
+                'Cancel', 'Yes, overwrite existing content'
+            ),
+            path_to_browse=videoDstFolderPath
+        )
+        self.worker.abort = msg.cancel
+        self.worker.waitCond.wakeAll()
+
     def showEvent(self, event):
         self.runWorker()
     
@@ -61,6 +82,7 @@ class SplitVideoIntoFrameTiffsUtil(NewThreadMultipleExpBaseUtil):
 
     def workerCancelled(self):
         self.workerFinished(None, aborted=True)
+        self.worker.finished.emit(self.worker)
     
     def workerFinished(self, worker, aborted=False):
         if aborted:

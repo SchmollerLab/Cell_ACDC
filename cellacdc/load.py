@@ -4660,7 +4660,12 @@ def create_ctc_table_from_images_path(
         end_name_acdc_df_file=acdc_output_endname,
         return_path=True
     )
-    df_ctc = core.acdc_df_to_ctc()
+    if 'Cell_ID_tree' not in acdc_df.columns:
+        # Data annotated with normal division mode do not have the 
+        # Cell_ID_tree column --> The 'Cell_ID' is the correct column
+        acdc_df['Cell_ID_tree'] = acdc_df['Cell_ID']
+
+    df_ctc = core.acdc_df_to_ctc(acdc_df)
     if not save:
         return df_ctc, ''
     
