@@ -20,7 +20,13 @@ def set_reader(image_filepath, **kwargs):
         other_kwargs = EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
         reader = other_kwargs.get('reader')
         if isinstance(reader, str):
-            reader = _utils.import_reader(reader)
+            try:
+                reader = _utils.import_reader(reader)
+            except ImportError as err:
+                from bioio_base.exceptions import UnsupportedFileFormatError
+                raise UnsupportedFileFormatError(
+                    reader, image_filepath
+                ) from err
             
         if reader is not None:
             other_kwargs['reader'] = reader
