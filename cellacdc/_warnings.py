@@ -486,3 +486,18 @@ def warnAskAboutSaveSingleMotherBudPairsCcaDf(
     )
     
     return msg.cancel, msg.clickedButton==savePartiallyAnnotatedButton
+
+def warnCannotInterpolateZVolume(qparent, ID):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Interpolation of missing z-slices cannot be done with ID = {ID}.<br><br>
+        Please, make sure the ID you are drawing is greater than zero and that 
+        you drew on at least 2 different z-slices.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Cannot interpolate missing z-slices', txt, 
+    )
+    return msg.cancel
+    
