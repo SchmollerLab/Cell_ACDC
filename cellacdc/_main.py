@@ -1109,6 +1109,9 @@ class mainWin(QMainWindow):
             title='Cell-ACDC utility - Select experiment folders to process',
             callingModule='Utility'
         )
+        exp_folderpath = kwargs.get('exp_folderpath')
+        if exp_folderpath is not None:
+            selectFoldersWin.addFolderPath(exp_folderpath)
         selectFoldersWin.exec_()
         if selectFoldersWin.cancel:
             self.logger.info(f'{utilityName} cancelled by the user.')
