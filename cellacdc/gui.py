@@ -14687,6 +14687,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             np.any(local_mask_volume, axis=(1, 2))
         )
 
+        if len(labelled_z_slices) < 2:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
         local_mask_filled, _ = core.interpolate_unlabelled_z_slices(
             local_mask_volume, labelled_z_slices
         )
