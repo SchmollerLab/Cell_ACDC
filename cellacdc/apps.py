@@ -20385,6 +20385,8 @@ class QTreeDialog(QBaseDialog):
         self.selectedText = self.selectedItem.text(0)
         self.close()
 
+MODULES_TYPES = Literal['Dataprep', 'Segm&Track', 'GUI', 'Utility']
+
 class SelectFoldersToAnalyse(QBaseDialog):
     def __init__(
             self, parent=None, 
@@ -20393,7 +20395,8 @@ class SelectFoldersToAnalyse(QBaseDialog):
             scanFolderTree=True,
             instructionsText='Select experiment folders to analyse',
             askSelectPosFolders=False,
-            title='Select experiments to analyse'
+            title='Select experiments to analyse',
+            callingModule: MODULES_TYPES='Segm&Track',
         ):
         super().__init__(parent)
         
@@ -20402,6 +20405,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
         self.setWindowTitle(title)
         self.scanTree = scanFolderTree
         self.askSelectPosFolders = askSelectPosFolders
+        self.callingModule = callingModule
         
         mainLayout = QVBoxLayout()
         
@@ -20614,7 +20618,10 @@ class SelectFoldersToAnalyse(QBaseDialog):
                 'Please, select which Position folder(s) you want to analyse:<br>'
             )
             select_folder = load.select_exp_folder()
-            values = select_folder.get_values_dataprep(exp_path)
+            if self.callingModule == 'Utility':
+                values = select_folder.get_values_acdc_and_spotmax(exp_path)
+            else:
+                values = select_folder.get_values_dataprep(exp_path)
             select_folder.QtPrompt(
                 self, values, toggleMulti=True, 
                 informativeText=informativeText,
