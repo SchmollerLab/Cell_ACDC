@@ -2251,13 +2251,17 @@ class SetMeasurementsDialog(QBaseDialog):
         self.okButton = okButton
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
-        self.deselectAllButton = QPushButton('Deselect all')
-        self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
+        self.selectAllButton = widgets.selectAllPushButton()
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
-        buttonsLayout.addWidget(self.deselectAllButton)
+        if isSegm3D:
+            selectAll3DButton = widgets.selectAllPushButton(what=' 3D metrics')
+            selectAll3DButton.sigClicked.connect(self.checkAll3D)
+            self.selectAll3DButton = selectAll3DButton
+            buttonsLayout.addWidget(selectAll3DButton)
+        buttonsLayout.addWidget(self.selectAllButton)
         buttonsLayout.addSpacing(20)
         
         if addCombineMetricCallback is not None:
@@ -2298,7 +2302,7 @@ class SetMeasurementsDialog(QBaseDialog):
             self.setState(state)
 
         searchLineEdit.textEdited.connect(self.searchAndHighlight)
-        self.deselectAllButton.clicked.connect(self.deselectAll)
+        self.selectAllButton.clicked.connect(self.selectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)
@@ -2537,22 +2541,34 @@ class SetMeasurementsDialog(QBaseDialog):
         msg = widgets.myMessageBox(showCentered=False)
         msg.warning(self, 'Physical measurement required', txt)
 
-    def deselectAll(self):
+    def checkAll3D(self, button, checked):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for gb in chNameGroupbox.groupboxes:
+                if not gb.isChecked():
+                    continue
+                gb.selectAll3DButton.setChecked(checked)
+                gb.checkAll3D(None, checked)
+            cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
+            if cgb is not None and cgb.isChecked():
+                cgb.selectAll3DButton.setChecked(checked)
+                cgb.checkAll3D(None, checked)
+
+    def selectAll(self, button, checked):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
-                gb.checkAll(None, False)
+                gb.checkAll(None, checked)
             cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
             if cgb is not None:
-                cgb.checkAll(None, False)
+                cgb.checkAll(None, checked)
         
-        self.sizeMetricsQGBox.checkAll(None, False)
-        self.regionPropsQGBox.checkAll(None, False)
+        self.sizeMetricsQGBox.checkAll(None, checked)
+        self.regionPropsQGBox.checkAll(None, checked)
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.checkAll(None, False)
+            self.chIndipendCustomeMetricsQGBox.checkAll(None, checked)
             
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            self.mixedChannelsCombineMetricsQGBox.checkAll(None, False)
+            self.mixedChannelsCombineMetricsQGBox.checkAll(None, checked)
         self.doNotWarn = False
     
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
@@ -3161,7 +3177,7 @@ class SetMeasurementsDialog(QBaseDialog):
 
     def show(self, block=False):
         super().show(block=False)
-        self.deselectAllButton.setMinimumHeight(self.okButton.height())
+        self.selectAllButton.setMinimumHeight(self.okButton.height())
         screenWidth = self.screen().size().width()
         screenHeight = self.screen().size().height()
         screenLeft = self.screen().geometry().x()

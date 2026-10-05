@@ -585,15 +585,22 @@ class arrowDownPushButton(PushButton):
 class selectAllPushButton(PushButton):
     sigClicked = Signal(object, bool)
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, what='', *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._status = 'deselect'
         self.setIcon(QIcon(':deselect_all.svg'))
-        self.setText('Deselect all')
+        self.setText(f'Deselect all{what}')
         self.clicked.connect(self.onClicked)
         self.setMinimumWidth(self.sizeHint().width())
     
+    def isChecked(self):
+        return self._status == 'deselect'
+
     def setChecked(self, checked):
+        if self.isChecked() == checked:
+            self.sigClicked.emit(self, checked)
+            return
+
         if checked:
             self._status == 'deselect'
         else:
@@ -605,10 +612,10 @@ class selectAllPushButton(PushButton):
             icon_fn = ':deselect_all.svg'
             self._status = 'deselect'
             checked = True
-            text = 'Deselect all'
+            text = self.text().replace('Select', 'Deselect')
         else:
             icon_fn = ':select_all.svg'
-            text = 'Select all'
+            text = self.text().replace('Deselect', 'Select')
             self._status = 'select'
             checked = False
         self.setIcon(QIcon(icon_fn))
@@ -4647,7 +4654,8 @@ class _metricsQGBox(QGroupBox):
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
             equations=None, addDelButton=False, delButtonMetricsDesc=None,
-            parent=None, addCalcForEachZsliceToggle=False, isBkgrValues=False
+            parent=None, addCalcForEachZsliceToggle=False, isBkgrValues=False,
+            isSegm3D=False
         ):
         QGroupBox.__init__(self, parent)
         
@@ -4714,6 +4722,12 @@ class _metricsQGBox(QGroupBox):
         buttonsLayout = QHBoxLayout()    
             
         buttonsLayout.addStretch(1)
+
+        if isSegm3D:
+            selectAll3DButton = selectAllPushButton(what=' 3D metrics')
+            selectAll3DButton.sigClicked.connect(self.checkAll3D)
+            self.selectAll3DButton = selectAll3DButton
+            buttonsLayout.addWidget(selectAll3DButton)
         
         self.selectAllButton = selectAllPushButton()
         self.selectAllButton.sigClicked.connect(self.checkAll)
@@ -4842,6 +4856,16 @@ class _metricsQGBox(QGroupBox):
         if self._parent is not None:
             self._parent.doNotWarn = False
 
+    def checkAll3D(self, button, checked):
+        if self._parent is not None:
+            self._parent.doNotWarn = True
+        for checkBox in self.checkBoxes:
+            if not checkBox.text().endswith('_3D'):
+                continue
+            checkBox.setChecked(checked)
+        if self._parent is not None:
+            self._parent.doNotWarn = False
+
     def checkAll(self, button, checked):
         if self._parent is not None:
             self._parent.doNotWarn = True
@@ -4849,6 +4873,10 @@ class _metricsQGBox(QGroupBox):
             checkBox.setChecked(checked)
         if self._parent is not None:
             self._parent.doNotWarn = False
+        
+        self.selectAll3DButton.sigClicked.disconnect()
+        self.selectAll3DButton.setChecked(checked)
+        self.selectAll3DButton.sigClicked.connect(self.checkAll3D)
 
     def showInfo(self, checked=False):
         info_txt = self.sender().info
@@ -4892,7 +4920,8 @@ class channelMetricsQGBox(QGroupBox):
         metricsQGBox = _metricsQGBox(
             metrics_desc, 'Standard measurements',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack,
+            isSegm3D=isSegm3D
         )
         self.metricsQGBox = metricsQGBox
         
@@ -4900,7 +4929,8 @@ class channelMetricsQGBox(QGroupBox):
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
             parent=self, isZstack=isZstack,
-            isBkgrValues=True
+            isBkgrValues=True,
+            isSegm3D=isSegm3D
         )
         self.bkgrValsQGBox = bkgrValsQGBox
 
@@ -4934,7 +4964,8 @@ class channelMetricsQGBox(QGroupBox):
                 custom_metrics_desc, 'Custom measurements', 
                 delButtonMetricsDesc=combine_metrics_desc,
                 favourite_funcs=favourite_funcs,
-                isZstack=isZstack
+                isZstack=isZstack,
+                isSegm3D=isSegm3D
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
