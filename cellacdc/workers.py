@@ -7343,7 +7343,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                 )
                 acdc_df = acdc_df.set_index('frame_i')
                 for frame_i in range(numFrames):
-                    cca_df_frame_i = acdc_df.loc[frame_i]
+                    cca_df_frame_i = acdc_df.loc[[frame_i]]
                     lab = segm_data[frame_i]
                     if np.any(lab > np.iinfo(np.uint16).max):
                         raise ValueError(
