@@ -35532,7 +35532,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         proceed = True
         ignore = False
         doNotShowAgain = False
-        if not self.doNotShowAgainMissingCca:
+        if self.doNotShowAgainMissingCca:
             return proceed, ignore, doNotShowAgain
         
         missing_cca_items = []
@@ -35549,7 +35549,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if cca_df.isnull().values.any():
                     i = frame_i if not self.isSnapshot else None
                     missing_cca_items.append((cca_df, posData, i))
-        
+
         if not missing_cca_items:
             return proceed, ignore, doNotShowAgain
         
