@@ -50,7 +50,7 @@ CONNECTIVITY_3D = np.ones((3, 3, 3), dtype=bool)
 
 # depth below the convex hull, as a fraction of the deepest defect, above
 # which a surface vertex is considered part of the defect ring
-DEFECT_DEPTH_FRAC = 0.5
+DEFECT_DEPTH_FRAC = 0.2
 # max ratio (smallest / middle eigenvalue) for a defect cloud to count as
 # a planar ring. A ring gives ~0, a compact blob gives ~1.
 MAX_RINGNESS = 0.35
@@ -522,6 +522,8 @@ def split_along_convexity_defects_3D(
         min_solidity=0.93,
         require_improvement=True,
         gate_on_solidity=True,
+        defect_depth_frac=0.2,
+        max_ringness=0.35,
     ):
     """
     Split the object `ID` in the 3D label image `lab` at its dominant
@@ -630,7 +632,9 @@ def split_along_convexity_defects_3D(
     candidates = []  # list of (first, second, method_name)
 
     defect_plane = _convexity_defect_plane_3D(
-        lab_ID_bool, spacing, peak_coords=peak_coords
+        lab_ID_bool, spacing, peak_coords=peak_coords,
+        depth_frac=defect_depth_frac,
+        max_ringness=max_ringness
     )
     if defect_plane is not None:
         plane_origin, plane_normal = defect_plane
@@ -730,6 +734,54 @@ def split_all_along_convexity_defects_3D(lab, voxel_size=None, max_iter=3, **kwa
             break
     return lab
 
+def split_along_convexity_defects_slice_by_slice(ID, lab, max_ID, eps_percent=0.01):
+    """Split 3D components first, then check convexity on each z-slice."""
+    if lab.ndim != 3:
+        raise ValueError(f'Expected a 3D label image, got {lab.ndim}D.')
+
+    object_mask = lab == ID
+    components = skimage.measure.label(object_mask, connectivity=3)
+    component_props = skimage.measure.regionprops(components)
+    component_props.sort(key=lambda component: component.area, reverse=True)
+
+    component_IDs = []
+    next_ID = max_ID + 1
+    for component_i, component in enumerate(component_props):
+        component_ID = ID if component_i == 0 else next_ID
+        if component_i > 0:
+            next_ID += 1
+        component_lab = lab[component.slice]
+        component_lab[component.image] = component_ID
+        component_IDs.append(component_ID)
+
+    was_split = len(component_IDs) > 1
+    separate_IDs = list(component_IDs)
+    for component_ID in component_IDs:
+        child_ID = next_ID
+        component_was_split = False
+        for z, lab_2D in enumerate(lab):
+            if not np.any(lab_2D == component_ID):
+                continue
+
+            split_lab, success, _ = split_along_convexity_defects(
+                component_ID, lab_2D, child_ID - 1,
+                eps_percent=eps_percent, split_disconnected=False
+            )
+            if not success:
+                continue
+
+            lab[z] = split_lab
+            component_was_split = True
+
+        if component_was_split:
+            separate_IDs.append(child_ID)
+            next_ID += 1
+            was_split = True
+
+    if not was_split:
+        return lab, False, []
+    return lab, True, separate_IDs
+
 def convexity_defects(img, eps_percent):
     img = img.astype(np.uint8)
     contours, _ = cv2.findContours(img,2,1)
@@ -762,7 +814,8 @@ def split_connected_components(lab, rp=None, max_ID=None):
     return split_occured
 
 def split_along_convexity_defects(
-        ID, lab, max_ID, max_i=1, eps_percent=0.01, rp=None
+    ID, lab, max_ID, max_i=1, eps_percent=0.01, rp=None,
+    split_disconnected=True
     ):
     if rp is not None:
         obj = rp.get_obj_from_ID(ID)
@@ -770,20 +823,23 @@ def split_along_convexity_defects(
         lab_ID_bool[obj.image] = True
     else:
         lab_ID_bool = lab == ID
-    # First try separating by labelling
-    lab_ID = lab_ID_bool.astype(int)
-    rp_ID = skimage.measure.regionprops(lab_ID)
-    split_occured = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
-    if split_occured:
-        success = True
-        if rp is not None:
-            lab[obj.slice][obj.image] = lab_ID[obj.image]
-        else:
-            lab[lab_ID_bool] = lab_ID[lab_ID_bool]
-            
+    if split_disconnected:
+        # First try separating by labelling
+        lab_ID = lab_ID_bool.astype(int)
         rp_ID = skimage.measure.regionprops(lab_ID)
-        separateIDs = [obj.label for obj in rp_ID]
-        return lab, success, separateIDs
+        split_occured = split_connected_components(
+            lab_ID, rp=rp_ID, max_ID=max_ID
+        )
+        if split_occured:
+            success = True
+            if rp is not None:
+                lab[obj.slice][obj.image] = lab_ID[obj.image]
+            else:
+                lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+                
+            rp_ID = skimage.measure.regionprops(lab_ID)
+            separateIDs = [obj.label for obj in rp_ID]
+            return lab, success, separateIDs
 
     cnt, defects = convexity_defects(lab_ID_bool, eps_percent)
     success = False

@@ -13836,3 +13836,157 @@ class FireworksOverlay(QWidget):
                     particle['y'] - particle['vy'] * tail_scale,
                 ),
             )
+            
+class SeparateBudToolbar(ToolBar):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.seg_3D = False
+        self.parent = parent
+        
+        sepModeSelector = QComboBox(self)
+        sepModeSelector.addItems(['Slice by slice', '3D Convexity defects'])
+        self.sepModeSelectorAction = self.addWidget(sepModeSelector)
+        sepModeSelector.currentIndexChanged.connect(self.onSepModeChanged)
+        self.sepModeSelector = sepModeSelector
+        
+        separator = self.addSeparator()
+        
+        float_params = (
+            ('eps_percent', 'Epsilon fraction:', 0.01, 0.0, 1.0, 0.01,
+             'Compatibility parameter retained from the 2D splitter. '
+             'It is currently unused by the 3D algorithm.'),
+            ('smooth_sigma', 'EDT smoothing sigma:', 1.0, 0.0, 1000.0, 0.1,
+             'Gaussian smoothing applied to the distance transform in '
+             'physical units. Larger values suppress more boundary noise.'),
+            ('h_maxima_frac', 'Seed prominence:', 0.25, 0.0, 1.0, 0.01,
+             'Minimum seed prominence as a fraction of the maximum distance. '
+             'Larger values produce fewer candidate seeds.'),
+            ('compactness', 'Compactness:', 0.01, 0.0, 1000.0, 0.01,
+             'Watershed compactness weight. Small positive values favor '
+             'rounder regions; zero disables the compactness bias.'),
+            ('min_volume_frac', 'Min. volume fraction:', 0.1, 0.0, 0.5, 0.01,
+             'Reject splits where the smaller child is below this fraction '
+             'of the parent volume.'),
+            ('min_solidity', 'Min. solidity:', 0.93, 0.0, 1.0, 0.01,
+             'Objects at or above this solidity with fewer than two seeds '
+             'are not split when the solidity gate is enabled.'),
+            ('defect_depth_frac', 'Defect depth fraction:', 0.2, 0.0, 1.0, 0.01,
+             'Surface vertices deeper than this fraction of the deepest '
+             'convexity defect are used to fit the defect ring.'),
+            ('max_ringness', 'Max. ringness:', 0.35, 0.0, 1.0, 0.01,
+             'Maximum defect-cloud ringness accepted for plane fitting. '
+             'Lower values require a more planar ring.'),
+        )
+        self.convexity3DParamWidgets = {}
+        self.convexityControlActions = []
+        for name, label_text, default, minimum, maximum, step, tooltip in float_params:
+            label = QLabel(label_text, self)
+            selector = QDoubleSpinBox(self)
+            selector.setRange(minimum, maximum)
+            selector.setSingleStep(step)
+            label.setToolTip(tooltip)
+            selector.setToolTip(tooltip)
+            self.convexityControlActions.append(self.addWidget(label))
+            self.convexityControlActions.append(self.addWidget(selector))
+            self.convexity3DParamWidgets[name] = (selector, default, float)
+
+        bool_params = (
+            ('require_improvement', 'Prefer solidity improvement', True,
+             'Prefer candidates where both children are more solid than the '
+             'parent. If none improve solidity, rank all valid candidates.'),
+            ('gate_on_solidity', 'Gate on solidity', True,
+             'Skip objects above the minimum solidity unless the distance '
+             'transform contains at least two seeds.'),
+        )
+        for name, text, default, tooltip in bool_params:
+            checkbox = CheckBox(text, self)
+            checkbox.setToolTip(tooltip)
+            self.convexityControlActions.append(self.addWidget(checkbox))
+            self.convexity3DParamWidgets[name] = (checkbox, default, bool)
+
+        self.goToSepSliceSeparator = self.addSeparator()
+        
+        goToSepSliceCheckBox = CheckBox('Go to separate slice', self)
+        self.goToSepSliceCheckBoxAction = self.addWidget(
+            goToSepSliceCheckBox
+        )
+        self.goToSepSliceCheckBox = goToSepSliceCheckBox
+        
+        self.setSegm3D(self.seg_3D)
+        self.setSettings()
+
+        goToSepSliceCheckBox.stateChanged.connect(self.saveSettings)
+        for widget, _, value_type in self.convexity3DParamWidgets.values():
+            if value_type is bool:
+                widget.stateChanged.connect(self.saveSettings)
+            else:
+                widget.valueChanged.connect(self.saveSettings)
+        sepModeSelector.currentIndexChanged.connect(self.saveSettings)
+
+            
+    def setSettings(self):
+        parent = self.parent 
+        mode = parent._get_setting_value(
+            'sep_IDs_mode', '3D Convexity defects', str
+        )
+        self.sepModeSelector.setCurrentText(mode)
+        
+        go_to_sep_slice = parent._get_setting_value(
+            'go_to_sep_slice', False, bool
+        )
+        self.goToSepSliceCheckBox.setChecked(go_to_sep_slice)
+
+        for name, (widget, default, value_type) in self.convexity3DParamWidgets.items():
+            value = parent._get_setting_value(name, default, value_type)
+            if value_type is bool:
+                widget.setChecked(value)
+            else:
+                widget.setValue(value)
+        
+    def saveSettings(self):
+        settings_df = self.parent.df_settings
+        
+        settings_df.loc[
+            'sep_IDs_mode', 'value'
+            ] = self.sepModeSelector.currentText()
+        settings_df.loc[
+            'go_to_sep_slice', 'value'
+            ] = self.goToSepSliceCheckBox.isChecked()
+        for name, (widget, _, value_type) in self.convexity3DParamWidgets.items():
+            value = widget.isChecked() if value_type is bool else widget.value()
+            settings_df.loc[name, 'value'] = value
+        
+        settings_df.to_csv(self.parent.settings_csv_path)
+        
+    def onSepModeChanged(self, index):
+        mode = self.sepModeSelector.currentText()
+        self.setConvexityControlsVisible(
+            self.seg_3D and mode == '3D Convexity defects'
+        )
+
+    def setSegm3D(self, seg_3D=False):
+        self.seg_3D = seg_3D
+        self.sepModeSelectorAction.setVisible(seg_3D)
+        self.goToSepSliceCheckBoxAction.setVisible(seg_3D)
+        for action in self.goToSepSliceSeparator._actions:
+            action.setVisible(seg_3D)
+
+        self.onSepModeChanged(self.sepModeSelector.currentIndex())
+
+    def setConvexityControlsVisible(self, visible):
+        for action in self.convexityControlActions:
+            action.setVisible(visible)
+            
+    def goToSepSliceChecked(self):
+        return self.goToSepSliceCheckBox.isChecked()
+
+    def separationMode(self):
+        return self.sepModeSelector.currentText()
+
+    def splitConv3DKwargs(self):
+        kwargs = {}
+        for name, (widget, _, value_type) in self.convexity3DParamWidgets.items():
+            kwargs[name] = (
+                widget.isChecked() if value_type is bool else widget.value()
+            )
+        return kwargs

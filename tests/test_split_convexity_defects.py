@@ -5,6 +5,7 @@ from cellacdc.core_split_IDs import (
     _convexity_defect_plane_3D,
     split_along_convexity_defects,
     split_along_convexity_defects_3D,
+    split_along_convexity_defects_slice_by_slice,
 )
 
 
@@ -47,6 +48,54 @@ def test_split_along_convexity_defects_3d_propagates_split_through_volume():
     assert np.all(np.any(result == 7, axis=(1, 2)))
     assert np.all(np.any(result == 8, axis=(1, 2)))
     np.testing.assert_array_equal(result > 0, original_mask)
+
+
+def test_split_slice_by_slice_reuses_new_id_and_preserves_other_objects():
+    lab_2d = np.zeros((40, 40), dtype=np.uint32)
+    lab_2d[_dumbbell_mask()] = 7
+    lab_2d[2:5, 2:5] = 3
+    lab = np.repeat(lab_2d[np.newaxis], 3, axis=0)
+    original_mask = lab > 0
+
+    result, success, split_ids = split_along_convexity_defects_slice_by_slice(
+        7, lab, max_ID=7
+    )
+
+    assert success
+    assert split_ids == [7, 8]
+    assert set(np.unique(result)) == {0, 3, 7, 8}
+    assert np.all(np.any(result == 8, axis=(1, 2)))
+    assert np.all(result[:, 2:5, 2:5] == 3)
+    np.testing.assert_array_equal(result > 0, original_mask)
+
+
+def test_split_slice_by_slice_does_not_split_slice_only_discontinuity():
+    lab = np.zeros((3, 30, 30), dtype=np.uint32)
+    lab[:, 8:12, 5:9] = 7
+    lab[:, 8:12, 21:25] = 7
+    lab[1, 8:12, 9:21] = 7
+
+    result, success, split_ids = split_along_convexity_defects_slice_by_slice(
+        7, lab, max_ID=7
+    )
+
+    assert not success
+    assert split_ids == []
+    assert set(np.unique(result)) == {0, 7}
+
+
+def test_split_slice_by_slice_splits_disconnected_3d_components_first():
+    lab = np.zeros((3, 30, 30), dtype=np.uint32)
+    lab[:, 3:8, 3:8] = 7
+    lab[:, 20:27, 20:27] = 7
+
+    result, success, split_ids = split_along_convexity_defects_slice_by_slice(
+        7, lab, max_ID=10
+    )
+
+    assert success
+    assert split_ids == [7, 11]
+    assert set(np.unique(result)) == {0, 7, 11}
 
 
 def test_split_along_convexity_defects_3d_splits_diagonal_touching_spheres():
