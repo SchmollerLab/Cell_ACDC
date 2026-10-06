@@ -7345,15 +7345,16 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                 for frame_i in range(numFrames):
                     cca_df_frame_i = acdc_df.loc[[frame_i]]
                     lab = segm_data[frame_i]
+                    lab = core.replace_Cell_ID_with_Cell_ID_tree(
+                        lab, cca_df_frame_i
+                    )
                     if np.any(lab > np.iinfo(np.uint16).max):
                         raise ValueError(
                             'Segmentation IDs exceed the uint16 range; '
                             'remap mask and CTC IDs consistently before export.'
                         )
+                    
                     lab = lab.astype(np.uint16)
-                    lab = core.replace_Cell_ID_with_Cell_ID_tree(
-                        lab, cca_df_frame_i
-                    )
                     t_str = str(frame_i).zfill(t_digits)
                     lab_filename = f'man_track{t_str}.tif'
                     lab_filepath = os.path.join(
