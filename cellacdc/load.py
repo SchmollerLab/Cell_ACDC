@@ -1748,7 +1748,8 @@ class loadData:
         
         if 'In entire video' in categories:
             numObjsTotal = 0
-            
+        
+        numObjsPerFrame = {}
         for frame_i in range(len(self.segm_data)):
             lab = self.allData_li[frame_i]['labels']
             if lab is not None:
@@ -1767,6 +1768,7 @@ class loadData:
                     uniqueIDsAll.update(IDsFrame)
                 
                 numObjsFrame = len(IDsFrame)
+                numObjsPerFrame[frame_i] = numObjsFrame
                 
                 if numObjsVisitedFrames is not None:
                     numObjsVisitedFrames += numObjsFrame
@@ -1801,7 +1803,7 @@ class loadData:
             'Unique objects in entire video': numUniqueObjsTotal
         }
         
-        return allCategoryCountMapper
+        return allCategoryCountMapper, numObjsPerFrame
     
     def countObjectsInSegmSnapshots(self, categories: set[str] | list[str]):
         if hasattr(self, 'IDs'):
@@ -1814,10 +1816,15 @@ class loadData:
         mapper = {
             'In current position': numObjs
         }
+
+        numObjsPerFrame = {0: numObjs}
         
-        return mapper
+        return mapper, numObjsPerFrame
     
-    def countObjectsInSegm(self, categories: set[str] | list[str] | None=None):
+    def countObjectsInSegm(
+            self, 
+            categories: set[str] | list[str] | None=None
+        ):
         if self.SizeT > 1:
             if categories is None:
                 categories = ['In entire video']
@@ -1829,7 +1836,12 @@ class loadData:
                 
             return self.countObjectsInSegmSnapshots(categories)
     
-    def saveObjCounts(self, countMapper: dict[str, int]):
+    def saveObjCounts(
+            self, 
+            countMapper: dict[str, int],
+            numObjsPerFrame: dict[str, int],
+            saveToAcdcDf: bool=False,
+        ):
         df = pd.DataFrame(countMapper, index=[0])
         segmFilename = os.path.basename(self.segm_npz_path)
         segmEndname = segmFilename[len(self.basename):]
@@ -1843,6 +1855,32 @@ class loadData:
         dfCountFilepath = os.path.join(self.images_path, dfCountFilename)
         
         df.to_csv(dfCountFilepath, index=False)
+
+        if not saveToAcdcDf:
+            return
+
+        acdc_df = (
+            _load_acdc_df_file(self.acdc_output_csv_path)
+            .reset_index().set_index('frame_i')
+        )
+
+        df_num_objs_per_frame = pd.DataFrame.from_dict(
+            numObjsPerFrame, 
+            orient='index', 
+            columns=['number_of_objects_per_frame']
+        )
+        df_num_objs_per_frame.index.name = 'frame_i'
+
+        df_count = df.rename(
+            columns={
+                col: f'number_of_objects_{acdc_regex.to_alphanumeric(col).lower()}' 
+                for col in df.columns}
+        )
+
+        acdc_df[df_count.columns] = df_count.iloc[0]
+        acdc_df = acdc_df.join(df_num_objs_per_frame)
+
+        acdc_df.to_csv(self.acdc_output_csv_path)
         
         return dfCountEndname
         

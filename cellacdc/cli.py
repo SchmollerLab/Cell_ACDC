@@ -698,7 +698,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.ch_names = channel_names
         self.end_filename_segm = end_filename_segm
         self.notLoadedChNames = []
-        self.save_object_counts_table = False
+        if not hasattr(self, 'save_object_counts_table'):
+            self.save_object_counts_table = False
     
     def log(self, message, level='INFO'):
         try:
@@ -1286,13 +1287,15 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             saveDataWorker=saveDataWorker,
             last_cca_frame_i=last_cca_frame_i
         )
-        
+
         if not self.save_object_counts_table:
             return
         
-        countMapper = posData.countObjectsInSegm()
+        countMapper, numObjsPerFrame = posData.countObjectsInSegm()
         countMapper.pop('In current frame', None)
-        df_count_endname = posData.saveObjCounts(countMapper)
+        df_count_endname = posData.saveObjCounts(
+            countMapper, numObjsPerFrame, saveToAcdcDf=True
+        )
         
         self.log(
             'Saved object counts table to file ending with: '

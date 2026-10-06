@@ -4654,7 +4654,8 @@ class _metricsQGBox(QGroupBox):
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
             equations=None, addDelButton=False, delButtonMetricsDesc=None,
-            parent=None, addCalcForEachZsliceToggle=False, isBkgrValues=False,
+            parent=None, addCalcForEachZsliceToggle=False, 
+            doesWarnOnUncheck=False,
             isSegm3D=False
         ):
         QGroupBox.__init__(self, parent)
@@ -4665,7 +4666,7 @@ class _metricsQGBox(QGroupBox):
         
         self._updatingCheckboxes = False
         self._parent = parent
-        self.isBkgrValues = isBkgrValues
+        self.doesWarnOnUncheck = doesWarnOnUncheck
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
         self.favourite_funcs = favourite_funcs
@@ -4817,7 +4818,7 @@ class _metricsQGBox(QGroupBox):
     def toggled_cb(self, checked):
         alreadyWarnedRequired = False
         for checkbox in self.checkBoxes:
-            if self.isBkgrValues and alreadyWarnedRequired:
+            if self.doesWarnOnUncheck and alreadyWarnedRequired:
                 checkbox.blockSignals(True)
 
             if not checked:
@@ -4929,7 +4930,7 @@ class channelMetricsQGBox(QGroupBox):
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
             parent=self, isZstack=isZstack,
-            isBkgrValues=True,
+            doesWarnOnUncheck=True,
             isSegm3D=isSegm3D
         )
         self.bkgrValsQGBox = bkgrValsQGBox
@@ -4946,7 +4947,6 @@ class channelMetricsQGBox(QGroupBox):
             checkbox.toggled.connect(self.standardMetricToggled)
             self.standardMetricToggled(checkbox.isChecked(), checkbox=checkbox)
         
-        self.bkgrAlreadyWarned = False
         for bkgrCheckbox in bkgrValsQGBox.checkBoxes:
             bkgrCheckbox.toggled.connect(self.backgroundMetricToggled)
 

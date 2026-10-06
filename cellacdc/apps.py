@@ -2128,7 +2128,7 @@ class SetMeasurementsDialog(QBaseDialog):
         for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                posData=posData, is_concat=is_concat,
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
@@ -2159,7 +2159,8 @@ class SetMeasurementsDialog(QBaseDialog):
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Physical measurements',
             favourite_funcs=favourite_funcs, isZstack=isZstack,
-            addCalcForEachZsliceToggle=isSegm3D
+            addCalcForEachZsliceToggle=isSegm3D,
+            doesWarnOnUncheck=True
         )
         self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
@@ -2503,14 +2504,13 @@ class SetMeasurementsDialog(QBaseDialog):
         ----------
         checked : bool
             State of the checkbox toggled
-        """
-        checkbox = self.sender()
-        
+        """        
         if self.is_concat:
             # When this dialogue is used in concatenate pos utility we do not 
             # need to check that certain metrics are present
             return
 
+        checkbox = self.sender()
         if not hasattr(checkbox, 'isRequired'):
             return
         
@@ -2521,7 +2521,6 @@ class SetMeasurementsDialog(QBaseDialog):
             return
         
         checkbox.setChecked(True)
-
         if self.doNotWarn:
             return
 
@@ -4346,7 +4345,7 @@ class BayesianTrackerParamsWin(QDialog):
             return
 
         if not os.path.exists(self.modelPathLineEdit.text()):
-            self.warnNotVaidPath()
+            self.warnNotValidPath()
             return
 
         self.intensityImageChannel = None
@@ -4369,7 +4368,7 @@ class BayesianTrackerParamsWin(QDialog):
                 self.intensityImageChannel = self.channelCombobox.currentText()
         self.close()
 
-    def warnNotVaidPath(self):
+    def warnNotValidPath(self):
         url = 'https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models'
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
@@ -4543,7 +4542,7 @@ class DeltaTrackerParamsWin(QDialog):
         self.cancel = False
 
         if not os.path.exists(self.modelPathLineEdit.text()):
-            self.warnNotVaidPath()
+            self.warnNotValidPath()
             return
 
         self.verbose = self.verboseToggle.isChecked()
@@ -19314,9 +19313,13 @@ class ObjectCountDialog(QBaseDialog):
     def saveCounts(self, checked=False):
         categories = self.activeCategories()
         for posData in self.data:
-            countMapper = posData.countObjectsInSegm(categories)
+            countMapper, numObjsPerFrame = (
+                posData.countObjectsInSegm(categories)
+            )
             countMapper.pop('In current frame', None)
-            df_count_endname = posData.saveObjCounts(countMapper)
+            df_count_endname = posData.saveObjCounts(
+                countMapper, numObjsPerFrame
+            )
         
         txt = html_utils.paragraph(f"""
             Done!<br><br>

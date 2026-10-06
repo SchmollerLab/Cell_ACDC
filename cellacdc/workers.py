@@ -6885,9 +6885,11 @@ class CountObjectsInSegm(BaseWorkerUtil):
                 
                 self.logger.log('Counting objects...')
                 
-                countMapper = posData.countObjectsInSegm()
+                countMapper, numObjsPerFrame = posData.countObjectsInSegm()
                 countMapper.pop('In current frame', None)
-                df_count_endname = posData.saveObjCounts(countMapper)
+                df_count_endname = posData.saveObjCounts(
+                    countMapper, numObjsPerFrame
+                )
                 
                 self.logger.log(
                     'Saved object counts table to file ending with: '
