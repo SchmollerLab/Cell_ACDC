@@ -21997,3 +21997,89 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         }
         
         self.close()
+
+class SearchableListboxDialog(QBaseDialog):
+    sigOk = Signal(str)
+
+    def __init__(
+            self, 
+            items: list[str], 
+            title='Search items',
+            searchLineEditText='Search...',
+            parent=None,
+        ):
+        super().__init__(parent=parent)
+
+        self.cancel = True
+        self.allItems = items
+
+        self.setWindowTitle(title)
+
+        mainLayout = QVBoxLayout()
+
+        searchLineEdit = widgets.SearchLineEdit(
+            text=searchLineEditText
+        )
+
+        searchLineEdit.textEdited.connect(self.searchItems)
+
+        self.listWidget = widgets.listWidget()
+        self.listWidget.addItems(items)   
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        self.listWidget.itemDoubleClicked.connect(self.ok_cb)
+
+        mainLayout.addWidget(searchLineEdit)
+        mainLayout.addWidget(self.listWidget)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        self.setFont(fonts.font)
+    
+    def searchItems(self, text):
+        from ._palettes import get_color_scheme
+        scheme = get_color_scheme()
+        if scheme == 'dark':
+            highlight_color = '#4DA3FF'
+        else:
+            highlight_color = '#0067C5'
+
+        self.listWidget.clear()
+        for item in self.allItems:
+            if text.lower() not in item.lower():
+                continue
+            
+            highlighted_text = re.sub(
+                re.escape(text),
+                lambda m: (
+                    f'<span style="color:{highlight_color}; font-weight:bold;">'
+                    f'{m.group(0)}</span>'
+                ),
+                item,
+                flags=re.IGNORECASE,
+            )
+            self.listWidget.addRichTextItem(highlighted_text)
+
+    def warnSelectionEmpty(self):
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(
+            'You need to <b>select at least one item</b> before pressing "Ok".<br><br>'
+            'Otherwise, you can cancel any time with the Cancel button.<br><br>'
+            'Thank you for your patience!'
+        )
+        msg.warning(self, 'Selection cannot be empty', txt)
+
+    def ok_cb(self, *args, **kwargs):
+        if not self.listWidget.selectedItemsText():
+            self.warnSelectionEmpty()
+            return
+
+        self.cancel = False
+        self.selectedItemText = self.listWidget.selectedItemsText()[0]
+        self.close()
+        self.sigOk.emit(self.selectedItemText)

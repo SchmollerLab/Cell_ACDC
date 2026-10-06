@@ -43,7 +43,7 @@ from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem
+    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -2016,6 +2016,33 @@ class statusBarPermanentLabel(QWidget):
 
         self.setLayout(layout)
 
+class RichTextListWidgetItem(QListWidgetItem):
+    def __init__(self, text=''):
+        super().__init__()
+
+        self._plainText = ''
+        
+        self._label = QLabel()
+        self._label.setTextFormat(Qt.RichText)
+        self._label.setAttribute(
+            Qt.WA_TransparentForMouseEvents
+        )
+
+        self.setText(text)
+
+    def setText(self, text):
+        doc = QTextDocument()
+        doc.setHtml(text)
+
+        self._plainText = doc.toPlainText()
+        self._label.setText(text)
+
+    def text(self):
+        return self._plainText
+    
+    def label(self):
+        return self._label
+
 class listWidget(QListWidget):
     def __init__(
             self, 
@@ -2035,6 +2062,14 @@ class listWidget(QListWidget):
         
         self.minimizeHeight = minimizeHeight
     
+    def addRichTextItem(self, text: str):
+        item = RichTextListWidgetItem(text=text)
+
+        self.addItem(item)
+        self.setItemWidget(item, item.label())
+
+        return item
+
     def setSelectedAll(self, selected):
         for i in range(self.count()):
             self.item(i).setSelected(selected)
@@ -5899,6 +5934,7 @@ class ZoomROI(ROI):
 class DelROI(pg.ROI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.setCursor(Qt.SizeAllCursor)
     
     def clearPoints(self):
         """
@@ -10077,15 +10113,16 @@ class SetMeasurementsGroupBox(QGroupBox):
             checkbox.setStyleSheet('')
     
 class SearchLineEdit(QLineEdit):
-    def __init__(self, parent=None):
+    def __init__(self, text='Search...', parent=None):
         super().__init__(parent)
         
+        self._text = text
         self.initSearch()
         self.setFocusPolicy(Qt.ClickFocus)
         
     def focusInEvent(self, event) -> None:
         super().focusInEvent(event)
-        if super().text() == 'Search...':
+        if super().text() == self._text:
             self.setText('')
         self.setStyleSheet('')
     
@@ -10095,12 +10132,12 @@ class SearchLineEdit(QLineEdit):
             self.initSearch()
     
     def initSearch(self):
-        self.setText('Search...')
+        self.setText(self._text)
         self.setStyleSheet('color: rgb(150, 150, 150)')
         self.clearFocus()
     
     def text(self):
-        if super().text() == 'Search...':
+        if super().text() == self._text:
             return ''
         return super().text()
 

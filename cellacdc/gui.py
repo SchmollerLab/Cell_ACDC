@@ -720,9 +720,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             recentPaths = []
         
-        # Step 2. Dynamically create the actions
+        # Step 2. Dynamically create 20 actions
         actions = []
-        for path in recentPaths:
+        for path in recentPaths[:20]:
             if not os.path.exists(path):
                 continue
             action = QAction(path, self)
@@ -731,6 +731,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
+
+        # Setp 4. Add the More action
+        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+            recentPaths, 
+            title='Recent paths', 
+            searchLineEditText='Search recent paths (double-click to load)...',
+            parent=self,
+        )
+        self.openRecentMoreAction = QAction('More...', self)
+        self.openRecentMoreAction.triggered.connect(
+            self.showOpenRecentMoreWidget
+        )
+        self.openRecentMoreDialog.sigOk.connect(self.openRecentFile)
+        self.openRecentMenu.addSeparator()
+        self.openRecentMenu.addAction(self.openRecentMoreAction)
     
     def addPathToOpenRecentMenu(self, path):
         for action in self.openRecentMenu.actions():
@@ -13185,6 +13200,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.polyLineRoi.handleSize = 7
         self.polyLineRoi.points = []
+        self.polyLineRoi.setCursor(Qt.SizeAllCursor)
         if key is None:
             key = uuid.uuid4()
         self.ax1.addDelRoiItem(self.polyLineRoi, key)
@@ -36216,6 +36232,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.addToRecentPaths(path, logger=self.logger)
         self.openFolder(exp_path=path)
     
+    def showOpenRecentMoreWidget(self):
+        self.openRecentMoreDialog.show()
+        screenGeometry = self.screen().geometry()
+        x0, y0 = screenGeometry.left(), screenGeometry.top()
+        screenWidth = screenGeometry.width()
+        screenHeight = screenGeometry.height()
+        screenXCenter = x0 + screenWidth/2
+        screenYCenter = y0 + screenHeight/2
+        windowLeft = round(screenXCenter - screenWidth/6)
+        windowWidth = round(screenWidth/3)
+        windowHeight = round(screenHeight/2)
+        windowTop = y0
+        self.openRecentMoreDialog.resize(windowWidth, windowHeight)
+        self.openRecentMoreDialog.move(windowLeft, windowTop)
+        self.openRecentMoreDialog.raise_()
+        self.openRecentMoreDialog.activateWindow()
+
     def _waitCloseAutoSaveWorker(self):
         didWorkersFinished = [True]
         for worker, thread in self.autoSaveActiveWorkers:
@@ -36225,7 +36258,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 didWorkersFinished.append(False)
         if all(didWorkersFinished):
             self.waitCloseAutoSaveWorkerLoop.stop()
-        
+    
     def cancelSavingInitialisation(self):
         self.titleLabel.setText(
             'Saving data process cancelled.', color=self.titleColor
