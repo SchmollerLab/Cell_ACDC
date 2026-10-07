@@ -7297,7 +7297,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                     self.logger.log(
                         f'---------------------------------\n'
                         f'[WARNING]: {warning_class} in "{images_path}".'
-                        f'================================='
+                        f'\n================================='
                     )
                     
                     self._warnings[images_path] = warning_class
@@ -7318,7 +7318,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                         f'---------------------------------\n'
                         f'[WARNING]: {warning_class} in "{images_path}".\n\n'
                         'Skipping this position.'
-                        f'================================='
+                        f'\n================================='
                     )
                     self._warnings[images_path] = warning_class
                     continue
@@ -7334,7 +7334,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                         f'[WARNING]: {warning_class} in \n\n'
                         f'"{images_path}".\n\n'
                         'Skipping this position.'
-                        f'================================='
+                        f'\n================================='
                     )
                     self._warnings[images_path] = warning_class
                     continue
