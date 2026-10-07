@@ -22042,6 +22042,9 @@ class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
         self.onlyUntilTrackedFormWidget.widget.setChecked(False)
         self.onlyUntilAnnotatedFormWidget.widget.setChecked(True)
 
+        self.onlyUntilAnnotatedFormWidget.setDisabled(True)
+        self.onlyUntilTrackedFormWidget.setDisabled(True)
+
         self._headerLabel.setText(html_utils.paragraph(
             self._headerText.replace(
                 'Split video into single-frame TIFFs setup',

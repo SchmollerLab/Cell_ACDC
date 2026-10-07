@@ -103,11 +103,29 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
 
     def workerCancelled(self):
-        self.workerFinished(None, aborted=True)
+        self.workerFinished(None, cancelled=True)
         self.worker.finished.emit(self.worker)
     
-    def workerFinished(self, worker, aborted=False):
-        if aborted:
+    def workerFinished(self, worker, cancelled=False):
+        messagebox_type = 'information'
+        detailsText = ''
+        noteText = ''
+        if worker._warnings:
+            messagebox_type = 'warning'
+            detailsTexts = []
+            for images_path, warning_class in worker._warnings.items():
+                detailsTexts.append(
+                    f'  - {warning_class} in "{images_path}"'
+                )
+            detailsText = (
+                'The following positions were skipped:\n\n'
+                f'{"\n\n".join(detailsTexts)}'
+            )
+            noteText = (
+                '<br><br>WARNING: Some positions were skipped. '
+                'See below which ones'
+            )
+        if cancelled:
             txt = f'"{self._title}" process cancelled.'
             path_to_browse = None
         else:
@@ -119,12 +137,14 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
             path_to_browse = self.worker.dstFolderPath
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-        if aborted:
-            msg.warning(self, 'Process completed', html_utils.paragraph(txt))
+        if cancelled:
+            msg.warning(self, 'Process cancelled', html_utils.paragraph(txt))
         else:
-            msg.information(
-                self, 'Process completed', html_utils.paragraph(txt),
-                path_to_browse=path_to_browse
+            getattr(msg, messagebox_type)(
+                self, 'Process completed', 
+                html_utils.paragraph(f'{txt}{noteText}'),
+                path_to_browse=path_to_browse,
+                detailsText=detailsText
             )
         super().workerFinished(worker)
         self.close()

@@ -7193,6 +7193,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
             'generated_folder': [],
             'source_position_folder': []    
         }
+        self._warnings = defaultdict(dict)
         k = 0
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
@@ -7293,12 +7294,15 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                     end_name_segm_file=segmEndname
                 )
                 if segm_data is None:
-                    self.logger.log(
-                        '[WARNING]: Segmentation file ending with '
-                        f'"{segmEndname}" not found in "{images_path}".'
+                    warning_class = (
+                        f'Segmentation file ending with "{segmEndname}" not found'
                     )
-                    self.sigCancelled.emit()
-                    return
+                    self.logger.log(
+                        f'[WARNING]: {warning_class} in "{images_path}".'
+                    )
+                    
+                    self._warnings[images_path] = warning_class
+                    continue
 
                 numFrames = len(image_data)
                 acdc_df = load.load_acdc_df_file(
@@ -7306,11 +7310,35 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                     end_name_acdc_df_file=acdcOutputEndname
                 )
 
+                if acdc_df is None:
+                    warning_class = (
+                        '`acdc_output` CSV file ending with '
+                        f'"{acdcOutputEndname}" not found'
+                    )
+                    self.logger.log(
+                        f'[WARNING]: {warning_class} in "{images_path}".\n\n'
+                        'Skipping this position.'
+                    )
+                    self._warnings[images_path] = warning_class
+                    continue
+
+                if 'generation_num_tree' not in acdc_df.columns:
+                    warning_class = (
+                        '`acdc_output` CSV file ending with '
+                        f'"{acdcOutputEndname}" does not have lineage'
+                        'tree annotations'
+                    )
+                    self.logger.log(
+                        f'[WARNING]: {warning_class} in \n\n'
+                        f'"{images_path}".\n\n'
+                        'Skipping this position.'
+                    )
+                    self._warnings[images_path] = warning_class
+                    continue
+
                 if self.numFramesToSplit is not None:
                     numFrames = self.numFramesToSplit
-                elif onlyUntilTracked:
-                    numFrames = acdc_df['frame_i'].max() + 1
-                elif onlyUntilAnnotated:
+                else:
                     try:
                         ccs = acdc_df[['cell_cycle_stage']]
                     except KeyError:
@@ -7334,7 +7362,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                     frame_filepath = os.path.join(
                         videoDstFolderPath, frame_filename
                     )
-                    skimage.io.imsave(frame_filepath, img)
+                    skimage.io.imsave(frame_filepath, img, check_contrast=False)
                     self.signals.sigUpdateInnerPbar.emit(1)
 
                 self.logger.log(
@@ -7360,7 +7388,7 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                     lab_filepath = os.path.join(
                         gtDstFolderPath, lab_filename
                     )
-                    skimage.io.imsave(lab_filepath, lab)
+                    skimage.io.imsave(lab_filepath, lab, check_contrast=False)
                     self.signals.sigUpdateInnerPbar.emit(1)
 
                 df_ctc_filepath = os.path.join(gtDstFolderPath, 'man_track.txt')
