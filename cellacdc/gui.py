@@ -35533,7 +35533,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ignore = False
         doNotShowAgain = False
         if self.doNotShowAgainMissingCca:
-            return proceed, ignore, doNotShowAgain
+            return proceed, ignore, self.doNotShowAgainMissingCca
         
         missing_cca_items = []
         for posData in self.data:
