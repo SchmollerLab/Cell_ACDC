@@ -1862,6 +1862,7 @@ class CheckBox(QCheckBox):
         self.toggled.connect(self.onToggled)
         self._exclusiveCheckboxes: list[QCheckBox] = []
         self._linkedCheckboxes: dict[str, QCheckBox] = {}
+        self.exclusiveCheckboxesStates: dict[str, bool] = {}
         # if rightclick_menu_func is not None:
         #     self.rightclick_menu = rightclick_menu_func(self)
     
@@ -1879,6 +1880,9 @@ class CheckBox(QCheckBox):
     
     def onToggled(self, checked: bool):
         for checkbox in self._exclusiveCheckboxes:
+            name = checkbox.text()
+            self.exclusiveCheckboxesStates[name] = checkbox.isChecked()
+
             if not checked:
                 continue
             
@@ -1888,10 +1892,6 @@ class CheckBox(QCheckBox):
             checkbox.setChecked(checked)
         
         self.sigToggled.emit(checked, self)
-        
-    # def contextMenuEvent(self, event) -> None:
-    #     if self.rightclick_menu is not None:
-    #         self.rightclick_menu.exec_(event.globalPos())
     
     def setCheckedNoSignal(self, checked: bool):
         self.blockSignals(True)

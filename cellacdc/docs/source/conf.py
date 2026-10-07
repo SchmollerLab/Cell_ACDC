@@ -60,4 +60,5 @@ exclude_patterns = [
     '_gui_packages.rst',
     '_models_list.rst',
     '_preprints_now_publication.rst'
+    '_test_conda_installation.rst',
 ]

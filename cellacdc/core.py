@@ -3035,113 +3035,6 @@ def _compute_all_obj_to_obj_contour_dist_pairs(
 
     return dist_matrix_df
 
-def convexity_defects(img, eps_percent):
-    img = img.astype(np.uint8)
-    contours, _ = cv2.findContours(img,2,1)
-    cnt = max(contours, key=cv2.contourArea)
-    cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
-    hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
-    defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
-    return cnt, defects
-
-def split_connected_components(lab, rp=None, max_ID=None):  
-    if rp is None:
-        lab = skimage.measure.regionprops(lab)
-    
-    if max_ID is None:
-        max_ID = max([obj.label for obj in rp], default=1)
-        
-    split_occured = False
-    for obj in rp:
-        lab_obj = skimage.measure.label(obj.image)
-        rp_lab_obj = skimage.measure.regionprops(lab_obj)
-        if len(rp_lab_obj)<=1:
-            continue
-        lab_obj += max_ID
-        _slice = obj.slice # self.getObjSlice(obj.slice)
-        _objMask = obj.image # self.getObjImage(obj.image)
-        lab[_slice][_objMask] = lab_obj[_objMask]
-        split_occured = True
-        max_ID += 1
-    return split_occured
-
-def split_along_convexity_defects(
-        ID, lab, max_ID, max_i=1, eps_percent=0.01, rp=None
-    ):
-    if rp is not None:
-        obj = rp.get_obj_from_ID(ID)
-        lab_ID_bool = np.zeros_like(lab[obj.slice], dtype=bool)
-        lab_ID_bool[obj.image] = True
-    else:
-        lab_ID_bool = lab == ID
-    # First try separating by labelling
-    lab_ID = lab_ID_bool.astype(int)
-    rp_ID = skimage.measure.regionprops(lab_ID)
-    split_occured = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
-    if split_occured:
-        success = True
-        if rp is not None:
-            lab[obj.slice][obj.image] = lab_ID[obj.image]
-        else:
-            lab[lab_ID_bool] = lab_ID[lab_ID_bool]
-            
-        rp_ID = skimage.measure.regionprops(lab_ID)
-        separateIDs = [obj.label for obj in rp_ID]
-        return lab, success, separateIDs
-
-    cnt, defects = convexity_defects(lab_ID_bool, eps_percent)
-    success = False
-    if defects is None:
-        return lab, success, []
-
-    if len(defects) != 2:
-        return lab, success, []
-
-    # This line is needed since opencv-python-headless > 5.0
-    defects = np.asarray(defects).reshape(-1, 4)
-    defects_points = [0]*len(defects)
-    for i, defect in enumerate(defects):
-        s,e,f,d = defect
-        x,y = tuple(cnt[f][0])
-        defects_points[i] = (y,x)
-    (r0, c0), (r1, c1) = defects_points
-    rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
-    sep_bud_img = np.copy(lab_ID_bool)
-    sep_bud_img[rr, cc] = False
-    
-    sep_bud_label = skimage.measure.label(
-        sep_bud_img, connectivity=2
-    )
-    
-    rp_sep = skimage.measure.regionprops(sep_bud_label)
-    IDs_sep = [obj.label for obj in rp_sep]
-    areas = [obj.area for obj in rp_sep]
-    curr_ID_bud = IDs_sep[areas.index(min(areas))]
-    curr_ID_moth = IDs_sep[areas.index(max(areas))]
-    orig_sblab = np.copy(sep_bud_label)
-    # sep_bud_label = np.zeros_like(sep_bud_label)
-    ID1 = ID
-    ID2 = max_ID+max_i
-    sep_bud_label[orig_sblab==curr_ID_moth] = ID1
-    sep_bud_label[orig_sblab==curr_ID_bud] = ID2
-    splittedIDs = [ID1, ID2]
-    # sep_bud_label *= (max_ID+max_i)
-    temp_sep_bud_lab = sep_bud_label.copy()
-    for r, c in zip(rr, cc):
-        if lab_ID_bool[r, c]:
-            nearest_ID = nearest_nonzero_2D(sep_bud_label, r, c)
-            temp_sep_bud_lab[r,c] = nearest_ID
-    sep_bud_label = temp_sep_bud_lab
-    sep_bud_label_mask = sep_bud_label != 0
-    # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
-    if rp is not None:
-        lab[obj.slice][sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
-    else:
-        lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
-    max_i += 1
-    success = True
-    return lab, success, splittedIDs
-
 def validate_multidimensional_recipe(
         recipe: List[Dict[str, Any]], 
         apply_to_all_zslices=False,
@@ -3640,6 +3533,117 @@ def convex_hull_mask(mask: np.ndarray, slice_by_slice=True):
         mask[mask_obj.slice][z] = mask_obj_hull_z
     
     return mask
+
+def smooth_mask_plane(mask_plane):
+    """Smooth a 2D mask plane with a weighted 3x3 neighborhood.
+
+    The center pixel has weight 1.0, edge neighbors have weight 0.5,
+    and corner neighbors have weight 1 / (1 + sqrt(2)). Values outside
+    the plane are treated as zero.
+
+    Args:
+        mask_plane: A 2D array representing one mask plane.
+
+    Returns:
+        A float32 array containing the smoothed plane.
+    """
+    axial_weight = 0.5
+    diagonal_weight = 1.0 / (1.0 + np.sqrt(2.0))
+    center_weight = 1.0
+
+    padded = np.pad(
+        np.asarray(mask_plane, dtype=np.float32),
+        pad_width=1,
+        mode="constant",
+    )
+
+    smoothed = (
+        diagonal_weight * padded[:-2, :-2]
+        + axial_weight * padded[:-2, 1:-1]
+        + diagonal_weight * padded[:-2, 2:]
+        + axial_weight * padded[1:-1, :-2]
+        + center_weight * padded[1:-1, 1:-1]
+        + axial_weight * padded[1:-1, 2:]
+        + diagonal_weight * padded[2:, :-2]
+        + axial_weight * padded[2:, 1:-1]
+        + diagonal_weight * padded[2:, 2:]
+    )
+
+    weight_sum = center_weight + 4 * axial_weight + 4 * diagonal_weight
+    return smoothed / weight_sum
+
+def interpolate_unlabelled_z_slices(mask_volume, labelled_z_slices):
+    """Fill unlabeled z-slices between sparsely labeled mask planes.
+
+    Each missing plane is estimated from its nearest labeled planes below
+    and above. Those planes are spatially smoothed, weighted by the missing
+    plane's relative z-position, combined, and thresholded at 0.33.
+
+    The input volume is modified in place. Only gaps between the first and
+    last labeled slices are filled; slices outside that range are unchanged.
+
+    Parameters
+    ----------
+    mask_volume : (Z, Y, X) numpy.ndarray of booleans
+        A 3D boolean array with shape (z, y, x).
+    labelled_z_slices : (N,) numpy.ndarray of ints
+        A 1D array of labeled slice indices into ``mask_volume``.
+
+    Returns
+    -------
+    mask_volume : (Z, Y, X) numpy.ndarray of booleans
+        Modified mask volume.
+    filled_z_slices : (M,) numpy.ndarray of ints
+        1D array of z-indices that were filled.
+
+    Raises
+    ------
+    ValueError: 
+        If the volume is not 3D, or if the labeled slice indices 
+        are empty, duplicated, or out of bounds.
+    """
+    if mask_volume.ndim != 3:
+        raise ValueError("mask_volume must have shape (z, y, x)")
+
+    labelled_z_slices = np.asarray(labelled_z_slices, dtype=np.intp)
+
+    if labelled_z_slices.ndim != 1 or labelled_z_slices.size == 0:
+        raise ValueError("labelled_z_slices must be a non-empty 1D array")
+
+    if np.any(labelled_z_slices < 0) or np.any(
+        labelled_z_slices >= mask_volume.shape[0]
+    ):
+        raise ValueError("labelled z-slice indices are out of bounds")
+
+    labelled_z_slices = np.unique(labelled_z_slices)
+
+    first_labelled_z = labelled_z_slices[0]
+    last_labelled_z = labelled_z_slices[-1]
+    filled_z_slices = np.arange(
+        first_labelled_z + 1,
+        last_labelled_z,
+        dtype=np.intp,
+    )
+    filled_z_slices = filled_z_slices[
+        ~np.isin(filled_z_slices, labelled_z_slices)
+    ]
+
+    for z_index in filled_z_slices:
+        upper_position = np.searchsorted(labelled_z_slices, z_index)
+        lower_z = labelled_z_slices[upper_position - 1]
+        upper_z = labelled_z_slices[upper_position]
+
+        fraction = (z_index - lower_z) / (upper_z - lower_z)
+        lower_plane = smooth_mask_plane(mask_volume[lower_z])
+        upper_plane = smooth_mask_plane(mask_volume[upper_z])
+
+        interpolated_plane = (
+            lower_plane * (1.0 - fraction)
+            + upper_plane * fraction
+        )
+        mask_volume[z_index] = interpolated_plane > 0.33
+
+    return mask_volume, filled_z_slices
 
 def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
     """Converts acdc_output dataframe into man_track.txt lineage 
