@@ -118,9 +118,10 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
                 detailsTexts.append(
                     f'  - {warning_class} in "{images_path}"'
                 )
+            detailsText = "\n\n".join(detailsTexts)
             detailsText = (
                 'The following positions were skipped:\n\n'
-                f'{"\n\n".join(detailsTexts)}'
+                f'{detailsText}'
             )
             noteText = (
                 '<br><br>WARNING: Some positions were skipped. '
