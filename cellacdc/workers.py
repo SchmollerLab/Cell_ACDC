@@ -7261,9 +7261,6 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                     io.delete_folder_content(videoDstFolderPath)
                     io.delete_folder_content(gtDstFolderPath)
 
-                os.makedirs(videoDstFolderPath, exist_ok=True)
-                os.makedirs(gtDstFolderPath, exist_ok=True)
-
                 src_paths_info['generated_folder'].append(videoDstFolderPath)
                 src_paths_info['source_position_folder'].append(pos_path)
             
@@ -7298,7 +7295,9 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                         f'Segmentation file ending with "{segmEndname}" not found'
                     )
                     self.logger.log(
+                        f'---------------------------------\n'
                         f'[WARNING]: {warning_class} in "{images_path}".'
+                        f'================================='
                     )
                     
                     self._warnings[images_path] = warning_class
@@ -7316,8 +7315,10 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                         f'"{acdcOutputEndname}" not found'
                     )
                     self.logger.log(
+                        f'---------------------------------\n'
                         f'[WARNING]: {warning_class} in "{images_path}".\n\n'
                         'Skipping this position.'
+                        f'================================='
                     )
                     self._warnings[images_path] = warning_class
                     continue
@@ -7325,16 +7326,21 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
                 if 'generation_num_tree' not in acdc_df.columns:
                     warning_class = (
                         '`acdc_output` CSV file ending with '
-                        f'"{acdcOutputEndname}" does not have lineage'
+                        f'"{acdcOutputEndname}" does not have lineage '
                         'tree annotations'
                     )
                     self.logger.log(
+                        f'---------------------------------\n'
                         f'[WARNING]: {warning_class} in \n\n'
                         f'"{images_path}".\n\n'
                         'Skipping this position.'
+                        f'================================='
                     )
                     self._warnings[images_path] = warning_class
                     continue
+                
+                os.makedirs(videoDstFolderPath, exist_ok=True)
+                os.makedirs(gtDstFolderPath, exist_ok=True)
 
                 if self.numFramesToSplit is not None:
                     numFrames = self.numFramesToSplit

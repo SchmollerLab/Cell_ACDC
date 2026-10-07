@@ -61,7 +61,8 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
             buttonsTexts=(
                 'Cancel', 'Yes, overwrite existing content'
             ),
-            path_to_browse=videoDstFolderPath
+            commands=(videoDstFolderPath,),
+            path_to_browse=videoDstFolderPath,
         )
         self.worker.abort = msg.cancel
         self.worker.waitCond.wakeAll()
