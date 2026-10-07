@@ -480,7 +480,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             self.worker.abort = True
             self.close()
 
-    def abortCallback(self):
+    def cancelCallback(self):
         self.abort = True
         if self.worker is not None:
             self.worker.abort = True
