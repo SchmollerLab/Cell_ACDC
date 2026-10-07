@@ -5902,25 +5902,33 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.isSegm3D and not ctrl and not (shift and isZslice)
                 and separation_mode == 'Slice by slice'
             ):
-                eps_percent = self.separateBudToolbar.splitConv3DKwargs()[
-                    'eps_percent'
-                ]
                 result = core_split_IDs.split_along_convexity_defects_slice_by_slice(
-                    ID, posData.lab, max_ID, eps_percent=eps_percent
+                    ID, posData.lab, max_ID,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
                 )
                 posData.lab, success, splittedIDs = result
             elif self.isSegm3D and not ctrl and (shift and isZslice):
                 rp_2D = self.get2DRP()
                 lab_2D = self.get_2Dlab(force_z=True)
                 result = core_split_IDs.split_along_convexity_defects(
-                    ID, lab_2D, max_ID, rp=rp_2D
+                    ID, lab_2D, max_ID, rp=rp_2D,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
                 )
                 lab_2D, success, splittedIDs = result
+                # assign largest resulting ID the original ID
+                obj = rp_2D.get_obj_from_ID(ID)
+                IDs, counts = np.unique(lab_2D[obj.slice][obj.image], return_counts=True)
+                max_size_idx = np.argmax(counts)
+                largest_ID = IDs[max_size_idx]
                 self.set_2Dlab(lab_2D)
+                lab_2D[obj.slice][obj.image] = np.where(
+                    lab_2D[obj.slice][obj.image] == largest_ID, ID, lab_2D[obj.slice][obj.image]
+                )
                 
             elif not ctrl and not self.isSegm3D:
                 result = core_split_IDs.split_along_convexity_defects(
-                    ID, self.get_2Dlab(posData.lab), max_ID, rp=posData.rp
+                    ID, self.get_2Dlab(posData.lab), max_ID, rp=posData.rp,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
                 )
                 lab2D, success, splittedIDs = result
                 self.set_2Dlab(lab2D)
@@ -5929,7 +5937,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 
             if (
                 success 
-                and self.separateBudToolbar.goToSepSliceChecked 
+                and self.separateBudToolbar.goToSepSliceChecked()
                 and self.isSegm3D
                 ):
                 
@@ -5944,7 +5952,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         # set z to the current slice index
                         self.zSliceScrollBar.setSliderPosition(z)
                         self.update_z_slice(z)
-                        
                         break
             
             # If automatic bud separation was not successfull call manual one
@@ -16907,14 +16914,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not key == ev.key():
                 continue
             action = self.widgetsWithShortcut[name]
-            success = False
             if hasattr(action, 'click'):
                 action.click()
             elif hasattr(action, 'trigger'):
                 action.trigger()
             break
-        
-
         
         self.checkSetDelObjActionActive(ev)
         
@@ -16939,6 +16943,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isChecked()
             )
             self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.setChecked(True)
+
+        if isShiftModifier and self.separateBudToolbar.sepModeSelector.isVisible():
+            self.separateBudToolbar_sepModeSelector_og_state = (
+                self.separateBudToolbar.separationMode()
+            )
+            self.separateBudToolbar.setSeparationMode(
+                'Slice by slice'
+            )
         
         isAnyModifier = isAltModifier or isCtrlModifier or isShiftModifier
         if not isAnyModifier and self.overlayButton.isChecked():
@@ -17153,6 +17165,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             or self.delObjToolAction.isChecked()
         )
 
+        if (
+            ev.key() == Qt.Key_Shift
+            and not ev.isAutoRepeat()
+            and getattr(
+                self,
+                'separateBudToolbar_sepModeSelector_og_state',
+                None,
+            ) is not None
+        ):
+            self.separateBudToolbar.setSeparationMode(
+                self.separateBudToolbar_sepModeSelector_og_state
+            )
+            self.separateBudToolbar_sepModeSelector_og_state = None
+            
         if (
             ev.key() == Qt.Key_Shift
             and not ev.isAutoRepeat()

@@ -3269,6 +3269,13 @@ class ToolBar(QToolBar):
         checkbox.action = self.addWidget(checkbox)
         return checkbox
     
+    def addSpacing(self, width=5):
+        spacer = QWidget()
+        spacer.setFixedWidth(width)
+        spacer.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
+        action = self.addWidget(spacer)
+        return action
+    
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
     sigDisableGhost = Signal()
@@ -3758,7 +3765,6 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
 class Toggle(QCheckBox):
     def __init__(
             self,
-            label_text='',
             initial=None,
             width=80,
             bg_color='#b3b3b3',
@@ -3771,7 +3777,6 @@ class Toggle(QCheckBox):
         # self.setFixedSize(width, 28)
         self.setCursor(Qt.PointingHandCursor)
 
-        self._label_text = label_text
         self._bg_color = bg_color
         self._circle_color = circle_color
         self._active_color = active_color
@@ -3914,6 +3919,44 @@ class Toggle(QCheckBox):
             )
 
         p.end()
+        
+        
+class ToggleWithLabel(QWidget):
+    def __init__(self, label_text='', *args, **kwargs):
+        super().__init__()
+        self._toggle = Toggle(*args, **kwargs)
+        self._toggle.setSizePolicy(
+            QSizePolicy.Fixed, QSizePolicy.Fixed
+        )
+
+        self.label = Label(label_text, self)
+        self.label.setCursor(Qt.PointingHandCursor)
+        self.label.mousePressEvent = lambda event: self._toggle.click()
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.label)
+        layout.addStretch()
+        layout.addWidget(self._toggle)
+
+        # Forward the signal so existing connections keep working
+        self.stateChanged = self._toggle.stateChanged
+
+    def isChecked(self):
+        return self._toggle.isChecked()
+
+    def setChecked(self, state):
+        self._toggle.setChecked(state)
+
+    def toggle(self):
+        self._toggle.toggle()
+
+    def setDisabled(self, disable):
+        self._toggle.setDisabled(disable)
+        self.label.setDisabled(disable)
+
+    def setEnabled(self, enable):
+        self.setDisabled(not enable)
 
 def QKeyEventToString(event: QKeyEvent, notAllowedModifier=None):
     isAltKey = event.key()==Qt.Key_Alt
@@ -13849,12 +13892,44 @@ class SeparateBudToolbar(ToolBar):
         sepModeSelector.currentIndexChanged.connect(self.onSepModeChanged)
         self.sepModeSelector = sepModeSelector
         
-        separator = self.addSeparator()
+        separator2D = self.addSeparator()
+
+        self.convexity2DParamWidgets = {}
+        self.convexity2DControlActions = list(separator2D._actions)
+        float_2d_params = (
+            ('eps_percent', 'Epsilon fraction:', 0.01, 0.0, 1.0, 0.01,
+             'Contour approximation fraction used by 2D convexity splitting.'),
+        )
+        for name, label_text, default, minimum, maximum, step, tooltip in float_2d_params:
+            label = QLabel(label_text, self)
+            selector = QDoubleSpinBox(self)
+            selector.setRange(minimum, maximum)
+            selector.setSingleStep(step)
+            selector.setValue(default)
+            label.setToolTip(tooltip)
+            selector.setToolTip(tooltip)
+            self.convexity2DControlActions.append(self.addWidget(label))
+            self.convexity2DControlActions.append(self.addWidget(selector))
+            self.convexity2DParamWidgets[name] = (selector, default, float)
+            self.convexity2DControlActions.append(self.addSpacing())
+
+        splitDisconnected = ToggleWithLabel(
+            label_text='Split disconnected regions'
+        )
+        splitDisconnected.setToolTip(
+            'Assign separate IDs to disconnected parts before applying '
+            'slice-by-slice convexity splitting or 2D splitting.'
+        )
+        splitDisconnected.setChecked(True)
+        self.convexity2DControlActions.append(self.addWidget(splitDisconnected))
+        self.convexity2DParamWidgets['split_disconnected'] = (
+            splitDisconnected, True, bool
+        )
+        self.convexity2DControlActions.append(self.addSpacing())
+
+        separator3D = self.addSeparator()
         
         float_params = (
-            ('eps_percent', 'Epsilon fraction:', 0.01, 0.0, 1.0, 0.01,
-             'Compatibility parameter retained from the 2D splitter. '
-             'It is currently unused by the 3D algorithm.'),
             ('smooth_sigma', 'EDT smoothing sigma:', 1.0, 0.0, 1000.0, 0.1,
              'Gaussian smoothing applied to the distance transform in '
              'physical units. Larger values suppress more boundary noise.'),
@@ -13867,7 +13942,7 @@ class SeparateBudToolbar(ToolBar):
             ('min_volume_frac', 'Min. volume fraction:', 0.1, 0.0, 0.5, 0.01,
              'Reject splits where the smaller child is below this fraction '
              'of the parent volume.'),
-            ('min_solidity', 'Min. solidity:', 0.93, 0.0, 1.0, 0.01,
+            ('min_solidity', 'Min. solidity:', 0.90, 0.0, 1.0, 0.01,
              'Objects at or above this solidity with fewer than two seeds '
              'are not split when the solidity gate is enabled.'),
             ('defect_depth_frac', 'Defect depth fraction:', 0.2, 0.0, 1.0, 0.01,
@@ -13879,6 +13954,9 @@ class SeparateBudToolbar(ToolBar):
         )
         self.convexity3DParamWidgets = {}
         self.convexityControlActions = []
+
+        self.convexityControlActions.extend(separator3D._actions)
+
         for name, label_text, default, minimum, maximum, step, tooltip in float_params:
             label = QLabel(label_text, self)
             selector = QDoubleSpinBox(self)
@@ -13889,8 +13967,13 @@ class SeparateBudToolbar(ToolBar):
             self.convexityControlActions.append(self.addWidget(label))
             self.convexityControlActions.append(self.addWidget(selector))
             self.convexity3DParamWidgets[name] = (selector, default, float)
+            spacer = self.addSpacing()
+            self.convexityControlActions.append(spacer)
 
         bool_params = (
+            ('split_disconnected', 'Split disconnected regions', True,
+             'Assign separate IDs to disconnected 3D components before '
+             'applying convexity splitting.'),
             ('require_improvement', 'Prefer solidity improvement', True,
              'Prefer candidates where both children are more solid than the '
              'parent. If none improve solidity, rank all valid candidates.'),
@@ -13899,14 +13982,16 @@ class SeparateBudToolbar(ToolBar):
              'transform contains at least two seeds.'),
         )
         for name, text, default, tooltip in bool_params:
-            checkbox = CheckBox(text, self)
+            checkbox = ToggleWithLabel(label_text=text)
             checkbox.setToolTip(tooltip)
             self.convexityControlActions.append(self.addWidget(checkbox))
             self.convexity3DParamWidgets[name] = (checkbox, default, bool)
+            spacer = self.addSpacing()
+            self.convexityControlActions.append(spacer)
 
         self.goToSepSliceSeparator = self.addSeparator()
         
-        goToSepSliceCheckBox = CheckBox('Go to separate slice', self)
+        goToSepSliceCheckBox = ToggleWithLabel(label_text='Go to separated slice')
         self.goToSepSliceCheckBoxAction = self.addWidget(
             goToSepSliceCheckBox
         )
@@ -13917,6 +14002,11 @@ class SeparateBudToolbar(ToolBar):
 
         goToSepSliceCheckBox.stateChanged.connect(self.saveSettings)
         for widget, _, value_type in self.convexity3DParamWidgets.values():
+            if value_type is bool:
+                widget.stateChanged.connect(self.saveSettings)
+            else:
+                widget.valueChanged.connect(self.saveSettings)
+        for widget, _, value_type in self.convexity2DParamWidgets.values():
             if value_type is bool:
                 widget.stateChanged.connect(self.saveSettings)
             else:
@@ -13937,7 +14027,18 @@ class SeparateBudToolbar(ToolBar):
         self.goToSepSliceCheckBox.setChecked(go_to_sep_slice)
 
         for name, (widget, default, value_type) in self.convexity3DParamWidgets.items():
-            value = parent._get_setting_value(name, default, value_type)
+            value = parent._get_setting_value(
+                name, default, value_type
+            )
+            if value_type is bool:
+                widget.setChecked(value)
+            else:
+                widget.setValue(value)
+
+        for name, (widget, default, value_type) in self.convexity2DParamWidgets.items():
+            value = parent._get_setting_value(
+                name, default, value_type
+            )
             if value_type is bool:
                 widget.setChecked(value)
             else:
@@ -13955,11 +14056,17 @@ class SeparateBudToolbar(ToolBar):
         for name, (widget, _, value_type) in self.convexity3DParamWidgets.items():
             value = widget.isChecked() if value_type is bool else widget.value()
             settings_df.loc[name, 'value'] = value
+        for name, (widget, _, value_type) in self.convexity2DParamWidgets.items():
+            value = widget.isChecked() if value_type is bool else widget.value()
+            settings_df.loc[name, 'value'] = value
         
         settings_df.to_csv(self.parent.settings_csv_path)
         
     def onSepModeChanged(self, index):
         mode = self.sepModeSelector.currentText()
+        self.setConvexity2DControlsVisible(
+            not self.seg_3D or mode == 'Slice by slice'
+        )
         self.setConvexityControlsVisible(
             self.seg_3D and mode == '3D Convexity defects'
         )
@@ -13976,16 +14083,31 @@ class SeparateBudToolbar(ToolBar):
     def setConvexityControlsVisible(self, visible):
         for action in self.convexityControlActions:
             action.setVisible(visible)
+
+    def setConvexity2DControlsVisible(self, visible):
+        for action in self.convexity2DControlActions:
+            action.setVisible(visible)
             
     def goToSepSliceChecked(self):
         return self.goToSepSliceCheckBox.isChecked()
 
     def separationMode(self):
         return self.sepModeSelector.currentText()
+    
+    def setSeparationMode(self, mode):
+        self.sepModeSelector.setCurrentText(mode)
 
     def splitConv3DKwargs(self):
         kwargs = {}
         for name, (widget, _, value_type) in self.convexity3DParamWidgets.items():
+            kwargs[name] = (
+                widget.isChecked() if value_type is bool else widget.value()
+            )
+        return kwargs
+
+    def splitConv2DKwargs(self):
+        kwargs = {}
+        for name, (widget, _, value_type) in self.convexity2DParamWidgets.items():
             kwargs[name] = (
                 widget.isChecked() if value_type is bool else widget.value()
             )

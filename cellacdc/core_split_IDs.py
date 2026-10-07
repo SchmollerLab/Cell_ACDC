@@ -524,6 +524,7 @@ def split_along_convexity_defects_3D(
         gate_on_solidity=True,
         defect_depth_frac=0.2,
         max_ringness=0.35,
+        split_disconnected=True,
     ):
     """
     Split the object `ID` in the 3D label image `lab` at its dominant
@@ -550,6 +551,9 @@ def split_along_convexity_defects_3D(
     min_volume_frac : float
         Reject a split whose smaller child is below this fraction of the
         parent volume.
+    split_disconnected : bool
+        Assign separate IDs to disconnected 3D components before trying
+        a convexity-based split.
     min_solidity, gate_on_solidity : float, bool
         Objects at or above `min_solidity` with a single EDT seed are
         left alone.
@@ -594,20 +598,21 @@ def split_along_convexity_defects_3D(
     # ------------------------------------------------------------------
     # 1. already-disconnected components: relabel, no geometry needed
     # ------------------------------------------------------------------
-    components = skimage.measure.label(lab_ID_bool, connectivity=3)
-    components_rp = skimage.measure.regionprops(components)
-    if len(components_rp) > 1:
-        components_out = np.zeros_like(components, dtype=lab.dtype)
-        components_rp.sort(key=lambda component: component.area, reverse=True)
-        separateIDs = [ID]
-        for component_i, component in enumerate(components_rp):
-            component_ID = ID if component_i == 0 else max_ID + max_i
-            components_out[component.slice][component.image] = component_ID
-            if component_i > 0:
-                separateIDs.append(component_ID)
-                max_i += 1
-        lab[obj_slice][lab_ID_bool] = components_out[lab_ID_bool]
-        return lab, True, separateIDs
+    if split_disconnected:
+        components = skimage.measure.label(lab_ID_bool, connectivity=3)
+        components_rp = skimage.measure.regionprops(components)
+        if len(components_rp) > 1:
+            components_out = np.zeros_like(components, dtype=lab.dtype)
+            components_rp.sort(key=lambda component: component.area, reverse=True)
+            separateIDs = [ID]
+            for component_i, component in enumerate(components_rp):
+                component_ID = ID if component_i == 0 else max_ID + max_i
+                components_out[component.slice][component.image] = component_ID
+                if component_i > 0:
+                    separateIDs.append(component_ID)
+                    max_i += 1
+            lab[obj_slice][lab_ID_bool] = components_out[lab_ID_bool]
+            return lab, True, separateIDs
 
     # ------------------------------------------------------------------
     # 2. EDT, seeds, and the decision of whether to split at all
@@ -734,12 +739,15 @@ def split_all_along_convexity_defects_3D(lab, voxel_size=None, max_iter=3, **kwa
             break
     return lab
 
-def split_along_convexity_defects_slice_by_slice(ID, lab, max_ID, eps_percent=0.01):
+def split_along_convexity_defects_slice_by_slice(
+        ID, lab, max_ID, eps_percent=0.01, split_disconnected=False
+    ):
     """Split 3D components first, then check convexity on each z-slice."""
     if lab.ndim != 3:
         raise ValueError(f'Expected a 3D label image, got {lab.ndim}D.')
 
     object_mask = lab == ID
+    original_object_mask = object_mask.copy()
     components = skimage.measure.label(object_mask, connectivity=3)
     component_props = skimage.measure.regionprops(components)
     component_props.sort(key=lambda component: component.area, reverse=True)
@@ -763,9 +771,10 @@ def split_along_convexity_defects_slice_by_slice(ID, lab, max_ID, eps_percent=0.
             if not np.any(lab_2D == component_ID):
                 continue
 
-            split_lab, success, _ = split_along_convexity_defects(
+            split_lab, success, separateIDs = split_along_convexity_defects(
                 component_ID, lab_2D, child_ID - 1,
-                eps_percent=eps_percent, split_disconnected=False
+                eps_percent=eps_percent,
+                split_disconnected=split_disconnected,
             )
             if not success:
                 continue
@@ -777,9 +786,13 @@ def split_along_convexity_defects_slice_by_slice(ID, lab, max_ID, eps_percent=0.
             separate_IDs.append(child_ID)
             next_ID += 1
             was_split = True
+        next_ID = max(next_ID, int(lab.max()) + 1)
 
     if not was_split:
         return lab, False, []
+    separate_IDs = sorted(int(label) for label in np.unique(
+        lab[original_object_mask]
+    ) if label > 0)
     return lab, True, separate_IDs
 
 def convexity_defects(img, eps_percent):
@@ -804,13 +817,18 @@ def split_connected_components(lab, rp=None, max_ID=None):
         rp_lab_obj = skimage.measure.regionprops(lab_obj)
         if len(rp_lab_obj)<=1:
             continue
-        n_components = len(rp_lab_obj)
-        lab_obj[lab_obj > 0] += max_ID
+        rp_lab_obj.sort(key=lambda component: component.area, reverse=True)
+        components_out = np.zeros_like(lab_obj, dtype=lab.dtype)
+        for component_i, component in enumerate(rp_lab_obj):
+            component_ID = (
+                obj.label if component_i == 0 else max_ID + component_i
+            )
+            components_out[component.slice][component.image] = component_ID
         _slice = obj.slice
         _objMask = obj.image
-        lab[_slice][_objMask] = lab_obj[_objMask]
+        lab[_slice][_objMask] = components_out[_objMask]
         split_occured = True
-        max_ID += n_components
+        max_ID += len(rp_lab_obj) - 1
     return split_occured
 
 def split_along_convexity_defects(
@@ -825,7 +843,8 @@ def split_along_convexity_defects(
         lab_ID_bool = lab == ID
     if split_disconnected:
         # First try separating by labelling
-        lab_ID = lab_ID_bool.astype(int)
+        lab_ID = np.zeros_like(lab_ID_bool, dtype=lab.dtype)
+        lab_ID[lab_ID_bool] = ID
         rp_ID = skimage.measure.regionprops(lab_ID)
         split_occured = split_connected_components(
             lab_ID, rp=rp_ID, max_ID=max_ID
@@ -897,4 +916,3 @@ def split_along_convexity_defects(
     max_i += 1
     success = True
     return lab, success, splittedIDs
-

@@ -6,6 +6,7 @@ from cellacdc.core_split_IDs import (
     split_along_convexity_defects,
     split_along_convexity_defects_3D,
     split_along_convexity_defects_slice_by_slice,
+    split_connected_components,
 )
 
 
@@ -84,6 +85,23 @@ def test_split_slice_by_slice_does_not_split_slice_only_discontinuity():
     assert set(np.unique(result)) == {0, 7}
 
 
+def test_split_slice_by_slice_can_split_disconnected_regions_per_slice():
+    lab = np.zeros((3, 30, 30), dtype=np.uint32)
+    lab[:, 8:12, 5:9] = 7
+    lab[:, 8:12, 21:25] = 7
+    lab[1, 8:12, 9:21] = 7
+    original_mask = lab > 0
+
+    result, success, split_ids = split_along_convexity_defects_slice_by_slice(
+        7, lab, max_ID=7, split_disconnected=True
+    )
+
+    assert success
+    assert split_ids == [7, 8]
+    assert set(np.unique(result)) == {0, *split_ids}
+    np.testing.assert_array_equal(result > 0, original_mask)
+
+
 def test_split_slice_by_slice_splits_disconnected_3d_components_first():
     lab = np.zeros((3, 30, 30), dtype=np.uint32)
     lab[:, 3:8, 3:8] = 7
@@ -96,6 +114,51 @@ def test_split_slice_by_slice_splits_disconnected_3d_components_first():
     assert success
     assert split_ids == [7, 11]
     assert set(np.unique(result)) == {0, 7, 11}
+
+
+def test_split_slice_by_slice_keeps_original_id_on_largest_component():
+    yy, xx = np.ogrid[:40, :40]
+    dumbbell = (
+        ((yy - 20)**2 + (xx - 13)**2 <= 9**2)
+        | ((yy - 20)**2 + (xx - 27)**2 <= 9**2)
+    )
+    lab = np.zeros((5, 60, 60), dtype=np.uint32)
+    lab[:, 5:45, 5:45][:, dumbbell] = 7
+    largest_component = np.zeros_like(lab, dtype=bool)
+    largest_component[:, 5:45, 5:45] = dumbbell
+    lab[:, 5:10, 50:55] = 7
+    smaller_component = lab == 7
+    smaller_component[largest_component] = False
+    original_mask = lab == 7
+
+    result, success, split_ids = split_along_convexity_defects_slice_by_slice(
+        7, lab, max_ID=7, split_disconnected=True
+    )
+
+    assert success
+    assert split_ids == [7, 8, 9]
+    assert 7 in np.unique(result[largest_component])
+    assert 8 not in np.unique(result[largest_component])
+    assert np.all(result[smaller_component] == 8)
+    np.testing.assert_array_equal(result > 0, original_mask)
+
+
+def test_split_connected_components_keeps_original_id_on_largest_component():
+    lab = np.zeros((30, 30), dtype=np.uint32)
+    lab[2:14, 2:14] = 4
+    lab[3:7, 3:7] = 0
+    lab[20:25, 20:25] = 4
+    lab[2:14, 20:24] = 9
+    original_ID_mask = lab == 4
+    other_object_mask = lab == 9
+
+    split = split_connected_components(lab, max_ID=9)
+
+    assert split
+    assert set(np.unique(lab)) == {0, 4, 9, 10}
+    assert np.count_nonzero(lab == 4) > np.count_nonzero(lab == 10)
+    assert np.all(lab[original_ID_mask] > 0)
+    np.testing.assert_array_equal(lab[other_object_mask], 9)
 
 
 def test_split_along_convexity_defects_3d_splits_diagonal_touching_spheres():
