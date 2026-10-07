@@ -332,7 +332,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.measurementsWin.restoreState(self.measurementsWinState)
 
     def initAddMetricsWorker(self, posData, allPosDataInputs):
-        if self.doNotAskAgain:
+        if (
+                self.doNotAskAgain
+                and set(posData.chNames) == set(self.worker.kernel.ch_names)
+            ):
             self.worker.waitCond.wakeAll()
             return
 

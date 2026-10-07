@@ -1248,13 +1248,14 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             acdc_df_li, keys, posData, save_metrics, 
             computeMetricsWorker=computeMetricsWorker, 
             saveDataWorker=saveDataWorker,
-            last_cca_frame_i=last_cca_frame_i
+            last_cca_frame_i=last_cca_frame_i,
+            stop_frame_n=stop_frame_n
         )
     
     def _concat_and_save_acdc_df(
             self, acdc_df_li, keys, posData, save_metrics,
             computeMetricsWorker=None, saveDataWorker=None,
-            last_cca_frame_i=None
+            last_cca_frame_i=None, stop_frame_n=None
         ):
         
         all_frames_acdc_df = pd.concat(
@@ -1291,7 +1292,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         if not self.save_object_counts_table:
             return
         
-        countMapper, numObjsPerFrame = posData.countObjectsInSegm()
+        countMapper, numObjsPerFrame = posData.countObjectsInSegm(
+            stop_frame_n=stop_frame_n
+        )
         countMapper.pop('In current frame', None)
         df_count_endname = posData.saveObjCounts(
             countMapper, numObjsPerFrame, saveToAcdcDf=True

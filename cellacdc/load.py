@@ -1730,7 +1730,11 @@ class loadData:
             img_data[i] = frame
         return img_data
 
-    def countObjectsInSegmTimelapse(self, categories: set[str] | list[str]):
+    def countObjectsInSegmTimelapse(
+            self, 
+            categories: set[str] | list[str], 
+            stop_frame_n: int | None=None
+        ):
         numObjsCurrentFrame = len(self.IDs)
         
         uniqueIDsVisited = None
@@ -1749,8 +1753,11 @@ class loadData:
         if 'In entire video' in categories:
             numObjsTotal = 0
         
+        if stop_frame_n is None:
+            stop_frame_n = len(self.segm_data)
+
         numObjsPerFrame = {}
-        for frame_i in range(len(self.segm_data)):
+        for frame_i in range(stop_frame_n):
             lab = self.allData_li[frame_i]['labels']
             if lab is not None:
                 if hasattr(self.allData_li[frame_i]['regionprops'], 'IDs'):
@@ -1768,7 +1775,6 @@ class loadData:
                     uniqueIDsAll.update(IDsFrame)
                 
                 numObjsFrame = len(IDsFrame)
-                numObjsPerFrame[frame_i] = numObjsFrame
                 
                 if numObjsVisitedFrames is not None:
                     numObjsVisitedFrames += numObjsFrame
@@ -1781,11 +1787,14 @@ class loadData:
                 if numObjsTotal is not None or numObjsTotal is not None:
                     rp = skimage.measure.regionprops(self.segm_data[frame_i])
                 
+                numObjsFrame = len(rp)
                 if numObjsTotal is not None:
-                    numObjsTotal += len(rp)
+                    numObjsTotal += numObjsFrame
                     
                 if uniqueIDsAll is not None:
                     uniqueIDsAll.update([obj.label for obj in rp])
+                
+            numObjsPerFrame[frame_i] = numObjsFrame
         
         numUniqueObjsVisitedFrames = None
         if uniqueIDsVisited is not None:
@@ -1823,13 +1832,16 @@ class loadData:
     
     def countObjectsInSegm(
             self, 
-            categories: set[str] | list[str] | None=None
+            categories: set[str] | list[str] | None=None,
+            stop_frame_n: int | None=None
         ):
         if self.SizeT > 1:
             if categories is None:
                 categories = ['In entire video']
                 
-            return self.countObjectsInSegmTimelapse(categories)
+            return self.countObjectsInSegmTimelapse(
+                categories, stop_frame_n=stop_frame_n
+            )
         else:
             if categories is None:
                 categories = ['In current position']
@@ -1878,7 +1890,10 @@ class loadData:
         )
 
         acdc_df[df_count.columns] = df_count.iloc[0]
-        acdc_df = acdc_df.join(df_num_objs_per_frame)
+        acdc_df = acdc_df.drop(
+            columns=df_num_objs_per_frame.columns, 
+            errors='ignore'
+        ).join(df_num_objs_per_frame)
 
         acdc_df.to_csv(self.acdc_output_csv_path)
         

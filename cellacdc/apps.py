@@ -2303,7 +2303,7 @@ class SetMeasurementsDialog(QBaseDialog):
             self.setState(state)
 
         searchLineEdit.textEdited.connect(self.searchAndHighlight)
-        self.selectAllButton.clicked.connect(self.selectAll)
+        self.selectAllButton.sigClicked.connect(self.selectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)

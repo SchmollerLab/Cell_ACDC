@@ -4726,6 +4726,7 @@ class _metricsQGBox(QGroupBox):
 
         if isSegm3D:
             selectAll3DButton = selectAllPushButton(what=' 3D metrics')
+            selectAll3DButton.setChecked(False)
             selectAll3DButton.sigClicked.connect(self.checkAll3D)
             self.selectAll3DButton = selectAll3DButton
             buttonsLayout.addWidget(selectAll3DButton)
@@ -4860,12 +4861,21 @@ class _metricsQGBox(QGroupBox):
     def checkAll3D(self, button, checked):
         if self._parent is not None:
             self._parent.doNotWarn = True
+
         for checkBox in self.checkBoxes:
             if not checkBox.text().endswith('_3D'):
+                if checked:
+                    # Deselect non-3D 
+                    checkBox.setChecked(False)
                 continue
+
             checkBox.setChecked(checked)
         if self._parent is not None:
             self._parent.doNotWarn = False
+        
+        self.selectAllButton.sigClicked.disconnect()
+        self.selectAllButton.setChecked(checked)
+        self.selectAllButton.sigClicked.connect(self.checkAll)
 
     def checkAll(self, button, checked):
         if self._parent is not None:
@@ -4874,10 +4884,6 @@ class _metricsQGBox(QGroupBox):
             checkBox.setChecked(checked)
         if self._parent is not None:
             self._parent.doNotWarn = False
-        
-        self.selectAll3DButton.sigClicked.disconnect()
-        self.selectAll3DButton.setChecked(checked)
-        self.selectAll3DButton.sigClicked.connect(self.checkAll3D)
 
     def showInfo(self, checked=False):
         info_txt = self.sender().info

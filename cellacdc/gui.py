@@ -15647,7 +15647,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             activeCategories = self.countObjsWindow.activeCategories()
             
         posData = self.data[self.pos_i]        
-        allCategoryCountMapper = posData.countObjectsInSegmTimelapse(
+        allCategoryCountMapper, _ = posData.countObjectsInSegmTimelapse(
             activeCategories
         )
         if self.countObjsWindow is None:
