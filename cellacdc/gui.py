@@ -5733,7 +5733,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         # Check if right click on ROI
-        isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
+        isClickOnDelRoi = self.gui_handleClickOnDelRoi(event, left_click, right_click)
         if isClickOnDelRoi:
             return
 
@@ -7032,6 +7032,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.BudMothTempLine.setData([], [])
             self.wcLabel.setText('')
         
+        if cursorsInfo['setDelRoiCursor']:
+            self.app.setOverrideCursor(Qt.SizeAllCursor)
+
         if cursorsInfo['setKeepObjCursor']:
             x, y = event.pos()
             self.highlightHoverIDsKeptObj(x, y)
@@ -7186,17 +7189,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
         
+        posData = self.data[self.pos_i]
+        delROIs = (
+            posData.allData_li[posData.frame_i]['delROIs_info']['rois']
+        )
         # Alt key was released --> restore cursor
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
+        x, y = event.pos()
+        setDelRoiCursor = any([
+            self.isMouseOnDelRoi(roi, x, y) for roi in delROIs
+        ])
         setBrushCursor = (
             self.brushButton.isChecked() and not event.isExit()
-            and (noModifier or shift or ctrl)
+            and (noModifier or shift or ctrl) and not setDelRoiCursor
         )
         setEraserCursor = (
             self.eraserButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setAddDelPolyLineCursor = (
             self.addDelPolyLineRoiButton.isChecked() and not event.isExit()
@@ -7209,7 +7220,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         setWandCursor = (
             self.wandToolButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setLabelRoiCursor = (
             self.labelRoiButton.isChecked() and not event.isExit()
@@ -7225,7 +7236,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         setCurvCursor = (
             self.curvToolButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setKeepObjCursor = (
             self.keepIDsButton.isChecked() and not event.isExit()
@@ -7273,6 +7284,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.highlightHoverID(x, y)
         
         return {
+            'setDelRoiCursor': setDelRoiCursor,
             'setBrushCursor': setBrushCursor,
             'setEraserCursor': setEraserCursor,
             'setAddDelPolyLineCursor': setAddDelPolyLineCursor,
@@ -7895,27 +7907,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMouseDragImg1 = False
             self.whiteListIDsFreehandRegion(event)
 
-    def gui_clickedDelRoi(self, event, left_click, right_click):
+    def isMouseOnDelRoi(self, roi, x, y):
+        for handle in roi.handles:
+            h = handle['item']
+            if h.currentPen is h.hoverPen:
+                return True
+
+        mask, bbox = self.getRoiCoords(roi, return_mask=True)
+        # check if click insde bbox by correcting x and y and checking if something is out of bounds
+        (r0, r1, c0, c1) = bbox
+        if y<r0 or y>=r1 or x<c0 or x>=c1:
+            return False
+
+        # exact check
+        y_rel, x_rel = int(y-r0), int(x-c0)
+        if mask[y_rel, x_rel]:
+            return True
+        
+        return False
+
+    def gui_handleClickOnDelRoi(self, event, left_click, right_click):
         posData = self.data[self.pos_i]
         x, y = event.pos().x(), event.pos().y()
 
-        # Check if right click on ROI
+        # Check if click on ROI
         delROIs = (
-            posData.allData_li[posData.frame_i]['delROIs_info']['rois'].copy()
+            posData.allData_li[posData.frame_i]['delROIs_info']['rois']
         )
         for r, roi in enumerate(delROIs):
-            mask, bbox = self.getRoiCoords(roi, return_mask=True)
-            # check if click insde bbox by correcting x and y and checking if something is out of bounds
-            (r0, r1, c0, c1) = bbox
-            if y<r0 or y>=r1 or x<c0 or x>=c1:
-                clickedOnROI = False
-            else:
-                # exact check
-                y_rel, x_rel = int(y-r0), int(x-c0)
-                if mask[y_rel, x_rel]:
-                    clickedOnROI = True
-                else:
-                    clickedOnROI = False
+            clickedOnROI = self.isMouseOnDelRoi(roi, x, y)
             raiseContextMenuRoi = right_click and clickedOnROI
             dragRoi = left_click and clickedOnROI
             if raiseContextMenuRoi:
@@ -7989,7 +8009,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return getattr(self, '_isWhitelistIDsRoiVisible', False)
         return True
 
-    def gui_isClickInsideRoi(self, roi, event):
+    def gui_isMouseInsideRoi(self, roi, event):
         if roi is None:
             return False
         try:
@@ -8094,7 +8114,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.zoomRectButton.isChecked():
             activeRois.append(getattr(self, 'zoomRectItem', None))
 
-        activeRois = [roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
+        activeRois = [
+            roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
         
         # check that no other button was clicked
         
@@ -8112,7 +8133,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         if left_click and any(
-            self.gui_isClickInsideRoi(roi, event) for roi in activeRois
+            self.gui_isMouseInsideRoi(roi, event) for roi in activeRois
         ):
             event.ignore()
             return
@@ -8132,7 +8153,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         # Check if click on ROI
-        isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
+        isClickOnDelRoi = self.gui_handleClickOnDelRoi(
+            event, left_click, right_click
+        )
         if isClickOnDelRoi:
             return
         

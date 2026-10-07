@@ -2016,32 +2016,94 @@ class statusBarPermanentLabel(QWidget):
 
         self.setLayout(layout)
 
-class RichTextListWidgetItem(QListWidgetItem):
-    def __init__(self, text=''):
+class _RichTextItemEventFilter(QObject):
+
+    def __init__(self, item):
         super().__init__()
+        self.item = item
+
+    def eventFilter(self, obj, event):
+        listWidget = self.item._listWidget
+
+        if listWidget is None:
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.MouseMove:
+            pos = event.position().toPoint()
+            hoveredItem = listWidget.itemAt(pos)
+            self.item.setHovered(hoveredItem is self.item)
+
+        elif event.type() == QEvent.Leave:
+            self.item.setHovered(False)
+
+        return super().eventFilter(obj, event)
+
+
+class RichTextListWidgetItem(QListWidgetItem):
+    def __init__(self, text='', parent=None):
+        super().__init__(parent)
 
         self._plainText = ''
-        
-        self._label = QLabel()
-        self._label.setTextFormat(Qt.RichText)
-        self._label.setAttribute(
+        self._listWidget = None
+        self._hovered = False
+
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.RichText)
+        self.label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.label.setAttribute(
             Qt.WA_TransparentForMouseEvents
         )
+
+        self._eventFilter = _RichTextItemEventFilter(self)
 
         self.setText(text)
 
     def setText(self, text):
+        """Set rich text while keeping the plain text separately."""
         doc = QTextDocument()
         doc.setHtml(text)
 
         self._plainText = doc.toPlainText()
-        self._label.setText(text)
+
+        # Do NOT let QListWidgetItem paint its own text.
+        super().setText('')
+
+        # Rich representation is painted by the QLabel.
+        self.label.setText(text)
 
     def text(self):
         return self._plainText
-    
-    def label(self):
-        return self._label
+
+    def setListWidget(self, listWidget):
+        self._listWidget = listWidget
+
+        listWidget.viewport().installEventFilter(
+            self._eventFilter
+        )
+
+        self._updateLabelStyle()
+
+    def setHovered(self, hovered):
+        if self._hovered == hovered:
+            return
+
+        self._hovered = hovered
+        self._updateLabelStyle()
+
+    def _updateLabelStyle(self):
+        if self._listWidget is None:
+            return
+
+        if self._hovered or self.isSelected():
+            color = 'black'
+        else:
+            color = self._listWidget.palette().color(
+                self._listWidget.foregroundRole()
+            ).name()
+
+        self.label.setStyleSheet(
+            f'background: transparent; color: {color};'
+        )
 
 class listWidget(QListWidget):
     def __init__(
@@ -2063,10 +2125,12 @@ class listWidget(QListWidget):
         self.minimizeHeight = minimizeHeight
     
     def addRichTextItem(self, text: str):
-        item = RichTextListWidgetItem(text=text)
+        item = RichTextListWidgetItem(text)
 
         self.addItem(item)
-        self.setItemWidget(item, item.label())
+        self.setItemWidget(item, item.label)
+
+        item.setListWidget(self)
 
         return item
 
