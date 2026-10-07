@@ -1735,7 +1735,10 @@ class loadData:
             categories: set[str] | list[str], 
             stop_frame_n: int | None=None
         ):
-        numObjsCurrentFrame = len(self.IDs)
+        try:
+            numObjsCurrentFrame = len(self.IDs)
+        except AttributeError as err:
+            numObjsCurrentFrame = np.nan
         
         uniqueIDsVisited = None
         uniqueIDsAll = None
