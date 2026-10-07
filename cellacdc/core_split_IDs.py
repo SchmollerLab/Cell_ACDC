@@ -740,20 +740,27 @@ def split_all_along_convexity_defects_3D(lab, voxel_size=None, max_iter=3, **kwa
     return lab
 
 def split_along_convexity_defects_slice_by_slice(
-        ID, lab, max_ID, eps_percent=0.01, split_disconnected=False
+        ID, lab, max_ID, eps_percent=0.01, split_disconnected=False, rp=None
     ):
-    """Split 3D components first, then check convexity on each z-slice."""
+    """Separate 3D components, otherwise split convexity defects per z-slice."""
     if lab.ndim != 3:
         raise ValueError(f'Expected a 3D label image, got {lab.ndim}D.')
 
-    object_mask = lab == ID
-    original_object_mask = object_mask.copy()
+    if rp is None:
+        object_mask = lab == ID
+    else:
+        obj = rp.get_obj_from_ID(ID)
+        if obj is None:
+            raise ValueError(f'Object with ID {ID} was not found in regionprops.')
+        object_mask = np.zeros_like(lab, dtype=bool)
+        object_mask[obj.slice][obj.image] = True
+
     components = skimage.measure.label(object_mask, connectivity=3)
     component_props = skimage.measure.regionprops(components)
     component_props.sort(key=lambda component: component.area, reverse=True)
 
     component_IDs = []
-    next_ID = max_ID + 1
+    next_ID = max(int(max_ID), int(lab.max())) + 1
     for component_i, component in enumerate(component_props):
         component_ID = ID if component_i == 0 else next_ID
         if component_i > 0:
@@ -762,16 +769,18 @@ def split_along_convexity_defects_slice_by_slice(
         component_lab[component.image] = component_ID
         component_IDs.append(component_ID)
 
-    was_split = len(component_IDs) > 1
+    if len(component_IDs) > 1:
+        return lab, True, component_IDs
+
+    was_split = False
     separate_IDs = list(component_IDs)
     for component_ID in component_IDs:
         child_ID = next_ID
-        component_was_split = False
         for z, lab_2D in enumerate(lab):
             if not np.any(lab_2D == component_ID):
                 continue
 
-            split_lab, success, separateIDs = split_along_convexity_defects(
+            split_lab, success, split_IDs = split_along_convexity_defects(
                 component_ID, lab_2D, child_ID - 1,
                 eps_percent=eps_percent,
                 split_disconnected=split_disconnected,
@@ -780,19 +789,13 @@ def split_along_convexity_defects_slice_by_slice(
                 continue
 
             lab[z] = split_lab
-            component_was_split = True
-
-        if component_was_split:
-            separate_IDs.append(child_ID)
-            next_ID += 1
+            for split_ID in split_IDs:
+                if split_ID not in separate_IDs:
+                    separate_IDs.append(split_ID)
             was_split = True
-        next_ID = max(next_ID, int(lab.max()) + 1)
 
     if not was_split:
         return lab, False, []
-    separate_IDs = sorted(int(label) for label in np.unique(
-        lab[original_object_mask]
-    ) if label > 0)
     return lab, True, separate_IDs
 
 def convexity_defects(img, eps_percent):
@@ -801,6 +804,12 @@ def convexity_defects(img, eps_percent):
     cnt = max(contours, key=cv2.contourArea)
     cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
     hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
+    hull_indices = hull.ravel()
+    hull_diffs = np.diff(hull_indices)
+    if not (
+        np.all(hull_diffs > 0) or np.all(hull_diffs < 0)
+    ):
+        return cnt, None
     defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
     return cnt, defects
 

@@ -5904,6 +5904,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ):
                 result = core_split_IDs.split_along_convexity_defects_slice_by_slice(
                     ID, posData.lab, max_ID,
+                    rp=posData.rp,
                     **self.separateBudToolbar.splitConv2DKwargs(),
                 )
                 posData.lab, success, splittedIDs = result
