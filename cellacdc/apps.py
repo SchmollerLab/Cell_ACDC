@@ -2084,8 +2084,8 @@ class SetMeasurementsDialog(QBaseDialog):
         topLayout = QHBoxLayout()
 
         
-        self.doNotAskAgainCheckbox = QCheckBox(
-            'Use the same selection for the next selected experiment folders'
+        self.doNotAskAgainCheckbox = widgets.Toggle(
+            label_text='Use the same selection for all following selected experiment folders'
         )
         self.doNotAskAgainCheckbox.setVisible(addDoNotAskAgainCheckbox)
         topLayout.addWidget(self.doNotAskAgainCheckbox)

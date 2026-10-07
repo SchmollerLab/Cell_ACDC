@@ -3762,84 +3762,204 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
         mask, self._slice = myutils.clipSelemMask(mask, shape, Yc, Xc, copy=False)
         return mask
 
-class Toggle(QCheckBox):
+class Toggle(QWidget):
+
+    toggled = Signal(bool)
+
     def __init__(
             self,
             label_text='',
-            initial=None,
-            width=80,
+            initial=False,
+            width=36,
+            height=18,
             bg_color='#b3b3b3',
             circle_color='#ffffff',
-            active_color='#26dd66',# '#005ce6',
-            animation_curve=QEasingCurve.Type.InOutQuad
+            active_color='#26dd66',
+            animation_curve=QEasingCurve.Type.InOutQuad,
+            parent=None,
         ):
-        QCheckBox.__init__(self)
-
-        # self.setFixedSize(width, 28)
-        self.setCursor(Qt.PointingHandCursor)
+        super().__init__(parent)
 
         self._label_text = label_text
+
+        self._toggle_width = width
+        self._toggle_height = height
+
         self._bg_color = bg_color
         self._circle_color = circle_color
         self._active_color = active_color
-        self._disabled_active_color = colors.lighten_color(active_color)
-        self._disabled_circle_color = colors.lighten_color(circle_color)
-        self._disabled_bg_color = colors.lighten_color(bg_color, amount=0.5)
+
+        self._disabled_active_color = (
+            colors.lighten_color(active_color)
+        )
+        self._disabled_circle_color = (
+            colors.lighten_color(circle_color)
+        )
+        self._disabled_bg_color = (
+            colors.lighten_color(
+                bg_color,
+                amount=0.5
+            )
+        )
+
         self._circle_margin = 4
 
-        self._circle_position = int(self._circle_margin/2)
-        self.animation = QPropertyAnimation(self, b'circle_position', self)
+        self._checked = bool(initial)
+
+        # Will be initialized when the widget gets its
+        # actual geometry.
+        self._circle_position = 0
+
+        self.animation = QPropertyAnimation(
+            self,
+            b'circle_position',
+            self
+        )
         self.animation.setEasingCurve(animation_curve)
         self.animation.setDuration(200)
 
-        self.stateChanged.connect(self.start_transition)
-        self.requestedState = None
+        # --------------------------------------------------
+        # Label
+        # --------------------------------------------------
 
-        self.installEventFilter(self)
-        self._isChecked = False
+        self._label = QLabel(self._label_text)
+        self._label.setAlignment(
+            Qt.AlignLeft | Qt.AlignVCenter
+        )
+        self._label.setAttribute(
+            Qt.WA_TransparentForMouseEvents
+        )
 
-        if initial is not None:
-            self.setChecked(initial)
+        # --------------------------------------------------
+        # Layout
+        # --------------------------------------------------
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        layout.addWidget(self._label)
+        layout.addStretch()
+
+        self.setCursor(Qt.PointingHandCursor)
+
+    # ------------------------------------------------------
+    # Text
+    # ------------------------------------------------------
+
+    def text(self):
+        return self._label_text
+
+    def setText(self, text):
+        self._label_text = text
+        self._label.setText(text)
+
+    # ------------------------------------------------------
+    # State
+    # ------------------------------------------------------
+
+    def isChecked(self):
+        return self._checked
+
+    def setChecked(self, checked):
+        checked = bool(checked)
+
+        if self._checked == checked:
+            return
+
+        self._checked = checked
+
+        # If we already have valid geometry, animate.
+        if self.width() > 0 and self.height() > 0:
+            self._startTransition()
+
+        self.toggled.emit(checked)
+
+        self.update()
+
+    def toggle(self):
+        self.setChecked(not self._checked)
+
+    # ------------------------------------------------------
+    # Geometry
+    # ------------------------------------------------------
 
     def sizeHint(self):
-        return QSize(36, 18)
+        label_size = self._label.sizeHint()
 
-    def eventFilter(self, object, event):
-        # To get the actual position of the circle we need to wait that
-        # the widget is visible before setting the state
-        if event.type() == QtScoped.QEventTypeAttribute('Show') and self.requestedState is not None:
-            self.setChecked(self.requestedState)
-        return False
+        return QSize(
+            label_size.width()
+            + 6
+            + self._toggle_width,
+            max(
+                label_size.height(),
+                self._toggle_height,
+            )
+        )
 
-    def setChecked(self, state):
-        # To get the actual position of the circle we need to wait that
-        # the widget is visible before setting the state
-        self._isChecked = state
-        if self.isVisible():
-            self.requestedState = None
-            QCheckBox.setChecked(self, state>0)
-        else:
-            self.requestedState = state
-    
-    def isChecked(self):
-        if self.isVisible():
-            return super().isChecked()
-        else:
-            return self._isChecked
+    def toggleRect(self):
+        x = self.width() - self._toggle_width
 
-    def circlePos(self, state: bool):
-        start = int(self._circle_margin/2)
-        if state:
-            if self.isVisible():
-                height, width = self.height(), self.width()
-            else:
-                sizeHint = self.sizeHint()
-                height, width = sizeHint.height(), sizeHint.width()
-            circle_diameter = height-self._circle_margin
-            pos = width-start-circle_diameter
-        else:
-            pos = start
-        return pos
+        y = int(
+            (self.height() - self._toggle_height) / 2
+        )
+
+        return QRect(
+            x,
+            y,
+            self._toggle_width,
+            self._toggle_height,
+        )
+
+    def circleDiameter(self):
+        return (
+            self._toggle_height
+            - self._circle_margin
+        )
+
+    def circlePos(self, checked):
+        rect = self.toggleRect()
+
+        diameter = self.circleDiameter()
+        margin = self._circle_margin / 2
+
+        if checked:
+            return (
+                rect.x()
+                + rect.width()
+                - margin
+                - diameter
+            )
+
+        return rect.x() + margin
+
+    def _updateCirclePosition(self):
+        self._circle_position = self.circlePos(
+            self._checked
+        )
+        self.update()
+
+    # ------------------------------------------------------
+    # Show / resize
+    # ------------------------------------------------------
+
+    def showEvent(self, event):
+        super().showEvent(event)
+
+        # At this point Qt has assigned the real geometry.
+        self._updateCirclePosition()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        # Keep the circle correctly positioned if the widget
+        # is resized.
+        if not self.animation.state():
+            self._updateCirclePosition()
+
+    # ------------------------------------------------------
+    # Animation
+    # ------------------------------------------------------
 
     @Property(float)
     def circle_position(self):
@@ -3850,75 +3970,99 @@ class Toggle(QCheckBox):
         self._circle_position = pos
         self.update()
 
-    def start_transition(self, state):
+    def _startTransition(self):
         self.animation.stop()
-        pos = self.circlePos(state)
-        self.animation.setEndValue(pos)
+
+        self.animation.setStartValue(
+            self._circle_position
+        )
+        self.animation.setEndValue(
+            self.circlePos(self._checked)
+        )
+
         self.animation.start()
 
-    def hitButton(self, pos: QPoint):
-        return self.contentsRect().contains(pos)
+    # ------------------------------------------------------
+    # Interaction
+    # ------------------------------------------------------
 
-    def setDisabled(self, disable):
-        QCheckBox.setDisabled(self, disable)
-        if hasattr(self, 'label'):
-            self.label.setDisabled(disable)
+    def mousePressEvent(self, event):
+        if (
+            event.button() == Qt.LeftButton
+            and self.isEnabled()
+        ):
+            self.toggle()
+            event.accept()
+            return
+
+        super().mousePressEvent(event)
+
+    # ------------------------------------------------------
+    # Enabled state
+    # ------------------------------------------------------
+
+    def setDisabled(self, disabled):
+        super().setDisabled(disabled)
+        self._label.setDisabled(disabled)
         self.update()
 
-    def paintEvent(self, e):
-        circle_color = (
-            self._circle_color if self.isEnabled()
-            else self._disabled_circle_color
-        )
-        active_color = (
-            self._active_color if self.isEnabled()
-            else self._disabled_active_color
-        )
-        unchecked_color = (
-            self._bg_color if self.isEnabled()
-            else self._disabled_bg_color
-        )
+    # ------------------------------------------------------
+    # Painting
+    # ------------------------------------------------------
 
-        # set painter
+    def paintEvent(self, event):
+        if self.isEnabled():
+            circle_color = self._circle_color
+            active_color = self._active_color
+            unchecked_color = self._bg_color
+        else:
+            circle_color = self._disabled_circle_color
+            active_color = self._disabled_active_color
+            unchecked_color = self._disabled_bg_color
+
+        rect = self.toggleRect()
+
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # set no pen
+        p.setRenderHint(
+            QPainter.RenderHint.Antialiasing
+        )
         p.setPen(Qt.NoPen)
 
-        # draw rectangle
-        rect = QRect(0, 0, self.width(), self.height())
+        # --------------------------------------------------
+        # Background
+        # --------------------------------------------------
 
-        if not self.isChecked():
-            # Draw background
-            p.setBrush(QColor(unchecked_color))
-            half_h = int(self.height()/2)
-            p.drawRoundedRect(
-                0, 0, rect.width(), self.height(), half_h, half_h
-            )
+        background_color = (
+            active_color
+            if self._checked
+            else unchecked_color
+        )
 
-            # Draw circle
-            p.setBrush(QColor(circle_color))
-            p.drawEllipse(
-                int(self._circle_position), int(self._circle_margin/2),
-                self.height()-self._circle_margin,
-                self.height()-self._circle_margin
-            )
-        else:
-            # Draw background
-            p.setBrush(QColor(active_color))
-            half_h = int(self.height()/2)
-            p.drawRoundedRect(
-                0, 0, rect.width(), self.height(), half_h, half_h
-            )
+        p.setBrush(QColor(background_color))
 
-            # Draw circle
-            p.setBrush(QColor(circle_color))
-            p.drawEllipse(
-                int(self._circle_position), int(self._circle_margin/2),
-                self.height()-self._circle_margin,
-                self.height()-self._circle_margin
-            )
+        p.drawRoundedRect(
+            rect,
+            rect.height() / 2,
+            rect.height() / 2,
+        )
+
+        # --------------------------------------------------
+        # Circle
+        # --------------------------------------------------
+
+        p.setBrush(QColor(circle_color))
+
+        diameter = self.circleDiameter()
+
+        p.drawEllipse(
+            int(self._circle_position),
+            int(
+                rect.y()
+                + self._circle_margin / 2
+            ),
+            diameter,
+            diameter,
+        )
 
         p.end()
 
