@@ -6992,22 +6992,25 @@ class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = 'Select <b>video file to split</b>'
-            cancel = self.emitSelectVideoFile(
-                exp_path, pos_foldernames, False
-            )
-            if cancel:
-                self.sigCancelled.emit()
-                return
-            
-            selectedVideoEndname = self.selectedVideoEndname
+            if i == 0:
+                self.mainWin.infoText = 'Select <b>video file to split</b>'
+                cancel = self.emitSelectVideoFile(
+                    exp_path, pos_foldernames, False
+                )
+                if cancel:
+                    self.sigCancelled.emit()
+                    return
+                
+                selectedVideoEndname = self.selectedVideoEndname
 
-            # Emit ask setup parameters
-            self.mainWin.infoText = 'Setup video splitting process'
-            self.emitAskSetup(exp_path, pos_foldernames, selectedVideoEndname)
-            if self.abort:
-                self.sigCancelled.emit()
-                return
+                # Emit ask setup parameters
+                self.mainWin.infoText = 'Setup video splitting process'
+                self.emitAskSetup(
+                    exp_path, pos_foldernames, selectedVideoEndname
+                )
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
             
             dtype = self.dtypeOut
             prefix = self.prefixText
@@ -7199,17 +7202,17 @@ class CreateTrackastraInputDataWorker(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            self.mainWin.infoText = 'Select <b>input video file</b>'
-            cancel = self.emitSelectVideoFile(
-                exp_path, pos_foldernames, False
-            )
-            if cancel:
-                self.sigCancelled.emit()
-                return
-            
-            selectedVideoEndname = self.selectedVideoEndname
-
             if i == 0:
+                self.mainWin.infoText = 'Select <b>input video file</b>'
+                cancel = self.emitSelectVideoFile(
+                    exp_path, pos_foldernames, False
+                )
+                if cancel:
+                    self.sigCancelled.emit()
+                    return
+                
+                selectedVideoEndname = self.selectedVideoEndname
+
                 # Emit ask setup parameters
                 self.mainWin.infoText = 'Setup Trackastra data creation process'
                 self.emitAskSetup(
