@@ -168,12 +168,13 @@ def test_single_target_and_documented_id_selection_remain_supported(search):
     [
         ('bkgr', 'Background mean intensity', True),
         ('background', 'bkgrVal_mean', True),
-        ('backgroud', 'Background mean intensity', True),
+        ('backgroud', 'Background mean intensity', False),
+        (' MEAN ', 'Background mean intensity', True),
         ('bkgr', 'Cell area', False),
         ('', 'Background mean intensity', False),
     ],
 )
-def test_metric_search_matches_fuzzy_terms_and_synonyms(query, label, expected):
+def test_metric_highlighting_matches_literal_terms_and_synonyms(query, label, expected):
     assert widgets._matchesSearchText(query, label) is expected
 
 
@@ -183,6 +184,15 @@ def test_custom_search_numeric_query_does_not_offer_ids(search):
     search.on_search_text_changed('3')
     assert search.proxy_model.rowCount() == 1
     assert search.proxy_model.index(0, 0).data(Qt.UserRole + 2) is control
+
+
+def test_dropdown_retains_fuzzy_matching_without_checkbox_highlighting(search):
+    control = QPushButton()
+    search.addItems([('Background mean intensity', control)])
+    search.on_search_text_changed('backgroud')
+    assert search.proxy_model.rowCount() == 1
+    assert search.proxy_model.index(0, 0).data(Qt.UserRole + 2) is control
+    assert not widgets._matchesSearchText('backgroud', 'Background mean intensity')
 
 
 @pytest.fixture

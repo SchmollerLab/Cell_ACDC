@@ -4937,7 +4937,7 @@ class _metricsQGBox(QGroupBox):
     
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkBoxes:
-            highlighted = _matchesSearchText(text, checkbox.text(), threshold=0.65)
+            highlighted = _matchesSearchText(text, checkbox.text())
             self.setCheckboxHighlighted(highlighted, checkbox)
     
     def setCheckboxHighlighted(self, highlighted, checkbox):
@@ -10217,7 +10217,7 @@ class SetMeasurementsGroupBox(QGroupBox):
 
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkboxes.values():
-            highlighted = _matchesSearchText(text, checkbox.text(), threshold=0.65)
+            highlighted = _matchesSearchText(text, checkbox.text())
             self.setCheckboxHighlighted(highlighted, checkbox)
     
     def setCheckboxHighlighted(self, highlighted, checkbox):
@@ -13417,7 +13417,8 @@ def _searchSynonyms():
     return synonyms + [(synonym, phrase) for phrase, synonym in synonyms]
 
 
-def _matchesSearchText(query, text, threshold=0.5):
+def _matchesSearchText(query, text):
+    """Match checkbox labels literally, including synonym substitutions."""
     query = query.strip().casefold()
     if not query:
         return False
@@ -13431,8 +13432,6 @@ def _matchesSearchText(query, text, threshold=0.5):
 
     for query_variant in query_variants:
         if query_variant in text:
-            return True
-        if _fuzzySearchSimilarity(query_variant, text) >= threshold:
             return True
     return False
 
