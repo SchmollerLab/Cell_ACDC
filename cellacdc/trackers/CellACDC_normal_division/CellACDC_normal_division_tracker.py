@@ -659,8 +659,11 @@ class normal_division_lineage_tree:
         if self.gui_mode: # part of loading for gui
             posData = self.gui.data[self.gui.pos_i]
             for i, data in enumerate(posData.allData_li):
-                if ('generation_num_tree' in data['acdc_df'].columns 
-                    and data['acdc_df']['generation_num_tree'].notna().all()):
+                if (
+                    data['acdc_df'] is not None
+                    and 'generation_num_tree' in data['acdc_df'].columns 
+                    and data['acdc_df']['generation_num_tree'].notna().all()
+                    ):
                     self.frames_for_dfs.add(i)
         
         self.init_lineage_tree(lab, first_df, frame_i)

@@ -752,7 +752,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def addPathToOpenRecentMenu(self, path):
         for action in self.openRecentMenu.actions():
             if path == action.text():
-                break
+                return
         else:
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
@@ -1384,6 +1384,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.focusOnSearchAction)
         self.searchWidget.sigSearchId.connect(
             self.onSearchId
+        )
+        self.searchWidget.setMinimumHeight(
+            self.searchWidget.sizeHint().height()
         )
         
         
@@ -7003,7 +7006,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        cursorsInfo = self.gui_setCursor(modifiers, event, isHoverImg1)
+        cursorsInfo = self.gui_setCursor(
+            modifiers, event, isHoverImg1=isHoverImg1
+        )
         self.highlightHoverLostObj(modifiers, event)
         
         drawRulerLine = (
