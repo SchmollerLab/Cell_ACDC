@@ -3763,8 +3763,8 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
         return mask
 
 class Toggle(QWidget):
-
     toggled = Signal(bool)
+    clicked = Signal(bool)
 
     def __init__(
             self,
@@ -3822,13 +3822,14 @@ class Toggle(QWidget):
         # Label
         # --------------------------------------------------
 
-        self._label = QLabel(self._label_text)
+        self._label = QClickableLabel(self._label_text)
         self._label.setAlignment(
             Qt.AlignLeft | Qt.AlignVCenter
         )
         self._label.setAttribute(
             Qt.WA_TransparentForMouseEvents
         )
+        self._label.clicked.connect(self._on_label_clicked)
 
         # --------------------------------------------------
         # Layout
@@ -3842,6 +3843,9 @@ class Toggle(QWidget):
         layout.addStretch()
 
         self.setCursor(Qt.PointingHandCursor)
+
+    def _on_label_clicked(self):
+        self.clicked.emit(self.isChecked())
 
     # ------------------------------------------------------
     # Text
@@ -3992,6 +3996,7 @@ class Toggle(QWidget):
             and self.isEnabled()
         ):
             self.toggle()
+            self.clicked.emit(self.isChecked())
             event.accept()
             return
 
