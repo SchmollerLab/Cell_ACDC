@@ -733,11 +733,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.openRecentMenu.addActions(actions)
 
         # Setp 4. Add the More action
+        dates = df['opened_last_on'].to_list() if 'opened_last_on' in df.columns else None
         self.openRecentMoreDialog = apps.SearchableListboxDialog(
             recentPaths, 
             title='Recent paths', 
             searchLineEditText='Search recent paths (double-click to load)...',
             parent=self,
+            dates=dates,
         )
         self.openRecentMoreAction = QAction('More...', self)
         self.openRecentMoreAction.triggered.connect(

@@ -20446,12 +20446,17 @@ class SelectFoldersToAnalyse(QBaseDialog):
             'Add folder...', openFolder=True, 
             start_dir=myutils.getMostRecentPath()
         )
-        
-        buttonsLayout.insertWidget(3, delButton)
-        buttonsLayout.insertWidget(4, browseButton)
+        recentPathsButton = QPushButton('Add from recent paths...')
+        recentPathsButton.setToolTip(
+            'Select one or more existing folders from recent paths.'
+        )
+        buttonsLayout.insertWidget(3, recentPathsButton)
+        buttonsLayout.insertWidget(4, delButton)
+        buttonsLayout.insertWidget(5, browseButton)
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         browseButton.sigPathSelected.connect(self.addFolderPath)
+        recentPathsButton.clicked.connect(self.addFromRecentPaths)
         delButton.clicked.connect(self.removePaths)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
@@ -20678,9 +20683,61 @@ class SelectFoldersToAnalyse(QBaseDialog):
                     f'[WARNING]: The following path was already selected: '
                     f'"{selectedPath}"'
                 )
-                return
+                continue
                 
             self.listWidget.addItem(selectedPath)
+
+    def addFromRecentPaths(self):
+        """Open a multi-select dialog containing existing recent folders."""
+        recent_paths_file = myutils.recentPaths_path
+        if not os.path.exists(recent_paths_file):
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.information(
+                self,
+                'No recent paths',
+                'There are no recent paths to add.',
+            )
+            return
+
+        recent_df = pd.read_csv(recent_paths_file, index_col='index')
+        if 'opened_last_on' in recent_df.columns:
+            recent_df = recent_df.sort_values(
+                'opened_last_on', ascending=False
+            )
+        recent_paths = [
+            str(recent_path).replace('\\', '/')
+            for recent_path in recent_df['path']
+            if os.path.isdir(str(recent_path))
+        ]
+        recent_paths = list(dict.fromkeys(recent_paths))
+        if not recent_paths:
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.information(
+                self,
+                'No existing recent paths',
+                'None of the recent paths point to existing folders.',
+            )
+            return
+        
+        dates = recent_df['opened_last_on'].to_list() if 'opened_last_on' in recent_df.columns else None
+
+        self.recentPathsDialog = SearchableListboxDialog(
+            recent_paths,
+            title='Add from recent paths',
+            searchLineEditText='Search recent paths...',
+            parent=self,
+            multiSelection=True,
+            dates=dates,
+        )
+        self.recentPathsDialog.sigOk.connect(
+            self.addRecentFolderPaths
+        )
+        self.recentPathsDialog.show()
+
+    def addRecentFolderPaths(self, selected_paths):
+        """Add selected recent folders through the standard validation path."""
+        for selected_path in selected_paths:
+            self.addFolderPath(selected_path)
     
     def removePaths(self):
         for item in self.listWidget.selectedItems():
@@ -22000,7 +22057,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         self.close()
 
 class SearchableListboxDialog(QBaseDialog):
-    """Search and select an item from a recency-ordered list.
+    """Search and select one or more items from a recency-ordered list.
 
     Search ignores punctuation and separators, so paths can be searched with
     spaces in place of slashes or underscores. Results are ranked by match
@@ -22020,17 +22077,21 @@ class SearchableListboxDialog(QBaseDialog):
         parent: Optional parent widget.
         fuzzyThreshold: Initial minimum ratio accepted for fuzzy matches,
             from 0.0 (least strict) to 1.0 (most strict).
+        multiSelection: Allow selecting multiple rows and emit their values
+            as a list. When false, preserve the single-string result.
     """
 
-    sigOk = Signal(str)
+    sigOk = Signal(object)
 
     def __init__(
             self, 
             items: list[str],
+            dates: list[str] | None = None,
             title='Search items',
             searchLineEditText='Search...',
             parent=None,
             fuzzyThreshold: float = 0.5,
+            multiSelection: bool = False,
         ):
         super().__init__(parent=parent)
 
@@ -22042,6 +22103,8 @@ class SearchableListboxDialog(QBaseDialog):
 
         self.cancel = True
         self.allItems = items
+        self.dates = dates
+        self.multiSelection = multiSelection
 
         self.searchModel = widgets.QStandardItemModel()
         searchRoles = (widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,)
@@ -22120,7 +22183,9 @@ class SearchableListboxDialog(QBaseDialog):
         self.listWidget.setItemsExpandable(False)
         self.listWidget.setSortingEnabled(False)
         self.listWidget.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
+            QAbstractItemView.SelectionMode.ExtendedSelection
+            if self.multiSelection
+            else QAbstractItemView.SelectionMode.SingleSelection
         )
         self.listWidget.header().setStretchLastSection(False)
         self.listWidget.header().setSectionResizeMode(
@@ -22140,9 +22205,10 @@ class SearchableListboxDialog(QBaseDialog):
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        self.listWidget.itemDoubleClicked.connect(
-            lambda *_: self.ok_cb()
-        )
+        if not self.multiSelection:
+            self.listWidget.itemDoubleClicked.connect(
+                lambda *_: self.ok_cb()
+            )
 
         mainLayout.addWidget(self.searchLineEdit)
         mainLayout.addLayout(settingsLayout)
@@ -22160,6 +22226,17 @@ class SearchableListboxDialog(QBaseDialog):
         Nonexistent paths have no date; filesystem errors are reported in the
         returned tooltip instead of being silently discarded.
         """
+        if self.dates is not None:
+            index = self.allItems.index(item_text) if item_text in self.allItems else None
+            if index is not None:
+                date = self.dates[index]
+                # format the date for display
+                parsed_date = datetime.datetime.strptime(
+                    date, '%Y-%m-%d %H:%M:%S.%f'
+                )
+                date = parsed_date.strftime('%d.%m.%Y %H:%M')
+                return date, ''
+        
         if not os.path.exists(item_text):
             return '', ''
 
@@ -22174,7 +22251,7 @@ class SearchableListboxDialog(QBaseDialog):
         return (
             datetime.datetime.fromtimestamp(
                 modified_time
-            ).strftime('%Y-%m-%d %H:%M'),
+            ).strftime('%d.%m.%Y %H:%M'),
             '',
         )
 
@@ -22379,16 +22456,26 @@ class SearchableListboxDialog(QBaseDialog):
         msg.warning(self, 'Selection cannot be empty', txt)
 
     def ok_cb(self, *args, **kwargs):
-        """Emit the selected original item string and close the dialog."""
+        """Emit selected original strings and close the dialog.
+
+        Single-selection mode emits a string for backwards compatibility;
+        multi-selection mode emits a list of strings in displayed order.
+        """
         selected_items = self.listWidget.selectedItems()
         if not selected_items:
             self.warnSelectionEmpty()
             return
 
         self.cancel = False
-        self.selectedItemText = (
-            selected_items[0].data(0, Qt.UserRole)
-            or selected_items[0].text(0)
-        )
+        selected_texts = [
+            item.data(0, Qt.UserRole) or item.text(0)
+            for item in selected_items
+        ]
+        if self.multiSelection:
+            self.selectedItemTexts = selected_texts
+            result = selected_texts
+        else:
+            self.selectedItemText = selected_texts[0]
+            result = self.selectedItemText
         self.close()
-        self.sigOk.emit(self.selectedItemText)
+        self.sigOk.emit(result)
