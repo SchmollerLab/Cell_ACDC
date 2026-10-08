@@ -750,7 +750,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def addPathToOpenRecentMenu(self, path):
         for action in self.openRecentMenu.actions():
             if path == action.text():
-                break
+                return
         else:
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
