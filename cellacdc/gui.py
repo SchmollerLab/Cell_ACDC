@@ -2927,6 +2927,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
 
+        toolbar_targets = (
+            (self.overlayToolbar, self.overlayButton),
+            (self.autoPilotZoomToObjToolbar, self.autoPilotButton),
+            (self.brushEraserToolBar, (self.brushButton, self.eraserButton)),
+            (self.wandControlsToolbar, self.wandToolButton),
+            (self.labelRoiToolbar, self.labelRoiButton),
+            (self.keepIDsToolbar, self.keepIDsButton),
+            (self.mergeIDsToolbar, self.mergeIDsButton),
+            (self.pointsLayersToolbar, self.togglePointsLayerAction),
+            (self.manualTrackingToolbar, self.manualTrackingAction),
+            (self.manualBackgroundToolbar, self.manualBackgroundButton),
+            (self.copyLostObjToolbar, self.copyLostObjButton),
+            (self.clearFreehandRoiToolbar, self.clearFreehandRoiButton),
+            (self.whitelistIDsToolbar, self.whitelistIDsButton),
+            (self.magicPromptsToolbar, self.magicPromptsToolButton),
+            (self.promptSegmentPointsLayerToolbar, self.magicPromptsToolButton),
+        )
+        for toolbar, targets in toolbar_targets:
+            self.searchWidget.registerToolbarTargets(toolbar, targets)
+
         self.gui_createToolCursorRegistry()
         
     def gui_populateToolSettingsMenu(self):
@@ -36822,7 +36842,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if button is None:
             return
         
-        blinker = qutils.QControlBlink(button, qparent=self)
+        targets = self.searchWidget.highlightTargets(button)
+        blinker = qutils.QControlBlink(targets, qparent=self)
         blinker.start()
         
     def onSearchId(self, ID):

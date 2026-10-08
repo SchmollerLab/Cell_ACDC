@@ -13613,7 +13613,10 @@ class ButtonSearchWidget(QWidget):
         contain ``display``, ``search_name``, ``synonyms``, ``tooltip``,
         ``button_id``, and ``target``. All fields are optional: the mapping key
         is used as the default display and search name, while collections of
-        strings may be supplied as synonyms.
+        strings may be supplied as synonyms. ``target`` may be a widget,
+        action, GUI attribute name, or a list/tuple of these to highlight
+        together. Toolbar controls also highlight the opener controls
+        registered with :meth:`registerToolbarTargets`.
     """
 
     ACTION_ROLE = Qt.UserRole + 6
@@ -13632,6 +13635,7 @@ class ButtonSearchWidget(QWidget):
         self.guiWin = guiWin
 
         self.buttons_data = {}
+        self._toolbar_targets = {}
 
         self.init_ui(loadingType=loadingType, searchRecords=searchRecords)
 
@@ -13789,6 +13793,48 @@ class ButtonSearchWidget(QWidget):
         synonyms += [(v, k) for k, v in synonyms]
         return synonyms
 
+    def registerToolbarTargets(self, toolbar, targets):
+        """Link a toolbar's controls to the button(s) that open it."""
+        self._toolbar_targets[toolbar] = (
+            tuple(targets) if isinstance(targets, (list, tuple))
+            else (targets,)
+        )
+
+    def highlightTargets(self, target):
+        """Resolve a search target and include its toolbar opener controls."""
+        targets = []
+
+        def add_target(control):
+            if isinstance(control, (list, tuple)):
+                for member in control:
+                    add_target(member)
+                return
+            if isinstance(control, str):
+                control = getattr(self.guiWin, control)
+            if not isinstance(control, (QWidget, QAction)):
+                raise TypeError('Search targets must be widgets or actions')
+            if control in targets:
+                return
+            targets.append(control)
+            if isinstance(control, QAction):
+                containers = (
+                    control.associatedObjects()
+                    if hasattr(control, 'associatedObjects')
+                    else control.associatedWidgets()
+                )
+            else:
+                containers = [control]
+            for container in containers:
+                if not isinstance(container, QWidget):
+                    continue
+                while container is not None:
+                    for opener in self._toolbar_targets.get(container, ()):
+                        add_target(opener)
+                    container = container.parentWidget()
+
+        add_target(target)
+        return targets
+
     def _synonymsForName(self, name):
         normalized_name = name.strip().casefold()
         aliases = []
@@ -13804,21 +13850,30 @@ class ButtonSearchWidget(QWidget):
         return aliases
 
     def addItems(self, items):
-        """Add or update search entries from ``(name, target)`` tuples."""
+        """Add ``(name, target)`` entries; targets may be grouped in a list/tuple."""
         for name, target in items:
             normalized_name = name.strip().casefold()
             if not normalized_name:
                 continue
 
-            tooltip_getter = getattr(target, 'toolTip', None)
-            tooltip = tooltip_getter() if callable(tooltip_getter) else ''
-            tooltip = html_utils.to_plain_text(tooltip)
-            shortcut_getter = getattr(target, 'shortcut', None)
-            shortcut = shortcut_getter() if callable(shortcut_getter) else None
-            shortcut_text = shortcut.toString() if shortcut is not None else ''
-            search_text = tooltip.strip()
-            if shortcut_text and shortcut_text not in search_text:
-                search_text = f'{search_text}\nShortcut: {shortcut_text}'.strip()
+            controls = target if isinstance(target, (list, tuple)) else (target,)
+            search_texts = []
+            for control in controls:
+                tooltip_getter = getattr(control, 'toolTip', None)
+                tooltip = tooltip_getter() if callable(tooltip_getter) else ''
+                search_text = html_utils.to_plain_text(tooltip).strip()
+                shortcut_getter = getattr(control, 'shortcut', None)
+                shortcut = (
+                    shortcut_getter() if callable(shortcut_getter) else None
+                )
+                shortcut_text = shortcut.toString() if shortcut is not None else ''
+                if shortcut_text and shortcut_text not in search_text:
+                    search_text = (
+                        f'{search_text}\nShortcut: {shortcut_text}'.strip()
+                    )
+                if search_text and search_text not in search_texts:
+                    search_texts.append(search_text)
+            search_text = '\n'.join(search_texts)
 
             record = self._search_records.get(normalized_name)
             if record is None:
