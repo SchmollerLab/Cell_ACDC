@@ -13937,3 +13937,25 @@ class FireworksOverlay(QWidget):
                     particle['y'] - particle['vy'] * tail_scale,
                 ),
             )
+
+class _RecentItemsSearchCompleter(ButtonSearchCompleter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alwaysRecency = False
+
+    def setAlwaysRecency(self, alwaysRecency):
+        self.alwaysRecency = alwaysRecency
+        self.invalidate()
+        self.sort(0, Qt.AscendingOrder)
+
+    def lessThan(self, left, right):
+        if self.alwaysRecency:
+            return left.row() < right.row()
+
+        left_category = self._getScore(left)[0]
+        right_category = self._getScore(right)[0]
+
+        if left_category != right_category:
+            return left_category < right_category
+
+        return left.row() < right.row()

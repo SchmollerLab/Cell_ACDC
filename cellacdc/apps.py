@@ -3,6 +3,7 @@ import sys
 import re
 from typing import Literal, Callable, Dict, Iterable, List, Tuple
 import datetime
+from difflib import SequenceMatcher
 import pathlib
 from collections import defaultdict
 import zipfile
@@ -21999,40 +22000,152 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         self.close()
 
 class SearchableListboxDialog(QBaseDialog):
+    """Search and select an item from a recency-ordered list.
+
+    Search ignores punctuation and separators, so paths can be searched with
+    spaces in place of slashes or underscores. Results are ranked by match
+    quality, with the original item order used to break ties. The recency
+    checkbox can instead keep all results in the original order.
+
+    The ``fuzzyThreshold`` argument sets the minimum similarity ratio for
+    fuzzy matches (0.0-1.0, default 0.5); the slider adjusts it while the
+    dialog is open. Existing filesystem paths also show their modification
+    date in a separate column.
+
+    Args:
+        items: Display strings in their initial, usually most-recent-first,
+            order. Selected values are emitted unchanged by :attr:`sigOk`.
+        title: Dialog window title.
+        searchLineEditText: Initial prompt shown by the search field.
+        parent: Optional parent widget.
+        fuzzyThreshold: Initial minimum ratio accepted for fuzzy matches,
+            from 0.0 (least strict) to 1.0 (most strict).
+    """
+
     sigOk = Signal(str)
 
     def __init__(
             self, 
-            items: list[str], 
+            items: list[str],
             title='Search items',
             searchLineEditText='Search...',
             parent=None,
+            fuzzyThreshold: float = 0.5,
         ):
         super().__init__(parent=parent)
 
+        self.fuzzyThreshold = float(fuzzyThreshold)
+        if not math.isfinite(self.fuzzyThreshold) or not (
+                0 <= self.fuzzyThreshold <= 1
+            ):
+            raise ValueError('fuzzyThreshold must be between 0 and 1.')
+
         self.cancel = True
         self.allItems = items
+
+        self.searchModel = widgets.QStandardItemModel()
+        searchRoles = (widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,)
+        self.searchProxyModel = widgets._RecentItemsSearchCompleter(
+            searchRoles=searchRoles,
+            tooltipRole=None,
+        )
+        self.searchProxyModel.FUZZY_THRESHOLD = self.fuzzyThreshold
+        self.searchProxyModel.setSourceModel(self.searchModel)
+        self.searchProxyModel.setDynamicSortFilter(True)
+        self.searchProxyModel.sort(0, Qt.AscendingOrder)
+
+        # add all items to the search model
+        for item_text in self.allItems:
+            model_item = widgets.QStandardItem(item_text)
+            model_item.setData(
+                self._normalizeSearchText(item_text),
+                widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
+            )
+            last_edited_item = widgets.QStandardItem('')
+            last_edited, last_edited_tooltip = self._lastEditedDate(
+                item_text
+            )
+            last_edited_item.setText(last_edited)
+            if last_edited_tooltip:
+                last_edited_item.setToolTip(last_edited_tooltip)
+            self.searchModel.appendRow([model_item, last_edited_item])
 
         self.setWindowTitle(title)
 
         mainLayout = QVBoxLayout()
 
-        searchLineEdit = widgets.SearchLineEdit(
+        self.searchLineEdit = widgets.SearchLineEdit(
             text=searchLineEditText
         )
 
-        searchLineEdit.textEdited.connect(self.searchItems)
+        self.searchLineEdit.textEdited.connect(self.searchItems)
 
-        self.listWidget = widgets.listWidget()
-        self.listWidget.addItems(items)   
+        self.alwaysRecencyCheckBox = QCheckBox(
+            'Always prioritize recency'
+        )
+        self.alwaysRecencyCheckBox.toggled.connect(
+            self._onAlwaysRecencyChanged
+        )
+
+        self.alwaysRecencyCheckBox.setToolTip(
+            'When enabled, matching items stay in the original recent-first '
+            'order. When disabled, better matches appear first, with recency '
+            'used to break ties.'
+        )
+
+        self.fuzzyThresholdSlider = QSlider(Qt.Horizontal)
+        self.fuzzyThresholdSlider.setRange(0, 100)
+        self.fuzzyThresholdSlider.setValue(round(self.fuzzyThreshold * 100))
+        self.fuzzyThresholdSlider.setToolTip(
+            'Minimum fuzzy similarity required for a result. Lower values '
+            'accept less-similar matches; higher values are stricter.'
+        )
+        self.fuzzyThresholdLabel = QLabel()
+        self.fuzzyThresholdLabel.setText(
+            f'Fuzzy threshold: {round(self.fuzzyThreshold * 100)}%'
+        )
+        self.fuzzyThresholdLabel.setToolTip(
+            self.fuzzyThresholdSlider.toolTip()
+        )
+        thresholdLayout = QHBoxLayout()
+        thresholdLayout.addWidget(self.fuzzyThresholdLabel)
+        thresholdLayout.addWidget(self.fuzzyThresholdSlider, 1)
+        settingsLayout = QHBoxLayout()
+        settingsLayout.addWidget(self.alwaysRecencyCheckBox)
+        settingsLayout.addLayout(thresholdLayout, 1)
+
+        self.listWidget = QTreeWidget()
+        self.listWidget.setHeaderLabels(['Item', 'Last edited'])
+        self.listWidget.setRootIsDecorated(False)
+        self.listWidget.setItemsExpandable(False)
+        self.listWidget.setSortingEnabled(False)
+        self.listWidget.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.listWidget.header().setStretchLastSection(False)
+        self.listWidget.header().setSectionResizeMode(
+            0, QHeaderView.Stretch
+        )
+        self.listWidget.header().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.listWidget.setColumnWidth(1, 135)
+        self.listWidget.headerItem().setToolTip(
+            1, 'Filesystem modification date and time.'
+        )
+        self.fuzzyThresholdSlider.valueChanged.connect(
+            self._onFuzzyThresholdChanged
+        )
+        self._onFuzzyThresholdChanged(self.fuzzyThresholdSlider.value())
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        self.listWidget.itemDoubleClicked.connect(self.ok_cb)
+        self.listWidget.itemDoubleClicked.connect(
+            lambda *_: self.ok_cb()
+        )
 
-        mainLayout.addWidget(searchLineEdit)
+        mainLayout.addWidget(self.searchLineEdit)
+        mainLayout.addLayout(settingsLayout)
         mainLayout.addWidget(self.listWidget)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
@@ -22040,32 +22153,223 @@ class SearchableListboxDialog(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.setFont(fonts.font)
+
+    def _lastEditedDate(self, item_text):
+        """Return a display date and tooltip for an item's modification time.
+
+        Nonexistent paths have no date; filesystem errors are reported in the
+        returned tooltip instead of being silently discarded.
+        """
+        if not os.path.exists(item_text):
+            return '', ''
+
+        try:
+            modified_time = os.path.getmtime(item_text)
+        except OSError as err:
+            return (
+                'Unavailable',
+                f'Could not read filesystem modification time: {err}',
+            )
+
+        return (
+            datetime.datetime.fromtimestamp(
+                modified_time
+            ).strftime('%Y-%m-%d %H:%M'),
+            '',
+        )
+
+    def _onFuzzyThresholdChanged(self, value):
+        """Apply the slider percentage to fuzzy matching and refresh results."""
+        self.fuzzyThreshold = value / 100
+        self.searchProxyModel.FUZZY_THRESHOLD = self.fuzzyThreshold
+        self.fuzzyThresholdLabel.setText(
+            f'Fuzzy threshold: {value}%'
+        )
+        self.searchItems(self.searchLineEdit.text())
+
+    def _populateListWidget(self):
+        """Rebuild visible rows in the order supplied by the search proxy."""
+        self.listWidget.clear()
+        for row in range(self.searchProxyModel.rowCount()):
+            proxy_index = self.searchProxyModel.index(row, 0)
+            source_index = self.searchProxyModel.mapToSource(proxy_index)
+            source_item = self.searchModel.item(source_index.row(), 0)
+            item_text = source_item.text()
+            last_edited = self.searchModel.item(
+                source_index.row(), 1
+            ).text()
+            tree_item = QTreeWidgetItem([item_text, last_edited])
+            tree_item.setToolTip(
+                1,
+                self.searchModel.item(
+                    source_index.row(), 1
+                ).toolTip(),
+            )
+            self.listWidget.addTopLevelItem(tree_item)
+
+    def _onAlwaysRecencyChanged(self, alwaysRecency):
+        """Switch between relevance-first and original-order result ranking."""
+        self.searchProxyModel.setAlwaysRecency(alwaysRecency)
+        self.searchItems(self.searchLineEdit.text())
     
     def searchItems(self, text):
+        """Filter, rank, and highlight results for the current query."""
         from ._palettes import get_color_scheme
         scheme = get_color_scheme()
         if scheme == 'dark':
             highlight_color = '#4DA3FF'
         else:
             highlight_color = '#0067C5'
+        query = text.strip()
+        # Match against separator-free text so spaces, underscores, and path
+        # separators are interchangeable without changing displayed names.
+        normalized_query = self._normalizeSearchText(query)
+        self.searchProxyModel.setFilterText(normalized_query)
+        self._populateListWidget()
+        for row in range(self.listWidget.topLevelItemCount()):
+            tree_item = self.listWidget.topLevelItem(row)
+            item = tree_item.text(0)
+            # The proxy provides the ranking; highlight ranges are mapped back
+            # onto the original display string.
+            ranges = self._searchHighlightRanges(
+                normalized_query, item
+            ) if normalized_query else []
 
-        self.listWidget.clear()
-        for item in self.allItems:
-            if text.lower() not in item.lower():
+            if ranges:
+                highlighted_parts = []
+                previous_end = 0
+                for start, end in ranges:
+                    highlighted_parts.extend((
+                        html.escape(item[previous_end:start]),
+                        (
+                            f'<span style="color:{highlight_color}; '
+                            f'font-weight:bold;">'
+                            f'{html.escape(item[start:end])}</span>'
+                        ),
+                    ))
+                    previous_end = end
+                highlighted_parts.append(html.escape(item[previous_end:]))
+                highlighted_text = ''.join(highlighted_parts)
+                label = QLabel()
+                label.setTextFormat(Qt.RichText)
+                label.setAttribute(Qt.WA_TransparentForMouseEvents)
+                label.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Preferred
+                )
+                label.setStyleSheet('background: transparent;')
+                label.setToolTip(item)
+                label.setText(highlighted_text)
+                tree_item.setData(0, Qt.UserRole, item)
+                tree_item.setText(0, '')
+                self.listWidget.setItemWidget(tree_item, 0, label)
+
+    @staticmethod
+    def _normalizeSearchText(text):
+        """Case-fold text and remove non-alphanumeric search separators."""
+        return ''.join(
+            character.casefold()
+            for character in text
+            if character.isalnum()
+        )
+
+    def _normalizedItemText(self, item):
+        """Normalize an item and retain source offsets for highlighting."""
+        normalized = []
+        source_positions = []
+        for position, character in enumerate(item):
+            if not character.isalnum():
                 continue
-            
-            highlighted_text = re.sub(
-                re.escape(text),
-                lambda m: (
-                    f'<span style="color:{highlight_color}; font-weight:bold;">'
-                    f'{m.group(0)}</span>'
-                ),
-                item,
-                flags=re.IGNORECASE,
+            folded = character.casefold()
+            normalized.extend(folded)
+            source_positions.extend([position] * len(folded))
+        return ''.join(normalized), source_positions
+
+    @staticmethod
+    def _sourceRanges(normalized_start, normalized_end, source_positions):
+        """Map a normalized-text span back to contiguous display-text spans."""
+        source_indices = source_positions[normalized_start:normalized_end]
+        ranges = []
+        for position in source_indices:
+            if ranges and position <= ranges[-1][1]:
+                ranges[-1] = (ranges[-1][0], position + 1)
+            else:
+                ranges.append((position, position + 1))
+        return ranges
+
+    def _searchHighlightRanges(self, query, item):
+        """Get display-text spans for an exact or fuzzy match."""
+        normalized_item, source_positions = self._normalizedItemText(item)
+        match_start = normalized_item.find(query)
+        if match_start >= 0:
+            return self._sourceRanges(
+                match_start,
+                match_start + len(query),
+                source_positions,
             )
-            self.listWidget.addRichTextItem(highlighted_text)
+        return self._fuzzyHighlightRanges(
+            query, normalized_item, source_positions
+        )
+
+    def _fuzzyHighlightRanges(
+            self, query, normalized_item, source_positions
+        ):
+        """Map matching fuzzy character spans back to the displayed item."""
+        matcher = SequenceMatcher(None, query, normalized_item)
+        best_ratio = self.searchProxyModel.FUZZY_THRESHOLD
+        best_start = None
+
+        for query_start, item_start, _ in matcher.get_matching_blocks():
+            # Align the candidate window with a matching block, then score a
+            # query-length slice as in the proxy model's fuzzy matcher.
+            candidate_start = max(item_start - query_start, 0)
+            candidate = normalized_item[
+                candidate_start:candidate_start + len(query)
+            ]
+            ratio = SequenceMatcher(None, query, candidate).ratio()
+            if ratio >= best_ratio and (
+                    best_start is None or ratio > best_ratio
+                ):
+                best_ratio = ratio
+                best_start = candidate_start
+
+        if best_start is None:
+            return []
+
+        # Highlight only characters that matched, not the entire candidate
+        # window, then translate normalized offsets to display offsets.
+        candidate = normalized_item[best_start:best_start + len(query)]
+        normalized_ranges = []
+        for block in SequenceMatcher(None, query, candidate).get_matching_blocks():
+            if not block.size:
+                continue
+            start = best_start + block.b
+            end = start + block.size
+            if normalized_ranges and start <= normalized_ranges[-1][1]:
+                normalized_ranges[-1] = (
+                    normalized_ranges[-1][0],
+                    max(normalized_ranges[-1][1], end),
+                )
+            else:
+                normalized_ranges.append((start, end))
+
+        source_ranges = []
+        for start, end in normalized_ranges:
+            source_ranges.extend(
+                self._sourceRanges(start, end, source_positions)
+            )
+        merged_ranges = []
+        for start, end in source_ranges:
+            if merged_ranges and start <= merged_ranges[-1][1]:
+                merged_ranges[-1] = (
+                    merged_ranges[-1][0],
+                    max(merged_ranges[-1][1], end),
+                )
+            else:
+                merged_ranges.append((start, end))
+        return merged_ranges
 
     def warnSelectionEmpty(self):
+        """Explain that a row must be selected before confirming."""
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         txt = html_utils.paragraph(
             'You need to <b>select at least one item</b> before pressing "Ok".<br><br>'
@@ -22075,11 +22379,16 @@ class SearchableListboxDialog(QBaseDialog):
         msg.warning(self, 'Selection cannot be empty', txt)
 
     def ok_cb(self, *args, **kwargs):
-        if not self.listWidget.selectedItemsText():
+        """Emit the selected original item string and close the dialog."""
+        selected_items = self.listWidget.selectedItems()
+        if not selected_items:
             self.warnSelectionEmpty()
             return
 
         self.cancel = False
-        self.selectedItemText = self.listWidget.selectedItemsText()[0]
+        self.selectedItemText = (
+            selected_items[0].data(0, Qt.UserRole)
+            or selected_items[0].text(0)
+        )
         self.close()
         self.sigOk.emit(self.selectedItemText)
