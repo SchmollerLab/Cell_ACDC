@@ -13913,8 +13913,8 @@ class SeparateBudToolbar(ToolBar):
             self.convexity2DParamWidgets[name] = (selector, default, float)
             self.convexity2DControlActions.append(self.addSpacing())
 
-        splitDisconnected = ToggleWithLabel(
-            label_text='Split disconnected regions'
+        splitDisconnected = CheckBox(
+            'Split disconnected regions'
         )
         splitDisconnected.setToolTip(
             'Assign separate IDs to disconnected parts before applying '
@@ -13982,7 +13982,7 @@ class SeparateBudToolbar(ToolBar):
              'transform contains at least two seeds.'),
         )
         for name, text, default, tooltip in bool_params:
-            checkbox = ToggleWithLabel(label_text=text)
+            checkbox = CheckBox(text)
             checkbox.setToolTip(tooltip)
             self.convexityControlActions.append(self.addWidget(checkbox))
             self.convexity3DParamWidgets[name] = (checkbox, default, bool)
@@ -13991,7 +13991,7 @@ class SeparateBudToolbar(ToolBar):
 
         self.goToSepSliceSeparator = self.addSeparator()
         
-        goToSepSliceCheckBox = ToggleWithLabel(label_text='Go to separated slice')
+        goToSepSliceCheckBox = CheckBox('Go to separated slice')
         self.goToSepSliceCheckBoxAction = self.addWidget(
             goToSepSliceCheckBox
         )
