@@ -1,14 +1,18 @@
 from qtpy.QtCore import (
-    Signal, Qt
+    Signal, Qt, QPoint
 )
 from qtpy.QtWidgets import (
-    QAction
+    QAction, QWidget
 )
 from qtpy.QtGui import (
-    QIcon,
+    QIcon, QColor, QFont, QPainter, QPainterPath, QPen
 )
 
+import pyqtgraph as pg
+
 from cellacdc.widgets import ToolBar
+
+LABELS_TEXT_FONTSIZE = 10
 
 class VolumeRendererToolbar(ToolBar):
     sigHomeView = Signal()
@@ -90,3 +94,99 @@ class PointsLayersToolbar(ToolBar):
         super().__init__(name, parent)
         
         self.addLabel('Points: ')
+
+class LabelsOverlay(QWidget):
+    def __init__(self, renderer, font_size=None, text_color='white'):
+        super().__init__(renderer._canvas.native)
+
+        if font_size is None:
+            font_size = LABELS_TEXT_FONTSIZE
+
+        self.renderer = renderer
+
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        self.resize(renderer._canvas.native.size())
+
+        self._font = QFont()
+        self._font.setPointSize(font_size)
+        self._font.setBold(False)
+
+        self._text_color = pg.mkColor(text_color)
+
+        # Shadow settings
+        self._shadow_color = QColor(0, 0, 0, 180)
+        self._shadow_offset = QPoint(1, 1)
+
+        self.show()
+
+    # -------------------------------------------------------------------------
+    # Public API
+    # -------------------------------------------------------------------------
+
+    def setFontSize(self, size: int):
+        self._font.setPointSize(size)
+        self.update()
+
+    def fontSize(self) -> int:
+        return self._font.pointSize()
+
+    def setBold(self, bold: bool):
+        self._font.setBold(bold)
+        self.update()
+
+    def setTextColor(self, color):
+        self._text_color = QColor(color)
+        self.update()
+
+    def setShadowColor(self, color):
+        self._shadow_color = QColor(color)
+        self.update()
+
+    def setShadowOffset(self, dx: int, dy: int):
+        self._shadow_offset = QPoint(dx, dy)
+        self.update()
+
+    def setAnnotationsVisible(self, visible: bool):
+        for ann in self.renderer._label_annotations.values():
+            ann.visible = visible
+
+        self.update()
+
+    # -------------------------------------------------------------------------
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        painter.setFont(self._font)
+
+        metrics = painter.fontMetrics()
+
+        for ann in self.renderer._label_annotations.values():
+            if not ann.visible:
+                continue
+
+            x, y = ann.screen_xy
+            text = ann.text
+
+            rect = metrics.boundingRect(text)
+            rect.moveCenter(QPoint(int(x), int(y)))
+
+            # Shadow
+            painter.setPen(self._shadow_color)
+            painter.drawText(
+                rect.translated(self._shadow_offset),
+                Qt.AlignCenter,
+                text,
+            )
+
+            # Foreground
+            painter.setPen(self._text_color)
+            painter.drawText(
+                rect,
+                Qt.AlignCenter,
+                text,
+            )
