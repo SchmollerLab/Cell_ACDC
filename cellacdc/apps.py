@@ -2057,7 +2057,7 @@ class SetMeasurementsDialog(QBaseDialog):
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
             allPosData=None, is_concat=False, isSingleSelection=False,
-            state=None
+            state=None, addDoNotAskAgainCheckbox=False
         ):
         super().__init__(parent=parent)
         
@@ -2075,18 +2075,27 @@ class SetMeasurementsDialog(QBaseDialog):
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
         self.doNotWarn = False
+        self.doNotAskAgain = False
 
         self.setWindowTitle('Set measurements')
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
         
-        searchLayout = QHBoxLayout()
+        topLayout = QHBoxLayout()
+
+        
+        self.doNotAskAgainCheckbox = widgets.Toggle(
+            label_text='Use the same selection for all following selected experiment folders'
+        )
+        self.doNotAskAgainCheckbox.setVisible(addDoNotAskAgainCheckbox)
+        topLayout.addWidget(self.doNotAskAgainCheckbox)
         
         searchLineEdit = widgets.SearchLineEdit()
-        searchLayout.addStretch(5)
-        searchLayout.addWidget(searchLineEdit)
-        searchLayout.setStretch(1, 3)
+        topLayout.addStretch(5)
+        topLayout.addWidget(searchLineEdit)
+        topLayout.setStretch(0, 0)
+        topLayout.setStretch(2, 3)
         
         mainScrollArea = widgets.ScrollArea()
         mainScrollAreaWidget = QWidget()
@@ -2120,7 +2129,7 @@ class SetMeasurementsDialog(QBaseDialog):
         for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                posData=posData, is_concat=is_concat,
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
@@ -2151,7 +2160,8 @@ class SetMeasurementsDialog(QBaseDialog):
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Physical measurements',
             favourite_funcs=favourite_funcs, isZstack=isZstack,
-            addCalcForEachZsliceToggle=isSegm3D
+            addCalcForEachZsliceToggle=isSegm3D,
+            doesWarnOnUncheck=True
         )
         self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
@@ -2243,13 +2253,20 @@ class SetMeasurementsDialog(QBaseDialog):
         self.okButton = okButton
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
-        self.deselectAllButton = QPushButton('Deselect all')
-        self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
+        self.selectAllButton = widgets.selectAllPushButton()
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
-        buttonsLayout.addWidget(self.deselectAllButton)
+        if isSegm3D:
+            selectAll3DButton = widgets.selectAllPushButton(
+                suffix_text_select='only 3D metrics',
+                suffix_text_deselect='all 3D metrics'
+            )
+            selectAll3DButton.sigClicked.connect(self.checkAll3D)
+            self.selectAll3DButton = selectAll3DButton
+            buttonsLayout.addWidget(selectAll3DButton)
+        buttonsLayout.addWidget(self.selectAllButton)
         buttonsLayout.addSpacing(20)
         
         if addCombineMetricCallback is not None:
@@ -2278,7 +2295,7 @@ class SetMeasurementsDialog(QBaseDialog):
 
         self.okButton = okButton
 
-        layout.addLayout(searchLayout)
+        layout.addLayout(topLayout)
         layout.addSpacing(10)
         # layout.addLayout(groupsLayout)
         layout.addWidget(mainScrollArea)
@@ -2290,7 +2307,7 @@ class SetMeasurementsDialog(QBaseDialog):
             self.setState(state)
 
         searchLineEdit.textEdited.connect(self.searchAndHighlight)
-        self.deselectAllButton.clicked.connect(self.deselectAll)
+        self.selectAllButton.sigClicked.connect(self.selectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)
@@ -2491,14 +2508,13 @@ class SetMeasurementsDialog(QBaseDialog):
         ----------
         checked : bool
             State of the checkbox toggled
-        """
-        checkbox = self.sender()
-        
+        """        
         if self.is_concat:
             # When this dialogue is used in concatenate pos utility we do not 
             # need to check that certain metrics are present
             return
 
+        checkbox = self.sender()
         if not hasattr(checkbox, 'isRequired'):
             return
         
@@ -2509,7 +2525,6 @@ class SetMeasurementsDialog(QBaseDialog):
             return
         
         checkbox.setChecked(True)
-
         if self.doNotWarn:
             return
 
@@ -2529,22 +2544,34 @@ class SetMeasurementsDialog(QBaseDialog):
         msg = widgets.myMessageBox(showCentered=False)
         msg.warning(self, 'Physical measurement required', txt)
 
-    def deselectAll(self):
+    def checkAll3D(self, button, checked):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for gb in chNameGroupbox.groupboxes:
+                if not gb.isChecked():
+                    continue
+                gb.selectAll3DButton.setChecked(checked)
+                gb.checkAll3D(None, checked)
+            cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
+            if cgb is not None and cgb.isChecked():
+                cgb.selectAll3DButton.setChecked(checked)
+                cgb.checkAll3D(None, checked)
+
+    def selectAll(self, button, checked):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
-                gb.checkAll(None, False)
+                gb.checkAll(None, checked)
             cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
             if cgb is not None:
-                cgb.checkAll(None, False)
+                cgb.checkAll(None, checked)
         
-        self.sizeMetricsQGBox.checkAll(None, False)
-        self.regionPropsQGBox.checkAll(None, False)
+        self.sizeMetricsQGBox.checkAll(None, checked)
+        self.regionPropsQGBox.checkAll(None, checked)
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.checkAll(None, False)
+            self.chIndipendCustomeMetricsQGBox.checkAll(None, checked)
             
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            self.mixedChannelsCombineMetricsQGBox.checkAll(None, False)
+            self.mixedChannelsCombineMetricsQGBox.checkAll(None, checked)
         self.doNotWarn = False
     
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
@@ -3073,6 +3100,7 @@ class SetMeasurementsDialog(QBaseDialog):
         if self.allPos_acdc_df_cols is None:
             self.saveLastSelection()
             self.cancel = False
+            self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
             self.close()
             self.sigClosed.emit()
             return
@@ -3119,8 +3147,10 @@ class SetMeasurementsDialog(QBaseDialog):
             if cancel:
                 return
 
+        
         self.saveLastSelection()
         self.cancel = False  
+        self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
         self.close()
         self.sigClosed.emit()
         
@@ -3150,7 +3180,7 @@ class SetMeasurementsDialog(QBaseDialog):
 
     def show(self, block=False):
         super().show(block=False)
-        self.deselectAllButton.setMinimumHeight(self.okButton.height())
+        self.selectAllButton.setMinimumHeight(self.okButton.height())
         screenWidth = self.screen().size().width()
         screenHeight = self.screen().size().height()
         screenLeft = self.screen().geometry().x()
@@ -4319,7 +4349,7 @@ class BayesianTrackerParamsWin(QDialog):
             return
 
         if not os.path.exists(self.modelPathLineEdit.text()):
-            self.warnNotVaidPath()
+            self.warnNotValidPath()
             return
 
         self.intensityImageChannel = None
@@ -4342,7 +4372,7 @@ class BayesianTrackerParamsWin(QDialog):
                 self.intensityImageChannel = self.channelCombobox.currentText()
         self.close()
 
-    def warnNotVaidPath(self):
+    def warnNotValidPath(self):
         url = 'https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models'
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
@@ -4516,7 +4546,7 @@ class DeltaTrackerParamsWin(QDialog):
         self.cancel = False
 
         if not os.path.exists(self.modelPathLineEdit.text()):
-            self.warnNotVaidPath()
+            self.warnNotValidPath()
             return
 
         self.verbose = self.verboseToggle.isChecked()
@@ -4570,7 +4600,7 @@ class QDialogWorkerProgress(QDialog):
         abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f'{title} ({abort_text} to cancel process)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -12017,7 +12047,7 @@ class QDialogPbar(QDialog):
         abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f'{title} ({abort_text} to cancel process)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -19344,9 +19374,13 @@ class ObjectCountDialog(QBaseDialog):
     def saveCounts(self, checked=False):
         categories = self.activeCategories()
         for posData in self.data:
-            countMapper = posData.countObjectsInSegm(categories)
+            countMapper, numObjsPerFrame = (
+                posData.countObjectsInSegm(categories)
+            )
             countMapper.pop('In current frame', None)
-            df_count_endname = posData.saveObjCounts(countMapper)
+            df_count_endname = posData.saveObjCounts(
+                countMapper, numObjsPerFrame
+            )
         
         txt = html_utils.paragraph(f"""
             Done!<br><br>

@@ -438,7 +438,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.doubleSpaceBarState = False
         self.protected_new_IDs = dict()
         
-        
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2
@@ -15834,7 +15833,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             activeCategories = self.countObjsWindow.activeCategories()
             
         posData = self.data[self.pos_i]        
-        allCategoryCountMapper = posData.countObjectsInSegmTimelapse(
+        allCategoryCountMapper, _ = posData.countObjectsInSegmTimelapse(
             activeCategories
         )
         if self.countObjsWindow is None:
