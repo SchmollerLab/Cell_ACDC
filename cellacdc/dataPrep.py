@@ -2890,6 +2890,43 @@ class dataPrepWin(QMainWindow):
             actions.append(action)
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
+        
+        # Step 4. Create the "More/Search..." dialog and action
+        dates = df['opened_last_on'].to_list() if 'opened_last_on' in df.columns else None
+        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+            recentPaths,
+            title='Recent paths', 
+            searchLineEditText='Search recent paths  (double-click to open)...',
+            parent=self,
+            dates=dates,
+        )
+        self.openRecentMoreAction = QAction('More/Search...', self)
+        self.openRecentMoreAction.triggered.connect(
+            self.showOpenRecentMoreWidget
+        )
+        self.openRecentMoreDialog.sigOk.connect(partial(self.openRecentFile, path))
+        self.openRecentMenu.addSeparator()
+        self.openRecentMenu.addAction(self.openRecentMoreAction)
+        
+    def showOpenRecentMoreWidget(self):
+        self.openRecentMoreDialog.show()
+        screenGeometry = self.screen().geometry()
+        screenWidth = screenGeometry.width()
+        screenHeight = screenGeometry.height()
+        windowWidth = round(screenWidth/3)
+        windowHeight = round(screenHeight/2)
+        self.openRecentMoreDialog.resize(windowWidth, windowHeight)
+        
+        mainWinPos = self.pos()
+        mainWinCenterX = mainWinPos.x() + self.width()/2
+        mainWinCenterY = mainWinPos.y() + self.height()/2
+        self.openRecentMoreDialog.move(
+            int(mainWinCenterX - windowWidth/2), 
+            int(mainWinCenterY - windowHeight/2)
+            )
+        
+        self.openRecentMoreDialog.raise_()
+        self.openRecentMoreDialog.activateWindow()
 
     @exception_handler
     def loadFiles(self, exp_path, user_ch_file_paths, user_ch_name):

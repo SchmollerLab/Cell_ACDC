@@ -733,13 +733,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.openRecentMenu.addActions(actions)
 
         # Setp 4. Add the More action
+        dates = df['opened_last_on'].to_list() if 'opened_last_on' in df.columns else None
         self.openRecentMoreDialog = apps.SearchableListboxDialog(
             recentPaths, 
             title='Recent paths', 
             searchLineEditText='Search recent paths (double-click to load)...',
             parent=self,
+            dates=dates,
         )
-        self.openRecentMoreAction = QAction('More...', self)
+        self.openRecentMoreAction = QAction('More/Search...', self)
         self.openRecentMoreAction.triggered.connect(
             self.showOpenRecentMoreWidget
         )
@@ -36262,20 +36264,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def showOpenRecentMoreWidget(self):
         self.openRecentMoreDialog.show()
-        screenGeometry = self.screen().geometry()
-        x0, y0 = screenGeometry.left(), screenGeometry.top()
-        screenWidth = screenGeometry.width()
-        screenHeight = screenGeometry.height()
-        screenXCenter = x0 + screenWidth/2
-        screenYCenter = y0 + screenHeight/2
-        windowLeft = round(screenXCenter - screenWidth/6)
-        windowWidth = round(screenWidth/3)
-        windowHeight = round(screenHeight/2)
-        windowTop = y0
-        self.openRecentMoreDialog.resize(windowWidth, windowHeight)
-        self.openRecentMoreDialog.move(windowLeft, windowTop)
-        self.openRecentMoreDialog.raise_()
-        self.openRecentMoreDialog.activateWindow()
 
     def _waitCloseAutoSaveWorker(self):
         didWorkersFinished = [True]
