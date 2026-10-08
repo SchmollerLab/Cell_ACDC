@@ -629,7 +629,7 @@ class selectAllPushButton(PushButton):
             text = f'Deselect {self._suffix_text_deselect}'
         else:
             icon_fn = ':select_all.svg'
-            text = f'Seselect {self._suffix_text_deselect}'
+            text = f'Select {self._suffix_text_select}'
             self._status = 'select'
             checked = False
         self.setIcon(QIcon(icon_fn))
