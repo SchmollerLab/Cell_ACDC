@@ -20724,7 +20724,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
         self.recentPathsDialog = SearchableListboxDialog(
             recent_paths,
             title='Add from recent paths',
-            searchLineEditText='Search recent paths  (click to select multiple)...',
+            searchLineEditText='Search recent paths (Ctrl+click to select multiple)...',
             parent=self,
             multiSelection=True,
             dates=dates,
@@ -22479,7 +22479,28 @@ class SearchableListboxDialog(QBaseDialog):
             result = self.selectedItemText
         self.close()
         self.sigOk.emit(result)
-
+    
+    def show(self, block=False):
+        super().show(block=False)
+        desiredWidthFractionOfScreen = 1/2
+        screenGeometry = self.screen().geometry()
+        x0, y0 = screenGeometry.left(), screenGeometry.top()
+        screenWidth = screenGeometry.width()
+        screenHeight = screenGeometry.height()
+        screenXCenter = x0 + screenWidth/2
+        screenYCenter = y0 + screenHeight/2
+        windowLeft = round(
+            screenXCenter 
+            - screenWidth*desiredWidthFractionOfScreen/2
+        )
+        windowWidth = round(screenWidth*desiredWidthFractionOfScreen)
+        windowHeight = round(screenHeight/2)
+        windowTop = y0
+        self.resize(windowWidth, windowHeight)
+        self.move(windowLeft, windowTop)
+        self.raise_()
+        self.activateWindow()
+        super().show(block=block)
         
 class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
     def __init__(self, video_filepath, logger_func=print, parent=None):
