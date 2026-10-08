@@ -138,6 +138,7 @@ class signals(QObject):
     sigAskCopyCca = Signal(str)
     sigSelectFilesWithText = Signal(str, object, str, object)
     sigAskRunNow = Signal(object)
+    sigSelectVideoFile = Signal(object, object, bool)
 
 class AutoPilotWorker(QObject):
     finished = Signal()
@@ -2223,6 +2224,15 @@ class BaseWorkerUtil(QObject):
         self.mutex.unlock()
         return self.abort
     
+    def emitSelectVideoFile(self, exp_path, pos_foldernames, multiSelection):
+        self.mutex.lock()
+        self.signals.sigSelectVideoFile.emit(
+            exp_path, pos_foldernames, multiSelection
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
     def emitSelectFilesWithText(
             self, exp_path, pos_foldernames, with_text, ext=None
         ):
@@ -3108,11 +3118,11 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
     def run_iter_exp(self, exp_path, pos_foldernames, i, tot_exp):
         tot_pos = len(pos_foldernames)
         
-        abort = self.emitSelectAcdcOutputFiles(
+        cancel = self.emitSelectAcdcOutputFiles(
             exp_path, pos_foldernames, infoText=' to combine',
             allowSingleSelection=False
         )
-        if abort:
+        if cancel:
             self.sigAborted.emit()
             return
         
@@ -3491,10 +3501,10 @@ class FromImajeJroiToSegmNpzWorker(BaseWorkerUtil):
             self.errors = {}
             tot_pos = len(pos_foldernames)
 
-            abort = self.emitSelectFilesWithText(
+            cancel = self.emitSelectFilesWithText(
                 exp_path, pos_foldernames, 'imagej_rois', ext=('.zip', '.roi')
             )
-            if abort:
+            if cancel:
                 self.signals.finished.emit(self)
                 return
             
@@ -4888,11 +4898,11 @@ class FilterObjsFromCoordsTable(BaseWorkerUtil):
             
             self.logger.log('Asking to select the CSV table file...')
             
-            abort = self.emitSelectFile(
+            cancel = self.emitSelectFile(
                 exp_path, 'Select CSV table file with coordinates to filter',
                 'CSV (*.csv)'
             )
-            if abort:
+            if cancel:
                 self.sigAborted.emit()
                 return
             
@@ -6943,4 +6953,476 @@ class CreateSymLinkToPosWinWorker(QObject):
                 )
                 self.signals.progressBar.emit(1)
                 
+        self.signals.finished.emit(self)
+
+class SplitVideoIntoFrameTiffs(BaseWorkerUtil):
+    sigAskSetup = Signal(object)
+    sigCancelled = Signal()
+    sigAskDstFolderExist = Signal(str)
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    def emitAskSetup(self, exp_path, pos_foldernames, video_endname):
+        self.mutex.lock()
+        self.sigAskSetup.emit((exp_path, pos_foldernames, video_endname))
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def emitAskDstFolderExist(self, videoDstFolderPath):
+        self.mutex.lock()
+        self.sigAskDstFolderExist.emit(videoDstFolderPath)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        tot_num_pos = 0
+        for exp_path, pos_foldernames in expPaths.items():
+            tot_num_pos += len(pos_foldernames)
+        tot_digits = max(2, len(str(tot_num_pos)))
+        k = 0
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            if i == 0:
+                self.mainWin.infoText = 'Select <b>video file to split</b>'
+                cancel = self.emitSelectVideoFile(
+                    exp_path, pos_foldernames, False
+                )
+                if cancel:
+                    self.sigCancelled.emit()
+                    return
+                
+                selectedVideoEndname = self.selectedVideoEndname
+
+                # Emit ask setup parameters
+                self.mainWin.infoText = 'Setup video splitting process'
+                self.emitAskSetup(
+                    exp_path, pos_foldernames, selectedVideoEndname
+                )
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+            
+            dtype = self.dtypeOut
+            prefix = self.prefixText
+            onlyUntilTracked = self.onlyUntilTracked
+            onlyUntilAnnotated = self.onlyUntilAnnotated
+            acdcOutputEndname = self.acdcOutputEndname
+            dstFolderPath = self.dstFolderPath
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                pos_num_str = f'{k+1}'.zfill(tot_digits)
+                videoDstFolderPath = os.path.join(
+                    dstFolderPath, pos_num_str
+                )
+
+                if os.path.exists(videoDstFolderPath):
+                    self.emitAskDstFolderExist(videoDstFolderPath)
+                    if self.abort:
+                        self.sigCancelled.emit()
+                        return
+                    
+                    io.delete_folder_content(videoDstFolderPath)
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                ls = myutils.listdir(images_path)
+                imageFilepath = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f == f'{basename}{selectedVideoEndname}'
+                ][0]
+                image_data = load.load_image_file(imageFilepath)
+
+                numFrames = len(image_data)
+                if onlyUntilTracked or onlyUntilAnnotated:
+                    acdc_df = load.load_acdc_df_file(
+                        images_path, 
+                        end_name_acdc_df_file=acdcOutputEndname
+                    )
+
+                if self.numFramesToSplit is not None:
+                    numFrames = self.numFramesToSplit
+                elif onlyUntilTracked:
+                    numFrames = acdc_df['frame_i'].max() + 1
+                elif onlyUntilAnnotated:
+                    try:
+                        ccs = acdc_df[['cell_cycle_stage']]
+                    except KeyError:
+                        ccs = acdc_df[['generation_num_tree']]
+                    last_index_cca_df = ccs.last_valid_index()
+                    numFrames = (
+                        acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
+                    )
+
+                self.logger.log(
+                    f'Splitting video into single-frame TIFF files '
+                    f'until frame n. {numFrames}...'
+                )
+                
+                self.signals.sigInitInnerPbar.emit(numFrames)
+                for frame_i in range(numFrames):
+                    img = myutils.convert_to_dtype(image_data[frame_i], dtype)
+                    t_str = str(frame_i).zfill(3)
+                    frame_filename = f'{prefix}{t_str}.tif'
+                    frame_filepath = os.path.join(
+                        videoDstFolderPath, frame_filename
+                    )
+                    skimage.io.imsave(frame_filepath, img)
+                    self.signals.sigUpdateInnerPbar.emit(1)
+                
+                self.signals.progressBar.emit(1)
+
+                k += 1
+
+        self.signals.finished.emit(self)
+
+class CreateCtcTableFromAcdcOutput(BaseWorkerUtil):
+    sigCancelled = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            self.mainWin.infoText = (
+                'Select <code>acdc_output</code> file(s) '
+                '<b>to convert to CTC table(s)</b>'
+            )
+            cancel = self.emitSelectAcdcOutputFiles(
+                exp_path, pos_foldernames, 
+                infoText=' to convert to CTC table',
+                allowSingleSelection=True
+            )
+            if cancel:
+                self.sigCancelled.emit()
+                return
+            
+            selectedAcdcOutputEndnames = self.mainWin.selectedAcdcOutputEndnames
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                for acdcOutEndname in selectedAcdcOutputEndnames:
+                    df_ctc, df_ctc_filepath = (
+                        load.create_ctc_table_from_images_path(
+                            images_path,
+                            acdc_output_endname=acdcOutEndname
+                        )
+                    )
+                    self.logger.log(f'CTC table saved at "{df_ctc_filepath}"')
+                
+                self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)
+
+class CreateTrackastraInputDataWorker(BaseWorkerUtil):
+    sigAskSetup = Signal(object)
+    sigWarnPartialDstPosFolderFound = Signal(str, str)
+    sigAskDstFolderExist = Signal(str)
+    sigCancelled = Signal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    def emitAskSetup(self, exp_path, pos_foldernames, video_endname):
+        self.mutex.lock()
+        self.sigAskSetup.emit((exp_path, pos_foldernames, video_endname))
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def emitWarnPartialDstPosFolderFound(self, dstFolderPath, pos_num_str):
+        self.mutex.lock()
+        self.sigWarnPartialDstPosFolderFound.emit(dstFolderPath, pos_num_str)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def emitAskDstFolderExist(self, videoDstFolderPath):
+        self.mutex.lock()
+        self.sigAskDstFolderExist.emit(videoDstFolderPath)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        tot_num_pos = 0
+        for exp_path, pos_foldernames in expPaths.items():
+            tot_num_pos += len(pos_foldernames)
+        tot_digits = max(2, len(str(tot_num_pos)))
+        src_paths_info = {
+            'generated_folder': [],
+            'source_position_folder': []    
+        }
+        self._warnings = defaultdict(dict)
+        k = 0
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            if i == 0:
+                self.mainWin.infoText = 'Select <b>input video file</b>'
+                cancel = self.emitSelectVideoFile(
+                    exp_path, pos_foldernames, False
+                )
+                if cancel:
+                    self.sigCancelled.emit()
+                    return
+                
+                selectedVideoEndname = self.selectedVideoEndname
+
+                # Emit ask setup parameters
+                self.mainWin.infoText = 'Setup Trackastra data creation process'
+                self.emitAskSetup(
+                    exp_path, pos_foldernames, selectedVideoEndname
+                )
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+                
+                dtype = self.dtypeOut
+                prefix = self.prefixText
+                onlyUntilTracked = self.onlyUntilTracked
+                onlyUntilAnnotated = self.onlyUntilAnnotated
+                acdcOutputEndname = self.acdcOutputEndname
+                dstFolderPath = self.dstFolderPath
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigCancelled.emit()
+                    return
+
+                pos_path = os.path.join(exp_path, pos)
+                pos_num_str = f'{k+1}'.zfill(tot_digits)
+                videoDstFolderPath = os.path.join(
+                    dstFolderPath, pos_num_str
+                )
+                gtDstFolderPath = os.path.join(
+                    dstFolderPath, f'{pos_num_str}_GT', 'TRA'
+                )
+
+                partial_dst_pos_found = (
+                    os.path.exists(videoDstFolderPath)
+                    ^ os.path.exists(gtDstFolderPath)
+                ) 
+                if partial_dst_pos_found:
+                    self.emitWarnPartialDstPosFolderFound(
+                        dstFolderPath, pos_num_str
+                    )
+                    self.sigCancelled.emit()
+                    return
+
+                if os.path.exists(videoDstFolderPath):
+                    self.emitAskDstFolderExist(videoDstFolderPath)
+                    if self.abort:
+                        self.sigCancelled.emit()
+                        return
+                    
+                    io.delete_folder_content(videoDstFolderPath)
+                    io.delete_folder_content(gtDstFolderPath)
+
+                src_paths_info['generated_folder'].append(videoDstFolderPath)
+                src_paths_info['source_position_folder'].append(pos_path)
+            
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(pos_path, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                ls = myutils.listdir(images_path)
+                imageFilepath = [
+                    os.path.join(images_path, f) for f in ls 
+                    if f == f'{basename}{selectedVideoEndname}'
+                ][0]
+                image_data = load.load_image_file(imageFilepath)
+                segmEndname = (
+                    acdcOutputEndname
+                        .replace(
+                            'acdc_output', 'segm'
+                        )
+                        .replace(
+                            '.csv', '.npz'
+                        )
+                )
+                segm_data = load.load_segm_file(
+                    images_path,
+                    end_name_segm_file=segmEndname
+                )
+                if segm_data is None:
+                    warning_class = (
+                        f'Segmentation file ending with "{segmEndname}" not found'
+                    )
+                    self.logger.log(
+                        f'---------------------------------\n'
+                        f'[WARNING]: {warning_class} in "{images_path}".'
+                        f'\n================================='
+                    )
+                    
+                    self._warnings[images_path] = warning_class
+                    continue
+
+                numFrames = len(image_data)
+                acdc_df = load.load_acdc_df_file(
+                    images_path, 
+                    end_name_acdc_df_file=acdcOutputEndname
+                )
+
+                if acdc_df is None:
+                    warning_class = (
+                        '`acdc_output` CSV file ending with '
+                        f'"{acdcOutputEndname}" not found'
+                    )
+                    self.logger.log(
+                        f'---------------------------------\n'
+                        f'[WARNING]: {warning_class} in "{images_path}".\n\n'
+                        'Skipping this position.'
+                        f'\n================================='
+                    )
+                    self._warnings[images_path] = warning_class
+                    continue
+
+                if 'generation_num_tree' not in acdc_df.columns:
+                    warning_class = (
+                        '`acdc_output` CSV file ending with '
+                        f'"{acdcOutputEndname}" does not have lineage '
+                        'tree annotations'
+                    )
+                    self.logger.log(
+                        f'---------------------------------\n'
+                        f'[WARNING]: {warning_class} in \n\n'
+                        f'"{images_path}".\n\n'
+                        'Skipping this position.'
+                        f'\n================================='
+                    )
+                    self._warnings[images_path] = warning_class
+                    continue
+                
+                os.makedirs(videoDstFolderPath, exist_ok=True)
+                os.makedirs(gtDstFolderPath, exist_ok=True)
+
+                if self.numFramesToSplit is not None:
+                    numFrames = self.numFramesToSplit
+                else:
+                    try:
+                        ccs = acdc_df[['cell_cycle_stage']]
+                    except KeyError:
+                        ccs = acdc_df[['generation_num_tree']]
+                    last_index_cca_df = ccs.last_valid_index()
+                    numFrames = (
+                        acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
+                    )
+
+                self.logger.log(
+                    f'Splitting video into single-frame TIFF files '
+                    f'until frame n. {numFrames}...'
+                )
+
+                t_digits = max(3, len(str(numFrames)))
+                self.signals.sigInitInnerPbar.emit(numFrames*2)
+                for frame_i in range(numFrames):
+                    img = myutils.convert_to_dtype(image_data[frame_i], dtype)
+                    t_str = str(frame_i).zfill(t_digits)
+                    frame_filename = f'{prefix}{t_str}.tif'
+                    frame_filepath = os.path.join(
+                        videoDstFolderPath, frame_filename
+                    )
+                    skimage.io.imsave(frame_filepath, img, check_contrast=False)
+                    self.signals.sigUpdateInnerPbar.emit(1)
+
+                self.logger.log(
+                    f'Splitting segmentation into single-frame GT TIFF files '
+                    f'until frame n. {numFrames}...'
+                )
+                acdc_df = acdc_df.set_index('frame_i')
+                for frame_i in range(numFrames):
+                    cca_df_frame_i = acdc_df.loc[[frame_i]]
+                    lab = segm_data[frame_i]
+                    lab = core.replace_Cell_ID_with_Cell_ID_tree(
+                        lab, cca_df_frame_i
+                    )
+                    if np.any(lab > np.iinfo(np.uint16).max):
+                        raise ValueError(
+                            'Segmentation IDs exceed the uint16 range; '
+                            'remap mask and CTC IDs consistently before export.'
+                        )
+                    
+                    lab = lab.astype(np.uint16)
+                    t_str = str(frame_i).zfill(t_digits)
+                    lab_filename = f'man_track{t_str}.tif'
+                    lab_filepath = os.path.join(
+                        gtDstFolderPath, lab_filename
+                    )
+                    skimage.io.imsave(lab_filepath, lab, check_contrast=False)
+                    self.signals.sigUpdateInnerPbar.emit(1)
+
+                df_ctc_filepath = os.path.join(gtDstFolderPath, 'man_track.txt')
+                self.logger.log(
+                    f'Saving CTC table to {df_ctc_filepath}...'
+                )
+                df_ctc = core.acdc_df_to_ctc(
+                    acdc_df,
+                    last_training_frame_i=numFrames-1
+                )
+                df_ctc.to_csv(
+                    df_ctc_filepath,
+                    sep=" ",
+                    header=False,
+                    index=False,
+                )
+                
+                self.signals.progressBar.emit(1)
+
+                k += 1
+
+        df_src_path = pd.DataFrame(src_paths_info)
+        df_src_path.to_csv(
+            os.path.join(dstFolderPath, '_source_paths.txt'),
+            index=False
+        )
+
         self.signals.finished.emit(self)
