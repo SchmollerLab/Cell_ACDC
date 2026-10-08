@@ -88,8 +88,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
-
-        cancelButton.clicked.connect(self.abortCallback)
+        cancelButton.hide()
 
         mainLayout.addLayout(infoLayout)
         mainLayout.addSpacing(20)
@@ -415,13 +414,25 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         if aborted and self.worker is not None:
             self.worker.abort = True
             self.close()
+        
+    def closeEvent(self, event):
+        if self._thread is None or not self._thread.isRunning():
+            event.accept()
+            return
 
-    def abortCallback(self):
-        self.abort = True
-        if self.worker is not None:
-            self.worker.abort = True
-        else:
-            self.close()
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'The process is <b>still running and cannot be safely stopped</b> at this point.'
+        ) + html_utils.paragraph(
+            'The only way to stop the process now is to close the terminal.<br><br>'
+            'However, we do not recommend doing this unless you are happy to<br>'
+            'interrupt the process and potentially lose the results that have<br>'
+            'not been saved, yet.'
+        ) + html_utils.paragraph(
+            'Please <b>wait for the process to finish</b>.<br><br>Thank you for your patience!'
+        )
+        msg.warning(self, 'Process still running', txt)
+        event.ignore()
 
     @exception_handler
     def workerCritical(self, error):
@@ -547,6 +558,7 @@ class MainThreadSinglePosUtilBase(QDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.worker = None
+        self._thread = None
 
         self.setLayout(mainLayout)
     
@@ -568,13 +580,13 @@ class MainThreadSinglePosUtilBase(QDialog):
         self.progressWin.sigClosed.connect(self.progressWinClosed)
         self.progressWin.show(self.app)
 
-        self.thread = QThread()
+        self._thread = QThread()
         self.worker.moveToThread(self.thread)
 
-        self.worker.signals.finished.connect(self.thread.quit)
+        self.worker.signals.finished.connect(self._thread.quit)
         self.worker.signals.finished.connect(self.worker.deleteLater)
         self.worker.signals.finished.connect(self.workerFinished)
-        self.thread.finished.connect(self.thread.deleteLater)
+        self._thread.finished.connect(self._thread.deleteLater)
 
         self.worker.signals.progress.connect(self.workerProgress)
         self.worker.signals.critical.connect(self.workerCritical)    
@@ -586,8 +598,8 @@ class MainThreadSinglePosUtilBase(QDialog):
         )
         self.worker.signals.sigUpdatePbarDesc.connect(self.workerUpdatePbarDesc)
 
-        self.thread.started.connect(self.worker.run)
-        self.thread.start()
+        self._thread.started.connect(self.worker.run)
+        self._thread.start()
     
     def workerCritical(self, error):
         if self.progressWin is not None:
