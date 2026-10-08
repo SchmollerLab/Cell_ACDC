@@ -2,10 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from cellacdc import qutils, widgets
+from cellacdc import apps, qutils, widgets
 from cellacdc.gui import guiWin
 
 from qtpy.QtCore import Qt
+from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QAction, QApplication, QMainWindow, QPushButton, QToolBar, QWidget,
 )
@@ -160,3 +161,96 @@ def test_single_target_and_documented_id_selection_remain_supported(search):
     blinker = qutils.QControlBlink(control, qparent=search)
     blinker.start()
     blinker.stop()
+
+
+@pytest.mark.parametrize(
+    ('query', 'label', 'expected'),
+    [
+        ('bkgr', 'Background mean intensity', True),
+        ('background', 'bkgrVal_mean', True),
+        ('backgroud', 'Background mean intensity', True),
+        ('bkgr', 'Cell area', False),
+        ('', 'Background mean intensity', False),
+    ],
+)
+def test_metric_search_matches_fuzzy_terms_and_synonyms(query, label, expected):
+    assert widgets._matchesSearchText(query, label) is expected
+
+
+def test_custom_search_numeric_query_does_not_offer_ids(search):
+    control = QPushButton()
+    search.addItems([('cell_volume_3D', control)])
+    search.on_search_text_changed('3')
+    assert search.proxy_model.rowCount() == 1
+    assert search.proxy_model.index(0, 0).data(Qt.UserRole + 2) is control
+
+
+@pytest.fixture
+def measurements_dialog(app):
+    dialog = apps.SetMeasurementsDialog(
+        ['GFP', 'RFP'], [], isZstack=False, isSegm3D=False
+    )
+    dialog.show()
+    app.processEvents()
+    yield dialog
+    dialog.stopMeasurementSearchBlink()
+    app.removeEventFilter(dialog.searchWidget)
+    dialog.searchWidget.popup.deleteLater()
+    dialog.deleteLater()
+    app.processEvents()
+
+
+@pytest.mark.parametrize('selection_method', ['keyboard', 'mouse'])
+def test_measurement_popup_search_and_selection(
+        measurements_dialog, app, selection_method
+    ):
+    dialog = measurements_dialog
+    search = dialog.searchWidget
+    checkboxes = [
+        checkbox
+        for group, _ in dialog.measurementSearchGroups()
+        for checkbox in group.checkBoxes
+    ]
+    assert search.model.rowCount() == len(checkboxes)
+    search.search_input.setFocus()
+    search.search_input.setText('background')
+    search.on_search_text_changed('background')
+    app.processEvents()
+    assert search.popup.isVisible()
+    assert search.proxy_model.rowCount() > 0
+    index = search.proxy_model.index(0, 0)
+    checkbox = index.data(Qt.UserRole + 2)
+    states = [control.isChecked() for control in checkboxes]
+    if selection_method == 'keyboard':
+        QTest.keyClick(search.search_input, Qt.Key_Down)
+        assert search.popup.currentIndex().row() == 1
+        QTest.keyClick(search.search_input, Qt.Key_Up)
+        assert search.popup.currentIndex().row() == 0
+        QTest.keyClick(search.search_input, Qt.Key_Return)
+    else:
+        QTest.mouseClick(
+            search.popup.viewport(), Qt.LeftButton,
+            pos=search.popup.visualRect(index).center(),
+        )
+    app.processEvents()
+    blinker, = dialog.findChildren(qutils.QControlBlink)
+    assert blinker._widgets == [checkbox]
+    assert blinker.timer.isActive()
+    assert not search.popup.isVisible()
+    assert not search.search_input.text()
+    assert [control.isChecked() for control in checkboxes] == states
+    search.search_input.setText('area')
+    assert not blinker.timer.isActive()
+
+
+def test_measurement_search_excludes_deleted_checkbox(measurements_dialog):
+    dialog = measurements_dialog
+    group, _ = next(dialog.measurementSearchGroups())
+    checkbox = group.checkBoxes[0]
+    checkbox.hide()
+    dialog.updateMeasurementSearchRecords()
+    targets = [
+        dialog.searchWidget.model.item(row).data(Qt.UserRole + 2)
+        for row in range(dialog.searchWidget.model.rowCount())
+    ]
+    assert checkbox not in targets

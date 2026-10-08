@@ -4829,6 +4829,7 @@ class _metricsQGBox(QGroupBox):
 
         self.checkBoxes = []
         self.checkedState = {}
+        self.metricDescriptions = desc_dict
         for metric_colname, metric_desc in desc_dict.items():
             rowLayout = QHBoxLayout()
 
@@ -4936,11 +4937,7 @@ class _metricsQGBox(QGroupBox):
     
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkBoxes:
-            if not text:
-                highlighted = False
-            else:
-                highlighted = checkbox.text().lower().find(text.lower()) != -1
-            
+            highlighted = _matchesSearchText(text, checkbox.text(), threshold=0.65)
             self.setCheckboxHighlighted(highlighted, checkbox)
     
     def setCheckboxHighlighted(self, highlighted, checkbox):
@@ -10220,11 +10217,7 @@ class SetMeasurementsGroupBox(QGroupBox):
 
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkboxes.values():
-            if not text:
-                highlighted = False
-            else:
-                highlighted = checkbox.text().lower().find(text.lower()) != -1
-            
+            highlighted = _matchesSearchText(text, checkbox.text(), threshold=0.65)
             self.setCheckboxHighlighted(highlighted, checkbox)
     
     def setCheckboxHighlighted(self, highlighted, checkbox):
@@ -13393,20 +13386,55 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         return 7, 0
 
     def _similarity(self, text):
-        query = self._filterText
-        if not query or not text:
-            return 0.0
+        return _fuzzySearchSimilarity(self._filterText, text)
 
-        matcher = SequenceMatcher(None, query, text)
-        best_ratio = 0.0
-        for query_start, text_start, _ in matcher.get_matching_blocks():
-            start = max(text_start - query_start, 0)
-            candidate = text[start:start + len(query)]
-            ratio = SequenceMatcher(None, query, candidate).ratio()
-            best_ratio = max(best_ratio, ratio)
-            if best_ratio == 1.0:
-                break
-        return best_ratio
+
+def _fuzzySearchSimilarity(query, text):
+    if not query or not text:
+        return 0.0
+
+    matcher = SequenceMatcher(None, query, text)
+    best_ratio = 0.0
+    for query_start, text_start, _ in matcher.get_matching_blocks():
+        start = max(text_start - query_start, 0)
+        candidate = text[start:start + len(query)]
+        ratio = SequenceMatcher(None, query, candidate).ratio()
+        best_ratio = max(best_ratio, ratio)
+        if best_ratio == 1.0:
+            break
+    return best_ratio
+
+
+def _searchSynonyms():
+    synonyms = [
+        ('Segm.', 'Segmentation'),
+        ('Edit', 'Change'),
+        ('ID', 'IDs'),
+        ('ID', 'cell'),
+        ('ID', 'object'),
+        ('bkgr', 'background'),
+    ]
+    return synonyms + [(synonym, phrase) for phrase, synonym in synonyms]
+
+
+def _matchesSearchText(query, text, threshold=0.5):
+    query = query.strip().casefold()
+    if not query:
+        return False
+
+    text = text.casefold()
+    query_variants = [query]
+    for phrase, synonym in _searchSynonyms():
+        phrase = phrase.casefold()
+        if phrase in query:
+            query_variants.append(query.replace(phrase, synonym.casefold()))
+
+    for query_variant in query_variants:
+        if query_variant in text:
+            return True
+        if _fuzzySearchSimilarity(query_variant, text) >= threshold:
+            return True
+    return False
 
 
 def _normalizeSearchText(text):
@@ -13783,15 +13811,7 @@ class ButtonSearchWidget(QWidget):
         )
         
     def synonyms(self):
-        synonyms = [
-            ('Segm.', 'Segmentation'),
-            ('Edit', 'Change'),
-            ('ID', 'IDs'),
-            ('ID', 'cell'),
-            ('ID', 'object'),
-        ]
-        synonyms += [(v, k) for k, v in synonyms]
-        return synonyms
+        return _searchSynonyms()
 
     def registerToolbarTargets(self, toolbar, targets):
         """Link a toolbar's controls to the button(s) that open it."""
@@ -13944,6 +13964,12 @@ class ButtonSearchWidget(QWidget):
         self.popup.setModel(self.proxy_model)
         self.proxy_model.setFilterText(self.search_input.text())
 
+    def setSearchRecords(self, records):
+        """Replace caller-provided records, preserving the current query."""
+        self._search_records = self._loadSearchRecords(None, records)
+        self._rebuild_models()
+        self.on_search_text_changed(self.search_input.text())
+
     def set_height_based_on(self, reference_widget):
         """Set the height of the search input based on another widget's height."""
         height_curr = reference_widget.sizeHint().height()
@@ -13963,7 +13989,7 @@ class ButtonSearchWidget(QWidget):
         self.show_popup()
 
     def _update_search_models(self, query):
-        if not query.isascii() or not query.isdecimal():
+        if self.guiWin is None or not query.isascii() or not query.isdecimal():
             if self.model is not self._controls_model:
                 self.model = self._controls_model
                 self.proxy_model = self._controls_proxy_model

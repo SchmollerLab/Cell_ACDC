@@ -2082,12 +2082,21 @@ class SetMeasurementsDialog(QBaseDialog):
         
         searchLayout = QHBoxLayout()
         
-        searchLineEdit = widgets.SearchLineEdit()
+        self.searchWidget = widgets.ButtonSearchWidget(loadingType=None)
+        self.searchWidget.search_input.setPlaceholderText('Search measurements...')
+        self.searchWidget.search_input.setToolTip(
+            'Search measurement names and descriptions, including typos and '
+            'synonyms. Choose a result with Up/Down and Enter, or click it, '
+            'to reveal and highlight the measurement without checking it.'
+        )
+        self.searchWidget.search_input.setMinimumWidth(250)
+        self.searchWidget.search_input.setMaximumWidth(16777215)
         searchLayout.addStretch(5)
-        searchLayout.addWidget(searchLineEdit)
+        searchLayout.addWidget(self.searchWidget)
         searchLayout.setStretch(1, 3)
         
         mainScrollArea = widgets.ScrollArea()
+        self.mainScrollArea = mainScrollArea
         mainScrollAreaWidget = QWidget()
         mainScrollArea.setWidget(mainScrollAreaWidget)
         
@@ -2288,7 +2297,9 @@ class SetMeasurementsDialog(QBaseDialog):
         if state is not None:
             self.setState(state)
 
-        searchLineEdit.textEdited.connect(self.searchAndHighlight)
+        self.searchWidget.search_input.textChanged.connect(self.searchAndHighlight)
+        self.searchWidget.sigTriggerBlink.connect(self.highlightSearchMeasurement)
+        self.updateMeasurementSearchRecords()
         self.deselectAllButton.clicked.connect(self.deselectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
@@ -2334,25 +2345,54 @@ class SetMeasurementsDialog(QBaseDialog):
         
         return all_metrics
     
-    def searchAndHighlight(self, text):
+    def measurementSearchGroups(self):
         for chNameGroupbox in self.chNameGroupboxes:
             for groupbox in chNameGroupbox.groupboxes:
-                groupbox.highlightCheckboxesFromSearchText(text)
-        
-        self.regionPropsQGBox.highlightCheckboxesFromSearchText(text)
-        self.sizeMetricsQGBox.highlightCheckboxesFromSearchText(text)
-        
+                yield groupbox, chNameGroupbox.chName
+        yield self.regionPropsQGBox, ''
+        yield self.sizeMetricsQGBox, ''
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.highlightCheckboxesFromSearchText(
-                text
-            )
-        
-        if self.mixedChannelsCombineMetricsQGBox is None:
-            return
-        
-        self.mixedChannelsCombineMetricsQGBox.highlightCheckboxesFromSearchText(
-            text
-        )
+            yield self.chIndipendCustomeMetricsQGBox, ''
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            yield self.mixedChannelsCombineMetricsQGBox, ''
+
+    def updateMeasurementSearchRecords(self):
+        records = {}
+        for groupbox, channel in self.measurementSearchGroups():
+            context = f'{channel}: {groupbox.title()}' if channel else groupbox.title()
+            for checkbox in groupbox.checkBoxes:
+                if checkbox.isHidden():
+                    continue
+                name = checkbox.text()
+                display = f'{name} ({context})'
+                records[display] = {
+                    'display': display,
+                    'search_name': display,
+                    'synonyms': self.searchWidget._synonymsForName(name),
+                    'tooltip': html_utils.to_plain_text(
+                        groupbox.metricDescriptions.get(name, '')
+                    ),
+                    'target': checkbox,
+                }
+                print(records[display]["tooltip"])
+        self.searchWidget.setSearchRecords(records)
+
+    def stopMeasurementSearchBlink(self):
+        for blinker in self.findChildren(qutils.QControlBlink):
+            blinker.stop()
+
+    def searchAndHighlight(self, text):
+        self.stopMeasurementSearchBlink()
+        for groupbox, _ in self.measurementSearchGroups():
+            groupbox.highlightCheckboxesFromSearchText(text)
+
+    def highlightSearchMeasurement(self, checkbox):
+        """Reveal and blink a popup result without changing its checked state."""
+        self.stopMeasurementSearchBlink()
+        checkbox.scrollArea.ensureWidgetVisible(checkbox)
+        self.mainScrollArea.ensureWidgetVisible(checkbox.scrollArea)
+        blinker = qutils.QControlBlink(checkbox, qparent=self)
+        blinker.start()
     
     def selectedMetricNameAndGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2558,6 +2598,8 @@ class SetMeasurementsDialog(QBaseDialog):
             if w is None:
                 continue
             w.hide()
+
+        self.updateMeasurementSearchRecords()
                
         if self.allPosData is not None:
             for posData in self.allPosData:
