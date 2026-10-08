@@ -591,11 +591,19 @@ class arrowDownPushButton(PushButton):
 class selectAllPushButton(PushButton):
     sigClicked = Signal(object, bool)
     
-    def __init__(self, what='', *args, **kwargs):
+    def __init__(
+            self,
+            *args,
+            suffix_text_select='all', 
+            suffix_text_deselect='all',
+            **kwargs
+        ):
         super().__init__(*args, **kwargs)
         self._status = 'deselect'
+        self._suffix_text_select = suffix_text_select
+        self._suffix_text_deselect = suffix_text_deselect
         self.setIcon(QIcon(':deselect_all.svg'))
-        self.setText(f'Deselect all{what}')
+        self.setText(f'Deselect {suffix_text_deselect}')
         self.clicked.connect(self.onClicked)
         self.setMinimumWidth(self.sizeHint().width())
     
@@ -618,10 +626,10 @@ class selectAllPushButton(PushButton):
             icon_fn = ':deselect_all.svg'
             self._status = 'deselect'
             checked = True
-            text = self.text().replace('Select', 'Deselect')
+            text = f'Deselect {self._suffix_text_deselect}'
         else:
             icon_fn = ':select_all.svg'
-            text = self.text().replace('Deselect', 'Select')
+            text = f'Seselect {self._suffix_text_deselect}'
             self._status = 'select'
             checked = False
         self.setIcon(QIcon(icon_fn))
@@ -4930,7 +4938,10 @@ class _metricsQGBox(QGroupBox):
         buttonsLayout.addStretch(1)
 
         if isSegm3D:
-            selectAll3DButton = selectAllPushButton(what=' 3D metrics')
+            selectAll3DButton = selectAllPushButton(
+                suffix_text_select='only 3D metrics',
+                suffix_text_deselect='all 3D metrics'
+            )
             selectAll3DButton.setChecked(False)
             selectAll3DButton.sigClicked.connect(self.checkAll3D)
             self.selectAll3DButton = selectAll3DButton

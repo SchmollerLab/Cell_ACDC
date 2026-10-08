@@ -2259,7 +2259,10 @@ class SetMeasurementsDialog(QBaseDialog):
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         if isSegm3D:
-            selectAll3DButton = widgets.selectAllPushButton(what=' 3D metrics')
+            selectAll3DButton = widgets.selectAllPushButton(
+                suffix_text_select='only 3D metrics',
+                suffix_text_deselect='all 3D metrics'
+            )
             selectAll3DButton.sigClicked.connect(self.checkAll3D)
             self.selectAll3DButton = selectAll3DButton
             buttonsLayout.addWidget(selectAll3DButton)
