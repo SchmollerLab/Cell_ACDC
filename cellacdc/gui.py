@@ -741,7 +741,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             parent=self,
             dates=dates,
         )
-        self.openRecentMoreAction = QAction('More...', self)
+        self.openRecentMoreAction = QAction('More/Search...', self)
         self.openRecentMoreAction.triggered.connect(
             self.showOpenRecentMoreWidget
         )

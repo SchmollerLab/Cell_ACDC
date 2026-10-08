@@ -20724,7 +20724,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
         self.recentPathsDialog = SearchableListboxDialog(
             recent_paths,
             title='Add from recent paths',
-            searchLineEditText='Search recent paths...',
+            searchLineEditText='Search recent paths  (click to select multiple)...',
             parent=self,
             multiSelection=True,
             dates=dates,

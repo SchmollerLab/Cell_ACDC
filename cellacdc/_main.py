@@ -1024,7 +1024,7 @@ class mainWin(QMainWindow):
             recentPaths,
             title='Recent paths',
             dates=dates,
-            searchLineEditText='Search recent paths...',
+            searchLineEditText='Search recent paths  (double-click to open)...',
             parent=self,
         )
         self.openRecentMoreAction = QAction('More/Search...', self)

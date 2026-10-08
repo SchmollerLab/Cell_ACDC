@@ -2896,7 +2896,7 @@ class dataPrepWin(QMainWindow):
         self.openRecentMoreDialog = apps.SearchableListboxDialog(
             recentPaths,
             title='Recent paths', 
-            searchLineEditText='Search recent paths...',
+            searchLineEditText='Search recent paths  (double-click to open)...',
             parent=self,
             dates=dates,
         )
