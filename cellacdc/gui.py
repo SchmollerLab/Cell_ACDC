@@ -1367,6 +1367,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.searchWidget.sigSearchId.connect(
             self.onSearchId
         )
+        self.searchWidget.setMinimumHeight(
+            self.searchWidget.sizeHint().height()
+        )
         
         
     def gui_createToolBars(self):        
@@ -2482,6 +2485,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoIDcheckbox.setChecked(True)
         self.autoIDcheckboxAction = brushEraserToolBar.addWidget(self.autoIDcheckbox)
         self.autoIDcheckboxAction.setVisible(False)
+
+        brushEraserToolBar.addSeparator()
+
+        self.interpZButton = QToolButton(self)
+        self.interpZButton.setIcon(QIcon(":interpolate-Z.svg"))
+        self.interpZButton.setCheckable(True)
+        self.interpZButton.setShortcut('Shift+Q')
+        self.interpZButton.action = brushEraserToolBar.addWidget(
+            self.interpZButton
+        )
+        self.widgetsWithShortcut['Interpolate sparsely labelled Z volume'] = (
+            self.interpZButton
+        )
+
+        self.interpZConfirmAction = QAction(self)
+        self.interpZConfirmAction.setIcon(QIcon(":greenTick.svg"))
+        self.interpZConfirmAction.setToolTip(
+            'Interpolate the mask between annotated z-slices.\n\n'
+            'Shortcut: "Enter"'
+        )
+        brushEraserToolBar.addAction(self.interpZConfirmAction)
+
+        brushEraserToolBar.addSeparator()
 
         self.brushSizeSpinbox = widgets.SpinBox(
             disableKeyPress=True,
@@ -4082,6 +4108,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
+        self.interpZButton.toggled.connect(self.interpZModeToggled)
+        self.interpZConfirmAction.triggered.connect(
+            self.interpZConfirmTriggered
+        )
         self.autoIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
         self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
@@ -5892,19 +5922,42 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     start_slice = None
 
-                manualSep = apps.manualSeparateGui(
-                    lab, ID, img,
-                    fontSize=self.fontSize,
-                    IDcolor=self.lut[ID],
-                    parent=self,
-                    drawMode= 'threepoints_arc' if lastManualSeparateState['is_three_points_active'] else 'free_hand',
-                    start_slice=start_slice,
-                    mouseBindings=self.mouseBindings,
-                    labelsLut=self.getLabelsImageLut(),
-                    labelsAlpha=self.imgGrad.labelsAlphaSlider.value()
+                draw_mode = (
+                    'threepoints_arc'
+                    if lastManualSeparateState['is_three_points_active']
+                    else 'freehand'
                 )
-                
-                manualSep.show()
+                labels_lut = self.getLabelsImageLut()
+                labels_alpha = self.imgGrad.labelsAlphaSlider.value()
+                manualSep = getattr(self, 'manualSeparateGui', None)
+                rp = posData.rp
+                if manualSep is None:
+                    manualSep = apps.manualSeparateGui(
+                        lab, ID, img,
+                        fontSize=self.fontSize,
+                        IDcolor=self.lut[ID],
+                        parent=self,
+                        drawMode=draw_mode,
+                        start_slice=start_slice,
+                        mouseBindings=self.mouseBindings,
+                        labelsLut=labels_lut,
+                        labelsAlpha=labels_alpha,
+                        rp=rp
+                    )
+                    self.manualSeparateGui = manualSep
+                else:
+                    manualSep.setSessionData(
+                        lab, ID, img,
+                        fontSize=self.fontSize,
+                        IDcolor=self.lut[ID],
+                        drawMode=draw_mode,
+                        start_slice=start_slice,
+                        mouseBindings=self.mouseBindings,
+                        labelsLut=labels_lut,
+                        labelsAlpha=labels_alpha,
+                        rp=rp
+                    )
+
                 manualSep.setState(lastManualSeparateState)
 
                 manualSep.centerWindow()
@@ -6958,7 +7011,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        cursorsInfo = self.gui_setCursor(modifiers, event, isHoverImg1)
+        cursorsInfo = self.gui_setCursor(
+            modifiers, event, isHoverImg1=isHoverImg1
+        )
         self.highlightHoverLostObj(modifiers, event)
         
         drawRulerLine = (
@@ -14661,6 +14716,82 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1_EraserX.setSize(value)
         self.setDiskMask()
     
+    def interpZModeToggled(self, checked):
+        if checked:
+            self.autoIDcheckbox.stateToRestore = self.autoIDcheckbox.isChecked()
+
+        if not checked:
+            try:
+                self.autoIDcheckbox.setChecked(
+                    self.autoIDcheckbox.stateToRestore
+                )
+            except Exception as err:
+                pass
+
+            self.autoIDcheckbox.setDisabled(False)
+            return
+        
+        if self.autoIDcheckbox.isChecked():
+            self.autoIDcheckbox.setChecked(False)
+            self.autoIDcheckbox.setDisabled(True)
+
+        newID = self.setBrushID(return_val=True)
+        self.editIDspinbox.setValue(newID)
+
+    @exception_handler
+    def interpZConfirmTriggered(self):
+        posData = self.data[self.pos_i]
+        ID = self.editIDspinbox.value()
+        if ID == 0:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
+        self.logger.info(f'Interpolating object ID = {ID}...')
+        obj = posData.rp.get_obj_from_ID(ID, warn=False)
+        if obj is None:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False) 
+
+        local_lab = posData.lab[obj.slice]
+        local_mask_volume = local_lab == ID
+        labelled_z_slices = np.flatnonzero(
+            np.any(local_mask_volume, axis=(1, 2))
+        )
+
+        if len(labelled_z_slices) < 2:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
+        local_mask_filled, _ = core.interpolate_unlabelled_z_slices(
+            local_mask_volume, labelled_z_slices
+        )
+
+        existing_objs_mask = np.logical_and(local_lab > 0, local_lab != ID)
+
+        local_mask_filled[existing_objs_mask] = False
+        posData.lab[obj.slice][local_mask_filled] = ID
+        self.update_rp(specific_IDs=ID, preloaded_bbox=obj.bbox)
+        self.updateAllImages()
+
+        button = self.brushEraserToolBar.widgetForAction(
+            self.interpZConfirmAction
+        )
+        button.setStyleSheet(f'background-color: {GREEN_HEX}')
+
+        self.editIDspinbox.setValue(ID + 1)
+
+        QTimer.singleShot(2000, self.restoreInterpZConfirmActionColor)
+
+    def restoreInterpZConfirmActionColor(self):
+        color = self.defaultToolBarButtonColor
+        button = self.brushEraserToolBar.widgetForAction(
+            self.interpZConfirmAction
+        )
+        button.setStyleSheet(f'background-color: {color}')
+
     def autoIDtoggled(self, checked):
         self.editIDspinboxAction.setDisabled(checked)
         self.editIDLabelAction.setDisabled(checked)
@@ -16843,7 +16974,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 isLabelRoiCircActive
             )
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
-            if isTypingIDFunctionChecked:
+            if self.interpZButton.isChecked():
+                self.interpZConfirmAction.trigger()
+            elif isTypingIDFunctionChecked:
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
@@ -21683,7 +21816,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.resizeGui()
     
     def setVisible3DsegmWidgets(self):
-        pass
+        if not self.isSegm3D:
+            self.interpZButton.setChecked(False)
+
+        self.interpZButton.setVisible(self.isSegm3D)
+        self.interpZButton.action.setVisible(self.isSegm3D)
+        self.interpZConfirmAction.setVisible(self.isSegm3D)
+        self.interpZButton.action.setDisabled(not self.isSegm3D)
+        self.interpZButton.setDisabled(not self.isSegm3D)
 
     def resizeGuiAndAutoRange(self):
         self.resizeGui()

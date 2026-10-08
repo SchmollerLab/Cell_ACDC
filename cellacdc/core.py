@@ -3533,3 +3533,205 @@ def convex_hull_mask(mask: np.ndarray, slice_by_slice=True):
         mask[mask_obj.slice][z] = mask_obj_hull_z
     
     return mask
+
+def smooth_mask_plane(mask_plane):
+    """Smooth a 2D mask plane with a weighted 3x3 neighborhood.
+
+    The center pixel has weight 1.0, edge neighbors have weight 0.5,
+    and corner neighbors have weight 1 / (1 + sqrt(2)). Values outside
+    the plane are treated as zero.
+
+    Args:
+        mask_plane: A 2D array representing one mask plane.
+
+    Returns:
+        A float32 array containing the smoothed plane.
+    """
+    axial_weight = 0.5
+    diagonal_weight = 1.0 / (1.0 + np.sqrt(2.0))
+    center_weight = 1.0
+
+    padded = np.pad(
+        np.asarray(mask_plane, dtype=np.float32),
+        pad_width=1,
+        mode="constant",
+    )
+
+    smoothed = (
+        diagonal_weight * padded[:-2, :-2]
+        + axial_weight * padded[:-2, 1:-1]
+        + diagonal_weight * padded[:-2, 2:]
+        + axial_weight * padded[1:-1, :-2]
+        + center_weight * padded[1:-1, 1:-1]
+        + axial_weight * padded[1:-1, 2:]
+        + diagonal_weight * padded[2:, :-2]
+        + axial_weight * padded[2:, 1:-1]
+        + diagonal_weight * padded[2:, 2:]
+    )
+
+    weight_sum = center_weight + 4 * axial_weight + 4 * diagonal_weight
+    return smoothed / weight_sum
+
+def interpolate_unlabelled_z_slices(mask_volume, labelled_z_slices):
+    """Fill unlabeled z-slices between sparsely labeled mask planes.
+
+    Each missing plane is estimated from its nearest labeled planes below
+    and above. Those planes are spatially smoothed, weighted by the missing
+    plane's relative z-position, combined, and thresholded at 0.33.
+
+    The input volume is modified in place. Only gaps between the first and
+    last labeled slices are filled; slices outside that range are unchanged.
+
+    Parameters
+    ----------
+    mask_volume : (Z, Y, X) numpy.ndarray of booleans
+        A 3D boolean array with shape (z, y, x).
+    labelled_z_slices : (N,) numpy.ndarray of ints
+        A 1D array of labeled slice indices into ``mask_volume``.
+
+    Returns
+    -------
+    mask_volume : (Z, Y, X) numpy.ndarray of booleans
+        Modified mask volume.
+    filled_z_slices : (M,) numpy.ndarray of ints
+        1D array of z-indices that were filled.
+
+    Raises
+    ------
+    ValueError: 
+        If the volume is not 3D, or if the labeled slice indices 
+        are empty, duplicated, or out of bounds.
+    """
+    if mask_volume.ndim != 3:
+        raise ValueError("mask_volume must have shape (z, y, x)")
+
+    labelled_z_slices = np.asarray(labelled_z_slices, dtype=np.intp)
+
+    if labelled_z_slices.ndim != 1 or labelled_z_slices.size == 0:
+        raise ValueError("labelled_z_slices must be a non-empty 1D array")
+
+    if np.any(labelled_z_slices < 0) or np.any(
+        labelled_z_slices >= mask_volume.shape[0]
+    ):
+        raise ValueError("labelled z-slice indices are out of bounds")
+
+    labelled_z_slices = np.unique(labelled_z_slices)
+
+    first_labelled_z = labelled_z_slices[0]
+    last_labelled_z = labelled_z_slices[-1]
+    filled_z_slices = np.arange(
+        first_labelled_z + 1,
+        last_labelled_z,
+        dtype=np.intp,
+    )
+    filled_z_slices = filled_z_slices[
+        ~np.isin(filled_z_slices, labelled_z_slices)
+    ]
+
+    for z_index in filled_z_slices:
+        upper_position = np.searchsorted(labelled_z_slices, z_index)
+        lower_z = labelled_z_slices[upper_position - 1]
+        upper_z = labelled_z_slices[upper_position]
+
+        fraction = (z_index - lower_z) / (upper_z - lower_z)
+        lower_plane = smooth_mask_plane(mask_volume[lower_z])
+        upper_plane = smooth_mask_plane(mask_volume[upper_z])
+
+        interpolated_plane = (
+            lower_plane * (1.0 - fraction)
+            + upper_plane * fraction
+        )
+        mask_volume[z_index] = interpolated_plane > 0.33
+
+    return mask_volume, filled_z_slices
+
+def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
+    """Converts acdc_output dataframe into man_track.txt lineage 
+    information for the Cell Tracking Challenge (CTC) format.
+    Requires that lineage tree information was previously 
+    added to acdc_output.
+
+    Parameters:
+    ----------
+        acdc_output : pd.Dataframe
+            acdc_output dataframe with added lineage tree.
+        last_training_frame_i : int
+            the last frame_i that will be included 
+            into the man_track.txt output. 
+
+    Returns:
+        Dataframe in CTC format for converting to the man_track.txt file
+
+    """
+    acdc_output = acdc_output.reset_index()
+    
+    is_normal_lineage_tree = (
+        'generation_num_tree' in acdc_output.columns
+        and 'Cell_ID_tree' not in  acdc_output.columns
+    )
+    if is_normal_lineage_tree:
+        acdc_output['Cell_ID_tree'] = acdc_output['Cell_ID']
+
+    if 'Cell_ID_tree' not in acdc_output.columns:
+        raise KeyError(
+            '`Cell_ID_tree` column not found in acdc_output table.'
+        )
+        if 'parent_ID_tree' not in acdc_output.columns:
+            raise KeyError(
+                '`parent_ID_tree` column not found in acdc_output table.'
+            )
+        acdc_output['Cell_ID_tree'] = acdc_output['Cell_ID']
+
+    list_of_cell_ID_trees = acdc_output.loc[
+        acdc_output['Cell_ID_tree'] > 0, 'Cell_ID_tree'
+    ].unique()
+    output_df = pd.DataFrame(
+        index=range(len(list_of_cell_ID_trees)),
+        columns=["L","B","E","P"]
+    )
+        
+    # uses max segmented/tracked frame_i if no training window is selected
+    if last_training_frame_i is None:
+        last_training_frame_i = acdc_output["frame_i"].max()
+        
+    # goes through all cell_ID_trees to find  
+    # their parental cell_ID_tree and beginning + end frame_i
+    counter = 0
+    for i in list_of_cell_ID_trees:
+        subset = acdc_output.loc[acdc_output['Cell_ID_tree'] == i]
+        beginning = subset['frame_i'].min()
+        ending = subset['frame_i'].max()
+        parental = subset.iloc[0]['parent_ID_tree']
+        if parental == -1:
+            parental = 0
+            
+    # sorts out tracks beginning later than selected training window
+        if beginning > last_training_frame_i:
+            continue
+            
+    # changes track ending to the selected training window if neeeded
+        elif ending > last_training_frame_i:
+            ending = last_training_frame_i
+        
+        output_df.loc[counter, "L"] = i
+        output_df.loc[counter, "B"] = beginning
+        output_df.loc[counter, "E"] = ending
+        output_df.loc[counter, "P"] = parental
+        counter = counter + 1
+    output_clean = output_df.dropna()
+    
+    return output_clean.astype(np.int64)
+
+def replace_Cell_ID_with_Cell_ID_tree(
+        lab: np.ndarray, 
+        cca_df_frame_i: pd.DataFrame
+    ):
+    if 'Cell_ID_tree' not in cca_df_frame_i:
+        return lab
+    
+    old_values = cca_df_frame_i['Cell_ID'].values
+    new_values = cca_df_frame_i['Cell_ID_tree'].values
+
+    lab_new = np_replace_values(lab, old_values, new_values)
+
+    return lab_new
