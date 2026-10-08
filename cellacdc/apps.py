@@ -21373,7 +21373,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.settings = self.values()
         self.sigValuesChanged.emit(self.settings)
         self.close()
-    
+
 class DataStructureSetupDialogue(QBaseDialog):
     def __init__(self, logger_func=print, parent=None):
         super().__init__(parent)
@@ -21997,3 +21997,262 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         }
         
         self.close()
+
+        
+class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
+    def __init__(self, video_filepath, logger_func=print, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Split video into single-frame TIFFs setup')
+
+        self.logger_func = logger_func
+        self.cancel = True
+
+        mainLayout = QVBoxLayout()
+        entriesLayout = widgets.FormLayout()
+
+        headerText = ("""
+<b>Split video into single-frame TIFFs setup</b><br><br>
+<i>Choose destination folder and conversion settings.</i>                     
+""")
+        headerLabel = QLabel(html_utils.paragraph(headerText))
+        self._headerLabel = headerLabel
+        self._headerText = headerText
+
+        row = 0
+        self.dstFolderPathControl = widgets.FolderPathControl()
+        self.dstFolderPathFormWidget = widgets.formWidget(
+            self.dstFolderPathControl, 
+            labelTextLeft='Destination folder: ',
+        )
+        entriesLayout.addFormWidget(self.dstFolderPathFormWidget, row=row)
+
+        row += 1
+        self.prefixLineEdit = widgets.PrefixFilenameLineEdit('000.tif')
+        self.prefixLineEdit.setAlignment(Qt.AlignCenter)
+        self.prefixFormWidget = widgets.formWidget(
+            self.prefixLineEdit, 
+            labelTextLeft='Prefix for output TIFF files: ',
+        )
+        entriesLayout.addFormWidget(self.prefixFormWidget, row=row)
+
+        row += 1
+        dtypes = (
+            'uint8',
+            'uint16',
+            'uint32',
+            'float32',
+            'float64'
+        )
+        _, ext = os.path.splitext(video_filepath)
+        image_data = load.load_image_file(video_filepath)
+        self._SizeT = len(image_data)
+        self.dtypeCombobox = widgets.ComboBox()
+        self.dtypeCombobox.addItems(dtypes)
+        if ext != '.npz':
+            dtype = str(image_data.dtype)
+            if dtype not in dtypes:
+                self.dtypeCombobox.setCurrentText('float64')
+            else:
+                self.dtypeCombobox.setCurrentText(dtype)
+        else:
+            dtype = 'uint16'
+            self.dtypeCombobox.setCurrentText(dtype)
+        
+        self.dtypeFormWidget = widgets.formWidget(
+            self.dtypeCombobox, 
+            stretchWidget=False,
+            labelTextLeft='Data type of output TIFF files: ',
+        )
+        entriesLayout.addFormWidget(self.dtypeFormWidget, row=row)
+        
+        row += 1
+        infoText = html_utils.paragraph(f"""
+Choose whether to stop until the last frame that has been tracked.<br><br>
+The last tracked frame is the maximum `frame_i` present in the selected 
+`acdc_output.csv` file (see parameter below).
+""")
+        self.onlyUntilTrackedFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Only until tracked: ',
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+            infoTxt=infoText
+        )
+        entriesLayout.addFormWidget(self.onlyUntilTrackedFormWidget, row=row)
+        self.onlyUntilTrackedFormWidget.widget.toggled.connect(
+            self.onlyUntilTrackedToggled
+        )
+
+        row += 1
+        infoText = html_utils.paragraph(f"""
+Choose whether to stop until the last frame where the cell cycle/lineage has been annotated.<br><br>
+The last annotated frame is the maximum `frame_i` present in the "cell_cycle_stage" column in the selected 
+`acdc_output.csv` file (see parameter below).
+""")
+        self.onlyUntilAnnotatedFormWidget = widgets.formWidget(
+            widgets.Toggle(), 
+            labelTextLeft='Only until lineage annotated: ',
+            stretchWidget=False,
+            valueGetterName='isChecked',
+            addInfoButton=True,
+            infoTxt=infoText
+        )
+        entriesLayout.addFormWidget(self.onlyUntilAnnotatedFormWidget, row=row)
+        self.onlyUntilAnnotatedFormWidget.widget.toggled.connect(
+            self.onlyUntilTrackedToggled
+        )
+
+        row += 1
+        images_path = os.path.dirname(video_filepath)
+        self._images_path = images_path
+        acdcOutputFiles = load.get_acdc_output_files(images_path)
+        basename, chNames = myutils.getBasenameAndChNames(images_path)
+        acdcOutputEndnames = [f[len(basename):] for f in acdcOutputFiles]
+        self.acdcOutputEndnamesCombobox = widgets.ComboBox()
+        self.acdcOutputEndnamesCombobox.addItems(acdcOutputEndnames)
+        self.acdcOutputEndnamesFormWidget = widgets.formWidget(
+            self.acdcOutputEndnamesCombobox, 
+            stretchWidget=False,
+            labelTextLeft='`acdc_output` file with tracking/lineage info: ',
+        )
+        self.acdcOutputEndnamesFormWidget.setDisabled(True)
+        entriesLayout.addFormWidget(self.acdcOutputEndnamesFormWidget, row=row)
+        self.dtypeCombobox.setFixedWidth(
+            self.acdcOutputEndnamesCombobox.sizeHint().width()
+        )
+        self.acdcOutputEndnamesCombobox.currentTextChanged.connect(
+            self.acdcOutputEndnameChanged
+        )
+
+        row += 1
+        infoText = html_utils.paragraph(f"""
+            Enter number of frames to split.<br><br>
+            This number will overwrite the number of frames calculated with 
+            "Only until tracked" and "Only until annotated" options.
+        """)
+        self.untilFrameNumberFormWidget = widgets.formWidget(
+            widgets.SpinBox(), 
+            labelTextLeft='Number of frames to save: ',
+            addInfoButton=True,
+            infoTxt=infoText,
+            addActivateCheckbox=True,
+        )
+        self.untilFrameNumberFormWidget.widget.setMinimum(1)
+        self.untilFrameNumberFormWidget.widget.setMaximum(self._SizeT)
+        self.untilFrameNumberFormWidget.widget.setValue(self._SizeT)
+        entriesLayout.addFormWidget(self.untilFrameNumberFormWidget, row=row)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        mainLayout.addWidget(headerLabel)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(entriesLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.setLayout(mainLayout)
+    
+    def onlyUntilTrackedToggled(self, checked):
+        disabled = (
+            not self.onlyUntilTrackedFormWidget.widget.isChecked()
+            and not self.onlyUntilAnnotatedFormWidget.widget.isChecked()
+        )
+        self.acdcOutputEndnamesFormWidget.setDisabled(disabled)
+        if disabled:
+            self.untilFrameNumberFormWidget.widget.setValue(self._SizeT)
+            return
+
+        self.acdcOutputEndnameChanged(
+            self.acdcOutputEndnamesCombobox.currentText()
+        )
+
+    def acdcOutputEndnameChanged(self, acdcOutputEndname):
+        acdcOutputEndname = self.acdcOutputEndnamesCombobox.currentText()
+        acdc_df = load.load_acdc_df_file(
+            self._images_path, 
+            end_name_acdc_df_file=acdcOutputEndname
+        )
+        if self.onlyUntilTrackedFormWidget.widget.isChecked():
+            numFrames = acdc_df['frame_i'].max() + 1
+        else:
+            try:
+                ccs = acdc_df[['cell_cycle_stage']]
+            except KeyError:
+                ccs = acdc_df[['generation_num_tree']]
+            last_index_cca_df = ccs.last_valid_index()
+            numFrames = (
+                acdc_df.loc[:last_index_cca_df, 'frame_i'].max() + 1
+            )
+
+        self.untilFrameNumberFormWidget.widget.setValue(numFrames)
+
+    def sizeHint(self):
+        height = super().sizeHint().height()
+        width = super().sizeHint().width()
+        return QSize(round(width*1.5), height)
+
+    def warnDstFolderPathNotSelected(self):
+        txt = html_utils.paragraph(f"""
+            The destination folder path is empty.<br><br>
+            Please select a destination folder for the output files.<br><br>
+            Thank you for your patience!
+        """)
+
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Invalid destination folder', txt)
+
+    def ok_cb(self):
+        if not self.dstFolderPathFormWidget.widget.path():
+            self.warnDstFolderPathNotSelected()
+            return
+        
+        self.dstFolderPath = self.dstFolderPathFormWidget.widget.path()
+        self.prefixText = self.prefixLineEdit.prefix()
+        self.dtypeOut = self.dtypeCombobox.currentText()
+        self.onlyUntilTracked = (
+            self.onlyUntilTrackedFormWidget.widget.isChecked()
+        )
+        self.onlyUntilAnnotated = (
+            self.onlyUntilAnnotatedFormWidget.widget.isChecked()
+        )
+        self.acdcOutputEndname = self.acdcOutputEndnamesCombobox.currentText()
+        numFramesSpinbox = self.untilFrameNumberFormWidget.widget
+        self.numFramesToSplit = (
+            numFramesSpinbox.value()
+            if self.untilFrameNumberFormWidget.activateCheckbox.isChecked()
+            else None
+        )
+        
+        self.cancel = False
+        self.close()
+
+class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
+    def __init__(self, video_filepath, logger_func=print, parent=None):
+        super().__init__(
+            video_filepath, 
+            logger_func=logger_func, 
+            parent=parent
+        )
+
+        self.prefixLineEdit.setText('t')
+        self.prefixLineEdit.setDisabled(True)
+
+        self.onlyUntilTrackedFormWidget.widget.setChecked(False)
+        self.onlyUntilAnnotatedFormWidget.widget.setChecked(True)
+
+        self.onlyUntilAnnotatedFormWidget.setDisabled(True)
+        self.onlyUntilTrackedFormWidget.setDisabled(True)
+
+        self._headerLabel.setText(html_utils.paragraph(
+            self._headerText.replace(
+                'Split video into single-frame TIFFs setup',
+                'Generate Trackastra training data setup'
+            )
+        ))
+
+        self.setWindowTitle('Generate Trackastra training data setup')
