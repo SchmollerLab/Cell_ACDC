@@ -59,14 +59,14 @@ def get_obj_text_cca_annot(
         else:
             return str(ID), None
         
-        if 'cell_cycle_stage' not in cca_df_obj:
+        try:
+            ccs = cca_df_obj['cell_cycle_stage']
+            generation_num = int(cca_df_obj['generation_num'])
+        except (KeyError, TypeError, ValueError):
             return str(ID), None
-        ccs = cca_df_obj['cell_cycle_stage']
-
-        if 'generation_num' not in cca_df_obj:
+        
+        if pd.isna(ccs):
             return str(ID), None
-        generation_num = int(cca_df_obj['generation_num'])
-    
     else:
         if ID not in acdc_df.index:
             return str(ID), None
