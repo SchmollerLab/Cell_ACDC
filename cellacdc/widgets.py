@@ -13931,3 +13931,4 @@ class PrefixFilenameLineEdit(QWidget):
     def fullFilename(self):
         filename = f'{self.le.text()}{self.endnameLabel.text()}'
         return filename
+

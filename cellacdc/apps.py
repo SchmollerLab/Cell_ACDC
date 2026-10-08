@@ -22256,3 +22256,4 @@ class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
         ))
 
         self.setWindowTitle('Generate Trackastra training data setup')
+
