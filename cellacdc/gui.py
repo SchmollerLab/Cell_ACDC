@@ -5966,12 +5966,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if shift and isZslice and self.isSegm3D:
                     lab = self.get_2Dlab(force_z=True)
                     img = self.getDisplayedImg1()
+                    rp = self.get2DRP()
                 elif self.isSegm3D:
                     lab = posData.lab
                     img = self.getDisplayedZstack()
+                    rp = posData.rp
                 else:
                     lab = posData.lab
                     img = self.getDisplayedImg1()
+                    rp = posData.rp
 
                 if self.isSegm3D:
                     start_slice = self.zSliceScrollBar.sliderPosition()
@@ -5986,7 +5989,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 labels_lut = self.getLabelsImageLut()
                 labels_alpha = self.imgGrad.labelsAlphaSlider.value()
                 manualSep = getattr(self, 'manualSeparateGui', None)
-                rp = posData.rp
                 if manualSep is None:
                     manualSep = apps.manualSeparateGui(
                         lab, ID, img,

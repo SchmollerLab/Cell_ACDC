@@ -11,6 +11,7 @@ from cellacdc.core_split_IDs import (
     split_along_convexity_defects_3D,
     split_along_convexity_defects_slice_by_slice,
     split_connected_components,
+    convexity_defects,
 )
 
 
@@ -35,6 +36,32 @@ def test_split_along_convexity_defects_preserves_pixels_and_assigns_two_ids():
     assert split_ids == [7, 8]
     assert set(np.unique(result)) == {0, 7, 8}
     np.testing.assert_array_equal(result > 0, original_mask)
+
+
+def test_split_along_convexity_defects_uses_deepest_two_when_more_are_reported(
+        monkeypatch,
+    ):
+    mask = _dumbbell_mask()
+    contour, defects = convexity_defects(mask, 0.01)
+    defects = np.asarray(defects).reshape(-1, 4)
+    extra_defect = defects[0].copy()
+    extra_defect[2] = 0
+    extra_defect[3] = 0
+    reported_defects = np.vstack((defects, extra_defect))
+    monkeypatch.setattr(
+        'cellacdc.core_split_IDs.convexity_defects',
+        lambda img, eps_percent: (contour, reported_defects),
+    )
+
+    lab = np.zeros(mask.shape, dtype=np.uint32)
+    lab[mask] = 7
+    result, success, split_ids = split_along_convexity_defects(
+        7, lab, max_ID=7
+    )
+
+    assert success
+    assert split_ids == [7, 8]
+    np.testing.assert_array_equal(result > 0, mask)
 
 
 def test_split_along_convexity_defects_skips_self_intersecting_contour():
@@ -97,6 +124,27 @@ def test_split_slice_by_slice_reuses_new_id_and_preserves_other_objects():
     np.testing.assert_array_equal(result > 0, original_mask)
 
 
+def test_slice_by_slice_split_ignores_other_2d_islands_when_cutting():
+    base_mask = _dumbbell_mask()
+    lab = np.zeros((3, 40, 40), dtype=np.uint32)
+    lab[0, base_mask] = 7
+    lab[1, np.roll(base_mask, 1, axis=1)] = 7
+    lab[2, base_mask] = 7
+    # This pixel is separate in the middle slice, but touches the main
+    # component diagonally across z, so the volume remains one 3D object.
+    lab[1, 20, 3] = 7
+    original_mask = lab == 7
+
+    result, success, split_ids = split_along_convexity_defects_slice_by_slice(
+        7, lab, max_ID=7, split_disconnected=False
+    )
+
+    assert success
+    assert split_ids == [7, 8]
+    assert result[1, 20, 3] == 7
+    np.testing.assert_array_equal(result > 0, original_mask)
+
+
 def test_split_slice_by_slice_uses_external_regionprops():
     lab_2d = np.zeros((40, 40), dtype=np.uint32)
     lab_2d[_dumbbell_mask()] = 7
@@ -127,21 +175,20 @@ def test_split_slice_by_slice_does_not_split_slice_only_discontinuity():
     assert set(np.unique(result)) == {0, 7}
 
 
-def test_split_slice_by_slice_can_split_disconnected_regions_per_slice():
+def test_split_slice_by_slice_does_not_split_disconnected_2d_regions():
     lab = np.zeros((3, 30, 30), dtype=np.uint32)
     lab[:, 8:12, 5:9] = 7
     lab[:, 8:12, 21:25] = 7
     lab[1, 8:12, 9:21] = 7
-    original_mask = lab > 0
+    original_lab = lab.copy()
 
     result, success, split_ids = split_along_convexity_defects_slice_by_slice(
         7, lab, max_ID=7, split_disconnected=True
     )
 
-    assert success
-    assert split_ids == [7, 8]
-    assert set(np.unique(result)) == {0, *split_ids}
-    np.testing.assert_array_equal(result > 0, original_mask)
+    assert not success
+    assert split_ids == []
+    np.testing.assert_array_equal(result, original_lab)
 
 
 def test_split_slice_by_slice_splits_disconnected_3d_components_first():
@@ -150,12 +197,27 @@ def test_split_slice_by_slice_splits_disconnected_3d_components_first():
     lab[:, 20:27, 20:27] = 7
 
     result, success, split_ids = split_along_convexity_defects_slice_by_slice(
-        7, lab, max_ID=10
+        7, lab, max_ID=10, split_disconnected=True
     )
 
     assert success
     assert split_ids == [7, 11]
     assert set(np.unique(result)) == {0, 7, 11}
+
+
+def test_split_slice_by_slice_skips_3d_components_when_disabled():
+    lab = np.zeros((3, 30, 30), dtype=np.uint32)
+    lab[:, 3:8, 3:8] = 7
+    lab[:, 20:27, 20:27] = 7
+    original_lab = lab.copy()
+
+    result, success, split_ids = split_along_convexity_defects_slice_by_slice(
+        7, lab, max_ID=10, split_disconnected=False
+    )
+
+    assert not success
+    assert split_ids == []
+    np.testing.assert_array_equal(result, original_lab)
 
 
 def test_split_slice_by_slice_returns_after_disconnected_components_and_avoids_id_reuse(
@@ -174,7 +236,7 @@ def test_split_slice_by_slice_returns_after_disconnected_components_and_avoids_i
         unexpected_slice_split,
     )
     result, success, split_ids = split_along_convexity_defects_slice_by_slice(
-        7, lab, max_ID=7
+        7, lab, max_ID=7, split_disconnected=True
     )
 
     assert success
