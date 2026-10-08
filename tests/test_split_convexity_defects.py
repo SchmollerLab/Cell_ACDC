@@ -33,7 +33,7 @@ def test_split_along_convexity_defects_preserves_pixels_and_assigns_two_ids():
     )
 
     assert success
-    assert split_ids == [7, 8]
+    assert set(split_ids) == {7, 8}
     assert set(np.unique(result)) == {0, 7, 8}
     np.testing.assert_array_equal(result > 0, original_mask)
 
@@ -60,7 +60,7 @@ def test_split_along_convexity_defects_uses_deepest_two_when_more_are_reported(
     )
 
     assert success
-    assert split_ids == [7, 8]
+    assert set(split_ids) == {7, 8}
     np.testing.assert_array_equal(result > 0, mask)
 
 
@@ -98,7 +98,7 @@ def test_split_along_convexity_defects_3d_propagates_split_through_volume():
     )
 
     assert success
-    assert split_ids == [7, 8]
+    assert set(split_ids) == {7, 8}
     assert set(np.unique(result)) == {0, 7, 8}
     assert np.all(np.any(result == 7, axis=(1, 2)))
     assert np.all(np.any(result == 8, axis=(1, 2)))
@@ -117,7 +117,7 @@ def test_split_slice_by_slice_reuses_new_id_and_preserves_other_objects():
     )
 
     assert success
-    assert split_ids == [7, 8]
+    assert set(split_ids) == {7, 8}
     assert set(np.unique(result)) == {0, 3, 7, 8}
     assert np.all(np.any(result == 8, axis=(1, 2)))
     assert np.all(result[:, 2:5, 2:5] == 3)
@@ -140,10 +140,9 @@ def test_slice_by_slice_split_ignores_other_2d_islands_when_cutting():
     )
 
     assert success
-    assert split_ids == [7, 8]
+    assert set(split_ids) == {7, 8}
     assert result[1, 20, 3] == 7
     np.testing.assert_array_equal(result > 0, original_mask)
-
 
 def test_split_slice_by_slice_uses_external_regionprops():
     lab_2d = np.zeros((40, 40), dtype=np.uint32)
@@ -156,7 +155,7 @@ def test_split_slice_by_slice_uses_external_regionprops():
     )
 
     assert success
-    assert split_ids == [7, 8]
+    assert set(split_ids) == {7, 8}
     assert set(np.unique(result)) == {0, 7, 8}
 
 
@@ -265,7 +264,7 @@ def test_split_slice_by_slice_returns_after_separating_disconnected_components()
     )
 
     assert success
-    assert split_ids == [7, 8]
+    assert set(split_ids) == {7, 8}
     assert 7 in np.unique(result[largest_component])
     assert 8 not in np.unique(result[largest_component])
     assert np.all(result[smaller_component] == 8)
@@ -306,7 +305,7 @@ def test_split_along_convexity_defects_3d_splits_diagonal_touching_spheres():
     )
 
     assert success
-    assert split_ids == [7, 8]
+    assert set(split_ids) == {7, 8}
     split_1 = result == split_ids[0]
     split_2 = result == split_ids[1]
     correctly_assigned = max(

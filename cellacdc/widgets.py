@@ -14238,7 +14238,7 @@ class SeparateBudToolbar(ToolBar):
         )
         splitDisconnected.setChecked(True)
         self.convexity2DControlActions.append(self.addWidget(splitDisconnected))
-        self.convexity2DParamWidgets['split_disconnected'] = (
+        self.convexity2DParamWidgets['split_disconnected2D'] = (
             splitDisconnected, True, bool
         )
         self.convexity2DControlActions.append(self.addSpacing())
@@ -14287,7 +14287,7 @@ class SeparateBudToolbar(ToolBar):
             self.convexityControlActions.append(spacer)
 
         bool_params = (
-            ('split_disconnected', 'Split disconnected regions', True,
+            ('split_disconnected3D', 'Split disconnected regions', True,
              'Assign separate IDs to disconnected 3D components before '
              'applying convexity splitting.'),
             ('require_improvement', 'Prefer solidity improvement', True,
@@ -14416,6 +14416,9 @@ class SeparateBudToolbar(ToolBar):
     def splitConv3DKwargs(self):
         kwargs = {}
         for name, (widget, _, value_type) in self.convexity3DParamWidgets.items():
+            if name == 'split_disconnected3D':
+                kwargs[name] = widget.isChecked() if value_type is bool else widget.value()
+                continue
             kwargs[name] = (
                 widget.isChecked() if value_type is bool else widget.value()
             )
@@ -14424,6 +14427,9 @@ class SeparateBudToolbar(ToolBar):
     def splitConv2DKwargs(self):
         kwargs = {}
         for name, (widget, _, value_type) in self.convexity2DParamWidgets.items():
+            if name == 'split_disconnected2D':
+                kwargs[name] = widget.isChecked() if value_type is bool else widget.value()
+                continue
             kwargs[name] = (
                 widget.isChecked() if value_type is bool else widget.value()
             )

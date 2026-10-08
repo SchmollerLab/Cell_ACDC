@@ -218,7 +218,7 @@ def track_split_slice(lab, neighboring_labs, unique_ID, split_IDs=None):
     current_rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
     best_lab = lab
     best_track_count = -1
-    split_IDs_new = split_IDs[:]
+    split_IDs_new = split_IDs[:] if split_IDs is not None else []
 
     for neighbor_lab in neighboring_labs:
         if neighbor_lab is None or not np.any(neighbor_lab):
@@ -245,7 +245,7 @@ def track_split_slice(lab, neighboring_labs, unique_ID, split_IDs=None):
             best_lab = tracked_lab
             best_track_count = track_count
             split_IDs_new = [assignments.get(split_ID, split_ID) 
-                             for split_ID in split_IDs]
+                             for split_ID in (split_IDs or [])]
 
     # return the best tracked label image and the number of successful tracks
     if split_IDs is None:
@@ -1058,10 +1058,6 @@ def split_along_convexity_defects_slice_by_slice(
     all_split_IDs = []
     # Iterate over each 2D slice within the bounding box of the object.
     for z, lab_2D in enumerate(lab[bbox]):
-        component_mask = lab_2D == ID
-        if not component_mask.any():
-            continue
-
         slice_lab = lab_2D.copy()
         split_lab, success, split_IDs = split_along_convexity_defects(
             ID, slice_lab, max_ID,
@@ -1070,20 +1066,35 @@ def split_along_convexity_defects_slice_by_slice(
         )
         if not success:
             continue
-
         
         neighboring_slices = []
         if z > 0:
             neighboring_slices.append(lab[bbox][z-1])
         if z < lab[bbox].shape[0] - 1:
             neighboring_slices.append(lab[bbox][z+1])
-        split_lab, max_ID, split_IDs = track_split_slice(
+        
+        split_lab, _, split_IDs = track_split_slice(
             split_lab,
             neighboring_slices,
             max_ID + 1,
             split_IDs=split_IDs
         )
 
+        # If tracking could not link the new piece to a neighbor (e.g. the
+        # neighbor slice was not split), reuse the ID already allocated in
+        # other slices instead of introducing yet another ID.
+        previous_new_IDs = set(all_split_IDs) - {ID}
+        new_IDs = [split_ID for split_ID in split_IDs if split_ID != ID]
+        if len(previous_new_IDs) == 1 and len(new_IDs) == 1:
+            previous_new_ID = next(iter(previous_new_IDs))
+            if new_IDs[0] != previous_new_ID:
+                split_lab[split_lab == new_IDs[0]] = previous_new_ID
+                split_IDs = [
+                    previous_new_ID if split_ID == new_IDs[0] else split_ID
+                    for split_ID in split_IDs
+                ]
+
+        split_lab = np.where(lab_2D == ID, split_lab, lab_2D)
         lab[bbox][z] = split_lab
         all_split_IDs.extend(split_IDs)
         was_split = True
@@ -1092,6 +1103,7 @@ def split_along_convexity_defects_slice_by_slice(
     
     if not was_split:
         return lab, False, []
+    all_split_IDs = list(set(all_split_IDs))
     return lab, True, all_split_IDs
 
 def convexity_defects(img, eps_percent):

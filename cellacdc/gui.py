@@ -5923,10 +5923,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 IDs, counts = np.unique(lab_2D[obj.slice][obj.image], return_counts=True)
                 max_size_idx = np.argmax(counts)
                 largest_ID = IDs[max_size_idx]
-                self.set_2Dlab(lab_2D)
+                original_values = lab_2D[obj.slice][obj.image].copy()
                 lab_2D[obj.slice][obj.image] = np.where(
-                    lab_2D[obj.slice][obj.image] == largest_ID, ID, lab_2D[obj.slice][obj.image]
-                )
+                    original_values == largest_ID,
+                     ID,
+                     np.where(original_values == ID, largest_ID, original_values),
+                     )
+                self.set_2Dlab(lab_2D)
                 
             elif not ctrl and not self.isSegm3D:
                 result = core_split_IDs.split_along_convexity_defects(
@@ -16968,13 +16971,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if self.isSegm3D:
                 self.changeBrushID()
                 
-        if isShiftModifier and self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isVisible():
+        if (
+            ev.key() == Qt.Key_Shift
+            and isShiftModifier
+            and not ev.isAutoRepeat()
+            and self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isVisible()
+            ):
             self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state = (   
                 self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isChecked()
             )
             self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.setChecked(True)
 
-        if isShiftModifier and self.separateBudToolbar.sepModeSelector.isVisible():
+        if (
+            ev.key() == Qt.Key_Shift
+            and isShiftModifier
+            and not ev.isAutoRepeat()
+            and self.separateBudToolbar.sepModeSelector.isVisible()
+            ):
             self.separateBudToolbar_sepModeSelector_og_state = (
                 self.separateBudToolbar.separationMode()
             )
