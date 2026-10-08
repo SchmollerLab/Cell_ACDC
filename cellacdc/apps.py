@@ -20446,7 +20446,8 @@ class SelectFoldersToAnalyse(QBaseDialog):
             'Add folder...', openFolder=True, 
             start_dir=myutils.getMostRecentPath()
         )
-        recentPathsButton = QPushButton('Add from recent paths...')
+        recentPathsButton = widgets.PushButton('Add from recent paths...')
+        recentPathsButton.setIcon(QIcon(':open_file.svg'))
         recentPathsButton.setToolTip(
             'Select one or more existing folders from recent paths.'
         )
