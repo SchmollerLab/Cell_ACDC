@@ -25,8 +25,9 @@ from .._run import _setup_app
 from .. import apps, widgets
 from .. import colors
 from .. import plot
+from .. import qutils
 
-from . import _widgets, utils
+from . import _widgets, utils, _dialogs
 
 import vispy.scene
 import vispy.color
@@ -190,12 +191,53 @@ class VolumeRendererWindow(QMainWindow):
             azimuth=-60.0
         )
 
+        self._canvas.events.mouse_press.connect(
+            self._on_camera_mouse_press
+        )
+        self._canvas.events.mouse_move.connect(
+            self._on_camera_mouse_move
+        )
+        self._canvas.events.mouse_release.connect(
+            self._on_camera_mouse_release
+        )
+        self._canvas.events.mouse_wheel.connect(
+            self._on_camera_mouse_wheel
+        )
+
+        self._camera_mouse_interaction = False
+
         # XYZ axis indicator at the front-bottom-left corner of the volume.
         # Red=X (data axis 2), Green=Y (data axis 1), Blue=Z (data axis 0).
         # Scale and visibility are updated in update_volume on first load.
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
     
+    def _on_camera_mouse_press(self, event):
+        self._camera_mouse_interaction = True
+        self._update_camera_indicators()
+    
+    def _on_camera_mouse_move(self, event):
+        if not self._camera_mouse_interaction:
+            return
+
+        self._update_camera_indicators()
+    
+    def _on_camera_mouse_release(self, event):
+        self._camera_mouse_interaction = False
+        self._update_camera_indicators()
+    
+    def _on_camera_mouse_wheel(self, event):
+        self._update_camera_indicators()
+
+    def _update_camera_indicators(self):
+        if not self._toolbar.setupAnimationAction.isChecked():
+            return
+
+        self._setupAnimationDialog.set_from_camera(
+            self._view.camera, 
+            update_start=False
+        )
+
     def _init_lab_ui_items(
             self, 
             lab_volume, 
@@ -684,6 +726,16 @@ class VolumeRendererWindow(QMainWindow):
         self._toolbar.sigHomeView.connect(self.reset_view)
         self._toolbar.sigSave.connect(self.save_screenshot)
         self._toolbar.sigSetSingleChannel.connect(self._set_single_channel)
+        self._toolbar.sigSetupAnimation.connect(self.setup_animation_parameters)
+        self._toolbar.sigPlayAnimation.connect(self.play_animation)
+
+        self._is_animation_setup = False
+
+        self._setupAnimationDialog = _dialogs.AnimationVolumeViewerSetupDialog()
+        self._setupAnimationDialog.sigOk.connect(self._set_animation_setup)
+        self._setupAnimationDialog.sigCancel.connect(
+            self._cancel_animation_setup
+        )
         
         lut_items_graphics_layout = pg.GraphicsLayoutWidget()
         lut_items_graphics_layout.setBackground('black')
@@ -1128,6 +1180,18 @@ class VolumeRendererWindow(QMainWindow):
             gl_stage = volume_gl_state(blending, first_visible=first_visible)
             node.set_gl_state(**gl_stage)
     
+    def _set_animation_setup(self):
+        self._is_animation_setup = True
+        self._toolbar.setupAnimationAction.setChecked(False)
+        self._toolbar.playAnimationAction.setDisabled(False)
+        blinker = qutils.QControlBlink(
+            self._toolbar.playAnimationAction, qparent=self
+        )
+        blinker.start()
+    
+    def _cancel_animation_setup(self):
+        self._toolbar.setupAnimationAction.setChecked(False)
+
     def _set_single_channel(self, single: bool):
         if single:
             for ch_data in self._channels_data.values():
@@ -1671,6 +1735,7 @@ class VolumeRendererWindow(QMainWindow):
         
         if self._hide_on_close:
             event.ignore()
+            self._toolbar.setupAnimationAction.setChecked(False)
             self.hide()
             return
         
@@ -1679,6 +1744,8 @@ class VolumeRendererWindow(QMainWindow):
         
         if hasattr(self, 'loop'):
             self.loop.exit()
+        
+        self._setupAnimationDialog.forceClose()
         
         return super().closeEvent(event)
 
@@ -1690,6 +1757,7 @@ class VolumeRendererWindow(QMainWindow):
         camera.azimuth = self._home_azimuth
         camera.elevation = self._home_elevation
         camera.scale_factor = self._default_scale_factor
+        camera.roll = self._home_roll
     
     def set_camera_view(self):
         """Reset the camera to the default orientation and fit the volume."""
@@ -1715,6 +1783,7 @@ class VolumeRendererWindow(QMainWindow):
         self._home_elevation = 30.0
         self._home_azimuth = 45.0
         self._home_fov = 60.0
+        self._home_roll = 0.0
         self._home_distance = diag
         
         self._view.camera.set_range()
@@ -1730,6 +1799,23 @@ class VolumeRendererWindow(QMainWindow):
     
     def save_screenshot(self):
         ...
+    
+    def keyPressEvent(self, event):
+        return super().keyPressEvent(event)
+    
+    def setup_animation_parameters(self, checked):
+        if checked:
+            self._setupAnimationDialog.show()
+            self._setupAnimationDialog.set_from_camera(
+                self._view.camera, 
+                update_start=not self._is_animation_setup
+            )
+        else:
+            self._setupAnimationDialog.hide()
+
+    def play_animation(self, checked):
+        ...
+
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

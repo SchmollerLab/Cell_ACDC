@@ -1,8 +1,10 @@
+import re
+
 from qtpy.QtCore import (
     Signal, Qt, QPoint
 )
 from qtpy.QtWidgets import (
-    QAction, QWidget
+    QAction, QWidget, QGridLayout, QLabel
 )
 from qtpy.QtGui import (
     QIcon, QColor, QFont, QPainter, QPainterPath, QPen
@@ -10,7 +12,11 @@ from qtpy.QtGui import (
 
 import pyqtgraph as pg
 
-from cellacdc.widgets import ToolBar
+from .. import html_utils
+
+from ..widgets import (
+    ToolBar, DoubleSpinBox, playPushButton
+)
 
 LABELS_TEXT_FONTSIZE = 10
 
@@ -20,6 +26,8 @@ class VolumeRendererToolbar(ToolBar):
     sigSetSingleChannel = Signal(bool)
     sigSelectObjects = Signal(bool)
     sigUpdate = Signal()
+    sigSetupAnimation = Signal(bool)
+    sigPlayAnimation = Signal(bool)
     
     def __init__(self, name='Volume Renderer Toolbar', parent=None):
         
@@ -53,18 +61,24 @@ class VolumeRendererToolbar(ToolBar):
         self.addAction(self.saveAction)
         
         self.addSeparator()
-        
-        # self.selectObjectsAction = QAction(
-        #     QIcon(':keep_objects.svg'), 'Select objects', self)
-        # self.selectObjectsAction.setToolTip(
-        #     'Select objects in the view.\n\n'
-        #     'Ctrl+Click to select multiple objects.\n\n'
-        #     'Press Esc to exit selection mode.'
-        # )
-        # self.selectObjectsAction.setCheckable(True)
-        # self.addAction(self.selectObjectsAction)
-        
-        # self.addSeparator()
+
+        self.setupAnimationAction = self.addButton(
+            ':cog_play.svg', 'Setup animation', checkable=True
+        )
+        self.playAnimationAction = self.addButton(
+            ':play.svg', 'Play and record animation', checkable=True
+        )
+        self.playAnimationAction.setDisabled(True)
+
+        self.setupAnimationAction.toggled.connect(
+            self.sigSetupAnimation.emit
+        )
+
+        self.playAnimationAction.toggled.connect(
+            self.sigPlayAnimation.emit
+        )
+
+        self.addSeparator()
         
         self.singleChannelCheckbox = self.addCheckBox(
             text='Single channel'
@@ -94,6 +108,60 @@ class PointsLayersToolbar(ToolBar):
         super().__init__(name, parent)
         
         self.addLabel('Points: ')
+
+class AnimationParamWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        layout = QGridLayout()
+
+        self.startDoubleSpinbox = DoubleSpinBox()
+        startLabel = QLabel('Start')
+        self.currentLabel = QLabel(
+            html_utils.span('<i>Current: 0.0</i>', font_size='11px', color=None)
+        )
+
+        self.stopDoubleSpinbox = DoubleSpinBox()
+        stopLabel = QLabel('Stop')
+
+        self.speedDoubleSpinbox = DoubleSpinBox()
+        speedLabel = QLabel('Speed')
+
+        self.playButton = playPushButton()
+
+        col = 0
+        layout.addWidget(startLabel, 0, col, alignment=Qt.AlignLeft)
+        layout.addWidget(self.startDoubleSpinbox, 1, col)
+        layout.addWidget(self.currentLabel, 2, col, alignment=Qt.AlignLeft)
+
+        col = 1
+        layout.addWidget(stopLabel, 0, col, alignment=Qt.AlignLeft)
+        layout.addWidget(self.stopDoubleSpinbox, 1, col)
+
+        col = 2
+        layout.addWidget(speedLabel, 0, col, alignment=Qt.AlignLeft)
+        layout.addWidget(self.speedDoubleSpinbox, 1, col)
+
+        col = 3
+        layout.addWidget(self.playButton, 1, col)
+        layout.setColumnStretch(col, 0)
+
+        layout.setContentsMargins(0, 5, 0, 5)
+
+        self.setLayout(layout)
+    
+    def setCurrent(self, value: float, update_start=True):
+        text = re.sub(
+            r'Current: [0-9]+\.[0-9]+',
+            f'Current: {value}',
+            self.currentLabel.text(),
+        )
+        self.currentLabel.setText(text)
+        if not update_start:
+            return
+
+        self.startDoubleSpinbox.setValue(value)
+
 
 class LabelsOverlay(QWidget):
     def __init__(self, renderer, font_size=None, text_color='white'):
