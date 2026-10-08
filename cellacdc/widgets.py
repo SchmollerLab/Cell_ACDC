@@ -56,7 +56,8 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-    QButtonGroup, QStyleOptionSlider
+    QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
+    QStyleOptionViewItem
 )
 import qtpy.compat
 
@@ -13407,6 +13408,196 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
                 break
         return best_ratio
 
+
+def _normalizeSearchText(text):
+    """Case-fold text and remove non-alphanumeric search separators."""
+    return ''.join(
+        character.casefold()
+        for character in text
+        if character.isalnum()
+    )
+
+
+def _searchHighlightRanges(query, text, threshold=0.5):
+    """Return display-text ranges for exact or fuzzy search matches."""
+    normalized_query = _normalizeSearchText(query)
+    if not normalized_query:
+        return []
+
+    normalized_text = []
+    source_positions = []
+    for position, character in enumerate(text):
+        if not character.isalnum():
+            continue
+        folded = character.casefold()
+        normalized_text.extend(folded)
+        source_positions.extend([position] * len(folded))
+    normalized_text = ''.join(normalized_text)
+    if not normalized_text:
+        return []
+
+    def source_ranges(start, end):
+        ranges = []
+        for position in source_positions[start:end]:
+            if ranges and position <= ranges[-1][1]:
+                ranges[-1] = (ranges[-1][0], position + 1)
+            else:
+                ranges.append((position, position + 1))
+        return ranges
+
+    match_start = normalized_text.find(normalized_query)
+    if match_start >= 0:
+        return source_ranges(
+            match_start, match_start + len(normalized_query)
+        )
+
+    matcher = SequenceMatcher(None, normalized_query, normalized_text)
+    best_ratio = threshold
+    best_start = None
+    for query_start, text_start, _ in matcher.get_matching_blocks():
+        candidate_start = max(text_start - query_start, 0)
+        candidate = normalized_text[
+            candidate_start:candidate_start + len(normalized_query)
+        ]
+        ratio = SequenceMatcher(None, normalized_query, candidate).ratio()
+        if ratio >= best_ratio and (
+                best_start is None or ratio > best_ratio
+            ):
+            best_ratio = ratio
+            best_start = candidate_start
+
+    if best_start is None:
+        return []
+
+    candidate = normalized_text[
+        best_start:best_start + len(normalized_query)
+    ]
+    normalized_ranges = []
+    for block in SequenceMatcher(
+            None, normalized_query, candidate
+        ).get_matching_blocks():
+        if not block.size:
+            continue
+        start = best_start + block.b
+        end = start + block.size
+        if normalized_ranges and start <= normalized_ranges[-1][1]:
+            normalized_ranges[-1] = (
+                normalized_ranges[-1][0],
+                max(normalized_ranges[-1][1], end),
+            )
+        else:
+            normalized_ranges.append((start, end))
+
+    ranges = []
+    for start, end in normalized_ranges:
+        ranges.extend(source_ranges(start, end))
+
+    merged_ranges = []
+    for start, end in ranges:
+        if merged_ranges and start <= merged_ranges[-1][1]:
+            merged_ranges[-1] = (
+                merged_ranges[-1][0],
+                max(merged_ranges[-1][1], end),
+            )
+        else:
+            merged_ranges.append((start, end))
+    return merged_ranges
+
+
+def _highlightSearchText(text, ranges, color=None):
+    """Return escaped rich text with the requested display-text ranges bolded."""
+    parts = []
+    previous_end = 0
+    for start, end in ranges:
+        style = 'font-weight:bold;'
+        if color is not None:
+            style = f'color:{color}; {style}'
+        parts.extend((
+            html.escape(text[previous_end:start]),
+            (
+                f'<span style="{style}">'
+                f'{html.escape(text[start:end])}</span>'
+            ),
+        ))
+        previous_end = end
+    parts.append(html.escape(text[previous_end:]))
+    return ''.join(parts)
+
+
+class _ButtonSearchHighlightDelegate(QStyledItemDelegate):
+    """Paint search matches in list entries using the dialog's highlighting."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._filterText = ''
+
+    def setFilterText(self, text):
+        self._filterText = text.strip()
+
+    def _highlightRanges(self, text, threshold):
+        return _searchHighlightRanges(
+            self._filterText, text, threshold
+        )
+
+    def paint(self, painter, option, index):
+        text = index.data(Qt.DisplayRole) or ''
+        text = str(text)
+        proxy_model = index.model()
+        threshold = getattr(proxy_model, 'FUZZY_THRESHOLD', 0.5)
+        ranges = self._highlightRanges(text, threshold)
+        if not ranges:
+            return super().paint(painter, option, index)
+
+        item_option = QStyleOptionViewItem(option)
+        self.initStyleOption(item_option, index)
+        text_color_role = (
+            QPalette.HighlightedText
+            if item_option.state & QStyle.State_Selected
+            else QPalette.Text
+        )
+        text_color = item_option.palette.color(text_color_role).name()
+
+        item_option.text = ''
+        style = (
+            item_option.widget.style()
+            if item_option.widget is not None
+            else QApplication.style()
+        )
+        style.drawControl(
+            QStyle.CE_ItemViewItem,
+            item_option,
+            painter,
+            item_option.widget,
+        )
+        text_rect = style.subElementRect(
+            QStyle.SE_ItemViewItemText,
+            item_option,
+            item_option.widget,
+        )
+        document = QTextDocument()
+        document.setDocumentMargin(0)
+        document.setDefaultFont(item_option.font)
+        document.setHtml(
+            f'<span style="color:{text_color};">'
+            f'{_highlightSearchText(text, ranges)}</span>'
+        )
+        document.setTextWidth(text_rect.width())
+
+        painter.save()
+        vertical_offset = max(
+            (text_rect.height() - document.size().height()) / 2,
+            0,
+        )
+        painter.translate(
+            text_rect.left(), text_rect.top() + vertical_offset
+        )
+        painter.setClipRect(
+            0, 0, text_rect.width(), text_rect.height()
+        )
+        document.drawContents(painter)
+        painter.restore()
+
+
 class ButtonSearchWidget(QWidget):
     """Search widget populated from documentation or caller-provided records.
 
@@ -13520,6 +13711,8 @@ class ButtonSearchWidget(QWidget):
         self.popup = QListView()
         self.popup.setFocusPolicy(Qt.NoFocus)
         self.popup.setModel(self.proxy_model)
+        self._highlight_delegate = _ButtonSearchHighlightDelegate(self.popup)
+        self.popup.setItemDelegate(self._highlight_delegate)
         try:
             self.popup.setEditTriggers(QAbstractItemView.NoEditTriggers)
         except:
@@ -13705,6 +13898,7 @@ class ButtonSearchWidget(QWidget):
         """Filter the model and update the popup."""
         query = text.strip()
         self._update_search_models(query)
+        self._highlight_delegate.setFilterText(query)
         self.proxy_model.setFilterText(query)
         if not query or self.proxy_model.rowCount() == 0:
             self.popup.hide()

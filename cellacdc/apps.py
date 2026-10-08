@@ -3,7 +3,6 @@ import sys
 import re
 from typing import Literal, Callable, Dict, Iterable, List, Tuple
 import datetime
-from difflib import SequenceMatcher
 import pathlib
 from collections import defaultdict
 import zipfile
@@ -22277,25 +22276,16 @@ class SearchableListboxDialog(QBaseDialog):
             item = tree_item.text(0)
             # The proxy provides the ranking; highlight ranges are mapped back
             # onto the original display string.
-            ranges = self._searchHighlightRanges(
-                normalized_query, item
-            ) if normalized_query else []
+            ranges = widgets._searchHighlightRanges(
+                normalized_query,
+                item,
+                self.searchProxyModel.FUZZY_THRESHOLD,
+            )
 
             if ranges:
-                highlighted_parts = []
-                previous_end = 0
-                for start, end in ranges:
-                    highlighted_parts.extend((
-                        html.escape(item[previous_end:start]),
-                        (
-                            f'<span style="color:{highlight_color}; '
-                            f'font-weight:bold;">'
-                            f'{html.escape(item[start:end])}</span>'
-                        ),
-                    ))
-                    previous_end = end
-                highlighted_parts.append(html.escape(item[previous_end:]))
-                highlighted_text = ''.join(highlighted_parts)
+                highlighted_text = widgets._highlightSearchText(
+                    item, ranges, highlight_color
+                )
                 label = QLabel()
                 label.setTextFormat(Qt.RichText)
                 label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -22312,107 +22302,7 @@ class SearchableListboxDialog(QBaseDialog):
     @staticmethod
     def _normalizeSearchText(text):
         """Case-fold text and remove non-alphanumeric search separators."""
-        return ''.join(
-            character.casefold()
-            for character in text
-            if character.isalnum()
-        )
-
-    def _normalizedItemText(self, item):
-        """Normalize an item and retain source offsets for highlighting."""
-        normalized = []
-        source_positions = []
-        for position, character in enumerate(item):
-            if not character.isalnum():
-                continue
-            folded = character.casefold()
-            normalized.extend(folded)
-            source_positions.extend([position] * len(folded))
-        return ''.join(normalized), source_positions
-
-    @staticmethod
-    def _sourceRanges(normalized_start, normalized_end, source_positions):
-        """Map a normalized-text span back to contiguous display-text spans."""
-        source_indices = source_positions[normalized_start:normalized_end]
-        ranges = []
-        for position in source_indices:
-            if ranges and position <= ranges[-1][1]:
-                ranges[-1] = (ranges[-1][0], position + 1)
-            else:
-                ranges.append((position, position + 1))
-        return ranges
-
-    def _searchHighlightRanges(self, query, item):
-        """Get display-text spans for an exact or fuzzy match."""
-        normalized_item, source_positions = self._normalizedItemText(item)
-        match_start = normalized_item.find(query)
-        if match_start >= 0:
-            return self._sourceRanges(
-                match_start,
-                match_start + len(query),
-                source_positions,
-            )
-        return self._fuzzyHighlightRanges(
-            query, normalized_item, source_positions
-        )
-
-    def _fuzzyHighlightRanges(
-            self, query, normalized_item, source_positions
-        ):
-        """Map matching fuzzy character spans back to the displayed item."""
-        matcher = SequenceMatcher(None, query, normalized_item)
-        best_ratio = self.searchProxyModel.FUZZY_THRESHOLD
-        best_start = None
-
-        for query_start, item_start, _ in matcher.get_matching_blocks():
-            # Align the candidate window with a matching block, then score a
-            # query-length slice as in the proxy model's fuzzy matcher.
-            candidate_start = max(item_start - query_start, 0)
-            candidate = normalized_item[
-                candidate_start:candidate_start + len(query)
-            ]
-            ratio = SequenceMatcher(None, query, candidate).ratio()
-            if ratio >= best_ratio and (
-                    best_start is None or ratio > best_ratio
-                ):
-                best_ratio = ratio
-                best_start = candidate_start
-
-        if best_start is None:
-            return []
-
-        # Highlight only characters that matched, not the entire candidate
-        # window, then translate normalized offsets to display offsets.
-        candidate = normalized_item[best_start:best_start + len(query)]
-        normalized_ranges = []
-        for block in SequenceMatcher(None, query, candidate).get_matching_blocks():
-            if not block.size:
-                continue
-            start = best_start + block.b
-            end = start + block.size
-            if normalized_ranges and start <= normalized_ranges[-1][1]:
-                normalized_ranges[-1] = (
-                    normalized_ranges[-1][0],
-                    max(normalized_ranges[-1][1], end),
-                )
-            else:
-                normalized_ranges.append((start, end))
-
-        source_ranges = []
-        for start, end in normalized_ranges:
-            source_ranges.extend(
-                self._sourceRanges(start, end, source_positions)
-            )
-        merged_ranges = []
-        for start, end in source_ranges:
-            if merged_ranges and start <= merged_ranges[-1][1]:
-                merged_ranges[-1] = (
-                    merged_ranges[-1][0],
-                    max(merged_ranges[-1][1], end),
-                )
-            else:
-                merged_ranges.append((start, end))
-        return merged_ranges
+        return widgets._normalizeSearchText(text)
 
     def warnSelectionEmpty(self):
         """Explain that a row must be selected before confirming."""
