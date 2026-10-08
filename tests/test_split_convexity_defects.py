@@ -4,6 +4,9 @@ import pytest
 from cellacdc.regionprops import acdcRegionprops
 from cellacdc.core_split_IDs import (
     _convexity_defect_plane_3D,
+    _cut_side_mask,
+    split_cut_components,
+    track_split_slice,
     split_along_convexity_defects,
     split_along_convexity_defects_3D,
     split_along_convexity_defects_slice_by_slice,
@@ -269,6 +272,79 @@ def test_convexity_defect_plane_3d_passes_through_sphere_neck():
     expected_neck = np.array([30, 30, 30])
 
     assert abs((expected_neck - plane_origin) @ plane_normal) < 1.0
+
+
+def test_split_cut_components_preserves_unaffected_disconnected_regions():
+    previous_lab = np.zeros((10, 16), dtype=np.uint32)
+    previous_lab[1:8, 1:8] = 4
+    previous_lab[2:6, 11:15] = 9
+    cut_lab = previous_lab.copy()
+    cut_lab[4, 1:8] = 0
+
+    result, max_ID, new_IDs = split_cut_components(
+        previous_lab, cut_lab, (np.array([4]), np.arange(1, 8)),
+        np.full(16, 4), np.arange(16), max_ID=10,
+        bbox=(1, 1, 8, 8)
+    )
+
+    assert new_IDs == [11]
+    assert max_ID == 11
+    assert set(np.unique(result)) == {0, 4, 9, 11}
+    assert np.all(result[2:6, 11:15] == 9)
+
+
+def test_cut_side_mask_follows_curve_and_extends_endpoint_line_to_edges():
+    side_mask = _cut_side_mask(
+        (7, 7),
+        np.array([3, 0, 3]),
+        np.array([0, 3, 6]),
+    )
+
+    assert side_mask[0, 3]
+    assert side_mask[1, 3]
+    assert not side_mask[0, 0]
+    assert not side_mask[0, 6]
+
+
+def test_split_cut_components_splits_multiple_ids_and_tracks_slice_IDs():
+    previous_lab = np.zeros((8, 12), dtype=np.uint32)
+    previous_lab[1:7, 1:5] = 7
+    previous_lab[1:7, 7:11] = 9
+    cut_lab = previous_lab.copy()
+    cut_lab[4, :] = 0
+    result, max_ID, new_IDs = split_cut_components(
+        previous_lab, cut_lab, (np.array([4, 4]), np.array([2, 8])),
+        np.full(12, 4), np.arange(12), max_ID=14, split_IDs=[12, 14],
+    )
+
+    assert set(np.unique(result)) == {0, 7, 9, 12, 14}
+    assert new_IDs == []
+    assert max_ID == 14
+    assert result[2, 2] == 7
+    assert result[5, 2] == 12
+    assert result[2, 8] == 9
+    assert result[5, 8] == 14
+
+
+def test_track_split_slice_chooses_neighbor_with_more_successful_tracks():
+    current_lab = np.zeros((20, 20), dtype=np.uint32)
+    current_lab[2:8, 2:8] = 10
+    current_lab[12:18, 12:18] = 11
+
+    one_match_lab = np.zeros_like(current_lab)
+    one_match_lab[2:8, 2:8] = 3
+
+    two_matches_lab = np.zeros_like(current_lab)
+    two_matches_lab[2:8, 2:8] = 3
+    two_matches_lab[12:18, 12:18] = 4
+
+    tracked_lab, track_count = track_split_slice(
+        current_lab, [one_match_lab, two_matches_lab], unique_ID=20
+    )
+
+    assert track_count == 2
+    assert tracked_lab[4, 4] == 3
+    assert tracked_lab[14, 14] == 4
 
 
 def test_split_along_convexity_defects_3d_labels_disconnected_components():

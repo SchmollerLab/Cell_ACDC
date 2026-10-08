@@ -3644,3 +3644,94 @@ def interpolate_unlabelled_z_slices(mask_volume, labelled_z_slices):
         mask_volume[z_index] = interpolated_plane > 0.33
 
     return mask_volume, filled_z_slices
+
+def acdc_df_to_ctc(acdc_output, last_training_frame_i=None):
+    """Converts acdc_output dataframe into man_track.txt lineage 
+    information for the Cell Tracking Challenge (CTC) format.
+    Requires that lineage tree information was previously 
+    added to acdc_output.
+
+    Parameters:
+    ----------
+        acdc_output : pd.Dataframe
+            acdc_output dataframe with added lineage tree.
+        last_training_frame_i : int
+            the last frame_i that will be included 
+            into the man_track.txt output. 
+
+    Returns:
+        Dataframe in CTC format for converting to the man_track.txt file
+
+    """
+    acdc_output = acdc_output.reset_index()
+    
+    is_normal_lineage_tree = (
+        'generation_num_tree' in acdc_output.columns
+        and 'Cell_ID_tree' not in  acdc_output.columns
+    )
+    if is_normal_lineage_tree:
+        acdc_output['Cell_ID_tree'] = acdc_output['Cell_ID']
+
+    if 'Cell_ID_tree' not in acdc_output.columns:
+        raise KeyError(
+            '`Cell_ID_tree` column not found in acdc_output table.'
+        )
+        if 'parent_ID_tree' not in acdc_output.columns:
+            raise KeyError(
+                '`parent_ID_tree` column not found in acdc_output table.'
+            )
+        acdc_output['Cell_ID_tree'] = acdc_output['Cell_ID']
+
+    list_of_cell_ID_trees = acdc_output.loc[
+        acdc_output['Cell_ID_tree'] > 0, 'Cell_ID_tree'
+    ].unique()
+    output_df = pd.DataFrame(
+        index=range(len(list_of_cell_ID_trees)),
+        columns=["L","B","E","P"]
+    )
+        
+    # uses max segmented/tracked frame_i if no training window is selected
+    if last_training_frame_i is None:
+        last_training_frame_i = acdc_output["frame_i"].max()
+        
+    # goes through all cell_ID_trees to find  
+    # their parental cell_ID_tree and beginning + end frame_i
+    counter = 0
+    for i in list_of_cell_ID_trees:
+        subset = acdc_output.loc[acdc_output['Cell_ID_tree'] == i]
+        beginning = subset['frame_i'].min()
+        ending = subset['frame_i'].max()
+        parental = subset.iloc[0]['parent_ID_tree']
+        if parental == -1:
+            parental = 0
+            
+    # sorts out tracks beginning later than selected training window
+        if beginning > last_training_frame_i:
+            continue
+            
+    # changes track ending to the selected training window if neeeded
+        elif ending > last_training_frame_i:
+            ending = last_training_frame_i
+        
+        output_df.loc[counter, "L"] = i
+        output_df.loc[counter, "B"] = beginning
+        output_df.loc[counter, "E"] = ending
+        output_df.loc[counter, "P"] = parental
+        counter = counter + 1
+    output_clean = output_df.dropna()
+    
+    return output_clean.astype(np.int64)
+
+def replace_Cell_ID_with_Cell_ID_tree(
+        lab: np.ndarray, 
+        cca_df_frame_i: pd.DataFrame
+    ):
+    if 'Cell_ID_tree' not in cca_df_frame_i:
+        return lab
+    
+    old_values = cca_df_frame_i['Cell_ID'].values
+    new_values = cca_df_frame_i['Cell_ID_tree'].values
+
+    lab_new = np_replace_values(lab, old_values, new_values)
+
+    return lab_new

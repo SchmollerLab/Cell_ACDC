@@ -60,6 +60,215 @@ MAX_RINGNESS = 0.35
 # small helpers
 # ----------------------------------------------------------------------
 
+def _cut_side_mask(shape, curve_y, curve_x):
+    """Rasterize the drawn curve and endpoint-line extensions inside an ROI."""
+    height, width = shape
+    if height < 2 or width < 2 or len(curve_y) < 2:
+        return np.zeros(shape, dtype=bool)
+
+    curve = np.column_stack((curve_y, curve_x)).astype(float)
+    direction = curve[-1] - curve[0]
+    if not np.any(direction):
+        return np.zeros(shape, dtype=bool)
+
+    intersections = []
+    y0, x0 = curve[0]
+    dy, dx = direction
+    if dx:
+        for x in (0, width - 1):
+            t = (x - x0) / dx
+            y = y0 + t * dy
+            if 0 <= y <= height - 1:
+                intersections.append((t, (y, x)))
+    if dy:
+        for y in (0, height - 1):
+            t = (y - y0) / dy
+            x = x0 + t * dx
+            if 0 <= x <= width - 1:
+                intersections.append((t, (y, x)))
+    if len(intersections) < 2:
+        return np.zeros(shape, dtype=bool)
+    intersections.sort(key=lambda intersection: intersection[0])
+    if np.allclose(intersections[0][1], intersections[-1][1]):
+        return np.zeros(shape, dtype=bool)
+    start_edge = np.rint(intersections[0][1]).astype(int)
+    end_edge = np.rint(intersections[-1][1]).astype(int)
+
+    perimeter = np.array(
+        [(0, x) for x in range(width)]
+        + [(y, width - 1) for y in range(1, height)]
+        + [(height - 1, x) for x in range(width - 2, -1, -1)]
+        + [(y, 0) for y in range(height - 2, 0, -1)],
+        dtype=int
+    )
+    start_idx = np.sum((perimeter - start_edge)**2, axis=1).argmin()
+    end_idx = np.sum((perimeter - end_edge)**2, axis=1).argmin()
+    clockwise = [end_idx]
+    while clockwise[-1] != start_idx:
+        clockwise.append((clockwise[-1] + 1) % len(perimeter))
+    counterclockwise = [end_idx]
+    while counterclockwise[-1] != start_idx:
+        counterclockwise.append((counterclockwise[-1] - 1) % len(perimeter))
+    edge_path = min((clockwise, counterclockwise), key=len)
+
+    polygon = np.vstack((
+        start_edge,
+        curve,
+        end_edge,
+        perimeter[edge_path],
+    ))
+    side_mask = np.zeros(shape, dtype=np.uint8)
+    cv2.fillPoly(side_mask, [polygon[:, ::-1].astype(np.int32)], 1)
+    return side_mask.astype(bool)
+
+def split_cut_components(
+        previous_lab, cut_lab, cut_coords, curve_y, curve_x, max_ID,
+        split_IDs=None, bbox=None
+    ):
+    """Split every crossed label between the two sides of the drawn cut.
+
+    IDs touched by ``cut_coords`` are split by the side mask formed from the
+    drawn curve and its endpoint extensions. The larger side keeps its old ID.
+    Smaller sides reuse IDs from ``split_IDs`` when available, otherwise they
+    receive new IDs above ``max_ID``. IDs not touched by the cut are unchanged.
+
+    Parameters
+    ----------
+    previous_lab : ndarray
+        Labels before the cut. Used to determine which IDs the cut intersects.
+    cut_lab : ndarray
+        Labels after the cut line has been removed. This array is modified
+        in-place within ``bbox`` as split IDs are assigned.
+    cut_coords : tuple of ndarray
+        Row and column coordinates of cut pixels, used to find intersected IDs.
+    curve_y, curve_x : array-like
+        Row and column coordinates of the complete drawn curve. These define
+        which side of the cut each pixel belongs to.
+    max_ID : int
+        Highest ID already in use; newly allocated IDs start above this value.
+    split_IDs : sequence of int, optional
+        Previously allocated split IDs available for reuse, typically from
+        splitting the same object in an adjacent z-slice.
+    bbox : tuple of int, optional
+        Region of interest as ``(min_row, min_col, max_row, max_col)``.
+        Processing is restricted to this half-open bounding box. If omitted,
+        the bounding box of all nonzero pixels in ``previous_lab`` is used.
+
+    Returns
+    -------
+    cut_lab : ndarray
+        The modified label image, with untouched IDs preserved.
+    max_ID : int
+        The updated highest ID after allocating any new split IDs.
+    new_IDs : list of int
+        IDs allocated during this call (reused ``split_IDs`` are excluded).
+    """
+    if cut_lab.shape != previous_lab.shape:
+        raise ValueError(
+            'Cut and previous label images must have the same shape.'
+        )
+    yy, xx = cut_coords
+    crossed_IDs = np.unique(previous_lab[yy, xx])
+    crossed_IDs = crossed_IDs[crossed_IDs != 0]
+    if not crossed_IDs.size:
+        return cut_lab, max_ID, []
+    preferred_IDs = list(split_IDs or ())
+    used_preferred_IDs = set()
+    new_IDs = []
+
+    #  bbox format (min_row, min_col, max_row, max_col)
+    if bbox is None:
+        object_y, object_x = np.nonzero(previous_lab)
+        if not object_y.size:
+            return cut_lab, max_ID, new_IDs
+        bbox = (
+            object_y.min(), object_x.min(), object_y.max() + 1, object_x.max() + 1
+        )
+    min_row, min_col, max_row, max_col = bbox
+    roi = np.s_[min_row:max_row, min_col:max_col]
+    cut_roi = cut_lab[roi]
+    side_mask = _cut_side_mask(
+        cut_roi.shape,
+        np.asarray(curve_y) - min_row,
+        np.asarray(curve_x) - min_col,
+    )
+
+    for ID in crossed_IDs:
+        side_masks = (
+            (cut_roi == ID) & side_mask,
+            (cut_roi == ID) & ~side_mask,
+        )
+        side_areas = [int(mask.sum()) for mask in side_masks]
+        if not all(side_areas):
+            continue
+
+        largest_side = max(range(2), key=lambda i: side_areas[i])
+        assignments = {largest_side: int(ID)}
+
+        for side_i, mask in enumerate(side_masks):
+            if side_i in assignments:
+                continue
+            preferred_ID = next(
+                (
+                    candidate for candidate in preferred_IDs
+                    if candidate not in used_preferred_IDs
+                    and candidate not in assignments.values()
+                ),
+                None
+            )
+            if preferred_ID is not None:
+                assignments[side_i] = preferred_ID
+                used_preferred_IDs.add(preferred_ID)
+                continue
+            max_ID += 1
+            assignments[side_i] = max_ID
+            new_IDs.append(max_ID)
+        for side_i, mask in enumerate(side_masks):
+            cut_roi[mask] = assignments[side_i]
+
+    return cut_lab, max_ID, new_IDs
+
+
+def track_split_slice(lab, neighboring_labs, unique_ID):
+    """Track split labels against each adjacent slice and keep the best match."""
+    from .trackers.CellACDC.CellACDC_tracker import track_frame
+
+    if not np.any(lab):
+        return lab, 0
+
+    from . import regionprops
+    current_rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
+    best_lab = lab
+    best_track_count = -1
+
+    for neighbor_lab in neighboring_labs:
+        if neighbor_lab is None or not np.any(neighbor_lab):
+            continue
+        if neighbor_lab.shape != lab.shape:
+            raise ValueError(
+                'Neighboring and current label images must have the same shape.'
+            )
+
+        prev_rp = regionprops.acdcRegionprops(neighbor_lab, precache_centroids=False)
+        tracked_lab, add_info = track_frame(
+            neighbor_lab,
+            prev_rp,
+            lab,
+            current_rp,
+            unique_ID=unique_ID,
+            return_all=True,
+            assign_unique_new_IDs=False,
+            return_assignments=True,
+        )
+        assignments = add_info['assignments']
+        track_count = len(assignments)
+        if track_count > best_track_count:
+            best_lab = tracked_lab
+            best_track_count = track_count
+
+    return best_lab, max(best_track_count, 0)
+
+
 def _as_spacing(voxel_size, ndim=3):
     """Physical voxel size as a length-`ndim` array, in (Z, Y, X) order."""
     if voxel_size is None:
