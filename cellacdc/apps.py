@@ -22061,13 +22061,13 @@ class SearchableListboxDialog(QBaseDialog):
 
     Search ignores punctuation and separators, so paths can be searched with
     spaces in place of slashes or underscores. Results are ranked by match
-    quality, with the original item order used to break ties. The recency
-    checkbox can instead keep all results in the original order.
+    quality when the match-sorting checkbox is checked, with the original
+    item order used to break ties. Otherwise, results stay in their original
+    order.
 
     The ``fuzzyThreshold`` argument sets the minimum similarity ratio for
-    fuzzy matches (0.0-1.0, default 0.5); the slider adjusts it while the
-    dialog is open. Existing filesystem paths also show their modification
-    date in a separate column.
+    fuzzy matches (0.0-1.0, default 0.5). Existing filesystem paths also show
+    their modification date in a separate column.
 
     Args:
         items: Display strings in their initial, usually most-recent-first,
@@ -22116,6 +22116,7 @@ class SearchableListboxDialog(QBaseDialog):
         self.searchProxyModel.setSourceModel(self.searchModel)
         self.searchProxyModel.setDynamicSortFilter(True)
         self.searchProxyModel.sort(0, Qt.AscendingOrder)
+        self.searchProxyModel.setAlwaysRecency(True)
 
         # add all items to the search model
         for item_text in self.allItems:
@@ -22143,39 +22144,18 @@ class SearchableListboxDialog(QBaseDialog):
 
         self.searchLineEdit.textEdited.connect(self.searchItems)
 
-        self.alwaysRecencyCheckBox = QCheckBox(
-            'Always prioritize recency'
+        self.sortByGoodnessCheckBox = QCheckBox(
+            'Sort by goodness of match'
         )
-        self.alwaysRecencyCheckBox.toggled.connect(
-            self._onAlwaysRecencyChanged
-        )
-
-        self.alwaysRecencyCheckBox.setToolTip(
-            'When enabled, matching items stay in the original recent-first '
-            'order. When disabled, better matches appear first, with recency '
-            'used to break ties.'
+        self.sortByGoodnessCheckBox.toggled.connect(
+            self._onSortByGoodnessChanged
         )
 
-        self.fuzzyThresholdSlider = QSlider(Qt.Horizontal)
-        self.fuzzyThresholdSlider.setRange(0, 100)
-        self.fuzzyThresholdSlider.setValue(round(self.fuzzyThreshold * 100))
-        self.fuzzyThresholdSlider.setToolTip(
-            'Minimum fuzzy similarity required for a result. Lower values '
-            'accept less-similar matches; higher values are stricter.'
+        self.sortByGoodnessCheckBox.setToolTip(
+            'When enabled, better matches appear first, with recency used to '
+            'break ties. When disabled, matching items stay in the original '
+            'recent-first order.'
         )
-        self.fuzzyThresholdLabel = QLabel()
-        self.fuzzyThresholdLabel.setText(
-            f'Fuzzy threshold: {round(self.fuzzyThreshold * 100)}%'
-        )
-        self.fuzzyThresholdLabel.setToolTip(
-            self.fuzzyThresholdSlider.toolTip()
-        )
-        thresholdLayout = QHBoxLayout()
-        thresholdLayout.addWidget(self.fuzzyThresholdLabel)
-        thresholdLayout.addWidget(self.fuzzyThresholdSlider, 1)
-        settingsLayout = QHBoxLayout()
-        settingsLayout.addWidget(self.alwaysRecencyCheckBox)
-        settingsLayout.addLayout(thresholdLayout, 1)
 
         self.listWidget = QTreeWidget()
         self.listWidget.setHeaderLabels(['Item', 'Last edited'])
@@ -22196,10 +22176,7 @@ class SearchableListboxDialog(QBaseDialog):
         self.listWidget.headerItem().setToolTip(
             1, 'Filesystem modification date and time.'
         )
-        self.fuzzyThresholdSlider.valueChanged.connect(
-            self._onFuzzyThresholdChanged
-        )
-        self._onFuzzyThresholdChanged(self.fuzzyThresholdSlider.value())
+        self.searchItems(self.searchLineEdit.text())
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -22211,7 +22188,7 @@ class SearchableListboxDialog(QBaseDialog):
             )
 
         mainLayout.addWidget(self.searchLineEdit)
-        mainLayout.addLayout(settingsLayout)
+        mainLayout.addWidget(self.sortByGoodnessCheckBox)
         mainLayout.addWidget(self.listWidget)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
@@ -22255,15 +22232,6 @@ class SearchableListboxDialog(QBaseDialog):
             '',
         )
 
-    def _onFuzzyThresholdChanged(self, value):
-        """Apply the slider percentage to fuzzy matching and refresh results."""
-        self.fuzzyThreshold = value / 100
-        self.searchProxyModel.FUZZY_THRESHOLD = self.fuzzyThreshold
-        self.fuzzyThresholdLabel.setText(
-            f'Fuzzy threshold: {value}%'
-        )
-        self.searchItems(self.searchLineEdit.text())
-
     def _populateListWidget(self):
         """Rebuild visible rows in the order supplied by the search proxy."""
         self.listWidget.clear()
@@ -22284,9 +22252,9 @@ class SearchableListboxDialog(QBaseDialog):
             )
             self.listWidget.addTopLevelItem(tree_item)
 
-    def _onAlwaysRecencyChanged(self, alwaysRecency):
-        """Switch between relevance-first and original-order result ranking."""
-        self.searchProxyModel.setAlwaysRecency(alwaysRecency)
+    def _onSortByGoodnessChanged(self, sortByGoodness):
+        """Switch between match-quality and original-order result ranking."""
+        self.searchProxyModel.setAlwaysRecency(not sortByGoodness)
         self.searchItems(self.searchLineEdit.text())
     
     def searchItems(self, text):
