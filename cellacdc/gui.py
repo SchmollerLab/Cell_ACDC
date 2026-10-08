@@ -5923,19 +5923,42 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     start_slice = None
 
-                manualSep = apps.manualSeparateGui(
-                    lab, ID, img,
-                    fontSize=self.fontSize,
-                    IDcolor=self.lut[ID],
-                    parent=self,
-                    drawMode= 'threepoints_arc' if lastManualSeparateState['is_three_points_active'] else 'free_hand',
-                    start_slice=start_slice,
-                    mouseBindings=self.mouseBindings,
-                    labelsLut=self.getLabelsImageLut(),
-                    labelsAlpha=self.imgGrad.labelsAlphaSlider.value()
+                draw_mode = (
+                    'threepoints_arc'
+                    if lastManualSeparateState['is_three_points_active']
+                    else 'freehand'
                 )
-                
-                manualSep.show()
+                labels_lut = self.getLabelsImageLut()
+                labels_alpha = self.imgGrad.labelsAlphaSlider.value()
+                manualSep = getattr(self, 'manualSeparateGui', None)
+                rp = posData.rp
+                if manualSep is None:
+                    manualSep = apps.manualSeparateGui(
+                        lab, ID, img,
+                        fontSize=self.fontSize,
+                        IDcolor=self.lut[ID],
+                        parent=self,
+                        drawMode=draw_mode,
+                        start_slice=start_slice,
+                        mouseBindings=self.mouseBindings,
+                        labelsLut=labels_lut,
+                        labelsAlpha=labels_alpha,
+                        rp=rp
+                    )
+                    self.manualSeparateGui = manualSep
+                else:
+                    manualSep.setSessionData(
+                        lab, ID, img,
+                        fontSize=self.fontSize,
+                        IDcolor=self.lut[ID],
+                        drawMode=draw_mode,
+                        start_slice=start_slice,
+                        mouseBindings=self.mouseBindings,
+                        labelsLut=labels_lut,
+                        labelsAlpha=labels_alpha,
+                        rp=rp
+                    )
+
                 manualSep.setState(lastManualSeparateState)
 
                 manualSep.centerWindow()
