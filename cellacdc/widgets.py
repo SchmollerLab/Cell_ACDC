@@ -4133,44 +4133,6 @@ class Toggle(QWidget):
         )
 
         p.end()
-        
-        
-class ToggleWithLabel(QWidget):
-    def __init__(self, label_text='', *args, **kwargs):
-        super().__init__()
-        self._toggle = Toggle(*args, **kwargs)
-        self._toggle.setSizePolicy(
-            QSizePolicy.Fixed, QSizePolicy.Fixed
-        )
-
-        self.label = Label(label_text, self)
-        self.label.setCursor(Qt.PointingHandCursor)
-        self.label.mousePressEvent = lambda event: self._toggle.click()
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.label)
-        layout.addStretch()
-        layout.addWidget(self._toggle)
-
-        # Forward the signal so existing connections keep working
-        self.stateChanged = self._toggle.stateChanged
-
-    def isChecked(self):
-        return self._toggle.isChecked()
-
-    def setChecked(self, state):
-        self._toggle.setChecked(state)
-
-    def toggle(self):
-        self._toggle.toggle()
-
-    def setDisabled(self, disable):
-        self._toggle.setDisabled(disable)
-        self.label.setDisabled(disable)
-
-    def setEnabled(self, enable):
-        self.setDisabled(not enable)
 
 def QKeyEventToString(event: QKeyEvent, notAllowedModifier=None):
     isAltKey = event.key()==Qt.Key_Alt
@@ -14417,7 +14379,7 @@ class SeparateBudToolbar(ToolBar):
         kwargs = {}
         for name, (widget, _, value_type) in self.convexity3DParamWidgets.items():
             if name == 'split_disconnected3D':
-                kwargs[name] = widget.isChecked() if value_type is bool else widget.value()
+                kwargs['split_disconnected'] = widget.isChecked() if value_type is bool else widget.value()
                 continue
             kwargs[name] = (
                 widget.isChecked() if value_type is bool else widget.value()
@@ -14428,7 +14390,7 @@ class SeparateBudToolbar(ToolBar):
         kwargs = {}
         for name, (widget, _, value_type) in self.convexity2DParamWidgets.items():
             if name == 'split_disconnected2D':
-                kwargs[name] = widget.isChecked() if value_type is bool else widget.value()
+                kwargs['split_disconnected'] = widget.isChecked() if value_type is bool else widget.value()
                 continue
             kwargs[name] = (
                 widget.isChecked() if value_type is bool else widget.value()
