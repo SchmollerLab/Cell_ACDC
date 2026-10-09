@@ -20543,7 +20543,6 @@ class SelectFoldersToAnalyse(QBaseDialog):
             self.warnEmptySelection()
             return
         self.cancel = False
-
         self.close()
         
     def warnNoAllValid(self, faultyFolders=None):
@@ -20690,38 +20689,10 @@ class SelectFoldersToAnalyse(QBaseDialog):
 
     def addFromRecentPaths(self):
         """Open a multi-select dialog containing existing recent folders."""
-        recent_paths_file = myutils.recentPaths_path
-        if not os.path.exists(recent_paths_file):
-            msg = widgets.myMessageBox(wrapText=False)
-            msg.information(
-                self,
-                'No recent paths',
-                'There are no recent paths to add.',
-            )
-            return
-
-        recent_df = pd.read_csv(recent_paths_file, index_col='index')
-        if 'opened_last_on' in recent_df.columns:
-            recent_df = recent_df.sort_values(
-                'opened_last_on', ascending=False
-            )
-        recent_paths = [
-            str(recent_path).replace('\\', '/')
-            for recent_path in recent_df['path']
-            if os.path.isdir(str(recent_path))
-        ]
-        recent_paths = list(dict.fromkeys(recent_paths))
+        recent_paths, dates = myutils.get_recent_paths(self)
         if not recent_paths:
-            msg = widgets.myMessageBox(wrapText=False)
-            msg.information(
-                self,
-                'No existing recent paths',
-                'None of the recent paths point to existing folders.',
-            )
             return
         
-        dates = recent_df['opened_last_on'].to_list() if 'opened_last_on' in recent_df.columns else None
-
         self.recentPathsDialog = SearchableListboxDialog(
             recent_paths,
             title='Add from recent paths',
@@ -22207,13 +22178,11 @@ class SearchableListboxDialog(QBaseDialog):
         if self.dates is not None:
             index = self.allItems.index(item_text) if item_text in self.allItems else None
             if index is not None:
-                date = self.dates[index]
+                date = pd.to_datetime(self.dates[index], errors='coerce')
                 # format the date for display
-                parsed_date = datetime.datetime.strptime(
-                    date, '%Y-%m-%d %H:%M:%S.%f'
-                )
-                date = parsed_date.strftime('%d.%m.%Y %H:%M')
-                return date, ''
+                if not pd.isna(date):
+                    date = date.strftime('%d.%m.%Y %H:%M')
+                    return date, ''
         
         if not os.path.exists(item_text):
             return '', ''

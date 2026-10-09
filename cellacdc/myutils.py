@@ -719,55 +719,6 @@ def get_images_folderpath(folderpath):
         return images_folderpath
     
     return ''
-    
-def getMostRecentPath():
-    if os.path.exists(recentPaths_path):
-        df = pd.read_csv(recentPaths_path, index_col='index')
-        if 'opened_last_on' in df.columns:
-            df = df.sort_values('opened_last_on', ascending=False)
-        MostRecentPath = ''
-        for path in df['path']:
-            if os.path.exists(path):
-                MostRecentPath = path
-                break
-    else:
-        MostRecentPath = ''
-    return MostRecentPath
-
-def addToRecentPaths(exp_path, logger=None):
-    if not os.path.exists(exp_path):
-        return
-    exp_path = exp_path.replace('\\', '/')
-    if os.path.exists(recentPaths_path):
-        try:
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            recentPaths = df['path'].to_list()
-            if 'opened_last_on' in df.columns:
-                openedOn = df['opened_last_on'].to_list()
-            else:
-                openedOn = [np.nan]*len(recentPaths)
-            if exp_path in recentPaths:
-                pop_idx = recentPaths.index(exp_path)
-                recentPaths.pop(pop_idx)
-                openedOn.pop(pop_idx)
-            recentPaths.insert(0, exp_path)
-            openedOn.insert(0, datetime.datetime.now())
-            # Keep max 100 recent paths
-            if len(recentPaths) > 100:
-                recentPaths.pop(-1)
-                openedOn.pop(-1)
-        except Exception as e:
-            recentPaths = [exp_path]
-            openedOn = [datetime.datetime.now()]
-    else:
-        recentPaths = [exp_path]
-        openedOn = [datetime.datetime.now()]
-    df = pd.DataFrame({
-        'path': recentPaths,
-        'opened_last_on': pd.Series(openedOn, dtype='datetime64[ns]')}
-    )
-    df.index.name = 'index'
-    df.to_csv(recentPaths_path)
 
 def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     if not filenames:
@@ -5867,3 +5818,78 @@ def download_3d_renderer_demo_data():
     
     return exp_folderpath
     
+def get_recent_paths(self):
+    if os.path.exists(recentPaths_path):
+        df = pd.read_csv(recentPaths_path, index_col='index')
+        if 'opened_last_on' in df.columns:
+            df = df.sort_values('opened_last_on', ascending=False)
+        recent_paths = [
+            str(recent_path).replace('\\', '/')
+            for recent_path in df['path']
+            if os.path.isdir(str(recent_path))
+        ]
+        recent_paths = list(dict.fromkeys(recent_paths))
+        
+        # get dates corresponding to the recent paths
+        filtered_df = df[df['path'].isin(recent_paths)]
+        dates = filtered_df['opened_last_on'].to_list() if 'opened_last_on' in filtered_df.columns else None
+        
+    else:
+        recent_paths = []
+        dates = None
+        
+    # if not recent_paths:
+    # this can cause crashes and is not necessary
+    #     msg = widgets.myMessageBox(wrapText=False)
+    #     msg.information(
+    #         self,
+    #         'No recent paths',
+    #         'There are no recent paths to add.',
+    #     )
+
+    return recent_paths, dates
+    
+def getMostRecentPath():
+    if os.path.exists(recentPaths_path):
+        df = pd.read_csv(recentPaths_path, index_col='index')
+        if 'opened_last_on' in df.columns:
+            df = df.sort_values('opened_last_on', ascending=False)
+        MostRecentPath = ''
+        for path in df['path']:
+            if os.path.exists(path):
+                MostRecentPath = path
+                break
+    else:
+        MostRecentPath = ''
+    return MostRecentPath
+
+def addToRecentPaths(exp_path, logger=None):
+    if not os.path.exists(exp_path):
+        return
+    exp_path = exp_path.replace('\\', '/')
+    if os.path.exists(recentPaths_path):
+        try:
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            recentPaths = df['path'].to_list()
+            if 'opened_last_on' in df.columns:
+                openedOn = df['opened_last_on'].to_list()
+            else:
+                openedOn = [np.nan]*len(recentPaths)
+            if exp_path in recentPaths:
+                pop_idx = recentPaths.index(exp_path)
+                recentPaths.pop(pop_idx)
+                openedOn.pop(pop_idx)
+            recentPaths.insert(0, exp_path)
+            openedOn.insert(0, datetime.datetime.now())
+        except Exception as e:
+            recentPaths = [exp_path]
+            openedOn = [datetime.datetime.now()]
+    else:
+        recentPaths = [exp_path]
+        openedOn = [datetime.datetime.now()]
+    df = pd.DataFrame({
+        'path': recentPaths,
+        'opened_last_on': pd.Series(openedOn, dtype='datetime64[ns]')}
+    )
+    df.index.name = 'index'
+    df.to_csv(recentPaths_path)

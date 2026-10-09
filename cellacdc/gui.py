@@ -76,7 +76,7 @@ from . import _warnings, issues_url
 from . import measurements, printl
 from . import colors, annotate
 from . import user_manual_url
-from . import (recentPaths_path, settings_folderpath, settings_csv_path, 
+from . import (settings_folderpath, settings_csv_path, 
                seg_for_lost_IDs_settings_path)
 from . import favourite_func_metrics_csv_path
 from . import qutils, autopilot, QtScoped
@@ -701,30 +701,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             super().setDisabled(disabled)
     
-    def readRecentPaths(self, recent_paths_path=None):
+    def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
-        self.openRecentMenu.clear()
-
-        # Step 1. Read recent Paths
-        if recent_paths_path is None:
-            recent_paths_path = recentPaths_path    
-        
-        if os.path.exists(recent_paths_path):
-            df = pd.read_csv(recent_paths_path, index_col='index')
-            df['path'] = df['path'].str.replace('\\', '/')
-            df = df.drop_duplicates(subset=['path'])
-            df.to_csv(recent_paths_path)
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            recentPaths = df['path'].to_list()
-        else:
-            recentPaths = []
+        self.openRecentMenu.clear()        
+        recentPaths, dates = myutils.get_recent_paths(self)
         
         # Step 2. Dynamically create 20 actions
         actions = []
         for path in recentPaths[:20]:
-            if not os.path.exists(path):
-                continue
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
@@ -733,7 +717,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.openRecentMenu.addActions(actions)
 
         # Setp 4. Add the More action
-        dates = df['opened_last_on'].to_list() if 'opened_last_on' in df.columns else None
         self.openRecentMoreDialog = apps.SearchableListboxDialog(
             recentPaths, 
             title='Recent paths', 

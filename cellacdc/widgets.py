@@ -2062,7 +2062,6 @@ class statusBarPermanentLabel(QWidget):
         self.setLayout(layout)
 
 class _RichTextItemEventFilter(QObject):
-
     def __init__(self, item):
         super().__init__()
         self.item = item
@@ -2074,7 +2073,11 @@ class _RichTextItemEventFilter(QObject):
             return super().eventFilter(obj, event)
 
         if event.type() == QEvent.MouseMove:
-            pos = event.position().toPoint()
+            pos = (
+                event.position().toPoint()
+                if hasattr(event, 'position')
+                else event.pos()
+            )            
             hoveredItem = listWidget.itemAt(pos)
             self.item.setHovered(hoveredItem is self.item)
 
@@ -14047,10 +14050,13 @@ class _RecentItemsSearchCompleter(ButtonSearchCompleter):
         if self.alwaysRecency:
             return left.row() < right.row()
 
-        left_category = self._getScore(left)[0]
-        right_category = self._getScore(right)[0]
+        left_score = self._getScore(left)
+        right_score = self._getScore(right)
 
-        if left_category != right_category:
-            return left_category < right_category
+        if left_score[0] != right_score[0]:
+            return left_score[0] < right_score[0]
+        
+        if left_score[1] != right_score[1]:
+            return left_score[1] < right_score[1]
 
         return left.row() < right.row()
