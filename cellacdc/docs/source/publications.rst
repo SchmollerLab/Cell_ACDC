@@ -24,6 +24,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>Nucleic Acids Research</b> (2026) DOI: <a href="https://doi.org/10.1093/nar/gkag949">10.1093/nar/gkag949</a>.</li><br>
+
       <li>Dengler, L., et al. <i>Swe1 delays cell cycle progression during impaired mitochondrial inheritance to promote mitochondrial homeostasis</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.09.18.752582">10.64898/2026.09.18.752582</a>.</li><br>
 
       <li>Chadha, Y., et al. <i>"Single-cell imaging reveals a key role of Bck2 in yeast cell size adaptation to nutrient challenges</i>. <b>Journal of Cell Biology</b> (2026) DOI: <a href="https://doi.org/10.1083/jcb.202410020">10.1083/jcb.202410020</a>.</li><br>
@@ -59,8 +61,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Pabst, F. R., et al. <i>Methionine synthase reductase regulates heterochromatin independently of methionine synthesis through mitochondrial homeostasis</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.19.695597">10.64898/2025.12.19.695597</a>.</li><br>
 
       <li>Garrigós, V., et al. <i>Tsa1-Mediated Regulation of PKA Tunes Trehalose Metabolism in Saccharomyces cerevisiae</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.11.26.690464">10.1101/2025.11.26.690464</a>.</li><br>
-
-      <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
 
       <li>Geetha, S. S., et al. <i>Bloom helicase contributes to successful crossover formation with both catalytic and structural roles in Caenorhabditis elegans meiosis</i>. <b> Nucleic Acids Res.</b> (2025) DOI: <a href="https://doi.org/10.1093/nar/gkaf1030">10.1093/nar/gkaf1030</a>.</li><br>
 
