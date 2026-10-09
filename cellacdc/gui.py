@@ -2845,6 +2845,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistIDsToolbar.setVisible(False)
         self.controlToolBars.append(self.whitelistIDsToolbar)
         
+        self.separateBudToolbar = widgets.SeparateBudToolbar(self)
+        for name, action in self.separateBudToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+        for name, widget in self.separateBudToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
+
+        self.addToolBar(Qt.TopToolBarArea, self.separateBudToolbar)
+        self.separateBudToolbar.setVisible(False)
+        self.controlToolBars.append(self.separateBudToolbar)
+        self.separateBudButton.toggled.connect(self.separateBudToolbar.setVisible)
+        
         self.magicPromptsToolbar = widgets.MagicPromptsToolbar(self)
         for name, action in self.magicPromptsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
@@ -5875,7 +5886,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.storeUndoRedoStates(False)
             max_ID = max(posData.IDs, default=1)
 
-            if self.isSegm3D and not ctrl and not (shift and isZslice):
+            separation_mode = self.separateBudToolbar.separationMode()
+            if (
+                self.isSegm3D and not ctrl and not (shift and isZslice)
+                and separation_mode == '3D Convexity defects'
+            ):
                 posData.lab, success, splittedIDs = core_split_IDs.split_along_convexity_defects_3D(
                     ID, posData.lab, max_ID, rp=posData.rp,
                     voxel_size=(
@@ -5883,24 +5898,67 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         posData.PhysicalSizeY,
                         posData.PhysicalSizeX,
                     ),
+                    **self.separateBudToolbar.splitConv3DKwargs(),
                 )
+            elif (
+                self.isSegm3D and not ctrl and not (shift and isZslice)
+                and separation_mode == 'Slice by slice'
+            ):
+                result = core_split_IDs.split_along_convexity_defects_slice_by_slice(
+                    ID, posData.lab, max_ID,
+                    rp=posData.rp,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
+                )
+                posData.lab, success, splittedIDs = result
             elif self.isSegm3D and not ctrl and (shift and isZslice):
                 rp_2D = self.get2DRP()
                 lab_2D = self.get_2Dlab(force_z=True)
                 result = core_split_IDs.split_along_convexity_defects(
-                    ID, lab_2D, max_ID, rp=rp_2D
+                    ID, lab_2D, max_ID, rp=rp_2D,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
                 )
                 lab_2D, success, splittedIDs = result
+                # assign largest resulting ID the original ID
+                obj = rp_2D.get_obj_from_ID(ID)
+                IDs, counts = np.unique(lab_2D[obj.slice][obj.image], return_counts=True)
+                max_size_idx = np.argmax(counts)
+                largest_ID = IDs[max_size_idx]
+                original_values = lab_2D[obj.slice][obj.image].copy()
+                lab_2D[obj.slice][obj.image] = np.where(
+                    original_values == largest_ID,
+                     ID,
+                     np.where(original_values == ID, largest_ID, original_values),
+                     )
                 self.set_2Dlab(lab_2D)
                 
             elif not ctrl and not self.isSegm3D:
                 result = core_split_IDs.split_along_convexity_defects(
-                    ID, self.get_2Dlab(posData.lab), max_ID, rp=posData.rp
+                    ID, self.get_2Dlab(posData.lab), max_ID, rp=posData.rp,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
                 )
                 lab2D, success, splittedIDs = result
                 self.set_2Dlab(lab2D)
             else:  # ctrl+right-click triggers manual separation directly
                 success = False
+                
+            if (
+                success 
+                and self.separateBudToolbar.goToSepSliceChecked()
+                and self.isSegm3D
+                ):
+                
+                ogObject = posData.rp.get_obj_from_ID(ID)
+                bbox = ogObject.bbox
+                min_z, min_y, min_x, max_z, max_y, max_x = bbox
+                splittedIDs_exc_ID = [i for i in splittedIDs if i != ID]
+                for z in range(min_z, max_z + 1):
+                    lab2D = self.get_2Dlab(force_z=True, slice_i=z)
+                    # check if any of the splitted IDs are present in the current 2D slice
+                    if any(i in lab2D for i in splittedIDs_exc_ID):
+                        # set z to the current slice index
+                        self.zSliceScrollBar.setSliderPosition(z)
+                        self.update_z_slice(z)
+                        break
             
             # If automatic bud separation was not successfull call manual one
             if not success:
@@ -5910,12 +5968,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if shift and isZslice and self.isSegm3D:
                     lab = self.get_2Dlab(force_z=True)
                     img = self.getDisplayedImg1()
+                    rp = self.get2DRP()
                 elif self.isSegm3D:
                     lab = posData.lab
                     img = self.getDisplayedZstack()
+                    rp = posData.rp
                 else:
                     lab = posData.lab
                     img = self.getDisplayedImg1()
+                    rp = posData.rp
 
                 if self.isSegm3D:
                     start_slice = self.zSliceScrollBar.sliderPosition()
@@ -5930,7 +5991,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 labels_lut = self.getLabelsImageLut()
                 labels_alpha = self.imgGrad.labelsAlphaSlider.value()
                 manualSep = getattr(self, 'manualSeparateGui', None)
-                rp = posData.rp
                 if manualSep is None:
                     manualSep = apps.manualSeparateGui(
                         lab, ID, img,
@@ -16887,14 +16947,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not key == ev.key():
                 continue
             action = self.widgetsWithShortcut[name]
-            success = False
             if hasattr(action, 'click'):
                 action.click()
             elif hasattr(action, 'trigger'):
                 action.trigger()
             break
-        
-
         
         self.checkSetDelObjActionActive(ev)
         
@@ -16914,11 +16971,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if self.isSegm3D:
                 self.changeBrushID()
                 
-        if isShiftModifier and self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isVisible():
+        if (
+            ev.key() == Qt.Key_Shift
+            and isShiftModifier
+            and not ev.isAutoRepeat()
+            and self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isVisible()
+            ):
             self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state = (   
                 self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isChecked()
             )
             self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.setChecked(True)
+
+        if (
+            ev.key() == Qt.Key_Shift
+            and isShiftModifier
+            and not ev.isAutoRepeat()
+            and self.separateBudToolbar.sepModeSelector.isVisible()
+            ):
+            self.separateBudToolbar_sepModeSelector_og_state = (
+                self.separateBudToolbar.separationMode()
+            )
+            self.separateBudToolbar.setSeparationMode(
+                'Slice by slice'
+            )
         
         isAnyModifier = isAltModifier or isCtrlModifier or isShiftModifier
         if not isAnyModifier and self.overlayButton.isChecked():
@@ -17133,6 +17208,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             or self.delObjToolAction.isChecked()
         )
 
+        if (
+            ev.key() == Qt.Key_Shift
+            and not ev.isAutoRepeat()
+            and getattr(
+                self,
+                'separateBudToolbar_sepModeSelector_og_state',
+                None,
+            ) is not None
+        ):
+            self.separateBudToolbar.setSeparationMode(
+                self.separateBudToolbar_sepModeSelector_og_state
+            )
+            self.separateBudToolbar_sepModeSelector_og_state = None
+            
         if (
             ev.key() == Qt.Key_Shift
             and not ev.isAutoRepeat()
@@ -21724,6 +21813,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.initLoadedDelROI()
         
+        self.separateBudToolbar.setSegm3D(self.isSegm3D)
+        
         QTimer.singleShot(100, self.resizeGuiAndAutoRange)
 
     def _createROIfromState(self, state, key):
@@ -23860,17 +23951,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             idx_x = min(idx, posData.SizeX-1)
             return (slice(None), slice(None), idx_x)
                 
-    def get_2Dlab(self, lab=None, force_z=True):
+    def get_2Dlab(self, lab=None, force_z=True, slice_i=None):
         if lab is None:
             posData = self.data[self.pos_i]
             lab = posData.lab
         if self.isSegm3D:
             if force_z:
-                return lab[self.z_lab()]
+                return lab[self.z_lab() if slice_i is None else slice_i]
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if isZslice:
-                return lab[self.z_lab()]
+                return lab[self.z_lab() if slice_i is None else slice_i]
             else:
                 if self.switchPlaneCombobox.isEnabled():
                     slicing = self.switchPlaneCombobox.depthAxes()

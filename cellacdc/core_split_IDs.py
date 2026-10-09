@@ -1,38 +1,3 @@
-
-"""
-Splitting of approximately spherical 3D objects at convexity defects.
-
-Adapted from the original `split_along_convexity_defects_3D` with the
-following changes:
-
-* anisotropic voxel sizes are handled everywhere (EDT, marching cubes,
-  plane geometry, volume/solidity), instead of being silently ignored;
-* the cut plane normal is fitted to the defect ring itself (weighted PCA)
-  instead of being taken from the vector joining the two strongest EDT
-  maxima, with the peak-to-peak direction kept only as a fallback;
-* the defect ring is recovered from *all* components above a depth
-  threshold that is relative to the deepest defect, and ring fragments
-  are merged, so a ring broken by a fuzzy surface is not truncated;
-* seeds come from the h-maxima of a smoothed EDT rather than from raw
-  `local_maxima`, which is what makes this survive fuzzy boundaries;
-* the plane is used to *group seeds*, not to cut directly. A watershed
-  guided by that grouping is generated as one candidate, alongside a
-  hard planar cut and a plane-independent EDT-seeded watershed, so the
-  interface is free to curve the way two spheres actually meet;
-* candidates are no longer tried in a fixed order until one "works".
-  All of them are generated, filtered for structural validity (and,
-  where possible, for improving solidity over the parent), and the
-  survivor with the smallest interface area is chosen -- the cut
-  through the narrowest neck, in the spirit of bottleneck-detection
-  clump-splitting methods;
-* an explicit gate decides *whether* to split at all (solidity + seed
-  count), separate from *which* split wins among the candidates.
-
-Public API:
-    should_split_3D(mask, voxel_size=None, ...)      -> bool
-    split_along_convexity_defects_3D(ID, lab, max_ID, ...) -> (lab, was_split, IDs)
-"""
-
 import cv2
 import numpy as np
 import scipy.ndimage
@@ -46,11 +11,13 @@ import skimage.segmentation
 
 from . import core
 
+import scipy.ndimage as ndimage
+
 CONNECTIVITY_3D = np.ones((3, 3, 3), dtype=bool)
 
 # depth below the convex hull, as a fraction of the deepest defect, above
 # which a surface vertex is considered part of the defect ring
-DEFECT_DEPTH_FRAC = 0.5
+DEFECT_DEPTH_FRAC = 0.2
 # max ratio (smallest / middle eigenvalue) for a defect cloud to count as
 # a planar ring. A ring gives ~0, a compact blob gives ~1.
 MAX_RINGNESS = 0.35
@@ -94,6 +61,8 @@ def _cut_side_mask(shape, curve_y, curve_x):
     start_edge = np.rint(intersections[0][1]).astype(int)
     end_edge = np.rint(intersections[-1][1]).astype(int)
 
+    # Close the open cut along the shorter image-border path to form a
+    # polygon; filling it identifies one side without assuming curve shape.
     perimeter = np.array(
         [(0, x) for x in range(width)]
         + [(y, width - 1) for y in range(1, height)]
@@ -128,9 +97,10 @@ def split_cut_components(
     """Split every crossed label between the two sides of the drawn cut.
 
     IDs touched by ``cut_coords`` are split by the side mask formed from the
-    drawn curve and its endpoint extensions. The larger side keeps its old ID.
-    Smaller sides reuse IDs from ``split_IDs`` when available, otherwise they
-    receive new IDs above ``max_ID``. IDs not touched by the cut are unchanged.
+    drawn curve and its endpoint extensions (see :func:`_cut_side_mask`). 
+    The larger side keeps its old ID. Smaller sides reuse IDs from ``split_IDs`` 
+    when available, otherwise they receive new IDs above ``max_ID``. IDs not 
+    touched by the cut are unchanged.
 
     Parameters
     ----------
@@ -168,10 +138,13 @@ def split_cut_components(
             'Cut and previous label images must have the same shape.'
         )
     yy, xx = cut_coords
-    crossed_IDs = np.unique(previous_lab[yy, xx])
+    crossed_IDs = np.unique(previous_lab[yy, xx]) 
+    # should be fast, as it only looks at the cut coordinates
     crossed_IDs = crossed_IDs[crossed_IDs != 0]
     if not crossed_IDs.size:
         return cut_lab, max_ID, []
+    
+    # preferred IDs are those available for reuse from previous splits
     preferred_IDs = list(split_IDs or ())
     used_preferred_IDs = set()
     new_IDs = []
@@ -187,6 +160,8 @@ def split_cut_components(
     min_row, min_col, max_row, max_col = bbox
     roi = np.s_[min_row:max_row, min_col:max_col]
     cut_roi = cut_lab[roi]
+    
+    # generate the side mask for the cut region
     side_mask = _cut_side_mask(
         cut_roi.shape,
         np.asarray(curve_y) - min_row,
@@ -202,6 +177,7 @@ def split_cut_components(
         if not all(side_areas):
             continue
 
+        # region with the largest area keeps its old ID
         largest_side = max(range(2), key=lambda i: side_areas[i])
         assignments = {largest_side: int(ID)}
 
@@ -229,8 +205,10 @@ def split_cut_components(
     return cut_lab, max_ID, new_IDs
 
 
-def track_split_slice(lab, neighboring_labs, unique_ID):
-    """Track split labels against each adjacent slice and keep the best match."""
+def track_split_slice(lab, neighboring_labs, unique_ID, split_IDs=None):
+    """Track split labels against each adjacent slice and keep the best match.
+    This function can later also be used for segmenting 2D slices and merging 
+    between them."""
     from .trackers.CellACDC.CellACDC_tracker import track_frame
 
     if not np.any(lab):
@@ -240,6 +218,7 @@ def track_split_slice(lab, neighboring_labs, unique_ID):
     current_rp = regionprops.acdcRegionprops(lab, precache_centroids=False)
     best_lab = lab
     best_track_count = -1
+    split_IDs_new = split_IDs[:] if split_IDs is not None else []
 
     for neighbor_lab in neighboring_labs:
         if neighbor_lab is None or not np.any(neighbor_lab):
@@ -265,8 +244,15 @@ def track_split_slice(lab, neighboring_labs, unique_ID):
         if track_count > best_track_count:
             best_lab = tracked_lab
             best_track_count = track_count
+            split_IDs_new = [assignments.get(split_ID, split_ID) 
+                             for split_ID in (split_IDs or [])]
 
-    return best_lab, max(best_track_count, 0)
+    # return the best tracked label image and the number of successful tracks
+    if split_IDs is None:
+        return best_lab, max(best_track_count, 0)
+    
+    
+    return best_lab, max(best_track_count, 0), split_IDs_new
 
 
 def _as_spacing(voxel_size, ndim=3):
@@ -415,22 +401,54 @@ def _seed_peak_coords(distance, seed_labels, labels):
 
 def _defect_ring(vertices, faces, depths, depth_threshold, merge_radius):
     """
-    Largest connected group of deep vertices, with nearby fragments merged.
+    Extract the dominant connected group of deep surface vertices.
 
-    A fuzzy surface breaks the concave ring into arcs; connecting
-    components whose vertices come within `merge_radius` of each other
-    stitches those arcs back into one ring, instead of keeping a single
-    arc and biasing the plane origin towards it.
+    Vertices at or deeper than ``depth_threshold`` are treated as candidate
+    points on the concavity ring. Their connectivity is calculated from the
+    triangle-mesh edges in ``faces``, so shallow vertices cannot bridge two
+    separate deep regions. On fuzzy or coarse surfaces the ring may be
+    represented by disconnected arcs; if their closest vertices are within
+    ``merge_radius``, those components are joined using spatial proximity.
+    The resulting component with the greatest *sum* of vertex depths is
+    returned. Summed depth favors a substantial deep neck over a larger but
+    shallow surface indentation.
+
+    Parameters
+    ----------
+    vertices : ndarray, shape (N, 3)
+        Surface-vertex coordinates, in physical units.
+    faces : ndarray, shape (M, 3)
+        Triangle mesh; each row contains indices into ``vertices``.
+    depths : ndarray, shape (N,)
+        Convex-hull depth for each surface vertex, in physical units.
+    depth_threshold : float
+        Minimum depth for a vertex to be included in the candidate ring.
+    merge_radius : float
+        Maximum physical distance between fragments for them to be merged.
+        A merge can join components transitively through intermediate
+        fragments.
+
+    Returns
+    -------
+    (ring_vertices, ring_depths) : tuple of ndarray
+        Coordinates and corresponding depths for the selected component.
+        Returns ``None`` when fewer than six deep vertices are available,
+        no candidate mesh edges connect them, or the selected component
+        contains fewer than six vertices.
     """
     deep = depths >= depth_threshold
     if deep.sum() < 6:
         return None
 
+    # Keep only triangle edges whose two endpoints pass the depth threshold;
+    # this forms connected ring segments without shallow bridges.
     edges = np.concatenate((faces[:, :2], faces[:, 1:], faces[:, ::2]), axis=0)
     edges = edges[np.all(deep[edges], axis=1)]
     if len(edges) == 0:
         return None
 
+    # Connected-components operates on a sparse graph of mesh vertices.
+    # Masking shallow vertices afterward excludes isolated graph nodes.
     n_vertices = len(vertices)
     adjacency = scipy.sparse.coo_matrix(
         (
@@ -456,9 +474,11 @@ def _defect_ring(vertices, faces, depths, depth_threshold, merge_radius):
         for label in labels:
             centres[label] = vertices[components == label]
         tree_labels = list(labels)
+        # Union-find allows close-fragment links to merge transitively.
         parent = {label: label for label in tree_labels}
 
         def _find(label):
+            """Return a fragment's merged-set root, compressing the path."""
             while parent[label] != label:
                 parent[label] = parent[parent[label]]
                 label = parent[label]
@@ -467,7 +487,14 @@ def _defect_ring(vertices, faces, depths, depth_threshold, merge_radius):
         for i, label_i in enumerate(tree_labels):
             tree_i = scipy.spatial.cKDTree(centres[label_i])
             for label_j in tree_labels[i + 1:]:
-                if tree_i.query(centres[label_j], distance_upper_bound=merge_radius)[0].min() < merge_radius:
+                # A KD-tree nearest-neighbor query avoids a dense all-pairs
+                # distance matrix for large surface fragments.
+                if (
+                    tree_i.query(
+                        centres[label_j], 
+                        distance_upper_bound=merge_radius
+                        )[0].min() 
+                    < merge_radius):
                     parent[_find(label_j)] = _find(label_i)
         merged = np.full(components.shape, -1, dtype=np.int64)
         for label in tree_labels:
@@ -479,6 +506,8 @@ def _defect_ring(vertices, faces, depths, depth_threshold, merge_radius):
     # vertices: a large shallow dimple should not outvote a deep neck
     scores = [depths[components == label].sum() for label in labels]
     best = labels[int(np.argmax(scores))]
+    # Require enough ring vertices for a stable plane fit; tiny fragments
+    # may be spurious defects.
     selection = components == best
     if selection.sum() < 6:
         return None
@@ -627,7 +656,7 @@ def _markers_from_plane(mask, distance, signed, seed_labels, n_seeds, spacing):
     return markers
 
 
-def _markers_from_seeds(distance, seed_labels, order):
+def _markers_from_seeds(seed_labels, order):
     """Two-label marker image from the two strongest EDT seeds."""
     markers = np.zeros(seed_labels.shape, dtype=np.int32)
     markers[seed_labels == order[0]] = 1
@@ -731,6 +760,9 @@ def split_along_convexity_defects_3D(
         min_solidity=0.93,
         require_improvement=True,
         gate_on_solidity=True,
+        defect_depth_frac=0.2,
+        max_ringness=0.35,
+        split_disconnected=True,
     ):
     """
     Split the object `ID` in the 3D label image `lab` at its dominant
@@ -757,6 +789,9 @@ def split_along_convexity_defects_3D(
     min_volume_frac : float
         Reject a split whose smaller child is below this fraction of the
         parent volume.
+    split_disconnected : bool
+        Assign separate IDs to disconnected 3D components before trying
+        a convexity-based split.
     min_solidity, gate_on_solidity : float, bool
         Objects at or above `min_solidity` with a single EDT seed are
         left alone.
@@ -801,20 +836,21 @@ def split_along_convexity_defects_3D(
     # ------------------------------------------------------------------
     # 1. already-disconnected components: relabel, no geometry needed
     # ------------------------------------------------------------------
-    components = skimage.measure.label(lab_ID_bool, connectivity=3)
-    components_rp = skimage.measure.regionprops(components)
-    if len(components_rp) > 1:
-        components_out = np.zeros_like(components, dtype=lab.dtype)
-        components_rp.sort(key=lambda component: component.area, reverse=True)
-        separateIDs = [ID]
-        for component_i, component in enumerate(components_rp):
-            component_ID = ID if component_i == 0 else max_ID + max_i
-            components_out[component.slice][component.image] = component_ID
-            if component_i > 0:
-                separateIDs.append(component_ID)
-                max_i += 1
-        lab[obj_slice][lab_ID_bool] = components_out[lab_ID_bool]
-        return lab, True, separateIDs
+    if split_disconnected:
+        components = skimage.measure.label(lab_ID_bool, connectivity=3)
+        components_rp = skimage.measure.regionprops(components)
+        if len(components_rp) > 1:
+            components_out = np.zeros_like(components, dtype=lab.dtype)
+            components_rp.sort(key=lambda component: component.area, reverse=True)
+            separateIDs = [ID]
+            for component_i, component in enumerate(components_rp):
+                component_ID = ID if component_i == 0 else max_ID + max_i
+                components_out[component.slice][component.image] = component_ID
+                if component_i > 0:
+                    separateIDs.append(component_ID)
+                    max_i += 1
+            lab[obj_slice][lab_ID_bool] = components_out[lab_ID_bool]
+            return lab, True, separateIDs
 
     # ------------------------------------------------------------------
     # 2. EDT, seeds, and the decision of whether to split at all
@@ -839,7 +875,9 @@ def split_along_convexity_defects_3D(
     candidates = []  # list of (first, second, method_name)
 
     defect_plane = _convexity_defect_plane_3D(
-        lab_ID_bool, spacing, peak_coords=peak_coords
+        lab_ID_bool, spacing, peak_coords=peak_coords,
+        depth_frac=defect_depth_frac,
+        max_ringness=max_ringness
     )
     if defect_plane is not None:
         plane_origin, plane_normal = defect_plane
@@ -867,7 +905,7 @@ def split_along_convexity_defects_3D(
     # 3c. EDT-seeded watershed on the two strongest h-maxima, independent
     # of whether a usable convexity defect was found at all
     if n_seeds >= 2:
-        markers = _markers_from_seeds(distance, seed_labels, order)
+        markers = _markers_from_seeds(seed_labels, order)
         edt_watershed = _watershed_two(lab_ID_bool, distance, markers, compactness)
         if edt_watershed is not None:
             candidates.append((*edt_watershed, 'edt_watershed'))
@@ -939,16 +977,195 @@ def split_all_along_convexity_defects_3D(lab, voxel_size=None, max_iter=3, **kwa
             break
     return lab
 
+def split_along_convexity_defects_slice_by_slice(
+        ID, lab, max_ID, eps_percent=0.01, split_disconnected=False, rp=None
+    ):
+    """Split a labeled 3D object by components or by 2D convexity per slice.
+
+    First separate disconnected 3D components, preserving the original ID
+    for the largest one. If the object is a single component, apply the
+    legacy 2D convexity-defect splitter to each z-slice containing it. When
+    ``split_disconnected`` is false, only the largest connected 2D piece in a
+    slice is considered for a convexity cut; other same-ID pieces are kept.
+
+    Parameters
+    ----------
+    ID : int
+        Label value of the object to split.
+    lab : ndarray
+        3D integer label image. Updated in-place.
+    max_ID : int
+        Highest label currently in use; new labels are allocated above it
+        (and above the maximum label in ``lab``).
+    eps_percent : float
+        Relative contour-approximation tolerance passed to the 2D splitter.
+    split_disconnected : bool
+        Whether to separate disconnected 2D pieces before trying a
+        convexity-defect split.
+    rp : object, optional
+        Regionprops-like lookup exposing ``get_obj_from_ID``. When supplied,
+        its object mask is used instead of finding ``ID`` directly in ``lab``.
+
+    Returns
+    -------
+    lab : ndarray
+        Updated label image.
+    was_split : bool
+        Whether disconnected components or any slice was split.
+    IDs : list of int
+        IDs assigned when a split occurred; empty when the object remains
+        unchanged.
+    """
+    if lab.ndim != 3:
+        raise ValueError(f'Expected a 3D label image, got {lab.ndim}D.')
+    max_ID = max(int(max_ID), int(lab.max()))
+
+    if rp is None:
+        object_mask = lab == ID
+        if not object_mask.any():
+            return lab, False, []
+        bbox = ndimage.find_objects(object_mask.astype(np.uint8))[0]
+    else:
+        obj = rp.get_obj_from_ID(ID)
+        if obj is None:
+            raise ValueError(f'Object with ID {ID} was not found in regionprops.')
+        object_mask = np.zeros_like(lab, dtype=bool)
+        object_mask[obj.slice][obj.image] = True
+        bbox = obj.slice
+
+    # Label in 3D first so pieces separated in one slice but connected
+    # elsewhere in the volume are not mistaken for separate objects.
+    if split_disconnected:
+        components = skimage.measure.label(object_mask, connectivity=3)
+        component_props = skimage.measure.regionprops(components)
+        component_props.sort(key=lambda component: component.area, reverse=True)
+
+        if len(component_props) > 1:
+            component_IDs = []
+            for component_i, component in enumerate(component_props):
+                component_ID = ID if component_i == 0 else max_ID + 1
+                if component_i > 0:
+                    max_ID += 1
+                lab[component.slice][component.image] = component_ID
+                component_IDs.append(component_ID)
+
+            if len(component_IDs) > 1:
+                return lab, True, component_IDs
+            if not component_IDs:
+                return lab, False, []
+        
+    was_split = False
+    all_split_IDs = []
+    # Iterate over each 2D slice within the bounding box of the object.
+    for z, lab_2D in enumerate(lab[bbox]):
+        slice_lab = lab_2D.copy()
+        split_lab, success, split_IDs = split_along_convexity_defects(
+            ID, slice_lab, max_ID,
+            eps_percent=eps_percent,
+            split_disconnected=False,
+        )
+        if not success:
+            continue
+        
+        neighboring_slices = []
+        if z > 0:
+            neighboring_slices.append(lab[bbox][z-1])
+        if z < lab[bbox].shape[0] - 1:
+            neighboring_slices.append(lab[bbox][z+1])
+        
+        split_lab, _, split_IDs = track_split_slice(
+            split_lab,
+            neighboring_slices,
+            max_ID + 1,
+            split_IDs=split_IDs
+        )
+
+        # If tracking could not link the new piece to a neighbor (e.g. the
+        # neighbor slice was not split), reuse the ID already allocated in
+        # other slices instead of introducing yet another ID.
+        previous_new_IDs = set(all_split_IDs) - {ID}
+        new_IDs = [split_ID for split_ID in split_IDs if split_ID != ID]
+        if len(previous_new_IDs) == 1 and len(new_IDs) == 1:
+            previous_new_ID = next(iter(previous_new_IDs))
+            if new_IDs[0] != previous_new_ID:
+                split_lab[split_lab == new_IDs[0]] = previous_new_ID
+                split_IDs = [
+                    previous_new_ID if split_ID == new_IDs[0] else split_ID
+                    for split_ID in split_IDs
+                ]
+
+        split_lab = np.where(lab_2D == ID, split_lab, lab_2D)
+        lab[bbox][z] = split_lab
+        all_split_IDs.extend(split_IDs)
+        was_split = True
+        max_ID = max(*all_split_IDs, max_ID) if all_split_IDs else max_ID
+
+    
+    if not was_split:
+        return lab, False, []
+    all_split_IDs = list(set(all_split_IDs))
+    return lab, True, all_split_IDs
+
 def convexity_defects(img, eps_percent):
+    """Return a simplified outer contour and its OpenCV convexity defects.
+
+    The contour is approximated to reduce boundary noise before computing
+    hull defects. ``None`` is returned for defects when the hull indices do
+    not have the ordering required by OpenCV's convexity-defect routine.
+
+    Parameters
+    ----------
+    img : ndarray
+        Binary 2D object mask.
+    eps_percent : float
+        Fraction of the contour perimeter used as the approximation
+        tolerance.
+
+    Returns
+    -------
+    contour : ndarray
+        Approximated contour of the largest foreground component.
+    defects : ndarray or None
+        OpenCV convexity-defect records, or ``None`` if they cannot be
+        computed from the contour/hull ordering.
+    """
     img = img.astype(np.uint8)
     contours, _ = cv2.findContours(img,2,1)
     cnt = max(contours, key=cv2.contourArea)
     cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
     hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
+    hull_indices = hull.ravel()
+    hull_diffs = np.diff(hull_indices)
+    if not (
+        np.all(hull_diffs > 0) or np.all(hull_diffs < 0)
+    ):
+        return cnt, None
+    # OpenCV expects hull indices in contour order, rather than an arbitrary
+    # ordering of the hull vertices.
     defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
     return cnt, defects
 
 def split_connected_components(lab, rp=None, max_ID=None):  
+    """Give each disconnected component of each regionprops object its own ID.
+
+    Within each object, the largest component retains its existing label and
+    every smaller component receives a fresh label above ``max_ID``.
+
+    Parameters
+    ----------
+    lab : ndarray
+        Label image, modified in-place.
+    rp : sequence, optional
+        Regionprops records to process. Computed from ``lab`` if omitted.
+    max_ID : int, optional
+        Highest ID already allocated. Defaults to the largest label in
+        ``rp`` (or 1 when ``rp`` is empty).
+
+    Returns
+    -------
+    bool
+        Whether at least one object contained multiple connected components.
+    """
     if rp is None:
         rp = skimage.measure.regionprops(lab)
     
@@ -961,55 +1178,111 @@ def split_connected_components(lab, rp=None, max_ID=None):
         rp_lab_obj = skimage.measure.regionprops(lab_obj)
         if len(rp_lab_obj)<=1:
             continue
-        n_components = len(rp_lab_obj)
-        lab_obj[lab_obj > 0] += max_ID
+        rp_lab_obj.sort(key=lambda component: component.area, reverse=True)
+        components_out = np.zeros_like(lab_obj, dtype=lab.dtype)
+        # Keeping the largest piece under the original ID avoids needless
+        # identity changes; the remaining pieces receive monotonically new IDs.
+        for component_i, component in enumerate(rp_lab_obj):
+            component_ID = (
+                obj.label if component_i == 0 else max_ID + component_i
+            )
+            components_out[component.slice][component.image] = component_ID
         _slice = obj.slice
         _objMask = obj.image
-        lab[_slice][_objMask] = lab_obj[_objMask]
+        lab[_slice][_objMask] = components_out[_objMask]
         split_occured = True
-        max_ID += n_components
+        max_ID += len(rp_lab_obj) - 1
     return split_occured
 
 def split_along_convexity_defects(
-        ID, lab, max_ID, max_i=1, eps_percent=0.01, rp=None
+    ID, lab, max_ID, max_i=1, eps_percent=0.01, rp=None,
+    split_disconnected=True
     ):
+    """Split one 2D labeled object along its dominant convexity defects.
+
+    Disconnected pieces are optionally separated first. Otherwise the
+    largest contour's two deepest defect points define a straight rasterized
+    cut. Selecting the deepest pair allows the split to proceed when a
+    ragged contour has more than two reported defects. The two resulting
+    regions retain the original label on the larger side and receive
+    ``max_ID + max_i`` on the smaller side. Cut pixels inside the object are
+    assigned to the nearest resulting region.
+
+    Parameters
+    ----------
+    ID : int
+        Label value of the target object.
+    lab : ndarray
+        2D integer label image, modified in-place.
+    max_ID : int
+        Highest label currently in use.
+    max_i : int
+        Offset used when allocating the new region's label.
+    eps_percent : float
+        Relative contour-approximation tolerance used to find defects.
+    rp : object, optional
+        Regionprops-like lookup exposing ``get_obj_from_ID``.
+    split_disconnected : bool
+        Whether to separate disconnected pieces before analyzing contour
+        convexity.
+
+    Returns
+    -------
+    lab : ndarray
+        Updated label image.
+    success : bool
+        Whether the object was split.
+    split_IDs : list of int
+        IDs of the resulting regions, or an empty list when no split occurred.
+    """
     if rp is not None:
         obj = rp.get_obj_from_ID(ID)
         lab_ID_bool = np.zeros_like(lab[obj.slice], dtype=bool)
         lab_ID_bool[obj.image] = True
     else:
         lab_ID_bool = lab == ID
-    # First try separating by labelling
-    lab_ID = lab_ID_bool.astype(int)
-    rp_ID = skimage.measure.regionprops(lab_ID)
-    split_occured = split_connected_components(lab_ID, rp=rp_ID, max_ID=max_ID)
-    if split_occured:
-        success = True
-        if rp is not None:
-            lab[obj.slice][obj.image] = lab_ID[obj.image]
-        else:
-            lab[lab_ID_bool] = lab_ID[lab_ID_bool]
-            
+    if split_disconnected:
+        # First try separating by labelling
+        lab_ID = np.zeros_like(lab_ID_bool, dtype=lab.dtype)
+        lab_ID[lab_ID_bool] = ID
         rp_ID = skimage.measure.regionprops(lab_ID)
-        separateIDs = [obj.label for obj in rp_ID]
-        return lab, success, separateIDs
+        split_occured = split_connected_components(
+            lab_ID, rp=rp_ID, max_ID=max_ID
+        )
+        if split_occured:
+            success = True
+            if rp is not None:
+                lab[obj.slice][obj.image] = lab_ID[obj.image]
+            else:
+                lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+                
+            rp_ID = skimage.measure.regionprops(lab_ID)
+            separateIDs = [obj.label for obj in rp_ID]
+            return lab, success, separateIDs
 
     cnt, defects = convexity_defects(lab_ID_bool, eps_percent)
     success = False
     if defects is None:
+        print("No convexity defects found.")
         return lab, success, []
 
-    if len(defects) != 2:
-        return lab, success, []
-
-    # This line is needed since opencv-python-headless > 5.0
     defects = np.asarray(defects).reshape(-1, 4)
-    defects_points = [0]*len(defects)
-    for i, defect in enumerate(defects):
-        s,e,f,d = defect
-        x,y = tuple(cnt[f][0])
-        defects_points[i] = (y,x)
+    if len(defects) < 2:
+        return lab, success, []
+
+    # Ragged contours can produce extra shallow defects. Use the two deepest
+    # valleys as the candidate neck endpoints rather than rejecting the
+    # whole object whenever OpenCV reports more than two.
+    deepest_indices = np.argsort(defects[:, 3])[-2:]
+    defects_points = []
+    for defect_index in deepest_indices:
+        farthest_index = defects[defect_index, 2]
+        x, y = tuple(cnt[farthest_index][0])
+        defects_points.append((y, x))
     (r0, c0), (r1, c1) = defects_points
+    # The line between the two deepest contour defects approximates the
+    # neck cut; connected-component labeling checks whether it separates
+    # exactly two pieces before any labels are reassigned.
     rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
     sep_bud_img = np.copy(lab_ID_bool)
     sep_bud_img[rr, cc] = False

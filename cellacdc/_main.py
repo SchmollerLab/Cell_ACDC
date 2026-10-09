@@ -262,7 +262,7 @@ class mainWin(QMainWindow):
         layout = QHBoxLayout()
         widget.setLayout(layout)
         layout.addWidget(label)
-        self.darkModeToggle = widgets.Toggle(label_text='Dark mode')
+        self.darkModeToggle = widgets.Toggle()
         self.darkModeToggle.ignoreEvent = False
         self.darkModeToggle.warnMessageBox  = True
         if scheme == 'dark':
