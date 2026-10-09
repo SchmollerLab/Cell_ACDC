@@ -6,6 +6,8 @@ The following preprints **have been published in a peer-reviewed journal**, and 
 .. raw:: html
 
     <ol>
+      <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
+      
       <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>
       
       <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in C. elegans by maintaining functional germline morphology</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683972">10.1101/2025.10.22.683972</a>.</li><br>
