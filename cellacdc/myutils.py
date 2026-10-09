@@ -752,8 +752,8 @@ def addToRecentPaths(exp_path, logger=None):
                 openedOn.pop(pop_idx)
             recentPaths.insert(0, exp_path)
             openedOn.insert(0, datetime.datetime.now())
-            # Keep max 40 recent paths
-            if len(recentPaths) > 40:
+            # Keep max 100 recent paths
+            if len(recentPaths) > 100:
                 recentPaths.pop(-1)
                 openedOn.pop(-1)
         except Exception as e:

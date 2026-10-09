@@ -2083,7 +2083,6 @@ class SetMeasurementsDialog(QBaseDialog):
         layout = QVBoxLayout()
         
         topLayout = QHBoxLayout()
-
         
         self.doNotAskAgainCheckbox = widgets.Toggle(
             label_text='Use the same selection for all following selected experiment folders'
@@ -2091,13 +2090,21 @@ class SetMeasurementsDialog(QBaseDialog):
         self.doNotAskAgainCheckbox.setVisible(addDoNotAskAgainCheckbox)
         topLayout.addWidget(self.doNotAskAgainCheckbox)
         
-        searchLineEdit = widgets.SearchLineEdit()
+        self.searchWidget = widgets.ButtonSearchWidget(loadingType=None)
+        self.searchWidget.search_input.setPlaceholderText('Search measurements...')
+        self.searchWidget.search_input.setToolTip(
+            'Search measurement names and descriptions, including typos and '
+            'synonyms. Choose a result with Up/Down and Enter, or click it, '
+            'to reveal and highlight the measurement without checking it.'
+        )
+        self.searchWidget.search_input.setMinimumWidth(250)
+        self.searchWidget.search_input.setMaximumWidth(16777215)
         topLayout.addStretch(5)
-        topLayout.addWidget(searchLineEdit)
-        topLayout.setStretch(0, 0)
-        topLayout.setStretch(2, 3)
+        topLayout.addWidget(self.searchWidget)
+        topLayout.setStretch(1, 3)
         
         mainScrollArea = widgets.ScrollArea()
+        self.mainScrollArea = mainScrollArea
         mainScrollAreaWidget = QWidget()
         mainScrollArea.setWidget(mainScrollAreaWidget)
         
@@ -2306,7 +2313,9 @@ class SetMeasurementsDialog(QBaseDialog):
         if state is not None:
             self.setState(state)
 
-        searchLineEdit.textEdited.connect(self.searchAndHighlight)
+        self.searchWidget.search_input.textChanged.connect(self.searchAndHighlight)
+        self.searchWidget.sigTriggerBlink.connect(self.highlightSearchMeasurement)
+        self.updateMeasurementSearchRecords()
         self.selectAllButton.sigClicked.connect(self.selectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
@@ -2352,25 +2361,54 @@ class SetMeasurementsDialog(QBaseDialog):
         
         return all_metrics
     
-    def searchAndHighlight(self, text):
+    def measurementSearchGroups(self):
         for chNameGroupbox in self.chNameGroupboxes:
             for groupbox in chNameGroupbox.groupboxes:
-                groupbox.highlightCheckboxesFromSearchText(text)
-        
-        self.regionPropsQGBox.highlightCheckboxesFromSearchText(text)
-        self.sizeMetricsQGBox.highlightCheckboxesFromSearchText(text)
-        
+                yield groupbox, chNameGroupbox.chName
+        yield self.regionPropsQGBox, ''
+        yield self.sizeMetricsQGBox, ''
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.highlightCheckboxesFromSearchText(
-                text
-            )
-        
-        if self.mixedChannelsCombineMetricsQGBox is None:
-            return
-        
-        self.mixedChannelsCombineMetricsQGBox.highlightCheckboxesFromSearchText(
-            text
-        )
+            yield self.chIndipendCustomeMetricsQGBox, ''
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            yield self.mixedChannelsCombineMetricsQGBox, ''
+
+    def updateMeasurementSearchRecords(self):
+        records = {}
+        for groupbox, channel in self.measurementSearchGroups():
+            context = f'{channel}: {groupbox.title()}' if channel else groupbox.title()
+            for checkbox in groupbox.checkBoxes:
+                if checkbox.isHidden():
+                    continue
+                name = checkbox.text()
+                display = f'{name} ({context})'
+                records[display] = {
+                    'display': display,
+                    'search_name': display,
+                    'synonyms': self.searchWidget._synonymsForName(name),
+                    'tooltip': html_utils.to_plain_text(
+                        groupbox.metricDescriptions.get(name, '')
+                    ),
+                    'target': checkbox,
+                }
+                print(records[display]["tooltip"])
+        self.searchWidget.setSearchRecords(records)
+
+    def stopMeasurementSearchBlink(self):
+        for blinker in self.findChildren(qutils.QControlBlink):
+            blinker.stop()
+
+    def searchAndHighlight(self, text):
+        self.stopMeasurementSearchBlink()
+        for groupbox, _ in self.measurementSearchGroups():
+            groupbox.highlightCheckboxesFromSearchText(text)
+
+    def highlightSearchMeasurement(self, checkbox):
+        """Reveal and blink a popup result without changing its checked state."""
+        self.stopMeasurementSearchBlink()
+        checkbox.scrollArea.ensureWidgetVisible(checkbox)
+        self.mainScrollArea.ensureWidgetVisible(checkbox.scrollArea)
+        blinker = qutils.QControlBlink(checkbox, qparent=self)
+        blinker.start()
     
     def selectedMetricNameAndGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2586,6 +2624,8 @@ class SetMeasurementsDialog(QBaseDialog):
             if w is None:
                 continue
             w.hide()
+
+        self.updateMeasurementSearchRecords()
                
         if self.allPosData is not None:
             for posData in self.allPosData:
@@ -20537,12 +20577,18 @@ class SelectFoldersToAnalyse(QBaseDialog):
             'Add folder...', openFolder=True, 
             start_dir=myutils.getMostRecentPath()
         )
-        
-        buttonsLayout.insertWidget(3, delButton)
-        buttonsLayout.insertWidget(4, browseButton)
+        recentPathsButton = widgets.PushButton('Add from recent paths...')
+        recentPathsButton.setIcon(QIcon(':open_file.svg'))
+        recentPathsButton.setToolTip(
+            'Select one or more existing folders from recent paths.'
+        )
+        buttonsLayout.insertWidget(3, recentPathsButton)
+        buttonsLayout.insertWidget(4, delButton)
+        buttonsLayout.insertWidget(5, browseButton)
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         browseButton.sigPathSelected.connect(self.addFolderPath)
+        recentPathsButton.clicked.connect(self.addFromRecentPaths)
         delButton.clicked.connect(self.removePaths)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
@@ -20769,9 +20815,61 @@ class SelectFoldersToAnalyse(QBaseDialog):
                     f'[WARNING]: The following path was already selected: '
                     f'"{selectedPath}"'
                 )
-                return
+                continue
                 
             self.listWidget.addItem(selectedPath)
+
+    def addFromRecentPaths(self):
+        """Open a multi-select dialog containing existing recent folders."""
+        recent_paths_file = myutils.recentPaths_path
+        if not os.path.exists(recent_paths_file):
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.information(
+                self,
+                'No recent paths',
+                'There are no recent paths to add.',
+            )
+            return
+
+        recent_df = pd.read_csv(recent_paths_file, index_col='index')
+        if 'opened_last_on' in recent_df.columns:
+            recent_df = recent_df.sort_values(
+                'opened_last_on', ascending=False
+            )
+        recent_paths = [
+            str(recent_path).replace('\\', '/')
+            for recent_path in recent_df['path']
+            if os.path.isdir(str(recent_path))
+        ]
+        recent_paths = list(dict.fromkeys(recent_paths))
+        if not recent_paths:
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.information(
+                self,
+                'No existing recent paths',
+                'None of the recent paths point to existing folders.',
+            )
+            return
+        
+        dates = recent_df['opened_last_on'].to_list() if 'opened_last_on' in recent_df.columns else None
+
+        self.recentPathsDialog = SearchableListboxDialog(
+            recent_paths,
+            title='Add from recent paths',
+            searchLineEditText='Search recent paths (Ctrl+click to select multiple)...',
+            parent=self,
+            multiSelection=True,
+            dates=dates,
+        )
+        self.recentPathsDialog.sigOk.connect(
+            self.addRecentFolderPaths
+        )
+        self.recentPathsDialog.show()
+
+    def addRecentFolderPaths(self, selected_paths):
+        """Add selected recent folders through the standard validation path."""
+        for selected_path in selected_paths:
+            self.addFolderPath(selected_path)
     
     def removePaths(self):
         for item in self.listWidget.selectedItems():
@@ -22090,6 +22188,310 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         
         self.close()
 
+class SearchableListboxDialog(QBaseDialog):
+    """Search and select one or more items from a recency-ordered list.
+
+    Search ignores punctuation and separators, so paths can be searched with
+    spaces in place of slashes or underscores. Results are ranked by match
+    quality when the match-sorting checkbox is checked, with the original
+    item order used to break ties. Otherwise, results stay in their original
+    order.
+
+    The ``fuzzyThreshold`` argument sets the minimum similarity ratio for
+    fuzzy matches (0.0-1.0, default 0.5). Existing filesystem paths also show
+    their modification date in a separate column.
+
+    Args:
+        items: Display strings in their initial, usually most-recent-first,
+            order. Selected values are emitted unchanged by :attr:`sigOk`.
+        title: Dialog window title.
+        searchLineEditText: Initial prompt shown by the search field.
+        parent: Optional parent widget.
+        fuzzyThreshold: Initial minimum ratio accepted for fuzzy matches,
+            from 0.0 (least strict) to 1.0 (most strict).
+        multiSelection: Allow selecting multiple rows and emit their values
+            as a list. When false, preserve the single-string result.
+    """
+
+    sigOk = Signal(object)
+
+    def __init__(
+            self, 
+            items: list[str],
+            dates: list[str] | None = None,
+            title='Search items',
+            searchLineEditText='Search...',
+            parent=None,
+            fuzzyThreshold: float = 0.5,
+            multiSelection: bool = False,
+        ):
+        super().__init__(parent=parent)
+
+        self.fuzzyThreshold = float(fuzzyThreshold)
+        if not math.isfinite(self.fuzzyThreshold) or not (
+                0 <= self.fuzzyThreshold <= 1
+            ):
+            raise ValueError('fuzzyThreshold must be between 0 and 1.')
+
+        self.cancel = True
+        self.allItems = items
+        self.dates = dates
+        self.multiSelection = multiSelection
+
+        self.searchModel = widgets.QStandardItemModel()
+        searchRoles = (widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,)
+        self.searchProxyModel = widgets._RecentItemsSearchCompleter(
+            searchRoles=searchRoles,
+            tooltipRole=None,
+        )
+        self.searchProxyModel.FUZZY_THRESHOLD = self.fuzzyThreshold
+        self.searchProxyModel.setSourceModel(self.searchModel)
+        self.searchProxyModel.setDynamicSortFilter(True)
+        self.searchProxyModel.sort(0, Qt.AscendingOrder)
+        self.searchProxyModel.setAlwaysRecency(True)
+
+        # add all items to the search model
+        for item_text in self.allItems:
+            model_item = widgets.QStandardItem(item_text)
+            model_item.setData(
+                self._normalizeSearchText(item_text),
+                widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
+            )
+            last_edited_item = widgets.QStandardItem('')
+            last_edited, last_edited_tooltip = self._lastEditedDate(
+                item_text
+            )
+            last_edited_item.setText(last_edited)
+            if last_edited_tooltip:
+                last_edited_item.setToolTip(last_edited_tooltip)
+            self.searchModel.appendRow([model_item, last_edited_item])
+
+        self.setWindowTitle(title)
+
+        mainLayout = QVBoxLayout()
+
+        self.searchLineEdit = widgets.SearchLineEdit(
+            text=searchLineEditText
+        )
+
+        self.searchLineEdit.textEdited.connect(self.searchItems)
+
+        self.sortByGoodnessCheckBox = QCheckBox(
+            'Sort by goodness of match'
+        )
+        self.sortByGoodnessCheckBox.toggled.connect(
+            self._onSortByGoodnessChanged
+        )
+
+        self.sortByGoodnessCheckBox.setToolTip(
+            'When enabled, better matches appear first, with recency used to '
+            'break ties. When disabled, matching items stay in the original '
+            'recent-first order.'
+        )
+
+        self.listWidget = QTreeWidget()
+        self.listWidget.setHeaderLabels(['Item', 'Last edited'])
+        self.listWidget.setRootIsDecorated(False)
+        self.listWidget.setItemsExpandable(False)
+        self.listWidget.setSortingEnabled(False)
+        self.listWidget.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+            if self.multiSelection
+            else QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.listWidget.header().setStretchLastSection(False)
+        self.listWidget.header().setSectionResizeMode(
+            0, QHeaderView.Stretch
+        )
+        self.listWidget.header().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.listWidget.setColumnWidth(1, 135)
+        self.listWidget.headerItem().setToolTip(
+            1, 'Filesystem modification date and time.'
+        )
+        self.searchItems(self.searchLineEdit.text())
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        if not self.multiSelection:
+            self.listWidget.itemDoubleClicked.connect(
+                lambda *_: self.ok_cb()
+            )
+
+        mainLayout.addWidget(self.searchLineEdit)
+        mainLayout.addWidget(self.sortByGoodnessCheckBox)
+        mainLayout.addWidget(self.listWidget)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        self.setFont(fonts.font)
+
+    def _lastEditedDate(self, item_text):
+        """Return a display date and tooltip for an item's modification time.
+
+        Nonexistent paths have no date; filesystem errors are reported in the
+        returned tooltip instead of being silently discarded.
+        """
+        if self.dates is not None:
+            index = self.allItems.index(item_text) if item_text in self.allItems else None
+            if index is not None:
+                date = self.dates[index]
+                # format the date for display
+                parsed_date = datetime.datetime.strptime(
+                    date, '%Y-%m-%d %H:%M:%S.%f'
+                )
+                date = parsed_date.strftime('%d.%m.%Y %H:%M')
+                return date, ''
+        
+        if not os.path.exists(item_text):
+            return '', ''
+
+        try:
+            modified_time = os.path.getmtime(item_text)
+        except OSError as err:
+            return (
+                'Unavailable',
+                f'Could not read filesystem modification time: {err}',
+            )
+
+        return (
+            datetime.datetime.fromtimestamp(
+                modified_time
+            ).strftime('%d.%m.%Y %H:%M'),
+            '',
+        )
+
+    def _populateListWidget(self):
+        """Rebuild visible rows in the order supplied by the search proxy."""
+        self.listWidget.clear()
+        for row in range(self.searchProxyModel.rowCount()):
+            proxy_index = self.searchProxyModel.index(row, 0)
+            source_index = self.searchProxyModel.mapToSource(proxy_index)
+            source_item = self.searchModel.item(source_index.row(), 0)
+            item_text = source_item.text()
+            last_edited = self.searchModel.item(
+                source_index.row(), 1
+            ).text()
+            tree_item = QTreeWidgetItem([item_text, last_edited])
+            tree_item.setToolTip(
+                1,
+                self.searchModel.item(
+                    source_index.row(), 1
+                ).toolTip(),
+            )
+            self.listWidget.addTopLevelItem(tree_item)
+
+    def _onSortByGoodnessChanged(self, sortByGoodness):
+        """Switch between match-quality and original-order result ranking."""
+        self.searchProxyModel.setAlwaysRecency(not sortByGoodness)
+        self.searchItems(self.searchLineEdit.text())
+    
+    def searchItems(self, text):
+        """Filter, rank, and highlight results for the current query."""
+        from ._palettes import get_color_scheme
+        scheme = get_color_scheme()
+        if scheme == 'dark':
+            highlight_color = '#4DA3FF'
+        else:
+            highlight_color = '#0067C5'
+        query = text.strip()
+        # Match against separator-free text so spaces, underscores, and path
+        # separators are interchangeable without changing displayed names.
+        normalized_query = self._normalizeSearchText(query)
+        self.searchProxyModel.setFilterText(normalized_query)
+        self._populateListWidget()
+        for row in range(self.listWidget.topLevelItemCount()):
+            tree_item = self.listWidget.topLevelItem(row)
+            item = tree_item.text(0)
+            # The proxy provides the ranking; highlight ranges are mapped back
+            # onto the original display string.
+            ranges = widgets._searchHighlightRanges(
+                normalized_query,
+                item,
+                self.searchProxyModel.FUZZY_THRESHOLD,
+            )
+
+            if ranges:
+                highlighted_text = widgets._highlightSearchText(
+                    item, ranges, highlight_color
+                )
+                label = QLabel()
+                label.setTextFormat(Qt.RichText)
+                label.setAttribute(Qt.WA_TransparentForMouseEvents)
+                label.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Preferred
+                )
+                label.setStyleSheet('background: transparent;')
+                label.setToolTip(item)
+                label.setText(highlighted_text)
+                tree_item.setData(0, Qt.UserRole, item)
+                tree_item.setText(0, '')
+                self.listWidget.setItemWidget(tree_item, 0, label)
+
+    @staticmethod
+    def _normalizeSearchText(text):
+        """Case-fold text and remove non-alphanumeric search separators."""
+        return widgets._normalizeSearchText(text)
+
+    def warnSelectionEmpty(self):
+        """Explain that a row must be selected before confirming."""
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(
+            'You need to <b>select at least one item</b> before pressing "Ok".<br><br>'
+            'Otherwise, you can cancel any time with the Cancel button.<br><br>'
+            'Thank you for your patience!'
+        )
+        msg.warning(self, 'Selection cannot be empty', txt)
+
+    def ok_cb(self, *args, **kwargs):
+        """Emit selected original strings and close the dialog.
+
+        Single-selection mode emits a string for backwards compatibility;
+        multi-selection mode emits a list of strings in displayed order.
+        """
+        selected_items = self.listWidget.selectedItems()
+        if not selected_items:
+            self.warnSelectionEmpty()
+            return
+
+        self.cancel = False
+        selected_texts = [
+            item.data(0, Qt.UserRole) or item.text(0)
+            for item in selected_items
+        ]
+        if self.multiSelection:
+            self.selectedItemTexts = selected_texts
+            result = selected_texts
+        else:
+            self.selectedItemText = selected_texts[0]
+            result = self.selectedItemText
+        self.close()
+        self.sigOk.emit(result)
+    
+    def show(self, block=False):
+        super().show(block=False)
+        desiredWidthFractionOfScreen = 1/2
+        screenGeometry = self.screen().geometry()
+        x0, y0 = screenGeometry.left(), screenGeometry.top()
+        screenWidth = screenGeometry.width()
+        screenHeight = screenGeometry.height()
+        screenXCenter = x0 + screenWidth/2
+        screenYCenter = y0 + screenHeight/2
+        windowLeft = round(
+            screenXCenter 
+            - screenWidth*desiredWidthFractionOfScreen/2
+        )
+        windowWidth = round(screenWidth*desiredWidthFractionOfScreen)
+        windowHeight = round(screenHeight/2)
+        windowTop = y0
+        self.resize(windowWidth, windowHeight)
+        self.move(windowLeft, windowTop)
+        self.raise_()
+        self.activateWindow()
+        super().show(block=block)
         
 class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
     def __init__(self, video_filepath, logger_func=print, parent=None):

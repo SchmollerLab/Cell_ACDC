@@ -43,7 +43,7 @@ from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem
+    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -56,7 +56,8 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-    QButtonGroup, QStyleOptionSlider
+    QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
+    QStyleOptionViewItem
 )
 import qtpy.compat
 
@@ -2076,6 +2077,95 @@ class statusBarPermanentLabel(QWidget):
 
         self.setLayout(layout)
 
+class _RichTextItemEventFilter(QObject):
+
+    def __init__(self, item):
+        super().__init__()
+        self.item = item
+
+    def eventFilter(self, obj, event):
+        listWidget = self.item._listWidget
+
+        if listWidget is None:
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.MouseMove:
+            pos = event.position().toPoint()
+            hoveredItem = listWidget.itemAt(pos)
+            self.item.setHovered(hoveredItem is self.item)
+
+        elif event.type() == QEvent.Leave:
+            self.item.setHovered(False)
+
+        return super().eventFilter(obj, event)
+
+
+class RichTextListWidgetItem(QListWidgetItem):
+    def __init__(self, text='', parent=None):
+        super().__init__(parent)
+
+        self._plainText = ''
+        self._listWidget = None
+        self._hovered = False
+
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.RichText)
+        self.label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.label.setAttribute(
+            Qt.WA_TransparentForMouseEvents
+        )
+
+        self._eventFilter = _RichTextItemEventFilter(self)
+
+        self.setText(text)
+
+    def setText(self, text):
+        """Set rich text while keeping the plain text separately."""
+        doc = QTextDocument()
+        doc.setHtml(text)
+
+        self._plainText = doc.toPlainText()
+
+        # Do NOT let QListWidgetItem paint its own text.
+        super().setText('')
+
+        # Rich representation is painted by the QLabel.
+        self.label.setText(text)
+
+    def text(self):
+        return self._plainText
+
+    def setListWidget(self, listWidget):
+        self._listWidget = listWidget
+
+        listWidget.viewport().installEventFilter(
+            self._eventFilter
+        )
+
+        self._updateLabelStyle()
+
+    def setHovered(self, hovered):
+        if self._hovered == hovered:
+            return
+
+        self._hovered = hovered
+        self._updateLabelStyle()
+
+    def _updateLabelStyle(self):
+        if self._listWidget is None:
+            return
+
+        if self._hovered or self.isSelected():
+            color = 'black'
+        else:
+            color = self._listWidget.palette().color(
+                self._listWidget.foregroundRole()
+            ).name()
+
+        self.label.setStyleSheet(
+            f'background: transparent; color: {color};'
+        )
+
 class listWidget(QListWidget):
     def __init__(
             self, 
@@ -2095,6 +2185,16 @@ class listWidget(QListWidget):
         
         self.minimizeHeight = minimizeHeight
     
+    def addRichTextItem(self, text: str):
+        item = RichTextListWidgetItem(text)
+
+        self.addItem(item)
+        self.setItemWidget(item, item.label)
+
+        item.setListWidget(self)
+
+        return item
+
     def setSelectedAll(self, selected):
         for i in range(self.count()):
             self.item(i).setSelected(selected)
@@ -4894,6 +4994,7 @@ class _metricsQGBox(QGroupBox):
 
         self.checkBoxes = []
         self.checkedState = {}
+        self.metricDescriptions = desc_dict
         for metric_colname, metric_desc in desc_dict.items():
             rowLayout = QHBoxLayout()
 
@@ -5011,11 +5112,7 @@ class _metricsQGBox(QGroupBox):
     
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkBoxes:
-            if not text:
-                highlighted = False
-            else:
-                highlighted = checkbox.text().lower().find(text.lower()) != -1
-            
+            highlighted = _matchesSearchText(text, checkbox.text())
             self.setCheckboxHighlighted(highlighted, checkbox)
     
     def setCheckboxHighlighted(self, highlighted, checkbox):
@@ -6213,6 +6310,7 @@ class ZoomROI(ROI):
 class DelROI(pg.ROI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.setCursor(Qt.SizeAllCursor)
     
     def clearPoints(self):
         """
@@ -10374,11 +10472,7 @@ class SetMeasurementsGroupBox(QGroupBox):
 
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkboxes.values():
-            if not text:
-                highlighted = False
-            else:
-                highlighted = checkbox.text().lower().find(text.lower()) != -1
-            
+            highlighted = _matchesSearchText(text, checkbox.text())
             self.setCheckboxHighlighted(highlighted, checkbox)
     
     def setCheckboxHighlighted(self, highlighted, checkbox):
@@ -10391,15 +10485,16 @@ class SetMeasurementsGroupBox(QGroupBox):
             checkbox.setStyleSheet('')
     
 class SearchLineEdit(QLineEdit):
-    def __init__(self, parent=None):
+    def __init__(self, text='Search...', parent=None):
         super().__init__(parent)
         
+        self._text = text
         self.initSearch()
         self.setFocusPolicy(Qt.ClickFocus)
         
     def focusInEvent(self, event) -> None:
         super().focusInEvent(event)
-        if super().text() == 'Search...':
+        if super().text() == self._text:
             self.setText('')
         self.setStyleSheet('')
     
@@ -10409,12 +10504,12 @@ class SearchLineEdit(QLineEdit):
             self.initSearch()
     
     def initSearch(self):
-        self.setText('Search...')
+        self.setText(self._text)
         self.setStyleSheet('color: rgb(150, 150, 150)')
         self.clearFocus()
     
     def text(self):
-        if super().text() == 'Search...':
+        if super().text() == self._text:
             return ''
         return super().text()
 
@@ -13546,20 +13641,244 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         return 7, 0
 
     def _similarity(self, text):
-        query = self._filterText
-        if not query or not text:
-            return 0.0
+        return _fuzzySearchSimilarity(self._filterText, text)
 
-        matcher = SequenceMatcher(None, query, text)
-        best_ratio = 0.0
-        for query_start, text_start, _ in matcher.get_matching_blocks():
-            start = max(text_start - query_start, 0)
-            candidate = text[start:start + len(query)]
-            ratio = SequenceMatcher(None, query, candidate).ratio()
-            best_ratio = max(best_ratio, ratio)
-            if best_ratio == 1.0:
-                break
-        return best_ratio
+
+def _fuzzySearchSimilarity(query, text):
+    if not query or not text:
+        return 0.0
+
+    matcher = SequenceMatcher(None, query, text)
+    best_ratio = 0.0
+    for query_start, text_start, _ in matcher.get_matching_blocks():
+        start = max(text_start - query_start, 0)
+        candidate = text[start:start + len(query)]
+        ratio = SequenceMatcher(None, query, candidate).ratio()
+        best_ratio = max(best_ratio, ratio)
+        if best_ratio == 1.0:
+            break
+    return best_ratio
+
+
+def _searchSynonyms():
+    synonyms = [
+        ('Segm.', 'Segmentation'),
+        ('Edit', 'Change'),
+        ('ID', 'IDs'),
+        ('ID', 'cell'),
+        ('ID', 'object'),
+        ('bkgr', 'background'),
+    ]
+    return synonyms + [(synonym, phrase) for phrase, synonym in synonyms]
+
+
+def _matchesSearchText(query, text):
+    """Match checkbox labels literally, including synonym substitutions."""
+    query = query.strip().casefold()
+    if not query:
+        return False
+
+    text = text.casefold()
+    query_variants = [query]
+    for phrase, synonym in _searchSynonyms():
+        phrase = phrase.casefold()
+        if phrase in query:
+            query_variants.append(query.replace(phrase, synonym.casefold()))
+
+    for query_variant in query_variants:
+        if query_variant in text:
+            return True
+    return False
+
+
+def _normalizeSearchText(text):
+    """Case-fold text and remove non-alphanumeric search separators."""
+    return ''.join(
+        character.casefold()
+        for character in text
+        if character.isalnum()
+    )
+
+
+def _searchHighlightRanges(query, text, threshold=0.5):
+    """Return display-text ranges for exact or fuzzy search matches."""
+    normalized_query = _normalizeSearchText(query)
+    if not normalized_query:
+        return []
+
+    normalized_text = []
+    source_positions = []
+    for position, character in enumerate(text):
+        if not character.isalnum():
+            continue
+        folded = character.casefold()
+        normalized_text.extend(folded)
+        source_positions.extend([position] * len(folded))
+    normalized_text = ''.join(normalized_text)
+    if not normalized_text:
+        return []
+
+    def source_ranges(start, end):
+        ranges = []
+        for position in source_positions[start:end]:
+            if ranges and position <= ranges[-1][1]:
+                ranges[-1] = (ranges[-1][0], position + 1)
+            else:
+                ranges.append((position, position + 1))
+        return ranges
+
+    match_start = normalized_text.find(normalized_query)
+    if match_start >= 0:
+        return source_ranges(
+            match_start, match_start + len(normalized_query)
+        )
+
+    matcher = SequenceMatcher(None, normalized_query, normalized_text)
+    best_ratio = threshold
+    best_start = None
+    for query_start, text_start, _ in matcher.get_matching_blocks():
+        candidate_start = max(text_start - query_start, 0)
+        candidate = normalized_text[
+            candidate_start:candidate_start + len(normalized_query)
+        ]
+        ratio = SequenceMatcher(None, normalized_query, candidate).ratio()
+        if ratio >= best_ratio and (
+                best_start is None or ratio > best_ratio
+            ):
+            best_ratio = ratio
+            best_start = candidate_start
+
+    if best_start is None:
+        return []
+
+    candidate = normalized_text[
+        best_start:best_start + len(normalized_query)
+    ]
+    normalized_ranges = []
+    for block in SequenceMatcher(
+            None, normalized_query, candidate
+        ).get_matching_blocks():
+        if not block.size:
+            continue
+        start = best_start + block.b
+        end = start + block.size
+        if normalized_ranges and start <= normalized_ranges[-1][1]:
+            normalized_ranges[-1] = (
+                normalized_ranges[-1][0],
+                max(normalized_ranges[-1][1], end),
+            )
+        else:
+            normalized_ranges.append((start, end))
+
+    ranges = []
+    for start, end in normalized_ranges:
+        ranges.extend(source_ranges(start, end))
+
+    merged_ranges = []
+    for start, end in ranges:
+        if merged_ranges and start <= merged_ranges[-1][1]:
+            merged_ranges[-1] = (
+                merged_ranges[-1][0],
+                max(merged_ranges[-1][1], end),
+            )
+        else:
+            merged_ranges.append((start, end))
+    return merged_ranges
+
+
+def _highlightSearchText(text, ranges, color=None):
+    """Return escaped rich text with the requested display-text ranges bolded."""
+    parts = []
+    previous_end = 0
+    for start, end in ranges:
+        style = 'font-weight:bold;'
+        if color is not None:
+            style = f'color:{color}; {style}'
+        parts.extend((
+            html.escape(text[previous_end:start]),
+            (
+                f'<span style="{style}">'
+                f'{html.escape(text[start:end])}</span>'
+            ),
+        ))
+        previous_end = end
+    parts.append(html.escape(text[previous_end:]))
+    return ''.join(parts)
+
+
+class _ButtonSearchHighlightDelegate(QStyledItemDelegate):
+    """Paint search matches in list entries using the dialog's highlighting."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._filterText = ''
+
+    def setFilterText(self, text):
+        self._filterText = text.strip()
+
+    def _highlightRanges(self, text, threshold):
+        return _searchHighlightRanges(
+            self._filterText, text, threshold
+        )
+
+    def paint(self, painter, option, index):
+        text = index.data(Qt.DisplayRole) or ''
+        text = str(text)
+        proxy_model = index.model()
+        threshold = getattr(proxy_model, 'FUZZY_THRESHOLD', 0.5)
+        ranges = self._highlightRanges(text, threshold)
+        if not ranges:
+            return super().paint(painter, option, index)
+
+        item_option = QStyleOptionViewItem(option)
+        self.initStyleOption(item_option, index)
+        text_color_role = (
+            QPalette.HighlightedText
+            if item_option.state & QStyle.State_Selected
+            else QPalette.Text
+        )
+        text_color = item_option.palette.color(text_color_role).name()
+
+        item_option.text = ''
+        style = (
+            item_option.widget.style()
+            if item_option.widget is not None
+            else QApplication.style()
+        )
+        style.drawControl(
+            QStyle.CE_ItemViewItem,
+            item_option,
+            painter,
+            item_option.widget,
+        )
+        text_rect = style.subElementRect(
+            QStyle.SE_ItemViewItemText,
+            item_option,
+            item_option.widget,
+        )
+        document = QTextDocument()
+        document.setDocumentMargin(0)
+        document.setDefaultFont(item_option.font)
+        document.setHtml(
+            f'<span style="color:{text_color};">'
+            f'{_highlightSearchText(text, ranges)}</span>'
+        )
+        document.setTextWidth(text_rect.width())
+
+        painter.save()
+        vertical_offset = max(
+            (text_rect.height() - document.size().height()) / 2,
+            0,
+        )
+        painter.translate(
+            text_rect.left(), text_rect.top() + vertical_offset
+        )
+        painter.setClipRect(
+            0, 0, text_rect.width(), text_rect.height()
+        )
+        document.drawContents(painter)
+        painter.restore()
+
 
 class ButtonSearchWidget(QWidget):
     """Search widget populated from documentation or caller-provided records.
@@ -13576,7 +13895,10 @@ class ButtonSearchWidget(QWidget):
         contain ``display``, ``search_name``, ``synonyms``, ``tooltip``,
         ``button_id``, and ``target``. All fields are optional: the mapping key
         is used as the default display and search name, while collections of
-        strings may be supplied as synonyms.
+        strings may be supplied as synonyms. ``target`` may be a widget,
+        action, GUI attribute name, or a list/tuple of these to highlight
+        together. Toolbar controls also highlight the opener controls
+        registered with :meth:`registerToolbarTargets`.
     """
 
     ACTION_ROLE = Qt.UserRole + 6
@@ -13595,6 +13917,7 @@ class ButtonSearchWidget(QWidget):
         self.guiWin = guiWin
 
         self.buttons_data = {}
+        self._toolbar_targets = {}
 
         self.init_ui(loadingType=loadingType, searchRecords=searchRecords)
 
@@ -13674,6 +13997,8 @@ class ButtonSearchWidget(QWidget):
         self.popup = QListView()
         self.popup.setFocusPolicy(Qt.NoFocus)
         self.popup.setModel(self.proxy_model)
+        self._highlight_delegate = _ButtonSearchHighlightDelegate(self.popup)
+        self.popup.setItemDelegate(self._highlight_delegate)
         try:
             self.popup.setEditTriggers(QAbstractItemView.NoEditTriggers)
         except:
@@ -13740,15 +14065,49 @@ class ButtonSearchWidget(QWidget):
         )
         
     def synonyms(self):
-        synonyms = [
-            ('Segm.', 'Segmentation'),
-            ('Edit', 'Change'),
-            ('ID', 'IDs'),
-            ('ID', 'cell'),
-            ('ID', 'object'),
-        ]
-        synonyms += [(v, k) for k, v in synonyms]
-        return synonyms
+        return _searchSynonyms()
+
+    def registerToolbarTargets(self, toolbar, targets):
+        """Link a toolbar's controls to the button(s) that open it."""
+        self._toolbar_targets[toolbar] = (
+            tuple(targets) if isinstance(targets, (list, tuple))
+            else (targets,)
+        )
+
+    def highlightTargets(self, target):
+        """Resolve a search target and include its toolbar opener controls."""
+        targets = []
+
+        def add_target(control):
+            if isinstance(control, (list, tuple)):
+                for member in control:
+                    add_target(member)
+                return
+            if isinstance(control, str):
+                control = getattr(self.guiWin, control)
+            if not isinstance(control, (QWidget, QAction)):
+                raise TypeError('Search targets must be widgets or actions')
+            if control in targets:
+                return
+            targets.append(control)
+            if isinstance(control, QAction):
+                containers = (
+                    control.associatedObjects()
+                    if hasattr(control, 'associatedObjects')
+                    else control.associatedWidgets()
+                )
+            else:
+                containers = [control]
+            for container in containers:
+                if not isinstance(container, QWidget):
+                    continue
+                while container is not None:
+                    for opener in self._toolbar_targets.get(container, ()):
+                        add_target(opener)
+                    container = container.parentWidget()
+
+        add_target(target)
+        return targets
 
     def _synonymsForName(self, name):
         normalized_name = name.strip().casefold()
@@ -13765,21 +14124,30 @@ class ButtonSearchWidget(QWidget):
         return aliases
 
     def addItems(self, items):
-        """Add or update search entries from ``(name, target)`` tuples."""
+        """Add ``(name, target)`` entries; targets may be grouped in a list/tuple."""
         for name, target in items:
             normalized_name = name.strip().casefold()
             if not normalized_name:
                 continue
 
-            tooltip_getter = getattr(target, 'toolTip', None)
-            tooltip = tooltip_getter() if callable(tooltip_getter) else ''
-            tooltip = html_utils.to_plain_text(tooltip)
-            shortcut_getter = getattr(target, 'shortcut', None)
-            shortcut = shortcut_getter() if callable(shortcut_getter) else None
-            shortcut_text = shortcut.toString() if shortcut is not None else ''
-            search_text = tooltip.strip()
-            if shortcut_text and shortcut_text not in search_text:
-                search_text = f'{search_text}\nShortcut: {shortcut_text}'.strip()
+            controls = target if isinstance(target, (list, tuple)) else (target,)
+            search_texts = []
+            for control in controls:
+                tooltip_getter = getattr(control, 'toolTip', None)
+                tooltip = tooltip_getter() if callable(tooltip_getter) else ''
+                search_text = html_utils.to_plain_text(tooltip).strip()
+                shortcut_getter = getattr(control, 'shortcut', None)
+                shortcut = (
+                    shortcut_getter() if callable(shortcut_getter) else None
+                )
+                shortcut_text = shortcut.toString() if shortcut is not None else ''
+                if shortcut_text and shortcut_text not in search_text:
+                    search_text = (
+                        f'{search_text}\nShortcut: {shortcut_text}'.strip()
+                    )
+                if search_text and search_text not in search_texts:
+                    search_texts.append(search_text)
+            search_text = '\n'.join(search_texts)
 
             record = self._search_records.get(normalized_name)
             if record is None:
@@ -13850,6 +14218,12 @@ class ButtonSearchWidget(QWidget):
         self.popup.setModel(self.proxy_model)
         self.proxy_model.setFilterText(self.search_input.text())
 
+    def setSearchRecords(self, records):
+        """Replace caller-provided records, preserving the current query."""
+        self._search_records = self._loadSearchRecords(None, records)
+        self._rebuild_models()
+        self.on_search_text_changed(self.search_input.text())
+
     def set_height_based_on(self, reference_widget):
         """Set the height of the search input based on another widget's height."""
         height_curr = reference_widget.sizeHint().height()
@@ -13859,6 +14233,7 @@ class ButtonSearchWidget(QWidget):
         """Filter the model and update the popup."""
         query = text.strip()
         self._update_search_models(query)
+        self._highlight_delegate.setFilterText(query)
         self.proxy_model.setFilterText(query)
         if not query or self.proxy_model.rowCount() == 0:
             self.popup.hide()
@@ -13868,7 +14243,7 @@ class ButtonSearchWidget(QWidget):
         self.show_popup()
 
     def _update_search_models(self, query):
-        if not query.isascii() or not query.isdecimal():
+        if self.guiWin is None or not query.isascii() or not query.isdecimal():
             if self.model is not self._controls_model:
                 self.model = self._controls_model
                 self.proxy_model = self._controls_proxy_model
@@ -14186,3 +14561,25 @@ class PrefixFilenameLineEdit(QWidget):
     def fullFilename(self):
         filename = f'{self.le.text()}{self.endnameLabel.text()}'
         return filename
+
+class _RecentItemsSearchCompleter(ButtonSearchCompleter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alwaysRecency = False
+
+    def setAlwaysRecency(self, alwaysRecency):
+        self.alwaysRecency = alwaysRecency
+        self.invalidate()
+        self.sort(0, Qt.AscendingOrder)
+
+    def lessThan(self, left, right):
+        if self.alwaysRecency:
+            return left.row() < right.row()
+
+        left_category = self._getScore(left)[0]
+        right_category = self._getScore(right)[0]
+
+        if left_category != right_category:
+            return left_category < right_category
+
+        return left.row() < right.row()
