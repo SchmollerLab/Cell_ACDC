@@ -5819,20 +5819,21 @@ def download_3d_renderer_demo_data():
     return exp_folderpath
     
 def get_recent_paths(self):
+    """Return existing unique paths and their aligned most recent dates."""
     if os.path.exists(recentPaths_path):
         df = pd.read_csv(recentPaths_path, index_col='index')
         if 'opened_last_on' in df.columns:
             df = df.sort_values('opened_last_on', ascending=False)
-        recent_paths = [
-            str(recent_path).replace('\\', '/')
-            for recent_path in df['path']
-            if os.path.isdir(str(recent_path))
-        ]
-        recent_paths = list(dict.fromkeys(recent_paths))
+        df['path'] = df['path'].map(str)
+        df = df.loc[df['path'].map(os.path.isdir).astype(bool)].copy()
+        df['path'] = df['path'].str.replace('\\', '/')
+        df = df.drop_duplicates(subset='path', keep='first')
+        recent_paths = df['path'].to_list()
         
-        # get dates corresponding to the recent paths
-        filtered_df = df[df['path'].isin(recent_paths)]
-        dates = filtered_df['opened_last_on'].to_list() if 'opened_last_on' in filtered_df.columns else None
+        dates = (
+            df['opened_last_on'].to_list()
+            if 'opened_last_on' in df.columns else None
+        )
         
     else:
         recent_paths = []
