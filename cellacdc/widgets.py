@@ -592,15 +592,30 @@ class arrowDownPushButton(PushButton):
 class selectAllPushButton(PushButton):
     sigClicked = Signal(object, bool)
     
-    def __init__(self, *args, **kwargs):
+    def __init__(
+            self,
+            *args,
+            suffix_text_select='all', 
+            suffix_text_deselect='all',
+            **kwargs
+        ):
         super().__init__(*args, **kwargs)
         self._status = 'deselect'
+        self._suffix_text_select = suffix_text_select
+        self._suffix_text_deselect = suffix_text_deselect
         self.setIcon(QIcon(':deselect_all.svg'))
-        self.setText('Deselect all')
+        self.setText(f'Deselect {suffix_text_deselect}')
         self.clicked.connect(self.onClicked)
         self.setMinimumWidth(self.sizeHint().width())
     
+    def isChecked(self):
+        return self._status == 'deselect'
+
     def setChecked(self, checked):
+        if self.isChecked() == checked:
+            self.sigClicked.emit(self, checked)
+            return
+
         if checked:
             self._status == 'deselect'
         else:
@@ -612,10 +627,10 @@ class selectAllPushButton(PushButton):
             icon_fn = ':deselect_all.svg'
             self._status = 'deselect'
             checked = True
-            text = 'Deselect all'
+            text = f'Deselect {self._suffix_text_deselect}'
         else:
             icon_fn = ':select_all.svg'
-            text = 'Select all'
+            text = f'Select {self._suffix_text_select}'
             self._status = 'select'
             checked = False
         self.setIcon(QIcon(icon_fn))
@@ -3900,87 +3915,208 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
         mask, self._slice = myutils.clipSelemMask(mask, shape, Yc, Xc, copy=False)
         return mask
 
-class Toggle(QCheckBox):
+class Toggle(QWidget):
+    toggled = Signal(bool)
+    clicked = Signal(bool)
+
     def __init__(
             self,
             label_text='',
-            initial=None,
-            width=80,
+            initial=False,
+            width=36,
+            height=18,
             bg_color='#b3b3b3',
             circle_color='#ffffff',
-            active_color='#26dd66',# '#005ce6',
-            animation_curve=QEasingCurve.Type.InOutQuad
+            active_color='#26dd66',
+            animation_curve=QEasingCurve.Type.InOutQuad,
+            parent=None,
         ):
-        QCheckBox.__init__(self)
-
-        # self.setFixedSize(width, 28)
-        self.setCursor(Qt.PointingHandCursor)
+        super().__init__(parent)
 
         self._label_text = label_text
+
+        self._toggle_width = width
+        self._toggle_height = height
+
         self._bg_color = bg_color
         self._circle_color = circle_color
         self._active_color = active_color
-        self._disabled_active_color = colors.lighten_color(active_color)
-        self._disabled_circle_color = colors.lighten_color(circle_color)
-        self._disabled_bg_color = colors.lighten_color(bg_color, amount=0.5)
+
+        self._disabled_active_color = (
+            colors.lighten_color(active_color)
+        )
+        self._disabled_circle_color = (
+            colors.lighten_color(circle_color)
+        )
+        self._disabled_bg_color = (
+            colors.lighten_color(
+                bg_color,
+                amount=0.5
+            )
+        )
+
         self._circle_margin = 4
 
-        self._circle_position = int(self._circle_margin/2)
-        self.animation = QPropertyAnimation(self, b'circle_position', self)
+        self._checked = bool(initial)
+
+        # Will be initialized when the widget gets its
+        # actual geometry.
+        self._circle_position = 0
+
+        self.animation = QPropertyAnimation(
+            self,
+            b'circle_position',
+            self
+        )
         self.animation.setEasingCurve(animation_curve)
         self.animation.setDuration(200)
 
-        self.stateChanged.connect(self.start_transition)
-        self.requestedState = None
+        # --------------------------------------------------
+        # Label
+        # --------------------------------------------------
 
-        self.installEventFilter(self)
-        self._isChecked = False
+        self._label = QClickableLabel(self._label_text)
+        self._label.setAlignment(
+            Qt.AlignLeft | Qt.AlignVCenter
+        )
+        self._label.setAttribute(
+            Qt.WA_TransparentForMouseEvents
+        )
+        self._label.clicked.connect(self._on_label_clicked)
 
-        if initial is not None:
-            self.setChecked(initial)
-        
-        self.setFixedHeight(self.sizeHint().height())
-        self.setFixedWidth(self.sizeHint().width())
+        # --------------------------------------------------
+        # Layout
+        # --------------------------------------------------
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        layout.addWidget(self._label)
+        layout.addStretch()
+
+        self.setCursor(Qt.PointingHandCursor)
+
+    def _on_label_clicked(self):
+        self.clicked.emit(self.isChecked())
+
+    # ------------------------------------------------------
+    # Text
+    # ------------------------------------------------------
+
+    def text(self):
+        return self._label_text
+
+    def setText(self, text):
+        self._label_text = text
+        self._label.setText(text)
+
+    # ------------------------------------------------------
+    # State
+    # ------------------------------------------------------
+
+    def isChecked(self):
+        return self._checked
+
+    def setChecked(self, checked):
+        checked = bool(checked)
+
+        if self._checked == checked:
+            return
+
+        self._checked = checked
+
+        # If we already have valid geometry, animate.
+        if self.width() > 0 and self.height() > 0:
+            self._startTransition()
+
+        self.toggled.emit(checked)
+
+        self.update()
+
+    def toggle(self):
+        self.setChecked(not self._checked)
+
+    # ------------------------------------------------------
+    # Geometry
+    # ------------------------------------------------------
 
     def sizeHint(self):
-        return QSize(36, 18)
+        label_size = self._label.sizeHint()
 
-    def eventFilter(self, object, event):
-        # To get the actual position of the circle we need to wait that
-        # the widget is visible before setting the state
-        if event.type() == QtScoped.QEventTypeAttribute('Show') and self.requestedState is not None:
-            self.setChecked(self.requestedState)
-        return False
+        return QSize(
+            label_size.width()
+            + 6
+            + self._toggle_width,
+            max(
+                label_size.height(),
+                self._toggle_height,
+            )
+        )
 
-    def setChecked(self, state):
-        # To get the actual position of the circle we need to wait that
-        # the widget is visible before setting the state
-        self._isChecked = state
-        if self.isVisible():
-            self.requestedState = None
-            QCheckBox.setChecked(self, state>0)
-        else:
-            self.requestedState = state
-    
-    def isChecked(self):
-        if self.isVisible():
-            return super().isChecked()
-        else:
-            return self._isChecked
+    def toggleRect(self):
+        x = self.width() - self._toggle_width
 
-    def circlePos(self, state: bool):
-        start = int(self._circle_margin/2)
-        if state:
-            if self.isVisible():
-                height, width = self.height(), self.width()
-            else:
-                sizeHint = self.sizeHint()
-                height, width = sizeHint.height(), sizeHint.width()
-            circle_diameter = height-self._circle_margin
-            pos = width-start-circle_diameter
-        else:
-            pos = start
-        return pos
+        y = int(
+            (self.height() - self._toggle_height) / 2
+        )
+
+        return QRect(
+            x,
+            y,
+            self._toggle_width,
+            self._toggle_height,
+        )
+
+    def circleDiameter(self):
+        return (
+            self._toggle_height
+            - self._circle_margin
+        )
+
+    def circlePos(self, checked):
+        rect = self.toggleRect()
+
+        diameter = self.circleDiameter()
+        margin = self._circle_margin / 2
+
+        if checked:
+            return (
+                rect.x()
+                + rect.width()
+                - margin
+                - diameter
+            )
+
+        return rect.x() + margin
+
+    def _updateCirclePosition(self):
+        self._circle_position = self.circlePos(
+            self._checked
+        )
+        self.update()
+
+    # ------------------------------------------------------
+    # Show / resize
+    # ------------------------------------------------------
+
+    def showEvent(self, event):
+        super().showEvent(event)
+
+        # At this point Qt has assigned the real geometry.
+        self._updateCirclePosition()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        # Keep the circle correctly positioned if the widget
+        # is resized.
+        if not self.animation.state():
+            self._updateCirclePosition()
+
+    # ------------------------------------------------------
+    # Animation
+    # ------------------------------------------------------
 
     @Property(float)
     def circle_position(self):
@@ -3991,78 +4127,103 @@ class Toggle(QCheckBox):
         self._circle_position = pos
         self.update()
 
-    def start_transition(self, state):
+    def _startTransition(self):
         self.animation.stop()
-        pos = self.circlePos(state)
-        self.animation.setEndValue(pos)
+
+        self.animation.setStartValue(
+            self._circle_position
+        )
+        self.animation.setEndValue(
+            self.circlePos(self._checked)
+        )
+
         self.animation.start()
 
-    def hitButton(self, pos: QPoint):
-        return self.contentsRect().contains(pos)
+    # ------------------------------------------------------
+    # Interaction
+    # ------------------------------------------------------
 
-    def setDisabled(self, disable):
-        QCheckBox.setDisabled(self, disable)
-        if hasattr(self, 'label'):
-            self.label.setDisabled(disable)
+    def mousePressEvent(self, event):
+        if (
+            event.button() == Qt.LeftButton
+            and self.isEnabled()
+        ):
+            self.toggle()
+            self.clicked.emit(self.isChecked())
+            event.accept()
+            return
+
+        super().mousePressEvent(event)
+
+    # ------------------------------------------------------
+    # Enabled state
+    # ------------------------------------------------------
+
+    def setDisabled(self, disabled):
+        super().setDisabled(disabled)
+        self._label.setDisabled(disabled)
         self.update()
 
-    def paintEvent(self, e):
-        circle_color = (
-            self._circle_color if self.isEnabled()
-            else self._disabled_circle_color
-        )
-        active_color = (
-            self._active_color if self.isEnabled()
-            else self._disabled_active_color
-        )
-        unchecked_color = (
-            self._bg_color if self.isEnabled()
-            else self._disabled_bg_color
-        )
+    # ------------------------------------------------------
+    # Painting
+    # ------------------------------------------------------
 
-        # set painter
+    def paintEvent(self, event):
+        if self.isEnabled():
+            circle_color = self._circle_color
+            active_color = self._active_color
+            unchecked_color = self._bg_color
+        else:
+            circle_color = self._disabled_circle_color
+            active_color = self._disabled_active_color
+            unchecked_color = self._disabled_bg_color
+
+        rect = self.toggleRect()
+
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # set no pen
+        p.setRenderHint(
+            QPainter.RenderHint.Antialiasing
+        )
         p.setPen(Qt.NoPen)
 
         width = self.sizeHint().width()
         height = self.sizeHint().height()
 
-        # draw rectangle
-        rect = QRect(0, 0, width, height)
+        # --------------------------------------------------
+        # Background
+        # --------------------------------------------------
 
-        if not self.isChecked():
-            # Draw background
-            p.setBrush(QColor(unchecked_color))
-            half_h = int(self.height()/2)
-            p.drawRoundedRect(
-                0, 0, rect.width(), self.height(), half_h, half_h
-            )
+        background_color = (
+            active_color
+            if self._checked
+            else unchecked_color
+        )
 
-            # Draw circle
-            p.setBrush(QColor(circle_color))
-            p.drawEllipse(
-                int(self._circle_position), int(self._circle_margin/2),
-                self.height()-self._circle_margin,
-                self.height()-self._circle_margin
-            )
-        else:
-            # Draw background
-            p.setBrush(QColor(active_color))
-            half_h = int(self.height()/2)
-            p.drawRoundedRect(
-                0, 0, rect.width(), self.height(), half_h, half_h
-            )
+        p.setBrush(QColor(background_color))
 
-            # Draw circle
-            p.setBrush(QColor(circle_color))
-            p.drawEllipse(
-                int(self._circle_position), int(self._circle_margin/2),
-                self.height()-self._circle_margin,
-                self.height()-self._circle_margin
-            )
+        p.drawRoundedRect(
+            rect,
+            rect.height() / 2,
+            rect.height() / 2,
+        )
+
+        # --------------------------------------------------
+        # Circle
+        # --------------------------------------------------
+
+        p.setBrush(QColor(circle_color))
+
+        diameter = self.circleDiameter()
+
+        p.drawEllipse(
+            int(self._circle_position),
+            int(
+                rect.y()
+                + self._circle_margin / 2
+            ),
+            diameter,
+            diameter,
+        )
 
         p.end()
 
@@ -4806,7 +4967,9 @@ class _metricsQGBox(QGroupBox):
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
             equations=None, addDelButton=False, delButtonMetricsDesc=None,
-            parent=None, addCalcForEachZsliceToggle=False
+            parent=None, addCalcForEachZsliceToggle=False, 
+            doesWarnOnUncheck=False,
+            isSegm3D=False
         ):
         QGroupBox.__init__(self, parent)
         
@@ -4814,7 +4977,9 @@ class _metricsQGBox(QGroupBox):
         r, g, b, a = highlightRgba
         self._highlightStylesheetColor = f'rgb({r}, {g}, {b})'
         
+        self._updatingCheckboxes = False
         self._parent = parent
+        self.doesWarnOnUncheck = doesWarnOnUncheck
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
         self.favourite_funcs = favourite_funcs
@@ -4872,6 +5037,16 @@ class _metricsQGBox(QGroupBox):
         buttonsLayout = QHBoxLayout()    
             
         buttonsLayout.addStretch(1)
+
+        if isSegm3D:
+            selectAll3DButton = selectAllPushButton(
+                suffix_text_select='only 3D metrics',
+                suffix_text_deselect='all 3D metrics'
+            )
+            selectAll3DButton.setChecked(False)
+            selectAll3DButton.sigClicked.connect(self.checkAll3D)
+            self.selectAll3DButton = selectAll3DButton
+            buttonsLayout.addWidget(selectAll3DButton)
         
         self.selectAllButton = selectAllPushButton()
         self.selectAllButton.sigClicked.connect(self.checkAll)
@@ -4955,12 +5130,31 @@ class _metricsQGBox(QGroupBox):
         self.sigDelClicked.emit(button.colname, button._layout)
     
     def toggled_cb(self, checked):
+        alreadyWarnedRequired = False
         for checkbox in self.checkBoxes:
+            if self.doesWarnOnUncheck and alreadyWarnedRequired:
+                checkbox.blockSignals(True)
+
             if not checked:
                 self.checkedState[checkbox] = checkbox.isChecked()
                 checkbox.setChecked(False)
             else:
-                checkbox.setChecked(self.checkedState[checkbox])
+                checkbox.setChecked(
+                    self.checkedState[checkbox]
+                )
+            
+            cannotBeUnchecked = (
+                hasattr(checkbox, 'isRequired')
+                and checkbox.isRequired
+                and not checked
+            )
+            if not alreadyWarnedRequired:
+                alreadyWarnedRequired = cannotBeUnchecked
+            
+            if cannotBeUnchecked and alreadyWarnedRequired:
+                checkbox.setChecked(True)
+            
+            checkbox.blockSignals(False)
 
     def checkFavouriteFuncs(self, checked=True, isZstack=False):
         self.doNotWarn = True
@@ -4976,6 +5170,25 @@ class _metricsQGBox(QGroupBox):
         self.doNotWarn = False
         if self._parent is not None:
             self._parent.doNotWarn = False
+
+    def checkAll3D(self, button, checked):
+        if self._parent is not None:
+            self._parent.doNotWarn = True
+
+        for checkBox in self.checkBoxes:
+            if not checkBox.text().endswith('_3D'):
+                if checked:
+                    # Deselect non-3D 
+                    checkBox.setChecked(False)
+                continue
+
+            checkBox.setChecked(checked)
+        if self._parent is not None:
+            self._parent.doNotWarn = False
+        
+        self.selectAllButton.sigClicked.disconnect()
+        self.selectAllButton.setChecked(checked)
+        self.selectAllButton.sigClicked.connect(self.checkAll)
 
     def checkAll(self, button, checked):
         if self._parent is not None:
@@ -5027,14 +5240,17 @@ class channelMetricsQGBox(QGroupBox):
         metricsQGBox = _metricsQGBox(
             metrics_desc, 'Standard measurements',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack,
+            isSegm3D=isSegm3D
         )
         self.metricsQGBox = metricsQGBox
         
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack,
+            doesWarnOnUncheck=True,
+            isSegm3D=isSegm3D
         )
         self.bkgrValsQGBox = bkgrValsQGBox
 
@@ -5042,6 +5258,7 @@ class channelMetricsQGBox(QGroupBox):
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
 
         self.uncheckAndDisableDataPrepIfPosNotPrepped(posData)
+        self.uncheckAndDisableManualBkgrIfNotPresent(posData)
 
         self.groupboxes = [metricsQGBox, bkgrValsQGBox]
 
@@ -5066,7 +5283,8 @@ class channelMetricsQGBox(QGroupBox):
                 custom_metrics_desc, 'Custom measurements', 
                 delButtonMetricsDesc=combine_metrics_desc,
                 favourite_funcs=favourite_funcs,
-                isZstack=isZstack
+                isZstack=isZstack,
+                isSegm3D=isSegm3D
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
@@ -5131,6 +5349,21 @@ class channelMetricsQGBox(QGroupBox):
             checkbox.setChecked(False)
             checkbox.isDataPrepDisabled = True
     
+    def uncheckAndDisableManualBkgrIfNotPresent(self, posData):
+        # Uncheck and disable dataprep metrics if pos is not prepped
+        if posData is None:
+            return
+
+        if posData.manualBackgroundLab is not None:
+            return
+
+        for checkbox in self.checkBoxes:
+            if checkbox.text().find('manualBkgr') == -1:
+                continue
+
+            checkbox.setChecked(False)
+            checkbox.isManualBkgrDisabled = True
+    
     def _warnDataPrepCannotBeChecked(self):
         if self.doNotWarn:
             return
@@ -5139,6 +5372,20 @@ class channelMetricsQGBox(QGroupBox):
             not select any background ROI at the data prep step.<br><br>
 
             You can read more details about data prep metrics by clicking 
+            on the info button besides the measurement's name.<br><br>
+
+            Thank you for you patience!
+        """)
+        msg = myMessageBox(showCentered=False)
+        msg.warning(self, 'Metric cannot be saved', txt)
+    
+    def _warnManualBkgrCannotBeChecked(self):
+        if self.doNotWarn:
+            return
+        txt = html_utils.paragraph("""
+            <b>Measurements requiring manual background cannot be saved</b> because you did not setup any manual background ROI in the module 3 GUI.<br><br>
+
+            You can read more details about manual background metrics by clicking 
             on the info button besides the measurement's name.<br><br>
 
             Thank you for you patience!
@@ -5176,6 +5423,14 @@ class channelMetricsQGBox(QGroupBox):
                 return
             checkbox.setChecked(False)
             self._warnDataPrepCannotBeChecked()
+            return
+        
+        if hasattr(checkbox, 'isManualBkgrDisabled'):
+            # Warn that user cannot check data prep metrics and uncheck it
+            if not checkbox.isChecked():
+                return
+            checkbox.setChecked(False)
+            self._warnManualBkgrCannotBeChecked()
             return
 
         self.sigCheckboxToggled.emit(checkbox)
@@ -5221,10 +5476,10 @@ class channelMetricsQGBox(QGroupBox):
         if checkbox.isChecked():
             return
         
+        checkbox.setChecked(True)
         if self.doNotWarn:
             return
-        
-        checkbox.setChecked(True)
+
         txt = html_utils.paragraph("""
             <b>This background value cannot be unchecked</b> because it is required 
             by the <code>_amount</code> and <code>_concentration</code> measurements 

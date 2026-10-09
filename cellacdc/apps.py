@@ -6,13 +6,14 @@ import datetime
 import pathlib
 from collections import defaultdict
 import zipfile
-from heapq import nlargest
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 import numpy as np
 import scipy.interpolate
+
+from cellacdc import core_split_IDs
 try:
     import tkinter as tk
 except Exception as err:
@@ -24,7 +25,6 @@ from itertools import combinations, permutations
 from collections import namedtuple, Counter
 from natsort import natsorted
 # from MyWidgets import Slider, Button, MyRadioButtons
-from skimage.measure import label, regionprops
 from functools import partial
 import skimage.filters
 import skimage.measure
@@ -96,6 +96,7 @@ from . import cca_functions
 from . import path
 from . import fonts
 from . import QtScoped
+from . import debugutils
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -2056,7 +2057,7 @@ class SetMeasurementsDialog(QBaseDialog):
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
             allPosData=None, is_concat=False, isSingleSelection=False,
-            state=None
+            state=None, addDoNotAskAgainCheckbox=False
         ):
         super().__init__(parent=parent)
         
@@ -2074,13 +2075,21 @@ class SetMeasurementsDialog(QBaseDialog):
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
         self.doNotWarn = False
+        self.doNotAskAgain = False
 
         self.setWindowTitle('Set measurements')
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
         
-        searchLayout = QHBoxLayout()
+        topLayout = QHBoxLayout()
+
+        
+        self.doNotAskAgainCheckbox = widgets.Toggle(
+            label_text='Use the same selection for all following selected experiment folders'
+        )
+        self.doNotAskAgainCheckbox.setVisible(addDoNotAskAgainCheckbox)
+        topLayout.addWidget(self.doNotAskAgainCheckbox)
         
         self.searchWidget = widgets.ButtonSearchWidget(loadingType=None)
         self.searchWidget.search_input.setPlaceholderText('Search measurements...')
@@ -2128,7 +2137,7 @@ class SetMeasurementsDialog(QBaseDialog):
         for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                posData=posData, is_concat=is_concat,
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
@@ -2159,7 +2168,8 @@ class SetMeasurementsDialog(QBaseDialog):
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Physical measurements',
             favourite_funcs=favourite_funcs, isZstack=isZstack,
-            addCalcForEachZsliceToggle=isSegm3D
+            addCalcForEachZsliceToggle=isSegm3D,
+            doesWarnOnUncheck=True
         )
         self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
@@ -2251,13 +2261,20 @@ class SetMeasurementsDialog(QBaseDialog):
         self.okButton = okButton
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
-        self.deselectAllButton = QPushButton('Deselect all')
-        self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
+        self.selectAllButton = widgets.selectAllPushButton()
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
-        buttonsLayout.addWidget(self.deselectAllButton)
+        if isSegm3D:
+            selectAll3DButton = widgets.selectAllPushButton(
+                suffix_text_select='only 3D metrics',
+                suffix_text_deselect='all 3D metrics'
+            )
+            selectAll3DButton.sigClicked.connect(self.checkAll3D)
+            self.selectAll3DButton = selectAll3DButton
+            buttonsLayout.addWidget(selectAll3DButton)
+        buttonsLayout.addWidget(self.selectAllButton)
         buttonsLayout.addSpacing(20)
         
         if addCombineMetricCallback is not None:
@@ -2286,7 +2303,7 @@ class SetMeasurementsDialog(QBaseDialog):
 
         self.okButton = okButton
 
-        layout.addLayout(searchLayout)
+        layout.addLayout(topLayout)
         layout.addSpacing(10)
         # layout.addLayout(groupsLayout)
         layout.addWidget(mainScrollArea)
@@ -2300,7 +2317,7 @@ class SetMeasurementsDialog(QBaseDialog):
         self.searchWidget.search_input.textChanged.connect(self.searchAndHighlight)
         self.searchWidget.sigTriggerBlink.connect(self.highlightSearchMeasurement)
         self.updateMeasurementSearchRecords()
-        self.deselectAllButton.clicked.connect(self.deselectAll)
+        self.selectAllButton.sigClicked.connect(self.selectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)
@@ -2530,14 +2547,13 @@ class SetMeasurementsDialog(QBaseDialog):
         ----------
         checked : bool
             State of the checkbox toggled
-        """
-        checkbox = self.sender()
-        
+        """        
         if self.is_concat:
             # When this dialogue is used in concatenate pos utility we do not 
             # need to check that certain metrics are present
             return
 
+        checkbox = self.sender()
         if not hasattr(checkbox, 'isRequired'):
             return
         
@@ -2548,7 +2564,6 @@ class SetMeasurementsDialog(QBaseDialog):
             return
         
         checkbox.setChecked(True)
-
         if self.doNotWarn:
             return
 
@@ -2568,22 +2583,34 @@ class SetMeasurementsDialog(QBaseDialog):
         msg = widgets.myMessageBox(showCentered=False)
         msg.warning(self, 'Physical measurement required', txt)
 
-    def deselectAll(self):
+    def checkAll3D(self, button, checked):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for gb in chNameGroupbox.groupboxes:
+                if not gb.isChecked():
+                    continue
+                gb.selectAll3DButton.setChecked(checked)
+                gb.checkAll3D(None, checked)
+            cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
+            if cgb is not None and cgb.isChecked():
+                cgb.selectAll3DButton.setChecked(checked)
+                cgb.checkAll3D(None, checked)
+
+    def selectAll(self, button, checked):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
-                gb.checkAll(None, False)
+                gb.checkAll(None, checked)
             cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
             if cgb is not None:
-                cgb.checkAll(None, False)
+                cgb.checkAll(None, checked)
         
-        self.sizeMetricsQGBox.checkAll(None, False)
-        self.regionPropsQGBox.checkAll(None, False)
+        self.sizeMetricsQGBox.checkAll(None, checked)
+        self.regionPropsQGBox.checkAll(None, checked)
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.checkAll(None, False)
+            self.chIndipendCustomeMetricsQGBox.checkAll(None, checked)
             
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            self.mixedChannelsCombineMetricsQGBox.checkAll(None, False)
+            self.mixedChannelsCombineMetricsQGBox.checkAll(None, checked)
         self.doNotWarn = False
     
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
@@ -3114,6 +3141,7 @@ class SetMeasurementsDialog(QBaseDialog):
         if self.allPos_acdc_df_cols is None:
             self.saveLastSelection()
             self.cancel = False
+            self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
             self.close()
             self.sigClosed.emit()
             return
@@ -3160,8 +3188,10 @@ class SetMeasurementsDialog(QBaseDialog):
             if cancel:
                 return
 
+        
         self.saveLastSelection()
         self.cancel = False  
+        self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
         self.close()
         self.sigClosed.emit()
         
@@ -3191,7 +3221,7 @@ class SetMeasurementsDialog(QBaseDialog):
 
     def show(self, block=False):
         super().show(block=False)
-        self.deselectAllButton.setMinimumHeight(self.okButton.height())
+        self.selectAllButton.setMinimumHeight(self.okButton.height())
         screenWidth = self.screen().size().width()
         screenHeight = self.screen().size().height()
         screenLeft = self.screen().geometry().x()
@@ -4360,7 +4390,7 @@ class BayesianTrackerParamsWin(QDialog):
             return
 
         if not os.path.exists(self.modelPathLineEdit.text()):
-            self.warnNotVaidPath()
+            self.warnNotValidPath()
             return
 
         self.intensityImageChannel = None
@@ -4383,7 +4413,7 @@ class BayesianTrackerParamsWin(QDialog):
                 self.intensityImageChannel = self.channelCombobox.currentText()
         self.close()
 
-    def warnNotVaidPath(self):
+    def warnNotValidPath(self):
         url = 'https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models'
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
@@ -4557,7 +4587,7 @@ class DeltaTrackerParamsWin(QDialog):
         self.cancel = False
 
         if not os.path.exists(self.modelPathLineEdit.text()):
-            self.warnNotVaidPath()
+            self.warnNotValidPath()
             return
 
         self.verbose = self.verboseToggle.isChecked()
@@ -4611,7 +4641,7 @@ class QDialogWorkerProgress(QDialog):
         abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f'{title} ({abort_text} to cancel process)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -10780,37 +10810,18 @@ class manualSeparateGui(QMainWindow):
     def __init__(
             self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
             parent=None, loop=None, drawMode='threepoints_arc', start_slice=None,
-            mouseBindings=None, labelsLut=None, labelsAlpha=0.3
+            mouseBindings=None, labelsLut=None, labelsAlpha=0.3, rp=None
         ):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
         self.loop = loop
-        self.cancel = True
-        self.drawMode = drawMode
-        self.mouseBindings = mouseBindings or {}
-        self.labelsLut = labelsLut
-        self.labelsAlpha = labelsAlpha
         self._parent = parent
-        self.lab = lab.copy()
-        self.lab[lab!=ID] = 0
-        self.ID = ID
-        img_max = img.max()
-        self.img = img/img_max if img_max else img.copy()
-        self.IDcolor = IDcolor
-        self.countClicks = 0
-        self.prevLabs = []
-        self.prevAllCutsCoords = []
-        self.labelItemsIDs = []
-        self.undoIdx = 0
-        self.fontSize = fontSize
-        self.AllCutsCoords = []
+        self.setSessionData(
+            lab, ID, img, fontSize, IDcolor, drawMode, start_slice,
+            mouseBindings, labelsLut, labelsAlpha, rp=rp
+        )
         self.setWindowTitle("Split object")
-        self.original_ID = ID
         # self.setGeometry(Left, Top, 850, 800)
-        
-        self.is_3D_mode = lab.ndim == 3
-        self.start_slice = start_slice if start_slice is not None else 0
-        self.current_slice = self.start_slice
-        self.sliceCutsCoords = {}
 
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -10837,6 +10848,87 @@ class manualSeparateGui(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.setWindowModality(Qt.WindowModal)
+
+    def setSessionData(
+            self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
+            drawMode='threepoints_arc', start_slice=None, mouseBindings=None,
+            labelsLut=None, labelsAlpha=0.3, rp=None
+        ):
+
+        self.is_3D_mode = lab.ndim == 3
+        if rp is None:
+            from . import regionprops
+            rp = regionprops.acdcRegionprops(self.lab, precache_centroids=False)
+        obj = rp.get_obj_from_ID(ID)
+
+        self.lab = np.zeros_like(lab)
+        self.lab[obj.slice][obj.image] = ID
+
+        if self.is_3D_mode:
+            # skimage regionprops bbox for 3D object is (min_z, min_row, min_col, max_z, max_row, max_col)
+            min_row, min_col, max_row, max_col = obj.bbox[1:3] + obj.bbox[4:6]
+        else:
+            min_row, min_col, max_row, max_col = obj.bbox
+
+        self.objectBBox = (min_row, min_col, max_row, max_col)
+
+        self.ID = ID
+        self.img = img
+        self.IDcolor = IDcolor
+        self.fontSize = fontSize
+        self.drawMode = drawMode
+        self.mouseBindings = mouseBindings or {}
+        self.labelsLut = labelsLut
+        self.labelsAlpha = labelsAlpha
+        self.start_slice = start_slice if start_slice is not None else 0
+        self.current_slice = self.start_slice
+        self.cancel = True
+        self.countClicks = 0
+        self.prevLabs = []
+        self.prevAllCutsCoords = []
+        self.undoIdx = 0
+        self.sliceCutsCoords = {}
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(
+            self.current_slice, []
+        )
+
+        if not hasattr(self, 'imgItem'):
+            self.labelItemsIDs = []
+            return
+
+        self.undoAction.setEnabled(False)
+        self.threePointsArcAction.setChecked(
+            drawMode == 'threepoints_arc'
+        )
+        self.freeHandAction.setChecked(drawMode == 'freehand')
+        self.use2DsepAction.setEnabled(self.is_3D_mode)
+        self.use2DsepAction.setVisible(self.is_3D_mode)
+        self.warnLabel.setText(
+            html_utils.paragraph(
+                'Hold "Ctrl" to apply separation on all slices',
+            ) if self.is_3D_mode else ''
+        )
+        self.labelsLayer.setOpacity(labelsAlpha)
+        self.alphaScrollBar.setValue(round(labelsAlpha*40))
+        self.alphaScrollBar.setVisible(self.overlayButton.isChecked())
+        self.alphaScrollBar_label.setVisible(self.overlayButton.isChecked())
+        self.zSliceScrollBar.blockSignals(True)
+        self.zSliceScrollBar.setMaximum(
+            self.lab.shape[0] - 1 if self.is_3D_mode else 0
+        )
+        self.zSliceScrollBar.setValue(self.current_slice)
+        self.zSliceScrollBar.blockSignals(False)
+        self.zSliceScrollBar.setVisible(self.is_3D_mode)
+        self.zSliceLabel.setVisible(self.is_3D_mode)
+        self._clearDrawing()
+        self.updateImg()
+        self.zoomToObj()
+
+    def _clearDrawing(self):
+        self.curvHoverPlotItem.setData([], [])
+        self.lineHoverPlotItem.setData([], [])
+        self.curvAnchors.setData([], [])
+        self.freeHandItem.setData([], [])
 
     def centerWindow(self):
         parent = self._parent
@@ -10893,7 +10985,7 @@ class manualSeparateGui(QMainWindow):
             QIcon(":reload.svg"), "Swap IDs", self
         )
         self.swapIDsAction.setToolTip(
-            'Swap the two displayed IDs\n\n'
+            'Swap IDs of the two largest objects\n\n'
             'Shortcut: "S"'
         )
         self.swapIDsAction.setShortcut('S')
@@ -10971,6 +11063,20 @@ class manualSeparateGui(QMainWindow):
         
         editToolBar.addAction(self.swapIDsAction)
         
+        self.use2DsepAction = QToolButton(self)
+        self.use2DsepAction.setIcon(QIcon(":separate-bud-2D.svg"))
+        self.use2DsepAction.setToolTip(
+            'Use 2D automatic separation on the current slice\n\n'
+            'Shortcut: A'
+        )
+        editToolBar.addWidget(self.use2DsepAction)
+        
+        if not self.is_3D_mode:
+            self.use2DsepAction.setEnabled(False)
+            self.use2DsepAction.hide()
+            
+        self.use2DsepAction.setShortcut('A')
+        
         self.warnLabel = QLabel()
         editToolBar.addWidget(self.warnLabel)
         
@@ -10980,7 +11086,6 @@ class manualSeparateGui(QMainWindow):
                     'Hold "Ctrl" to apply separation on all slices',
                 )
             )
-        
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
@@ -10993,6 +11098,40 @@ class manualSeparateGui(QMainWindow):
         self.swapIDsAction.triggered.connect(self.swapIDs)
         self.nextAction.triggered.connect(self.nextSlice)
         self.prevAction.triggered.connect(self.previousSlice)
+        self.use2DsepAction.clicked.connect(self.use2Dsep)
+
+    def use2Dsep(self):
+        lab = self.currentLab()
+        if not np.any(lab == self.ID):
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'The selected object is not present on this z-slice',
+                    font_color='red'
+                )
+            )
+            return
+
+        max_ID = int(self.lab.max())
+        if self._parent is not None:
+            posData = self._parent.data[self._parent.pos_i]
+            max_ID = max(max_ID, max(posData.IDs, default=1))
+
+        result, success, _ = core_split_IDs.split_along_convexity_defects(
+            self.ID, lab, max_ID
+        )
+        if not success:
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'Automatic separation was not successful',
+                    font_color='red'
+                )
+            )
+            return
+
+        self.storeUndoState()
+        lab[:] = result
+        self.warnLabel.setText('')
+        self.updateImg()
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -11230,9 +11369,6 @@ class manualSeparateGui(QMainWindow):
     
     def threePointsArcPressEvent(self, event):
         if self.countClicks == 0:
-            # join seperate IDs if already separated
-            if len(self.rp) > 1:
-                self.joinAllIDs()
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             self.x0, self.y0 = xdata, ydata
@@ -11253,13 +11389,6 @@ class manualSeparateGui(QMainWindow):
             xi, yi = self.getSpline(xx, yy)
             yy, xx = np.round(yi).astype(int), np.round(xi).astype(int)
             self.applySplitCurve(xx, yy)
-            
-    def joinAllIDs(self):
-        original_ID = self.original_ID
-        self.storeUndoState()
-        lab = self.currentLab()
-        lab[lab != 0] = original_ID
-        self.updateImg()        
 
     def applySplitCurve(self, xx, yy):
         cut_all_slices = (
@@ -11269,36 +11398,48 @@ class manualSeparateGui(QMainWindow):
         )
         self.storeUndoState()
         if not cut_all_slices:
-            if self.setSplitCurveCoords(xx, yy):
-                self.splitObjectAlongCurve()
+            previous_lab = self.currentLab().copy()
+            cut_coords = self.applyCutCurve(xx, yy)
+            if cut_coords is not None:
+                self.splitObjectAlongCurve(
+                    previous_lab, cut_coords, xx, yy
+                )
             return
 
         current_slice = self.current_slice
-        split_ID = None
+        split_IDs = []
         self.AllCutsCoords = self.sliceCutsCoords.setdefault(current_slice, [])
-        if self.setSplitCurveCoords(xx, yy):
-            split_ID = self.splitObjectAlongCurve()
+        previous_lab = self.currentLab().copy()
+        cut_coords = self.applyCutCurve(xx, yy)
+        if cut_coords is not None:
+            split_IDs = self.splitObjectAlongCurve(
+                previous_lab, cut_coords, xx, yy
+            )
 
         directions = (
             range(current_slice + 1, self.lab.shape[0]),
             range(current_slice - 1, -1, -1),
         )
         for slices in directions:
-            reference_lab = self.lab[current_slice].copy()
             for z in slices:
                 self.current_slice = z
                 self.AllCutsCoords = self.sliceCutsCoords.setdefault(z, [])
-                if not self.setSplitCurveCoords(xx, yy):
+                previous_lab = self.currentLab().copy()
+                cut_coords = self.applyCutCurve(xx, yy)
+                if cut_coords is None:
                     continue
-                split_ID = self.splitObjectAlongCurve(
-                    split_ID=split_ID, reference_lab=reference_lab
+                new_split_IDs = self.splitObjectAlongCurve(
+                    previous_lab, cut_coords, xx, yy,
+                    split_IDs=split_IDs,
                 )
-                reference_lab = self.currentLab().copy()
+                split_IDs.extend(
+                    ID for ID in new_split_IDs if ID not in split_IDs
+                )
         self.current_slice = current_slice
         self.AllCutsCoords = self.sliceCutsCoords.setdefault(current_slice, [])
         self.updateImg()
     
-    def setSplitCurveCoords(self, xx, yy):
+    def applyCutCurve(self, xx, yy):
         lab = self.currentLab()
         xxCurve, yyCurve = [], []
         for i, (r0, c0) in enumerate(zip(yy, xx)):
@@ -11317,31 +11458,29 @@ class manualSeparateGui(QMainWindow):
             xxCurve.extend(cc[nonzeroMask])
             yyCurve.extend(rr[nonzeroMask])
         if not xxCurve:
-            return False
+            return None
         self.AllCutsCoords.append((yyCurve, xxCurve))
-        for rr, cc in self.AllCutsCoords:
-            lab[rr, cc] = 0
-        lab[:] = skimage.morphology.remove_small_objects(lab, 5)
-        return True
+        return yyCurve, xxCurve
 
     def histLUT_cb(self, LUTitem):
         if self.overlayButton.isChecked():
             self.imgItem.setImage(self.currentImg())
 
     def swapIDs(self, checked=False):
-        if len(self.rp) == 1:
+        IDs, areas = np.unique(self.lab[self.lab > 0], return_counts=True)
+        if len(IDs) < 2:
             self.warnLabel.setText(
                 html_utils.paragraph(
-                    'WARNING: Split the object before swapping IDs',
+                    'WARNING: At least two objects must be present to swap IDs',
                     font_color='red'
                 )
             )
             return
         
         self.warnLabel.setText('')
-        
-        obj1_ID = self.rp[0].label
-        obj2_ID = self.rp[1].label
+
+        largest = np.argsort(areas, kind='stable')[-2:]
+        obj1_ID, obj2_ID = IDs[largest]
         obj1_mask = self.lab == obj1_ID
         obj2_mask = self.lab == obj2_ID
         
@@ -11355,7 +11494,7 @@ class manualSeparateGui(QMainWindow):
 
         self.updateLookuptable()
         lab = self.currentLab()
-        rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
+        rp = acdc_regionprops.acdcRegionprops(lab)
         self.rp = rp
 
         if self.overlayButton.isChecked():
@@ -11385,10 +11524,8 @@ class manualSeparateGui(QMainWindow):
 
     def zoomToObj(self):
         # Zoom to object
-        lab_mask = (self.currentLab()>0).astype(np.uint8)
-        rp = skimage.measure.regionprops(lab_mask)
-        obj = rp[0]
-        min_row, min_col, max_row, max_col = obj.bbox
+        (min_row, min_col, max_row, max_col) = self.objectBBox
+
         xRange = min_col-10, max_col+10
         yRange = max_row+10, min_row-10
         self.ax.setRange(xRange=xRange, yRange=yRange)
@@ -11417,102 +11554,52 @@ class manualSeparateGui(QMainWindow):
             self.prevLabs = []
             self.prevAllCutsCoords = []
 
-    def splitObjectAlongCurve(self, split_ID=None, reference_lab=None):
-        from . import regionprops as acdc_regionprops
+    def splitObjectAlongCurve(
+            self, previous_lab, cut_coords, curve_x, curve_y,
+            split_IDs=None
+        ):
         lab = self.currentLab()
-        lab[:] = skimage.measure.label(lab, connectivity=1)
 
-        rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
-        areas = [obj.area for obj in rp]
-        IDs = [obj.label for obj in rp]
-        tracked_obj_ID, tracked_split_ID = None, None
-        if split_ID is None and reference_lab is None:
-            tracked_obj_ID, tracked_split_ID = self._trackedSplitID(rp)
-        if tracked_obj_ID is not None:
-            original_ID = next(ID for ID in IDs if ID != tracked_obj_ID)
-            split_ID = tracked_split_ID
-        elif reference_lab is None:
-            original_ID = IDs[areas.index(max(areas))]
-        else:
-            overlaps = [
-                np.count_nonzero(reference_lab[obj.slice][obj.image] == self.ID)
-                for obj in rp
-            ]
-            original_ID = IDs[overlaps.index(max(overlaps))]
-
-        if original_ID != self.ID:
-            tempID = lab.max() + 1
-            lab[lab==original_ID] = tempID
-            lab[lab==self.ID] = original_ID
-            lab[lab==tempID] = self.ID
-
-        # Keep only the two largest objects
-        larger_areas = nlargest(2, areas)
-        larger_ids = [rp[areas.index(area)].label for area in larger_areas]
-        for obj in rp:
-            if obj.label not in larger_ids:
-                lab[tuple(obj.coords.T)] = 0
-
-            rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
-
-        if self._parent is not None and split_ID is None:
+        if self._parent is not None:
             self._parent.setBrushID()
-        # Use parent window setBrushID function for all other IDs
-        for obj in rp:
-            if self._parent is None:
-                break
-            if obj.label == self.ID:
-                continue
-            if split_ID is None:
-                posData = self._parent.data[self._parent.pos_i]
-                posData.brushID += 1
-                split_ID = posData.brushID
-            lab[obj.slice][obj.image] = split_ID
+            posData = self._parent.data[self._parent.pos_i]
+            max_ID = max(int(posData.brushID) - 1, int(self.lab.max()))
+        else:
+            max_ID = int(self.lab.max())
 
-        # Replace 0s on the cutting curve with IDs
-        self.cutLab = lab.copy()
-        for rr, cc in self.AllCutsCoords:
-            for y, x in zip(rr, cc):
-                top_row = self.cutLab[y+1, x-1:x+2]
-                bot_row = self.cutLab[y-1, x-1:x+1]
-                left_col = self.cutLab[y-1, x-1]
-                right_col = self.cutLab[y:y+2, x+1]
-                allNeigh = list(top_row)
-                allNeigh.extend(bot_row)
-                allNeigh.append(left_col)
-                allNeigh.extend(right_col)
-                newID = max(allNeigh)
-                lab[y,x] = newID
+        lab, max_ID, new_IDs = core_split_IDs.split_cut_components(
+            previous_lab, lab, cut_coords, curve_y, curve_x, max_ID,
+            split_IDs=split_IDs,
+            bbox=self.objectBBox
+        )
+        if self._parent is not None:
+            posData.brushID = max(posData.brushID, max_ID)
 
-            self.rp = acdc_regionprops.acdcRegionprops(lab, precache_centroids=False)
-        self.updateImg()
-        return split_ID
+        if not self.is_3D_mode:
+            self.cutLab = lab
+            self.updateImg()
+            return new_IDs
 
-    def _trackedSplitID(self, rp):
-        if not self.is_3D_mode or len(rp) < 2:
-            return None, None
-
-        neighboring_slices = [
+        neighboring_labs = [
             self.lab[z]
             for z in (self.current_slice - 1, self.current_slice + 1)
             if 0 <= z < self.lab.shape[0]
         ]
-        candidates = []
-        for obj in rp:
-            for neighbor_lab in neighboring_slices:
-                overlapping_IDs = neighbor_lab[obj.slice][obj.image]
-                overlapping_IDs = overlapping_IDs[
-                    (overlapping_IDs != 0) & (overlapping_IDs != self.ID)
-                ]
-                IDs, counts = np.unique(overlapping_IDs, return_counts=True)
-                candidates.extend(
-                    (count, obj.label, ID) for ID, count in zip(IDs, counts)
-                )
+        tracked_lab, _ = core_split_IDs.track_split_slice(
+            lab,
+            neighboring_labs,
+            unique_ID=max_ID + 1,
+        )
+        lab[:] = tracked_lab
+        if self._parent is not None:
+            posData.brushID = max(posData.brushID, int(lab.max()))
 
-        if not candidates:
-            return None, None
-        _, obj_ID, split_ID = max(candidates)
-        return obj_ID, split_ID
+        self.cutLab = lab
+        self.updateImg()
+        return [
+            int(ID) for ID in np.unique(lab)
+            if ID not in (0, self.ID)
+        ]
 
     def updateLookuptable(self):
         # Lookup table
@@ -12001,7 +12088,7 @@ class QDialogPbar(QDialog):
         abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f'{title} ({abort_text} to cancel process)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -19328,9 +19415,13 @@ class ObjectCountDialog(QBaseDialog):
     def saveCounts(self, checked=False):
         categories = self.activeCategories()
         for posData in self.data:
-            countMapper = posData.countObjectsInSegm(categories)
+            countMapper, numObjsPerFrame = (
+                posData.countObjectsInSegm(categories)
+            )
             countMapper.pop('In current frame', None)
-            df_count_endname = posData.saveObjCounts(countMapper)
+            df_count_endname = posData.saveObjCounts(
+                countMapper, numObjsPerFrame
+            )
         
         txt = html_utils.paragraph(f"""
             Done!<br><br>

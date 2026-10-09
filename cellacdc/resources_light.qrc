@@ -6,6 +6,7 @@
     <file alias="icon.ico">resources/icon_v2.ico</file>
     <file alias="logo.svg">resources/logo_v2.svg</file>
     <file alias="logo.png">resources/logo_v2.png</file>
+    <file alias="separate-bud-2D.svg">resources/icons/separate-bud-2D.svg</file>
     <file alias="delNewObj.svg">resources/icons/delNewObj.svg</file>
     <file alias="segForLostIDs.svg">resources/icons/segForLostIDs.svg</file>
     <file alias="AICS_logo.svg">resources/icons/AICS_logo.svg</file>
