@@ -2083,7 +2083,6 @@ class SetMeasurementsDialog(QBaseDialog):
         layout = QVBoxLayout()
         
         topLayout = QHBoxLayout()
-
         
         self.doNotAskAgainCheckbox = widgets.Toggle(
             label_text='Use the same selection for all following selected experiment folders'
@@ -2100,9 +2099,9 @@ class SetMeasurementsDialog(QBaseDialog):
         )
         self.searchWidget.search_input.setMinimumWidth(250)
         self.searchWidget.search_input.setMaximumWidth(16777215)
-        searchLayout.addStretch(5)
-        searchLayout.addWidget(self.searchWidget)
-        searchLayout.setStretch(1, 3)
+        topLayout.addStretch(5)
+        topLayout.addWidget(self.searchWidget)
+        topLayout.setStretch(1, 3)
         
         mainScrollArea = widgets.ScrollArea()
         self.mainScrollArea = mainScrollArea
