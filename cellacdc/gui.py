@@ -1140,6 +1140,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.gui_refreshToolCursor()
 
+    def setDelRoiCursor(self):
+        if self.app.overrideCursor() == Qt.SizeAllCursor:
+            return
+        
+        self.app.setOverrideCursor(Qt.SizeAllCursor)
+
     def gui_refreshToolCursor(self, *args):
         isHoverImg1 = self._cursorHoverImage
         if isHoverImg1 is None:
@@ -7023,7 +7029,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.wcLabel.setText('')
         
         if cursorsInfo['setDelRoiCursor']:
-            self.app.setOverrideCursor(Qt.SizeAllCursor)
+            self.setDelRoiCursor()
 
         if cursorsInfo['setKeepObjCursor']:
             x, y = event.pos()
