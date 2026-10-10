@@ -40,7 +40,6 @@ from . import load, prompts, apps, core, myutils
 from . import widgets
 from . import html_utils, myutils, darkBkgrColor, printl
 from . import autopilot, workers
-from . import recentPaths_path
 from . import urls
 from . import io
 from . import qutils
@@ -2828,68 +2827,55 @@ class dataPrepWin(QMainWindow):
 
     def storeTempFileMove(self, source, dst):
         self.tempFilesToMove[source] = dst
-    
-    def getMostRecentPath(self):
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = df.iloc[0]['path']
-            if not isinstance(self.MostRecentPath, str):
-                self.MostRecentPath = ''
-        else:
-            self.MostRecentPath = ''
-
-    def addToRecentPaths(self, exp_path):
-        if not os.path.exists(exp_path):
-            return
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            recentPaths = df['path'].to_list()
-            if 'opened_last_on' in df.columns:
-                openedOn = df['opened_last_on'].to_list()
-            else:
-                openedOn = [np.nan]*len(recentPaths)
-            if exp_path in recentPaths:
-                pop_idx = recentPaths.index(exp_path)
-                recentPaths.pop(pop_idx)
-                openedOn.pop(pop_idx)
-            recentPaths.insert(0, exp_path)
-            openedOn.insert(0, datetime.datetime.now())
-            # Keep max 20 recent paths
-            if len(recentPaths) > 20:
-                recentPaths.pop(-1)
-                openedOn.pop(-1)
-        else:
-            recentPaths = [exp_path]
-            openedOn = [datetime.datetime.now()]
-        df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': pd.Series(openedOn,
-                                                       dtype='datetime64[ns]')})
-        df.index.name = 'index'
-        df.to_csv(recentPaths_path)
 
     def populateOpenRecent(self):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
         # Step 1. Read recent Paths
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            recentPaths = df['path'].to_list()
-        else:
-            recentPaths = []
-        # Step 2. Dynamically create the actions
+        recentPaths, dates = myutils.get_recent_paths(self)
         actions = []
         for path in recentPaths:
-            if not os.path.exists(path):
-                continue
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
+        
+        # Step 4. Create the "More/Search..." dialog and action
+        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+            recentPaths,
+            title='Recent paths', 
+            searchLineEditText='Search recent paths  (double-click to open)...',
+            parent=self,
+            dates=dates,
+        )
+        self.openRecentMoreAction = QAction('More/Search...', self)
+        self.openRecentMoreAction.triggered.connect(
+            self.showOpenRecentMoreWidget
+        )
+        self.openRecentMoreDialog.sigOk.connect(self.openRecentFile)
+        self.openRecentMenu.addSeparator()
+        self.openRecentMenu.addAction(self.openRecentMoreAction)
+        
+    def showOpenRecentMoreWidget(self):
+        self.openRecentMoreDialog.show()
+        screenGeometry = self.screen().geometry()
+        screenWidth = screenGeometry.width()
+        screenHeight = screenGeometry.height()
+        windowWidth = round(screenWidth/3)
+        windowHeight = round(screenHeight/2)
+        self.openRecentMoreDialog.resize(windowWidth, windowHeight)
+        
+        mainWinPos = self.pos()
+        mainWinCenterX = mainWinPos.x() + self.width()/2
+        mainWinCenterY = mainWinPos.y() + self.height()/2
+        self.openRecentMoreDialog.move(
+            int(mainWinCenterX - windowWidth/2), 
+            int(mainWinCenterY - windowHeight/2)
+            )
+        
+        self.openRecentMoreDialog.raise_()
+        self.openRecentMoreDialog.activateWindow()
 
     @exception_handler
     def loadFiles(self, exp_path, user_ch_file_paths, user_ch_name):
@@ -2983,12 +2969,12 @@ class dataPrepWin(QMainWindow):
         self.initLoading()
 
         if exp_path is None:
-            self.getMostRecentPath()
+            self.mostRecentPath = myutils.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
                 self, 'Select experiment folder containing Position_n folders '
-                      'or specific Position_n folder', self.MostRecentPath)
+                      'or specific Position_n folder', self.mostRecentPath)
 
-        self.addToRecentPaths(exp_path)
+        myutils.addToRecentPaths(exp_path)
 
         if exp_path == '':
             self.openFolderAction.setEnabled(True)

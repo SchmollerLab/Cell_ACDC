@@ -43,7 +43,7 @@ from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem
+    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -2076,6 +2076,98 @@ class statusBarPermanentLabel(QWidget):
 
         self.setLayout(layout)
 
+class _RichTextItemEventFilter(QObject):
+    def __init__(self, item):
+        super().__init__()
+        self.item = item
+
+    def eventFilter(self, obj, event):
+        listWidget = self.item._listWidget
+
+        if listWidget is None:
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.MouseMove:
+            pos = (
+                event.position().toPoint()
+                if hasattr(event, 'position')
+                else event.pos()
+            )            
+            hoveredItem = listWidget.itemAt(pos)
+            self.item.setHovered(hoveredItem is self.item)
+
+        elif event.type() == QEvent.Leave:
+            self.item.setHovered(False)
+
+        return super().eventFilter(obj, event)
+
+
+class RichTextListWidgetItem(QListWidgetItem):
+    def __init__(self, text='', parent=None):
+        super().__init__(parent)
+
+        self._plainText = ''
+        self._listWidget = None
+        self._hovered = False
+
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.RichText)
+        self.label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.label.setAttribute(
+            Qt.WA_TransparentForMouseEvents
+        )
+
+        self._eventFilter = _RichTextItemEventFilter(self)
+
+        self.setText(text)
+
+    def setText(self, text):
+        """Set rich text while keeping the plain text separately."""
+        doc = QTextDocument()
+        doc.setHtml(text)
+
+        self._plainText = doc.toPlainText()
+
+        # Do NOT let QListWidgetItem paint its own text.
+        super().setText('')
+
+        # Rich representation is painted by the QLabel.
+        self.label.setText(text)
+
+    def text(self):
+        return self._plainText
+
+    def setListWidget(self, listWidget):
+        self._listWidget = listWidget
+
+        listWidget.viewport().installEventFilter(
+            self._eventFilter
+        )
+
+        self._updateLabelStyle()
+
+    def setHovered(self, hovered):
+        if self._hovered == hovered:
+            return
+
+        self._hovered = hovered
+        self._updateLabelStyle()
+
+    def _updateLabelStyle(self):
+        if self._listWidget is None:
+            return
+
+        if self._hovered or self.isSelected():
+            color = 'black'
+        else:
+            color = self._listWidget.palette().color(
+                self._listWidget.foregroundRole()
+            ).name()
+
+        self.label.setStyleSheet(
+            f'background: transparent; color: {color};'
+        )
+
 class listWidget(QListWidget):
     def __init__(
             self, 
@@ -2095,6 +2187,16 @@ class listWidget(QListWidget):
         
         self.minimizeHeight = minimizeHeight
     
+    def addRichTextItem(self, text: str):
+        item = RichTextListWidgetItem(text)
+
+        self.addItem(item)
+        self.setItemWidget(item, item.label)
+
+        item.setListWidget(self)
+
+        return item
+
     def setSelectedAll(self, selected):
         for i in range(self.count()):
             self.item(i).setSelected(selected)
@@ -6213,6 +6315,7 @@ class ZoomROI(ROI):
 class DelROI(pg.ROI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.setCursor(Qt.SizeAllCursor)
     
     def clearPoints(self):
         """
@@ -10391,15 +10494,16 @@ class SetMeasurementsGroupBox(QGroupBox):
             checkbox.setStyleSheet('')
     
 class SearchLineEdit(QLineEdit):
-    def __init__(self, parent=None):
+    def __init__(self, text='Search...', parent=None):
         super().__init__(parent)
         
+        self._text = text
         self.initSearch()
         self.setFocusPolicy(Qt.ClickFocus)
         
     def focusInEvent(self, event) -> None:
         super().focusInEvent(event)
-        if super().text() == 'Search...':
+        if super().text() == self._text:
             self.setText('')
         self.setStyleSheet('')
     
@@ -10409,12 +10513,12 @@ class SearchLineEdit(QLineEdit):
             self.initSearch()
     
     def initSearch(self):
-        self.setText('Search...')
+        self.setText(self._text)
         self.setStyleSheet('color: rgb(150, 150, 150)')
         self.clearFocus()
     
     def text(self):
-        if super().text() == 'Search...':
+        if super().text() == self._text:
             return ''
         return super().text()
 
@@ -14186,3 +14290,28 @@ class PrefixFilenameLineEdit(QWidget):
     def fullFilename(self):
         filename = f'{self.le.text()}{self.endnameLabel.text()}'
         return filename
+
+class _RecentItemsSearchCompleter(ButtonSearchCompleter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alwaysRecency = False
+
+    def setAlwaysRecency(self, alwaysRecency):
+        self.alwaysRecency = alwaysRecency
+        self.invalidate()
+        self.sort(0, Qt.AscendingOrder)
+
+    def lessThan(self, left, right):
+        if self.alwaysRecency:
+            return left.row() < right.row()
+
+        left_score = self._getScore(left)
+        right_score = self._getScore(right)
+
+        if left_score[0] != right_score[0]:
+            return left_score[0] < right_score[0]
+        
+        if left_score[1] != right_score[1]:
+            return left_score[1] < right_score[1]
+
+        return left.row() < right.row()

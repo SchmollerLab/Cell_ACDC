@@ -76,7 +76,7 @@ from . import _warnings, issues_url
 from . import measurements, printl
 from . import colors, annotate
 from . import user_manual_url
-from . import (recentPaths_path, settings_folderpath, settings_csv_path, 
+from . import (settings_folderpath, settings_csv_path, 
                seg_for_lost_IDs_settings_path)
 from . import favourite_func_metrics_csv_path
 from . import qutils, autopilot, QtScoped
@@ -700,41 +700,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             super().setDisabled(disabled)
     
-    def readRecentPaths(self, recent_paths_path=None):
+    def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
-        self.openRecentMenu.clear()
-
-        # Step 1. Read recent Paths
-        if recent_paths_path is None:
-            recent_paths_path = recentPaths_path    
+        self.openRecentMenu.clear()        
+        recentPaths, dates = myutils.get_recent_paths(self)
         
-        if os.path.exists(recent_paths_path):
-            df = pd.read_csv(recent_paths_path, index_col='index')
-            df['path'] = df['path'].str.replace('\\', '/')
-            df = df.drop_duplicates(subset=['path'])
-            df.to_csv(recent_paths_path)
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            recentPaths = df['path'].to_list()
-        else:
-            recentPaths = []
-        
-        # Step 2. Dynamically create the actions
+        # Step 2. Dynamically create 20 actions
         actions = []
-        for path in recentPaths:
-            if not os.path.exists(path):
-                continue
+        for path in recentPaths[:20]:
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
 
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
+
+        # Setp 4. Add the More action
+        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+            recentPaths, 
+            title='Recent paths', 
+            searchLineEditText='Search recent paths (double-click to load)...',
+            parent=self,
+            dates=dates,
+        )
+        self.openRecentMoreAction = QAction('More/Search...', self)
+        self.openRecentMoreAction.triggered.connect(
+            self.showOpenRecentMoreWidget
+        )
+        self.openRecentMoreDialog.sigOk.connect(self.openRecentFile)
+        self.openRecentMenu.addSeparator()
+        self.openRecentMenu.addAction(self.openRecentMoreAction)
     
     def addPathToOpenRecentMenu(self, path):
         for action in self.openRecentMenu.actions():
             if path == action.text():
-                break
+                return
         else:
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
@@ -1138,6 +1138,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         self.gui_refreshToolCursor()
+
+    def setDelRoiCursor(self):
+        if self.app.overrideCursor() == Qt.SizeAllCursor:
+            return
+        
+        self.app.setOverrideCursor(Qt.SizeAllCursor)
 
     def gui_refreshToolCursor(self, *args):
         isHoverImg1 = self._cursorHoverImage
@@ -5720,7 +5726,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         # Check if right click on ROI
-        isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
+        isClickOnDelRoi = self.gui_handleClickOnDelRoi(event, left_click, right_click)
         if isClickOnDelRoi:
             return
 
@@ -7044,6 +7050,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.BudMothTempLine.setData([], [])
             self.wcLabel.setText('')
         
+        if cursorsInfo['setDelRoiCursor']:
+            self.setDelRoiCursor()
+
         if cursorsInfo['setKeepObjCursor']:
             x, y = event.pos()
             self.highlightHoverIDsKeptObj(x, y)
@@ -7198,17 +7207,25 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
         
+        posData = self.data[self.pos_i]
+        delROIs = (
+            posData.allData_li[posData.frame_i]['delROIs_info']['rois']
+        )
         # Alt key was released --> restore cursor
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
+        x, y = event.pos()
+        setDelRoiCursor = any([
+            self.isMouseOnDelRoi(roi, x, y) for roi in delROIs
+        ])
         setBrushCursor = (
             self.brushButton.isChecked() and not event.isExit()
-            and (noModifier or shift or ctrl)
+            and (noModifier or shift or ctrl) and not setDelRoiCursor
         )
         setEraserCursor = (
             self.eraserButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setAddDelPolyLineCursor = (
             self.addDelPolyLineRoiButton.isChecked() and not event.isExit()
@@ -7221,7 +7238,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         setWandCursor = (
             self.wandToolButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setLabelRoiCursor = (
             self.labelRoiButton.isChecked() and not event.isExit()
@@ -7237,7 +7254,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         setCurvCursor = (
             self.curvToolButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setKeepObjCursor = (
             self.keepIDsButton.isChecked() and not event.isExit()
@@ -7285,6 +7302,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.highlightHoverID(x, y)
         
         return {
+            'setDelRoiCursor': setDelRoiCursor,
             'setBrushCursor': setBrushCursor,
             'setEraserCursor': setEraserCursor,
             'setAddDelPolyLineCursor': setAddDelPolyLineCursor,
@@ -7907,27 +7925,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMouseDragImg1 = False
             self.whiteListIDsFreehandRegion(event)
 
-    def gui_clickedDelRoi(self, event, left_click, right_click):
+    def isMouseOnDelRoi(self, roi, x, y):
+        for handle in roi.handles:
+            h = handle['item']
+            if h.currentPen is h.hoverPen:
+                return True
+
+        mask, bbox = self.getRoiCoords(roi, return_mask=True)
+        # check if click insde bbox by correcting x and y and checking if something is out of bounds
+        (r0, r1, c0, c1) = bbox
+        if y<r0 or y>=r1 or x<c0 or x>=c1:
+            return False
+
+        # exact check
+        y_rel, x_rel = int(y-r0), int(x-c0)
+        if mask[y_rel, x_rel]:
+            return True
+        
+        return False
+
+    def gui_handleClickOnDelRoi(self, event, left_click, right_click):
         posData = self.data[self.pos_i]
         x, y = event.pos().x(), event.pos().y()
 
-        # Check if right click on ROI
+        # Check if click on ROI
         delROIs = (
-            posData.allData_li[posData.frame_i]['delROIs_info']['rois'].copy()
+            posData.allData_li[posData.frame_i]['delROIs_info']['rois']
         )
         for r, roi in enumerate(delROIs):
-            mask, bbox = self.getRoiCoords(roi, return_mask=True)
-            # check if click insde bbox by correcting x and y and checking if something is out of bounds
-            (r0, r1, c0, c1) = bbox
-            if y<r0 or y>=r1 or x<c0 or x>=c1:
-                clickedOnROI = False
-            else:
-                # exact check
-                y_rel, x_rel = int(y-r0), int(x-c0)
-                if mask[y_rel, x_rel]:
-                    clickedOnROI = True
-                else:
-                    clickedOnROI = False
+            clickedOnROI = self.isMouseOnDelRoi(roi, x, y)
             raiseContextMenuRoi = right_click and clickedOnROI
             dragRoi = left_click and clickedOnROI
             if raiseContextMenuRoi:
@@ -8001,7 +8027,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return getattr(self, '_isWhitelistIDsRoiVisible', False)
         return True
 
-    def gui_isClickInsideRoi(self, roi, event):
+    def gui_isMouseInsideRoi(self, roi, event):
         if roi is None:
             return False
         try:
@@ -8106,7 +8132,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.zoomRectButton.isChecked():
             activeRois.append(getattr(self, 'zoomRectItem', None))
 
-        activeRois = [roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
+        activeRois = [
+            roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
         
         # check that no other button was clicked
         
@@ -8124,7 +8151,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         if left_click and any(
-            self.gui_isClickInsideRoi(roi, event) for roi in activeRois
+            self.gui_isMouseInsideRoi(roi, event) for roi in activeRois
         ):
             event.ignore()
             return
@@ -8144,7 +8171,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         # Check if click on ROI
-        isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
+        isClickOnDelRoi = self.gui_handleClickOnDelRoi(
+            event, left_click, right_click
+        )
         if isClickOnDelRoi:
             return
         
@@ -13212,6 +13241,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.polyLineRoi.handleSize = 7
         self.polyLineRoi.points = []
+        self.polyLineRoi.setCursor(Qt.SizeAllCursor)
         if key is None:
             key = uuid.uuid4()
         self.ax1.addDelRoiItem(self.polyLineRoi, key)
@@ -36243,6 +36273,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.addToRecentPaths(path, logger=self.logger)
         self.openFolder(exp_path=path)
     
+    def showOpenRecentMoreWidget(self):
+        self.openRecentMoreDialog.show()
+
     def _waitCloseAutoSaveWorker(self):
         didWorkersFinished = [True]
         for worker, thread in self.autoSaveActiveWorkers:
@@ -36252,7 +36285,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 didWorkersFinished.append(False)
         if all(didWorkersFinished):
             self.waitCloseAutoSaveWorkerLoop.stop()
-        
+    
     def cancelSavingInitialisation(self):
         self.titleLabel.setText(
             'Saving data process cancelled.', color=self.titleColor
