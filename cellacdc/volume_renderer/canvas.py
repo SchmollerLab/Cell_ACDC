@@ -1180,10 +1180,11 @@ class VolumeRendererWindow(QMainWindow):
             gl_stage = volume_gl_state(blending, first_visible=first_visible)
             node.set_gl_state(**gl_stage)
     
-    def _set_animation_setup(self):
+    def _set_animation_setup(self, params: dict[str, float]):
         self._is_animation_setup = True
         self._toolbar.setupAnimationAction.setChecked(False)
         self._toolbar.playAnimationAction.setDisabled(False)
+        self._animation_params = params
         blinker = qutils.QControlBlink(
             self._toolbar.playAnimationAction, qparent=self
         )
@@ -1814,7 +1815,7 @@ class VolumeRendererWindow(QMainWindow):
             self._setupAnimationDialog.hide()
 
     def play_animation(self, checked):
-        ...
+        self._animation_params
 
 
     def resizeEvent(self, event):

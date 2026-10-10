@@ -110,7 +110,7 @@ class PointsLayersToolbar(ToolBar):
         self.addLabel('Points: ')
 
 class AnimationParamWidget(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, speed_unit: str, parent=None):
         super().__init__(parent)
 
         layout = QGridLayout()
@@ -125,7 +125,7 @@ class AnimationParamWidget(QWidget):
         stopLabel = QLabel('Stop')
 
         self.speedDoubleSpinbox = DoubleSpinBox()
-        speedLabel = QLabel('Speed')
+        speedLabel = QLabel(f'Speed [{speed_unit}]')
 
         self.playButton = playPushButton()
 
@@ -161,6 +161,15 @@ class AnimationParamWidget(QWidget):
             return
 
         self.startDoubleSpinbox.setValue(value)
+    
+    def params(self):
+        start = self.startDoubleSpinbox.value()
+        stop = self.stopDoubleSpinbox.value()
+        speed = self.speedDoubleSpinbox.value()
+        params = {
+            'start': start, 'stop': stop, 'speed': speed
+        }
+        return params
 
 
 class LabelsOverlay(QWidget):
