@@ -10816,7 +10816,8 @@ class manualSeparateGui(QMainWindow):
     def __init__(
             self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
             parent=None, loop=None, drawMode='threepoints_arc', start_slice=None,
-            mouseBindings=None, labelsLut=None, labelsAlpha=0.3, rp=None
+            mouseBindings=None, labelsLut=None, labelsAlpha=0.3, rp=None,
+            img_lut_df=None,
         ):
         super().__init__(parent)
         self.setAttribute(Qt.WA_DeleteOnClose, False)
@@ -10824,7 +10825,7 @@ class manualSeparateGui(QMainWindow):
         self._parent = parent
         self.setSessionData(
             lab, ID, img, fontSize, IDcolor, drawMode, start_slice,
-            mouseBindings, labelsLut, labelsAlpha, rp=rp
+            mouseBindings, labelsLut, labelsAlpha, rp=rp, img_lut_df=img_lut_df
         )
         self.setWindowTitle("Split object")
         # self.setGeometry(Left, Top, 850, 800)
@@ -10854,17 +10855,20 @@ class manualSeparateGui(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.setWindowModality(Qt.WindowModal)
+        
+        self.imgGrad.restoreState(self.img_lut_df)
 
     def setSessionData(
             self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
             drawMode='threepoints_arc', start_slice=None, mouseBindings=None,
-            labelsLut=None, labelsAlpha=0.3, rp=None
+            labelsLut=None, labelsAlpha=0.3, rp=None, img_lut_df=None
         ):
 
         self.is_3D_mode = lab.ndim == 3
         if rp is None:
             from . import regionprops
             rp = regionprops.acdcRegionprops(self.lab, precache_centroids=False)
+        self.img_lut_df = img_lut_df
         obj = rp.get_obj_from_ID(ID)
 
         self.lab = np.zeros_like(lab)
@@ -10901,6 +10905,9 @@ class manualSeparateGui(QMainWindow):
         if not hasattr(self, 'imgItem'):
             self.labelItemsIDs = []
             return
+        
+        self.img_lut_df = img_lut_df
+        self.imgGrad.restoreState(self.img_lut_df)
 
         self.undoAction.setEnabled(False)
         self.threePointsArcAction.setChecked(
@@ -11168,6 +11175,8 @@ class manualSeparateGui(QMainWindow):
 
         #Image histogram
         self.imgGrad = widgets.myHistogramLUTitem()
+        self.imgGrad.setImageItem(self.imgItem)
+        self.imgGrad.restoreState(self.img_lut_df)
 
         # Curvature items
         self.hoverLinSpace = np.linspace(0, 1, 1000)
@@ -11471,6 +11480,8 @@ class manualSeparateGui(QMainWindow):
     def histLUT_cb(self, LUTitem):
         if self.overlayButton.isChecked():
             self.imgItem.setImage(self.currentImg())
+        elif hasattr(self, 'lut'):
+            self.imgItem.setLookupTable(self.lut)
 
     def swapIDs(self, checked=False):
         IDs, areas = np.unique(self.lab[self.lab > 0], return_counts=True)
@@ -11504,7 +11515,7 @@ class manualSeparateGui(QMainWindow):
         self.rp = rp
 
         if self.overlayButton.isChecked():
-            self.imgItem.setLookupTable(None)
+            self.applyImgGradLut()
             self.imgItem.setImage(self.currentImg())
             self.labelsLayer.show()
         else:
@@ -11624,9 +11635,15 @@ class manualSeparateGui(QMainWindow):
         self.labelsLayer.setLevels([0, len(labelsLut)])
         self.labelsLayer.setLookupTable(labelsLut)
         if self.overlayButton.isChecked():
-            self.imgItem.setLookupTable(None)
+            self.applyImgGradLut()
         else:
             self.imgItem.setLookupTable(self.lut)
+
+    def applyImgGradLut(self):
+        if self.imgGrad.gradient.isLookupTrivial():
+            self.imgItem.setLookupTable(None)
+        else:
+            self.imgItem.setLookupTable(self.imgGrad.getLookupTable)
 
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Escape:

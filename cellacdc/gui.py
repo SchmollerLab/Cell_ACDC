@@ -6017,6 +6017,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 labels_lut = self.getLabelsImageLut()
                 labels_alpha = self.imgGrad.labelsAlphaSlider.value()
                 manualSep = getattr(self, 'manualSeparateGui', None)
+                img_lut_df = self.imgGrad.saveState(self.df_settings)
                 if manualSep is None:
                     manualSep = apps.manualSeparateGui(
                         lab, ID, img,
@@ -6028,7 +6029,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         mouseBindings=self.mouseBindings,
                         labelsLut=labels_lut,
                         labelsAlpha=labels_alpha,
-                        rp=rp
+                        rp=rp,
+                        img_lut_df=img_lut_df,
                     )
                     self.manualSeparateGui = manualSep
                 else:
@@ -6041,7 +6043,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         mouseBindings=self.mouseBindings,
                         labelsLut=labels_lut,
                         labelsAlpha=labels_alpha,
-                        rp=rp
+                        rp=rp,
+                        img_lut_df=img_lut_df,
                     )
 
                 manualSep.setState(lastManualSeparateState)
