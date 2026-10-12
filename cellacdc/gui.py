@@ -25939,6 +25939,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if not is_worker_thread and frame_i==posData.frame_i:
             # Update the overlay masks given the new rp
+            self.currentLab2D = self.get_2Dlab(posData.lab, force_z=False)
             self.setOverlaySegmMasks()
 
         if not (wl_update and not unvisited):

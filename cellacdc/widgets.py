@@ -3944,6 +3944,7 @@ class Toggle(QAbstractButton):
         super().__init__(parent)
 
         self._label_text = label_text
+        self._label = None
 
         self._toggle_width = width
         self._toggle_height = height
@@ -3984,15 +3985,15 @@ class Toggle(QAbstractButton):
         # --------------------------------------------------
         # Label
         # --------------------------------------------------
-
-        self._label = QClickableLabel(self._label_text)
-        self._label.setAlignment(
-            Qt.AlignLeft | Qt.AlignVCenter
-        )
-        self._label.setAttribute(
-            Qt.WA_TransparentForMouseEvents
-        )
-        self._label.clicked.connect(self._on_label_clicked)
+        if label_text:
+            self._label = QClickableLabel(self._label_text)
+            self._label.setAlignment(
+                Qt.AlignLeft | Qt.AlignVCenter
+            )
+            self._label.setAttribute(
+                Qt.WA_TransparentForMouseEvents
+            )
+            self._label.clicked.connect(self._on_label_clicked)
 
         # --------------------------------------------------
         # Layout
@@ -4000,10 +4001,11 @@ class Toggle(QAbstractButton):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-
-        layout.addWidget(self._label)
-        layout.addStretch()
+        
+        if label_text:
+            layout.setSpacing(6)
+            layout.addWidget(self._label)
+            layout.addStretch()
 
         self.setCursor(Qt.PointingHandCursor)
 
@@ -4018,6 +4020,9 @@ class Toggle(QAbstractButton):
         return self._label_text
 
     def setText(self, text):
+        if self._label is None:
+            return
+
         self._label_text = text
         self._label.setText(text)
 
@@ -4058,12 +4063,16 @@ class Toggle(QAbstractButton):
     # ------------------------------------------------------
 
     def sizeHint(self):
+        if self._label is None:
+            return QSize(
+                self._toggle_width,
+                self._toggle_height,
+            )
+
         label_size = self._label.sizeHint()
 
         return QSize(
-            label_size.width()
-            + 6
-            + self._toggle_width,
+            label_size.width() + 6 + self._toggle_width,
             max(
                 label_size.height(),
                 self._toggle_height,
@@ -4172,7 +4181,8 @@ class Toggle(QAbstractButton):
 
     def setDisabled(self, disabled):
         super().setDisabled(disabled)
-        self._label.setDisabled(disabled)
+        if self._label is not None:
+            self._label.setDisabled(disabled)
         self.update()
 
     # ------------------------------------------------------
