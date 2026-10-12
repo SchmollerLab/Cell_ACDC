@@ -2390,7 +2390,6 @@ class SetMeasurementsDialog(QBaseDialog):
                     ),
                     'target': checkbox,
                 }
-                print(records[display]["tooltip"])
         self.searchWidget.setSearchRecords(records)
 
     def stopMeasurementSearchBlink(self):
