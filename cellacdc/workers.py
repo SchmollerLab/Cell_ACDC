@@ -1896,11 +1896,18 @@ class trackingWorker(QObject):
                 # repeating tracking on a never visited frame
                 # --> modify only raw data and ask later what to do
                 self.posData.segm_data[frame_i] = lab
+                if frame_i == current_frame_i:
+                    self.posData.lab = lab
+
                 self.mainWin.update_rp(
                     frame_i=frame_i,
                     wl_update=False,
                     is_worker_thread=True
                 )
+                if frame_i == current_frame_i:
+                    self.posData.allData_li[frame_i]['regionprops'] = (
+                        self.posData.rp
+                    )
                 self.trackingOnNeverVisitedFrames = True
             else:
                 # Get the rest of the stored metadata based on the new lab

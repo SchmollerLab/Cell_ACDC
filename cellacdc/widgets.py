@@ -3994,8 +3994,6 @@ class Toggle(QAbstractButton):
         )
         self._label.clicked.connect(self._on_label_clicked)
 
-        self.clicked.connect(self._on_toggle_clicked)
-
         # --------------------------------------------------
         # Layout
         # --------------------------------------------------
@@ -4008,9 +4006,6 @@ class Toggle(QAbstractButton):
         layout.addStretch()
 
         self.setCursor(Qt.PointingHandCursor)
-
-    def _on_toggle_clicked(self):
-        pass
 
     def _on_label_clicked(self):
         self.clicked.emit(self.isChecked())
@@ -4051,6 +4046,9 @@ class Toggle(QAbstractButton):
 
     def toggle(self):
         self.setChecked(not self._checked)
+    
+    def click(self):
+        self.toggle()
 
     # ------------------------------------------------------
     # Geometry
