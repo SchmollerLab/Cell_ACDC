@@ -32238,16 +32238,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         IDs_set = posData.rp.IDs_set
 
         new_objs_1st_step, lost_objs_1st_step = annotInfo
+        new_objs_1st_step_new, lost_objs_1st_step_new = [], []
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
             # guard against removed cells
             # ID is actually not present in current frame !DO not use newObj, it is stale!
-            if lostObj.label not in IDs_set: 
+            if lostObj.label not in IDs_set:
                 continue
             
             ID_in_lab = posData.lab[newObj.slice][newObj.image][0] # get the current lab of the object
             if ID_in_lab != lostObj.label:
                 continue
             
+            new_objs_1st_step_new.append(newObj)
+            lost_objs_1st_step_new.append(lostObj)
+
             allContours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -32265,6 +32269,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_trackerMovementAgainstPrevLinesItem.addPoints(xx, yy)
             
+        # update annotInfo with filtered objects
+        posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = (
+            new_objs_1st_step_new, lost_objs_1st_step_new
+        )
+
     # settings helper
     def _get_setting_value(self, index_name, default, cast=int):
         if self.df_settings is None or index_name not in self.df_settings.index:
