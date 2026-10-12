@@ -1912,6 +1912,9 @@ class trackingWorker(QObject):
             else:
                 # Get the rest of the stored metadata based on the new lab
                 self.posData.allData_li[frame_i]['labels'] = lab
+                if frame_i == current_frame_i:
+                    self.posData.lab = lab
+                    
                 self.mainWin.update_rp(
                     frame_i=frame_i,
                     is_worker_thread=True

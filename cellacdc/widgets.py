@@ -4048,7 +4048,10 @@ class Toggle(QAbstractButton):
         self.setChecked(not self._checked)
     
     def click(self):
+        if not self.isEnabled():
+            return
         self.toggle()
+        self.clicked.emit(self.isChecked())
 
     # ------------------------------------------------------
     # Geometry
