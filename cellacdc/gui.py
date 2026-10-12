@@ -7193,10 +7193,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
-        x, y = event.pos()
-        setDelRoiCursor = any([
-            self.isMouseOnDelRoi(roi, x, y) for roi in delROIs
-        ])
+        setDelRoiCursor = False
+        if not event.isExit():
+            x, y = event.pos()
+            setDelRoiCursor = any([
+                self.isMouseOnDelRoi(roi, x, y) for roi in delROIs
+            ])
         setBrushCursor = (
             self.brushButton.isChecked() and not event.isExit()
             and (noModifier or shift or ctrl) and not setDelRoiCursor

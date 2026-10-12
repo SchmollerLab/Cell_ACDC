@@ -3,6 +3,7 @@ import os
 
 from trackastra.model import Trackastra
 from trackastra.tracking import graph_to_ctc
+from trackastra.utils import str2path
 
 from ... import _types, myutils, core
 
@@ -40,7 +41,8 @@ class tracker:
         device = myutils.get_torch_device()
         if model_folder_path:
             self.model = Trackastra.from_folder(
-                model_folder_path, device=str(device)
+                str2path(model_folder_path), 
+                device=str(device)
             )
         else:
             self.model = Trackastra.from_pretrained(
