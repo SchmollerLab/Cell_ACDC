@@ -16129,7 +16129,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             prev_IDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
 
-        if ask_back_prop and all(ID not in prev_IDs for ID in unique_ids):
+        if ask_back_prop and sum(ID in prev_IDs for ID in unique_ids) <= 1:
             ask_back_prop = False
 
         if not self.isFrameCcaAnnotated() and ask_back_prop:
