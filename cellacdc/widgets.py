@@ -56,7 +56,7 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-    QButtonGroup, QStyleOptionSlider
+    QButtonGroup, QStyleOptionSlider, QAbstractButton
 )
 import qtpy.compat
 
@@ -3924,7 +3924,7 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
         mask, self._slice = myutils.clipSelemMask(mask, shape, Yc, Xc, copy=False)
         return mask
 
-class Toggle(QWidget):
+class Toggle(QAbstractButton):
     toggled = Signal(bool)
     clicked = Signal(bool)
 
