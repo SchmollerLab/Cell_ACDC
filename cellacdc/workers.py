@@ -6509,7 +6509,6 @@ class saveDataWorker(QObject):
                     save_metrics=self.mainWin.save_metrics,
                     last_cca_frame_i=self.mainWin.save_cca_until_frame_i
                 )
-                printl('end')
             else:
                 self.saveAcdcDf(posData, end_i)
                 
