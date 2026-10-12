@@ -37,7 +37,8 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel
+    QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel,
+    QAbstractAnimation
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -3993,6 +3994,8 @@ class Toggle(QAbstractButton):
         )
         self._label.clicked.connect(self._on_label_clicked)
 
+        self.clicked.connect(self._on_toggle_clicked)
+
         # --------------------------------------------------
         # Layout
         # --------------------------------------------------
@@ -4005,6 +4008,9 @@ class Toggle(QAbstractButton):
         layout.addStretch()
 
         self.setCursor(Qt.PointingHandCursor)
+
+    def _on_toggle_clicked(self):
+        pass
 
     def _on_label_clicked(self):
         self.clicked.emit(self.isChecked())
@@ -4085,24 +4091,18 @@ class Toggle(QAbstractButton):
 
     def circlePos(self, checked):
         rect = self.toggleRect()
-
-        diameter = self.circleDiameter()
+        diameter = rect.height() - self._circle_margin
         margin = self._circle_margin / 2
 
         if checked:
-            return (
-                rect.x()
-                + rect.width()
-                - margin
-                - diameter
-            )
+            pos = rect.x() + rect.width() - margin - diameter
+        else:
+            pos = rect.x() + margin
 
-        return rect.x() + margin
+        return pos
 
     def _updateCirclePosition(self):
-        self._circle_position = self.circlePos(
-            self._checked
-        )
+        self._circle_position = self.circlePos(self._checked)
         self.update()
 
     # ------------------------------------------------------
@@ -4113,6 +4113,7 @@ class Toggle(QAbstractButton):
         super().showEvent(event)
 
         # At this point Qt has assigned the real geometry.
+        self.animation.stop()
         self._updateCirclePosition()
 
     def resizeEvent(self, event):
@@ -4120,7 +4121,7 @@ class Toggle(QAbstractButton):
 
         # Keep the circle correctly positioned if the widget
         # is resized.
-        if not self.animation.state():
+        if self.animation.state() != QAbstractAnimation.State.Running:
             self._updateCirclePosition()
 
     # ------------------------------------------------------

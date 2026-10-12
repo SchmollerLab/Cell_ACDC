@@ -2086,11 +2086,11 @@ class SetMeasurementsDialog(QBaseDialog):
         topLayout = QHBoxLayout()
 
         
-        self.doNotAskAgainCheckbox = widgets.Toggle(
+        self.doNotAskAgainToggle = widgets.Toggle(
             label_text='Use the same selection for all following selected experiment folders'
         )
-        self.doNotAskAgainCheckbox.setVisible(addDoNotAskAgainCheckbox)
-        topLayout.addWidget(self.doNotAskAgainCheckbox)
+        self.doNotAskAgainToggle.setVisible(addDoNotAskAgainCheckbox)
+        topLayout.addWidget(self.doNotAskAgainToggle)
         
         searchLineEdit = widgets.SearchLineEdit()
         topLayout.addStretch(5)
@@ -3101,7 +3101,7 @@ class SetMeasurementsDialog(QBaseDialog):
         if self.allPos_acdc_df_cols is None:
             self.saveLastSelection()
             self.cancel = False
-            self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
+            self.doNotAskAgain = self.doNotAskAgainToggle.isChecked()
             self.close()
             self.sigClosed.emit()
             return
@@ -3151,7 +3151,7 @@ class SetMeasurementsDialog(QBaseDialog):
         
         self.saveLastSelection()
         self.cancel = False  
-        self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
+        self.doNotAskAgain = self.doNotAskAgainToggle.isChecked()
         self.close()
         self.sigClosed.emit()
         

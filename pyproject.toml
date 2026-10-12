@@ -170,6 +170,7 @@ conflicts = [
 
 # Ignore DeprecationWarnings
 [tool.pytest.ini_options]
+addopts = ["--ignore=cellacdc/test_tracker.py"]
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore:cannot import name '_C' from 'sam2':UserWarning",

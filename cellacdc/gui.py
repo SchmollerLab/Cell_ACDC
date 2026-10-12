@@ -25773,6 +25773,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
             frame_i=None,
             wl_update=True, wl_track_og_curr=False, wl_update_lab=False, # wl stuff
+            is_worker_thread=False
         ):
         """Update regionprops and related GUI/tracking metadata.
 
@@ -25783,8 +25784,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         Parameters
         ----------
         draw : bool, optional
-            If ``True``, redraw annotations/metadata after updating regionprops.
-            Default is ``True``.
+            Not used anymore. Kept only because we don't know where else 
+            update_rp is called with this kwarg.
         debug : bool, optional
             Reserved debug flag (currently not used directly in this method).
         assignments : dict, optional
@@ -25825,6 +25826,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         Updates ``posData.IDs`` when operating on the current frame and, when
         enabled, propagates whitelist additions/removals for tracking.
         """
+        if is_worker_thread and use_curr_view:
+            raise ValueError(
+                '`use_curr_view` and `is_worker_thread` cannot be True '
+                'at the same time, '
+                'because `use_curr_view` cannot be True when this function '
+                'is called by another thread.'
+            )
         #updating rp is very clostly, as it deletes all the cashed
         if use_curr_view and use_bbox:
             raise ValueError('''use_curr_view and use_bbox cannot be True at the 
@@ -25927,7 +25935,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if on_curr_frame:
             posData.IDs = rp.IDs
         
-        self.update_rp_metadata(draw=draw, frame_i = frame_i)        
+        self.update_rp_metadata(draw=draw, frame_i=frame_i)        
+
+        if not is_worker_thread and frame_i==posData.frame_i:
+            # Update the overlay masks given the new rp
+            self.setOverlaySegmMasks()
+
         if not (wl_update and not unvisited):
             return
 
