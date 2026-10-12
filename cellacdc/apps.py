@@ -1,9 +1,8 @@
 import os
 import sys
 import re
-from typing import Literal, Callable, Dict, Iterable, List, Tuple
+from typing import Literal, Callable, Dict, Generator, Iterable, List, Tuple
 import datetime
-from difflib import SequenceMatcher
 import pathlib
 from collections import defaultdict
 import zipfile
@@ -2084,7 +2083,6 @@ class SetMeasurementsDialog(QBaseDialog):
         layout = QVBoxLayout()
         
         topLayout = QHBoxLayout()
-
         
         self.doNotAskAgainCheckbox = widgets.Toggle(
             label_text='Use the same selection for all following selected experiment folders'
@@ -2092,13 +2090,22 @@ class SetMeasurementsDialog(QBaseDialog):
         self.doNotAskAgainCheckbox.setVisible(addDoNotAskAgainCheckbox)
         topLayout.addWidget(self.doNotAskAgainCheckbox)
         
-        searchLineEdit = widgets.SearchLineEdit()
+        self.searchWidget = widgets.ButtonSearchWidget(loadingType=None)
+        self.searchWidget.search_input.setPlaceholderText('Search measurements...')
+        self.searchWidget.search_input.setToolTip(
+            'Search measurement names and descriptions, including typos and '
+            'synonyms. Choose a result with Up/Down and Enter, or click it, '
+            'to reveal and highlight the measurement without checking it.'
+        )
+        self.searchWidget.search_input.setMinimumWidth(250)
+        self.searchWidget.search_input.setMaximumWidth(16777215)
         topLayout.addStretch(5)
-        topLayout.addWidget(searchLineEdit)
+        topLayout.addWidget(self.searchWidget)
         topLayout.setStretch(0, 0)
         topLayout.setStretch(2, 3)
-        
+                
         mainScrollArea = widgets.ScrollArea()
+        self.mainScrollArea = mainScrollArea
         mainScrollAreaWidget = QWidget()
         mainScrollArea.setWidget(mainScrollAreaWidget)
         
@@ -2307,7 +2314,9 @@ class SetMeasurementsDialog(QBaseDialog):
         if state is not None:
             self.setState(state)
 
-        searchLineEdit.textEdited.connect(self.searchAndHighlight)
+        self.searchWidget.search_input.textChanged.connect(self.searchAndHighlight)
+        self.searchWidget.sigTriggerBlink.connect(self.highlightSearchMeasurement)
+        self.updateMeasurementSearchRecords()
         self.selectAllButton.sigClicked.connect(self.selectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
@@ -2353,25 +2362,60 @@ class SetMeasurementsDialog(QBaseDialog):
         
         return all_metrics
     
-    def searchAndHighlight(self, text):
+    def measurementSearchGroups(
+        self,
+    ) -> 'Generator[Tuple[widgets._metricsQGBox, str], None, None]':
         for chNameGroupbox in self.chNameGroupboxes:
             for groupbox in chNameGroupbox.groupboxes:
-                groupbox.highlightCheckboxesFromSearchText(text)
-        
-        self.regionPropsQGBox.highlightCheckboxesFromSearchText(text)
-        self.sizeMetricsQGBox.highlightCheckboxesFromSearchText(text)
-        
-        if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.highlightCheckboxesFromSearchText(
-                text
+                yield groupbox, chNameGroupbox.chName
+            customGroupbox = getattr(
+                chNameGroupbox, 'customMetricsQGBox', None
             )
-        
-        if self.mixedChannelsCombineMetricsQGBox is None:
-            return
-        
-        self.mixedChannelsCombineMetricsQGBox.highlightCheckboxesFromSearchText(
-            text
-        )
+            if customGroupbox is not None:
+                yield customGroupbox, chNameGroupbox.chName
+        yield self.regionPropsQGBox, ''
+        yield self.sizeMetricsQGBox, ''
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            yield self.chIndipendCustomeMetricsQGBox, ''
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            yield self.mixedChannelsCombineMetricsQGBox, ''
+
+    def updateMeasurementSearchRecords(self):
+        records = {}
+        for groupbox, channel in self.measurementSearchGroups():
+            context = f'{channel}: {groupbox.title()}' if channel else groupbox.title()
+            for checkbox in groupbox.checkBoxes:
+                if checkbox.isHidden():
+                    continue
+                name = checkbox.text()
+                display = f'{name} ({context})'
+                records[display] = {
+                    'display': display,
+                    'search_name': display,
+                    'synonyms': self.searchWidget._synonymsForName(name),
+                    'tooltip': html_utils.to_plain_text(
+                        groupbox.metricDescriptions.get(name, '')
+                    ),
+                    'target': checkbox,
+                }
+        self.searchWidget.setSearchRecords(records)
+
+    def stopMeasurementSearchBlink(self):
+        for blinker in self.findChildren(qutils.QControlBlink):
+            blinker.stop()
+
+    def searchAndHighlight(self, text):
+        self.stopMeasurementSearchBlink()
+        for groupbox, _ in self.measurementSearchGroups():
+            groupbox.highlightCheckboxesFromSearchText(text)
+
+    def highlightSearchMeasurement(self, checkbox):
+        """Reveal and blink a popup result without changing its checked state."""
+        self.stopMeasurementSearchBlink()
+        checkbox.scrollArea.ensureWidgetVisible(checkbox)
+        self.mainScrollArea.ensureWidgetVisible(checkbox.scrollArea)
+        blinker = qutils.QControlBlink(checkbox, qparent=self)
+        blinker.start()
     
     def selectedMetricNameAndGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2587,6 +2631,8 @@ class SetMeasurementsDialog(QBaseDialog):
             if w is None:
                 continue
             w.hide()
+
+        self.updateMeasurementSearchRecords()
                
         if self.allPosData is not None:
             for posData in self.allPosData:
@@ -22338,25 +22384,16 @@ class SearchableListboxDialog(QBaseDialog):
             item = tree_item.text(0)
             # The proxy provides the ranking; highlight ranges are mapped back
             # onto the original display string.
-            ranges = self._searchHighlightRanges(
-                normalized_query, item
-            ) if normalized_query else []
+            ranges = widgets._searchHighlightRanges(
+                normalized_query,
+                item,
+                self.searchProxyModel.FUZZY_THRESHOLD,
+            )
 
             if ranges:
-                highlighted_parts = []
-                previous_end = 0
-                for start, end in ranges:
-                    highlighted_parts.extend((
-                        html.escape(item[previous_end:start]),
-                        (
-                            f'<span style="color:{highlight_color}; '
-                            f'font-weight:bold;">'
-                            f'{html.escape(item[start:end])}</span>'
-                        ),
-                    ))
-                    previous_end = end
-                highlighted_parts.append(html.escape(item[previous_end:]))
-                highlighted_text = ''.join(highlighted_parts)
+                highlighted_text = widgets._highlightSearchText(
+                    item, ranges, highlight_color
+                )
                 label = QLabel()
                 label.setTextFormat(Qt.RichText)
                 label.setAttribute(Qt.WA_TransparentForMouseEvents)
@@ -22373,107 +22410,7 @@ class SearchableListboxDialog(QBaseDialog):
     @staticmethod
     def _normalizeSearchText(text):
         """Case-fold text and remove non-alphanumeric search separators."""
-        return ''.join(
-            character.casefold()
-            for character in text
-            if character.isalnum()
-        )
-
-    def _normalizedItemText(self, item):
-        """Normalize an item and retain source offsets for highlighting."""
-        normalized = []
-        source_positions = []
-        for position, character in enumerate(item):
-            if not character.isalnum():
-                continue
-            folded = character.casefold()
-            normalized.extend(folded)
-            source_positions.extend([position] * len(folded))
-        return ''.join(normalized), source_positions
-
-    @staticmethod
-    def _sourceRanges(normalized_start, normalized_end, source_positions):
-        """Map a normalized-text span back to contiguous display-text spans."""
-        source_indices = source_positions[normalized_start:normalized_end]
-        ranges = []
-        for position in source_indices:
-            if ranges and position <= ranges[-1][1]:
-                ranges[-1] = (ranges[-1][0], position + 1)
-            else:
-                ranges.append((position, position + 1))
-        return ranges
-
-    def _searchHighlightRanges(self, query, item):
-        """Get display-text spans for an exact or fuzzy match."""
-        normalized_item, source_positions = self._normalizedItemText(item)
-        match_start = normalized_item.find(query)
-        if match_start >= 0:
-            return self._sourceRanges(
-                match_start,
-                match_start + len(query),
-                source_positions,
-            )
-        return self._fuzzyHighlightRanges(
-            query, normalized_item, source_positions
-        )
-
-    def _fuzzyHighlightRanges(
-            self, query, normalized_item, source_positions
-        ):
-        """Map matching fuzzy character spans back to the displayed item."""
-        matcher = SequenceMatcher(None, query, normalized_item)
-        best_ratio = self.searchProxyModel.FUZZY_THRESHOLD
-        best_start = None
-
-        for query_start, item_start, _ in matcher.get_matching_blocks():
-            # Align the candidate window with a matching block, then score a
-            # query-length slice as in the proxy model's fuzzy matcher.
-            candidate_start = max(item_start - query_start, 0)
-            candidate = normalized_item[
-                candidate_start:candidate_start + len(query)
-            ]
-            ratio = SequenceMatcher(None, query, candidate).ratio()
-            if ratio >= best_ratio and (
-                    best_start is None or ratio > best_ratio
-                ):
-                best_ratio = ratio
-                best_start = candidate_start
-
-        if best_start is None:
-            return []
-
-        # Highlight only characters that matched, not the entire candidate
-        # window, then translate normalized offsets to display offsets.
-        candidate = normalized_item[best_start:best_start + len(query)]
-        normalized_ranges = []
-        for block in SequenceMatcher(None, query, candidate).get_matching_blocks():
-            if not block.size:
-                continue
-            start = best_start + block.b
-            end = start + block.size
-            if normalized_ranges and start <= normalized_ranges[-1][1]:
-                normalized_ranges[-1] = (
-                    normalized_ranges[-1][0],
-                    max(normalized_ranges[-1][1], end),
-                )
-            else:
-                normalized_ranges.append((start, end))
-
-        source_ranges = []
-        for start, end in normalized_ranges:
-            source_ranges.extend(
-                self._sourceRanges(start, end, source_positions)
-            )
-        merged_ranges = []
-        for start, end in source_ranges:
-            if merged_ranges and start <= merged_ranges[-1][1]:
-                merged_ranges[-1] = (
-                    merged_ranges[-1][0],
-                    max(merged_ranges[-1][1], end),
-                )
-            else:
-                merged_ranges.append((start, end))
-        return merged_ranges
+        return widgets._normalizeSearchText(text)
 
     def warnSelectionEmpty(self):
         """Explain that a row must be selected before confirming."""
