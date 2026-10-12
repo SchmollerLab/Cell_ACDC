@@ -1025,25 +1025,37 @@ class mainWin(QMainWindow):
         # Step 0. Remove the old options from the menu
         self.recentPathsMenu.clear()
         # Step 1. Read recent Paths
-        recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            recentPaths = df['path'].to_list()
-        else:
-            recentPaths = []
+        recentPaths, dates = myutils.get_recent_paths(self)
         # Step 2. Dynamically create the actions
         actions = []
         for path in recentPaths:
-            if not os.path.exists(path):
-                continue
             action = QAction(path, self)
             action.triggered.connect(partial(myutils.showInExplorer, path))
             actions.append(action)
         # Step 3. Add the actions to the menu
         self.recentPathsMenu.addActions(actions)
-
+        
+        # Step 4. Create the "More/Search..." dialog and action
+        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+            recentPaths,
+            title='Recent paths',
+            dates=dates,
+            searchLineEditText='Search recent paths  (double-click to open)...',
+            parent=self,
+        )
+        self.openRecentMoreAction = QAction('More/Search...', self)
+        self.openRecentMoreAction.triggered.connect(
+            self.showOpenRecentMoreWidget
+        )
+        self.openRecentMoreDialog.sigOk.connect(
+            myutils.showInExplorer
+        )
+        self.recentPathsMenu.addSeparator()
+        self.recentPathsMenu.addAction(self.openRecentMoreAction)
+        
+    def showOpenRecentMoreWidget(self):
+        self.openRecentMoreDialog.show()
+        
     def showContribute(self):
         self.launchWelcomeGuide()
         self.welcomeGuide.showPage(self.welcomeGuide.contributeItem)
