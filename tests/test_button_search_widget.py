@@ -373,3 +373,29 @@ def test_measurement_search_excludes_deleted_checkbox(measurements_dialog):
         for row in range(dialog.searchWidget.model.rowCount())
     ]
     assert checkbox not in targets
+
+
+def test_measurement_search_includes_channel_custom_metrics(
+        measurements_dialog, monkeypatch
+    ):
+    dialog = measurements_dialog
+    channel_group = dialog.chNameGroupboxes[0]
+    custom_group = widgets._metricsQGBox(
+        {'custom_metric': 'Custom metric description'},
+        'Custom measurements',
+        parent=channel_group,
+    )
+    monkeypatch.setattr(
+        channel_group, 'customMetricsQGBox', custom_group, raising=False
+    )
+
+    dialog.updateMeasurementSearchRecords()
+
+    assert (
+        custom_group, channel_group.chName
+    ) in dialog.measurementSearchGroups()
+    targets = [
+        dialog.searchWidget.model.item(row).data(Qt.UserRole + 2)
+        for row in range(dialog.searchWidget.model.rowCount())
+    ]
+    assert custom_group.checkBoxes[0] in targets

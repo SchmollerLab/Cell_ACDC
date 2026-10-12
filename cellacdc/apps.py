@@ -1,7 +1,7 @@
 import os
 import sys
 import re
-from typing import Literal, Callable, Dict, Iterable, List, Tuple
+from typing import Literal, Callable, Dict, Generator, Iterable, List, Tuple
 import datetime
 import pathlib
 from collections import defaultdict
@@ -2362,10 +2362,17 @@ class SetMeasurementsDialog(QBaseDialog):
         
         return all_metrics
     
-    def measurementSearchGroups(self):
+    def measurementSearchGroups(
+        self,
+    ) -> 'Generator[Tuple[widgets._metricsQGBox, str], None, None]':
         for chNameGroupbox in self.chNameGroupboxes:
             for groupbox in chNameGroupbox.groupboxes:
                 yield groupbox, chNameGroupbox.chName
+            customGroupbox = getattr(
+                chNameGroupbox, 'customMetricsQGBox', None
+            )
+            if customGroupbox is not None:
+                yield customGroupbox, chNameGroupbox.chName
         yield self.regionPropsQGBox, ''
         yield self.sizeMetricsQGBox, ''
         if self.chIndipendCustomeMetricsQGBox is not None:
