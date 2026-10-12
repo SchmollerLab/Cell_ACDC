@@ -2101,8 +2101,9 @@ class SetMeasurementsDialog(QBaseDialog):
         self.searchWidget.search_input.setMaximumWidth(16777215)
         topLayout.addStretch(5)
         topLayout.addWidget(self.searchWidget)
-        topLayout.setStretch(1, 3)
-        
+        topLayout.setStretch(0, 0)
+        topLayout.setStretch(2, 3)
+                
         mainScrollArea = widgets.ScrollArea()
         self.mainScrollArea = mainScrollArea
         mainScrollAreaWidget = QWidget()

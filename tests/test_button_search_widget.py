@@ -1,3 +1,5 @@
+from difflib import SequenceMatcher
+import random
 from types import SimpleNamespace
 
 import pytest
@@ -195,6 +197,73 @@ def test_dropdown_retains_fuzzy_matching_without_checkbox_highlighting(search):
     assert not widgets._matchesSearchText('backgroud', 'Background mean intensity')
 
 
+def _reference_similarity(query, text):
+    if not query or not text:
+        return 0.0
+    matcher = SequenceMatcher(None, query, text)
+    best_ratio = 0.0
+    for query_start, text_start, _ in matcher.get_matching_blocks():
+        start = max(text_start - query_start, 0)
+        candidate = text[start:start + len(query)]
+        best_ratio = max(
+            best_ratio, SequenceMatcher(None, query, candidate).ratio()
+        )
+        if best_ratio == 1.0:
+            break
+    return best_ratio
+
+
+@pytest.mark.parametrize('minimum_similarity', [0.0, 0.5, 0.75, 1.0])
+def test_fuzzy_similarity_preserves_qualifying_ratios(minimum_similarity):
+    rng = random.Random(42)
+    pairs = [
+        ('', 'background'),
+        ('background', ''),
+        ('backgroud', 'Background mean intensity'.casefold()),
+        ('ab', 'ac'),
+        ('long measurement query', 'id'),
+        ('background mean intensity', 'background mean intensity ' * 20),
+        ('a' * 210, 'b' + 'a' * 220),
+    ]
+    alphabet = 'abcde _'
+    pairs.extend(
+        (
+            ''.join(rng.choices(alphabet, k=rng.randrange(1, 60))),
+            ''.join(rng.choices(alphabet, k=rng.randrange(1, 250))),
+        )
+        for _ in range(200)
+    )
+    for query, text in pairs:
+        expected = _reference_similarity(query, text)
+        if expected < minimum_similarity:
+            expected = 0.0
+        assert widgets._fuzzySearchSimilarity(
+            query, text, minimum_similarity
+        ) == expected
+
+
+def test_similarity_cache_reuses_zero_scores_and_resets(search, monkeypatch):
+    calls = []
+    original = widgets._fuzzySearchSimilarity
+
+    def tracked(query, text, minimum_similarity=0.0):
+        calls.append((query, text, minimum_similarity))
+        return original(query, text, minimum_similarity)
+
+    monkeypatch.setattr(widgets, '_fuzzySearchSimilarity', tracked)
+    proxy = search.proxy_model
+    proxy.setFilterText('unrelated query')
+    assert proxy._similarity('xyz') == 0.0
+    assert proxy._similarity('xyz') == 0.0
+    assert calls == [('unrelated query', 'xyz', 0.5)]
+    proxy.setFilterText('xyz')
+    assert proxy._similarity('xyz') == 1.0
+    assert calls[-1] == ('xyz', 'xyz', 0.5)
+    proxy.refresh()
+    proxy._similarity('xyz')
+    assert len(calls) == 3
+
+
 @pytest.fixture
 def measurements_dialog(app):
     dialog = apps.SetMeasurementsDialog(
@@ -208,6 +277,46 @@ def measurements_dialog(app):
     dialog.searchWidget.popup.deleteLater()
     dialog.deleteLater()
     app.processEvents()
+
+
+@pytest.mark.parametrize(
+    'query',
+    [
+        'background',
+        'backgroud',
+        'background mean intensity',
+        'nonexistent measurement query',
+        'GFP mean amount fluorescence background signal',
+        '3',
+    ],
+)
+def test_measurement_search_preserves_scores_and_order(
+        measurements_dialog, monkeypatch, query
+    ):
+    search = measurements_dialog.searchWidget
+    proxy = search.proxy_model
+    search.on_search_text_changed(query)
+    scores = [
+        proxy._getScore(search.model.index(row, 0))
+        for row in range(search.model.rowCount())
+    ]
+    results = [
+        proxy.index(row, 0).data(Qt.DisplayRole)
+        for row in range(proxy.rowCount())
+    ]
+    monkeypatch.setattr(
+        proxy, '_similarity',
+        lambda text: _reference_similarity(proxy._filterText, text),
+    )
+    search.on_search_text_changed(query)
+    assert scores == [
+        proxy._getScore(search.model.index(row, 0))
+        for row in range(search.model.rowCount())
+    ]
+    assert results == [
+        proxy.index(row, 0).data(Qt.DisplayRole)
+        for row in range(proxy.rowCount())
+    ]
 
 
 @pytest.mark.parametrize('selection_method', ['keyboard', 'mouse'])

@@ -13568,14 +13568,16 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         self._filterText = ''
         self.FUZZY_THRESHOLD = 0.5
         self._scoreCache = {}
+        self._similarityCache = {}
 
     def setFilterText(self, text):
         self._filterText = text.strip().casefold()
         self.refresh()
 
     def refresh(self):
-        """Clear cached scores and re-apply filtering and sorting."""
+        """Clear query-local caches and re-apply filtering and sorting."""
         self._scoreCache.clear()
+        self._similarityCache.clear()
         # self.invalidateFilter()
         self.invalidate()
         
@@ -13651,23 +13653,51 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         return 7, 0
 
     def _similarity(self, text):
-        return _fuzzySearchSimilarity(self._filterText, text)
+        cache_key = (text, self.FUZZY_THRESHOLD)
+        similarity = self._similarityCache.get(cache_key)
+        if similarity is None:
+            similarity = _fuzzySearchSimilarity(
+                self._filterText, text, self.FUZZY_THRESHOLD
+            )
+            self._similarityCache[cache_key] = similarity
+        return similarity
 
 
-def _fuzzySearchSimilarity(query, text):
+def _fuzzySearchSimilarity(query, text, minimum_similarity=0.0):
+    """Return the best partial ratio, or zero below the requested minimum."""
     if not query or not text:
         return 0.0
 
+    query_length = len(query)
+    candidate_length = min(query_length, len(text))
+    if (
+            2.0 * candidate_length / (query_length + candidate_length)
+            < minimum_similarity
+        ):
+        return 0.0
+
     matcher = SequenceMatcher(None, query, text)
+    blocks = matcher.get_matching_blocks()
     best_ratio = 0.0
-    for query_start, text_start, _ in matcher.get_matching_blocks():
+    seen_starts = set()
+    for query_start, text_start, _ in blocks:
         start = max(text_start - query_start, 0)
-        candidate = text[start:start + len(query)]
-        ratio = SequenceMatcher(None, query, candidate).ratio()
+        if start in seen_starts:
+            continue
+        seen_starts.add(start)
+        candidate = text[start:start + query_length]
+        matcher.set_seq2(candidate)
+        # These upper bounds cannot discard a qualifying or better match.
+        lower_bound = max(minimum_similarity, best_ratio)
+        if matcher.real_quick_ratio() < lower_bound:
+            continue
+        if matcher.quick_ratio() < lower_bound:
+            continue
+        ratio = matcher.ratio()
         best_ratio = max(best_ratio, ratio)
         if best_ratio == 1.0:
             break
-    return best_ratio
+    return best_ratio if best_ratio >= minimum_similarity else 0.0
 
 
 def _searchSynonyms():
