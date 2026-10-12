@@ -56,12 +56,8 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-<<<<<<< HEAD
     QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
-    QStyleOptionViewItem
-=======
-    QButtonGroup, QStyleOptionSlider, QAbstractButton
->>>>>>> main
+    QStyleOptionViewItem, QAbstractButton
 )
 import qtpy.compat
 
