@@ -35,7 +35,6 @@ from . import prompts, load, myutils, apps, core, dataPrep, widgets
 from . import html_utils, printl
 from . import exception_handler
 from . import workers
-from . import recentPaths_path
 from . import config
 from . import urls
 
@@ -221,46 +220,6 @@ class segmWin(QMainWindow):
 
         mainLayout.setContentsMargins(20, 0, 20, 20)
         mainContainer.setLayout(mainLayout)
-
-    def getMostRecentPath(self):
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = df.iloc[0]['path']
-            if not isinstance(self.MostRecentPath, str):
-                self.MostRecentPath = ''
-        else:
-            self.MostRecentPath = ''
-
-    def addToRecentPaths(self, exp_path):
-        if not os.path.exists(exp_path):
-            return
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            recentPaths = df['path'].to_list()
-            if 'opened_last_on' in df.columns:
-                openedOn = df['opened_last_on'].to_list()
-            else:
-                openedOn = [np.nan]*len(recentPaths)
-            if exp_path in recentPaths:
-                pop_idx = recentPaths.index(exp_path)
-                recentPaths.pop(pop_idx)
-                openedOn.pop(pop_idx)
-            recentPaths.insert(0, exp_path)
-            openedOn.insert(0, datetime.datetime.now())
-            # Keep max 20 recent paths
-            if len(recentPaths) > 20:
-                recentPaths.pop(-1)
-                openedOn.pop(-1)
-        else:
-            recentPaths = [exp_path]
-            openedOn = [datetime.datetime.now()]
-        df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': pd.Series(openedOn,
-                                                       dtype='datetime64[ns]')})
-        df.index.name = 'index'
-        df.to_csv(recentPaths_path)
 
     def addPbar(self, add_inner=False):
         pBarLayout = QHBoxLayout()

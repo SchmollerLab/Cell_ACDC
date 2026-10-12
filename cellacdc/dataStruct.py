@@ -41,7 +41,6 @@ from . import exception_handler
 from . import apps, myutils, widgets, html_utils, printl
 from . import load, settings_csv_path
 from . import _palettes
-from . import recentPaths_path, cellacdc_path, settings_folderpath
 from . import urls
 from . import acdc_fiji_path
 from . import fiji_macros
@@ -1481,47 +1480,6 @@ class createDataStructWin(QMainWindow):
             fijiMacros_path = main_path / 'FijiMacros'
             systems.get(os.name, os.startfile)(fijiMacros_path)
 
-
-    def getMostRecentPath(self):
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = df.iloc[0]['path']
-            if not isinstance(self.MostRecentPath, str):
-                self.MostRecentPath = ''
-        else:
-            self.MostRecentPath = ''
-
-    def addToRecentPaths(self, raw_src_path):
-        if not os.path.exists(raw_src_path):
-            return
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            recentPaths = df['path'].to_list()
-            if 'opened_last_on' in df.columns:
-                openedOn = df['opened_last_on'].to_list()
-            else:
-                openedOn = [np.nan]*len(recentPaths)
-            if raw_src_path in recentPaths:
-                pop_idx = recentPaths.index(raw_src_path)
-                recentPaths.pop(pop_idx)
-                openedOn.pop(pop_idx)
-            recentPaths.insert(0, raw_src_path)
-            openedOn.insert(0, datetime.datetime.now())
-            # Keep max 20 recent paths
-            if len(recentPaths) > 20:
-                recentPaths.pop(-1)
-                openedOn.pop(-1)
-        else:
-            recentPaths = [raw_src_path]
-            openedOn = [datetime.datetime.now()]
-        df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': pd.Series(openedOn,
-                                                       dtype='datetime64[ns]')})
-        df.index.name = 'index'
-        df.to_csv(recentPaths_path)
-
     @exception_handler
     def main(self):
         self.log('Asking to setup conversion process...')
@@ -1571,7 +1529,7 @@ class createDataStructWin(QMainWindow):
         
         self.loadEntirePosIntoRam = loadEntirePosIntoRam
 
-        self.addToRecentPaths(exp_dst_path)
+        myutils.addToRecentPaths(exp_dst_path)
         self.addPbar()
         self.initBioIO(raw_src_path, rawFilenames)
 
