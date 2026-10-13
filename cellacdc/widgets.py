@@ -3360,6 +3360,9 @@ class ToolBar(QToolBar):
         
         self._logLabelAdded = False
     
+    def setStartValue(self, value: int):
+        self._start_value = value
+
     def showEvent(self, event):
         if self._log_func is None:
             return super().showEvent(event)
@@ -3648,6 +3651,9 @@ class ManualBackgroundToolBar(ToolBar):
     
     def clearInfoText(self):
         self.infoLabel.setText('')
+    
+    def doesIDexist(self):
+        return not bool(self.infoLabel.text())
     
 
 class rightClickToolButton(QToolButton):

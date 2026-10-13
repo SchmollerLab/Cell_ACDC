@@ -4838,10 +4838,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             actions.append(action)
             self.bottomLayoutContextMenu.zoomActionGroup.addAction(action)
         zoomMenu.addActions(actions)
-        editObjectTrackSettingsAction = self.bottomLayoutContextMenu.addAction(
-            'Edit object track settings...'
+        self.bottomLayoutContextMenu.addSeparator()
+
+        self.editObjectTrackSettingsAction = (
+                self.bottomLayoutContextMenu.addAction(
+                    'Edit object track settings...'
+            )
         )
-        editObjectTrackSettingsAction.triggered.connect(
+        self.editObjectTrackSettingsAction.setCheckable(True)
+        self.showFrameIndexAction = (
+                self.bottomLayoutContextMenu.addAction(
+                    'Show frame index (starts at 0)'
+            )
+        )
+        self.showFrameIndexAction.setCheckable(True)
+        self.showZsliceIndexAction = (
+                self.bottomLayoutContextMenu.addAction(
+                    'Show z-slice index (starts at 0)'
+            )
+        )
+        self.showZsliceIndexAction.setCheckable(True)
+
+        self.showFrameIndexAction.toggled.connect(self.showFrameIndexToggled)
+        self.showZsliceIndexAction.toggled.connect(self.showZsliceIndexToggled)
+
+        self.settingsMenu.insertAction(
+            self.highLowResAction, self.showFrameIndexAction
+        )
+        self.settingsMenu.insertAction(
+            self.highLowResAction, self.showZsliceIndexAction
+        )
+
+        self.bottomLayoutContextMenu.addSeparator()
+
+        self.editObjectTrackSettingsAction.triggered.connect(
             self.setAnnotateObjTrackSettings 
         )
         resetAction = self.bottomLayoutContextMenu.addAction(
@@ -8978,6 +9008,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setManualBackgroundImage()
         
         elif left_click and canAddManualBackgroundObj:
+            if not self.manualBackgroundToolbar.doesIDexist():
+                blinker = qutils.QControlBlink(
+                    self.manualBackgroundToolbar.infoLabel, 
+                    qparent=self
+                )
+                blinker.start()
+                return
+
             x, y = event.pos().x(), event.pos().y()
             
             self.addManualBackgroundObject(x, y)            
@@ -14201,6 +14239,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.launch3dViewerButton.setDisabled(True)
             self.launch3dViewerAction.setDisabled(True)
         
+        self.showZsliceIndexAction.setVisible(enabled)
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
@@ -16722,6 +16761,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.df_settings.at['bottom_sliders_zoom_perc', 'value'] = perc
         self.df_settings.to_csv(self.settings_csv_path)
         QTimer.singleShot(150, self.resizeGui)
+    
+    def showFrameIndexToggled(self, checked):
+        start_value = 0 if checked else 1
+        self.navigateToolBar.setStartValue(start_value)
+    
+    def showZsliceIndexToggled(self, checked):
+        ...
     
     def defaultRescaleIntensLutActionToggled(self, action):
         how = action.text()
@@ -22077,7 +22123,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.modeComboBox.setCurrentText('Snapshot')
             self.annotateToolbar.setVisible(True)
             self.labelsGrad.showNextFrameAction.setDisabled(True)
-
             self.rightImageFramesScrollbar.setVisible(False)
             self.rightImageFramesScrollbar.setDisabled(True)
             if not self.isSegm3D:
@@ -22101,7 +22146,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.manualBackgroundButton.setVisible(True)
             self.manualBackgroundButton.setDisabled(False)
             self.manualBackgroundButton.setCheckable(True)
-
+            self.editObjectTrackSettingsAction
+            self.showFrameIndexAction.setVisible(False)
+            self.editObjectTrackSettingsAction.setVisible(False)
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
@@ -22142,8 +22189,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.manualBackgroundButton.setVisible(False)
             self.manualBackgroundButton.setDisabled(True)
             self.manualBackgroundButton.setCheckable(False)
+            self.showFrameIndexAction.setVisible(True)
+            self.editObjectTrackSettingsAction.setVisible(True)
             
-        
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
             lutItem.rescaleAcrossTimeAction.setDisabled(self.isSnapshot)      
@@ -33450,6 +33498,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.scaleBar.removeFromAxis(self.ax1)
         except Exception as e:
             pass
+
+        self.showFrameIndexAction.setVisible(False)
+        self.showZsliceIndexAction.setVisible(False)
+        self.editObjectTrackSettingsAction.setVisible(False)
         
         if self.isDataLoaded:
             self.saveAnnotationOptions()
