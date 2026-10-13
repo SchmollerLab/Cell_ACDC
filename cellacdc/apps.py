@@ -2084,11 +2084,11 @@ class SetMeasurementsDialog(QBaseDialog):
         
         topLayout = QHBoxLayout()
         
-        self.doNotAskAgainCheckbox = widgets.Toggle(
+        self.doNotAskAgainToggle = widgets.Toggle(
             label_text='Use the same selection for all following selected experiment folders'
         )
-        self.doNotAskAgainCheckbox.setVisible(addDoNotAskAgainCheckbox)
-        topLayout.addWidget(self.doNotAskAgainCheckbox)
+        self.doNotAskAgainToggle.setVisible(addDoNotAskAgainCheckbox)
+        topLayout.addWidget(self.doNotAskAgainToggle)
         
         self.searchWidget = widgets.ButtonSearchWidget(loadingType=None)
         self.searchWidget.search_input.setPlaceholderText('Search measurements...')
@@ -3147,7 +3147,7 @@ class SetMeasurementsDialog(QBaseDialog):
         if self.allPos_acdc_df_cols is None:
             self.saveLastSelection()
             self.cancel = False
-            self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
+            self.doNotAskAgain = self.doNotAskAgainToggle.isChecked()
             self.close()
             self.sigClosed.emit()
             return
@@ -3197,7 +3197,7 @@ class SetMeasurementsDialog(QBaseDialog):
         
         self.saveLastSelection()
         self.cancel = False  
-        self.doNotAskAgain = self.doNotAskAgainCheckbox.isChecked()
+        self.doNotAskAgain = self.doNotAskAgainToggle.isChecked()
         self.close()
         self.sigClosed.emit()
         
@@ -21766,6 +21766,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             
         self.srcFolderPathSelected(srcFolderPath)
 
+    @exception_handler
     def srcFolderPathSelected(self, srcFolderPath):
         self.actionsFilesSourceFolder = {
             'files': [],

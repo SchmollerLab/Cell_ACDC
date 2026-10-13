@@ -256,13 +256,14 @@ class mainWin(QMainWindow):
     
     def addStatusBar(self, scheme):
         self.statusbar = self.statusBar()
-        # Permanent widget
-        label = QLabel('Dark mode')
         widget = QtWidgets.QWidget()
         layout = QHBoxLayout()
         widget.setLayout(layout)
-        layout.addWidget(label)
-        self.darkModeToggle = widgets.Toggle()
+        # layout.addWidget(label)
+        self.darkModeToggle = widgets.Toggle(
+            label_text='Dark mode',
+            label_spacing=10,
+            )
         self.darkModeToggle.ignoreEvent = False
         self.darkModeToggle.warnMessageBox  = True
         if scheme == 'dark':
@@ -270,6 +271,7 @@ class mainWin(QMainWindow):
             self.darkModeToggle.setChecked(True)
         self.darkModeToggle.toggled.connect(self.onDarkModeToggled)
         layout.addWidget(self.darkModeToggle)
+        layout.addStretch()
         self.statusBarLayout = layout
         self.statusbar.addWidget(widget)
     
@@ -1028,10 +1030,11 @@ class mainWin(QMainWindow):
         recentPaths, dates = myutils.get_recent_paths(self)
         # Step 2. Dynamically create the actions
         actions = []
-        for path in recentPaths:
+        for path in recentPaths[:20]:
             action = QAction(path, self)
             action.triggered.connect(partial(myutils.showInExplorer, path))
             actions.append(action)
+
         # Step 3. Add the actions to the menu
         self.recentPathsMenu.addActions(actions)
         

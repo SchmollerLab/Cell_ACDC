@@ -37,7 +37,8 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel
+    QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel,
+    QAbstractAnimation
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -3940,10 +3941,13 @@ class Toggle(QAbstractButton):
             active_color='#26dd66',
             animation_curve=QEasingCurve.Type.InOutQuad,
             parent=None,
+            label_spacing=6,
         ):
         super().__init__(parent)
 
         self._label_text = label_text
+        self._label = None
+        self._label_spacing = label_spacing
 
         self._toggle_width = width
         self._toggle_height = height
@@ -3984,15 +3988,15 @@ class Toggle(QAbstractButton):
         # --------------------------------------------------
         # Label
         # --------------------------------------------------
-
-        self._label = QClickableLabel(self._label_text)
-        self._label.setAlignment(
-            Qt.AlignLeft | Qt.AlignVCenter
-        )
-        self._label.setAttribute(
-            Qt.WA_TransparentForMouseEvents
-        )
-        self._label.clicked.connect(self._on_label_clicked)
+        if label_text:
+            self._label = QClickableLabel(self._label_text)
+            self._label.setAlignment(
+                Qt.AlignLeft | Qt.AlignVCenter
+            )
+            self._label.setAttribute(
+                Qt.WA_TransparentForMouseEvents
+            )
+            self._label.clicked.connect(self._on_label_clicked)
 
         # --------------------------------------------------
         # Layout
@@ -4000,10 +4004,11 @@ class Toggle(QAbstractButton):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
-
-        layout.addWidget(self._label)
-        layout.addStretch()
+        
+        if label_text:
+            layout.setSpacing(self._label_spacing)
+            layout.addWidget(self._label)
+            layout.addStretch()
 
         self.setCursor(Qt.PointingHandCursor)
 
@@ -4018,6 +4023,9 @@ class Toggle(QAbstractButton):
         return self._label_text
 
     def setText(self, text):
+        if self._label is None:
+            return
+
         self._label_text = text
         self._label.setText(text)
 
@@ -4046,18 +4054,28 @@ class Toggle(QAbstractButton):
 
     def toggle(self):
         self.setChecked(not self._checked)
+    
+    def click(self):
+        if not self.isEnabled():
+            return
+        self.toggle()
+        self.clicked.emit(self.isChecked())
 
     # ------------------------------------------------------
     # Geometry
     # ------------------------------------------------------
 
     def sizeHint(self):
+        if self._label is None:
+            return QSize(
+                self._toggle_width,
+                self._toggle_height,
+            )
+
         label_size = self._label.sizeHint()
 
         return QSize(
-            label_size.width()
-            + 6
-            + self._toggle_width,
+            label_size.width() + self._label_spacing + self._toggle_width,
             max(
                 label_size.height(),
                 self._toggle_height,
@@ -4086,24 +4104,18 @@ class Toggle(QAbstractButton):
 
     def circlePos(self, checked):
         rect = self.toggleRect()
-
-        diameter = self.circleDiameter()
+        diameter = rect.height() - self._circle_margin
         margin = self._circle_margin / 2
 
         if checked:
-            return (
-                rect.x()
-                + rect.width()
-                - margin
-                - diameter
-            )
+            pos = rect.x() + rect.width() - margin - diameter
+        else:
+            pos = rect.x() + margin
 
-        return rect.x() + margin
+        return pos
 
     def _updateCirclePosition(self):
-        self._circle_position = self.circlePos(
-            self._checked
-        )
+        self._circle_position = self.circlePos(self._checked)
         self.update()
 
     # ------------------------------------------------------
@@ -4114,6 +4126,7 @@ class Toggle(QAbstractButton):
         super().showEvent(event)
 
         # At this point Qt has assigned the real geometry.
+        self.animation.stop()
         self._updateCirclePosition()
 
     def resizeEvent(self, event):
@@ -4121,7 +4134,7 @@ class Toggle(QAbstractButton):
 
         # Keep the circle correctly positioned if the widget
         # is resized.
-        if not self.animation.state():
+        if self.animation.state() != QAbstractAnimation.State.Running:
             self._updateCirclePosition()
 
     # ------------------------------------------------------
@@ -4171,7 +4184,8 @@ class Toggle(QAbstractButton):
 
     def setDisabled(self, disabled):
         super().setDisabled(disabled)
-        self._label.setDisabled(disabled)
+        if self._label is not None:
+            self._label.setDisabled(disabled)
         self.update()
 
     # ------------------------------------------------------
