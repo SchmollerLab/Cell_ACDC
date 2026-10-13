@@ -3940,11 +3940,13 @@ class Toggle(QAbstractButton):
             active_color='#26dd66',
             animation_curve=QEasingCurve.Type.InOutQuad,
             parent=None,
+            label_spacing=6,
         ):
         super().__init__(parent)
 
         self._label_text = label_text
         self._label = None
+        self._label_spacing = label_spacing
 
         self._toggle_width = width
         self._toggle_height = height
@@ -4003,7 +4005,7 @@ class Toggle(QAbstractButton):
         layout.setContentsMargins(0, 0, 0, 0)
         
         if label_text:
-            layout.setSpacing(6)
+            layout.setSpacing(self._label_spacing)
             layout.addWidget(self._label)
             layout.addStretch()
 
@@ -4072,7 +4074,7 @@ class Toggle(QAbstractButton):
         label_size = self._label.sizeHint()
 
         return QSize(
-            label_size.width() + 6 + self._toggle_width,
+            label_size.width() + self._label_spacing + self._toggle_width,
             max(
                 label_size.height(),
                 self._toggle_height,
