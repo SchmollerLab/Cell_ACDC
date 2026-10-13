@@ -10856,6 +10856,7 @@ class manualSeparateGui(QMainWindow):
 
         self.setWindowModality(Qt.WindowModal)
         
+        self.img_lut_df = img_lut_df
         if self.img_lut_df is not None:
             self.imgGrad.restoreState(self.img_lut_df)
             
