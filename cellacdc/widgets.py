@@ -44,7 +44,8 @@ from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument
+    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument,
+    QValidator
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -3359,9 +3360,6 @@ class ToolBar(QToolBar):
                 break
         
         self._logLabelAdded = False
-    
-    def setStartValue(self, value: int):
-        self._start_value = value
 
     def showEvent(self, event):
         if self._log_func is None:
@@ -4691,81 +4689,140 @@ class SpinBox(QSpinBox):
     sigDownClicked = Signal()
 
     def __init__(
-            self, 
-            parent=None, 
-            disableKeyPress=False,
-            allowNegative=True
-        ):
+        self,
+        parent=None,
+        disableKeyPress=False,
+        allowNegative=True,
+    ):
         super().__init__(parent=parent)
+
         self.setAlignment(Qt.AlignCenter)
-        self.setMaximum(2**31-1)
+        self.setMaximum(2**31 - 1)
+
         if allowNegative:
-            self.setMinimum(-2**31)
+            self.setMinimum(-(2**31))
         else:
             self.setMinimum(0)
+
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
         self._linkedWidget = None
-    
-    def mousePressEvent(self, event) -> None:
+        self._start_value = None
+        self._display_correction = 0
+
+    def mousePressEvent(self, event):
         super().mousePressEvent(event)
+
         opt = QStyleOptionSpinBox()
         self.initStyleOption(opt)
 
         control = self.style().hitTestComplexControl(
-            QStyle.ComplexControl.CC_SpinBox, opt, event.pos(), self
+            QStyle.ComplexControl.CC_SpinBox,
+            opt,
+            event.pos(),
+            self,
         )
+
         if control == QStyle.SubControl.SC_SpinBoxUp:
             self.sigUpClicked.emit()
         elif control == QStyle.SubControl.SC_SpinBoxDown:
             self.sigDownClicked.emit()
 
-    # def focusOutEvent(self, event):
-    #     self.editingFinished.emit()
-    #     super().focusOutEvent(event)
-    #     printl('emitted')
-    
-    def keyPressEvent(self, event) -> None:
-        isBackSpaceKey = event.key() == Qt.Key_Backspace
-        isDeleteKey = event.key() == Qt.Key_Delete
+    def setStartValue(self, value: int):
+        if value is None:
+            value = self.minimum()
+
+        self._start_value = int(value)
+        self._updateDisplayCorrection()
+
+    def _updateDisplayCorrection(self):
+        self._display_correction = (
+            self._start_value - self.minimum()
+            if self._start_value is not None
+            else 0
+        )
+        self.update()
+        self.lineEdit().setText(self.textFromValue(self.value()))
+
+    def textFromValue(self, value: int) -> str:
+        return str(value + self._display_correction)
+
+    def valueFromText(self, text: str) -> int:
+        text = text.strip()
+
+        try:
+            displayed_value = int(text)
+        except ValueError:
+            return self.value()
+
+        return displayed_value - self._display_correction
+
+    def validate(self, text: str, pos: int):
+        state, text, pos = super().validate(text, pos)
+
+        # Allow the user to type the displayed value even if its
+        # corresponding internal value differs from the minimum.
+        try:
+            displayed_value = int(text)
+        except ValueError:
+            return state, text, pos
+
+        internal_value = displayed_value - self._display_correction
+
+        if self.minimum() <= internal_value <= self.maximum():
+            return QValidator.State.Acceptable, text, pos
+
+        return state, text, pos
+
+    def keyPressEvent(self, event):
+        isBackSpaceKey = event.key() == Qt.Key.Key_Backspace
+        isDeleteKey = event.key() == Qt.Key.Key_Delete
+
         try:
             int(event.text())
             isIntegerKey = True
-        except:
+        except (ValueError, TypeError):
             isIntegerKey = False
+
         acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
+
         if self.disableKeyPress and not acceptEvent:
             event.ignore()
             self.clearFocus()
         else:
             super().keyPressEvent(event)
-    
+
     def connectValueChanged(self, function):
         self._valueChangedFunction = function
         self.valueChanged.connect(function)
-    
+
     def setValue(self, value, setLinkedWidget=True):
         super().setValue(int(value))
+
         if self._linkedWidget is not None and setLinkedWidget:
             self._linkedWidget.setValue(value)
-    
+
     def setValueNoEmit(self, value):
         if self._valueChangedFunction is None:
             self.setValue(value)
             return
+
         try:
             self.valueChanged.disconnect()
-        except TypeError as e: # this fails if its not cennected yet
+        except TypeError:
             pass
-        
+
         self.setValue(value)
         self.valueChanged.connect(self._valueChangedFunction)
-    
+
     def wheelEvent(self, event):
         event.ignore()
-    
+
     def setLinkedValueWidget(self, widget):
         self._linkedWidget = widget
+
+    def minimumChanged(self, minimum):
+        self._updateDisplayCorrection()
 
 class ReadOnlyLineEdit(QLineEdit):
     def __init__(self, parent=None):
@@ -8772,11 +8829,13 @@ class ScrollBarWithNumericControl(QWidget):
     
         layout = QHBoxLayout()
         self.scrollbar = QScrollBar(orientation, self)
-        self.spinbox = QSpinBox(self)
+        self.spinbox = SpinBox(self)
         self.maxLabel = QLabel(self)
+        self.leftLabel = None
         idx = 0
         if labelText:
-            layout.addWidget(QLabel(labelText))
+            self.leftLabel = QLabel(labelText)
+            layout.addWidget(self.leftLabel)
             layout.setStretch(idx, 0)
             idx += 1
 
@@ -8808,6 +8867,24 @@ class ScrollBarWithNumericControl(QWidget):
         if add_max_proj_button:
             self.maxProjCheckbox.toggled.connect(self.maxProjToggled)
     
+    def setStartValue(self, start_value: int):
+        if start_value is None:
+            return
+
+        self.spinbox.setStartValue(start_value)
+        if self.leftLabel is None:
+            return
+        
+        self.leftLabel.setText(
+            self.leftLabel.text().replace('n.', 'idx')
+        )
+        if not self.maxLabel.text():
+            return
+        
+        correction = start_value - self.spinbox.minimum()
+        maximum = self.maximum()
+        self.maxLabel.setText(f'/{maximum + correction}')
+
     def connectValueChanged(self, slot):
         self.sigValueChanged.connect(slot)
         self._slot = slot
@@ -8836,6 +8913,7 @@ class ScrollBarWithNumericControl(QWidget):
     def setMinimum(self, minumum):
         self.scrollbar.setMinimum(minumum)
         self.spinbox.setMinimum(minumum)
+        self.setStartValue(self.spinbox._start_value)
     
     def spinboxValueChanged(self, value):
         self.scrollbar.setValue(value)

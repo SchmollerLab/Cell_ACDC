@@ -4614,7 +4614,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'any frame with current mode.\n\n'
             'Note that the "Viewer" mode allows you to scroll ALL frames.'
         )
-        t_label = QLabel('frame n.  ')
+        t_label = QLabel()
         t_label.setFont(_font)
         self.t_label = t_label
 
@@ -4861,6 +4861,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.showFrameIndexAction.toggled.connect(self.showFrameIndexToggled)
         self.showZsliceIndexAction.toggled.connect(self.showZsliceIndexToggled)
+
+        if 'showFrameIndex' in self.df_settings.index:
+            checked = self.df_settings.at['showFrameIndex', 'value'] == 'Yes'
+            if checked:
+                self.showFrameIndexAction.setChecked(True)
+        
+        if 'showZsliceIndex' in self.df_settings.index:
+            checked = self.df_settings.at['showZsliceIndex', 'value'] == 'Yes'
+            if checked:
+                self.showZsliceIndexAction.setChecked(True)
 
         self.settingsMenu.insertAction(
             self.highLowResAction, self.showFrameIndexAction
@@ -16764,10 +16774,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def showFrameIndexToggled(self, checked):
         start_value = 0 if checked else 1
-        self.navigateToolBar.setStartValue(start_value)
+        self.navSpinBox.setStartValue(start_value)
+        self.rightImageFramesScrollbar.setStartValue(start_value)
+
+        correction = start_value - self.navSpinBox.minimum()
+        maximum = self.navSpinBox.maximum()
+        self.navSizeLabel.setText(f'/{maximum + correction}')
+
+        value = 'Yes' if checked else 'No'
+        self.df_settings.at['showFrameIndex', 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
+
+        if start_value:
+            self.t_label.setText('Frame n. ')
+        else:
+            self.t_label.setText('Frame idx')
     
     def showZsliceIndexToggled(self, checked):
-        ...
+        start_value = 0 if checked else 1
+        self.zSliceSpinbox.setStartValue(start_value)
+
+        correction = start_value - self.zSliceSpinbox.minimum()
+        maximum = self.zSliceSpinbox.maximum()
+        self.SizeZlabel.setText(f'/{maximum + correction}')
+
+        value = 'Yes' if checked else 'No'
+        self.df_settings.at['showZsliceIndex', 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
+
+        if not self.overlay_z_label.isVisible():
+            return
+        
+        self.overlay_z_label.setText(
+            f'Overlay z-slice {z-correction:02}/{posData.SizeZ+correction}'
+        )
     
     def defaultRescaleIntensLutActionToggled(self, action):
         how = action.text()
@@ -22306,7 +22346,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if posData.last_tracked_i is not None:
                 self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
                 self.navSpinBox.setMaximum(posData.last_tracked_i+1)
-            self.t_label.setText('Frame n.')
+            self.t_label.setText('Frame n. ')
             self.navigateScrollBar.connectEvents({
                 'sliderMoved': self.framesScrollBarMoved,
                 'sliderReleased': self.framesScrollBarReleased,
@@ -28015,7 +28055,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.zSliceOverlay_SB.setDisabled(True)
             else:
                 z = self.zSliceOverlay_SB.sliderPosition()
-                self.overlay_z_label.setText(f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                start_value =  self.zSliceSpinbox._start_value
+                correction = start_value - self.zSliceSpinbox.minimum()
+                self.overlay_z_label.setText(
+                    f'Overlay z-slice {z-correction:02}'
+                    f'/{posData.SizeZ+correction}'
+                )
                 self.zSliceOverlay_SB.setDisabled(False)
                 self.overlay_z_label.setDisabled(False)
             self.zSliceOverlay_SB.show()
@@ -28175,8 +28220,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         self.updateOverlayZslice
                     )
             if zProjHow == 'single z-slice':
+                start_value =  self.zSliceSpinbox._start_value
+                correction = start_value - self.zSliceSpinbox.minimum()
                 self.overlay_z_label.setText(
-                    f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                    f'Overlay z-slice {z-correction:02}'
+                    f'/{posData.SizeZ+correction}'
+                )
                 ol_img = img[z].copy()
             elif zProjHow == 'max z-projection':
                 ol_img = img.max(axis=0)
