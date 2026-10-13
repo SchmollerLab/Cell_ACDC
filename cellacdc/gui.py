@@ -2935,6 +2935,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.addToolBar(Qt.TopToolBarArea, self.exportCurrentViewToolbar)
         self.exportCurrentViewToolbar.setVisible(False)
         self.exportCurrentViewToolbar.keepVisibleWhenActive = True
+        self.exportCurrentViewToolbar.sigExport.connect(
+            self.exportCurrentView
+        )
         self.controlToolBars.append(self.exportCurrentViewToolbar)
 
         toolbar_targets = (
@@ -10421,6 +10424,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.progressWin = None
         
         self.searchIDworkerLoop.exit()
+    
+    def exportCurrentViewWorkerFinished(self):
+        self.exportCurrentViewToolbar.setInfoText('')
+        self.exportCurrentViewWorkerLoop.exit()
     
     def searchIDworkerCallback(self, posData, searchedID):
         self.searchIDworker.signals.initProgressBar.emit(0)
@@ -20143,6 +20150,80 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.curvTool_cb(True)
         
         self.updatePropsWidget('')
+    
+    @disableWindow
+    def exportCurrentView(self, isOnNext=False):
+        if isOnNext and not self.exportCurrentViewToolbar.isAutoExportOnNext():
+            # Automatic export on next disabled --> do not export
+            return
+
+        dstFolderPath = self.exportCurrentViewToolbar.dstFolderPath()
+        if not dstFolderPath or not os.path.exists(dstFolderPath):
+            self.setDisabled(False)
+            blinker = qutils.QControlBlink(
+                self.exportCurrentViewToolbar.dstFolderPathControl, 
+                qparent=self
+            )
+            blinker.start()
+            _warnings.warnExportCurrentViewDstFolderPathInvalid(
+                dstFolderPath, qparent=self
+            )
+            return
+
+        self.exportCurrentViewToolbar.setInfoText('Exporting...')
+
+        posData = self.data[self.pos_i]
+        self.exportCurrentViewThread = QThread()
+        self.exportCurrentViewWorker = workers.SimpleWorker(
+            posData, 
+            io.export_current_view, 
+            func_args=(
+                self.exportCurrentViewToolbar.selectedModelName(),
+                dstFolderPath, 
+            )
+        )
+        self.exportCurrentViewWorker.moveToThread(self.exportCurrentViewThread)
+        self.exportCurrentViewWorker.signals.finished.connect(
+            self.exportCurrentViewThread.quit
+        )
+        self.exportCurrentViewWorker.signals.finished.connect(
+            self.exportCurrentViewWorker.deleteLater
+        )
+        self.exportCurrentViewThread.finished.connect(
+            self.exportCurrentViewThread.deleteLater
+        )
+        self.exportCurrentViewWorker.signals.critical.connect(
+            self.exportCurrentViewWorkerCritical
+        )
+        self.exportCurrentViewWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.exportCurrentViewWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.exportCurrentViewWorker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.exportCurrentViewWorker.signals.finished.connect(
+            self.exportCurrentViewWorkerFinished
+        )
+        
+        self.exportCurrentViewThread.started.connect(
+            self.exportCurrentViewWorker.run
+        )
+        self.exportCurrentViewThread.start()
+        
+        self.exportCurrentViewWorkerLoop = QEventLoop()
+        self.exportCurrentViewWorkerLoop.exec_()
+    
+    def exportCurrentViewWorkerCritical(self, error):
+        self.exportCurrentViewToolbar.setInfoText(
+            html_utils.span(
+                'ERROR occured during export. See terminal for more info'
+            )
+        )
+        self.exportCurrentViewWorkerLoop.exit()
+        self.workerCritical(error)
 
     @exception_handler
     def prev_cb(self):
@@ -20452,6 +20533,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def next_pos(self):
         self.store_data(autosave=False)
+        self.exportCurrentView(isOnNext=True)
         prev_pos_i = self.pos_i
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
@@ -20705,6 +20787,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         mode = str(self.modeComboBox.currentText())
         posData = self.data[self.pos_i]
+        self.exportCurrentView(isOnNext=True)
         
         if posData.frame_i >= posData.SizeT-1:
             # Store data for current frame

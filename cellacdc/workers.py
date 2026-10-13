@@ -5487,7 +5487,9 @@ class FucciPreprocessWorker(BaseWorkerUtil):
             )
             result = executor.map(func, iterable)
             for frame_i, processed_img in result:
-                processed_img = skimage.exposure.rescale_intensity(processed_img, out_range=(0, 255))
+                processed_img = skimage.exposure.rescale_intensity(
+                    processed_img, out_range=(0, 255)
+                )
                 processed_img = processed_img.astype(np.uint8)
                 processed_data[frame_i] = processed_img
                 pbar.update()

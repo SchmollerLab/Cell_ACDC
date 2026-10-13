@@ -14984,6 +14984,8 @@ class ExportCurrentViewToolbar(ToolBar):
         )
         self.addSeparator()
 
+        startFolder = myutils.getMostRecentPath()
+
         self.addWidget(QLabel('Destination folder: '))
         self.dstFolderPathControl = ElidingLineEdit()
         self.dstFolderPathControl.setToolTip(
@@ -14992,8 +14994,8 @@ class ExportCurrentViewToolbar(ToolBar):
         self.dstFolderPathControl.action = self.addWidget(
             self.dstFolderPathControl
         )
+        self.dstFolderPathControl.setText(startFolder)
 
-        startFolder = myutils.getMostRecentPath()
         self.dstBrowseButton = browseFileButton(
             openFolder=True, 
             title='Select destination folder', 
@@ -15009,13 +15011,38 @@ class ExportCurrentViewToolbar(ToolBar):
 
         self.addSeparator()
 
-        self.exportButton = self.addButton(':greenTick.svg')
+        self.exportButton = self.addButton(':file-save.svg')
         self.exportButton.triggered.connect(self.emitExport)
 
+        self.addSpacing(5)
+
+        self.autoExportOnNextCheckbox = self.addCheckBox(
+            text='Automatically export when going to next frame/Position'
+        )
+
+        self.addSeparator()
+
+        self.infoTextLabel = self.addLabel()
+
         self.addStretch(10)
+
+    
+    def isAutoExportOnNext(self):
+        return self.autoExportOnNextCheckbox.isChecked()
+    
+    def dstFolderPath(self):
+        return self.dstFolderPathControl.text()
     
     def dstFolderPathSelected(self, folderPath):
         self.dstFolderPathControl.setText(folderPath)
+        myutils.addToRecentPaths(folderPath)
     
     def emitExport(self):
         self.sigExport.emit()
+    
+    def selectedModelName(self):
+        return self.modelCombobox.currentText()
+    
+    def setInfoText(self, text):
+        self.infoTextLabel.setText(text)
+        

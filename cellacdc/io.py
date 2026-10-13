@@ -294,3 +294,46 @@ def delete_folder_content(folder_path, not_exist_ok=True):
             shutil.rmtree(item_path)
         else:
             os.remove(item_path)
+
+def export_current_view_gui_cellpose(posData, dst_folderpath):
+    images = [posData.img_data[posData.frame_i]]
+
+    if posData.ol_data is not None:
+        for ol_img in posData.ol_data.values():
+            images.append(ol_img)
+    
+    tif_data = np.squeeze(np.asarray(images))
+    lab = posData.lab
+    if lab is None:
+        lab = posData.segm_data[posData.frame_i]
+
+    if np.any(lab > np.iinfo(np.uint16).max):
+        raise ValueError(
+            'Segmentation IDs exceed the uint16 range; '
+            f'Cellpose supports maximum ID {np.iinfo(np.uint16).max}.'
+        )
+    
+    last_saved_num = 0
+    for file in myutils.listdir(dst_folderpath):
+        end_num = re.findall(r'.+_(\d+)\.tif')
+        if not end_num:
+            continue
+
+        num = int(end_num[0])
+        if num > last_saved_num:
+            last_saved_num = num
+
+    new_num = last_saved_num + 1
+    num_digits = max(len(str(last_saved_num)), len(str(new_num)), 3)
+    new_num = str(new_num).zfill(num_digits)
+    segm_filename = os.path.basename(posData.segm_npz_path)
+    tif_filename = segm_filename.replace('.npz', f'_{new_num}.tif')
+    seg_npy_filename = segm_filename.replace('.npz', f'_{new_num}_seg.npy')
+
+    printl(dst_folderpath, tif_filename, seg_npy_filename, sep='\n')
+
+def export_current_view(posData, model_name: str, dst_folderpath: os.PathLike):
+    printl(model_name, dst_folderpath, sep='\n')
+    if model_name == 'Cellpose':
+        export_current_view_gui_cellpose(posData, dst_folderpath)
+
