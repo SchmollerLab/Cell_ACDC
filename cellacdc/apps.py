@@ -21720,6 +21720,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             
         self.srcFolderPathSelected(srcFolderPath)
 
+    @exception_handler
     def srcFolderPathSelected(self, srcFolderPath):
         self.actionsFilesSourceFolder = {
             'files': [],
