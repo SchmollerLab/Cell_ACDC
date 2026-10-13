@@ -1762,7 +1762,6 @@ class FolderPathControl(filePathControl):
     def __init__(self, **kwargs):
         super().__init__(
             browseFolder=True, 
-            fileManagerTitle='Select folder', 
             **kwargs
         )
 
@@ -3439,6 +3438,13 @@ class ToolBar(QToolBar):
         spacer.setFixedWidth(width)
         spacer.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
         action = self.addWidget(spacer)
+        return action
+    
+    def addStretch(self, stretch=1):
+        stretchItem = QWidget()
+        stretchItem.setMinimumWidth(stretch)
+        stretchItem.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        action = self.addWidget(stretchItem)
         return action
     
 class ManualTrackingToolBar(ToolBar):
@@ -14963,3 +14969,53 @@ class _RecentItemsSearchCompleter(ButtonSearchCompleter):
             return left_score[1] < right_score[1]
 
         return left.row() < right.row()
+
+class ExportCurrentViewToolbar(ToolBar):    
+    sigExport = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        models = ['Cellpose']
+
+        self.modelCombobox = self.addComboBox(
+            models,
+            'For the model: '
+        )
+        self.addSeparator()
+
+        self.addWidget(QLabel('Destination folder: '))
+        self.dstFolderPathControl = ElidingLineEdit()
+        self.dstFolderPathControl.setToolTip(
+            'Select destination folder where to export the current view data'
+        )
+        self.dstFolderPathControl.action = self.addWidget(
+            self.dstFolderPathControl
+        )
+
+        startFolder = myutils.getMostRecentPath()
+        self.dstBrowseButton = browseFileButton(
+            openFolder=True, 
+            title='Select destination folder', 
+            start_dir=startFolder,
+        )
+        self.dstBrowseButton.action = self.addWidget(
+            self.dstBrowseButton
+        )
+
+        self.dstBrowseButton.sigPathSelected.connect(
+            self.dstFolderPathSelected
+        )
+
+        self.addSeparator()
+
+        self.exportButton = self.addButton(':greenTick.svg')
+        self.exportButton.triggered.connect(self.emitExport)
+
+        self.addStretch(10)
+    
+    def dstFolderPathSelected(self, folderPath):
+        self.dstFolderPathControl.setText(folderPath)
+    
+    def emitExport(self):
+        self.sigExport.emit()

@@ -1357,8 +1357,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.showLogFilesAction)
         helpMenu.addAction(self.tipsAction)
         helpMenu.addAction(self.UserManualAction)
-        helpMenu.addSeparator()
-        helpMenu.addAction(self.aboutAction)
         self.helpMenu = helpMenu
 
         self.searchWidget = widgets.ButtonSearchWidget(self)
@@ -1376,6 +1374,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.searchWidget.setMinimumHeight(
             self.searchWidget.sizeHint().height()
         )
+
+        helpMenu.addSeparator()
+        helpMenu.addAction(self.aboutAction)
         
         
     def gui_createToolBars(self):        
@@ -1408,6 +1409,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
+        navigateToolBar.addAction(self.exportCurrentViewAction)
         navigateToolBar.addAction(self.searchAction)
         
         navigateToolBar.addWidget(self.zoomRectButton)
@@ -2926,6 +2928,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
 
+        self.exportCurrentViewToolbar = widgets.ExportCurrentViewToolbar(self)
+        for name, action in self.exportCurrentViewToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+
+        self.addToolBar(Qt.TopToolBarArea, self.exportCurrentViewToolbar)
+        self.exportCurrentViewToolbar.setVisible(False)
+        self.exportCurrentViewToolbar.keepVisibleWhenActive = True
+        self.controlToolBars.append(self.exportCurrentViewToolbar)
+
         toolbar_targets = (
             (self.overlayToolbar, self.overlayButton),
             (self.autoPilotZoomToObjToolbar, self.autoPilotButton),
@@ -2942,6 +2953,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             (self.whitelistIDsToolbar, self.whitelistIDsButton),
             (self.magicPromptsToolbar, self.magicPromptsToolButton),
             (self.promptSegmentPointsLayerToolbar, self.magicPromptsToolButton),
+            (self.exportCurrentViewToolbar, self.exportCurrentViewAction),
         )
         for toolbar, targets in toolbar_targets:
             self.searchWidget.registerToolbarTargets(toolbar, targets)
@@ -3251,6 +3263,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotButton.setIcon(QIcon(":auto-pilot.svg"))
         self.autoPilotButton.setCheckable(True)
         self.autoPilotButton.setShortcut('Ctrl+Shift+A')
+
+        self.exportCurrentViewAction = QAction(self)
+        self.exportCurrentViewAction.setIcon(QIcon(":folder-move.svg"))
+        self.exportCurrentViewAction.setCheckable(True)
+        self.exportCurrentViewAction.setShortcut('Ctrl+Shift+E')
         
         self.searchAction = QAction(self)
         self.searchAction.setIcon(QIcon(":find.svg"))
@@ -4036,7 +4053,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
-        # self.reloadAction.triggered.connect(self.reload_cb)
+        self.exportCurrentViewAction.toggled.connect(
+            self.exportCurrentViewDataToggled
+        )
         self.searchAction.triggered.connect(
             partial(self.focusOnSearch, blinking=True)
         )
@@ -28842,6 +28861,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Ctrl+Z': ('Undo', self.undoAction),
             'Ctrl+Y': ('Redo', self.redoAction),
             'Ctrl+Shift+A': ('Autopilot', self.autoPilotButton),
+            'Ctrl+Shift+E': (
+                'Export data from current view', 
+                self.exportCurrentViewAction
+            ),
             'Ctrl+F': ('Search', self.focusOnSearchAction),
             'Ctrl+T': (
                 'Track current frame with real-time tracker', 
@@ -37080,6 +37103,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if blinking:
             blinker = qutils.QControlBlink(self.searchWidget, qparent=self)
             blinker.start()
+
+    def exportCurrentViewDataToggled(self, checked: bool):
+        self.exportCurrentViewToolbar.setVisible(checked)
 
     def isObjVisibleViewRange(self, bbox, viewRange=None):
         if self.isSegm3D and len(bbox) == 6:

@@ -40,6 +40,12 @@
     :height: 16px
     :width: 16px
 
+.. |exportCurrentViewAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/folder-move.svg
+    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/folder-move.svg
+    :alt: exportCurrentViewAction icon
+    :height: 16px
+    :width: 16px
+
 .. |searchAction| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/refs/heads/main/cellacdc/resources/icons/find.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/find.svg 
     :alt: searchAction icon
@@ -405,6 +411,7 @@ File control
 
 View options
 ------------
+* **Export data from current view (** |exportCurrentViewAction| **"Ctrl+Shift+E"):** Setup the parameters to export the current view to the data structure required by the selected segmentation model for its own training.
 * **Search (** |searchAction| **"Ctrl+F"):** Find and highlight ID by typing its ID. As long as only numbers are in the search field, the first option is searching for an ID. Press enter to confirm the search. Press "Esc" to clear highlighted object. You can also **search for a functionality** in Cell-ACDC by typing its name.
 * **Zoom to rectangle (** |zoomRectButton| **"Shift+Z"):** Draw a rectangular area with left-click in order to zoom to that area. Right-click to cycle back to previously zoomed areas.
 * **Open Slideshow (** |slideshowButton| **"Ctrl+W"):** Opens slideshow.
