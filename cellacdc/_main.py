@@ -1028,10 +1028,11 @@ class mainWin(QMainWindow):
         recentPaths, dates = myutils.get_recent_paths(self)
         # Step 2. Dynamically create the actions
         actions = []
-        for path in recentPaths:
+        for path in recentPaths[:20]:
             action = QAction(path, self)
             action.triggered.connect(partial(myutils.showInExplorer, path))
             actions.append(action)
+
         # Step 3. Add the actions to the menu
         self.recentPathsMenu.addActions(actions)
         
