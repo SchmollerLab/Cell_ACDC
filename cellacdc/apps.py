@@ -10856,8 +10856,9 @@ class manualSeparateGui(QMainWindow):
 
         self.setWindowModality(Qt.WindowModal)
         
-        self.imgGrad.restoreState(self.img_lut_df)
-
+        if self.img_lut_df is not None:
+            self.imgGrad.restoreState(self.img_lut_df)
+            
     def setSessionData(
             self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
             drawMode='threepoints_arc', start_slice=None, mouseBindings=None,
@@ -10868,7 +10869,6 @@ class manualSeparateGui(QMainWindow):
         if rp is None:
             from . import regionprops
             rp = regionprops.acdcRegionprops(self.lab, precache_centroids=False)
-        self.img_lut_df = img_lut_df
         obj = rp.get_obj_from_ID(ID)
 
         self.lab = np.zeros_like(lab)
@@ -10907,7 +10907,8 @@ class manualSeparateGui(QMainWindow):
             return
         
         self.img_lut_df = img_lut_df
-        self.imgGrad.restoreState(self.img_lut_df)
+        if self.img_lut_df is not None:
+            self.imgGrad.restoreState(self.img_lut_df)
 
         self.undoAction.setEnabled(False)
         self.threePointsArcAction.setChecked(
@@ -11176,8 +11177,10 @@ class manualSeparateGui(QMainWindow):
         #Image histogram
         self.imgGrad = widgets.myHistogramLUTitem()
         self.imgGrad.setImageItem(self.imgItem)
-        self.imgGrad.restoreState(self.img_lut_df)
-
+        
+        if self.img_lut_df is not None:
+            self.imgGrad.restoreState(self.img_lut_df)
+            
         # Curvature items
         self.hoverLinSpace = np.linspace(0, 1, 1000)
         self.hoverLinePen = pg.mkPen(color=(200, 0, 0, 255*0.5),
