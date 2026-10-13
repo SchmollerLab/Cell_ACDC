@@ -16805,6 +16805,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if not self.overlay_z_label.isVisible():
             return
         
+        z = self.zSliceScrollBar.sliderPosition()
+        posData = self.data[self.pos_i]
         self.overlay_z_label.setText(
             f'Overlay z-slice {z-correction:02}/{posData.SizeZ+correction}'
         )
