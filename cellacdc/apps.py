@@ -10836,6 +10836,7 @@ class manualSeparateGui(QMainWindow):
 
         self.gui_createStatusBar()
 
+        self.img_lut_df = img_lut_df
         self.gui_createGraphics()
         self.gui_connectImgActions()
 
@@ -10855,8 +10856,7 @@ class manualSeparateGui(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.setWindowModality(Qt.WindowModal)
-        
-        self.img_lut_df = img_lut_df
+
         if self.img_lut_df is not None:
             self.imgGrad.restoreState(self.img_lut_df)
             
