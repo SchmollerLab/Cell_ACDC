@@ -9843,15 +9843,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._thread.start()
 
     def onSegForLostIDsImportModel(self, model_name):
-        # Preflight import on GUI thread; worker retries and handles failures.
+        # Import on the GUI thread because model packages may open dialogs 
+        # (install prompts, DLL warnings) at import time. The worker must 
+        # NOT re-import, otherwise those dialogs are created from the 
+        # worker thread and the GUI freezes.
+        worker = self.SegForLostIDsWorker
+        worker.importedSegmModule = None
+        worker.importSegmModuleError = None
         try:
-            myutils.import_segment_module(model_name)
+            worker.importedSegmModule = myutils.import_segment_module(
+                model_name
+            )
         except Exception as e:
             traceback_str = traceback.format_exc()
             self.logger.error(
                 f"Error importing model '{model_name}': {e}\n{traceback_str}"
             )
-            pass
+            worker.importSegmModuleError = e
         finally:
             self._ackSegForLostIDsWorker('import_model')
 
