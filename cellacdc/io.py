@@ -304,8 +304,8 @@ def export_current_view_gui_cellpose(
     images = [posData.img_data[posData.frame_i]]
 
     if posData.ol_data is not None:
-        for ol_img in posData.ol_data.values():
-            images.append(ol_img)
+        for channel_ol_data in posData.ol_data.values():
+            images.append(channel_ol_data[posData.frame_i])
     
     tif_data = np.squeeze(np.asarray(images))
     lab = posData.lab
