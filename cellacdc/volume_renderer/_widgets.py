@@ -62,23 +62,23 @@ class VolumeRendererToolbar(ToolBar):
         
         self.addSeparator()
 
-        self.setupAnimationAction = self.addButton(
-            ':cog_play.svg', 'Setup animation', checkable=True
-        )
-        self.playAnimationAction = self.addButton(
-            ':play.svg', 'Play and record animation', checkable=True
-        )
-        self.playAnimationAction.setDisabled(True)
+        # self.setupAnimationAction = self.addButton(
+        #     ':cog_play.svg', 'Setup animation', checkable=True
+        # )
+        # self.playAnimationAction = self.addButton(
+        #     ':play.svg', 'Play and record animation', checkable=True
+        # )
+        # self.playAnimationAction.setDisabled(True)
 
-        self.setupAnimationAction.toggled.connect(
-            self.sigSetupAnimation.emit
-        )
+        # self.setupAnimationAction.toggled.connect(
+        #     self.sigSetupAnimation.emit
+        # )
 
-        self.playAnimationAction.toggled.connect(
-            self.sigPlayAnimation.emit
-        )
+        # self.playAnimationAction.toggled.connect(
+        #     self.sigPlayAnimation.emit
+        # )
 
-        self.addSeparator()
+        # self.addSeparator()
         
         self.singleChannelCheckbox = self.addCheckBox(
             text='Single channel'

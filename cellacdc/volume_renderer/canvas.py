@@ -230,13 +230,14 @@ class VolumeRendererWindow(QMainWindow):
         self._update_camera_indicators()
 
     def _update_camera_indicators(self):
-        if not self._toolbar.setupAnimationAction.isChecked():
-            return
+        return
+        # if not self._toolbar.setupAnimationAction.isChecked():
+        #     return
 
-        self._setupAnimationDialog.set_from_camera(
-            self._view.camera, 
-            update_start=False
-        )
+        # self._setupAnimationDialog.set_from_camera(
+        #     self._view.camera, 
+        #     update_start=False
+        # )
 
     def _init_lab_ui_items(
             self, 
@@ -726,16 +727,16 @@ class VolumeRendererWindow(QMainWindow):
         self._toolbar.sigHomeView.connect(self.reset_view)
         self._toolbar.sigSave.connect(self.save_screenshot)
         self._toolbar.sigSetSingleChannel.connect(self._set_single_channel)
-        self._toolbar.sigSetupAnimation.connect(self.setup_animation_parameters)
-        self._toolbar.sigPlayAnimation.connect(self.play_animation)
+        # self._toolbar.sigSetupAnimation.connect(self.setup_animation_parameters)
+        # self._toolbar.sigPlayAnimation.connect(self.play_animation)
 
         self._is_animation_setup = False
 
-        self._setupAnimationDialog = _dialogs.AnimationVolumeViewerSetupDialog()
-        self._setupAnimationDialog.sigOk.connect(self._set_animation_setup)
-        self._setupAnimationDialog.sigCancel.connect(
-            self._cancel_animation_setup
-        )
+        # self._setupAnimationDialog = _dialogs.AnimationVolumeViewerSetupDialog()
+        # self._setupAnimationDialog.sigOk.connect(self._set_animation_setup)
+        # self._setupAnimationDialog.sigCancel.connect(
+        #     self._cancel_animation_setup
+        # )
         
         lut_items_graphics_layout = pg.GraphicsLayoutWidget()
         lut_items_graphics_layout.setBackground('black')
@@ -1746,7 +1747,7 @@ class VolumeRendererWindow(QMainWindow):
         if hasattr(self, 'loop'):
             self.loop.exit()
         
-        self._setupAnimationDialog.forceClose()
+        # self._setupAnimationDialog.forceClose()
         
         return super().closeEvent(event)
 
@@ -1816,7 +1817,6 @@ class VolumeRendererWindow(QMainWindow):
 
     def play_animation(self, checked):
         self._animation_params
-
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
