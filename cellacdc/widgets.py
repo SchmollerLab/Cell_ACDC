@@ -37,13 +37,14 @@ from qtpy.QtCore import (
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
-    QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel
+    QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel,
+    QAbstractAnimation
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem
+    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -56,7 +57,8 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
-    QButtonGroup, QStyleOptionSlider
+    QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
+    QStyleOptionViewItem, QAbstractButton
 )
 import qtpy.compat
 
@@ -324,10 +326,16 @@ class PushButton(QPushButton):
         self._text = text
         self.setStyleSheet('text-align:left;')
         self.setLayout(QGridLayout())
-        textLabel = QLabel(self._text)
-        textLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        textLabel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
-        self._layout().addWidget(textLabel)
+
+        self.textLabel = QLabel(self._text)
+        self.textLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.textLabel.setAttribute(
+            Qt.WA_TransparentForMouseEvents,
+            True
+        )
+
+        self._layout().addWidget(self.textLabel)
+
         super().show()
     
     def confirmAction(self):
@@ -583,15 +591,30 @@ class arrowDownPushButton(PushButton):
 class selectAllPushButton(PushButton):
     sigClicked = Signal(object, bool)
     
-    def __init__(self, *args, **kwargs):
+    def __init__(
+            self,
+            *args,
+            suffix_text_select='all', 
+            suffix_text_deselect='all',
+            **kwargs
+        ):
         super().__init__(*args, **kwargs)
         self._status = 'deselect'
+        self._suffix_text_select = suffix_text_select
+        self._suffix_text_deselect = suffix_text_deselect
         self.setIcon(QIcon(':deselect_all.svg'))
-        self.setText('Deselect all')
+        self.setText(f'Deselect {suffix_text_deselect}')
         self.clicked.connect(self.onClicked)
         self.setMinimumWidth(self.sizeHint().width())
     
+    def isChecked(self):
+        return self._status == 'deselect'
+
     def setChecked(self, checked):
+        if self.isChecked() == checked:
+            self.sigClicked.emit(self, checked)
+            return
+
         if checked:
             self._status == 'deselect'
         else:
@@ -603,10 +626,10 @@ class selectAllPushButton(PushButton):
             icon_fn = ':deselect_all.svg'
             self._status = 'deselect'
             checked = True
-            text = 'Deselect all'
+            text = f'Deselect {self._suffix_text_deselect}'
         else:
             icon_fn = ':select_all.svg'
-            text = 'Select all'
+            text = f'Select {self._suffix_text_select}'
             self._status = 'select'
             checked = False
         self.setIcon(QIcon(icon_fn))
@@ -716,27 +739,66 @@ class LessThanPushButton(PushButton):
 
 class showDetailsButton(PushButton):
     sigToggled = Signal(bool)
-    
-    def __init__(self, *args, txt='Show details...', parent=None):
-        super().__init__(txt, parent)
-        # self.setText(txt)
+
+    def __init__(
+            self, *args, txt='Show details...', parent=None, underline=False
+        ):
+        super().__init__(parent)
+
         self.txt = txt
+        self.checkedText = txt.replace('Show', 'Hide')
+
         self.checkedIcon = QIcon(':hideUp.svg')
         self.uncheckedIcon = QIcon(':showDown.svg')
-        self.setIcon(self.uncheckedIcon)
-        self.toggled.connect(self.onClicked)
+
         self.setCheckable(True)
-        w = self.sizeHint().width() + 10
-        self.setFixedWidth(w)
+
+        # Keep the button from using QPushButton's icon/text layout
+        self.setIcon(QIcon())
+        self.setText('')
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(4)
+
+        # Fixed-size icon area
+        self.iconLabel = QLabel()
+        self.iconLabel.setFixedSize(12, 8)
+        self.iconLabel.setAlignment(Qt.AlignCenter)
+        self.iconLabel.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        # Text
+        self.textLabel = QLabel(self.txt)
+        self.textLabel.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.textLabel.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        if underline:
+            font = self.textLabel.font()
+            font.setUnderline(True)
+            self.textLabel.setFont(font)
+
+        layout.addWidget(self.iconLabel)
+        layout.addWidget(self.textLabel)
+        layout.addStretch()
+
+        self.setIconSize(QSize(12, 8))
+
+        self._setIcon(self.uncheckedIcon)
+
+        self.toggled.connect(self.onClicked)
+
+    def _setIcon(self, icon):
+        pixmap = icon.pixmap(QSize(12, 8))
+        self.iconLabel.setPixmap(pixmap)
 
     def onClicked(self, checked):
         if checked:
-            self.setText(self.txt.replace('Show', 'Hide'))
-            self.setIcon(self.checkedIcon)
+            self.textLabel.setText(self.checkedText)
+            self._setIcon(self.checkedIcon)
         else:
-            self.setText(self.txt)
-            self.setIcon(self.uncheckedIcon)
-        
+            self.textLabel.setText(self.txt)
+            self._setIcon(self.uncheckedIcon)
+
         self.sigToggled.emit(checked)
 
 class cancelPushButton(PushButton):
@@ -1815,6 +1877,7 @@ class CheckBox(QCheckBox):
         self.toggled.connect(self.onToggled)
         self._exclusiveCheckboxes: list[QCheckBox] = []
         self._linkedCheckboxes: dict[str, QCheckBox] = {}
+        self.exclusiveCheckboxesStates: dict[str, bool] = {}
         # if rightclick_menu_func is not None:
         #     self.rightclick_menu = rightclick_menu_func(self)
     
@@ -1832,6 +1895,9 @@ class CheckBox(QCheckBox):
     
     def onToggled(self, checked: bool):
         for checkbox in self._exclusiveCheckboxes:
+            name = checkbox.text()
+            self.exclusiveCheckboxesStates[name] = checkbox.isChecked()
+
             if not checked:
                 continue
             
@@ -1841,10 +1907,6 @@ class CheckBox(QCheckBox):
             checkbox.setChecked(checked)
         
         self.sigToggled.emit(checked, self)
-        
-    # def contextMenuEvent(self, event) -> None:
-    #     if self.rightclick_menu is not None:
-    #         self.rightclick_menu.exec_(event.globalPos())
     
     def setCheckedNoSignal(self, checked: bool):
         self.blockSignals(True)
@@ -2014,6 +2076,98 @@ class statusBarPermanentLabel(QWidget):
 
         self.setLayout(layout)
 
+class _RichTextItemEventFilter(QObject):
+    def __init__(self, item):
+        super().__init__()
+        self.item = item
+
+    def eventFilter(self, obj, event):
+        listWidget = self.item._listWidget
+
+        if listWidget is None:
+            return super().eventFilter(obj, event)
+
+        if event.type() == QEvent.MouseMove:
+            pos = (
+                event.position().toPoint()
+                if hasattr(event, 'position')
+                else event.pos()
+            )            
+            hoveredItem = listWidget.itemAt(pos)
+            self.item.setHovered(hoveredItem is self.item)
+
+        elif event.type() == QEvent.Leave:
+            self.item.setHovered(False)
+
+        return super().eventFilter(obj, event)
+
+
+class RichTextListWidgetItem(QListWidgetItem):
+    def __init__(self, text='', parent=None):
+        super().__init__(parent)
+
+        self._plainText = ''
+        self._listWidget = None
+        self._hovered = False
+
+        self.label = QLabel()
+        self.label.setTextFormat(Qt.RichText)
+        self.label.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
+        self.label.setAttribute(
+            Qt.WA_TransparentForMouseEvents
+        )
+
+        self._eventFilter = _RichTextItemEventFilter(self)
+
+        self.setText(text)
+
+    def setText(self, text):
+        """Set rich text while keeping the plain text separately."""
+        doc = QTextDocument()
+        doc.setHtml(text)
+
+        self._plainText = doc.toPlainText()
+
+        # Do NOT let QListWidgetItem paint its own text.
+        super().setText('')
+
+        # Rich representation is painted by the QLabel.
+        self.label.setText(text)
+
+    def text(self):
+        return self._plainText
+
+    def setListWidget(self, listWidget):
+        self._listWidget = listWidget
+
+        listWidget.viewport().installEventFilter(
+            self._eventFilter
+        )
+
+        self._updateLabelStyle()
+
+    def setHovered(self, hovered):
+        if self._hovered == hovered:
+            return
+
+        self._hovered = hovered
+        self._updateLabelStyle()
+
+    def _updateLabelStyle(self):
+        if self._listWidget is None:
+            return
+
+        if self._hovered or self.isSelected():
+            color = 'black'
+        else:
+            color = self._listWidget.palette().color(
+                self._listWidget.foregroundRole()
+            ).name()
+
+        self.label.setStyleSheet(
+            f'background: transparent; color: {color};'
+        )
+
 class listWidget(QListWidget):
     def __init__(
             self, 
@@ -2033,6 +2187,16 @@ class listWidget(QListWidget):
         
         self.minimizeHeight = minimizeHeight
     
+    def addRichTextItem(self, text: str):
+        item = RichTextListWidgetItem(text)
+
+        self.addItem(item)
+        self.setItemWidget(item, item.label)
+
+        item.setListWidget(self)
+
+        return item
+
     def setSelectedAll(self, selected):
         for i in range(self.count()):
             self.item(i).setSelected(selected)
@@ -3267,6 +3431,13 @@ class ToolBar(QToolBar):
         checkbox.action = self.addWidget(checkbox)
         return checkbox
     
+    def addSpacing(self, width=5):
+        spacer = QWidget()
+        spacer.setFixedWidth(width)
+        spacer.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
+        action = self.addWidget(spacer)
+        return action
+    
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
     sigDisableGhost = Signal()
@@ -3753,84 +3924,220 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
         mask, self._slice = myutils.clipSelemMask(mask, shape, Yc, Xc, copy=False)
         return mask
 
-class Toggle(QCheckBox):
+class Toggle(QAbstractButton):
+    toggled = Signal(bool)
+    clicked = Signal(bool)
+
     def __init__(
             self,
             label_text='',
-            initial=None,
-            width=80,
+            initial=False,
+            width=36,
+            height=18,
             bg_color='#b3b3b3',
             circle_color='#ffffff',
-            active_color='#26dd66',# '#005ce6',
-            animation_curve=QEasingCurve.Type.InOutQuad
+            active_color='#26dd66',
+            animation_curve=QEasingCurve.Type.InOutQuad,
+            parent=None,
+            label_spacing=6,
         ):
-        QCheckBox.__init__(self)
-
-        # self.setFixedSize(width, 28)
-        self.setCursor(Qt.PointingHandCursor)
+        super().__init__(parent)
 
         self._label_text = label_text
+        self._label = None
+        self._label_spacing = label_spacing
+
+        self._toggle_width = width
+        self._toggle_height = height
+
         self._bg_color = bg_color
         self._circle_color = circle_color
         self._active_color = active_color
-        self._disabled_active_color = colors.lighten_color(active_color)
-        self._disabled_circle_color = colors.lighten_color(circle_color)
-        self._disabled_bg_color = colors.lighten_color(bg_color, amount=0.5)
+
+        self._disabled_active_color = (
+            colors.lighten_color(active_color)
+        )
+        self._disabled_circle_color = (
+            colors.lighten_color(circle_color)
+        )
+        self._disabled_bg_color = (
+            colors.lighten_color(
+                bg_color,
+                amount=0.5
+            )
+        )
+
         self._circle_margin = 4
 
-        self._circle_position = int(self._circle_margin/2)
-        self.animation = QPropertyAnimation(self, b'circle_position', self)
+        self._checked = bool(initial)
+
+        # Will be initialized when the widget gets its
+        # actual geometry.
+        self._circle_position = 0
+
+        self.animation = QPropertyAnimation(
+            self,
+            b'circle_position',
+            self
+        )
         self.animation.setEasingCurve(animation_curve)
         self.animation.setDuration(200)
 
-        self.stateChanged.connect(self.start_transition)
-        self.requestedState = None
+        # --------------------------------------------------
+        # Label
+        # --------------------------------------------------
+        if label_text:
+            self._label = QClickableLabel(self._label_text)
+            self._label.setAlignment(
+                Qt.AlignLeft | Qt.AlignVCenter
+            )
+            self._label.setAttribute(
+                Qt.WA_TransparentForMouseEvents
+            )
+            self._label.clicked.connect(self._on_label_clicked)
 
-        self.installEventFilter(self)
-        self._isChecked = False
+        # --------------------------------------------------
+        # Layout
+        # --------------------------------------------------
 
-        if initial is not None:
-            self.setChecked(initial)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        if label_text:
+            layout.setSpacing(self._label_spacing)
+            layout.addWidget(self._label)
+            layout.addStretch()
+
+        self.setCursor(Qt.PointingHandCursor)
+
+    def _on_label_clicked(self):
+        self.clicked.emit(self.isChecked())
+
+    # ------------------------------------------------------
+    # Text
+    # ------------------------------------------------------
+
+    def text(self):
+        return self._label_text
+
+    def setText(self, text):
+        if self._label is None:
+            return
+
+        self._label_text = text
+        self._label.setText(text)
+
+    # ------------------------------------------------------
+    # State
+    # ------------------------------------------------------
+
+    def isChecked(self):
+        return self._checked
+
+    def setChecked(self, checked):
+        checked = bool(checked)
+
+        if self._checked == checked:
+            return
+
+        self._checked = checked
+
+        # If we already have valid geometry, animate.
+        if self.width() > 0 and self.height() > 0:
+            self._startTransition()
+
+        self.toggled.emit(checked)
+
+        self.update()
+
+    def toggle(self):
+        self.setChecked(not self._checked)
+    
+    def click(self):
+        if not self.isEnabled():
+            return
+        self.toggle()
+        self.clicked.emit(self.isChecked())
+
+    # ------------------------------------------------------
+    # Geometry
+    # ------------------------------------------------------
 
     def sizeHint(self):
-        return QSize(36, 18)
+        if self._label is None:
+            return QSize(
+                self._toggle_width,
+                self._toggle_height,
+            )
 
-    def eventFilter(self, object, event):
-        # To get the actual position of the circle we need to wait that
-        # the widget is visible before setting the state
-        if event.type() == QtScoped.QEventTypeAttribute('Show') and self.requestedState is not None:
-            self.setChecked(self.requestedState)
-        return False
+        label_size = self._label.sizeHint()
 
-    def setChecked(self, state):
-        # To get the actual position of the circle we need to wait that
-        # the widget is visible before setting the state
-        self._isChecked = state
-        if self.isVisible():
-            self.requestedState = None
-            QCheckBox.setChecked(self, state>0)
-        else:
-            self.requestedState = state
-    
-    def isChecked(self):
-        if self.isVisible():
-            return super().isChecked()
-        else:
-            return self._isChecked
+        return QSize(
+            label_size.width() + self._label_spacing + self._toggle_width,
+            max(
+                label_size.height(),
+                self._toggle_height,
+            )
+        )
 
-    def circlePos(self, state: bool):
-        start = int(self._circle_margin/2)
-        if state:
-            if self.isVisible():
-                height, width = self.height(), self.width()
-            else:
-                sizeHint = self.sizeHint()
-                height, width = sizeHint.height(), sizeHint.width()
-            circle_diameter = height-self._circle_margin
-            pos = width-start-circle_diameter
+    def toggleRect(self):
+        x = self.width() - self._toggle_width
+
+        y = int(
+            (self.height() - self._toggle_height) / 2
+        )
+
+        return QRect(
+            x,
+            y,
+            self._toggle_width,
+            self._toggle_height,
+        )
+
+    def circleDiameter(self):
+        return (
+            self._toggle_height
+            - self._circle_margin
+        )
+
+    def circlePos(self, checked):
+        rect = self.toggleRect()
+        diameter = rect.height() - self._circle_margin
+        margin = self._circle_margin / 2
+
+        if checked:
+            pos = rect.x() + rect.width() - margin - diameter
         else:
-            pos = start
+            pos = rect.x() + margin
+
         return pos
+
+    def _updateCirclePosition(self):
+        self._circle_position = self.circlePos(self._checked)
+        self.update()
+
+    # ------------------------------------------------------
+    # Show / resize
+    # ------------------------------------------------------
+
+    def showEvent(self, event):
+        super().showEvent(event)
+
+        # At this point Qt has assigned the real geometry.
+        self.animation.stop()
+        self._updateCirclePosition()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        # Keep the circle correctly positioned if the widget
+        # is resized.
+        if self.animation.state() != QAbstractAnimation.State.Running:
+            self._updateCirclePosition()
+
+    # ------------------------------------------------------
+    # Animation
+    # ------------------------------------------------------
 
     @Property(float)
     def circle_position(self):
@@ -3841,75 +4148,104 @@ class Toggle(QCheckBox):
         self._circle_position = pos
         self.update()
 
-    def start_transition(self, state):
+    def _startTransition(self):
         self.animation.stop()
-        pos = self.circlePos(state)
-        self.animation.setEndValue(pos)
+
+        self.animation.setStartValue(
+            self._circle_position
+        )
+        self.animation.setEndValue(
+            self.circlePos(self._checked)
+        )
+
         self.animation.start()
 
-    def hitButton(self, pos: QPoint):
-        return self.contentsRect().contains(pos)
+    # ------------------------------------------------------
+    # Interaction
+    # ------------------------------------------------------
 
-    def setDisabled(self, disable):
-        QCheckBox.setDisabled(self, disable)
-        if hasattr(self, 'label'):
-            self.label.setDisabled(disable)
+    def mousePressEvent(self, event):
+        if (
+            event.button() == Qt.LeftButton
+            and self.isEnabled()
+        ):
+            self.toggle()
+            self.clicked.emit(self.isChecked())
+            event.accept()
+            return
+
+        super().mousePressEvent(event)
+
+    # ------------------------------------------------------
+    # Enabled state
+    # ------------------------------------------------------
+
+    def setDisabled(self, disabled):
+        super().setDisabled(disabled)
+        if self._label is not None:
+            self._label.setDisabled(disabled)
         self.update()
 
-    def paintEvent(self, e):
-        circle_color = (
-            self._circle_color if self.isEnabled()
-            else self._disabled_circle_color
-        )
-        active_color = (
-            self._active_color if self.isEnabled()
-            else self._disabled_active_color
-        )
-        unchecked_color = (
-            self._bg_color if self.isEnabled()
-            else self._disabled_bg_color
-        )
+    # ------------------------------------------------------
+    # Painting
+    # ------------------------------------------------------
 
-        # set painter
+    def paintEvent(self, event):
+        if self.isEnabled():
+            circle_color = self._circle_color
+            active_color = self._active_color
+            unchecked_color = self._bg_color
+        else:
+            circle_color = self._disabled_circle_color
+            active_color = self._disabled_active_color
+            unchecked_color = self._disabled_bg_color
+
+        rect = self.toggleRect()
+
         p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # set no pen
+        p.setRenderHint(
+            QPainter.RenderHint.Antialiasing
+        )
         p.setPen(Qt.NoPen)
 
-        # draw rectangle
-        rect = QRect(0, 0, self.width(), self.height())
+        width = self.sizeHint().width()
+        height = self.sizeHint().height()
 
-        if not self.isChecked():
-            # Draw background
-            p.setBrush(QColor(unchecked_color))
-            half_h = int(self.height()/2)
-            p.drawRoundedRect(
-                0, 0, rect.width(), self.height(), half_h, half_h
-            )
+        # --------------------------------------------------
+        # Background
+        # --------------------------------------------------
 
-            # Draw circle
-            p.setBrush(QColor(circle_color))
-            p.drawEllipse(
-                int(self._circle_position), int(self._circle_margin/2),
-                self.height()-self._circle_margin,
-                self.height()-self._circle_margin
-            )
-        else:
-            # Draw background
-            p.setBrush(QColor(active_color))
-            half_h = int(self.height()/2)
-            p.drawRoundedRect(
-                0, 0, rect.width(), self.height(), half_h, half_h
-            )
+        background_color = (
+            active_color
+            if self._checked
+            else unchecked_color
+        )
 
-            # Draw circle
-            p.setBrush(QColor(circle_color))
-            p.drawEllipse(
-                int(self._circle_position), int(self._circle_margin/2),
-                self.height()-self._circle_margin,
-                self.height()-self._circle_margin
-            )
+        p.setBrush(QColor(background_color))
+
+        p.drawRoundedRect(
+            rect,
+            rect.height() / 2,
+            rect.height() / 2,
+        )
+
+        # --------------------------------------------------
+        # Circle
+        # --------------------------------------------------
+
+        p.setBrush(QColor(circle_color))
+
+        diameter = self.circleDiameter()
+
+        p.drawEllipse(
+            int(self._circle_position),
+            int(
+                rect.y()
+                + self._circle_margin / 2
+            ),
+            diameter,
+            diameter,
+        )
 
         p.end()
 
@@ -4234,10 +4570,18 @@ class formWidget(QWidget):
     
     def setDisabled(self, disabled: bool) -> None:
         for item in self.items:
-            try:
-                item.setDisabled(disabled)
-            except Exception as err:
-                pass
+            if isinstance(item, QHBoxLayout):
+                for i in range(item.count()):
+                    widget = item.itemAt(i).widget()
+                    try:
+                        widget.setDisabled(disabled)
+                    except Exception as err:
+                        pass
+            else:
+                try:
+                    item.setDisabled(disabled)
+                except Exception as err:
+                    pass
 
 class ToggleTerminalButton(PushButton):
     sigClicked = Signal(bool)
@@ -4644,7 +4988,9 @@ class _metricsQGBox(QGroupBox):
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
             equations=None, addDelButton=False, delButtonMetricsDesc=None,
-            parent=None, addCalcForEachZsliceToggle=False
+            parent=None, addCalcForEachZsliceToggle=False, 
+            doesWarnOnUncheck=False,
+            isSegm3D=False
         ):
         QGroupBox.__init__(self, parent)
         
@@ -4652,7 +4998,9 @@ class _metricsQGBox(QGroupBox):
         r, g, b, a = highlightRgba
         self._highlightStylesheetColor = f'rgb({r}, {g}, {b})'
         
+        self._updatingCheckboxes = False
         self._parent = parent
+        self.doesWarnOnUncheck = doesWarnOnUncheck
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
         self.favourite_funcs = favourite_funcs
@@ -4667,6 +5015,7 @@ class _metricsQGBox(QGroupBox):
 
         self.checkBoxes = []
         self.checkedState = {}
+        self.metricDescriptions = desc_dict
         for metric_colname, metric_desc in desc_dict.items():
             rowLayout = QHBoxLayout()
 
@@ -4709,6 +5058,16 @@ class _metricsQGBox(QGroupBox):
         buttonsLayout = QHBoxLayout()    
             
         buttonsLayout.addStretch(1)
+
+        if isSegm3D:
+            selectAll3DButton = selectAllPushButton(
+                suffix_text_select='only 3D metrics',
+                suffix_text_deselect='all 3D metrics'
+            )
+            selectAll3DButton.setChecked(False)
+            selectAll3DButton.sigClicked.connect(self.checkAll3D)
+            self.selectAll3DButton = selectAll3DButton
+            buttonsLayout.addWidget(selectAll3DButton)
         
         self.selectAllButton = selectAllPushButton()
         self.selectAllButton.sigClicked.connect(self.checkAll)
@@ -4774,11 +5133,7 @@ class _metricsQGBox(QGroupBox):
     
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkBoxes:
-            if not text:
-                highlighted = False
-            else:
-                highlighted = checkbox.text().lower().find(text.lower()) != -1
-            
+            highlighted = _matchesSearchText(text, checkbox.text())
             self.setCheckboxHighlighted(highlighted, checkbox)
     
     def setCheckboxHighlighted(self, highlighted, checkbox):
@@ -4796,12 +5151,31 @@ class _metricsQGBox(QGroupBox):
         self.sigDelClicked.emit(button.colname, button._layout)
     
     def toggled_cb(self, checked):
+        alreadyWarnedRequired = False
         for checkbox in self.checkBoxes:
+            if self.doesWarnOnUncheck and alreadyWarnedRequired:
+                checkbox.blockSignals(True)
+
             if not checked:
                 self.checkedState[checkbox] = checkbox.isChecked()
                 checkbox.setChecked(False)
             else:
-                checkbox.setChecked(self.checkedState[checkbox])
+                checkbox.setChecked(
+                    self.checkedState[checkbox]
+                )
+            
+            cannotBeUnchecked = (
+                hasattr(checkbox, 'isRequired')
+                and checkbox.isRequired
+                and not checked
+            )
+            if not alreadyWarnedRequired:
+                alreadyWarnedRequired = cannotBeUnchecked
+            
+            if cannotBeUnchecked and alreadyWarnedRequired:
+                checkbox.setChecked(True)
+            
+            checkbox.blockSignals(False)
 
     def checkFavouriteFuncs(self, checked=True, isZstack=False):
         self.doNotWarn = True
@@ -4817,6 +5191,25 @@ class _metricsQGBox(QGroupBox):
         self.doNotWarn = False
         if self._parent is not None:
             self._parent.doNotWarn = False
+
+    def checkAll3D(self, button, checked):
+        if self._parent is not None:
+            self._parent.doNotWarn = True
+
+        for checkBox in self.checkBoxes:
+            if not checkBox.text().endswith('_3D'):
+                if checked:
+                    # Deselect non-3D 
+                    checkBox.setChecked(False)
+                continue
+
+            checkBox.setChecked(checked)
+        if self._parent is not None:
+            self._parent.doNotWarn = False
+        
+        self.selectAllButton.sigClicked.disconnect()
+        self.selectAllButton.setChecked(checked)
+        self.selectAllButton.sigClicked.connect(self.checkAll)
 
     def checkAll(self, button, checked):
         if self._parent is not None:
@@ -4868,14 +5261,17 @@ class channelMetricsQGBox(QGroupBox):
         metricsQGBox = _metricsQGBox(
             metrics_desc, 'Standard measurements',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack,
+            isSegm3D=isSegm3D
         )
         self.metricsQGBox = metricsQGBox
         
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs, 
-            parent=self, isZstack=isZstack
+            parent=self, isZstack=isZstack,
+            doesWarnOnUncheck=True,
+            isSegm3D=isSegm3D
         )
         self.bkgrValsQGBox = bkgrValsQGBox
 
@@ -4883,6 +5279,7 @@ class channelMetricsQGBox(QGroupBox):
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
 
         self.uncheckAndDisableDataPrepIfPosNotPrepped(posData)
+        self.uncheckAndDisableManualBkgrIfNotPresent(posData)
 
         self.groupboxes = [metricsQGBox, bkgrValsQGBox]
 
@@ -4907,7 +5304,8 @@ class channelMetricsQGBox(QGroupBox):
                 custom_metrics_desc, 'Custom measurements', 
                 delButtonMetricsDesc=combine_metrics_desc,
                 favourite_funcs=favourite_funcs,
-                isZstack=isZstack
+                isZstack=isZstack,
+                isSegm3D=isSegm3D
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
@@ -4972,6 +5370,21 @@ class channelMetricsQGBox(QGroupBox):
             checkbox.setChecked(False)
             checkbox.isDataPrepDisabled = True
     
+    def uncheckAndDisableManualBkgrIfNotPresent(self, posData):
+        # Uncheck and disable dataprep metrics if pos is not prepped
+        if posData is None:
+            return
+
+        if posData.manualBackgroundLab is not None:
+            return
+
+        for checkbox in self.checkBoxes:
+            if checkbox.text().find('manualBkgr') == -1:
+                continue
+
+            checkbox.setChecked(False)
+            checkbox.isManualBkgrDisabled = True
+    
     def _warnDataPrepCannotBeChecked(self):
         if self.doNotWarn:
             return
@@ -4980,6 +5393,20 @@ class channelMetricsQGBox(QGroupBox):
             not select any background ROI at the data prep step.<br><br>
 
             You can read more details about data prep metrics by clicking 
+            on the info button besides the measurement's name.<br><br>
+
+            Thank you for you patience!
+        """)
+        msg = myMessageBox(showCentered=False)
+        msg.warning(self, 'Metric cannot be saved', txt)
+    
+    def _warnManualBkgrCannotBeChecked(self):
+        if self.doNotWarn:
+            return
+        txt = html_utils.paragraph("""
+            <b>Measurements requiring manual background cannot be saved</b> because you did not setup any manual background ROI in the module 3 GUI.<br><br>
+
+            You can read more details about manual background metrics by clicking 
             on the info button besides the measurement's name.<br><br>
 
             Thank you for you patience!
@@ -5017,6 +5444,14 @@ class channelMetricsQGBox(QGroupBox):
                 return
             checkbox.setChecked(False)
             self._warnDataPrepCannotBeChecked()
+            return
+        
+        if hasattr(checkbox, 'isManualBkgrDisabled'):
+            # Warn that user cannot check data prep metrics and uncheck it
+            if not checkbox.isChecked():
+                return
+            checkbox.setChecked(False)
+            self._warnManualBkgrCannotBeChecked()
             return
 
         self.sigCheckboxToggled.emit(checkbox)
@@ -5062,10 +5497,10 @@ class channelMetricsQGBox(QGroupBox):
         if checkbox.isChecked():
             return
         
+        checkbox.setChecked(True)
         if self.doNotWarn:
             return
-        
-        checkbox.setChecked(True)
+
         txt = html_utils.paragraph("""
             <b>This background value cannot be unchecked</b> because it is required 
             by the <code>_amount</code> and <code>_concentration</code> measurements 
@@ -5896,6 +6331,7 @@ class ZoomROI(ROI):
 class DelROI(pg.ROI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.setCursor(Qt.SizeAllCursor)
     
     def clearPoints(self):
         """
@@ -10059,11 +10495,7 @@ class SetMeasurementsGroupBox(QGroupBox):
 
     def highlightCheckboxesFromSearchText(self, text):
         for checkbox in self.checkboxes.values():
-            if not text:
-                highlighted = False
-            else:
-                highlighted = checkbox.text().lower().find(text.lower()) != -1
-            
+            highlighted = _matchesSearchText(text, checkbox.text())
             self.setCheckboxHighlighted(highlighted, checkbox)
     
     def setCheckboxHighlighted(self, highlighted, checkbox):
@@ -10076,15 +10508,16 @@ class SetMeasurementsGroupBox(QGroupBox):
             checkbox.setStyleSheet('')
     
 class SearchLineEdit(QLineEdit):
-    def __init__(self, parent=None):
+    def __init__(self, text='Search...', parent=None):
         super().__init__(parent)
         
+        self._text = text
         self.initSearch()
         self.setFocusPolicy(Qt.ClickFocus)
         
     def focusInEvent(self, event) -> None:
         super().focusInEvent(event)
-        if super().text() == 'Search...':
+        if super().text() == self._text:
             self.setText('')
         self.setStyleSheet('')
     
@@ -10094,12 +10527,12 @@ class SearchLineEdit(QLineEdit):
             self.initSearch()
     
     def initSearch(self):
-        self.setText('Search...')
+        self.setText(self._text)
         self.setStyleSheet('color: rgb(150, 150, 150)')
         self.clearFocus()
     
     def text(self):
-        if super().text() == 'Search...':
+        if super().text() == self._text:
             return ''
         return super().text()
 
@@ -13148,14 +13581,16 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         self._filterText = ''
         self.FUZZY_THRESHOLD = 0.5
         self._scoreCache = {}
+        self._similarityCache = {}
 
     def setFilterText(self, text):
         self._filterText = text.strip().casefold()
         self.refresh()
 
     def refresh(self):
-        """Clear cached scores and re-apply filtering and sorting."""
+        """Clear query-local caches and re-apply filtering and sorting."""
         self._scoreCache.clear()
+        self._similarityCache.clear()
         # self.invalidateFilter()
         self.invalidate()
         
@@ -13231,20 +13666,272 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
         return 7, 0
 
     def _similarity(self, text):
-        query = self._filterText
-        if not query or not text:
-            return 0.0
+        cache_key = (text, self.FUZZY_THRESHOLD)
+        similarity = self._similarityCache.get(cache_key)
+        if similarity is None:
+            similarity = _fuzzySearchSimilarity(
+                self._filterText, text, self.FUZZY_THRESHOLD
+            )
+            self._similarityCache[cache_key] = similarity
+        return similarity
 
-        matcher = SequenceMatcher(None, query, text)
-        best_ratio = 0.0
-        for query_start, text_start, _ in matcher.get_matching_blocks():
-            start = max(text_start - query_start, 0)
-            candidate = text[start:start + len(query)]
-            ratio = SequenceMatcher(None, query, candidate).ratio()
-            best_ratio = max(best_ratio, ratio)
-            if best_ratio == 1.0:
-                break
-        return best_ratio
+
+def _fuzzySearchSimilarity(query, text, minimum_similarity=0.0):
+    """Return the best partial ratio, or zero below the requested minimum."""
+    if not query or not text:
+        return 0.0
+
+    query_length = len(query)
+    candidate_length = min(query_length, len(text))
+    if (
+            2.0 * candidate_length / (query_length + candidate_length)
+            < minimum_similarity
+        ):
+        return 0.0
+
+    matcher = SequenceMatcher(None, query, text)
+    blocks = matcher.get_matching_blocks()
+    best_ratio = 0.0
+    seen_starts = set()
+    for query_start, text_start, _ in blocks:
+        start = max(text_start - query_start, 0)
+        if start in seen_starts:
+            continue
+        seen_starts.add(start)
+        candidate = text[start:start + query_length]
+        matcher.set_seq2(candidate)
+        # These upper bounds cannot discard a qualifying or better match.
+        lower_bound = max(minimum_similarity, best_ratio)
+        if matcher.real_quick_ratio() < lower_bound:
+            continue
+        if matcher.quick_ratio() < lower_bound:
+            continue
+        ratio = matcher.ratio()
+        best_ratio = max(best_ratio, ratio)
+        if best_ratio == 1.0:
+            break
+    return best_ratio if best_ratio >= minimum_similarity else 0.0
+
+
+def _searchSynonyms():
+    synonyms = [
+        ('Segm.', 'Segmentation'),
+        ('Edit', 'Change'),
+        ('ID', 'IDs'),
+        ('ID', 'cell'),
+        ('ID', 'object'),
+        ('bkgr', 'background'),
+    ]
+    return synonyms + [(synonym, phrase) for phrase, synonym in synonyms]
+
+
+def _matchesSearchText(query, text):
+    """Match checkbox labels literally, including synonym substitutions."""
+    query = query.strip().casefold()
+    if not query:
+        return False
+
+    text = text.casefold()
+    query_variants = [query]
+    for phrase, synonym in _searchSynonyms():
+        phrase = phrase.casefold()
+        if phrase in query:
+            query_variants.append(query.replace(phrase, synonym.casefold()))
+
+    for query_variant in query_variants:
+        if query_variant in text:
+            return True
+    return False
+
+
+def _normalizeSearchText(text):
+    """Case-fold text and remove non-alphanumeric search separators."""
+    return ''.join(
+        character.casefold()
+        for character in text
+        if character.isalnum()
+    )
+
+
+def _searchHighlightRanges(query, text, threshold=0.5):
+    """Return display-text ranges for exact or fuzzy search matches."""
+    normalized_query = _normalizeSearchText(query)
+    if not normalized_query:
+        return []
+
+    normalized_text = []
+    source_positions = []
+    for position, character in enumerate(text):
+        if not character.isalnum():
+            continue
+        folded = character.casefold()
+        normalized_text.extend(folded)
+        source_positions.extend([position] * len(folded))
+    normalized_text = ''.join(normalized_text)
+    if not normalized_text:
+        return []
+
+    def source_ranges(start, end):
+        ranges = []
+        for position in source_positions[start:end]:
+            if ranges and position <= ranges[-1][1]:
+                ranges[-1] = (ranges[-1][0], position + 1)
+            else:
+                ranges.append((position, position + 1))
+        return ranges
+
+    match_start = normalized_text.find(normalized_query)
+    if match_start >= 0:
+        return source_ranges(
+            match_start, match_start + len(normalized_query)
+        )
+
+    matcher = SequenceMatcher(None, normalized_query, normalized_text)
+    best_ratio = threshold
+    best_start = None
+    for query_start, text_start, _ in matcher.get_matching_blocks():
+        candidate_start = max(text_start - query_start, 0)
+        candidate = normalized_text[
+            candidate_start:candidate_start + len(normalized_query)
+        ]
+        ratio = SequenceMatcher(None, normalized_query, candidate).ratio()
+        if ratio >= best_ratio and (
+                best_start is None or ratio > best_ratio
+            ):
+            best_ratio = ratio
+            best_start = candidate_start
+
+    if best_start is None:
+        return []
+
+    candidate = normalized_text[
+        best_start:best_start + len(normalized_query)
+    ]
+    normalized_ranges = []
+    for block in SequenceMatcher(
+            None, normalized_query, candidate
+        ).get_matching_blocks():
+        if not block.size:
+            continue
+        start = best_start + block.b
+        end = start + block.size
+        if normalized_ranges and start <= normalized_ranges[-1][1]:
+            normalized_ranges[-1] = (
+                normalized_ranges[-1][0],
+                max(normalized_ranges[-1][1], end),
+            )
+        else:
+            normalized_ranges.append((start, end))
+
+    ranges = []
+    for start, end in normalized_ranges:
+        ranges.extend(source_ranges(start, end))
+
+    merged_ranges = []
+    for start, end in ranges:
+        if merged_ranges and start <= merged_ranges[-1][1]:
+            merged_ranges[-1] = (
+                merged_ranges[-1][0],
+                max(merged_ranges[-1][1], end),
+            )
+        else:
+            merged_ranges.append((start, end))
+    return merged_ranges
+
+
+def _highlightSearchText(text, ranges, color=None):
+    """Return escaped rich text with the requested display-text ranges bolded."""
+    parts = []
+    previous_end = 0
+    for start, end in ranges:
+        style = 'font-weight:bold;'
+        if color is not None:
+            style = f'color:{color}; {style}'
+        parts.extend((
+            html.escape(text[previous_end:start]),
+            (
+                f'<span style="{style}">'
+                f'{html.escape(text[start:end])}</span>'
+            ),
+        ))
+        previous_end = end
+    parts.append(html.escape(text[previous_end:]))
+    return ''.join(parts)
+
+
+class _ButtonSearchHighlightDelegate(QStyledItemDelegate):
+    """Paint search matches in list entries using the dialog's highlighting."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._filterText = ''
+
+    def setFilterText(self, text):
+        self._filterText = text.strip()
+
+    def _highlightRanges(self, text, threshold):
+        return _searchHighlightRanges(
+            self._filterText, text, threshold
+        )
+
+    def paint(self, painter, option, index):
+        text = index.data(Qt.DisplayRole) or ''
+        text = str(text)
+        proxy_model = index.model()
+        threshold = getattr(proxy_model, 'FUZZY_THRESHOLD', 0.5)
+        ranges = self._highlightRanges(text, threshold)
+        if not ranges:
+            return super().paint(painter, option, index)
+
+        item_option = QStyleOptionViewItem(option)
+        self.initStyleOption(item_option, index)
+        text_color_role = (
+            QPalette.HighlightedText
+            if item_option.state & QStyle.State_Selected
+            else QPalette.Text
+        )
+        text_color = item_option.palette.color(text_color_role).name()
+
+        item_option.text = ''
+        style = (
+            item_option.widget.style()
+            if item_option.widget is not None
+            else QApplication.style()
+        )
+        style.drawControl(
+            QStyle.CE_ItemViewItem,
+            item_option,
+            painter,
+            item_option.widget,
+        )
+        text_rect = style.subElementRect(
+            QStyle.SE_ItemViewItemText,
+            item_option,
+            item_option.widget,
+        )
+        document = QTextDocument()
+        document.setDocumentMargin(0)
+        document.setDefaultFont(item_option.font)
+        document.setHtml(
+            f'<span style="color:{text_color};">'
+            f'{_highlightSearchText(text, ranges)}</span>'
+        )
+        document.setTextWidth(text_rect.width())
+
+        painter.save()
+        vertical_offset = max(
+            (text_rect.height() - document.size().height()) / 2,
+            0,
+        )
+        painter.translate(
+            text_rect.left(), text_rect.top() + vertical_offset
+        )
+        painter.setClipRect(
+            0, 0, text_rect.width(), text_rect.height()
+        )
+        document.drawContents(painter)
+        painter.restore()
+
 
 class ButtonSearchWidget(QWidget):
     """Search widget populated from documentation or caller-provided records.
@@ -13261,7 +13948,10 @@ class ButtonSearchWidget(QWidget):
         contain ``display``, ``search_name``, ``synonyms``, ``tooltip``,
         ``button_id``, and ``target``. All fields are optional: the mapping key
         is used as the default display and search name, while collections of
-        strings may be supplied as synonyms.
+        strings may be supplied as synonyms. ``target`` may be a widget,
+        action, GUI attribute name, or a list/tuple of these to highlight
+        together. Toolbar controls also highlight the opener controls
+        registered with :meth:`registerToolbarTargets`.
     """
 
     ACTION_ROLE = Qt.UserRole + 6
@@ -13280,6 +13970,7 @@ class ButtonSearchWidget(QWidget):
         self.guiWin = guiWin
 
         self.buttons_data = {}
+        self._toolbar_targets = {}
 
         self.init_ui(loadingType=loadingType, searchRecords=searchRecords)
 
@@ -13359,6 +14050,8 @@ class ButtonSearchWidget(QWidget):
         self.popup = QListView()
         self.popup.setFocusPolicy(Qt.NoFocus)
         self.popup.setModel(self.proxy_model)
+        self._highlight_delegate = _ButtonSearchHighlightDelegate(self.popup)
+        self.popup.setItemDelegate(self._highlight_delegate)
         try:
             self.popup.setEditTriggers(QAbstractItemView.NoEditTriggers)
         except:
@@ -13425,15 +14118,49 @@ class ButtonSearchWidget(QWidget):
         )
         
     def synonyms(self):
-        synonyms = [
-            ('Segm.', 'Segmentation'),
-            ('Edit', 'Change'),
-            ('ID', 'IDs'),
-            ('ID', 'cell'),
-            ('ID', 'object'),
-        ]
-        synonyms += [(v, k) for k, v in synonyms]
-        return synonyms
+        return _searchSynonyms()
+
+    def registerToolbarTargets(self, toolbar, targets):
+        """Link a toolbar's controls to the button(s) that open it."""
+        self._toolbar_targets[toolbar] = (
+            tuple(targets) if isinstance(targets, (list, tuple))
+            else (targets,)
+        )
+
+    def highlightTargets(self, target):
+        """Resolve a search target and include its toolbar opener controls."""
+        targets = []
+
+        def add_target(control):
+            if isinstance(control, (list, tuple)):
+                for member in control:
+                    add_target(member)
+                return
+            if isinstance(control, str):
+                control = getattr(self.guiWin, control)
+            if not isinstance(control, (QWidget, QAction)):
+                raise TypeError('Search targets must be widgets or actions')
+            if control in targets:
+                return
+            targets.append(control)
+            if isinstance(control, QAction):
+                containers = (
+                    control.associatedObjects()
+                    if hasattr(control, 'associatedObjects')
+                    else control.associatedWidgets()
+                )
+            else:
+                containers = [control]
+            for container in containers:
+                if not isinstance(container, QWidget):
+                    continue
+                while container is not None:
+                    for opener in self._toolbar_targets.get(container, ()):
+                        add_target(opener)
+                    container = container.parentWidget()
+
+        add_target(target)
+        return targets
 
     def _synonymsForName(self, name):
         normalized_name = name.strip().casefold()
@@ -13450,21 +14177,30 @@ class ButtonSearchWidget(QWidget):
         return aliases
 
     def addItems(self, items):
-        """Add or update search entries from ``(name, target)`` tuples."""
+        """Add ``(name, target)`` entries; targets may be grouped in a list/tuple."""
         for name, target in items:
             normalized_name = name.strip().casefold()
             if not normalized_name:
                 continue
 
-            tooltip_getter = getattr(target, 'toolTip', None)
-            tooltip = tooltip_getter() if callable(tooltip_getter) else ''
-            tooltip = html_utils.to_plain_text(tooltip)
-            shortcut_getter = getattr(target, 'shortcut', None)
-            shortcut = shortcut_getter() if callable(shortcut_getter) else None
-            shortcut_text = shortcut.toString() if shortcut is not None else ''
-            search_text = tooltip.strip()
-            if shortcut_text and shortcut_text not in search_text:
-                search_text = f'{search_text}\nShortcut: {shortcut_text}'.strip()
+            controls = target if isinstance(target, (list, tuple)) else (target,)
+            search_texts = []
+            for control in controls:
+                tooltip_getter = getattr(control, 'toolTip', None)
+                tooltip = tooltip_getter() if callable(tooltip_getter) else ''
+                search_text = html_utils.to_plain_text(tooltip).strip()
+                shortcut_getter = getattr(control, 'shortcut', None)
+                shortcut = (
+                    shortcut_getter() if callable(shortcut_getter) else None
+                )
+                shortcut_text = shortcut.toString() if shortcut is not None else ''
+                if shortcut_text and shortcut_text not in search_text:
+                    search_text = (
+                        f'{search_text}\nShortcut: {shortcut_text}'.strip()
+                    )
+                if search_text and search_text not in search_texts:
+                    search_texts.append(search_text)
+            search_text = '\n'.join(search_texts)
 
             record = self._search_records.get(normalized_name)
             if record is None:
@@ -13535,6 +14271,12 @@ class ButtonSearchWidget(QWidget):
         self.popup.setModel(self.proxy_model)
         self.proxy_model.setFilterText(self.search_input.text())
 
+    def setSearchRecords(self, records):
+        """Replace caller-provided records, preserving the current query."""
+        self._search_records = self._loadSearchRecords(None, records)
+        self._rebuild_models()
+        self.on_search_text_changed(self.search_input.text())
+
     def set_height_based_on(self, reference_widget):
         """Set the height of the search input based on another widget's height."""
         height_curr = reference_widget.sizeHint().height()
@@ -13544,6 +14286,7 @@ class ButtonSearchWidget(QWidget):
         """Filter the model and update the popup."""
         query = text.strip()
         self._update_search_models(query)
+        self._highlight_delegate.setFilterText(query)
         self.proxy_model.setFilterText(query)
         if not query or self.proxy_model.rowCount() == 0:
             self.popup.hide()
@@ -13553,7 +14296,7 @@ class ButtonSearchWidget(QWidget):
         self.show_popup()
 
     def _update_search_models(self, query):
-        if not query.isascii() or not query.isdecimal():
+        if self.guiWin is None or not query.isascii() or not query.isdecimal():
             if self.model is not self._controls_model:
                 self.model = self._controls_model
                 self.proxy_model = self._controls_proxy_model
@@ -13835,6 +14578,245 @@ class FireworksOverlay(QWidget):
                     particle['y'] - particle['vy'] * tail_scale,
                 ),
             )
+            
+class SeparateBudToolbar(ToolBar):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.seg_3D = False
+        self.parent = parent
+        
+        sepModeSelector = QComboBox(self)
+        sepModeSelector.addItems(['Slice by slice', '3D Convexity defects'])
+        self.sepModeSelectorAction = self.addWidget(sepModeSelector)
+        sepModeSelector.currentIndexChanged.connect(self.onSepModeChanged)
+        self.sepModeSelector = sepModeSelector
+        
+        separator2D = self.addSeparator()
+
+        self.convexity2DParamWidgets = {}
+        self.convexity2DControlActions = list(separator2D._actions)
+        float_2d_params = (
+            ('eps_percent', 'Epsilon fraction:', 0.01, 0.0, 1.0, 0.01,
+             'Contour approximation fraction used by 2D convexity splitting.'),
+        )
+        for name, label_text, default, minimum, maximum, step, tooltip in float_2d_params:
+            label = QLabel(label_text, self)
+            selector = QDoubleSpinBox(self)
+            selector.setRange(minimum, maximum)
+            selector.setSingleStep(step)
+            selector.setValue(default)
+            label.setToolTip(tooltip)
+            selector.setToolTip(tooltip)
+            self.convexity2DControlActions.append(self.addWidget(label))
+            self.convexity2DControlActions.append(self.addWidget(selector))
+            self.convexity2DParamWidgets[name] = (selector, default, float)
+            self.convexity2DControlActions.append(self.addSpacing())
+
+        splitDisconnected = CheckBox(
+            'Split disconnected regions'
+        )
+        splitDisconnected.setToolTip(
+            'Assign separate IDs to disconnected parts before applying '
+            'slice-by-slice convexity splitting or 2D splitting.'
+        )
+        splitDisconnected.setChecked(True)
+        self.convexity2DControlActions.append(self.addWidget(splitDisconnected))
+        self.convexity2DParamWidgets['split_disconnected2D'] = (
+            splitDisconnected, True, bool
+        )
+        self.convexity2DControlActions.append(self.addSpacing())
+
+        separator3D = self.addSeparator()
+        
+        float_params = (
+            ('smooth_sigma', 'EDT smoothing sigma:', 1.0, 0.0, 1000.0, 0.1,
+             'Gaussian smoothing applied to the distance transform in '
+             'physical units. Larger values suppress more boundary noise.'),
+            ('h_maxima_frac', 'Seed prominence:', 0.25, 0.0, 1.0, 0.01,
+             'Minimum seed prominence as a fraction of the maximum distance. '
+             'Larger values produce fewer candidate seeds.'),
+            ('compactness', 'Compactness:', 0.01, 0.0, 1000.0, 0.01,
+             'Watershed compactness weight. Small positive values favor '
+             'rounder regions; zero disables the compactness bias.'),
+            ('min_volume_frac', 'Min. volume fraction:', 0.1, 0.0, 0.5, 0.01,
+             'Reject splits where the smaller child is below this fraction '
+             'of the parent volume.'),
+            ('min_solidity', 'Min. solidity:', 0.90, 0.0, 1.0, 0.01,
+             'Objects at or above this solidity with fewer than two seeds '
+             'are not split when the solidity gate is enabled.'),
+            ('defect_depth_frac', 'Defect depth fraction:', 0.2, 0.0, 1.0, 0.01,
+             'Surface vertices deeper than this fraction of the deepest '
+             'convexity defect are used to fit the defect ring.'),
+            ('max_ringness', 'Max. ringness:', 0.35, 0.0, 1.0, 0.01,
+             'Maximum defect-cloud ringness accepted for plane fitting. '
+             'Lower values require a more planar ring.'),
+        )
+        self.convexity3DParamWidgets = {}
+        self.convexityControlActions = []
+
+        self.convexityControlActions.extend(separator3D._actions)
+
+        for name, label_text, default, minimum, maximum, step, tooltip in float_params:
+            label = QLabel(label_text, self)
+            selector = QDoubleSpinBox(self)
+            selector.setRange(minimum, maximum)
+            selector.setSingleStep(step)
+            label.setToolTip(tooltip)
+            selector.setToolTip(tooltip)
+            self.convexityControlActions.append(self.addWidget(label))
+            self.convexityControlActions.append(self.addWidget(selector))
+            self.convexity3DParamWidgets[name] = (selector, default, float)
+            spacer = self.addSpacing()
+            self.convexityControlActions.append(spacer)
+
+        bool_params = (
+            ('split_disconnected3D', 'Split disconnected regions', True,
+             'Assign separate IDs to disconnected 3D components before '
+             'applying convexity splitting.'),
+            ('require_improvement', 'Prefer solidity improvement', True,
+             'Prefer candidates where both children are more solid than the '
+             'parent. If none improve solidity, rank all valid candidates.'),
+            ('gate_on_solidity', 'Gate on solidity', True,
+             'Skip objects above the minimum solidity unless the distance '
+             'transform contains at least two seeds.'),
+        )
+        for name, text, default, tooltip in bool_params:
+            checkbox = CheckBox(text)
+            checkbox.setToolTip(tooltip)
+            self.convexityControlActions.append(self.addWidget(checkbox))
+            self.convexity3DParamWidgets[name] = (checkbox, default, bool)
+            spacer = self.addSpacing()
+            self.convexityControlActions.append(spacer)
+
+        self.goToSepSliceSeparator = self.addSeparator()
+        
+        goToSepSliceCheckBox = CheckBox('Go to separated slice')
+        self.goToSepSliceCheckBoxAction = self.addWidget(
+            goToSepSliceCheckBox
+        )
+        self.goToSepSliceCheckBox = goToSepSliceCheckBox
+        
+        self.setSegm3D(self.seg_3D)
+        self.setSettings()
+
+        goToSepSliceCheckBox.stateChanged.connect(self.saveSettings)
+        for widget, _, value_type in self.convexity3DParamWidgets.values():
+            if value_type is bool:
+                widget.stateChanged.connect(self.saveSettings)
+            else:
+                widget.valueChanged.connect(self.saveSettings)
+        for widget, _, value_type in self.convexity2DParamWidgets.values():
+            if value_type is bool:
+                widget.stateChanged.connect(self.saveSettings)
+            else:
+                widget.valueChanged.connect(self.saveSettings)
+        sepModeSelector.currentIndexChanged.connect(self.saveSettings)
+
+            
+    def setSettings(self):
+        parent = self.parent 
+        mode = parent._get_setting_value(
+            'sep_IDs_mode', '3D Convexity defects', str
+        )
+        self.sepModeSelector.setCurrentText(mode)
+        
+        go_to_sep_slice = parent._get_setting_value(
+            'go_to_sep_slice', False, bool
+        )
+        self.goToSepSliceCheckBox.setChecked(go_to_sep_slice)
+
+        for name, (widget, default, value_type) in self.convexity3DParamWidgets.items():
+            value = parent._get_setting_value(
+                name, default, value_type
+            )
+            if value_type is bool:
+                widget.setChecked(value)
+            else:
+                widget.setValue(value)
+
+        for name, (widget, default, value_type) in self.convexity2DParamWidgets.items():
+            value = parent._get_setting_value(
+                name, default, value_type
+            )
+            if value_type is bool:
+                widget.setChecked(value)
+            else:
+                widget.setValue(value)
+        
+    def saveSettings(self):
+        settings_df = self.parent.df_settings
+        
+        settings_df.loc[
+            'sep_IDs_mode', 'value'
+            ] = self.sepModeSelector.currentText()
+        settings_df.loc[
+            'go_to_sep_slice', 'value'
+            ] = self.goToSepSliceCheckBox.isChecked()
+        for name, (widget, _, value_type) in self.convexity3DParamWidgets.items():
+            value = widget.isChecked() if value_type is bool else widget.value()
+            settings_df.loc[name, 'value'] = value
+        for name, (widget, _, value_type) in self.convexity2DParamWidgets.items():
+            value = widget.isChecked() if value_type is bool else widget.value()
+            settings_df.loc[name, 'value'] = value
+        
+        settings_df.to_csv(self.parent.settings_csv_path)
+        
+    def onSepModeChanged(self, index):
+        mode = self.sepModeSelector.currentText()
+        self.setConvexity2DControlsVisible(
+            not self.seg_3D or mode == 'Slice by slice'
+        )
+        self.setConvexityControlsVisible(
+            self.seg_3D and mode == '3D Convexity defects'
+        )
+
+    def setSegm3D(self, seg_3D=False):
+        self.seg_3D = seg_3D
+        self.sepModeSelectorAction.setVisible(seg_3D)
+        self.goToSepSliceCheckBoxAction.setVisible(seg_3D)
+        for action in self.goToSepSliceSeparator._actions:
+            action.setVisible(seg_3D)
+
+        self.onSepModeChanged(self.sepModeSelector.currentIndex())
+
+    def setConvexityControlsVisible(self, visible):
+        for action in self.convexityControlActions:
+            action.setVisible(visible)
+
+    def setConvexity2DControlsVisible(self, visible):
+        for action in self.convexity2DControlActions:
+            action.setVisible(visible)
+            
+    def goToSepSliceChecked(self):
+        return self.goToSepSliceCheckBox.isChecked()
+
+    def separationMode(self):
+        return self.sepModeSelector.currentText()
+    
+    def setSeparationMode(self, mode):
+        self.sepModeSelector.setCurrentText(mode)
+
+    def splitConv3DKwargs(self):
+        kwargs = {}
+        for name, (widget, _, value_type) in self.convexity3DParamWidgets.items():
+            if name == 'split_disconnected3D':
+                kwargs['split_disconnected'] = widget.isChecked() if value_type is bool else widget.value()
+                continue
+            kwargs[name] = (
+                widget.isChecked() if value_type is bool else widget.value()
+            )
+        return kwargs
+
+    def splitConv2DKwargs(self):
+        kwargs = {}
+        for name, (widget, _, value_type) in self.convexity2DParamWidgets.items():
+            if name == 'split_disconnected2D':
+                kwargs['split_disconnected'] = widget.isChecked() if value_type is bool else widget.value()
+                continue
+            kwargs[name] = (
+                widget.isChecked() if value_type is bool else widget.value()
+            )
+        return kwargs
 
 class PrefixFilenameLineEdit(QWidget):
     def __init__(self, endNameLabel, *args):      
@@ -13872,3 +14854,27 @@ class PrefixFilenameLineEdit(QWidget):
         filename = f'{self.le.text()}{self.endnameLabel.text()}'
         return filename
 
+class _RecentItemsSearchCompleter(ButtonSearchCompleter):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alwaysRecency = False
+
+    def setAlwaysRecency(self, alwaysRecency):
+        self.alwaysRecency = alwaysRecency
+        self.invalidate()
+        self.sort(0, Qt.AscendingOrder)
+
+    def lessThan(self, left, right):
+        if self.alwaysRecency:
+            return left.row() < right.row()
+
+        left_score = self._getScore(left)
+        right_score = self._getScore(right)
+
+        if left_score[0] != right_score[0]:
+            return left_score[0] < right_score[0]
+        
+        if left_score[1] != right_score[1]:
+            return left_score[1] < right_score[1]
+
+        return left.row() < right.row()

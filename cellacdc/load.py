@@ -1730,8 +1730,15 @@ class loadData:
             img_data[i] = frame
         return img_data
 
-    def countObjectsInSegmTimelapse(self, categories: set[str] | list[str]):
-        numObjsCurrentFrame = len(self.IDs)
+    def countObjectsInSegmTimelapse(
+            self, 
+            categories: set[str] | list[str], 
+            stop_frame_n: int | None=None
+        ):
+        try:
+            numObjsCurrentFrame = len(self.IDs)
+        except AttributeError as err:
+            numObjsCurrentFrame = np.nan
         
         uniqueIDsVisited = None
         uniqueIDsAll = None
@@ -1748,8 +1755,12 @@ class loadData:
         
         if 'In entire video' in categories:
             numObjsTotal = 0
-            
-        for frame_i in range(len(self.segm_data)):
+        
+        if stop_frame_n is None:
+            stop_frame_n = len(self.segm_data)
+
+        numObjsPerFrame = {}
+        for frame_i in range(stop_frame_n):
             lab = self.allData_li[frame_i]['labels']
             if lab is not None:
                 if hasattr(self.allData_li[frame_i]['regionprops'], 'IDs'):
@@ -1779,11 +1790,14 @@ class loadData:
                 if numObjsTotal is not None or numObjsTotal is not None:
                     rp = skimage.measure.regionprops(self.segm_data[frame_i])
                 
+                numObjsFrame = len(rp)
                 if numObjsTotal is not None:
-                    numObjsTotal += len(rp)
+                    numObjsTotal += numObjsFrame
                     
                 if uniqueIDsAll is not None:
                     uniqueIDsAll.update([obj.label for obj in rp])
+                
+            numObjsPerFrame[frame_i] = numObjsFrame
         
         numUniqueObjsVisitedFrames = None
         if uniqueIDsVisited is not None:
@@ -1801,7 +1815,7 @@ class loadData:
             'Unique objects in entire video': numUniqueObjsTotal
         }
         
-        return allCategoryCountMapper
+        return allCategoryCountMapper, numObjsPerFrame
     
     def countObjectsInSegmSnapshots(self, categories: set[str] | list[str]):
         if hasattr(self, 'IDs'):
@@ -1814,22 +1828,35 @@ class loadData:
         mapper = {
             'In current position': numObjs
         }
+
+        numObjsPerFrame = {0: numObjs}
         
-        return mapper
+        return mapper, numObjsPerFrame
     
-    def countObjectsInSegm(self, categories: set[str] | list[str] | None=None):
+    def countObjectsInSegm(
+            self, 
+            categories: set[str] | list[str] | None=None,
+            stop_frame_n: int | None=None
+        ):
         if self.SizeT > 1:
             if categories is None:
                 categories = ['In entire video']
                 
-            return self.countObjectsInSegmTimelapse(categories)
+            return self.countObjectsInSegmTimelapse(
+                categories, stop_frame_n=stop_frame_n
+            )
         else:
             if categories is None:
                 categories = ['In current position']
                 
             return self.countObjectsInSegmSnapshots(categories)
     
-    def saveObjCounts(self, countMapper: dict[str, int]):
+    def saveObjCounts(
+            self, 
+            countMapper: dict[str, int],
+            numObjsPerFrame: dict[str, int],
+            saveToAcdcDf: bool=False,
+        ):
         df = pd.DataFrame(countMapper, index=[0])
         segmFilename = os.path.basename(self.segm_npz_path)
         segmEndname = segmFilename[len(self.basename):]
@@ -1843,6 +1870,35 @@ class loadData:
         dfCountFilepath = os.path.join(self.images_path, dfCountFilename)
         
         df.to_csv(dfCountFilepath, index=False)
+
+        if not saveToAcdcDf:
+            return
+
+        acdc_df = (
+            _load_acdc_df_file(self.acdc_output_csv_path)
+            .reset_index().set_index('frame_i')
+        )
+
+        df_num_objs_per_frame = pd.DataFrame.from_dict(
+            numObjsPerFrame, 
+            orient='index', 
+            columns=['number_of_objects_per_frame']
+        )
+        df_num_objs_per_frame.index.name = 'frame_i'
+
+        df_count = df.rename(
+            columns={
+                col: f'number_of_objects_{acdc_regex.to_alphanumeric(col).lower()}' 
+                for col in df.columns}
+        )
+
+        acdc_df[df_count.columns] = df_count.iloc[0]
+        acdc_df = acdc_df.drop(
+            columns=df_num_objs_per_frame.columns, 
+            errors='ignore'
+        ).join(df_num_objs_per_frame)
+
+        acdc_df.to_csv(self.acdc_output_csv_path)
         
         return dfCountEndname
         
@@ -4007,6 +4063,34 @@ class select_exp_folder:
         self.values = values
         return values
 
+    def get_values_spotmax_exists(self, exp_path):
+        self.exp_path = exp_path
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        self.pos_foldernames = pos_foldernames
+        values = []
+        for pos in pos_foldernames:
+            pos_path = os.path.join(exp_path, pos)
+            pos_status = myutils.get_pos_status_spotmax(pos_path)
+            values.append(f'{pos}{pos_status}')
+        self.values = values
+        return values
+    
+    def get_values_acdc_and_spotmax(self, exp_path):
+        self.exp_path = exp_path
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        self.pos_foldernames = pos_foldernames
+        values = []
+        for pos in pos_foldernames:
+            pos_path = os.path.join(exp_path, pos)
+            pos_status_smax = myutils.get_pos_status_spotmax(pos_path)
+            pos_status_acdc = myutils.get_pos_status_acdc(pos_path)
+            value = (
+                f'{pos}{pos_status_acdc}{pos_status_smax}'
+                .replace(') (', ' - ')
+            )
+            values.append(value)
+        return values
+            
     def _close(self):
         val = self.pos_n_sv.get()
         idx = list(self.values).index(val)
@@ -4649,3 +4733,34 @@ def load_image_data_from_symlink(
     
     img_data = skimage.img_as_ubyte(img_data)
     return img_data
+
+def create_ctc_table_from_images_path(
+        images_path, 
+        acdc_output_endname='acdc_output',
+        save=True
+    ):
+    acdc_df, acdc_df_file_path = load_acdc_df_file(
+        images_path, 
+        end_name_acdc_df_file=acdc_output_endname,
+        return_path=True
+    )
+    if 'Cell_ID_tree' not in acdc_df.columns:
+        # Data annotated with normal division mode do not have the 
+        # Cell_ID_tree column --> The 'Cell_ID' is the correct column
+        acdc_df['Cell_ID_tree'] = acdc_df['Cell_ID']
+
+    df_ctc = core.acdc_df_to_ctc(acdc_df)
+    if not save:
+        return df_ctc, ''
+    
+    acdc_df_filename = os.path.basename(acdc_df_file_path)
+    df_ctc_filename = acdc_df_filename.replace('acdc_output', 'ctc')
+    df_ctc_filepath = os.path.join(
+        images_path, df_ctc_filename
+    )
+
+    df_ctc.to_csv(df_ctc_filepath)
+
+    return acdc_df, df_ctc_filepath
+
+    

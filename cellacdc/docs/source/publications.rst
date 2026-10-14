@@ -24,13 +24,19 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>Nucleic Acids Research</b> (2026) DOI: <a href="https://doi.org/10.1093/nar/gkag949">10.1093/nar/gkag949</a>.</li><br>
+
+      <li>Dengler, L., et al. <i>Swe1 delays cell cycle progression during impaired mitochondrial inheritance to promote mitochondrial homeostasis</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.09.18.752582">10.64898/2026.09.18.752582</a>.</li><br>
+
+      <li>Chadha, Y., et al. <i>"Single-cell imaging reveals a key role of Bck2 in yeast cell size adaptation to nutrient challenges</i>. <b>Journal of Cell Biology</b> (2026) DOI: <a href="https://doi.org/10.1083/jcb.202410020">10.1083/jcb.202410020</a>.</li><br>
+
       <li>Ohsawa, S., et al. <i>Protein-driven colloid-osmotic pressure controls nuclear size, organization, and function</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.09.03.749057">10.64898/2026.09.03.749057</a>.</li><br>
 
       <li>Gao, X., et al. <i>The proportional scaling of mRNA and ribosome concentrations controls eukaryotic cell growth</i>. <b>Nat. Cell Biol.</b> (2026) DOI: <a href="https://doi.org/10.1038/s41556-026-02045-0">10.1038/s41556-026-02045-0</a>.</li><br>
 
-      <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in Caenorhabditis elegans by maintaining functional germline morphology</i>. <b>Development</b> (2026) DOI: <a href="https://doi.org/10.1242/dev.205442">10.1242/dev.205442</a>.</li><br>
-
       <li>Narduzzi, G., et al. <i>Weak interactions drive selective proteome demixing and tune the differential response to environmental perturbations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.22.739830">10.64898/2026.07.22.739830</a>.</li><br>
+
+      <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in Caenorhabditis elegans by maintaining functional germline morphology</i>. <b>Development</b> (2026) DOI: <a href="https://doi.org/10.1242/dev.205442">10.1242/dev.205442</a>.</li><br>
 
       <li>Smith, W., et al. <i>Proximity labeling at H3K9me3 reveals VRK-1 regulate global chromatin distribution in C. elegans</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.07.07.737140">10.64898/2026.07.07.737140</a>.</li><br>
 
@@ -42,6 +48,10 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>Cell Reports</b> (2026) DOI: <a href="https://doi.org/10.1016/j.celrep.2026.117304">10.1016/j.celrep.2026.117304</a>.</li><br>
 
+      <li>Wunder, T., et al. <i>Conserved and lineage-specific roles of KEA-mediated ion homeostasis in Chlamydomonas</i>. <b>Plant Physiology</b> (2026) DOI: <a href="https://doi.org/10.1093/plphys/kiag405">10.1093/plphys/kiag405</a>.</li><br>
+
+      <li>Dengler, L. , et al. <i>In the absence of mitochondrial fusion unequal segregation of mitochondria drives mtDNA loss</i>. <b>EMBO Reports</b> (2026) DOI: <a href="https://doi.org/10.1038/s44319-026-00794-5">10.1038/s44319-026-00794-5</a>.</li><br>
+
       <li>Benedikt, A. et al. <i>Retrograde signalling mediates cellular adaptation to mitochondrial DNA copy number alterations</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.04.22.720057">10.64898/2026.04.22.720057</a>.</li><br>
 
       <li>Lanz, M. C., et al. <i>Cell enlargement drives aging-associated proteome remodeling and shortens replicative lifespan</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.02.15.706013">10.64898/2026.02.15.706013</a>.</li><br>
@@ -51,8 +61,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Pabst, F. R., et al. <i>Methionine synthase reductase regulates heterochromatin independently of methionine synthesis through mitochondrial homeostasis</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.64898/2025.12.19.695597">10.64898/2025.12.19.695597</a>.</li><br>
 
       <li>Garrigós, V., et al. <i>Tsa1-Mediated Regulation of PKA Tunes Trehalose Metabolism in Saccharomyces cerevisiae</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.11.26.690464">10.1101/2025.11.26.690464</a>.</li><br>
-
-      <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
 
       <li>Geetha, S. S., et al. <i>Bloom helicase contributes to successful crossover formation with both catalytic and structural roles in Caenorhabditis elegans meiosis</i>. <b> Nucleic Acids Res.</b> (2025) DOI: <a href="https://doi.org/10.1093/nar/gkaf1030">10.1093/nar/gkaf1030</a>.</li><br>
 
@@ -79,8 +87,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Padovani, F. , et al. <i>SpotMAX: a generalist framework for multi-dimensional automatic spot detection and quantification</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.22.619610">10.1101/2024.10.22.619610</a>.</li><br>
 
       <li>Chatzitheodoridou, D., Bureik, D., Padovani, F., Nadimpalli, K. V. & Schmoller, K. M. <i>Decoupled transcript and protein concentrations ensure histone homeostasis in different nutrients</i>. <b>EMBO J.</b> 43, 5141–5168 (2024) DOI: <a href="https://doi.org/10.1038/s44318-024-00227-w">10.1038/s44318-024-00227-w</a>.</li><br>
-
-      <li>Chadha, Y., Kukhtevich, I. V., Padovani, F., Schneider, R. & Schmoller, K. M. <i>Single-cell imaging reveals a key role of Bck2 in budding yeast cell size adaptation to nutrient challenges</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.04.616606">10.1101/2024.10.04.616606</a>.</li><br>
 
       <li>Seel, A. , et al. <i>Regulation with cell size ensures mitochondrial DNA homeostasis during cell growth</i>. <b>Nat. Struct. Mol. Biol.</b> 30, 1549–1560 (2023) DOI: <a href="https://doi.org/10.1038/s41594-023-01091-8">10.1038/s41594-023-01091-8</a>.</li><br>
 

@@ -6,6 +6,7 @@ import numpy as np
 from .. import printl
 from .. import colors
 from ..myutils import safe_get_or_call
+from . import _utils
 from . import install, EXTENSION_PACKAGE_MAPPER
 from . import EXTENSION_BIOIMAGE_KWARGS_MAPPER
 from . import EXTENSION_METADATA_ATTR_MAPPER
@@ -16,6 +17,19 @@ def set_reader(image_filepath, **kwargs):
     
     _, ext = os.path.splitext(image_filepath)
     if ext in EXTENSION_PACKAGE_MAPPER:
+        other_kwargs = EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
+        reader = other_kwargs.get('reader')
+        if isinstance(reader, str):
+            try:
+                reader = _utils.import_reader(reader)
+            except ImportError as err:
+                from bioio_base.exceptions import UnsupportedFileFormatError
+                raise UnsupportedFileFormatError(
+                    reader, image_filepath
+                ) from err
+            
+        if reader is not None:
+            other_kwargs['reader'] = reader
         return kwargs, EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
     
     try:

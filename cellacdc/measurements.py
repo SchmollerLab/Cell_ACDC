@@ -33,7 +33,7 @@ combine_metrics_ini_path = os.path.join(acdc_metrics_path, 'combine_metrics.ini'
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 metrics_path = os.path.join(cellacdc_path, 'metrics')
 
-how_3D_to_2D_pattern = r'zSlice|3D|maxProj|meanProj|(?=\s*$)'
+HOW_3D_TO_2D_REGEX_PATTERN = r'zSlice|3D|maxProj|meanProj'
 
 # Copy metrics to acdc-metrics user path
 for file in os.listdir(metrics_path):
@@ -1234,8 +1234,8 @@ def get_foregr_obj_array(foregr_arr, obj, isSegm3D, z_slice=None, how=None):
             except Exception as err:
                 return np.zeros(3), 0
     else:
-        # 2D mask on 2D data
-        return foregr_arr[obj.slice][obj.image], obj.area
+        obj_foregr_values = foregr_arr[obj.slice][obj.image]
+        return obj_foregr_values, obj.area
 
 def _mask_0valued_pixels_from_alignment(bkgr_mask, frame_i, posData):
     if posData.loaded_shifts is None:
@@ -1892,7 +1892,7 @@ def get_channel_indipend_custom_metrics_params(
     for col in ch_indipend_custom_metric_cols:
         for metric, custom_func in ch_indipend_custom_func_dict.items():
             custom_pattern = (
-                rf'({metric})_?({how_3D_to_2D_pattern}*)'
+                rf'({metric})_?({HOW_3D_TO_2D_REGEX_PATTERN})?$'
             )
             m = re.findall(custom_pattern, col)
             if m:
@@ -1926,7 +1926,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
             is_standard_foregr = False
             for metric in metrics_func:
                 foregr_pattern = (
-                    rf'{channel_name}_({metric})_?({how_3D_to_2D_pattern}*)$'
+                    rf'{channel_name}_({metric})_?({HOW_3D_TO_2D_REGEX_PATTERN})?$'
                 )
                 m = re.findall(foregr_pattern, col)
                 if m:
@@ -1942,7 +1942,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
             # Metric is concentration
             conc_pattern = rf'concentration_{az}+_from_vol_[a-z]+'
             conc_metric_pattern = (
-                rf'{channel_name}_({conc_pattern})_?({how_3D_to_2D_pattern}*)'
+                rf'{channel_name}_({conc_pattern})_?({HOW_3D_TO_2D_REGEX_PATTERN})?$'
             )
             m = re.findall(conc_metric_pattern, col)
             if m:
@@ -1952,7 +1952,8 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
 
             for metric, custom_func in custom_func_dict.items():
                 custom_pattern = (
-                    rf'{channel_name}_({metric})_?({how_3D_to_2D_pattern}*)'
+                    rf'^{re.escape(channel_name)}_({re.escape(metric)})'
+                    rf'_?({HOW_3D_TO_2D_REGEX_PATTERN})?$'
                 )
                 m = re.findall(custom_pattern, col)
                 if m:

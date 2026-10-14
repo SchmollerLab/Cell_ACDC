@@ -6,6 +6,8 @@ The following preprints **have been published in a peer-reviewed journal**, and 
 .. raw:: html
 
     <ol>
+      <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
+      
       <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>
       
       <li>Saydee-Onwubiko, U. N., et al. <i>Apoptosis promotes fertility in C. elegans by maintaining functional germline morphology</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.22.683972">10.1101/2025.10.22.683972</a>.</li><br>
@@ -15,6 +17,8 @@ The following preprints **have been published in a peer-reviewed journal**, and 
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.10.681508">10.1101/2025.10.10.681508</a>.</li><br>
 
       <li>Dengler, L. , et al. <i>When mitochondria fall apart: Unbalanced mitochondrial segregation triggers loss of mtDNA in the absence of mitochondrial fusion</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.05.13.653688">10.1101/2025.05.13.653688</a>.</li><br>
+
+      <li>Chadha, Y., Kukhtevich, I. V., Padovani, F., Schneider, R. & Schmoller, K. M. <i>Single-cell imaging reveals a key role of Bck2 in budding yeast cell size adaptation to nutrient challenges</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.10.04.616606">10.1101/2024.10.04.616606</a>.</li><br>
 
       <li>Kukhtevich, I. , et al. <i>The origin of septin ring size control in budding yeast</i>. <b>bioRxiv</b> (2024) DOI: <a href="https://doi.org/10.1101/2024.07.30.605628">10.1101/2024.07.30.605628</a>.</li><br>
 

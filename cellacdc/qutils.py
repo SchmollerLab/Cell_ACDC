@@ -34,12 +34,47 @@ class QWhileLoop:
         self.loop.exit()
 
 class QControlBlink(QObject):
-    def __init__(self, QWidgetToBlink: QWidget, duration_ms=2000, qparent=None) -> None:
+    """Blink one control or a group in sync, restoring each original style."""
+
+    def __init__(
+            self,
+            widget_to_blink: (
+                QWidget | QAction
+                | list[QWidget | QAction] | tuple[QWidget | QAction, ...]
+            ),
+            duration_ms=2000,
+            qparent=None,
+        ) -> None:
         self.duration_ms = duration_ms
-        self._widget = QWidgetToBlink
         self.qparent = qparent
         self.blinkON = False
-        self.original_style = self._getStyleSheet()
+        targets = (
+            widget_to_blink
+            if isinstance(widget_to_blink, (list, tuple))
+            else (widget_to_blink,)
+        )
+        self._widgets = []
+        for target in targets:
+            if isinstance(target, QAction):
+                associated_objects = (
+                    target.associatedObjects()
+                    if hasattr(target, 'associatedObjects')
+                    else target.associatedWidgets()
+                )
+                widgets = [
+                    widget for widget in associated_objects
+                    if isinstance(widget, QToolButton)
+                ]
+            elif isinstance(target, QWidget):
+                widgets = [target]
+            else:
+                raise TypeError('Blink targets must be widgets or actions')
+            for widget in widgets:
+                if widget not in self._widgets:
+                    self._widgets.append(widget)
+        self._original_styles = [
+            widget.styleSheet() for widget in self._widgets
+        ]
         super().__init__(qparent)
     
     def start(self):
@@ -53,31 +88,8 @@ class QControlBlink(QObject):
         self.stopTimer.start(self.duration_ms)
     
     def _setStyleSheet(self, style):
-        if isinstance(self._widget, QAction):
-            associated_objects = (
-                 self._widget.associatedObjects()
-                 if hasattr(self._widget, 'associatedObjects')
-                 else self._widget.associatedWidgets()
-            )
-            for widget in associated_objects:
-                if isinstance(widget, QToolButton):
-                    widget.setStyleSheet(style)
-        else:
-            self._widget.setStyleSheet(style)
-            
-    def _getStyleSheet(self):
-        if isinstance(self._widget, QAction):
-            associated_objects = (
-                 self._widget.associatedObjects()
-                 if hasattr(self._widget, 'associatedObjects')
-                 else self._widget.associatedWidgets()
-            )
-            for widget in associated_objects:
-                if isinstance(widget, QToolButton):
-                    return widget.styleSheet()
-            return ''
-        else:
-            return self._widget.styleSheet()
+        for widget in self._widgets:
+            widget.setStyleSheet(style)
 
     def timerCallback(self):
         if self.blinkON:
@@ -88,7 +100,9 @@ class QControlBlink(QObject):
 
     def stop(self):
         self.timer.stop()
-        self._setStyleSheet(self.original_style)
+        self.stopTimer.stop()
+        for widget, style in zip(self._widgets, self._original_styles):
+            widget.setStyleSheet(style)
         self.deleteLater()
         
 def hide_and_delete_layout(layout):

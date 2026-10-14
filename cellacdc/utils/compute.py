@@ -47,6 +47,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.endFilenameSegm = segmEndname
         self.doRunComputation = doRunComputation
         self.isWorkerFinished = False
+        self.doNotAskAgain = False
 
     def showEvent(self, event):
         self.runWorker()
@@ -107,7 +108,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
     
     def askRunNowOrSaveToConfig(self, worker):
         self.worker.savedToWorkflow = False
-        
+
         txt = html_utils.paragraph("""
             Do you want to <b>compute the measurements now</b><br>
             or save the  workflow to a <b>configuration file</b> and run it 
@@ -125,6 +126,8 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
                 'Cancel', saveButton, runNowButton
             )
         )
+        self.worker.runNowAlreadyAsked = True
+
         if not msg.clickedButton == saveButton:
             self.worker.abort = msg.cancel
             self.worker.waitCond.wakeAll()
@@ -329,6 +332,13 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.measurementsWin.restoreState(self.measurementsWinState)
 
     def initAddMetricsWorker(self, posData, allPosDataInputs):
+        if (
+                self.doNotAskAgain
+                and set(posData.chNames) == set(self.worker.kernel.ch_names)
+            ):
+            self.worker.waitCond.wakeAll()
+            return
+
         # Set measurements
         try:
             df_favourite_funcs = pd.read_csv(favourite_func_metrics_csv_path)
@@ -358,13 +368,14 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             posData.chNames, [], posData.SizeZ > 1, posData.isSegm3D,
             favourite_funcs=favourite_funcs, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
-            allPosData=self.allPosData
+            allPosData=self.allPosData,
+            addDoNotAskAgainCheckbox=True
         )
         self.measurementsWin.sigClosed.connect(self.askSaveObjectsCount)
-        self.measurementsWin.sigCancel.connect(self.abortWorkerMeasurementsWin)
+        self.measurementsWin.sigCancel.connect(self.cancelWorkerMeasurementsWin)
         self.measurementsWin.show()
     
-    def abortWorkerMeasurementsWin(self):
+    def cancelWorkerMeasurementsWin(self):
         self.worker.abort = self.measurementsWin.cancel
         self.worker.waitCond.wakeAll()
         self.cancel = True
@@ -383,10 +394,14 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         )
         if msg.clickedButton == yesButton:
             self.worker.kernel.set_save_objects_count_table(True)
-            
+        
         self.startSaveDataWorker()
     
     def startSaveDataWorker(self):
+        self.doNotAskAgain = self.measurementsWin.doNotAskAgain
+        if self.doNotAskAgain:
+            self.worker.doInitKernel = False
+            
         self.worker.kernel.init_args(
             self.posData.chNames, self.endFilenameSegm
         )
@@ -465,7 +480,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             self.worker.abort = True
             self.close()
 
-    def abortCallback(self):
+    def cancelCallback(self):
         self.abort = True
         if self.worker is not None:
             self.worker.abort = True

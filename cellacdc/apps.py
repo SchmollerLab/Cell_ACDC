@@ -1,18 +1,19 @@
 import os
 import sys
 import re
-from typing import Literal, Callable, Dict, Iterable, List, Tuple
+from typing import Literal, Callable, Dict, Generator, Iterable, List, Tuple
 import datetime
 import pathlib
 from collections import defaultdict
 import zipfile
-from heapq import nlargest
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 import numpy as np
 import scipy.interpolate
+
+from cellacdc import core_split_IDs
 try:
     import tkinter as tk
 except Exception as err:
@@ -24,7 +25,6 @@ from itertools import combinations, permutations
 from collections import namedtuple, Counter
 from natsort import natsorted
 # from MyWidgets import Slider, Button, MyRadioButtons
-from skimage.measure import label, regionprops
 from functools import partial
 import skimage.filters
 import skimage.measure
@@ -65,7 +65,8 @@ from qtpy.QtWidgets import (
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
-    QListWidgetItem, QActionGroup, QHeaderView, QStyledItemDelegate
+    QListWidgetItem, QActionGroup, QHeaderView, QStyledItemDelegate,
+    QAbstractSlider
 )
 import qtpy.compat
 
@@ -95,6 +96,7 @@ from . import cca_functions
 from . import path
 from . import fonts
 from . import QtScoped
+from . import debugutils
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -2055,7 +2057,7 @@ class SetMeasurementsDialog(QBaseDialog):
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
             allPosData=None, is_concat=False, isSingleSelection=False,
-            state=None
+            state=None, addDoNotAskAgainCheckbox=False
         ):
         super().__init__(parent=parent)
         
@@ -2073,20 +2075,37 @@ class SetMeasurementsDialog(QBaseDialog):
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
         self.doNotWarn = False
+        self.doNotAskAgain = False
 
         self.setWindowTitle('Set measurements')
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
         
-        searchLayout = QHBoxLayout()
+        topLayout = QHBoxLayout()
         
-        searchLineEdit = widgets.SearchLineEdit()
-        searchLayout.addStretch(5)
-        searchLayout.addWidget(searchLineEdit)
-        searchLayout.setStretch(1, 3)
+        self.doNotAskAgainToggle = widgets.Toggle(
+            label_text='Use the same selection for all following selected experiment folders'
+        )
+        self.doNotAskAgainToggle.setVisible(addDoNotAskAgainCheckbox)
+        topLayout.addWidget(self.doNotAskAgainToggle)
         
+        self.searchWidget = widgets.ButtonSearchWidget(loadingType=None)
+        self.searchWidget.search_input.setPlaceholderText('Search measurements...')
+        self.searchWidget.search_input.setToolTip(
+            'Search measurement names and descriptions, including typos and '
+            'synonyms. Choose a result with Up/Down and Enter, or click it, '
+            'to reveal and highlight the measurement without checking it.'
+        )
+        self.searchWidget.search_input.setMinimumWidth(250)
+        self.searchWidget.search_input.setMaximumWidth(16777215)
+        topLayout.addStretch(5)
+        topLayout.addWidget(self.searchWidget)
+        topLayout.setStretch(0, 0)
+        topLayout.setStretch(2, 3)
+                
         mainScrollArea = widgets.ScrollArea()
+        self.mainScrollArea = mainScrollArea
         mainScrollAreaWidget = QWidget()
         mainScrollArea.setWidget(mainScrollAreaWidget)
         
@@ -2118,7 +2137,7 @@ class SetMeasurementsDialog(QBaseDialog):
         for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
-                posData=posData, is_concat=is_concat
+                posData=posData, is_concat=is_concat,
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
@@ -2149,7 +2168,8 @@ class SetMeasurementsDialog(QBaseDialog):
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Physical measurements',
             favourite_funcs=favourite_funcs, isZstack=isZstack,
-            addCalcForEachZsliceToggle=isSegm3D
+            addCalcForEachZsliceToggle=isSegm3D,
+            doesWarnOnUncheck=True
         )
         self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
@@ -2241,13 +2261,20 @@ class SetMeasurementsDialog(QBaseDialog):
         self.okButton = okButton
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
-        self.deselectAllButton = QPushButton('Deselect all')
-        self.deselectAllButton.setIcon(QIcon(':deselect_all.svg'))
+        self.selectAllButton = widgets.selectAllPushButton()
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
-        buttonsLayout.addWidget(self.deselectAllButton)
+        if isSegm3D:
+            selectAll3DButton = widgets.selectAllPushButton(
+                suffix_text_select='only 3D metrics',
+                suffix_text_deselect='all 3D metrics'
+            )
+            selectAll3DButton.sigClicked.connect(self.checkAll3D)
+            self.selectAll3DButton = selectAll3DButton
+            buttonsLayout.addWidget(selectAll3DButton)
+        buttonsLayout.addWidget(self.selectAllButton)
         buttonsLayout.addSpacing(20)
         
         if addCombineMetricCallback is not None:
@@ -2276,7 +2303,7 @@ class SetMeasurementsDialog(QBaseDialog):
 
         self.okButton = okButton
 
-        layout.addLayout(searchLayout)
+        layout.addLayout(topLayout)
         layout.addSpacing(10)
         # layout.addLayout(groupsLayout)
         layout.addWidget(mainScrollArea)
@@ -2287,8 +2314,10 @@ class SetMeasurementsDialog(QBaseDialog):
         if state is not None:
             self.setState(state)
 
-        searchLineEdit.textEdited.connect(self.searchAndHighlight)
-        self.deselectAllButton.clicked.connect(self.deselectAll)
+        self.searchWidget.search_input.textChanged.connect(self.searchAndHighlight)
+        self.searchWidget.sigTriggerBlink.connect(self.highlightSearchMeasurement)
+        self.updateMeasurementSearchRecords()
+        self.selectAllButton.sigClicked.connect(self.selectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)
@@ -2333,25 +2362,60 @@ class SetMeasurementsDialog(QBaseDialog):
         
         return all_metrics
     
-    def searchAndHighlight(self, text):
+    def measurementSearchGroups(
+        self,
+    ) -> 'Generator[Tuple[widgets._metricsQGBox, str], None, None]':
         for chNameGroupbox in self.chNameGroupboxes:
             for groupbox in chNameGroupbox.groupboxes:
-                groupbox.highlightCheckboxesFromSearchText(text)
-        
-        self.regionPropsQGBox.highlightCheckboxesFromSearchText(text)
-        self.sizeMetricsQGBox.highlightCheckboxesFromSearchText(text)
-        
-        if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.highlightCheckboxesFromSearchText(
-                text
+                yield groupbox, chNameGroupbox.chName
+            customGroupbox = getattr(
+                chNameGroupbox, 'customMetricsQGBox', None
             )
-        
-        if self.mixedChannelsCombineMetricsQGBox is None:
-            return
-        
-        self.mixedChannelsCombineMetricsQGBox.highlightCheckboxesFromSearchText(
-            text
-        )
+            if customGroupbox is not None:
+                yield customGroupbox, chNameGroupbox.chName
+        yield self.regionPropsQGBox, ''
+        yield self.sizeMetricsQGBox, ''
+        if self.chIndipendCustomeMetricsQGBox is not None:
+            yield self.chIndipendCustomeMetricsQGBox, ''
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            yield self.mixedChannelsCombineMetricsQGBox, ''
+
+    def updateMeasurementSearchRecords(self):
+        records = {}
+        for groupbox, channel in self.measurementSearchGroups():
+            context = f'{channel}: {groupbox.title()}' if channel else groupbox.title()
+            for checkbox in groupbox.checkBoxes:
+                if checkbox.isHidden():
+                    continue
+                name = checkbox.text()
+                display = f'{name} ({context})'
+                records[display] = {
+                    'display': display,
+                    'search_name': display,
+                    'synonyms': self.searchWidget._synonymsForName(name),
+                    'tooltip': html_utils.to_plain_text(
+                        groupbox.metricDescriptions.get(name, '')
+                    ),
+                    'target': checkbox,
+                }
+        self.searchWidget.setSearchRecords(records)
+
+    def stopMeasurementSearchBlink(self):
+        for blinker in self.findChildren(qutils.QControlBlink):
+            blinker.stop()
+
+    def searchAndHighlight(self, text):
+        self.stopMeasurementSearchBlink()
+        for groupbox, _ in self.measurementSearchGroups():
+            groupbox.highlightCheckboxesFromSearchText(text)
+
+    def highlightSearchMeasurement(self, checkbox):
+        """Reveal and blink a popup result without changing its checked state."""
+        self.stopMeasurementSearchBlink()
+        checkbox.scrollArea.ensureWidgetVisible(checkbox)
+        self.mainScrollArea.ensureWidgetVisible(checkbox.scrollArea)
+        blinker = qutils.QControlBlink(checkbox, qparent=self)
+        blinker.start()
     
     def selectedMetricNameAndGroup(self):
         for chNameGroupbox in self.chNameGroupboxes:
@@ -2489,14 +2553,13 @@ class SetMeasurementsDialog(QBaseDialog):
         ----------
         checked : bool
             State of the checkbox toggled
-        """
-        checkbox = self.sender()
-        
+        """        
         if self.is_concat:
             # When this dialogue is used in concatenate pos utility we do not 
             # need to check that certain metrics are present
             return
 
+        checkbox = self.sender()
         if not hasattr(checkbox, 'isRequired'):
             return
         
@@ -2507,7 +2570,6 @@ class SetMeasurementsDialog(QBaseDialog):
             return
         
         checkbox.setChecked(True)
-
         if self.doNotWarn:
             return
 
@@ -2527,22 +2589,34 @@ class SetMeasurementsDialog(QBaseDialog):
         msg = widgets.myMessageBox(showCentered=False)
         msg.warning(self, 'Physical measurement required', txt)
 
-    def deselectAll(self):
+    def checkAll3D(self, button, checked):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for gb in chNameGroupbox.groupboxes:
+                if not gb.isChecked():
+                    continue
+                gb.selectAll3DButton.setChecked(checked)
+                gb.checkAll3D(None, checked)
+            cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
+            if cgb is not None and cgb.isChecked():
+                cgb.selectAll3DButton.setChecked(checked)
+                cgb.checkAll3D(None, checked)
+
+    def selectAll(self, button, checked):
         self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
-                gb.checkAll(None, False)
+                gb.checkAll(None, checked)
             cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
             if cgb is not None:
-                cgb.checkAll(None, False)
+                cgb.checkAll(None, checked)
         
-        self.sizeMetricsQGBox.checkAll(None, False)
-        self.regionPropsQGBox.checkAll(None, False)
+        self.sizeMetricsQGBox.checkAll(None, checked)
+        self.regionPropsQGBox.checkAll(None, checked)
         if self.chIndipendCustomeMetricsQGBox is not None:
-            self.chIndipendCustomeMetricsQGBox.checkAll(None, False)
+            self.chIndipendCustomeMetricsQGBox.checkAll(None, checked)
             
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            self.mixedChannelsCombineMetricsQGBox.checkAll(None, False)
+            self.mixedChannelsCombineMetricsQGBox.checkAll(None, checked)
         self.doNotWarn = False
     
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
@@ -2557,6 +2631,8 @@ class SetMeasurementsDialog(QBaseDialog):
             if w is None:
                 continue
             w.hide()
+
+        self.updateMeasurementSearchRecords()
                
         if self.allPosData is not None:
             for posData in self.allPosData:
@@ -3071,6 +3147,7 @@ class SetMeasurementsDialog(QBaseDialog):
         if self.allPos_acdc_df_cols is None:
             self.saveLastSelection()
             self.cancel = False
+            self.doNotAskAgain = self.doNotAskAgainToggle.isChecked()
             self.close()
             self.sigClosed.emit()
             return
@@ -3117,8 +3194,10 @@ class SetMeasurementsDialog(QBaseDialog):
             if cancel:
                 return
 
+        
         self.saveLastSelection()
         self.cancel = False  
+        self.doNotAskAgain = self.doNotAskAgainToggle.isChecked()
         self.close()
         self.sigClosed.emit()
         
@@ -3148,7 +3227,7 @@ class SetMeasurementsDialog(QBaseDialog):
 
     def show(self, block=False):
         super().show(block=False)
-        self.deselectAllButton.setMinimumHeight(self.okButton.height())
+        self.selectAllButton.setMinimumHeight(self.okButton.height())
         screenWidth = self.screen().size().width()
         screenHeight = self.screen().size().height()
         screenLeft = self.screen().geometry().x()
@@ -4317,7 +4396,7 @@ class BayesianTrackerParamsWin(QDialog):
             return
 
         if not os.path.exists(self.modelPathLineEdit.text()):
-            self.warnNotVaidPath()
+            self.warnNotValidPath()
             return
 
         self.intensityImageChannel = None
@@ -4340,7 +4419,7 @@ class BayesianTrackerParamsWin(QDialog):
                 self.intensityImageChannel = self.channelCombobox.currentText()
         self.close()
 
-    def warnNotVaidPath(self):
+    def warnNotValidPath(self):
         url = 'https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models'
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
@@ -4514,7 +4593,7 @@ class DeltaTrackerParamsWin(QDialog):
         self.cancel = False
 
         if not os.path.exists(self.modelPathLineEdit.text()):
-            self.warnNotVaidPath()
+            self.warnNotValidPath()
             return
 
         self.verbose = self.verboseToggle.isChecked()
@@ -4568,7 +4647,7 @@ class QDialogWorkerProgress(QDialog):
         abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f'{title} ({abort_text} to cancel process)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -10736,25 +10815,18 @@ class QtSelectItems(QDialog):
 class manualSeparateGui(QMainWindow):
     def __init__(
             self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
-            parent=None, loop=None, drawMode='threepoints_arc'
+            parent=None, loop=None, drawMode='threepoints_arc', start_slice=None,
+            mouseBindings=None, labelsLut=None, labelsAlpha=0.3, rp=None,
+            img_lut_df=None,
         ):
         super().__init__(parent)
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
         self.loop = loop
-        self.cancel = True
-        self.drawMode = drawMode
         self._parent = parent
-        self.lab = lab.copy()
-        self.lab[lab!=ID] = 0
-        self.ID = ID
-        self.img = skimage.exposure.equalize_adapthist(img/img.max())
-        self.IDcolor = IDcolor
-        self.countClicks = 0
-        self.prevLabs = []
-        self.prevAllCutsCoords = []
-        self.labelItemsIDs = []
-        self.undoIdx = 0
-        self.fontSize = fontSize
-        self.AllCutsCoords = []
+        self.setSessionData(
+            lab, ID, img, fontSize, IDcolor, drawMode, start_slice,
+            mouseBindings, labelsLut, labelsAlpha, rp=rp, img_lut_df=img_lut_df
+        )
         self.setWindowTitle("Split object")
         # self.setGeometry(Left, Top, 850, 800)
 
@@ -10764,6 +10836,7 @@ class manualSeparateGui(QMainWindow):
 
         self.gui_createStatusBar()
 
+        self.img_lut_df = img_lut_df
         self.gui_createGraphics()
         self.gui_connectImgActions()
 
@@ -10783,6 +10856,94 @@ class manualSeparateGui(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.setWindowModality(Qt.WindowModal)
+
+        if self.img_lut_df is not None:
+            self.imgGrad.restoreState(self.img_lut_df)
+            
+    def setSessionData(
+            self, lab, ID, img, fontSize='12pt', IDcolor=[255, 255, 0],
+            drawMode='threepoints_arc', start_slice=None, mouseBindings=None,
+            labelsLut=None, labelsAlpha=0.3, rp=None, img_lut_df=None
+        ):
+
+        self.is_3D_mode = lab.ndim == 3
+        if rp is None:
+            from . import regionprops
+            rp = regionprops.acdcRegionprops(self.lab, precache_centroids=False)
+        obj = rp.get_obj_from_ID(ID)
+
+        self.lab = np.zeros_like(lab)
+        self.lab[obj.slice][obj.image] = ID
+
+        if self.is_3D_mode:
+            # skimage regionprops bbox for 3D object is (min_z, min_row, min_col, max_z, max_row, max_col)
+            min_row, min_col, max_row, max_col = obj.bbox[1:3] + obj.bbox[4:6]
+        else:
+            min_row, min_col, max_row, max_col = obj.bbox
+
+        self.objectBBox = (min_row, min_col, max_row, max_col)
+
+        self.ID = ID
+        self.img = img
+        self.IDcolor = IDcolor
+        self.fontSize = fontSize
+        self.drawMode = drawMode
+        self.mouseBindings = mouseBindings or {}
+        self.labelsLut = labelsLut
+        self.labelsAlpha = labelsAlpha
+        self.start_slice = start_slice if start_slice is not None else 0
+        self.current_slice = self.start_slice
+        self.cancel = True
+        self.countClicks = 0
+        self.prevLabs = []
+        self.prevAllCutsCoords = []
+        self.undoIdx = 0
+        self.sliceCutsCoords = {}
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(
+            self.current_slice, []
+        )
+
+        if not hasattr(self, 'imgItem'):
+            self.labelItemsIDs = []
+            return
+        
+        self.img_lut_df = img_lut_df
+        if self.img_lut_df is not None:
+            self.imgGrad.restoreState(self.img_lut_df)
+
+        self.undoAction.setEnabled(False)
+        self.threePointsArcAction.setChecked(
+            drawMode == 'threepoints_arc'
+        )
+        self.freeHandAction.setChecked(drawMode == 'freehand')
+        self.use2DsepAction.setEnabled(self.is_3D_mode)
+        self.use2DsepAction.setVisible(self.is_3D_mode)
+        self.warnLabel.setText(
+            html_utils.paragraph(
+                'Hold "Ctrl" to apply separation on all slices',
+            ) if self.is_3D_mode else ''
+        )
+        self.labelsLayer.setOpacity(labelsAlpha)
+        self.alphaScrollBar.setValue(round(labelsAlpha*40))
+        self.alphaScrollBar.setVisible(self.overlayButton.isChecked())
+        self.alphaScrollBar_label.setVisible(self.overlayButton.isChecked())
+        self.zSliceScrollBar.blockSignals(True)
+        self.zSliceScrollBar.setMaximum(
+            self.lab.shape[0] - 1 if self.is_3D_mode else 0
+        )
+        self.zSliceScrollBar.setValue(self.current_slice)
+        self.zSliceScrollBar.blockSignals(False)
+        self.zSliceScrollBar.setVisible(self.is_3D_mode)
+        self.zSliceLabel.setVisible(self.is_3D_mode)
+        self._clearDrawing()
+        self.updateImg()
+        self.zoomToObj()
+
+    def _clearDrawing(self):
+        self.curvHoverPlotItem.setData([], [])
+        self.lineHoverPlotItem.setData([], [])
+        self.curvAnchors.setData([], [])
+        self.freeHandItem.setData([], [])
 
     def centerWindow(self):
         parent = self._parent
@@ -10839,10 +11000,21 @@ class manualSeparateGui(QMainWindow):
             QIcon(":reload.svg"), "Swap IDs", self
         )
         self.swapIDsAction.setToolTip(
-            'Swap the two displayed IDs\n\n'
+            'Swap IDs of the two largest objects\n\n'
             'Shortcut: "S"'
         )
         self.swapIDsAction.setShortcut('S')
+
+        self.nextAction = QAction('Next z-slice', self)
+        self.nextAction.setShortcut(Qt.Key_Right)
+        self.prevAction = QAction('Previous z-slice', self)
+        self.prevAction.setShortcut(Qt.Key_Left)
+        self.addAction(self.nextAction)
+        self.addAction(self.prevAction)
+        self.widgetsWithShortcut = {
+            'Next': self.nextAction,
+            'Previous': self.prevAction
+        }
     
     def state(self):
         return {
@@ -10906,9 +11078,29 @@ class manualSeparateGui(QMainWindow):
         
         editToolBar.addAction(self.swapIDsAction)
         
+        self.use2DsepAction = QToolButton(self)
+        self.use2DsepAction.setIcon(QIcon(":separate-bud-2D.svg"))
+        self.use2DsepAction.setToolTip(
+            'Use 2D automatic separation on the current slice\n\n'
+            'Shortcut: A'
+        )
+        editToolBar.addWidget(self.use2DsepAction)
+        
+        if not self.is_3D_mode:
+            self.use2DsepAction.setEnabled(False)
+            self.use2DsepAction.hide()
+            
+        self.use2DsepAction.setShortcut('A')
+        
         self.warnLabel = QLabel()
         editToolBar.addWidget(self.warnLabel)
         
+        if self.is_3D_mode:
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'Hold "Ctrl" to apply separation on all slices',
+                )
+            )
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
@@ -10919,6 +11111,42 @@ class manualSeparateGui(QMainWindow):
         self.overlayButton.toggled.connect(self.toggleOverlay)
         self.imgGrad.sigLookupTableChanged.connect(self.histLUT_cb)
         self.swapIDsAction.triggered.connect(self.swapIDs)
+        self.nextAction.triggered.connect(self.nextSlice)
+        self.prevAction.triggered.connect(self.previousSlice)
+        self.use2DsepAction.clicked.connect(self.use2Dsep)
+
+    def use2Dsep(self):
+        lab = self.currentLab()
+        if not np.any(lab == self.ID):
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'The selected object is not present on this z-slice',
+                    font_color='red'
+                )
+            )
+            return
+
+        max_ID = int(self.lab.max())
+        if self._parent is not None:
+            posData = self._parent.data[self._parent.pos_i]
+            max_ID = max(max_ID, max(posData.IDs, default=1))
+
+        result, success, _ = core_split_IDs.split_along_convexity_defects(
+            self.ID, lab, max_ID
+        )
+        if not success:
+            self.warnLabel.setText(
+                html_utils.paragraph(
+                    'Automatic separation was not successful',
+                    font_color='red'
+                )
+            )
+            return
+
+        self.storeUndoState()
+        lab[:] = result
+        self.warnLabel.setText('')
+        self.updateImg()
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -10943,9 +11171,17 @@ class manualSeparateGui(QMainWindow):
         self.imgItem = pg.ImageItem(np.zeros((512,512)))
         self.ax.addItem(self.imgItem)
 
+        self.labelsLayer = widgets.BaseLabelsImageItem()
+        self.labelsLayer.setOpacity(self.labelsAlpha)
+        self.ax.addItem(self.labelsLayer)
+
         #Image histogram
         self.imgGrad = widgets.myHistogramLUTitem()
-
+        self.imgGrad.setImageItem(self.imgItem)
+        
+        if self.img_lut_df is not None:
+            self.imgGrad.restoreState(self.img_lut_df)
+            
         # Curvature items
         self.hoverLinSpace = np.linspace(0, 1, 1000)
         self.hoverLinePen = pg.mkPen(color=(200, 0, 0, 255*0.5),
@@ -10978,7 +11214,7 @@ class manualSeparateGui(QMainWindow):
         alphaScrollBar.setFixedHeight(20)
         alphaScrollBar.setMinimum(0)
         alphaScrollBar.setMaximum(40)
-        alphaScrollBar.setValue(12)
+        alphaScrollBar.setValue(round(self.labelsAlpha*40))
         alphaScrollBar.setToolTip(
             'Control the alpha value of the overlay.\n'
             'alpha=0 results in NO overlay,\n'
@@ -10994,6 +11230,64 @@ class manualSeparateGui(QMainWindow):
         self.alphaScrollBar.hide()
         self.alphaScrollBar_label.hide()
 
+        self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
+        self.zSliceScrollBar.setMinimum(0)
+        self.zSliceScrollBar.setMaximum(self.lab.shape[0]-1)
+        self.zSliceScrollBar.setFixedHeight(20)
+        self.zSliceScrollBar.setValue(self.current_slice)
+        self.zSliceScrollBar.setToolTip('Navigate z-slices')
+        self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+        self.zSliceLabel = QLabel()
+        self.img_Widglayout.addWidget(
+            self.zSliceLabel, 1, 0, alignment=Qt.AlignCenter
+        )
+        self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1, 1, 20)
+        if not self.is_3D_mode:
+            self.zSliceLabel.hide()
+            self.zSliceScrollBar.hide()
+
+    def currentLab(self):
+        if self.is_3D_mode:
+            return self.lab[self.current_slice]
+        return self.lab
+
+    def currentImg(self):
+        if self.is_3D_mode and self.img.ndim == 3:
+            return self.img[self.current_slice]
+        return self.img
+
+    def update_z_slice(self, z):
+        self.current_slice = z
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(z, [])
+        self.countClicks = 0
+        self.curvHoverPlotItem.setData([], [])
+        self.lineHoverPlotItem.setData([], [])
+        self.curvAnchors.setData([], [])
+        self.freeHandItem.setData([], [])
+        self.zSliceLabel.setText(f'z-slice {z+1}/{self.lab.shape[0]}')
+        self.updateImg()
+
+    def nextSlice(self):
+        if self.is_3D_mode:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+
+    def previousSlice(self):
+        if self.is_3D_mode:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepSub
+            )
+
+    def mousePressEvent(self, event):
+        for name, button in self.mouseBindings.items():
+            if button != event.button() or name not in self.widgetsWithShortcut:
+                continue
+            self.widgetsWithShortcut[name].trigger()
+            event.accept()
+            return True
+        super().mousePressEvent(event)
+
     def gui_connectImgActions(self):
         self.imgItem.hoverEvent = self.gui_hoverEventImg
         self.imgItem.mousePressEvent = self.gui_mousePressEventImg
@@ -11005,7 +11299,7 @@ class manualSeparateGui(QMainWindow):
         try:
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
-            _img = self.lab
+            _img = self.currentLab()
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
@@ -11023,6 +11317,10 @@ class manualSeparateGui(QMainWindow):
     def gui_mousePressEventImg(self, event):
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
+
+        if not right_click and not left_click:
+            self.mousePressEvent(event)
+            return
 
         dragImg = (left_click)
 
@@ -11043,8 +11341,7 @@ class manualSeparateGui(QMainWindow):
         if self.freeHandAction.isChecked():
             self.countClicks = 0
             xx, yy = self.freeHandItem.getData()
-            self.setSplitCurveCoords(xx, yy)
-            self.splitObjectAlongCurve()
+            self.applySplitCurve(xx, yy)
             self.freeHandItem.setData([], [])
             self.curvAnchors.setData([], [])
     
@@ -11110,11 +11407,59 @@ class manualSeparateGui(QMainWindow):
             yy = [self.y0, ydata, self.y1]
             xi, yi = self.getSpline(xx, yy)
             yy, xx = np.round(yi).astype(int), np.round(xi).astype(int)
-            self.setSplitCurveCoords(xx, yy)
-            self.splitObjectAlongCurve()
-    
-    def setSplitCurveCoords(self, xx, yy):
+            self.applySplitCurve(xx, yy)
+
+    def applySplitCurve(self, xx, yy):
+        cut_all_slices = (
+            self.is_3D_mode
+            and QApplication.keyboardModifiers()
+            & Qt.ControlModifier
+        )
         self.storeUndoState()
+        if not cut_all_slices:
+            previous_lab = self.currentLab().copy()
+            cut_coords = self.applyCutCurve(xx, yy)
+            if cut_coords is not None:
+                self.splitObjectAlongCurve(
+                    previous_lab, cut_coords, xx, yy
+                )
+            return
+
+        current_slice = self.current_slice
+        split_IDs = []
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(current_slice, [])
+        previous_lab = self.currentLab().copy()
+        cut_coords = self.applyCutCurve(xx, yy)
+        if cut_coords is not None:
+            split_IDs = self.splitObjectAlongCurve(
+                previous_lab, cut_coords, xx, yy
+            )
+
+        directions = (
+            range(current_slice + 1, self.lab.shape[0]),
+            range(current_slice - 1, -1, -1),
+        )
+        for slices in directions:
+            for z in slices:
+                self.current_slice = z
+                self.AllCutsCoords = self.sliceCutsCoords.setdefault(z, [])
+                previous_lab = self.currentLab().copy()
+                cut_coords = self.applyCutCurve(xx, yy)
+                if cut_coords is None:
+                    continue
+                new_split_IDs = self.splitObjectAlongCurve(
+                    previous_lab, cut_coords, xx, yy,
+                    split_IDs=split_IDs,
+                )
+                split_IDs.extend(
+                    ID for ID in new_split_IDs if ID not in split_IDs
+                )
+        self.current_slice = current_slice
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(current_slice, [])
+        self.updateImg()
+    
+    def applyCutCurve(self, xx, yy):
+        lab = self.currentLab()
         xxCurve, yyCurve = [], []
         for i, (r0, c0) in enumerate(zip(yy, xx)):
             if i == len(yy)-1:
@@ -11123,49 +11468,65 @@ class manualSeparateGui(QMainWindow):
             c1 = xx[i+1]
             rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
             # rr, cc = skimage.draw.line(r0, c0, r1, c1)
-            nonzeroMask = self.lab[rr, cc]>0
+            valid = (
+                (rr > 0) & (rr < lab.shape[0] - 1)
+                & (cc > 0) & (cc < lab.shape[1] - 1)
+            )
+            rr, cc = rr[valid], cc[valid]
+            nonzeroMask = lab[rr, cc]>0
             xxCurve.extend(cc[nonzeroMask])
             yyCurve.extend(rr[nonzeroMask])
+        if not xxCurve:
+            return None
         self.AllCutsCoords.append((yyCurve, xxCurve))
-        for rr, cc in self.AllCutsCoords:
-            self.lab[rr, cc] = 0
-        self.lab = skimage.morphology.remove_small_objects(self.lab, 5)
+        return yyCurve, xxCurve
 
     def histLUT_cb(self, LUTitem):
         if self.overlayButton.isChecked():
-            overlay = self.getOverlay()
-            self.imgItem.setImage(overlay)
+            self.imgItem.setImage(self.currentImg())
+        elif hasattr(self, 'lut'):
+            self.imgItem.setLookupTable(self.lut)
 
     def swapIDs(self, checked=False):
-        if len(self.rp) == 1:
+        IDs, areas = np.unique(self.lab[self.lab > 0], return_counts=True)
+        if len(IDs) < 2:
             self.warnLabel.setText(
                 html_utils.paragraph(
-                    'WARNING: Split the object before swapping IDs',
+                    'WARNING: At least two objects must be present to swap IDs',
                     font_color='red'
                 )
             )
             return
         
         self.warnLabel.setText('')
+
+        largest = np.argsort(areas, kind='stable')[-2:]
+        obj1_ID, obj2_ID = IDs[largest]
+        obj1_mask = self.lab == obj1_ID
+        obj2_mask = self.lab == obj2_ID
         
-        obj1 = self.rp[0]
-        obj2 = self.rp[1]
-        
-        self.lab[obj1.slice][obj1.image] = obj2.label
-        self.lab[obj2.slice][obj2.image] = obj1.label
+        self.lab[obj1_mask] = obj2_ID
+        self.lab[obj2_mask] = obj1_ID
         
         self.updateImg()
     
     def updateImg(self):
+        from . import regionprops as acdc_regionprops
+
         self.updateLookuptable()
-        rp = skimage.measure.regionprops(self.lab)
+        lab = self.currentLab()
+        rp = acdc_regionprops.acdcRegionprops(lab)
         self.rp = rp
 
         if self.overlayButton.isChecked():
-            overlay = self.getOverlay()
-            self.imgItem.setImage(overlay)
+            self.applyImgGradLut()
+            self.imgItem.setImage(self.currentImg())
+            self.labelsLayer.show()
         else:
-            self.imgItem.setImage(self.lab)
+            self.imgItem.setLookupTable(self.lut)
+            self.imgItem.setImage(lab)
+            self.labelsLayer.hide()
+        self.labelsLayer.setImage(lab)
 
         # Draw ID on centroid of each label
         for labelItemID in self.labelItemsIDs:
@@ -11184,96 +11545,109 @@ class manualSeparateGui(QMainWindow):
 
     def zoomToObj(self):
         # Zoom to object
-        lab_mask = (self.lab>0).astype(np.uint8)
-        rp = skimage.measure.regionprops(lab_mask)
-        obj = rp[0]
-        min_row, min_col, max_row, max_col = obj.bbox
+        (min_row, min_col, max_row, max_col) = self.objectBBox
+
         xRange = min_col-10, max_col+10
         yRange = max_row+10, min_row-10
         self.ax.setRange(xRange=xRange, yRange=yRange)
 
     def storeUndoState(self):
         self.prevLabs.append(self.lab.copy())
-        self.prevAllCutsCoords.append(self.AllCutsCoords.copy())
+        self.prevAllCutsCoords.append({
+            z: cuts.copy() for z, cuts in self.sliceCutsCoords.items()
+        })
         self.undoIdx += 1
         self.undoAction.setEnabled(True)
 
     def undo(self):
         self.undoIdx -= 1
+        if self.undoIdx < 0:
+            self.undoIdx = 0
+            return
         self.lab = self.prevLabs[self.undoIdx]
-        self.AllCutsCoords = self.prevAllCutsCoords[self.undoIdx]
+        self.sliceCutsCoords = self.prevAllCutsCoords[self.undoIdx]
+        self.AllCutsCoords = self.sliceCutsCoords.setdefault(
+            self.current_slice, []
+        )
         self.updateImg()
         if self.undoIdx == 0:
             self.undoAction.setEnabled(False)
             self.prevLabs = []
             self.prevAllCutsCoords = []
 
-    def splitObjectAlongCurve(self):
-        self.lab = skimage.measure.label(self.lab, connectivity=1)
-
-        # Relabel largest object with original ID
-        rp = skimage.measure.regionprops(self.lab)
-        areas = [obj.area for obj in rp]
-        IDs = [obj.label for obj in rp]
-        maxAreaIdx = areas.index(max(areas))
-        maxAreaID = IDs[maxAreaIdx]  
-        if self.ID not in self.lab:
-            self.lab[self.lab==maxAreaID] = self.ID
-        else:
-            tempID = self.lab.max() + 1
-            self.lab[self.lab==maxAreaID] = tempID
-            self.lab[self.lab==self.ID] = maxAreaID
-            self.lab[self.lab==tempID] = self.ID
-
-        # Keep only the two largest objects
-        larger_areas = nlargest(2, areas)
-        larger_ids = [rp[areas.index(area)].label for area in larger_areas]
-        for obj in rp:
-            if obj.label not in larger_ids:
-                self.lab[tuple(obj.coords.T)] = 0
-
-        rp = skimage.measure.regionprops(self.lab)
+    def splitObjectAlongCurve(
+            self, previous_lab, cut_coords, curve_x, curve_y,
+            split_IDs=None
+        ):
+        lab = self.currentLab()
 
         if self._parent is not None:
             self._parent.setBrushID()
-        # Use parent window setBrushID function for all other IDs
-        for obj in rp:
-            if self._parent is None:
-                break
-            if obj.label == self.ID:
-                continue
             posData = self._parent.data[self._parent.pos_i]
-            posData.brushID += 1
-            self.lab[obj.slice][obj.image] = posData.brushID
+            max_ID = max(int(posData.brushID) - 1, int(self.lab.max()))
+        else:
+            max_ID = int(self.lab.max())
 
-        # Replace 0s on the cutting curve with IDs
-        self.cutLab = self.lab.copy()
-        for rr, cc in self.AllCutsCoords:
-            for y, x in zip(rr, cc):
-                top_row = self.cutLab[y+1, x-1:x+2]
-                bot_row = self.cutLab[y-1, x-1:x+1]
-                left_col = self.cutLab[y-1, x-1]
-                right_col = self.cutLab[y:y+2, x+1]
-                allNeigh = list(top_row)
-                allNeigh.extend(bot_row)
-                allNeigh.append(left_col)
-                allNeigh.extend(right_col)
-                newID = max(allNeigh)
-                self.lab[y,x] = newID
+        lab, max_ID, new_IDs = core_split_IDs.split_cut_components(
+            previous_lab, lab, cut_coords, curve_y, curve_x, max_ID,
+            split_IDs=split_IDs,
+            bbox=self.objectBBox
+        )
+        if self._parent is not None:
+            posData.brushID = max(posData.brushID, max_ID)
 
-        self.rp = skimage.measure.regionprops(self.lab)
+        if not self.is_3D_mode:
+            self.cutLab = lab
+            self.updateImg()
+            return new_IDs
+
+        neighboring_labs = [
+            self.lab[z]
+            for z in (self.current_slice - 1, self.current_slice + 1)
+            if 0 <= z < self.lab.shape[0]
+        ]
+        tracked_lab, _ = core_split_IDs.track_split_slice(
+            lab,
+            neighboring_labs,
+            unique_ID=max_ID + 1,
+        )
+        lab[:] = tracked_lab
+        if self._parent is not None:
+            posData.brushID = max(posData.brushID, int(lab.max()))
+
+        self.cutLab = lab
         self.updateImg()
+        return [
+            int(ID) for ID in np.unique(lab)
+            if ID not in (0, self.ID)
+        ]
 
     def updateLookuptable(self):
         # Lookup table
+        lab = self.currentLab()
         self.cmap = colors.getFromMatplotlib('viridis')
         self.lut = self.cmap.getLookupTable(0,1,self.lab.max()+1)
         self.lut[0] = [25,25,25]
         self.lut[self.ID] = self.IDcolor
+        if self.labelsLut is None or len(self.labelsLut) <= lab.max():
+            labelsLut = np.zeros((len(self.lut), 4), dtype=np.uint8)
+            labelsLut[:, :3] = self.lut
+            labelsLut[:, 3] = 255
+            labelsLut[0] = [0, 0, 0, 0]
+        else:
+            labelsLut = self.labelsLut
+        self.labelsLayer.setLevels([0, len(labelsLut)])
+        self.labelsLayer.setLookupTable(labelsLut)
         if self.overlayButton.isChecked():
-            self.imgItem.setLookupTable(None)
+            self.applyImgGradLut()
         else:
             self.imgItem.setLookupTable(self.lut)
+
+    def applyImgGradLut(self):
+        if self.imgGrad.gradient.isLookupTrivial():
+            self.imgItem.setLookupTable(None)
+        else:
+            self.imgItem.setLookupTable(self.imgGrad.getLookupTable)
 
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_Escape:
@@ -11285,32 +11659,10 @@ class manualSeparateGui(QMainWindow):
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             self.ok_cb(True)
 
-    def getOverlay(self):
-        # Rescale intensity based on hist ticks values
-        min = self.imgGrad.gradient.listTicks()[0][1]
-        max = self.imgGrad.gradient.listTicks()[1][1]
-        img = skimage.exposure.rescale_intensity(self.img, in_range=(min, max))
-        alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
-
-        # Convert img and lab to RGBs
-        rgb_shape = (self.lab.shape[0], self.lab.shape[1], 3)
-        labRGB = np.zeros(rgb_shape)
-        labRGB[self.lab>0] = [1, 1, 1]
-        imgRGB = skimage.color.gray2rgb(img)
-        overlay = imgRGB*(1.0-alpha) + labRGB*alpha
-
-        # Color eaach label
-        for obj in self.rp:
-            rgb = self.lut[obj.label]/255
-            overlay[obj.slice][obj.image] *= rgb
-
-        # Convert (0,1) to (0,255)
-        overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
-        return overlay
-
     def alphaScrollBarMoved(self, alpha_int):
-        overlay = self.getOverlay()
-        self.imgItem.setImage(overlay)
+        self.labelsLayer.setOpacity(
+            alpha_int/self.alphaScrollBar.maximum()
+        )
 
     def toggleOverlay(self, checked):
         if checked:
@@ -11763,7 +12115,7 @@ class QDialogPbar(QDialog):
         abort_text = 'Option+Command+C' if is_mac else 'Ctrl+Alt+C'
         self.abort_text = abort_text
 
-        self.setWindowTitle(f'{title} ({abort_text} to abort)')
+        self.setWindowTitle(f'{title} ({abort_text} to cancel process)')
         self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
@@ -19090,9 +19442,13 @@ class ObjectCountDialog(QBaseDialog):
     def saveCounts(self, checked=False):
         categories = self.activeCategories()
         for posData in self.data:
-            countMapper = posData.countObjectsInSegm(categories)
+            countMapper, numObjsPerFrame = (
+                posData.countObjectsInSegm(categories)
+            )
             countMapper.pop('In current frame', None)
-            df_count_endname = posData.saveObjCounts(countMapper)
+            df_count_endname = posData.saveObjCounts(
+                countMapper, numObjsPerFrame
+            )
         
         txt = html_utils.paragraph(f"""
             Done!<br><br>
@@ -20189,6 +20545,8 @@ class QTreeDialog(QBaseDialog):
         self.selectedText = self.selectedItem.text(0)
         self.close()
 
+MODULES_TYPES = Literal['Dataprep', 'Segm&Track', 'GUI', 'Utility']
+
 class SelectFoldersToAnalyse(QBaseDialog):
     def __init__(
             self, parent=None, 
@@ -20197,7 +20555,8 @@ class SelectFoldersToAnalyse(QBaseDialog):
             scanFolderTree=True,
             instructionsText='Select experiment folders to analyse',
             askSelectPosFolders=False,
-            title='Select experiments to analyse'
+            title='Select experiments to analyse',
+            callingModule: MODULES_TYPES='Segm&Track',
         ):
         super().__init__(parent)
         
@@ -20206,6 +20565,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
         self.setWindowTitle(title)
         self.scanTree = scanFolderTree
         self.askSelectPosFolders = askSelectPosFolders
+        self.callingModule = callingModule
         
         mainLayout = QVBoxLayout()
         
@@ -20245,12 +20605,18 @@ class SelectFoldersToAnalyse(QBaseDialog):
             'Add folder...', openFolder=True, 
             start_dir=myutils.getMostRecentPath()
         )
-        
-        buttonsLayout.insertWidget(3, delButton)
-        buttonsLayout.insertWidget(4, browseButton)
+        recentPathsButton = widgets.PushButton('Add from recent paths...')
+        recentPathsButton.setIcon(QIcon(':open_file.svg'))
+        recentPathsButton.setToolTip(
+            'Select one or more existing folders from recent paths.'
+        )
+        buttonsLayout.insertWidget(3, recentPathsButton)
+        buttonsLayout.insertWidget(4, delButton)
+        buttonsLayout.insertWidget(5, browseButton)
         
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         browseButton.sigPathSelected.connect(self.addFolderPath)
+        recentPathsButton.clicked.connect(self.addFromRecentPaths)
         delButton.clicked.connect(self.removePaths)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         
@@ -20336,7 +20702,6 @@ class SelectFoldersToAnalyse(QBaseDialog):
             self.warnEmptySelection()
             return
         self.cancel = False
-
         self.close()
         
     def warnNoAllValid(self, faultyFolders=None):
@@ -20418,7 +20783,10 @@ class SelectFoldersToAnalyse(QBaseDialog):
                 'Please, select which Position folder(s) you want to analyse:<br>'
             )
             select_folder = load.select_exp_folder()
-            values = select_folder.get_values_dataprep(exp_path)
+            if self.callingModule == 'Utility':
+                values = select_folder.get_values_acdc_and_spotmax(exp_path)
+            else:
+                values = select_folder.get_values_dataprep(exp_path)
             select_folder.QtPrompt(
                 self, values, toggleMulti=True, 
                 informativeText=informativeText,
@@ -20474,9 +20842,33 @@ class SelectFoldersToAnalyse(QBaseDialog):
                     f'[WARNING]: The following path was already selected: '
                     f'"{selectedPath}"'
                 )
-                return
+                continue
                 
             self.listWidget.addItem(selectedPath)
+
+    def addFromRecentPaths(self):
+        """Open a multi-select dialog containing existing recent folders."""
+        recent_paths, dates = myutils.get_recent_paths(self)
+        if not recent_paths:
+            return
+        
+        self.recentPathsDialog = SearchableListboxDialog(
+            recent_paths,
+            title='Add from recent paths',
+            searchLineEditText='Search recent paths (Ctrl+click to select multiple)...',
+            parent=self,
+            multiSelection=True,
+            dates=dates,
+        )
+        self.recentPathsDialog.sigOk.connect(
+            self.addRecentFolderPaths
+        )
+        self.recentPathsDialog.show()
+
+    def addRecentFolderPaths(self, selected_paths):
+        """Add selected recent folders through the standard validation path."""
+        for selected_path in selected_paths:
+            self.addFolderPath(selected_path)
     
     def removePaths(self):
         for item in self.listWidget.selectedItems():
@@ -21170,7 +21562,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.settings = self.values()
         self.sigValuesChanged.emit(self.settings)
         self.close()
-    
+
 class DataStructureSetupDialogue(QBaseDialog):
     def __init__(self, logger_func=print, parent=None):
         super().__init__(parent)
@@ -21395,6 +21787,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             
         self.srcFolderPathSelected(srcFolderPath)
 
+    @exception_handler
     def srcFolderPathSelected(self, srcFolderPath):
         self.actionsFilesSourceFolder = {
             'files': [],
@@ -21795,6 +22188,308 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         
         self.close()
 
+class SearchableListboxDialog(QBaseDialog):
+    """Search and select one or more items from a recency-ordered list.
+
+    Search ignores punctuation and separators, so paths can be searched with
+    spaces in place of slashes or underscores. Results are ranked by match
+    quality when the match-sorting checkbox is checked, with the original
+    item order used to break ties. Otherwise, results stay in their original
+    order.
+
+    The ``fuzzyThreshold`` argument sets the minimum similarity ratio for
+    fuzzy matches (0.0-1.0, default 0.5). Existing filesystem paths also show
+    their modification date in a separate column.
+
+    Args:
+        items: Display strings in their initial, usually most-recent-first,
+            order. Selected values are emitted unchanged by :attr:`sigOk`.
+        title: Dialog window title.
+        searchLineEditText: Initial prompt shown by the search field.
+        parent: Optional parent widget.
+        fuzzyThreshold: Initial minimum ratio accepted for fuzzy matches,
+            from 0.0 (least strict) to 1.0 (most strict).
+        multiSelection: Allow selecting multiple rows and emit their values
+            as a list. When false, preserve the single-string result.
+    """
+
+    sigOk = Signal(object)
+
+    def __init__(
+            self, 
+            items: list[str],
+            dates: list[str] | None = None,
+            title='Search items',
+            searchLineEditText='Search...',
+            parent=None,
+            fuzzyThreshold: float = 0.5,
+            multiSelection: bool = False,
+        ):
+        super().__init__(parent=parent)
+
+        self.fuzzyThreshold = float(fuzzyThreshold)
+        if not math.isfinite(self.fuzzyThreshold) or not (
+                0 <= self.fuzzyThreshold <= 1
+            ):
+            raise ValueError('fuzzyThreshold must be between 0 and 1.')
+
+        self.cancel = True
+        self.allItems = items
+        self.dates = dates
+        self.multiSelection = multiSelection
+
+        self.searchModel = widgets.QStandardItemModel()
+        searchRoles = (widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,)
+        self.searchProxyModel = widgets._RecentItemsSearchCompleter(
+            searchRoles=searchRoles,
+            tooltipRole=None,
+        )
+        self.searchProxyModel.FUZZY_THRESHOLD = self.fuzzyThreshold
+        self.searchProxyModel.setSourceModel(self.searchModel)
+        self.searchProxyModel.setDynamicSortFilter(True)
+        self.searchProxyModel.sort(0, Qt.AscendingOrder)
+        self.searchProxyModel.setAlwaysRecency(True)
+
+        # add all items to the search model
+        for item_text in self.allItems:
+            model_item = widgets.QStandardItem(item_text)
+            model_item.setData(
+                self._normalizeSearchText(item_text),
+                widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
+            )
+            last_edited_item = widgets.QStandardItem('')
+            last_edited, last_edited_tooltip = self._lastEditedDate(
+                item_text
+            )
+            last_edited_item.setText(last_edited)
+            if last_edited_tooltip:
+                last_edited_item.setToolTip(last_edited_tooltip)
+            self.searchModel.appendRow([model_item, last_edited_item])
+
+        self.setWindowTitle(title)
+
+        mainLayout = QVBoxLayout()
+
+        self.searchLineEdit = widgets.SearchLineEdit(
+            text=searchLineEditText
+        )
+
+        self.searchLineEdit.textEdited.connect(self.searchItems)
+
+        self.sortByGoodnessCheckBox = QCheckBox(
+            'Sort by goodness of match'
+        )
+        self.sortByGoodnessCheckBox.toggled.connect(
+            self._onSortByGoodnessChanged
+        )
+
+        self.sortByGoodnessCheckBox.setToolTip(
+            'When enabled, better matches appear first, with recency used to '
+            'break ties. When disabled, matching items stay in the original '
+            'recent-first order.'
+        )
+
+        self.listWidget = QTreeWidget()
+        self.listWidget.setHeaderLabels(['Item', 'Last edited'])
+        self.listWidget.setRootIsDecorated(False)
+        self.listWidget.setItemsExpandable(False)
+        self.listWidget.setSortingEnabled(False)
+        self.listWidget.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection
+            if self.multiSelection
+            else QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.listWidget.header().setStretchLastSection(False)
+        self.listWidget.header().setSectionResizeMode(
+            0, QHeaderView.Stretch
+        )
+        self.listWidget.header().setSectionResizeMode(1, QHeaderView.Fixed)
+        self.listWidget.setColumnWidth(1, 135)
+        self.listWidget.headerItem().setToolTip(
+            1, 'Filesystem modification date and time.'
+        )
+        self.searchItems(self.searchLineEdit.text())
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        if not self.multiSelection:
+            self.listWidget.itemDoubleClicked.connect(
+                lambda *_: self.ok_cb()
+            )
+
+        mainLayout.addWidget(self.searchLineEdit)
+        mainLayout.addWidget(self.sortByGoodnessCheckBox)
+        mainLayout.addWidget(self.listWidget)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        self.setFont(fonts.font)
+
+    def _lastEditedDate(self, item_text):
+        """Return a display date and tooltip for an item's modification time.
+
+        Nonexistent paths have no date; filesystem errors are reported in the
+        returned tooltip instead of being silently discarded.
+        """
+        if self.dates is not None:
+            index = self.allItems.index(item_text) if item_text in self.allItems else None
+            if index is not None:
+                date = pd.to_datetime(self.dates[index], errors='coerce')
+                # format the date for display
+                if not pd.isna(date):
+                    date = date.strftime('%d.%m.%Y %H:%M')
+                    return date, ''
+        
+        if not os.path.exists(item_text):
+            return '', ''
+
+        try:
+            modified_time = os.path.getmtime(item_text)
+        except OSError as err:
+            return (
+                'Unavailable',
+                f'Could not read filesystem modification time: {err}',
+            )
+
+        return (
+            datetime.datetime.fromtimestamp(
+                modified_time
+            ).strftime('%d.%m.%Y %H:%M'),
+            '',
+        )
+
+    def _populateListWidget(self):
+        """Rebuild visible rows in the order supplied by the search proxy."""
+        self.listWidget.clear()
+        for row in range(self.searchProxyModel.rowCount()):
+            proxy_index = self.searchProxyModel.index(row, 0)
+            source_index = self.searchProxyModel.mapToSource(proxy_index)
+            source_item = self.searchModel.item(source_index.row(), 0)
+            item_text = source_item.text()
+            last_edited = self.searchModel.item(
+                source_index.row(), 1
+            ).text()
+            tree_item = QTreeWidgetItem([item_text, last_edited])
+            tree_item.setToolTip(
+                1,
+                self.searchModel.item(
+                    source_index.row(), 1
+                ).toolTip(),
+            )
+            self.listWidget.addTopLevelItem(tree_item)
+
+    def _onSortByGoodnessChanged(self, sortByGoodness):
+        """Switch between match-quality and original-order result ranking."""
+        self.searchProxyModel.setAlwaysRecency(not sortByGoodness)
+        self.searchItems(self.searchLineEdit.text())
+    
+    def searchItems(self, text):
+        """Filter, rank, and highlight results for the current query."""
+        from ._palettes import get_color_scheme
+        scheme = get_color_scheme()
+        if scheme == 'dark':
+            highlight_color = '#4DA3FF'
+        else:
+            highlight_color = '#0067C5'
+        query = text.strip()
+        # Match against separator-free text so spaces, underscores, and path
+        # separators are interchangeable without changing displayed names.
+        normalized_query = self._normalizeSearchText(query)
+        self.searchProxyModel.setFilterText(normalized_query)
+        self._populateListWidget()
+        for row in range(self.listWidget.topLevelItemCount()):
+            tree_item = self.listWidget.topLevelItem(row)
+            item = tree_item.text(0)
+            # The proxy provides the ranking; highlight ranges are mapped back
+            # onto the original display string.
+            ranges = widgets._searchHighlightRanges(
+                normalized_query,
+                item,
+                self.searchProxyModel.FUZZY_THRESHOLD,
+            )
+
+            if ranges:
+                highlighted_text = widgets._highlightSearchText(
+                    item, ranges, highlight_color
+                )
+                label = QLabel()
+                label.setTextFormat(Qt.RichText)
+                label.setAttribute(Qt.WA_TransparentForMouseEvents)
+                label.setSizePolicy(
+                    QSizePolicy.Expanding, QSizePolicy.Preferred
+                )
+                label.setStyleSheet('background: transparent;')
+                label.setToolTip(item)
+                label.setText(highlighted_text)
+                tree_item.setData(0, Qt.UserRole, item)
+                tree_item.setText(0, '')
+                self.listWidget.setItemWidget(tree_item, 0, label)
+
+    @staticmethod
+    def _normalizeSearchText(text):
+        """Case-fold text and remove non-alphanumeric search separators."""
+        return widgets._normalizeSearchText(text)
+
+    def warnSelectionEmpty(self):
+        """Explain that a row must be selected before confirming."""
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        txt = html_utils.paragraph(
+            'You need to <b>select at least one item</b> before pressing "Ok".<br><br>'
+            'Otherwise, you can cancel any time with the Cancel button.<br><br>'
+            'Thank you for your patience!'
+        )
+        msg.warning(self, 'Selection cannot be empty', txt)
+
+    def ok_cb(self, *args, **kwargs):
+        """Emit selected original strings and close the dialog.
+
+        Single-selection mode emits a string for backwards compatibility;
+        multi-selection mode emits a list of strings in displayed order.
+        """
+        selected_items = self.listWidget.selectedItems()
+        if not selected_items:
+            self.warnSelectionEmpty()
+            return
+
+        self.cancel = False
+        selected_texts = [
+            item.data(0, Qt.UserRole) or item.text(0)
+            for item in selected_items
+        ]
+        if self.multiSelection:
+            self.selectedItemTexts = selected_texts
+            result = selected_texts
+        else:
+            self.selectedItemText = selected_texts[0]
+            result = self.selectedItemText
+        self.close()
+        self.sigOk.emit(result)
+    
+    def show(self, block=False):
+        super().show(block=False)
+        desiredWidthFractionOfScreen = 1/2
+        screenGeometry = self.screen().geometry()
+        x0, y0 = screenGeometry.left(), screenGeometry.top()
+        screenWidth = screenGeometry.width()
+        screenHeight = screenGeometry.height()
+        screenXCenter = x0 + screenWidth/2
+        screenYCenter = y0 + screenHeight/2
+        windowLeft = round(
+            screenXCenter 
+            - screenWidth*desiredWidthFractionOfScreen/2
+        )
+        windowWidth = round(screenWidth*desiredWidthFractionOfScreen)
+        windowHeight = round(screenHeight/2)
+        windowTop = y0
+        self.resize(windowWidth, windowHeight)
+        self.move(windowLeft, windowTop)
+        self.raise_()
+        self.activateWindow()
+        super().show(block=block)
         
 class SetupSplitVideoIntoTiffsDialog(QBaseDialog):
     def __init__(self, video_filepath, logger_func=print, parent=None):
@@ -22053,4 +22748,3 @@ class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
         ))
 
         self.setWindowTitle('Generate Trackastra training data setup')
-

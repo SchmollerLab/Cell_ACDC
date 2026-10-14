@@ -401,10 +401,12 @@ def warnMissingCca(missing_cca_items, qparent=None):
     
     detailsText = '<br>'.join(details_txt_list)
     msg = widgets.myMessageBox(wrapText=False)
-    _, ignoreButton = msg.warning(
+    ignoreButton = widgets.WarningButton('Ignore and continue saving')
+    stopButton = widgets.stopPushButton('Stop saving process')
+    msg.warning(
         qparent, 'Missing cell cycle annotations', mainText, 
         detailsText,
-        buttonsTexts=('Cancel', 'Ignore'),
+        buttonsTexts=(ignoreButton, stopButton),
         add_do_not_show_again_checkbox=True,
     )
     doNotShowAgain = msg.doNotShowAgainCheckbox.isChecked()
@@ -486,3 +488,18 @@ def warnAskAboutSaveSingleMotherBudPairsCcaDf(
     )
     
     return msg.cancel, msg.clickedButton==savePartiallyAnnotatedButton
+
+def warnCannotInterpolateZVolume(qparent, ID):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Interpolation of missing z-slices cannot be done with ID = {ID}.<br><br>
+        Please, make sure the ID you are drawing is greater than zero and that 
+        you drew on at least 2 different z-slices.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Cannot interpolate missing z-slices', txt, 
+    )
+    return msg.cancel
+    

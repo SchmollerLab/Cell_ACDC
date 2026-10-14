@@ -3,6 +3,7 @@ import os
 
 from trackastra.model import Trackastra
 from trackastra.tracking import graph_to_ctc
+from trackastra.utils import str2path
 
 from ... import _types, myutils, core
 
@@ -21,6 +22,7 @@ class tracker:
     def __init__(
             self, 
             pretrained_model_name: AvailableModels='general_2d', 
+            use_custom_model: bool=False,
             model_folder_path: _types.FolderPath='', 
             gpu=False
         ) -> None:
@@ -30,6 +32,11 @@ class tracker:
         ----------
         pretrained_model_name : AvailableModels, optional
             Pre-trained model name. Default is 'general_2d'
+        use_custom_model : bool, optional
+            If `True`, the Pre trained model name parameter will be ignored 
+            and the custom model provided in the parameter "Model folder path" 
+            will be used. If `False`, the parameter "Model folder path" 
+            will be ignored.
         model_folder_path : os.PathLike, optional
             Path to the folder containing `config.yaml` file from 
             custom training. Default is ''
@@ -38,9 +45,15 @@ class tracker:
             Default is False
         """        
         device = myutils.get_torch_device()
-        if model_folder_path:
+        if use_custom_model and not model_folder_path:
+            raise ValueError(
+                '`use_custom_model` is True, but `model_folder_path` is empty!'
+            )
+
+        if model_folder_path and use_custom_model:
             self.model = Trackastra.from_folder(
-                model_folder_path, device=str(device)
+                str2path(model_folder_path), 
+                device=str(device)
             )
         else:
             self.model = Trackastra.from_pretrained(

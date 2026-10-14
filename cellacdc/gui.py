@@ -76,7 +76,7 @@ from . import _warnings, issues_url
 from . import measurements, printl
 from . import colors, annotate
 from . import user_manual_url
-from . import (recentPaths_path, settings_folderpath, settings_csv_path, 
+from . import (settings_folderpath, settings_csv_path, 
                seg_for_lost_IDs_settings_path)
 from . import favourite_func_metrics_csv_path
 from . import qutils, autopilot, QtScoped
@@ -103,6 +103,7 @@ from . import gui_utils
 from . import gui_combine
 from .config import STANDARD_MOUSE_BUTTONS
 from . import rst_utils
+from . import core_split_IDs
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -113,6 +114,12 @@ if os.name == 'nt':
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
+
+# important functions
+# def _get_setting_value(
+# def get2DRP
+# def get_2Dlab(force_z=True
+# posData = self.data[self.pos_i]
 
  # (row, col, rowSpan, colSpan, slot)
 CHECKBOX_OPTION_NAME_TO_LAYOUT_LOC_MAPPER = {
@@ -129,7 +136,7 @@ CHECKBOX_OPTION_NAME_TO_LAYOUT_LOC_MAPPER = {
 }
 CHECKBOX_OPTION_MUTUALLY_EXCLUSIVE_GROUPS = (
     ('Contours', 'Segm. masks'),
-    ('IDs', 'Lineage info', 'Cell cycle info')
+    ('IDs', 'Lineage info', 'Cell cycle info'),
 )
 CHECKBOX_OPTION_TOOLTIPS = {
     'Contours': '''Show contour outlines of segmentation masks. Customize 
@@ -431,7 +438,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.doubleSpaceBarState = False
         self.protected_new_IDs = dict()
         
-        
         self._setup_vars_combine()
         if 'autoSaveIntevalValue' not in self.df_settings.index:
             autoSaveIntevalValue = 2
@@ -551,7 +557,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zSliceScrollBarStartedMoving = True
         self.labelRoiRunning = False
         self.isRangeReset = True
-        self.lastManualSeparateState = None
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
         self.doubleRightClickTimeElapsed = False
@@ -695,41 +700,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             super().setDisabled(disabled)
     
-    def readRecentPaths(self, recent_paths_path=None):
+    def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
-        self.openRecentMenu.clear()
-
-        # Step 1. Read recent Paths
-        if recent_paths_path is None:
-            recent_paths_path = recentPaths_path    
+        self.openRecentMenu.clear()        
+        recentPaths, dates = myutils.get_recent_paths(self)
         
-        if os.path.exists(recent_paths_path):
-            df = pd.read_csv(recent_paths_path, index_col='index')
-            df['path'] = df['path'].str.replace('\\', '/')
-            df = df.drop_duplicates(subset=['path'])
-            df.to_csv(recent_paths_path)
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            recentPaths = df['path'].to_list()
-        else:
-            recentPaths = []
-        
-        # Step 2. Dynamically create the actions
+        # Step 2. Dynamically create 20 actions
         actions = []
-        for path in recentPaths:
-            if not os.path.exists(path):
-                continue
+        for path in recentPaths[:20]:
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
 
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
+
+        # Setp 4. Add the More action
+        self.openRecentMoreDialog = apps.SearchableListboxDialog(
+            recentPaths, 
+            title='Recent paths', 
+            searchLineEditText='Search recent paths (double-click to load)...',
+            parent=self,
+            dates=dates,
+        )
+        self.openRecentMoreAction = QAction('More/Search...', self)
+        self.openRecentMoreAction.triggered.connect(
+            self.showOpenRecentMoreWidget
+        )
+        self.openRecentMoreDialog.sigOk.connect(self.openRecentFile)
+        self.openRecentMenu.addSeparator()
+        self.openRecentMenu.addAction(self.openRecentMoreAction)
     
     def addPathToOpenRecentMenu(self, path):
         for action in self.openRecentMenu.actions():
             if path == action.text():
-                break
+                return
         else:
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
@@ -774,10 +779,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if 'isRightImageVisible' not in self.df_settings.index:
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
-        
-        if 'manual_separate_draw_mode' not in self.df_settings.index:
-            col = 'manual_separate_draw_mode'
-            self.df_settings.at[col, 'value'] = 'threepoints_arc'
         
         if 'colorScheme' in self.df_settings.index:
             col = 'colorScheme'
@@ -1038,7 +1039,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def gui_activeCursorTool(self, tools):
         curr_mode = str(self.modeComboBox.currentText())
         for name, tool, draw_icon, mode in tools:
-            if mode != curr_mode:
+            if mode != curr_mode and not curr_mode == 'Snapshot':
                 continue
             if name == 'toggle_points_layer':
                 magicPromptsON = self.magicPromptsToolButton.isChecked()
@@ -1137,6 +1138,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         self.gui_refreshToolCursor()
+
+    def setDelRoiCursor(self):
+        if self.app.overrideCursor() == Qt.SizeAllCursor:
+            return
+        
+        self.app.setOverrideCursor(Qt.SizeAllCursor)
 
     def gui_refreshToolCursor(self, *args):
         isHoverImg1 = self._cursorHoverImage
@@ -1365,6 +1372,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.focusOnSearchAction)
         self.searchWidget.sigSearchId.connect(
             self.onSearchId
+        )
+        self.searchWidget.setMinimumHeight(
+            self.searchWidget.sizeHint().height()
         )
         
         
@@ -2482,6 +2492,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoIDcheckboxAction = brushEraserToolBar.addWidget(self.autoIDcheckbox)
         self.autoIDcheckboxAction.setVisible(False)
 
+        brushEraserToolBar.addSeparator()
+
+        self.interpZButton = QToolButton(self)
+        self.interpZButton.setIcon(QIcon(":interpolate-Z.svg"))
+        self.interpZButton.setCheckable(True)
+        self.interpZButton.setShortcut('Shift+Q')
+        self.interpZButton.action = brushEraserToolBar.addWidget(
+            self.interpZButton
+        )
+        self.widgetsWithShortcut['Interpolate sparsely labelled Z volume'] = (
+            self.interpZButton
+        )
+
+        self.interpZConfirmAction = QAction(self)
+        self.interpZConfirmAction.setIcon(QIcon(":greenTick.svg"))
+        self.interpZConfirmAction.setToolTip(
+            'Interpolate the mask between annotated z-slices.\n\n'
+            'Shortcut: "Enter"'
+        )
+        brushEraserToolBar.addAction(self.interpZConfirmAction)
+
+        brushEraserToolBar.addSeparator()
+
         self.brushSizeSpinbox = widgets.SpinBox(
             disableKeyPress=True,
             allowNegative=False
@@ -2818,6 +2851,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.whitelistIDsToolbar.setVisible(False)
         self.controlToolBars.append(self.whitelistIDsToolbar)
         
+        self.separateBudToolbar = widgets.SeparateBudToolbar(self)
+        for name, action in self.separateBudToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+        for name, widget in self.separateBudToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
+
+        self.addToolBar(Qt.TopToolBarArea, self.separateBudToolbar)
+        self.separateBudToolbar.setVisible(False)
+        self.controlToolBars.append(self.separateBudToolbar)
+        self.separateBudButton.toggled.connect(self.separateBudToolbar.setVisible)
+        
         self.magicPromptsToolbar = widgets.MagicPromptsToolbar(self)
         for name, action in self.magicPromptsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
@@ -2881,6 +2925,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         secondLevelToolbar.setMovable(False)
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
+
+        toolbar_targets = (
+            (self.overlayToolbar, self.overlayButton),
+            (self.autoPilotZoomToObjToolbar, self.autoPilotButton),
+            (self.brushEraserToolBar, (self.brushButton, self.eraserButton)),
+            (self.wandControlsToolbar, self.wandToolButton),
+            (self.labelRoiToolbar, self.labelRoiButton),
+            (self.keepIDsToolbar, self.keepIDsButton),
+            (self.mergeIDsToolbar, self.mergeIDsButton),
+            (self.pointsLayersToolbar, self.togglePointsLayerAction),
+            (self.manualTrackingToolbar, self.manualTrackingAction),
+            (self.manualBackgroundToolbar, self.manualBackgroundButton),
+            (self.copyLostObjToolbar, self.copyLostObjButton),
+            (self.clearFreehandRoiToolbar, self.clearFreehandRoiButton),
+            (self.whitelistIDsToolbar, self.whitelistIDsButton),
+            (self.magicPromptsToolbar, self.magicPromptsToolButton),
+            (self.promptSegmentPointsLayerToolbar, self.magicPromptsToolButton),
+        )
+        for toolbar, targets in toolbar_targets:
+            self.searchWidget.registerToolbarTargets(toolbar, targets)
 
         self.gui_createToolCursorRegistry()
         
@@ -4094,6 +4158,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
+        self.interpZButton.toggled.connect(self.interpZModeToggled)
+        self.interpZConfirmAction.triggered.connect(
+            self.interpZConfirmTriggered
+        )
         self.autoIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
         self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
@@ -4404,6 +4472,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 txt = html_utils.paragraph(txt)
                 checkbox.setToolTip(txt)
 
+            if slot is None:
+                continue
+
             self.annotOptionsCheckboxes[ax][name] = checkbox
             checkbox.sigToggled.connect(
                 partial(getattr(self, slot), ax=ax)
@@ -4415,7 +4486,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 checkbox2 = self.annotOptionsCheckboxes[ax][name2]
                 checkbox1.setExclusiveOnCheckCheckbox(checkbox2)
                 checkbox2.setExclusiveOnCheckCheckbox(checkbox1)
-
+        
         doNotAnnotateCheckbox = (
             self.annotOptionsCheckboxes[ax]['Do not annotate']
         )
@@ -4531,11 +4602,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.annotateAllObjectTracks()
 
     def onDoNotAnnotateChecked(self, checked, checkbox, ax=0):
-        # Placeholder function, might be useful in the future.
-        # Since unchecking "Do not annotate" automatically unchecks all 
-        # active options, everything is cleared in the unchecked checkboxes 
-        # connected slots --> nothing needed here.
-        pass
+        if checked:
+            for name, isChecked in checkbox.exclusiveCheckboxesStates.items():
+                self.annotOptionsToRestore[ax][name] = isChecked
+        else:
+            self.restoreAnnotOptions(ax)
 
     def gui_createBottomWidgets(self):
         self.annotOptionsCheckboxes = defaultdict(dict)
@@ -5656,6 +5727,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
+        ctrl = modifiers == Qt.ControlModifier
         shift_regardless = bool(modifiers & Qt.ShiftModifier)
         isMod = alt
         posData = self.data[self.pos_i]
@@ -5667,8 +5739,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
         separateON = self.separateBudButton.isChecked()
+        zProjHow = self.zProjComboBox.currentText()
+        isZslice = zProjHow == 'single z-slice'
         self.typingEditID = False
-
         # Drag image if neither brush or eraser are On pressed
         dragImg = (
             left_click and not eraserON and not
@@ -5697,7 +5770,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         # Check if right click on ROI
-        isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
+        isClickOnDelRoi = self.gui_handleClickOnDelRoi(event, left_click, right_click)
         if isClickOnDelRoi:
             return
 
@@ -5852,38 +5925,143 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.storeUndoRedoStates(False)
             max_ID = max(posData.IDs, default=1)
 
-            if self.isSegm3D and not shift:
-                z = self.zSliceScrollBar.sliderPosition()
-                posData.lab, splittedIDs = measure.separate_with_label(
-                    posData.lab, posData.rp, [ID], max_ID, 
-                    click_coords_list=[(z, ydata, xdata)]
+            separation_mode = self.separateBudToolbar.separationMode()
+            if (
+                self.isSegm3D and not ctrl and not (shift and isZslice)
+                and separation_mode == '3D Convexity defects'
+            ):
+                posData.lab, success, splittedIDs = core_split_IDs.split_along_convexity_defects_3D(
+                    ID, posData.lab, max_ID, rp=posData.rp,
+                    voxel_size=(
+                        posData.PhysicalSizeZ,
+                        posData.PhysicalSizeY,
+                        posData.PhysicalSizeX,
+                    ),
+                    **self.separateBudToolbar.splitConv3DKwargs(),
                 )
-                success = True
-                # self.set_2Dlab(lab2D)
-            elif not shift:
-                result = core.split_along_convexity_defects(
-                    ID, self.get_2Dlab(posData.lab), max_ID, rp=posData.rp
+            elif (
+                self.isSegm3D and not ctrl and not (shift and isZslice)
+                and separation_mode == 'Slice by slice'
+            ):
+                result = core_split_IDs.split_along_convexity_defects_slice_by_slice(
+                    ID, posData.lab, max_ID,
+                    rp=posData.rp,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
+                )
+                posData.lab, success, splittedIDs = result
+            elif self.isSegm3D and not ctrl and (shift and isZslice):
+                rp_2D = self.get2DRP()
+                lab_2D = self.get_2Dlab(force_z=True)
+                result = core_split_IDs.split_along_convexity_defects(
+                    ID, lab_2D, max_ID, rp=rp_2D,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
+                )
+                lab_2D, success, splittedIDs = result
+                # assign largest resulting ID the original ID
+                obj = rp_2D.get_obj_from_ID(ID)
+                IDs, counts = np.unique(lab_2D[obj.slice][obj.image], return_counts=True)
+                max_size_idx = np.argmax(counts)
+                largest_ID = IDs[max_size_idx]
+                original_values = lab_2D[obj.slice][obj.image].copy()
+                lab_2D[obj.slice][obj.image] = np.where(
+                    original_values == largest_ID,
+                     ID,
+                     np.where(original_values == ID, largest_ID, original_values),
+                     )
+                self.set_2Dlab(lab_2D)
+                
+            elif not ctrl and not self.isSegm3D:
+                result = core_split_IDs.split_along_convexity_defects(
+                    ID, self.get_2Dlab(posData.lab), max_ID, rp=posData.rp,
+                    **self.separateBudToolbar.splitConv2DKwargs(),
                 )
                 lab2D, success, splittedIDs = result
                 self.set_2Dlab(lab2D)
-            else:
+            else:  # ctrl+right-click triggers manual separation directly
                 success = False
+                
+            if (
+                success 
+                and self.separateBudToolbar.goToSepSliceChecked()
+                and self.isSegm3D
+                ):
+                
+                ogObject = posData.rp.get_obj_from_ID(ID)
+                bbox = ogObject.bbox
+                min_z, min_y, min_x, max_z, max_y, max_x = bbox
+                splittedIDs_exc_ID = [i for i in splittedIDs if i != ID]
+                for z in range(min_z, max_z + 1):
+                    lab2D = self.get_2Dlab(force_z=True, slice_i=z)
+                    # check if any of the splitted IDs are present in the current 2D slice
+                    if any(i in lab2D for i in splittedIDs_exc_ID):
+                        # set z to the current slice index
+                        self.zSliceScrollBar.setSliderPosition(z)
+                        self.update_z_slice(z)
+                        break
             
             # If automatic bud separation was not successfull call manual one
             if not success:
                 posData.disableAutoActivateViewerWindow = True
                 img = self.getDisplayedImg1()
-                col = 'manual_separate_draw_mode'
-                drawMode = self.df_settings.at[col, 'value']
-                manualSep = apps.manualSeparateGui(
-                    self.get_2Dlab(posData.lab), ID, img,
-                    fontSize=self.fontSize,
-                    IDcolor=self.lut[ID],
-                    parent=self,
-                    drawMode=drawMode
+                lastManualSeparateState = self.getLastManualSeparateState()
+                if shift and isZslice and self.isSegm3D:
+                    lab = self.get_2Dlab(force_z=True)
+                    img = self.getDisplayedImg1()
+                    rp = self.get2DRP()
+                elif self.isSegm3D:
+                    lab = posData.lab
+                    img = self.getDisplayedZstack()
+                    rp = posData.rp
+                else:
+                    lab = posData.lab
+                    img = self.getDisplayedImg1()
+                    rp = posData.rp
+
+                if self.isSegm3D:
+                    start_slice = self.zSliceScrollBar.sliderPosition()
+                else:
+                    start_slice = None
+
+                draw_mode = (
+                    'threepoints_arc'
+                    if lastManualSeparateState['is_three_points_active']
+                    else 'freehand'
                 )
-                manualSep.setState(self.lastManualSeparateState)
-                manualSep.show()
+                labels_lut = self.getLabelsImageLut()
+                labels_alpha = self.imgGrad.labelsAlphaSlider.value()
+                manualSep = getattr(self, 'manualSeparateGui', None)
+                img_lut_df = self.imgGrad.saveState(self.df_settings)
+                if manualSep is None:
+                    manualSep = apps.manualSeparateGui(
+                        lab, ID, img,
+                        fontSize=self.fontSize,
+                        IDcolor=self.lut[ID],
+                        parent=self,
+                        drawMode=draw_mode,
+                        start_slice=start_slice,
+                        mouseBindings=self.mouseBindings,
+                        labelsLut=labels_lut,
+                        labelsAlpha=labels_alpha,
+                        rp=rp,
+                        img_lut_df=img_lut_df,
+                    )
+                    self.manualSeparateGui = manualSep
+                else:
+                    manualSep.setSessionData(
+                        lab, ID, img,
+                        fontSize=self.fontSize,
+                        IDcolor=self.lut[ID],
+                        drawMode=draw_mode,
+                        start_slice=start_slice,
+                        mouseBindings=self.mouseBindings,
+                        labelsLut=labels_lut,
+                        labelsAlpha=labels_alpha,
+                        rp=rp,
+                        img_lut_df=img_lut_df,
+                    )
+
+                manualSep.setState(lastManualSeparateState)
+
                 manualSep.centerWindow()
                 manualSep.show(block=True)
                 if manualSep.cancel:
@@ -5891,13 +6069,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     if not self.separateBudButton.findChild(QAction).isChecked():
                         self.separateBudButton.setChecked(False)
                     return
-                self.lastManualSeparateState = manualSep.state()
-                lab2D = self.get_2Dlab(posData.lab)
-                lab2D[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
-                self.set_2Dlab(lab2D)
-                splittedIDs = [obj.label for obj in manualSep.rp]
+                self.setLastManualSeparateState(manualSep.state())
+                if self.isSegm3D and manualSep.lab.ndim == 3:
+                    changed_mask = manualSep.lab != 0
+                    posData.lab[changed_mask] = manualSep.lab[changed_mask]
+                    splittedIDs = list(np.unique(manualSep.lab[changed_mask]))
+                elif self.isSegm3D and manualSep.lab.ndim == 2:
+                    changed_mask = manualSep.lab != 0
+                    lab_2D = self.get_2Dlab(force_z=True)
+                    lab_2D[changed_mask] = manualSep.lab[changed_mask]
+                    self.set_2Dlab(lab_2D)
+                    splittedIDs = list(np.unique(manualSep.lab[changed_mask]))
+                else:
+                    lab2D = self.get_2Dlab(posData.lab)
+                    lab2D[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
+                    self.set_2Dlab(lab2D)
+                    splittedIDs = [obj.label for obj in manualSep.rp]
                 posData.disableAutoActivateViewerWindow = False
-                self.storeManualSeparateDrawMode(manualSep.drawMode)
 
             # Update data (rp, etc)
             bbox = self.update_rp_get_bbox(use_bbox=True, specific_IDs=ID) # use old ID to get bbox
@@ -5945,7 +6133,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID in posData.lab:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
-                if not shift and self.isSegm3D:
+                if (shift and isZslice) and self.isSegm3D:
                     rp2D = self.rpCurr2D()
                     obj = rp2D.get_obj_from_ID(ID)
                 else: # shift hold or 2D from the getgo
@@ -5953,7 +6141,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
                 localFill = scipy.ndimage.binary_fill_holes(obj.image)
 
-                if not shift and self.isSegm3D:
+                if (shift and isZslice) and self.isSegm3D:
                     curr_z = self.zSliceScrollBar.sliderPosition()
                     posData.lab[curr_z][obj.slice][localFill] = ID
                 else:
@@ -5995,14 +6183,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if ID in posData.lab:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
-                if not shift and self.isSegm3D:
+                if (shift and isZslice) and self.isSegm3D:
                     rp2D = self.rpCurr2D()
                     obj = rp2D.get_obj_from_ID(ID)
                 else:
                     obj = posData.rp.get_obj_from_ID(ID)
 
                 localHull = skimage.morphology.convex_hull_image(obj.image)
-                if not shift and self.isSegm3D:
+                if (shift and isZslice) and self.isSegm3D:
                     curr_z = self.zSliceScrollBar.sliderPosition()
                     hull_lab = posData.lab[curr_z][obj.slice]
                 else:
@@ -6925,7 +7113,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
-        cursorsInfo = self.gui_setCursor(modifiers, event, isHoverImg1)
+        cursorsInfo = self.gui_setCursor(
+            modifiers, event, isHoverImg1=isHoverImg1
+        )
         self.highlightHoverLostObj(modifiers, event)
         
         drawRulerLine = (
@@ -6956,6 +7146,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.BudMothTempLine.setData([], [])
             self.wcLabel.setText('')
         
+        if cursorsInfo['setDelRoiCursor']:
+            self.setDelRoiCursor()
+
         if cursorsInfo['setKeepObjCursor']:
             x, y = event.pos()
             self.highlightHoverIDsKeptObj(x, y)
@@ -7110,17 +7303,27 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
         
+        posData = self.data[self.pos_i]
+        delROIs = (
+            posData.allData_li[posData.frame_i]['delROIs_info']['rois']
+        )
         # Alt key was released --> restore cursor
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
+        setDelRoiCursor = False
+        if not event.isExit():
+            x, y = event.pos()
+            setDelRoiCursor = any([
+                self.isMouseOnDelRoi(roi, x, y) for roi in delROIs
+            ])
         setBrushCursor = (
             self.brushButton.isChecked() and not event.isExit()
-            and (noModifier or shift or ctrl)
+            and (noModifier or shift or ctrl) and not setDelRoiCursor
         )
         setEraserCursor = (
             self.eraserButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setAddDelPolyLineCursor = (
             self.addDelPolyLineRoiButton.isChecked() and not event.isExit()
@@ -7133,7 +7336,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         setWandCursor = (
             self.wandToolButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setLabelRoiCursor = (
             self.labelRoiButton.isChecked() and not event.isExit()
@@ -7149,7 +7352,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         setCurvCursor = (
             self.curvToolButton.isChecked() and not event.isExit()
-            and noModifier
+            and noModifier and not setDelRoiCursor
         )
         setKeepObjCursor = (
             self.keepIDsButton.isChecked() and not event.isExit()
@@ -7197,6 +7400,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.highlightHoverID(x, y)
         
         return {
+            'setDelRoiCursor': setDelRoiCursor,
             'setBrushCursor': setBrushCursor,
             'setEraserCursor': setEraserCursor,
             'setAddDelPolyLineCursor': setAddDelPolyLineCursor,
@@ -7819,27 +8023,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.isMouseDragImg1 = False
             self.whiteListIDsFreehandRegion(event)
 
-    def gui_clickedDelRoi(self, event, left_click, right_click):
+    def isMouseOnDelRoi(self, roi, x, y):
+        for handle in roi.handles:
+            h = handle['item']
+            if h.currentPen is h.hoverPen:
+                return True
+
+        mask, bbox = self.getRoiCoords(roi, return_mask=True)
+        # check if click insde bbox by correcting x and y and checking if something is out of bounds
+        (r0, r1, c0, c1) = bbox
+        if y<r0 or y>=r1 or x<c0 or x>=c1:
+            return False
+
+        # exact check
+        y_rel, x_rel = int(y-r0), int(x-c0)
+        if mask[y_rel, x_rel]:
+            return True
+        
+        return False
+
+    def gui_handleClickOnDelRoi(self, event, left_click, right_click):
         posData = self.data[self.pos_i]
         x, y = event.pos().x(), event.pos().y()
 
-        # Check if right click on ROI
+        # Check if click on ROI
         delROIs = (
-            posData.allData_li[posData.frame_i]['delROIs_info']['rois'].copy()
+            posData.allData_li[posData.frame_i]['delROIs_info']['rois']
         )
         for r, roi in enumerate(delROIs):
-            mask, bbox = self.getRoiCoords(roi, return_mask=True)
-            # check if click insde bbox by correcting x and y and checking if something is out of bounds
-            (r0, r1, c0, c1) = bbox
-            if y<r0 or y>=r1 or x<c0 or x>=c1:
-                clickedOnROI = False
-            else:
-                # exact check
-                y_rel, x_rel = int(y-r0), int(x-c0)
-                if mask[y_rel, x_rel]:
-                    clickedOnROI = True
-                else:
-                    clickedOnROI = False
+            clickedOnROI = self.isMouseOnDelRoi(roi, x, y)
             raiseContextMenuRoi = right_click and clickedOnROI
             dragRoi = left_click and clickedOnROI
             if raiseContextMenuRoi:
@@ -7913,7 +8125,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return getattr(self, '_isWhitelistIDsRoiVisible', False)
         return True
 
-    def gui_isClickInsideRoi(self, roi, event):
+    def gui_isMouseInsideRoi(self, roi, event):
         if roi is None:
             return False
         try:
@@ -8018,7 +8230,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if self.zoomRectButton.isChecked():
             activeRois.append(getattr(self, 'zoomRectItem', None))
 
-        activeRois = [roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
+        activeRois = [
+            roi for roi in activeRois if self.gui_isActiveInterceptRoi(roi)]
         
         # check that no other button was clicked
         
@@ -8036,7 +8249,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         if left_click and any(
-            self.gui_isClickInsideRoi(roi, event) for roi in activeRois
+            self.gui_isMouseInsideRoi(roi, event) for roi in activeRois
         ):
             event.ignore()
             return
@@ -8056,7 +8269,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
 
         # Check if click on ROI
-        isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
+        isClickOnDelRoi = self.gui_handleClickOnDelRoi(
+            event, left_click, right_click
+        )
         if isClickOnDelRoi:
             return
         
@@ -8090,7 +8305,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # while in snapshot mode with Ctrl+right-click
         isAnnotateDivision = (
             (right_click and isCcaMode and canAnnotateDivision)
-            or (right_click and ctrl and self.isSnapshot)
+            or (right_click and ctrl and self.isSnapshot and canAnnotateDivision)
         )
 
         isCustomAnnot = (
@@ -9641,15 +9856,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._thread.start()
 
     def onSegForLostIDsImportModel(self, model_name):
-        # Preflight import on GUI thread; worker retries and handles failures.
+        # Import on the GUI thread because model packages may open dialogs 
+        # (install prompts, DLL warnings) at import time. The worker must 
+        # NOT re-import, otherwise those dialogs are created from the 
+        # worker thread and the GUI freezes.
+        worker = self.SegForLostIDsWorker
+        worker.importedSegmModule = None
+        worker.importSegmModuleError = None
         try:
-            myutils.import_segment_module(model_name)
+            worker.importedSegmModule = myutils.import_segment_module(
+                model_name
+            )
         except Exception as e:
             traceback_str = traceback.format_exc()
             self.logger.error(
                 f"Error importing model '{model_name}': {e}\n{traceback_str}"
             )
-            pass
+            worker.importSegmModuleError = e
         finally:
             self._ackSegForLostIDsWorker('import_model')
 
@@ -13124,6 +13347,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.polyLineRoi.handleSize = 7
         self.polyLineRoi.points = []
+        self.polyLineRoi.setCursor(Qt.SizeAllCursor)
         if key is None:
             key = uuid.uuid4()
         self.ax1.addDelRoiItem(self.polyLineRoi, key)
@@ -14628,6 +14852,82 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1_EraserX.setSize(value)
         self.setDiskMask()
     
+    def interpZModeToggled(self, checked):
+        if checked:
+            self.autoIDcheckbox.stateToRestore = self.autoIDcheckbox.isChecked()
+
+        if not checked:
+            try:
+                self.autoIDcheckbox.setChecked(
+                    self.autoIDcheckbox.stateToRestore
+                )
+            except Exception as err:
+                pass
+
+            self.autoIDcheckbox.setDisabled(False)
+            return
+        
+        if self.autoIDcheckbox.isChecked():
+            self.autoIDcheckbox.setChecked(False)
+            self.autoIDcheckbox.setDisabled(True)
+
+        newID = self.setBrushID(return_val=True)
+        self.editIDspinbox.setValue(newID)
+
+    @exception_handler
+    def interpZConfirmTriggered(self):
+        posData = self.data[self.pos_i]
+        ID = self.editIDspinbox.value()
+        if ID == 0:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
+        self.logger.info(f'Interpolating object ID = {ID}...')
+        obj = posData.rp.get_obj_from_ID(ID, warn=False)
+        if obj is None:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False) 
+
+        local_lab = posData.lab[obj.slice]
+        local_mask_volume = local_lab == ID
+        labelled_z_slices = np.flatnonzero(
+            np.any(local_mask_volume, axis=(1, 2))
+        )
+
+        if len(labelled_z_slices) < 2:
+            _warnings.warnCannotInterpolateZVolume(self, ID)
+            return
+
+        local_mask_filled, _ = core.interpolate_unlabelled_z_slices(
+            local_mask_volume, labelled_z_slices
+        )
+
+        existing_objs_mask = np.logical_and(local_lab > 0, local_lab != ID)
+
+        local_mask_filled[existing_objs_mask] = False
+        posData.lab[obj.slice][local_mask_filled] = ID
+        self.update_rp(specific_IDs=ID, preloaded_bbox=obj.bbox)
+        self.updateAllImages()
+
+        button = self.brushEraserToolBar.widgetForAction(
+            self.interpZConfirmAction
+        )
+        button.setStyleSheet(f'background-color: {GREEN_HEX}')
+
+        self.editIDspinbox.setValue(ID + 1)
+
+        QTimer.singleShot(2000, self.restoreInterpZConfirmActionColor)
+
+    def restoreInterpZConfirmActionColor(self):
+        color = self.defaultToolBarButtonColor
+        button = self.brushEraserToolBar.widgetForAction(
+            self.interpZConfirmAction
+        )
+        button.setStyleSheet(f'background-color: {color}')
+
     def autoIDtoggled(self, checked):
         self.editIDspinboxAction.setDisabled(checked)
         self.editIDLabelAction.setDisabled(checked)
@@ -15274,10 +15574,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         regionLab = posData.lab[(...,) + regionSlice].copy()
         if regionLab.ndim == 3:
             mask3d = np.zeros(regionLab.shape, dtype=bool)
-            if zRange is None:
-                mask3d[:] = mask
-            else:
-                mask3d[zRange[0]:zRange[1]] = mask
+            mask3d[:] = mask
             mask = mask3d
             
         if onlyEnclosed:
@@ -15286,9 +15583,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
         else:
             regionLab[..., ~mask] = 0
-        
+            
         regionRp = self._acdcRegionProps(
-            regionLab, precache_centroids=False
+            regionLab,
+            precache_centroids=False
         )
         sourceIDs = [obj.label for obj in regionRp]
         
@@ -15616,7 +15914,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             activeCategories = self.countObjsWindow.activeCategories()
             
         posData = self.data[self.pos_i]        
-        allCategoryCountMapper = posData.countObjectsInSegmTimelapse(
+        allCategoryCountMapper, _ = posData.countObjectsInSegmTimelapse(
             activeCategories
         )
         if self.countObjsWindow is None:
@@ -15855,7 +16153,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             prev_IDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
 
-        if ask_back_prop and all(ID not in prev_IDs for ID in unique_ids):
+        if ask_back_prop and sum(ID in prev_IDs for ID in unique_ids) <= 1:
             ask_back_prop = False
 
         if not self.isFrameCcaAnnotated() and ask_back_prop:
@@ -16725,14 +17023,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if not key == ev.key():
                 continue
             action = self.widgetsWithShortcut[name]
-            success = False
             if hasattr(action, 'click'):
                 action.click()
             elif hasattr(action, 'trigger'):
                 action.trigger()
             break
-        
-
         
         self.checkSetDelObjActionActive(ev)
         
@@ -16750,7 +17045,31 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     ID=0
                 )
             if self.isSegm3D:
-                self.changeBrushID()   
+                self.changeBrushID()
+                
+        if (
+            ev.key() == Qt.Key_Shift
+            and isShiftModifier
+            and not ev.isAutoRepeat()
+            and self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isVisible()
+            ):
+            self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state = (   
+                self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.isChecked()
+            )
+            self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.setChecked(True)
+
+        if (
+            ev.key() == Qt.Key_Shift
+            and isShiftModifier
+            and not ev.isAutoRepeat()
+            and self.separateBudToolbar.sepModeSelector.isVisible()
+            ):
+            self.separateBudToolbar_sepModeSelector_og_state = (
+                self.separateBudToolbar.separationMode()
+            )
+            self.separateBudToolbar.setSeparationMode(
+                'Slice by slice'
+            )
         
         isAnyModifier = isAltModifier or isCtrlModifier or isShiftModifier
         if not isAnyModifier and self.overlayButton.isChecked():
@@ -16806,7 +17125,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 isLabelRoiCircActive
             )
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
-            if isTypingIDFunctionChecked:
+            if self.interpZButton.isChecked():
+                self.interpZConfirmAction.trigger()
+            elif isTypingIDFunctionChecked:
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
@@ -16961,7 +17282,35 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             or ev.key() == Qt.Key_Control
             or ev.key() == Qt.Key_Backspace
             or self.delObjToolAction.isChecked()
-        )      
+        )
+
+        if (
+            ev.key() == Qt.Key_Shift
+            and not ev.isAutoRepeat()
+            and getattr(
+                self,
+                'separateBudToolbar_sepModeSelector_og_state',
+                None,
+            ) is not None
+        ):
+            self.separateBudToolbar.setSeparationMode(
+                self.separateBudToolbar_sepModeSelector_og_state
+            )
+            self.separateBudToolbar_sepModeSelector_og_state = None
+            
+        if (
+            ev.key() == Qt.Key_Shift
+            and not ev.isAutoRepeat()
+            and getattr(
+                self,
+                'mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state',
+                None,
+            ) is not None
+        ):
+            self.mergeIDsToolbar.onlyCurrentZsliceCheckbox.setChecked(
+                self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state
+            )
+            self.mergeIDsToolbar_onlyCurrentZsliceCheckbox_og_state = None
         
         if canRepeat and ev.isAutoRepeat():
             return
@@ -21552,6 +21901,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.initLoadedDelROI()
         
+        self.separateBudToolbar.setSegm3D(self.isSegm3D)
+        
         QTimer.singleShot(100, self.resizeGuiAndAutoRange)
 
     def _createROIfromState(self, state, key):
@@ -21644,7 +21995,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.resizeGui()
     
     def setVisible3DsegmWidgets(self):
-        pass
+        if not self.isSegm3D:
+            self.interpZButton.setChecked(False)
+
+        self.interpZButton.setVisible(self.isSegm3D)
+        self.interpZButton.action.setVisible(self.isSegm3D)
+        self.interpZConfirmAction.setVisible(self.isSegm3D)
+        self.interpZButton.action.setDisabled(not self.isSegm3D)
+        self.interpZButton.setDisabled(not self.isSegm3D)
 
     def resizeGuiAndAutoRange(self):
         self.resizeGui()
@@ -23681,14 +24039,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             idx_x = min(idx, posData.SizeX-1)
             return (slice(None), slice(None), idx_x)
                 
-    def get_2Dlab(self, lab=None, force_z=True):
+    def get_2Dlab(self, lab=None, force_z=True, slice_i=None):
+        if lab is None:
+            posData = self.data[self.pos_i]
+            lab = posData.lab
         if self.isSegm3D:
             if force_z:
-                return lab[self.z_lab()]
+                return lab[self.z_lab() if slice_i is None else slice_i]
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if isZslice:
-                return lab[self.z_lab()]
+                return lab[self.z_lab() if slice_i is None else slice_i]
             else:
                 if self.switchPlaneCombobox.isEnabled():
                     slicing = self.switchPlaneCombobox.depthAxes()
@@ -25346,7 +25707,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         cutout = tuple(
             (min(r[0], r[1]), max(r[0], r[1])) for r in cutout
         )
-        if self.isSegm3D:
+        if len(cutout) > 2:
             (z_min, z_max), (y_min, y_max), (x_min, x_max) = cutout
             return (z_min, y_min, x_min, z_max, y_max, x_max)
         else:
@@ -25356,10 +25717,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def _get_perc_cutout_from_total_img(self, cutout):
         posData = self.data[self.pos_i]
         single_timepoint_segm_size = posData.getSingleTimepointSegmSize()
-        if self.isSegm3D:
-            size = (cutout[0][1] - cutout[0][0]) * (cutout[1][1] - cutout[1][0]) * (cutout[2][1] - cutout[2][0])
+        if len(cutout) > 2:
+            size = (
+                (cutout[0][1] - cutout[0][0]) 
+                * (cutout[1][1] - cutout[1][0]) 
+                * (cutout[2][1] - cutout[2][0])
+            )
         else:
-            size = (cutout[0][1] - cutout[0][0]) * (cutout[1][1] - cutout[1][0])
+            depth = posData.SizeZ if self.isSegm3D else 1
+            size = (
+                depth
+                * (cutout[0][1] - cutout[0][0]) 
+                * (cutout[1][1] - cutout[1][0])
+            )
         return size / single_timepoint_segm_size
     
     def update_rp_get_bbox(
@@ -25459,6 +25829,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
             frame_i=None,
             wl_update=True, wl_track_og_curr=False, wl_update_lab=False, # wl stuff
+            is_worker_thread=False
         ):
         """Update regionprops and related GUI/tracking metadata.
 
@@ -25469,8 +25840,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         Parameters
         ----------
         draw : bool, optional
-            If ``True``, redraw annotations/metadata after updating regionprops.
-            Default is ``True``.
+            Not used anymore. Kept only because we don't know where else 
+            update_rp is called with this kwarg.
         debug : bool, optional
             Reserved debug flag (currently not used directly in this method).
         assignments : dict, optional
@@ -25511,6 +25882,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         Updates ``posData.IDs`` when operating on the current frame and, when
         enabled, propagates whitelist additions/removals for tracking.
         """
+        if is_worker_thread and use_curr_view:
+            raise ValueError(
+                '`use_curr_view` and `is_worker_thread` cannot be True '
+                'at the same time, '
+                'because `use_curr_view` cannot be True when this function '
+                'is called by another thread.'
+            )
         #updating rp is very clostly, as it deletes all the cashed
         if use_curr_view and use_bbox:
             raise ValueError('''use_curr_view and use_bbox cannot be True at the 
@@ -25613,7 +25991,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if on_curr_frame:
             posData.IDs = rp.IDs
         
-        self.update_rp_metadata(draw=draw, frame_i = frame_i)        
+        self.update_rp_metadata(draw=draw, frame_i=frame_i)        
+
+        if not is_worker_thread and frame_i==posData.frame_i:
+            # Update the overlay masks given the new rp
+            self.currentLab2D = self.get_2Dlab(posData.lab, force_z=False)
+            self.setOverlaySegmMasks()
+
         if not (wl_update and not unvisited):
             return
 
@@ -31726,7 +32110,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # First separate by labelling
         if separateByLabel:
             maxID = max(posData.IDs, default=1)
-            setRp = core.split_connected_components(
+            setRp = core_split_IDs.split_connected_components(
                 posData.lab, rp=posData.rp, max_ID=maxID
             )
             if setRp:
@@ -31904,16 +32288,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         IDs_set = posData.rp.IDs_set
 
         new_objs_1st_step, lost_objs_1st_step = annotInfo
+        new_objs_1st_step_new, lost_objs_1st_step_new = [], []
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
             # guard against removed cells
             # ID is actually not present in current frame !DO not use newObj, it is stale!
-            if lostObj.label not in IDs_set: 
+            if lostObj.label not in IDs_set:
                 continue
             
             ID_in_lab = posData.lab[newObj.slice][newObj.image][0] # get the current lab of the object
             if ID_in_lab != lostObj.label:
                 continue
             
+            new_objs_1st_step_new.append(newObj)
+            lost_objs_1st_step_new.append(lostObj)
+
             allContours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -31931,13 +32319,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_trackerMovementAgainstPrevLinesItem.addPoints(xx, yy)
             
+        # update annotInfo with filtered objects
+        posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = (
+            new_objs_1st_step_new, lost_objs_1st_step_new
+        )
+
     # settings helper
     def _get_setting_value(self, index_name, default, cast=int):
         if self.df_settings is None or index_name not in self.df_settings.index:
             return default
         value = self.df_settings.at[index_name, 'value']
         if cast is bool:
-            return value in ('Yes', 'True') if isinstance(value, str) else bool(value)
+            return value in ('Yes', 'True', '1') if isinstance(value, str) else bool(int(value))
         try:
             return cast(value)
         except Exception:
@@ -35480,8 +35873,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         proceed = True
         ignore = False
         doNotShowAgain = False
-        if not self.doNotShowAgainMissingCca:
-            return proceed, ignore, doNotShowAgain
+        if self.doNotShowAgainMissingCca:
+            return proceed, ignore, self.doNotShowAgainMissingCca
         
         missing_cca_items = []
         for posData in self.data:
@@ -35497,7 +35890,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if cca_df.isnull().values.any():
                     i = frame_i if not self.isSnapshot else None
                     missing_cca_items.append((cca_df, posData, i))
-        
+
         if not missing_cca_items:
             return proceed, ignore, doNotShowAgain
         
@@ -36052,6 +36445,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.addToRecentPaths(path, logger=self.logger)
         self.openFolder(exp_path=path)
     
+    def showOpenRecentMoreWidget(self):
+        self.openRecentMoreDialog.show()
+
     def _waitCloseAutoSaveWorker(self):
         didWorkersFinished = [True]
         for worker, thread in self.autoSaveActiveWorkers:
@@ -36061,7 +36457,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 didWorkersFinished.append(False)
         if all(didWorkersFinished):
             self.waitCloseAutoSaveWorkerLoop.stop()
-        
+    
     def cancelSavingInitialisation(self):
         self.titleLabel.setText(
             'Saving data process cancelled.', color=self.titleColor
@@ -36312,10 +36708,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.sigClosed.emit(self)
         
         gc.collect()
-    
-    def storeManualSeparateDrawMode(self, mode):
-        self.df_settings.at['manual_separate_draw_mode', 'value'] = mode
-        self.df_settings.to_csv(self.settings_csv_path)
 
     def readSettings(self):
         settings = QSettings('schmollerlab', 'acdc_gui')
@@ -36613,7 +37005,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if button is None:
             return
         
-        blinker = qutils.QControlBlink(button, qparent=self)
+        targets = self.searchWidget.highlightTargets(button)
+        blinker = qutils.QControlBlink(targets, qparent=self)
         blinker.start()
         
     def onSearchId(self, ID):
@@ -36658,3 +37051,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         view_b0, view_b1 = viewRange[1] # y
         
         return not (a1 < view_a0 or a0 > view_a1 or b1 < view_b0 or b0 > view_b1)
+    
+    def getLastManualSeparateState(self):
+        state = dict()
+        state['is_overlay_active'] = self._get_setting_value(
+            'sep_IDs_is_overlay_active', True, bool
+        )
+        state['is_three_points_active'] = self._get_setting_value(
+            'sep_IDs_is_three_points_active', True, bool
+        )
+        state['is_free_hand_active'] = self._get_setting_value(
+            'is_free_hand_active', False, bool
+        )
+        return state
+    
+    def setLastManualSeparateState(self, state):
+        self.df_settings.loc[
+            'sep_IDs_is_overlay_active', 'value'
+            ] = int(state.get('is_overlay_active', True))
+        self.df_settings.loc[
+            'sep_IDs_is_three_points_active', 'value'
+            ] = int(state.get('is_three_points_active', True))
+        self.df_settings.loc[
+            'is_free_hand_active', 'value'
+            ] = int(state.get('is_free_hand_active', False))
+        self.df_settings.to_csv(self.settings_csv_path)

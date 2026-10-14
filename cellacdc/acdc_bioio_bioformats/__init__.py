@@ -27,10 +27,12 @@ EXTENSION_PACKAGE_MAPPER = {
     '.zarr': 'bioio-ome-zarr',
     '.sldy': 'bioio-sldy',
     '.dir': 'bioio-sldy',
+    '.ims': 'imaris-ims-file-reader'
 }
 
 EXTENSION_BIOIMAGE_KWARGS_MAPPER = {
     '.czi': {'use_aicspylibczi': True},
+    '.ims': {'reader': 'cellacdc.acdc_bioio_bioformats._readers.ImsReader'}
 }
 
 EXTENSION_METADATA_ATTR_MAPPER = {

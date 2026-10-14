@@ -274,5 +274,23 @@ def move_raw_microscopy_file(
 
     return dst_filepath
     
+def delete_folder_content(folder_path, not_exist_ok=True):
+    if not os.path.exists(folder_path) and not not_exist_ok:
+        return
 
-    
+    if not os.path.exists(folder_path):
+        raise FileNotFoundError(
+            f'The input path does not exist. "{folder_path}"'
+        )
+
+    if not os.path.isdir(folder_path):
+        raise TypeError(
+            f'The input path is not a folder. "{folder_path}"'
+        )
+
+    for item in os.listdir(folder_path):
+        item_path = os.path.join(folder_path, item)
+        if os.path.isdir(item_path):
+            shutil.rmtree(item_path)
+        else:
+            os.remove(item_path)

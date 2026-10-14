@@ -7,6 +7,7 @@
     <file alias="logo.svg">resources/logo_v2.svg</file>
     <file alias="logo.png">resources/logo_v2.png</file>
     <file alias="delNewObj.svg">resources/icons/delNewObj_dark.svg</file>
+    <file alias="separate-bud-2D.svg">resources/icons/separate-bud-2D_dark.svg</file>
     <file alias="segForLostIDs.svg">resources/icons/segForLostIDs_dark.svg</file>
     <file alias="AICS_logo.svg">resources/icons/AICS_logo_dark.svg</file>
     <file alias="whitelist.svg">resources/icons/whitelist_dark.svg</file>
@@ -78,6 +79,7 @@
     <file alias="continue.svg">resources/icons/continue_dark.svg</file>
     <file alias="fork_lift.svg">resources/icons/fork_lift_dark.svg</file>
     <file alias="eraser.svg">resources/icons/eraser_dark.svg</file>
+    <file alias="interpolate-Z.svg">resources/icons/interpolate-Z_dark.svg</file>
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>
     <file alias="undo.svg">resources/icons/undo_dark.svg</file>
     <file alias="redo.svg">resources/icons/redo_dark.svg</file>

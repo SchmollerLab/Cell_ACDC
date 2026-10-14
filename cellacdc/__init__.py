@@ -41,7 +41,12 @@ def import_torch():
     except ModuleNotFoundError:
         return
 
-import_torch()
+try:
+    import_torch()
+except Exception as err:
+    import traceback
+    traceback.print_exc()
+    print('Failed to import torch.')
 
 
 import shutil
