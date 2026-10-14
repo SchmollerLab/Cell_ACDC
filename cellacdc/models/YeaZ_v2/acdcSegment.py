@@ -16,14 +16,7 @@ from cellacdc import myutils, printl, load
 
 from . import load_models_filepath
 
-class ModelType:    
-    isWidget = True
-
-    def __init__(self):
-        from cellacdc import widgets
-        self.widget = widgets.YeazV2SelectModelNameCombobox(
-            custom_select_item_text='Select custom weights file...'
-        )
+from cellacdc._types import YeazV2ModelType as ModelType
 
 class Model:
     def __init__(self, model_type: ModelType='Phase contrast'):

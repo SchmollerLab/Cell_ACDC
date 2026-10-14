@@ -15,7 +15,7 @@ from . import model_types, sam_models_path
 from segment_anything import (
     sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 )
-from cellacdc import myutils, widgets, printl
+from cellacdc import myutils, printl, _types
 
 class AvailableModels:
     values = list(model_types.keys())
@@ -36,7 +36,7 @@ class Model:
     def __init__(
             self, 
             model_type: AvailableModels='Large', 
-            input_points_path: widgets.CsvFilePathControl='',
+            input_points_path: _types.CsvFilePath='',
             input_points_df: DataFrame='None',
             points_per_side=32,
             pred_iou_thresh=0.88,

@@ -1773,6 +1773,18 @@ class CsvFilePathControl(filePathControl):
             **kwargs
         )
 
+    # Custom-widget protocol used by the automatic model parameters GUI,
+    # where getter/setter may be called with the widget as first argument.
+    def setValue(self, *args):
+        self.setText(str(args[-1]))
+
+    def value(self, *args):
+        return self.path()
+
+    @staticmethod
+    def cast_dtype(value) -> str:
+        return str(value)
+
 class QHWidgetSpacer(QWidget):
     def __init__(self, width=10, parent=None) -> None:
         super().__init__(parent)

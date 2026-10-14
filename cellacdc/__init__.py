@@ -1,6 +1,12 @@
 import os
 import sys
 
+# Server mode is selected with the `--server` command-line flag, e.g.
+# `python -m cellacdc.service.worker --server ...`. It must be read here, at
+# import time, because it decides which (GUI/config) modules are loaded.
+SERVER_FLAG = '--server'
+RUNNING_AS_SERVER = SERVER_FLAG in getattr(sys, 'argv', [])[1:]
+
 import subprocess
 
 def is_conda_env():

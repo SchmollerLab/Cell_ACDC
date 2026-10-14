@@ -16674,10 +16674,22 @@ class QInput(QBaseDialog):
         self.close()
 
 class InstallPyTorchDialog(QBaseDialog):
-    def __init__(self, parent=None, caller_name='Cell-ACDC'):
+    def __init__(
+            self, parent=None, caller_name='Cell-ACDC', platforms=None, 
+            default_platform=None, target_python=None
+        ):
+        """Dialog to choose how to install PyTorch.
+
+        If `platforms` (mapping label -> pip index URL, None for default 
+        PyPI) is given, the dialog installs into the environment of 
+        `target_python` and the selected label is stored in `self.platform`.
+        """
         super().__init__(parent=parent)
         
         self.cancel = True
+        self.platform = None
+        self._platforms = platforms
+        self._targetPython = target_python
         
         mainLayout = QVBoxLayout()
         
@@ -16714,7 +16726,8 @@ class InstallPyTorchDialog(QBaseDialog):
         row = 0
         self.osCombobox = QComboBox()
         self.osCombobox.addItems(['Linux', 'Mac', 'Windows'])
-        preferencesLayout.addWidget(QLabel('Your OS'), row, 0)
+        osLabel = QLabel('Your OS')
+        preferencesLayout.addWidget(osLabel, row, 0)
         preferencesLayout.addWidget(self.osCombobox, row, 1)
         
         if is_mac:
@@ -16729,14 +16742,25 @@ class InstallPyTorchDialog(QBaseDialog):
             self.pkgManagerCombobox.setCurrentText('Pip')
             self.pkgManagerCombobox.setDisabled(True)
         
-        preferencesLayout.addWidget(QLabel('Package manager'), row, 0)
+        pkgManagerLabel = QLabel('Package manager')
+        preferencesLayout.addWidget(pkgManagerLabel, row, 0)
         preferencesLayout.addWidget(self.pkgManagerCombobox, row, 1)
         
         row += 1
         self.cmptPlatformCombobox = QComboBox()
-        self.cmptPlatformCombobox.addItems(
-            ['CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)']
-        )
+        if platforms is None:
+            self.cmptPlatformCombobox.addItems(
+                ['CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)']
+            )
+        else:
+            self.cmptPlatformCombobox.addItems(list(platforms))
+            if default_platform in platforms:
+                self.cmptPlatformCombobox.setCurrentText(default_platform)
+            for widget in (
+                    osLabel, self.osCombobox, pkgManagerLabel, 
+                    self.pkgManagerCombobox
+                ):
+                widget.hide()
         
         preferencesLayout.addWidget(QLabel('Compute Platform'), row, 0)
         preferencesLayout.addWidget(self.cmptPlatformCombobox, row, 1)
@@ -16772,13 +16796,21 @@ class InstallPyTorchDialog(QBaseDialog):
         self.updateCommand()
     
     def updateCommand(self, *args, **kwargs):
+        cmptPlatform = self.cmptPlatformCombobox.currentText()
+        if self._platforms is not None:
+            command = f'"{self._targetPython}" -m pip install torch torchvision'
+            index_url = self._platforms.get(cmptPlatform)
+            if index_url:
+                command = f'{command} --index-url {index_url}'
+            self.commandWidget.setCommand(command)
+            return
         osText = self.osCombobox.currentText()
         pkgManager = self.pkgManagerCombobox.currentText()
-        cmptPlatform = self.cmptPlatformCombobox.currentText()
         command = myutils.get_pytorch_command()[osText][pkgManager][cmptPlatform]
         self.commandWidget.setCommand(command)
     
     def ok_cb(self):
+        self.platform = self.cmptPlatformCombobox.currentText()
         self.command = self.commandWidget.command()
         self.cancel = False
         self.close()

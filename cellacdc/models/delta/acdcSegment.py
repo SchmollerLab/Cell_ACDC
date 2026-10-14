@@ -18,10 +18,14 @@ from delta.model import unet_seg
 from delta.assets import download_assets
 
 
+class ModelType:
+    values = ['2D', 'mothermachine']
+
+
 class Model:
 
     def __init__(self,
-                 model_type='2D or mothermachine'):
+                 model_type: ModelType='2D'):
         """
         Configures data, initializes model, loads weights for model.
 
@@ -35,8 +39,13 @@ class Model:
         -------
         None.
         """
+        if model_type not in ModelType.values:
+            raise ValueError(
+                f'Invalid DeLTA model_type {model_type!r}. '
+                f'Valid options are {ModelType.values}.'
+            )
 
-        while True:
+        for attempt in range(2):
             try:
                 # Loads Presets for '2D' or 'mothermachine' images
                 cfg.load_config(presets=model_type)
@@ -49,6 +58,8 @@ class Model:
                 break
 
             except ValueError:
+                if attempt == 1:
+                    raise
                 # Downloads model weights and configuration files for 2D and mothermachine
                 download_assets(load_models=True,
                                 load_sets=False,
@@ -187,6 +198,8 @@ class Model:
 
             # Label the cells using prediction
             lab = utils.label_seg(seg=results[0, :, :, 0])
+            # Remove the padding added to images smaller than target_size
+            lab = lab[:original_shape[0], :original_shape[1]]
 
         return lab.astype(np.uint32)
 

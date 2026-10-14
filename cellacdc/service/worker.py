@@ -1,0 +1,461 @@
+"""HTTP worker that serves one Cell-ACDC segmentation model.
+
+This process runs *inside the model's environment* (e.g. `_acdc_cellpose_v3`).
+It loads `cellacdc/models/<model>/acdcSegment.py` and lets the Cell-ACDC GUI
+(or CLI) call the model over HTTP. The client side is
+`cellacdc/service/client.py` (`ModelClient`, `LocalBackend`, `RemoteBackend`).
+
+Started as::
+
+    <model env python> -m cellacdc.service.worker --server --model <name> --port 8520
+
+FastAPI in a nutshell
+---------------------
+* `app = FastAPI()` creates the web application. It does not listen on a port
+  by itself; `uvicorn.run(app, ...)` in `main()` starts the actual HTTP server
+  and keeps it running until the process is stopped.
+* A decorator such as `@app.post("/segment")` registers the function below it
+  as the handler for HTTP `POST` requests to `http://<host>:<port>/segment`.
+  `@app.get` handles `GET` requests (reading), `@app.delete` `DELETE`
+  requests. We never call these functions ourselves; FastAPI calls them when a
+  request arrives.
+* The function arguments describe what the request must contain. FastAPI reads
+  and converts them automatically:
+
+  - `image: UploadFile = File(...)`: an uploaded file (here: a `.npy` array).
+    `File(...)` means required, `File(None)` means optional.
+  - `params: str = Form("{}")`: a text field of the form (here: JSON text with
+    the keyword arguments); `"{}"` is the default if it is missing.
+  - `job_id: str` matching `{job_id}` in the path: taken from the URL, e.g.
+    `/jobs/abc123` -> `job_id = "abc123"`.
+
+  File and form fields are sent by the client as a "multipart" request (like a
+  web form with a file upload); parsing them requires `python-multipart`.
+* The return value is sent back to the client:
+
+  - a `dict` or a pydantic model (from `schema.py`) is sent as JSON.
+    `response_model=...` in the decorator validates/documents its structure.
+  - `Response(content=bytes, ...)` sends raw bytes (here: the labels as `.npy`).
+* `raise HTTPException(status_code, detail)` sends an error response. The
+  client (`ModelClient._raise_for_status`) turns it into a `RuntimeError`
+  that includes `detail` (we put the full traceback there). Status codes used:
+  400 = bad request, 404 = not found, 500 = error in the model,
+  503 = model not initialized yet.
+* `async def` handlers can `await` (e.g. reading the uploaded file) without
+  blocking the server; plain `def` handlers are run in a thread pool by
+  FastAPI. Both behave the same from the client's point of view.
+* While the worker runs, `http://<host>:<port>/docs` shows an interactive page
+  listing all endpoints (generated automatically by FastAPI).
+
+Typical sequence of requests (what `LocalBackend.start` + `ModelClient` do)
+-------------------------------------------------------------------------
+1. `GET /health` repeatedly until the server answers (startup is done).
+2. Optionally `POST /init` (only with `--defer-init`, to send data such as an
+   auxiliary segmentation that cannot be passed on the command line).
+3. `GET /info` to learn the model's capabilities.
+4. `POST /segment` (or `/segment3DT`, or the `/jobs/...` endpoints) for each
+   image.
+5. `POST /shutdown` when done.
+"""
+
+import io
+import json
+import os
+import signal
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from typing import Dict, Any, Optional
+
+import numpy as np
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
+from fastapi.responses import Response
+
+from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
+
+# Background jobs (`/jobs/...`) run in these threads, so that the HTTP request
+# that submits a job returns immediately with a job id.
+_executor = ThreadPoolExecutor(max_workers=2)
+# job_id -> {"status", "progress", "error", "result"}; kept in memory only.
+_jobs: Dict[str, Dict[str, Any]] = {}
+
+def _check_gpu() -> bool:
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return True
+    except Exception:
+        pass
+    try:
+        import tensorflow as tf
+        if tf.config.list_physical_devices('GPU'):
+            return True
+    except Exception:
+        pass
+    return False
+
+def _filter_kwargs(func, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop kwargs the model method doesn't accept (e.g. frame_i, start_z_slice)."""
+    import inspect
+    try:
+        params = inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return kwargs
+    if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
+        return kwargs
+    return {k: v for k, v in kwargs.items() if k in params}
+
+def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
+    """Create `acdcSegment.Model` from decoded init kwargs.
+
+    The worker may run on another machine, so it never receives client file
+    paths: the client loads files itself and sends the data (`segm_data`,
+    `input_points_df`). Remaining path parameters are rejected with an error.
+    Models whose `__init__` has a required positional argument receive the
+    auxiliary segmentation as that argument.
+    """
+    import inspect
+    from cellacdc import myutils
+
+    init_kwargs = dict(init_kwargs)
+    # Empty selections ('' / 'None') mean "no file" and carry no client path
+    for key in ('segm_endname', 'input_points_path'):
+        if init_kwargs.get(key) in (None, '', 'None'):
+            init_kwargs.pop(key, None)
+    unresolved = {'segm_endname', 'input_points_path'} & set(init_kwargs)
+    if unresolved:
+        raise ValueError(
+            f'Init kwargs {sorted(unresolved)} reference client files. The '
+            'client must send the data instead (see '
+            'myutils.resolve_segm_model_init_data).'
+        )
+    segm_data = init_kwargs.pop('segm_data', None)
+    args = inspect.getfullargspec(acdcSegment.Model.__init__).args
+    if 'is_rgb' not in args:
+        init_kwargs.pop('is_rgb', None)
+    if myutils.model_init_requires_segm_data(acdcSegment):
+        if segm_data is None:
+            raise ValueError(
+                'This model requires an auxiliary segmentation (segm_data), '
+                'but none was sent.'
+            )
+        return acdcSegment.Model(segm_data, **init_kwargs)
+    return acdcSegment.Model(**init_kwargs)
+
+def create_app(
+        model_name: str,
+        init_kwargs: Optional[Dict[str, Any]] = None,
+        defer_init: bool = False,
+    ) -> FastAPI:
+    """Build the FastAPI application for `model_name`.
+
+    The model module is imported once here (so import errors stop the worker
+    at startup, with a clear traceback in its output). All endpoint functions
+    below are defined inside this function, so they can use `acdcSegment`,
+    `state` and `model_name` from here (closures).
+
+    Parameters
+    ----------
+    model_name : str
+        Folder name in `cellacdc/models`.
+    init_kwargs : dict, optional
+        Keyword arguments for `acdcSegment.Model` (JSON values only).
+    defer_init : bool
+        If True, do not create the model now: the client sends the init
+        kwargs (possibly including arrays) later with `POST /init`.
+    """
+    from cellacdc import myutils
+    from cellacdc.service import payload
+
+    acdcSegment = myutils.import_segment_module(model_name)
+    # Mutable holder, so `/init` can replace the model for all endpoints
+    state = {'model': None}
+    if not defer_init:
+        state['model'] = instantiate_model(acdcSegment, init_kwargs or {})
+
+    class _ModelProxy:
+        """Stands in for the model in the endpoints below.
+
+        `model.segment(...)` is forwarded to the current `state['model']`, or
+        answers with HTTP 503 if `/init` has not been called yet.
+        """
+        def __getattr__(self, name):
+            if state['model'] is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail='Model is not initialized yet. POST /init first.'
+                )
+            return getattr(state['model'], name)
+
+    model = _ModelProxy()
+
+    # Title/description/version only appear on the automatic /docs page
+    app = FastAPI(
+        title=f"Cell-ACDC {model_name} Worker",
+        description="Worker service serving Cell-ACDC segmentation models.",
+        version="1.0.0"
+    )
+
+    # ---------------------------------------------------------------- setup
+
+    @app.post("/init")
+    async def init(
+            kwargs: str = Form("{}"), data: Optional[UploadFile] = File(None)
+        ):
+        """Create (or re-create) the model from data sent by the client.
+
+        Request (multipart form, see `client.post_init`):
+            kwargs: JSON text with the init kwargs; arrays are replaced by
+                    placeholders, DataFrames are embedded as JSON (see
+                    `payload.py`).
+            data:   optional `.npz` file with the arrays for those placeholders.
+        Response: `{"status": "initialized"}` or HTTP 500 with the traceback.
+        """
+        try:
+            content = await data.read() if data is not None else None
+            decoded = payload.decode(kwargs, content)
+            state['model'] = instantiate_model(acdcSegment, decoded)
+            return {"status": "initialized"}
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    @app.get("/health", response_model=HealthResponse)
+    def health():
+        """Liveness check: answers as soon as the server is running.
+
+        `LocalBackend.start` polls this until it succeeds (or the process
+        exits / the timeout expires). It does not require an initialized model.
+        Response (JSON): `{"status": "ok", "model": "<model_name>"}`.
+        """
+        return HealthResponse(status="ok", model=model_name)
+
+    @app.get("/info", response_model=InfoResponse)
+    def info():
+        """Describe the loaded model (read by `ModelClient` when connecting).
+
+        Response (JSON, see `schema.InfoResponse`): name, version, whether a
+        GPU is available, and which optional methods the model implements
+        (`segment3DT`, `second_ch_img_to_stack`). HTTP 503 before `/init`.
+        """
+        if state['model'] is None:
+            raise HTTPException(
+                status_code=503,
+                detail='Model is not initialized yet. POST /init first.'
+            )
+        model = state['model']
+        has_segment3DT = hasattr(model, "segment3DT")
+        has_second_ch = hasattr(model, "second_ch_img_to_stack")
+        return InfoResponse(
+            name=model_name,
+            version=getattr(model, "version", "1.0.0"),
+            gpu=_check_gpu(),
+            capabilities=Capabilities(
+                segment=True,
+                segment3DT=has_segment3DT,
+                second_ch_img_to_stack=has_second_ch
+            )
+        )
+
+    # ---------------------------------------------------- direct segmentation
+    # The request waits until the result is ready (used by the GUI/CLI).
+
+    @app.post("/segment")
+    async def segment(image: UploadFile = File(...), params: str = Form("{}")):
+        """Run `model.segment(image, **params)` and return the labels.
+
+        Request (multipart form, see `ModelClient.segment`):
+            image:  the image saved with `np.save` (`.npy` bytes).
+            params: JSON text with the segment kwargs (e.g. `frame_i`).
+                    Kwargs the model's `segment` does not accept are dropped.
+        Response: the labels as `.npy` bytes, or HTTP 500 with the traceback.
+        """
+        try:
+            p = json.loads(params) if params else {}
+            # Read the uploaded bytes and turn them back into a numpy array
+            content = await image.read()
+            arr = np.load(io.BytesIO(content))
+            out = model.segment(arr, **_filter_kwargs(model.segment, p))
+            # Send the result back the same way: as `.npy` bytes
+            buf = io.BytesIO()
+            np.save(buf, out)
+            return Response(
+                content=buf.getvalue(), 
+                media_type="application/octet-stream"
+            )
+        except Exception as e:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    @app.post("/segment3DT")
+    async def segment3DT(image: UploadFile = File(...), params: str = Form("{}")):
+        """Like `/segment`, but for a whole time-lapse via `model.segment3DT`.
+
+        HTTP 400 if the model has no `segment3DT` method.
+        """
+        if not hasattr(model, "segment3DT"):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Model {model_name} does not support segment3DT"
+            )
+        try:
+            p = json.loads(params) if params else {}
+            content = await image.read()
+            arr = np.load(io.BytesIO(content))
+            out = model.segment3DT(arr, **_filter_kwargs(model.segment3DT, p))
+            buf = io.BytesIO()
+            np.save(buf, out)
+            return Response(
+                content=buf.getvalue(), 
+                media_type="application/octet-stream"
+            )
+        except Exception as e:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    # ------------------------------------------------------- background jobs
+    # Alternative to `/segment` for long runs: submit the image, get a job id
+    # immediately, then poll the status and fetch the result when completed.
+    # Useful for remote servers, where one long HTTP request may time out.
+
+    def _run_job(job_id: str, arr: np.ndarray, params: dict, is_3dt: bool):
+        """Runs in an `_executor` thread (not an endpoint)."""
+        try:
+            _jobs[job_id]["status"] = "running"
+            _jobs[job_id]["progress"] = 0.1
+            if is_3dt:
+                out = model.segment3DT(arr, **_filter_kwargs(model.segment3DT, params))
+            else:
+                out = model.segment(arr, **_filter_kwargs(model.segment, params))
+            _jobs[job_id]["result"] = out
+            _jobs[job_id]["status"] = "completed"
+            _jobs[job_id]["progress"] = 1.0
+        except Exception as e:
+            import traceback
+            _jobs[job_id]["status"] = "failed"
+            _jobs[job_id]["error"] = traceback.format_exc()
+
+    @app.post("/jobs/segment")
+    async def submit_job(image: UploadFile = File(...), params: str = Form("{}")):
+        """Start segmenting in the background (same request as `/segment`).
+
+        Response (JSON): `{"job_id": "<id>"}`, returned immediately.
+        """
+        job_id = uuid.uuid4().hex
+        p = json.loads(params) if params else {}
+        content = await image.read()
+        arr = np.load(io.BytesIO(content))
+        _jobs[job_id] = {
+            "status": "pending",
+            "progress": 0.0,
+            "error": None,
+            "result": None
+        }
+        _executor.submit(_run_job, job_id, arr, p, False)
+        return {"job_id": job_id}
+
+    @app.get("/jobs/{job_id}", response_model=JobStatusResponse)
+    def get_job_status(job_id: str):
+        """`GET /jobs/<id>`: status (pending/running/completed/failed/
+        cancelled), progress (0-1) and the traceback if it failed."""
+        if job_id not in _jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+        job = _jobs[job_id]
+        return JobStatusResponse(
+            job_id=job_id,
+            status=job["status"],
+            progress=job["progress"],
+            error=job.get("error")
+        )
+
+    @app.get("/jobs/{job_id}/result")
+    def get_job_result(job_id: str):
+        """`GET /jobs/<id>/result`: the labels as `.npy` bytes once completed
+        (HTTP 400 before that)."""
+        if job_id not in _jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+        job = _jobs[job_id]
+        if job["status"] != "completed":
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Job status is {job['status']}, result not ready"
+            )
+        out = job["result"]
+        buf = io.BytesIO()
+        np.save(buf, out)
+        return Response(
+            content=buf.getvalue(), 
+            media_type="application/octet-stream"
+        )
+
+    @app.delete("/jobs/{job_id}")
+    def cancel_job(job_id: str):
+        """`DELETE /jobs/<id>`: mark the job as cancelled.
+
+        Note: this only changes the status; a computation that is already
+        running is not interrupted.
+        """
+        if job_id not in _jobs:
+            raise HTTPException(status_code=404, detail="Job not found")
+        _jobs[job_id]["status"] = "cancelled"
+        return {"job_id": job_id, "status": "cancelled"}
+
+    # ------------------------------------------------------------- shutdown
+
+    @app.post("/shutdown")
+    def shutdown(background_tasks: BackgroundTasks):
+        """Stop the worker process (called by `LocalBackend.stop`).
+
+        `BackgroundTasks` runs `_kill` *after* the response has been sent, so
+        the client still receives `{"status": "shutting down"}`.
+        """
+        def _kill():
+            import time
+            time.sleep(0.5)
+            os.kill(os.getpid(), signal.SIGTERM)
+        background_tasks.add_task(_kill)
+        return {"status": "shutting down"}
+
+    return app
+
+def main():
+    """Command-line entry point: parse arguments, build the app, serve it.
+
+    `uvicorn` is the HTTP server that runs the FastAPI app. `uvicorn.run`
+    blocks until the process is stopped (e.g. by `/shutdown`).
+    """
+    import argparse
+    import uvicorn
+
+    parser = argparse.ArgumentParser(description="Cell-ACDC Model Worker Service")
+    parser.add_argument("--model", required=True, help="Segmentation model name")
+    parser.add_argument("--port", type=int, default=8520, help="Port to listen on")
+    parser.add_argument("--host", default="127.0.0.1", help="Host address to bind to")
+    parser.add_argument("--init-kwargs", default="{}", help="JSON string with init kwargs")
+    parser.add_argument(
+        "--defer-init", action="store_true",
+        help="Start without a model; initialize it via POST /init (needed "
+             "when init kwargs contain data such as arrays)"
+    )
+
+    parser.add_argument(
+        "--server", action="store_true",
+        help="Required. Runs Cell-ACDC in server mode (no GUI, no installs); "
+             "read at import time by `cellacdc/__init__.py`."
+    )
+
+    args = parser.parse_args()
+    import cellacdc
+    if not (args.server and cellacdc.RUNNING_AS_SERVER):
+        parser.error(
+            "the worker must be started with --server, e.g. "
+            "`python -m cellacdc.service.worker --server --model <name>`"
+        )
+    init_kwargs = json.loads(args.init_kwargs) if args.init_kwargs else {}
+
+    app = create_app(
+        args.model, init_kwargs=init_kwargs, defer_init=args.defer_init
+    )
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+
+if __name__ == "__main__":
+    main()
