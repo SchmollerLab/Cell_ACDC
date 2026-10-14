@@ -8,12 +8,6 @@ from cellacdc import transformation
 from cellacdc.plot import imshow
 from cellacdc import io
 
-try:
-    import pytest
-    pytest.skip('skipping this test since it is gui based', allow_module_level=True)
-except Exception as e:
-    pass
-
 import qtpy.compat
 from cellacdc._run import _setup_app
 

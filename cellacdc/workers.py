@@ -1904,12 +1904,25 @@ class trackingWorker(QObject):
                 # repeating tracking on a never visited frame
                 # --> modify only raw data and ask later what to do
                 self.posData.segm_data[frame_i] = lab
+                if frame_i == current_frame_i:
+                    self.posData.lab = lab
+
+                self.mainWin.update_rp(
+                    frame_i=frame_i,
+                    wl_update=False,
+                    is_worker_thread=True
+                )
+                if frame_i == current_frame_i:
+                    self.posData.allData_li[frame_i]['regionprops'] = (
+                        self.posData.rp
+                    )
                 self.trackingOnNeverVisitedFrames = True
             else:
                 # Get the rest of the stored metadata based on the new lab
                 self.posData.allData_li[frame_i]['labels'] = lab
                 self.posData.frame_i = frame_i
                 self.mainWin.get_data()
+                self.mainWin.update_rp(is_worker_thread=True)
                 self.mainWin.store_data(autosave=False)
             
             pbar.update()
@@ -2618,11 +2631,15 @@ class PostProcessSegmWorker(QObject):
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = frame_i
                     mainWin.get_data()
-                    mainWin.update_rp()
+                    mainWin.update_rp(is_worker_thread=True)
                     mainWin.store_data(autosave=False)
                 else:
                     posData.segm_data[frame_i] = processed_lab
-                    mainWin.update_rp(frame_i=frame_i)
+                    mainWin.update_rp(
+                        frame_i=frame_i, 
+                        is_worker_thread=True,
+                        wl_update=False
+                    )
 
                 self.signals.progressBar.emit(1)
             
@@ -6671,7 +6688,9 @@ class relabelSequentialWorker(QObject):
                     mainWin.update_cca_df_relabelling(
                         posData, oldIDs, newIDs
                     )
-                mainWin.update_rp(draw=False)
+                mainWin.update_rp(
+                    is_worker_thread=True
+                )
                 mainWin.store_data(mainThread=False)
 
         # Go back to current frame

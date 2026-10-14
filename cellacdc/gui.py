@@ -6022,6 +6022,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 labels_lut = self.getLabelsImageLut()
                 labels_alpha = self.imgGrad.labelsAlphaSlider.value()
                 manualSep = getattr(self, 'manualSeparateGui', None)
+                img_lut_df = self.imgGrad.saveState(self.df_settings)
                 if manualSep is None:
                     manualSep = apps.manualSeparateGui(
                         lab, ID, img,
@@ -6033,7 +6034,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         mouseBindings=self.mouseBindings,
                         labelsLut=labels_lut,
                         labelsAlpha=labels_alpha,
-                        rp=rp
+                        rp=rp,
+                        img_lut_df=img_lut_df,
                     )
                     self.manualSeparateGui = manualSep
                 else:
@@ -6046,7 +6048,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         mouseBindings=self.mouseBindings,
                         labelsLut=labels_lut,
                         labelsAlpha=labels_alpha,
-                        rp=rp
+                        rp=rp,
+                        img_lut_df=img_lut_df,
                     )
 
                 manualSep.setState(lastManualSeparateState)
@@ -16157,7 +16160,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             prev_IDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
 
-        if ask_back_prop and all(ID not in prev_IDs for ID in unique_ids):
+        if ask_back_prop and sum(ID in prev_IDs for ID in unique_ids) <= 1:
             ask_back_prop = False
 
         if not self.isFrameCcaAnnotated() and ask_back_prop:
@@ -25933,6 +25936,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             specific_IDs=None, use_curr_view=False, use_bbox=False, preloaded_bbox=None, # for local updates to PR
             frame_i=None,
             wl_update=True, wl_track_og_curr=False, wl_update_lab=False, # wl stuff
+            is_worker_thread=False
         ):
         """Update regionprops and related GUI/tracking metadata.
 
@@ -25943,8 +25947,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         Parameters
         ----------
         draw : bool, optional
-            If ``True``, redraw annotations/metadata after updating regionprops.
-            Default is ``True``.
+            Not used anymore. Kept only because we don't know where else 
+            update_rp is called with this kwarg.
         debug : bool, optional
             Reserved debug flag (currently not used directly in this method).
         assignments : dict, optional
@@ -25985,6 +25989,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         Updates ``posData.IDs`` when operating on the current frame and, when
         enabled, propagates whitelist additions/removals for tracking.
         """
+        if is_worker_thread and use_curr_view:
+            raise ValueError(
+                '`use_curr_view` and `is_worker_thread` cannot be True '
+                'at the same time, '
+                'because `use_curr_view` cannot be True when this function '
+                'is called by another thread.'
+            )
         #updating rp is very clostly, as it deletes all the cashed
         if use_curr_view and use_bbox:
             raise ValueError('''use_curr_view and use_bbox cannot be True at the 
@@ -26087,7 +26098,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if on_curr_frame:
             posData.IDs = rp.IDs
         
-        self.update_rp_metadata(draw=draw, frame_i = frame_i)        
+        self.update_rp_metadata(draw=draw, frame_i=frame_i)        
+
+        if not is_worker_thread and frame_i==posData.frame_i:
+            # Update the overlay masks given the new rp
+            self.currentLab2D = self.get_2Dlab(posData.lab, force_z=False)
+            self.setOverlaySegmMasks()
+
         if not (wl_update and not unvisited):
             return
 
@@ -32378,16 +32395,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         IDs_set = posData.rp.IDs_set
 
         new_objs_1st_step, lost_objs_1st_step = annotInfo
+        new_objs_1st_step_new, lost_objs_1st_step_new = [], []
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
             # guard against removed cells
             # ID is actually not present in current frame !DO not use newObj, it is stale!
-            if lostObj.label not in IDs_set: 
+            if lostObj.label not in IDs_set:
                 continue
             
             ID_in_lab = posData.lab[newObj.slice][newObj.image][0] # get the current lab of the object
             if ID_in_lab != lostObj.label:
                 continue
             
+            new_objs_1st_step_new.append(newObj)
+            lost_objs_1st_step_new.append(lostObj)
+
             allContours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -32405,6 +32426,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_trackerMovementAgainstPrevLinesItem.addPoints(xx, yy)
             
+        # update annotInfo with filtered objects
+        posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = (
+            new_objs_1st_step_new, lost_objs_1st_step_new
+        )
+
     # settings helper
     def _get_setting_value(self, index_name, default, cast=int):
         if self.df_settings is None or index_name not in self.df_settings.index:
