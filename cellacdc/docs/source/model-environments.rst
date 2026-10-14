@@ -98,7 +98,11 @@ Code structure
    * - ``cellacdc/service/worker.py``
      - FastAPI worker running *inside* the model environment. It loads
        ``acdcSegment.Model`` and serves ``/health``, ``/info``, ``/init``,
-       ``/segment``, ``/segment3DT``, ``/jobs/...`` and ``/shutdown``.
+       ``/segment``, ``/segment3DT``, ``/second_ch_img_to_stack``,
+       ``/predictCcaState``, ``/jobs/...`` and ``/shutdown``. A job's result
+       can be fetched once (then the job is removed); ``DELETE /jobs/<id>``
+       cancels a pending/running job or deletes a finished one, and only the
+       newest finished jobs are kept in memory.
    * - ``cellacdc/service/client.py``
      - ``ModelClient`` (drop-in replacement for an ``acdcSegment.Model``
        instance), ``LocalBackend`` (starts and stops a local worker) and
@@ -132,7 +136,8 @@ Code structure
    * - ``cellacdc/segm.py``, ``cellacdc/gui.py``, ``cellacdc/workers.py``
      - GUI callers of ``ModelExecution``: the segmentation module
        (``segmWin``), the main GUI (``repeatSegm``, also used by the magic
-       labeller, and ``repeatSegmVideo``) and segmentation for lost IDs.
+       labeller, ``repeatSegmVideo`` and the YeastMate budding prediction
+       ``autoAssignBud_YeastMate``) and segmentation for lost IDs.
        ``SegForLostIDsWorker`` runs in a ``QThread``, so it asks the GUI
        thread for the model with ``sigInitModel``; these models are reused
        until the settings or the position change.
@@ -363,8 +368,10 @@ Other conventions:
 
 * ``segment`` may accept ``frame_i``, ``start_z_slice`` and similar arguments.
   The worker drops arguments that the method does not accept.
-* Optional methods ``segment3DT`` and ``second_ch_img_to_stack`` are detected
-  automatically and reported through ``/info``.
+* Optional methods ``segment3DT``, ``second_ch_img_to_stack`` and
+  ``predictCcaState`` are detected automatically and reported through
+  ``/info``. ``ModelClient`` forwards them to the worker, so the model's own
+  implementation always runs (never a reimplementation on the client).
 * Validate inputs and raise clear errors (for example a wrong number of
   z-slices). The full error is shown to the user (see below).
 
@@ -541,7 +548,8 @@ If the worker cannot continue, raise a clear exception in the model code:
 ~~~~~~~~~~~~~~~~~~~~~~
 
 ``GET /info`` reports the model name, whether a GPU is available, and whether
-the model supports ``segment3DT`` and ``second_ch_img_to_stack``.
+the model supports ``segment3DT``, ``second_ch_img_to_stack`` and
+``predictCcaState``.
 ``ModelClient`` reads it when it connects and exposes, for example,
 ``is_segment3DT_available``.
 

@@ -3,6 +3,7 @@ import os
 import sys
 import numpy as np
 import pytest
+import requests
 
 from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
 from cellacdc.service.client import LocalBackend, ModelClient
@@ -28,6 +29,34 @@ def test_schema_models():
     assert job.status == "completed"
 
 
+def test_parse_response_supports_pydantic_1_and_2():
+    """Responses parse with Pydantic 2 and with an existing Pydantic 1."""
+    from cellacdc.service.schema import parse_response
+
+    data = {
+        "name": "m", "capabilities": {"segment3DT": True},
+    }
+    info = parse_response(InfoResponse, data)
+    assert info.capabilities.segment3DT is True
+
+    pydantic_v1 = pytest.importorskip("pydantic.v1")
+
+    class CapabilitiesV1(pydantic_v1.BaseModel):
+        segment: bool = True
+        segment3DT: bool = False
+
+    class InfoResponseV1(pydantic_v1.BaseModel):
+        name: str
+        capabilities: CapabilitiesV1 = pydantic_v1.Field(
+            default_factory=CapabilitiesV1
+        )
+
+    assert not hasattr(InfoResponseV1, "model_validate")
+    info_v1 = parse_response(InfoResponseV1, data)
+    assert info_v1.name == "m"
+    assert info_v1.capabilities.segment3DT is True
+
+
 def test_local_backend_lifecycle():
     with LocalBackend(model_name="thresholding") as client:
         assert isinstance(client, ModelClient)
@@ -43,12 +72,12 @@ def test_local_backend_lifecycle():
         assert lab.shape == (64, 64)
         assert np.max(lab) > 0
 
-        # Test multi-channel stacking
+        # thresholding has no `second_ch_img_to_stack`: like in-process,
+        # the client does not invent one
         ch2 = np.ones((64, 64), dtype=np.uint8) * 50
-        stacked = client.second_ch_img_to_stack(img, ch2)
-        assert stacked.shape == (64, 64, 3)
-        assert np.array_equal(stacked[..., 0], img)
-        assert np.array_equal(stacked[..., 1], ch2)
+        assert client.info.capabilities.second_ch_img_to_stack is False
+        with pytest.raises(NotImplementedError):
+            client.second_ch_img_to_stack(img, ch2)
 
         # Test job endpoints
         job_id = client.submit_job(img)
@@ -65,6 +94,9 @@ def test_local_backend_lifecycle():
         assert status["status"] == "completed"
         res = client.get_job_result(job_id)
         assert np.array_equal(res, lab)
+        # The result is removed from the worker once fetched
+        with pytest.raises(requests.HTTPError):
+            client.get_job_result(job_id)
 
 
 def test_segm_kernel_with_local_backend():
@@ -1099,6 +1131,333 @@ def test_instantiate_model_with_segm_data():
     )
     assert model.segm_data is None
 
+
+class _CapturingExecutor:
+    """Stands in for the worker's thread pool; jobs run when the test says."""
+    def __init__(self):
+        self.calls = []
+
+    def submit(self, fn, *args):
+        self.calls.append((fn, args))
+
+
+class _FakeUpload:
+    def __init__(self, arr):
+        buf = io.BytesIO()
+        np.save(buf, arr)
+        self._content = buf.getvalue()
+
+    async def read(self):
+        return self._content
+
+
+def _jobs_app(monkeypatch, segment, **extra_methods):
+    import types
+    from cellacdc import myutils
+    from cellacdc.service import worker
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def segment(self, image):
+            return segment(image)
+
+    for name, func in extra_methods.items():
+        setattr(Model, name, lambda self, *args, _f=func: _f(*args))
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(myutils, 'import_segment_module', lambda name: module)
+    executor = _CapturingExecutor()
+    monkeypatch.setattr(worker, '_executor', executor)
+    monkeypatch.setattr(worker, '_jobs', {})
+    app = worker.create_app('fake')
+    endpoints = {
+        (route.path, tuple(sorted(route.methods))): route.endpoint
+        for route in app.routes if hasattr(route, 'methods')
+    }
+    return endpoints, executor
+
+
+def _submit_job(endpoints, arr):
+    import asyncio
+    submit = endpoints[('/jobs/segment', ('POST',))]
+    return asyncio.run(submit(image=_FakeUpload(arr), params='{}'))['job_id']
+
+
+def test_job_cancelled_while_pending_is_never_started(monkeypatch):
+    calls = []
+    endpoints, executor = _jobs_app(
+        monkeypatch, lambda image: calls.append(image) or image
+    )
+    job_id = _submit_job(endpoints, np.zeros((2, 2)))
+    cancel = endpoints[('/jobs/{job_id}', ('DELETE',))]
+    status = endpoints[('/jobs/{job_id}', ('GET',))]
+
+    assert cancel(job_id)['status'] == 'cancelled'
+    fn, args = executor.calls[0]
+    fn(*args)
+
+    assert calls == []
+    assert status(job_id).status == 'cancelled'
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_job_cancelled_while_running_stays_cancelled(monkeypatch, fails):
+    import threading
+
+    started = threading.Event()
+    proceed = threading.Event()
+
+    def segment(image):
+        started.set()
+        assert proceed.wait(5)
+        if fails:
+            raise RuntimeError('model failed')
+        return image + 1
+
+    endpoints, executor = _jobs_app(monkeypatch, segment)
+    job_id = _submit_job(endpoints, np.zeros((2, 2)))
+    cancel = endpoints[('/jobs/{job_id}', ('DELETE',))]
+    status = endpoints[('/jobs/{job_id}', ('GET',))]
+    result = endpoints[('/jobs/{job_id}/result', ('GET',))]
+
+    fn, args = executor.calls[0]
+    thread = threading.Thread(target=fn, args=args)
+    thread.start()
+    assert started.wait(5)
+    assert status(job_id).status == 'running'
+    assert cancel(job_id)['status'] == 'cancelled'
+    proceed.set()
+    thread.join(5)
+
+    job = status(job_id)
+    assert job.status == 'cancelled'
+    assert job.error is None
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        result(job_id)
+
+
+def test_cancel_deletes_finished_job(monkeypatch):
+    endpoints, executor = _jobs_app(monkeypatch, lambda image: image + 1)
+    job_id = _submit_job(endpoints, np.zeros((2, 2)))
+    fn, args = executor.calls[0]
+    fn(*args)
+    cancel = endpoints[('/jobs/{job_id}', ('DELETE',))]
+    status = endpoints[('/jobs/{job_id}', ('GET',))]
+
+    out = cancel(job_id)
+    assert out['status'] == 'completed' and out['deleted'] is True
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as err:
+        status(job_id)
+    assert err.value.status_code == 404
+
+
+def test_job_result_is_fetched_once_and_finished_jobs_are_bounded(monkeypatch):
+    from fastapi import HTTPException
+    from cellacdc.service import worker
+
+    monkeypatch.setattr(worker, 'MAX_FINISHED_JOBS', 2)
+    endpoints, executor = _jobs_app(monkeypatch, lambda image: image + 1)
+    status = endpoints[('/jobs/{job_id}', ('GET',))]
+    result = endpoints[('/jobs/{job_id}/result', ('GET',))]
+
+    job_ids = [_submit_job(endpoints, np.zeros((2, 2))) for _ in range(4)]
+    for fn, args in executor.calls:
+        fn(*args)
+    # Only the newest MAX_FINISHED_JOBS finished jobs are kept
+    assert list(worker._jobs) == job_ids[2:]
+    with pytest.raises(HTTPException):
+        status(job_ids[0])
+
+    labels = np.load(io.BytesIO(result(job_ids[3]).body))
+    np.testing.assert_array_equal(labels, np.ones((2, 2)))
+    with pytest.raises(HTTPException) as err:
+        result(job_ids[3])
+    assert err.value.status_code == 404
+    assert list(worker._jobs) == job_ids[2:3]
+
+
+def test_worker_runs_model_specific_methods(monkeypatch):
+    """second_ch_img_to_stack/predictCcaState run the model's own code."""
+    import asyncio
+    import pandas as pd
+    from fastapi import HTTPException
+    from cellacdc.core import getBaseCca_df
+
+    def to_stack(first, second):
+        return np.stack([first, second]).astype(np.float32)
+
+    def predict(image, lab):
+        df = getBaseCca_df([1, 2])
+        df.at[2, 'relationship'] = 'bud'
+        return df
+
+    endpoints, _ = _jobs_app(
+        monkeypatch, lambda image: image,
+        second_ch_img_to_stack=to_stack, predictCcaState=predict,
+    )
+    first, second = np.zeros((3, 3), np.uint8), np.ones((3, 3), np.uint8)
+    res = asyncio.run(endpoints[('/second_ch_img_to_stack', ('POST',))](
+        first=_FakeUpload(first), second=_FakeUpload(second)
+    ))
+    stack = np.load(io.BytesIO(res.body))
+    assert stack.shape == (2, 3, 3) and stack.dtype == np.float32
+
+    res = asyncio.run(endpoints[('/predictCcaState', ('POST',))](
+        image=_FakeUpload(first), precomputed_lab=_FakeUpload(second)
+    ))
+    cca_df = pd.read_json(io.StringIO(res['cca_df']), orient='table')
+    pd.testing.assert_frame_equal(cca_df, predict(None, None))
+
+    info = endpoints[('/info', ('GET',))]()
+    assert info.capabilities.second_ch_img_to_stack
+    assert info.capabilities.predictCcaState
+
+    endpoints, _ = _jobs_app(monkeypatch, lambda image: image)
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(endpoints[('/second_ch_img_to_stack', ('POST',))](
+            first=_FakeUpload(first), second=_FakeUpload(second)
+        ))
+    assert err.value.status_code == 400
+    assert not endpoints[('/info', ('GET',))]().capabilities.predictCcaState
+
+
+def test_model_client_forwards_model_specific_methods(monkeypatch):
+    import pandas as pd
+    from cellacdc.core import getBaseCca_df
+
+    cca_df = getBaseCca_df([1, 2])
+    posted = []
+
+    class FakeResponse:
+        ok = True
+
+        def __init__(self, content=b'', payload=None):
+            self.content = content
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class FakeSession:
+        def post(self, url, files=None, timeout=None, **kwargs):
+            posted.append((url.rsplit('/', 1)[1], sorted(files)))
+            if url.endswith('/predictCcaState'):
+                return FakeResponse(
+                    payload={'cca_df': cca_df.to_json(orient='table')}
+                )
+            buf = io.BytesIO()
+            np.save(buf, np.full((2, 3, 3), 7.0))
+            return FakeResponse(content=buf.getvalue())
+
+    client = ModelClient.__new__(ModelClient)
+    client.base_url = 'http://x'
+    client.timeout = None
+    client.session = FakeSession()
+    client.model_name = 'm'
+    client.info = InfoResponse(
+        name='m', capabilities=Capabilities(
+            second_ch_img_to_stack=True, predictCcaState=True
+        )
+    )
+    img = np.zeros((3, 3))
+    assert client.second_ch_img_to_stack(img, img).shape == (2, 3, 3)
+    pd.testing.assert_frame_equal(client.predictCcaState(img, img), cca_df)
+    assert posted == [
+        ('second_ch_img_to_stack', ['first', 'second']),
+        ('predictCcaState', ['image', 'precomputed_lab']),
+    ]
+
+    client.info = InfoResponse(name='m', capabilities=Capabilities(
+        second_ch_img_to_stack=False
+    ))
+    with pytest.raises(NotImplementedError):
+        client.second_ch_img_to_stack(img, img)
+    with pytest.raises(NotImplementedError):
+        client.predictCcaState(img, img)
+
+
+@pytest.mark.parametrize('backend_type', ['remote', 'local'])
+def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
+    """Workers (local and remote) get the loaded data and the init kwargs."""
+    from cellacdc import myutils
+    from cellacdc.service import client as client_module
+
+    segm = np.ones((2, 2), dtype=np.uint32)
+    received = {}
+
+    def fake_resolve(posData, init_kwargs):
+        init_kwargs.pop('segm_endname')
+        return segm
+
+    class FakeRemote:
+        def __init__(self, url):
+            pass
+
+        def get_client(self, init_model_kwargs=None):
+            received['kwargs'] = init_model_kwargs
+            return object()
+
+    class FakeLocal:
+        def __init__(self, model_name, env_python, init_model_kwargs):
+            received['kwargs'] = init_model_kwargs
+
+        def start(self):
+            return object()
+
+    monkeypatch.setattr(myutils, 'resolve_segm_model_init_data', fake_resolve)
+    monkeypatch.setattr(client_module, 'RemoteBackend', FakeRemote)
+    monkeypatch.setattr(client_module, 'LocalBackend', FakeLocal)
+
+    kernel = cli._WorkflowKernel(logger=None, log_path=None)
+    kernel.init_backend_args(
+        backend_type=backend_type,
+        backend_url='http://gpu:8520' if backend_type == 'remote' else None,
+        env_python=sys.executable if backend_type == 'local' else None,
+    )
+    kernel.model = None
+    kernel.model_name = 'm'
+    kernel.init_model_kwargs = {'segm_endname': 'segm', 'diameter': 30}
+    kernel.signals = cli.KernelCliSignals(print)
+    kernel.logger_func = print
+    cli.SegmKernel.init_segm_model.__wrapped__(kernel, posData=object())
+
+    assert received['kwargs']['diameter'] == 30
+    assert received['kwargs']['segm_data'] is segm
+    assert 'segm_endname' not in received['kwargs']
+
+
+def test_pkg_spec_accepts_distribution_name():
+    from cellacdc import myutils
+
+    specs = myutils._normalize_pkg_specs(
+        [{'pkg_name': 'foo', 'distribution_name': 'foo-dist'}], '', '',
+        {key: None for key in myutils._PKG_SPEC_KEYS},
+    )
+    assert specs[0]['distribution_name'] == 'foo-dist'
+    assert specs[0]['pkg_name'] == 'foo'
+    with pytest.raises(TypeError, match='Unknown'):
+        myutils._normalize_pkg_specs([{'pkg_name': 'foo', 'bad': 1}], '', '', {})
+
+
+def test_failed_torch_or_cellacdc_install_aborts_setup(monkeypatch):
+    from cellacdc.service import environment
+
+    monkeypatch.setattr(
+        environment, 'load_model_env_config', lambda name: {'torch': True}
+    )
+    monkeypatch.setattr(environment, 'ensure_torch', lambda *a, **k: False)
+    with pytest.raises(RuntimeError, match='PyTorch is not installed'):
+        environment.ensure_model_dependencies('m', sys.executable)
+
+    monkeypatch.setattr(
+        environment, 'ensure_cellacdc_cli', lambda *a, **k: False
+    )
+    with pytest.raises(RuntimeError, match='Cell-ACDC could not be installed'):
+        environment.ensure_worker_dependencies(sys.executable)
 
 def test_local_backend_deferred_init_sends_segm_data():
     """Init data (arrays) is sent via POST /init, not as client file paths."""

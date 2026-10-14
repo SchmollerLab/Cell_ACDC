@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 import numpy as np
 import requests
 
-from cellacdc.service.schema import InfoResponse
+from cellacdc.service.schema import InfoResponse, parse_response
 
 def _find_free_port(host: str = "127.0.0.1") -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -80,7 +80,7 @@ class ModelClient:
     def _fetch_info(self) -> InfoResponse:
         res = self.session.get(f"{self.base_url}/info", timeout=10)
         res.raise_for_status()
-        return InfoResponse.model_validate(res.json())
+        return parse_response(InfoResponse, res.json())
 
     def segment(
             self, 
@@ -150,10 +150,47 @@ class ModelClient:
             first_ch_data: np.ndarray, 
             second_ch_data: np.ndarray
         ) -> np.ndarray:
-        rgb_stack = np.zeros((*first_ch_data.shape, 3), dtype=first_ch_data.dtype)
-        rgb_stack[..., 0] = first_ch_data
-        rgb_stack[..., 1] = second_ch_data
-        return rgb_stack
+        """Run the worker model's own `second_ch_img_to_stack`."""
+        if not self.info.capabilities.second_ch_img_to_stack:
+            raise NotImplementedError(
+                f"Model {self.model_name} does not support "
+                "second_ch_img_to_stack"
+            )
+        files = {}
+        for key, arr in (("first", first_ch_data), ("second", second_ch_data)):
+            buf = io.BytesIO()
+            np.save(buf, np.asarray(arr))
+            files[key] = (f"{key}.npy", buf.getvalue(), "application/octet-stream")
+        res = self.session.post(
+            f"{self.base_url}/second_ch_img_to_stack",
+            files=files,
+            timeout=self.timeout
+        )
+        self._raise_for_status(res)
+        return np.load(io.BytesIO(res.content))
+
+    def predictCcaState(
+            self, image: np.ndarray, precomputed_lab: np.ndarray
+        ):
+        """Run the worker model's `predictCcaState`; returns the cca_df."""
+        import pandas as pd
+
+        if not self.info.capabilities.predictCcaState:
+            raise NotImplementedError(
+                f"Model {self.model_name} does not support predictCcaState"
+            )
+        files = {}
+        for key, arr in (("image", image), ("precomputed_lab", precomputed_lab)):
+            buf = io.BytesIO()
+            np.save(buf, np.asarray(arr))
+            files[key] = (f"{key}.npy", buf.getvalue(), "application/octet-stream")
+        res = self.session.post(
+            f"{self.base_url}/predictCcaState",
+            files=files,
+            timeout=self.timeout
+        )
+        self._raise_for_status(res)
+        return pd.read_json(io.StringIO(res.json()["cca_df"]), orient="table")
 
     def submit_job(self, image: np.ndarray, **kwargs) -> str:
         p = _sanitize_kwargs(kwargs)

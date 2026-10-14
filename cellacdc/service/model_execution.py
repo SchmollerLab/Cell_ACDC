@@ -3,8 +3,9 @@
 Shared by every GUI caller that segments with a model:
 
 * the segmentation module (`segm.segmWin`),
-* the main GUI (`gui.guiWin.repeatSegm`, `repeatSegmVideo`, and segmentation
-  for lost IDs via `workers.SegForLostIDsWorker`).
+* the main GUI (`gui.guiWin.repeatSegm`, `repeatSegmVideo`, segmentation
+  for lost IDs via `workers.SegForLostIDsWorker`, and YeastMate budding
+  prediction in `autoAssignBud_YeastMate`).
 
 Execution modes (`ModelExecution.backend_type`):
 

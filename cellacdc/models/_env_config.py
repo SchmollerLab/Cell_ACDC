@@ -15,7 +15,8 @@ Entry fields (all optional):
         (pip name, also used as import name) or a dict with the keys
         accepted by ``myutils.check_install_package``
         (``pkg_name``, ``import_pkg_name``, ``pypi_name``,
-        ``min_version``, ``max_version``, ...).
+        ``min_version``, ``max_version``, ...). ``distribution_name`` is
+        also accepted; it is only used to detect an existing installation.
     main_env_packages: optional package specs used only to detect an existing
         main-environment installation, without importing any model modules.
         Defaults to packages; torch/torchvision are also checked when torch is

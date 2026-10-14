@@ -62,6 +62,7 @@ import io
 import json
 import os
 import signal
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional
@@ -76,7 +77,47 @@ from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, 
 # that submits a job returns immediately with a job id.
 _executor = ThreadPoolExecutor(max_workers=2)
 # job_id -> {"status", "progress", "error", "result"}; kept in memory only.
+# A completed job is removed when its result is fetched. Of the jobs nobody
+# collects, only the newest `MAX_FINISHED_JOBS` finished ones are kept, so a
+# long-running worker does not accumulate results.
 _jobs: Dict[str, Dict[str, Any]] = {}
+MAX_FINISHED_JOBS = 50
+_FINISHED_STATUSES = ("completed", "failed", "cancelled")
+# Job threads and request handlers both update `_jobs`. All reads and writes go
+# through this lock, so that a cancellation cannot be overwritten by a
+# concurrent "running"/"completed"/"failed" transition.
+_jobs_lock = threading.Lock()
+
+
+def _prune_finished_jobs():
+    """Drop the oldest finished jobs beyond `MAX_FINISHED_JOBS`.
+
+    Call with `_jobs_lock` held. Dicts keep insertion order, so the first
+    entries are the oldest submissions.
+    """
+    finished = [
+        job_id for job_id, job in _jobs.items()
+        if job["status"] in _FINISHED_STATUSES
+    ]
+    for job_id in finished[:max(0, len(finished) - MAX_FINISHED_JOBS)]:
+        del _jobs[job_id]
+
+
+def _transition_job(job_id: str, status: str, **fields) -> bool:
+    """Set the job's status (and `fields`) unless it was cancelled.
+
+    Returns False (and changes nothing) if the job was cancelled (or already
+    removed).
+    """
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None or job["status"] == "cancelled":
+            return False
+        job["status"] = status
+        job.update(fields)
+        if status in _FINISHED_STATUSES:
+            _prune_finished_jobs()
+        return True
 
 def _check_gpu() -> bool:
     try:
@@ -235,7 +276,8 @@ def create_app(
 
         Response (JSON, see `schema.InfoResponse`): name, version, whether a
         GPU is available, and which optional methods the model implements
-        (`segment3DT`, `second_ch_img_to_stack`). HTTP 503 before `/init`.
+        (`segment3DT`, `second_ch_img_to_stack`, `predictCcaState`). HTTP 503
+        before `/init`.
         """
         if state['model'] is None:
             raise HTTPException(
@@ -252,7 +294,8 @@ def create_app(
             capabilities=Capabilities(
                 segment=True,
                 segment3DT=has_segment3DT,
-                second_ch_img_to_stack=has_second_ch
+                second_ch_img_to_stack=has_second_ch,
+                predictCcaState=hasattr(model, "predictCcaState"),
             )
         )
 
@@ -312,27 +355,93 @@ def create_app(
             import traceback
             raise HTTPException(status_code=500, detail=traceback.format_exc())
 
+    @app.post("/second_ch_img_to_stack")
+    async def second_ch_img_to_stack(
+            first: UploadFile = File(...), second: UploadFile = File(...)
+        ):
+        """Combine two channels with the model's own `second_ch_img_to_stack`.
+
+        Each model stacks the channels differently (e.g. RGB for Cellpose,
+        a two-channel float stack for InstanSeg), so the client must not
+        reimplement it.
+
+        Request (multipart form, see `ModelClient.second_ch_img_to_stack`):
+            first, second: the two channel images as `.npy` bytes.
+        Response: the stacked image as `.npy` bytes. HTTP 400 if the model has
+        no `second_ch_img_to_stack` method, 500 with the traceback on errors.
+        """
+        if not hasattr(model, "second_ch_img_to_stack"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Model {model_name} does not support "
+                    "second_ch_img_to_stack"
+                )
+            )
+        try:
+            first_arr = np.load(io.BytesIO(await first.read()))
+            second_arr = np.load(io.BytesIO(await second.read()))
+            out = model.second_ch_img_to_stack(first_arr, second_arr)
+            buf = io.BytesIO()
+            np.save(buf, out)
+            return Response(
+                content=buf.getvalue(),
+                media_type="application/octet-stream"
+            )
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    @app.post("/predictCcaState")
+    async def predictCcaState(
+            image: UploadFile = File(...),
+            precomputed_lab: UploadFile = File(...),
+        ):
+        """Run `model.predictCcaState(image, precomputed_lab)` (YeastMate).
+
+        Request (multipart form, see `ModelClient.predictCcaState`):
+            image, precomputed_lab: `.npy` bytes.
+        Response (JSON): `{"cca_df": <DataFrame as JSON, orient="table">}`
+        (`table` keeps the index name and dtypes). HTTP 400 if the model has
+        no `predictCcaState` method, 500 with the traceback on errors.
+        """
+        if not hasattr(model, "predictCcaState"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_name} does not support predictCcaState"
+            )
+        try:
+            img = np.load(io.BytesIO(await image.read()))
+            lab = np.load(io.BytesIO(await precomputed_lab.read()))
+            cca_df = model.predictCcaState(img, lab)
+            return {"cca_df": cca_df.to_json(orient="table")}
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
     # ------------------------------------------------------- background jobs
     # Alternative to `/segment` for long runs: submit the image, get a job id
     # immediately, then poll the status and fetch the result when completed.
     # Useful for remote servers, where one long HTTP request may time out.
 
     def _run_job(job_id: str, arr: np.ndarray, params: dict, is_3dt: bool):
-        """Runs in an `_executor` thread (not an endpoint)."""
+        """Runs in an `_executor` thread (not an endpoint).
+
+        A job cancelled while pending is not started; a job cancelled while
+        running keeps the status `cancelled` and its result is discarded.
+        """
+        if not _transition_job(job_id, "running", progress=0.1):
+            return
         try:
-            _jobs[job_id]["status"] = "running"
-            _jobs[job_id]["progress"] = 0.1
             if is_3dt:
                 out = model.segment3DT(arr, **_filter_kwargs(model.segment3DT, params))
             else:
                 out = model.segment(arr, **_filter_kwargs(model.segment, params))
-            _jobs[job_id]["result"] = out
-            _jobs[job_id]["status"] = "completed"
-            _jobs[job_id]["progress"] = 1.0
-        except Exception as e:
+        except Exception:
             import traceback
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = traceback.format_exc()
+            _transition_job(job_id, "failed", error=traceback.format_exc())
+            return
+        _transition_job(job_id, "completed", result=out, progress=1.0)
 
     @app.post("/jobs/segment")
     async def submit_job(image: UploadFile = File(...), params: str = Form("{}")):
@@ -344,12 +453,14 @@ def create_app(
         p = json.loads(params) if params else {}
         content = await image.read()
         arr = np.load(io.BytesIO(content))
-        _jobs[job_id] = {
+        new_job = {
             "status": "pending",
             "progress": 0.0,
             "error": None,
             "result": None
         }
+        with _jobs_lock:
+            _jobs[job_id] = new_job
         _executor.submit(_run_job, job_id, arr, p, False)
         return {"job_id": job_id}
 
@@ -357,9 +468,10 @@ def create_app(
     def get_job_status(job_id: str):
         """`GET /jobs/<id>`: status (pending/running/completed/failed/
         cancelled), progress (0-1) and the traceback if it failed."""
-        if job_id not in _jobs:
-            raise HTTPException(status_code=404, detail="Job not found")
-        job = _jobs[job_id]
+        with _jobs_lock:
+            if job_id not in _jobs:
+                raise HTTPException(status_code=404, detail="Job not found")
+            job = dict(_jobs[job_id])
         return JobStatusResponse(
             job_id=job_id,
             status=job["status"],
@@ -370,16 +482,21 @@ def create_app(
     @app.get("/jobs/{job_id}/result")
     def get_job_result(job_id: str):
         """`GET /jobs/<id>/result`: the labels as `.npy` bytes once completed
-        (HTTP 400 before that)."""
-        if job_id not in _jobs:
-            raise HTTPException(status_code=404, detail="Job not found")
-        job = _jobs[job_id]
-        if job["status"] != "completed":
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Job status is {job['status']}, result not ready"
-            )
-        out = job["result"]
+        (HTTP 400 before that).
+
+        The result can be fetched only once: afterwards the job is removed
+        (a later request answers 404), so its array is freed.
+        """
+        with _jobs_lock:
+            if job_id not in _jobs:
+                raise HTTPException(status_code=404, detail="Job not found")
+            job = _jobs[job_id]
+            if job["status"] != "completed":
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Job status is {job['status']}, result not ready"
+                )
+            out = _jobs.pop(job_id)["result"]
         buf = io.BytesIO()
         np.save(buf, out)
         return Response(
@@ -389,15 +506,30 @@ def create_app(
 
     @app.delete("/jobs/{job_id}")
     def cancel_job(job_id: str):
-        """`DELETE /jobs/<id>`: mark the job as cancelled.
+        """`DELETE /jobs/<id>`: cancel a pending/running job, or delete a
+        finished one.
 
-        Note: this only changes the status; a computation that is already
-        running is not interrupted.
+        A pending job is never started. A running computation is not
+        interrupted, but its result is discarded and the status stays
+        `cancelled`. A finished (completed, failed or cancelled) job is
+        removed together with its result.
+
+        Response (JSON): `{"job_id", "status", "deleted"}`, where `status` is
+        the job's status at the time of the request.
         """
-        if job_id not in _jobs:
-            raise HTTPException(status_code=404, detail="Job not found")
-        _jobs[job_id]["status"] = "cancelled"
-        return {"job_id": job_id, "status": "cancelled"}
+        with _jobs_lock:
+            if job_id not in _jobs:
+                raise HTTPException(status_code=404, detail="Job not found")
+            job = _jobs[job_id]
+            if job["status"] in _FINISHED_STATUSES:
+                del _jobs[job_id]
+                return {
+                    "job_id": job_id, "status": job["status"], "deleted": True
+                }
+            job["status"] = "cancelled"
+            job["result"] = None
+            _prune_finished_jobs()
+        return {"job_id": job_id, "status": "cancelled", "deleted": False}
 
     # ------------------------------------------------------------- shutdown
 

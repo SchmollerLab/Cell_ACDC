@@ -20042,19 +20042,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.storeUndoRedoStates(False)
 
         posData = self.data[self.pos_i]
-        # Check if model needs to be imported
-        acdcSegment = self.acdcSegment_li[idx]
-        if acdcSegment is None:
-            acdcSegment = myutils.import_segment_module(model_name)
-            self.acdcSegment_li[idx] = acdcSegment
-
-        # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
-        # Prompt user to enter the model parameters
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
+        # Read the model parameters (from its isolated env if used)
+        model_spec = self.prepareModelExecution(model_name)
+        if model_spec is None:
+            return
+        init_params, segment_params, url = model_spec
 
         _SizeZ = None
         if self.isSegm3D:
@@ -20080,7 +20072,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
             
         self.model_kwargs = win.model_kwargs
-        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+        model = self.initSegmModel(
+            model_name, win.init_kwargs, posData, replace=self.models[idx]
+        )
         if model is None:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -20091,10 +20085,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             pass
 
         self.models[idx] = model
+        model.model_name = model_name
 
         img = self.getDisplayedImg1()
 
-        posData.cca_df = model.predictCcaState(img, posData.lab)
+        with self.modelExecutionBusy(f'{model_name} is predicting budding events...'):
+            posData.cca_df = model.predictCcaState(img, posData.lab)
         self.store_data()
         self.updateAllImages()
 

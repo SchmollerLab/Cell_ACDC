@@ -100,6 +100,14 @@ class _WorkflowKernel:
             'env_python': env_python,
         }
 
+    def uses_worker_backend(self):
+        """True if the model runs in a (local or remote) worker process."""
+        return (
+            self.backend_url is not None
+            or self.backend_type in ('remote', 'local')
+            or self.env_python is not None
+        )
+
     def init_backend(
             self, 
             module_name, 
@@ -122,7 +130,7 @@ class _WorkflowKernel:
 
             from cellacdc.service.client import RemoteBackend
             self.backend = RemoteBackend(self.backend_url)
-            client = self.backend.get_client()
+            client = self.backend.get_client(init_model_kwargs=init_kwargs)
             return client
 
         if self.env_python is not None or self.backend_type == 'local':
@@ -390,11 +398,9 @@ class SegmKernel(_WorkflowKernel):
             return
 
         backend_kwargs = self.init_model_kwargs
-        uses_local_worker = (
-            self.backend_url is None and self.backend_type != 'remote'
-            and (self.env_python is not None or self.backend_type == 'local')
-        )
-        if uses_local_worker and posData is not None and backend_kwargs:
+        # Workers (local or remote) cannot read the client's files: send the
+        # loaded segmentation/points instead of their file names.
+        if self.uses_worker_backend() and posData is not None and backend_kwargs:
             backend_kwargs = dict(backend_kwargs)
             segm_data = myutils.resolve_segm_model_init_data(
                 posData, backend_kwargs

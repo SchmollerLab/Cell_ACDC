@@ -3531,7 +3531,11 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, pyt
             handler = prompts.CliHandler()
         else:
             handler = prompts.QtHandler(qparent)
-        ensure_torch(python_exec, prompt_func=handler.ask)
+        if not ensure_torch(python_exec, prompt_func=handler.ask):
+            raise ModuleNotFoundError(
+                f'PyTorch is not installed in {python_exec} (installation '
+                'cancelled or failed). The model cannot run without it.'
+            )
         return
 
     try:
@@ -3626,7 +3630,10 @@ def import_tracker_module(tracker_name):
 
 _PKG_SPEC_KEYS = (
     'pkg_name', 'import_pkg_name', 'pypi_name', 'min_version', 'max_version',
-    'exact_version', 'include_higher_version', 'include_lower_version'
+    'exact_version', 'include_higher_version', 'include_lower_version',
+    # Only used to detect an installation (see models/_env_config.py);
+    # installation uses `pkg_name`/`pypi_name`.
+    'distribution_name',
 )
 _SPECIAL_INSTALLERS = {
     'tensorflow': _install_tensorflow,
