@@ -295,7 +295,12 @@ def delete_folder_content(folder_path, not_exist_ok=True):
         else:
             os.remove(item_path)
 
-def export_current_view_gui_cellpose(posData, dst_folderpath):
+def export_current_view_gui_cellpose(
+        posData, 
+        dst_folderpath,
+        logger_func=print, 
+        verbose=True
+    ):
     images = [posData.img_data[posData.frame_i]]
 
     if posData.ol_data is not None:
@@ -315,7 +320,7 @@ def export_current_view_gui_cellpose(posData, dst_folderpath):
     
     last_saved_num = 0
     for file in myutils.listdir(dst_folderpath):
-        end_num = re.findall(r'.+_(\d+)\.tif')
+        end_num = re.findall(r'.+_(\d+)\.tif', file)
         if not end_num:
             continue
 
@@ -330,10 +335,35 @@ def export_current_view_gui_cellpose(posData, dst_folderpath):
     tif_filename = segm_filename.replace('.npz', f'_{new_num}.tif')
     seg_npy_filename = segm_filename.replace('.npz', f'_{new_num}_seg.npy')
 
-    printl(dst_folderpath, tif_filename, seg_npy_filename, sep='\n')
+    tif_filepath = os.path.join(dst_folderpath, tif_filename)
+    seg_npy_filepath = os.path.join(dst_folderpath, seg_npy_filename)
 
-def export_current_view(posData, model_name: str, dst_folderpath: os.PathLike):
-    printl(model_name, dst_folderpath, sep='\n')
+    skimage.io.imsave(tif_filepath, tif_data)
+    np.save(seg_npy_filepath, lab)
+
+    if not verbose:
+        return
+
+    logger_func(
+        '------------------------\n'
+        'Files saved:\n\n'
+        f'  - {tif_filepath}\n'
+        f'  - {seg_npy_filepath}\n'
+        '========================'
+    )
+
+def export_current_view(
+        posData, 
+        model_name: str, 
+        dst_folderpath: os.PathLike,
+        logger_func=print,
+        verbose=False
+    ):
     if model_name == 'Cellpose':
-        export_current_view_gui_cellpose(posData, dst_folderpath)
+        export_current_view_gui_cellpose(
+            posData, 
+            dst_folderpath,
+            logger_func=logger_func,
+            verbose=verbose
+        )
 

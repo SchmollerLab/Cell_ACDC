@@ -10426,8 +10426,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.searchIDworkerLoop.exit()
     
     def exportCurrentViewWorkerFinished(self):
-        self.exportCurrentViewToolbar.setInfoText('')
+        self.exportCurrentViewToolbar.setInfoText('Exported!')
         self.exportCurrentViewWorkerLoop.exit()
+        QTimer.singleShot(
+            2000, 
+            partial(self.exportCurrentViewToolbar.setInfoText, '')
+        )
     
     def searchIDworkerCallback(self, posData, searchedID):
         self.searchIDworker.signals.initProgressBar.emit(0)
@@ -20180,7 +20184,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             func_args=(
                 self.exportCurrentViewToolbar.selectedModelName(),
                 dstFolderPath, 
-            )
+            ),
+            func_kwargs={
+                'logger_func': self.logger.info,
+                'verbose': True
+            }
         )
         self.exportCurrentViewWorker.moveToThread(self.exportCurrentViewThread)
         self.exportCurrentViewWorker.signals.finished.connect(

@@ -14984,7 +14984,7 @@ class ExportCurrentViewToolbar(ToolBar):
         )
         self.addSeparator()
 
-        startFolder = myutils.getMostRecentPath()
+        startFolder = myutils.get_export_current_view_gui_most_recent_path()
 
         self.addWidget(QLabel('Destination folder: '))
         self.dstFolderPathControl = ElidingLineEdit()
@@ -14996,23 +14996,48 @@ class ExportCurrentViewToolbar(ToolBar):
         )
         self.dstFolderPathControl.setText(startFolder)
 
-        self.dstBrowseButton = browseFileButton(
-            openFolder=True, 
-            title='Select destination folder', 
-            start_dir=startFolder,
+        self.dstBrowseButton = self.addButton(
+            ':folder-open.svg', 
+            text='Select destination folder',
         )
-        self.dstBrowseButton.action = self.addWidget(
-            self.dstBrowseButton
+        self.dstBrowseButton.triggered.connect(
+            self.selectDstFolder
         )
 
-        self.dstBrowseButton.sigPathSelected.connect(
-            self.dstFolderPathSelected
+        self.selectDstFromRecentPathsAction = self.addButton(
+            ':open_file.svg', 
+            text='Select destination folder from recent paths',
+        )
+        self.selectDstFromRecentPathsAction.triggered.connect(
+            self.selectDstFromRecentPaths
+        )
+
+        self.showInFileManagerAction = self.addButton(
+            ':drawer.svg', 
+            text='Open folder in file manager...',
+        )
+        self.showInFileManagerAction.triggered.connect(
+            self.showInFileManager
         )
 
         self.addSeparator()
 
-        self.exportButton = self.addButton(':file-save.svg')
-        self.exportButton.triggered.connect(self.emitExport)
+        self.exportAction, button = self.addButton(
+            ':file-save.svg', 
+            text='Export - Save current view data',
+            ret_widget=True
+        )
+        self.exportAction.setToolTip(
+            'Save current view data\n\n'
+            'Shortcut: Alt+E'
+        )
+        self.exportAction.triggered.connect(self.emitExport)
+        self.exportAction.keyPressShortcut = KeySequenceFromText('Alt+E')
+
+        self.widgetsWithShortcut['Export - Save current view data'] = (
+            self.exportAction
+        )
+        self.widgetsForActions['Export - Save current view data'] = button
 
         self.addSpacing(5)
 
@@ -15023,10 +15048,53 @@ class ExportCurrentViewToolbar(ToolBar):
         self.addSeparator()
 
         self.infoTextLabel = self.addLabel()
+        self.infoTextLabel.setMinimumWidth(50)
 
         self.addStretch(10)
-
     
+    def selectDstFromRecentPaths(self):
+        recent_paths, dates = myutils.get_recent_paths(self)
+        if not recent_paths:
+            return
+        
+        searchLineEditText = (
+            'Search recent paths (Ctrl+click to select multiple)...'
+        )
+        self.recentPathsDialog = apps.SearchableListboxDialog(
+            recent_paths,
+            title='Select destination folder from recent paths',
+            searchLineEditText=searchLineEditText,
+            parent=self.parent(),
+            multiSelection=False,
+            dates=dates,
+        )
+        self.recentPathsDialog.sigOk.connect(
+            self.dstFolderPathControl.setText
+        )
+        self.recentPathsDialog.show()
+
+    def selectDstFolder(self):
+        startFolder = self.dstFolderPathControl.text()
+        folder_path = qtpy.compat.getexistingdirectory(
+            caption='Select destination folder', 
+            basedir=startFolder
+        )
+        if not folder_path:
+            return
+        
+        self.dstFolderPathControl.setText(folder_path)
+        myutils.add_to_export_current_view_gui_recent_paths(folder_path)
+
+    def showInFileManager(self):
+        dstFolderPath = self.dstFolderPathControl.text()
+        if not os.path.exists(dstFolderPath):
+            self.setInfoText(
+                html_utils.span('WARNING: Destination folder does not exist')
+            )
+            return
+        
+        myutils.showInExplorer(dstFolderPath)
+
     def isAutoExportOnNext(self):
         return self.autoExportOnNextCheckbox.isChecked()
     

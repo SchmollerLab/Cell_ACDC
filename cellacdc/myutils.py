@@ -48,6 +48,7 @@ from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, acdc_fiji_path, logs_path, acdc_ffmpeg_path
 from . import user_profile_path, recentPaths_path
+from . import export_current_view_gui_recent_paths_csv_path
 from . import models_list_file_path, models_path
 from . import promptable_models_list_file_path, promptable_models_path
 from . import github_home_url
@@ -1049,9 +1050,9 @@ def get_git_remote_repos_names():
 
 def showInExplorer(path):
     if is_mac:
-        os.system(f'open "{path}"')
+        subprocess.run(["open", str(path)], check=True)
     elif is_linux:
-        os.system(f'xdg-open "{path}"')
+        subprocess.run(["xdg-open", str(path)], check=True)
     else:
         os.startfile(path)
 
@@ -5838,15 +5839,6 @@ def get_recent_paths(self):
     else:
         recent_paths = []
         dates = None
-        
-    # if not recent_paths:
-    # this can cause crashes and is not necessary
-    #     msg = widgets.myMessageBox(wrapText=False)
-    #     msg.information(
-    #         self,
-    #         'No recent paths',
-    #         'There are no recent paths to add.',
-    #     )
 
     return recent_paths, dates
     
@@ -5894,3 +5886,80 @@ def addToRecentPaths(exp_path, logger=None):
     )
     df.index.name = 'index'
     df.to_csv(recentPaths_path)
+
+def add_to_export_current_view_gui_recent_paths(folderpath):
+    if not os.path.exists(folderpath):
+        return
+
+    folderpath = folderpath.replace('\\', '/')
+    if os.path.exists(export_current_view_gui_recent_paths_csv_path):
+        try:
+            df = pd.read_csv(
+                export_current_view_gui_recent_paths_csv_path, 
+                index_col='index'
+            )
+            recent_paths = df['path'].to_list()
+            if 'opened_last_on' in df.columns:
+                openedOn = df['opened_last_on'].to_list()
+            else:
+                openedOn = [np.nan]*len(recent_paths)
+            if folderpath in recent_paths:
+                pop_idx = recent_paths.index(folderpath)
+                recent_paths.pop(pop_idx)
+                openedOn.pop(pop_idx)
+            recent_paths.insert(0, folderpath)
+            openedOn.insert(0, datetime.datetime.now())
+        except Exception as e:
+            recent_paths = [folderpath]
+            openedOn = [datetime.datetime.now()]
+    else:
+        recent_paths = [folderpath]
+        openedOn = [datetime.datetime.now()]
+    df = pd.DataFrame({
+        'path': recent_paths,
+        'opened_last_on': pd.Series(openedOn, dtype='datetime64[ns]')}
+    )
+    df.index.name = 'index'
+    df.to_csv(export_current_view_gui_recent_paths_csv_path)
+
+def get_export_current_view_gui_most_recent_path():
+    if os.path.exists(export_current_view_gui_recent_paths_csv_path):
+        df = pd.read_csv(
+            export_current_view_gui_recent_paths_csv_path, 
+            index_col='index'
+        )
+        if 'opened_last_on' in df.columns:
+            df = df.sort_values('opened_last_on', ascending=False)
+        most_recent_path = ''
+        for path in df['path']:
+            if os.path.exists(path):
+                most_recent_path = path
+                break
+    else:
+        most_recent_path = ''
+    return most_recent_path
+
+def get_export_current_view_gui_recent_paths(self):
+    """Return existing unique paths and their aligned most recent dates."""
+    if os.path.exists(export_current_view_gui_recent_paths_csv_path):
+        df = pd.read_csv(
+            export_current_view_gui_recent_paths_csv_path, index_col='index'
+        )
+        if 'opened_last_on' in df.columns:
+            df = df.sort_values('opened_last_on', ascending=False)
+        df['path'] = df['path'].map(str)
+        df = df.loc[df['path'].map(os.path.isdir).astype(bool)].copy()
+        df['path'] = df['path'].str.replace('\\', '/')
+        df = df.drop_duplicates(subset='path', keep='first')
+        recent_paths = df['path'].to_list()
+        
+        dates = (
+            df['opened_last_on'].to_list()
+            if 'opened_last_on' in df.columns else None
+        )
+        
+    else:
+        recent_paths = []
+        dates = None
+
+    return recent_paths, dates
