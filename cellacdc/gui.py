@@ -6017,6 +6017,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 labels_lut = self.getLabelsImageLut()
                 labels_alpha = self.imgGrad.labelsAlphaSlider.value()
                 manualSep = getattr(self, 'manualSeparateGui', None)
+                img_lut_df = self.imgGrad.saveState(self.df_settings)
                 if manualSep is None:
                     manualSep = apps.manualSeparateGui(
                         lab, ID, img,
@@ -6028,7 +6029,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         mouseBindings=self.mouseBindings,
                         labelsLut=labels_lut,
                         labelsAlpha=labels_alpha,
-                        rp=rp
+                        rp=rp,
+                        img_lut_df=img_lut_df,
                     )
                     self.manualSeparateGui = manualSep
                 else:
@@ -6041,7 +6043,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         mouseBindings=self.mouseBindings,
                         labelsLut=labels_lut,
                         labelsAlpha=labels_alpha,
-                        rp=rp
+                        rp=rp,
+                        img_lut_df=img_lut_df,
                     )
 
                 manualSep.setState(lastManualSeparateState)
@@ -9840,15 +9843,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._thread.start()
 
     def onSegForLostIDsImportModel(self, model_name):
-        # Preflight import on GUI thread; worker retries and handles failures.
+        # Import on the GUI thread because model packages may open dialogs 
+        # (install prompts, DLL warnings) at import time. The worker must 
+        # NOT re-import, otherwise those dialogs are created from the 
+        # worker thread and the GUI freezes.
+        worker = self.SegForLostIDsWorker
+        worker.importedSegmModule = None
+        worker.importSegmModuleError = None
         try:
-            myutils.import_segment_module(model_name)
+            worker.importedSegmModule = myutils.import_segment_module(
+                model_name
+            )
         except Exception as e:
             traceback_str = traceback.format_exc()
             self.logger.error(
                 f"Error importing model '{model_name}': {e}\n{traceback_str}"
             )
-            pass
+            worker.importSegmModuleError = e
         finally:
             self._ackSegForLostIDsWorker('import_model')
 
@@ -16129,7 +16140,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             prev_IDs = posData.allData_li[posData.frame_i-1]['regionprops'].IDs
 
-        if ask_back_prop and all(ID not in prev_IDs for ID in unique_ids):
+        if ask_back_prop and sum(ID in prev_IDs for ID in unique_ids) <= 1:
             ask_back_prop = False
 
         if not self.isFrameCcaAnnotated() and ask_back_prop:
@@ -32252,16 +32263,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         IDs_set = posData.rp.IDs_set
 
         new_objs_1st_step, lost_objs_1st_step = annotInfo
+        new_objs_1st_step_new, lost_objs_1st_step_new = [], []
         for lostObj, newObj in zip(lost_objs_1st_step, new_objs_1st_step):
             # guard against removed cells
             # ID is actually not present in current frame !DO not use newObj, it is stale!
-            if lostObj.label not in IDs_set: 
+            if lostObj.label not in IDs_set:
                 continue
             
             ID_in_lab = posData.lab[newObj.slice][newObj.image][0] # get the current lab of the object
             if ID_in_lab != lostObj.label:
                 continue
             
+            new_objs_1st_step_new.append(newObj)
+            lost_objs_1st_step_new.append(lostObj)
+
             allContours = self.getObjContours(
                 lostObj,
                 all_external=True,
@@ -32279,6 +32294,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             xx, yy = core.get_line(y1, x1, y2, x2, dashed=False)
             self.ax1_trackerMovementAgainstPrevLinesItem.addPoints(xx, yy)
             
+        # update annotInfo with filtered objects
+        posData.acdcTracker2stepsAnnotInfo[posData.frame_i] = (
+            new_objs_1st_step_new, lost_objs_1st_step_new
+        )
+
     # settings helper
     def _get_setting_value(self, index_name, default, cast=int):
         if self.df_settings is None or index_name not in self.df_settings.index:

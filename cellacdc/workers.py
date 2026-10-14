@@ -248,11 +248,16 @@ class SegForLostIDsWorker(QObject):
         )
         
     def emitSigSegForLostIDsImportModel(self, base_model_name):
+        self.importedSegmModule = None
+        self.importSegmModuleError = None
         self._emit_and_wait(
             'import_model',
             self.sigSegForLostIDsImportModel,
             base_model_name,
         )
+        acdcSegment = self.importedSegmModule
+        self.importedSegmModule = None
+        return acdcSegment
 
     def emitGetSegForLostIDsInputImg(self, image_channel_name):
         self._emit_and_wait( # emit and waiting is handled here
@@ -382,11 +387,11 @@ class SegForLostIDsWorker(QObject):
                         'Please check the model settings.'
                     )
 
-            try:
-                self.logger.info(f'Importing {base_model_name}...')
-                self.emitSigSegForLostIDsImportModel(base_model_name)
-                acdcSegment = myutils.import_segment_module(base_model_name)
-            except (IndexError, ImportError, KeyError):
+            self.logger.info(f'Importing {base_model_name}...')
+            acdcSegment = self.emitSigSegForLostIDsImportModel(
+                base_model_name
+            )
+            if acdcSegment is None:
                 self.logger.warning(
                     f'Cannot import {base_model_name} model. '
                     'Please install it first.'
@@ -6526,7 +6531,6 @@ class saveDataWorker(QObject):
                     save_metrics=self.mainWin.save_metrics,
                     last_cca_frame_i=self.mainWin.save_cca_until_frame_i
                 )
-                printl('end')
             else:
                 self.saveAcdcDf(posData, end_i)
                 
