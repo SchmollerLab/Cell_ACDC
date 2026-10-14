@@ -41,17 +41,18 @@ Execution modes
 There are two separate, explicit execution paths. Cell-ACDC never silently
 falls back from one to the other:
 
-* **Isolated environment** (``USE_MODEL_ENV = True`` in ``cellacdc/segm.py``,
-  the default). The model runs in its worker. If the environment cannot be
-  created or the worker fails to start, a clear error is raised.
+* **Isolated environment** (``USE_MODEL_ENV = True`` in
+  ``cellacdc/service/model_execution.py``, the default). The model runs in its
+  worker. If the environment cannot be created or the worker fails to start, a
+  clear error is raised.
 * **In-process** (``USE_MODEL_ENV = False``). The model is imported and run in
   the main Cell-ACDC environment, as in older versions.
 
-If the packages of a model are already installed in the main environment, the
-segmentation module asks whether to use them or to set up an isolated
-environment (recommended). Installed packages are detected from package
-metadata only (``model_installed_in_main_env``); the model's ``__init__.py``
-is never imported for this check.
+If the packages of a model are already installed in the main environment,
+Cell-ACDC asks (once per model and session) whether to use them or to set up
+an isolated environment (recommended). Installed packages are detected from
+package metadata only (``model_installed_in_main_env``); the model's
+``__init__.py`` is never imported for this check.
 
 Server mode
 ~~~~~~~~~~~
@@ -120,11 +121,23 @@ Code structure
        environment and sends them to the GUI as metadata.
        ``resolve_segm_model_init_data`` loads the data that the GUI refers to
        by file name.
-   * - ``cellacdc/segm.py``
-     - Segmentation module: ``prepareModelExecution`` (choose the execution
-       path, prepare the environment, read the parameters) and
-       ``initModelExecution`` (ask for required variables, send the data,
-       start the worker).
+   * - ``cellacdc/service/model_execution.py``
+     - ``ModelExecution``: shared by every GUI caller. ``prepare`` chooses
+       the execution path, prepares the environment and reads the
+       parameters; ``init_model`` asks for required variables, sends the data
+       and gets a worker (or creates the model in-process); ``release``
+       gives an instance back and ``stop`` stops all workers.
+       ``run_in_background`` runs slow steps in a ``QThread`` without
+       freezing the GUI.
+   * - ``cellacdc/segm.py``, ``cellacdc/gui.py``, ``cellacdc/workers.py``
+     - GUI callers of ``ModelExecution``: the segmentation module
+       (``segmWin``), the main GUI (``repeatSegm``, also used by the magic
+       labeller, and ``repeatSegmVideo``) and segmentation for lost IDs.
+       ``SegForLostIDsWorker`` runs in a ``QThread``, so it asks the GUI
+       thread for the model with ``sigInitModel``; these models are reused
+       until the settings or the position change.
+       Each ``ModelExecution`` is cached per model for the whole GUI session,
+       and all workers are stopped when the window closes.
    * - ``cellacdc/cli.py``
      - Workflow kernel. The ``backend`` section of a workflow file (``type``
        = ``in_process``, ``local`` or ``remote``; ``url``; ``env_python``)
@@ -133,7 +146,7 @@ Code structure
 What happens when a model is selected
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-1. ``prepareModelExecution`` checks the main environment (without imports)
+1. ``ModelExecution.prepare`` checks the main environment (without imports)
    and, if needed, asks which environment to use.
 2. ``get_or_create_model_env`` finds or creates ``_acdc_<model>`` and then,
    on every run (steps that are already done are skipped quickly):
@@ -148,15 +161,41 @@ What happens when a model is selected
 3. ``getModelArgSpecFromEnv`` runs a short script with the model environment's
    Python (``--server``) that inspects ``acdcSegment.Model`` and returns the
    parameters. The GUI builds the parameter dialog from this metadata.
-4. The user sets the parameters. ``initModelExecution`` then:
+4. The user sets the parameters. ``ModelExecution.init_model`` then:
 
    a. asks for missing ``required_env`` variables;
    b. replaces file selections (auxiliary segmentation, points table) with the
       loaded data;
-   c. starts the worker with ``LocalBackend.start``.
+   c. gets a worker (see `Reusing running workers`_).
 
 5. Segmentation calls ``ModelClient.segment``. Images are sent as ``.npy`` and
    labels are returned the same way.
+
+Reusing running workers
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Starting a worker is slow (new Python process, importing e.g. PyTorch,
+loading the weights), so ``ModelExecution`` keeps workers running and reuses
+them. For every ``init_model`` call it:
+
+1. shares a worker whose model already has exactly the same parameters and
+   data (compared with a fingerprint that includes array contents), so
+   nothing is reloaded;
+2. otherwise re-initializes an unused worker with ``POST /init``
+   (``LocalBackend.reinitialize``). The process and its imports are kept;
+   only the model is re-created. If this fails, the worker keeps its
+   previous model. Callers pass the instance they replace as ``replace``
+   (e.g. ``repeatSegm`` with the previous model), so its worker can be
+   re-initialized;
+3. otherwise starts a new worker. Instances used at the same time with
+   different parameters (e.g. segmentation and segmentation for lost IDs)
+   run in separate workers.
+
+Callers give back instances with ``release`` (or ``replace``). Released
+workers keep running; at most ``MAX_IDLE_WORKERS`` (default 1) unused
+workers are kept per model because they hold memory, also on the GPU. Workers
+that exited are started again. All workers stop with ``ModelExecution.stop``
+(when the GUI closes).
 
 Adding a new model
 ------------------
@@ -477,7 +516,7 @@ the same objects can be sent over HTTP and answered by the client's handler.
 To add a new kind of request, add a field to the model configuration (and
 document it in the ``_env_config.py`` docstring). Then handle it in
 ``cellacdc/service/environment.py`` with ``prompt_func``, and call it from the
-client before the worker starts (``segm.py`` ``initModelExecution`` for the
+client before the worker starts (``ModelExecution.init_model`` for the
 GUI, ``get_or_create_model_env`` for environment setup).
 ``ensure_required_env`` is a complete example.
 

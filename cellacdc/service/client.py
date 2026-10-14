@@ -69,6 +69,10 @@ class ModelClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
+        self.refresh_info()
+
+    def refresh_info(self):
+        """Read the model description again (e.g. after `POST /init`)."""
         self.info = self._fetch_info()
         self.model_name = self.info.name
         self.is_segment3DT_available = self.info.capabilities.segment3DT
@@ -306,6 +310,30 @@ class LocalBackend:
                 self._output.append(line.decode(errors="replace").rstrip())
         except Exception:
             pass
+
+    def is_running(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def reinitialize(self, init_model_kwargs: Dict[str, Any]) -> ModelClient:
+        """Replace the model of the running worker (`POST /init`).
+
+        Much faster than a restart: the Python process, its imports (e.g.
+        torch) and the HTTP server are kept. If initialization fails, the
+        worker keeps its previous model and the error is raised.
+        """
+        if not self.is_running() or self.client is None:
+            raise RuntimeError(f"The {self.model_name} worker is not running.")
+        try:
+            post_init(self.base_url, init_model_kwargs)
+        except Exception as err:
+            output = "\n".join(self._output).strip()
+            raise RuntimeError(
+                f"Re-initializing the {self.model_name} model failed:\n{err}"
+                + (f"\nWorker output (last lines):\n{output}" if output else "")
+            ) from err
+        self.init_model_kwargs = init_model_kwargs
+        self.client.refresh_info()
+        return self.client
 
     def _describe_failure(self, reason, cmd, diagnose=False) -> str:
         output = "\n".join(self._output).strip()

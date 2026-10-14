@@ -3546,7 +3546,7 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, pyt
         else:
             traceback.print_exc()
     except Exception as err:
-        traceback.print_traceback()
+        traceback.print_exc()
         print(f'Failed to import PyTorch in venv ({sys.executable}): {err}')
     
     if is_cli:

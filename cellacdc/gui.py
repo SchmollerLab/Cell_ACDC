@@ -5,6 +5,7 @@ import shutil
 import re
 import textwrap
 import traceback
+from contextlib import contextmanager
 import time
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -595,6 +596,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.model_kwargs = None
         self.segmModelName = None
         self.labelRoiModel = None
+        # model_name -> ModelExecution (environment chosen once per session)
+        self.modelExecutions = {}
+        # model_idx -> (settings key, model_name, model) for lost IDs
+        self.segForLostIDsModels = {}
         self.autoSegmDoNotAskAgain = False
         self.labelRoiGarbageWorkers = []
         self.labelRoiActiveWorkers = []
@@ -8988,7 +8993,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         elif (left_click or right_click) and canLabelRoi:
             if right_click:
                 # Force model initialization on mouse release
+                previousLabelRoiModel = self.labelRoiModel
                 self.labelRoiModel = None
+                # Otherwise released when replaced in `self.models`
+                if not any(previousLabelRoiModel is m for m in self.models):
+                    self.releaseSegmModel(
+                        getattr(previousLabelRoiModel, 'model_name', None), 
+                        previousLabelRoiModel
+                    )
             
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -9475,6 +9487,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         'customPostProcessGroupedFeatures': entry.get('customPostProcessGroupedFeatures', None),
                     })
                 self.SegForLostIDsSettings = {'models_settings': model_settings}
+                self.releaseSegForLostIDsModels()
                 # Restore model names in settings
                 restored_models = [
                     'Automatic thresholding'
@@ -9574,23 +9587,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             model_name = selected_model_name
             if model_name == 'Automatic thresholding':
                 model_name = 'thresholding'
-            try:
-                if selected_model_name in self.modelNames:
-                    idx = self.modelNames.index(selected_model_name)
-                    acdcSegment = self.acdcSegment_li[idx]
-                    if acdcSegment is None:
-                        self.logger.info(f'Importing {model_name}...')
-                        acdcSegment = myutils.import_segment_module(model_name,parent=self)
-                        self.acdcSegment_li[idx] = acdcSegment
-                else:
-                    self.logger.info(f'Importing {model_name}...')
-                    acdcSegment = myutils.import_segment_module(model_name)
-            except (ImportError, KeyError) as e:
-                self.logger.error(f'Error importing {model_name}: {e}')
-                # start worker cleanup
-                worker = self.SegForLostIDsWorker
-                self.SegForLostIDsWorker.signals.finished.emit(worker)
+            # Read the parameters (from the model's isolated env if used)
+            model_spec = self.prepareModelExecution(model_name)
+            if model_spec is None:
+                self.logger.info('Segmentation for lost IDs cancelled.')
                 return
+            init_params, segment_params, url = model_spec
 
             extra_params = all_extra_params
 
@@ -9615,7 +9617,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
                 extra_ArgSpec.append(param_arg)
 
-            init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
             segment_params = [
                 arg for arg in segment_params
             ] 
@@ -9645,7 +9646,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 f'({model_idx + 1}/{len(selected_models)})'
             )
             win = self.initSegmModelParams(
-                model_name, acdcSegment, init_params, segment_params,
+                model_name, url, init_params, segment_params,
                 extraParams=extra_ArgSpec,
                 extraParamsTitle=extraParamsTitle,
                 initLastParams=initLastParams,
@@ -9700,6 +9701,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.SegForLostIDsSettings = {
             'models_settings': model_settings,
         }
+        self.releaseSegForLostIDsModels()
 
         # Persist recipe to disk so it survives across sessions
         try:
@@ -9799,8 +9801,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         # Connect the worker's signal to the main thread's slot
         self.SegForLostIDsWorker.sigAskInit.connect(self.onSegForLostInit)
-        self.SegForLostIDsWorker.sigSegForLostIDsImportModel.connect(
-            self.onSegForLostIDsImportModel
+        self.SegForLostIDsWorker.sigInitModel.connect(
+            self.onSegForLostIDsInitModel
         )
         self.SegForLostIDsWorker.sigShowImageDebug.connect(
             self.showImageDebug
@@ -9839,18 +9841,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self._thread.started.connect(self.SegForLostIDsWorker.run)
         self._thread.start()
 
-    def onSegForLostIDsImportModel(self, model_name):
-        # Preflight import on GUI thread; worker retries and handles failures.
+    def onSegForLostIDsInitModel(self, model_idx, model_name, init_kwargs):
+        """Provide the SegForLostIDsWorker with an initialized model.
+
+        Models are cached per model slot and reused as long as the model,
+        its init parameters and the position stay the same, so isolated
+        workers are not restarted at every frame.
+        """
+        worker = self.SegForLostIDsWorker
         try:
-            myutils.import_segment_module(model_name)
-        except Exception as e:
-            traceback_str = traceback.format_exc()
-            self.logger.error(
-                f"Error importing model '{model_name}': {e}\n{traceback_str}"
+            posData = self.data[self.pos_i]
+            key = (
+                model_name,
+                json.dumps(init_kwargs, sort_keys=True, default=str),
+                id(posData),
             )
-            pass
+            cached = self.segForLostIDsModels.get(model_idx)
+            if cached is not None and cached[0] == key:
+                worker.initModelResult = cached[2]
+                return
+            
+            self.logger.info(f'Initializing {model_name} model...')
+            replace = None
+            if cached is not None and cached[1] == model_name:
+                replace = cached[2]
+            model = self.initSegmModel(
+                model_name, init_kwargs, posData, replace=replace
+            )
+            if model is None:
+                return
+            self.segForLostIDsModels[model_idx] = (key, model_name, model)
+            if cached is not None and replace is None:
+                self.releaseSegmModel(cached[1], cached[2])
+            worker.initModelResult = model
+        except Exception as error:
+            self.logger.exception(traceback.format_exc())
+            worker.initModelError = error
         finally:
-            self._ackSegForLostIDsWorker('import_model')
+            self._ackSegForLostIDsWorker('init_model')
 
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
         if hasattr(self, 'segForLostIDsGPUSettings'):
@@ -19309,18 +19337,134 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             self.repeatSegm(model_name=self.segmModelName)        
     
+    def getModelExecution(self, model_name):
+        """Return the `ModelExecution` of `model_name` (cached per session).
+
+        It decides whether the model runs in its isolated environment (as a
+        worker process) or in-process; see `service/model_execution.py`.
+        Progress messages of `ModelExecution` are shown in the title, while 
+        output of background steps (e.g., installations) goes to the log.
+        """
+        execution = self.modelExecutions.get(model_name)
+        if execution is None:
+            from .service import model_execution, prompts as service_prompts
+            
+            def run_in_background(func, *args, **kwargs):
+                return model_execution.run_in_background(
+                    self, func, *args, log_func=self.logger.info, **kwargs
+                )
+            
+            def ask(prompt):
+                # Dialogs stay usable while the GUI is disabled, but the 
+                # wait cursor must not be shown on top of them
+                cursor_was_overridden = self.app.overrideCursor() is not None
+                if cursor_was_overridden:
+                    self.app.restoreOverrideCursor()
+                try:
+                    return service_prompts.QtHandler(self).ask(prompt)
+                finally:
+                    if cursor_was_overridden:
+                        self.app.setOverrideCursor(Qt.WaitCursor)
+            
+            execution = model_execution.ModelExecution(
+                model_name, 
+                run_in_background=run_in_background,
+                prompt_func=ask, 
+                log_func=self.setModelExecutionStatus
+            )
+            self.modelExecutions[model_name] = execution
+        return execution
+
+    def setModelExecutionStatus(self, text):
+        self.logger.info(text)
+        self.titleLabel.setText(text, color=self.titleColor)
+        # Repaint now, the next step may block the event loop (e.g., import)
+        # self.titleLabel.repaint()
+
+    @contextmanager
+    def modelExecutionBusy(self, text):
+        """Disable the GUI and show `text` in the title while busy.
+
+        The previous enabled state and cursor are restored afterwards, so 
+        callers that already disabled the GUI (e.g., lost IDs) are not 
+        re-enabled.
+        """
+        was_enabled = self.isEnabled()
+        self.setDisabled(True)
+        self.app.setOverrideCursor(Qt.WaitCursor)
+        self.setModelExecutionStatus(text)
+        try:
+            yield
+        except Exception:
+            self.titleLabel.setText(f'{text} failed.', color='r')
+            raise
+        finally:
+            self.app.restoreOverrideCursor()
+            if was_enabled:
+                self.setDisabled(False)
+
+    def prepareModelExecution(self, model_name):
+        """Returns `(init_params, segment_params, url)` or None if cancelled."""
+        execution = self.getModelExecution(model_name)
+        if execution.spec is not None:
+            return execution.spec
+        with self.modelExecutionBusy(f'Preparing {model_name}...'):
+            spec = execution.prepare()
+        if spec is None:
+            self.logger.info('Segmentation process cancelled.')
+            self.titleLabel.setText('Segmentation process cancelled.')
+        return spec
+
+    def initSegmModel(self, model_name, init_kwargs, posData=None, replace=None):
+        """Return a model instance (a worker in isolated mode) or None.
+
+        Running workers are reused (see `ModelExecution.init_model`). Pass 
+        the instance that the new one replaces as `replace`, so that its 
+        worker can be re-initialized instead of starting a new one.
+        """
+        if posData is None:
+            posData = self.data[self.pos_i]
+        if replace is self.labelRoiModel:
+            # Still used by the magic labeller
+            replace = None
+        execution = self.getModelExecution(model_name)
+        with self.modelExecutionBusy(f'Initializing {model_name}...'):
+            if execution.prepare() is None:
+                return None
+            return execution.init_model(init_kwargs, posData, replace=replace)
+
+    def releaseSegmModel(self, model_name, model):
+        """Give back a model from `initSegmModel` that is not used anymore.
+
+        The worker keeps running for reuse; all workers stop on close.
+        """
+        if model is None or model is self.labelRoiModel:
+            return
+        execution = self.modelExecutions.get(model_name)
+        if execution is not None:
+            execution.release(model)
+
+    def releaseSegForLostIDsModels(self):
+        if hasattr(self, 'segForLostIDsModels'):
+            models, self.segForLostIDsModels = self.segForLostIDsModels, {}
+            for _, model_name, model in models.values():
+                self.releaseSegmModel(model_name, model)
+
+    def stopModelExecutions(self):
+        if not hasattr(self, 'modelExecutions'):
+            return
+        for execution in self.modelExecutions.values():
+            execution.stop()
+        self.segForLostIDsModels = {}
+        self.modelExecutions = {}
+
     def initSegmModelParams(
-            self, model_name, acdcSegment, init_params, segment_params, 
+            self, model_name, url, init_params, segment_params, 
             is_label_roi=False, initLastParams=False,
             extraParams=None, extraParamsTitle=None,ini_filename=None
 
         ):
         posData = self.data[self.pos_i]        
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
-        
         text_if_cancelled = 'Segmentation process cancelled.'
         out = prompts.init_segm_model_params(
             posData, model_name, init_params, segment_params, 
@@ -19379,12 +19523,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             model_name = 'thresholding'
 
         posData = self.data[self.pos_i]
-        # Check if model needs to be imported
-        acdcSegment = self.acdcSegment_li[idx]
-        if acdcSegment is None:
-            self.logger.info(f'Importing {model_name}...')
-            acdcSegment = myutils.import_segment_module(model_name)
-            self.acdcSegment_li[idx] = acdcSegment
 
         # Ask parameters if the user clicked on the action
         # Otherwise this function is called by "computeSegm" function and
@@ -19393,13 +19531,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if self.app.overrideCursor() == Qt.WaitCursor:
                 self.app.restoreOverrideCursor()
             self.segmModelName = model_name
-            # Read all models parameters
-            init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
-            # Prompt user to enter the model parameters
-            try:
-                url = acdcSegment.url_help()
-            except AttributeError:
-                url = None
+            # Read all models parameters (from its isolated env if used)
+            model_spec = self.prepareModelExecution(model_name)
+            if model_spec is None:
+                return
+            init_params, segment_params, url = model_spec
             
             self.preproc_recipe = None
             initLastParams = True
@@ -19422,7 +19558,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 initLastParams = False
             
             win = self.initSegmModelParams(
-                model_name, acdcSegment, init_params, segment_params, 
+                model_name, url, init_params, segment_params, 
                 is_label_roi=is_label_roi, 
                 initLastParams=initLastParams
             )
@@ -19454,8 +19590,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
             
-            model = myutils.init_segm_model(
-                acdcSegment, posData, win.init_kwargs
+            previous_model = self.models[idx]
+            model = self.initSegmModel(
+                model_name, win.init_kwargs, posData, replace=previous_model
             )
             if model is None:
                 self.logger.info('Segmentation process cancelled.')
@@ -19552,6 +19689,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
 
         self.model = model
+        # Re-enabled in segmWorkerFinished or workerCritical
+        self.setDisabled(True)
         
         self.segmWorkerMutex = QMutex()
         self.segmWorkerWaitCond = QWaitCondition()
@@ -19605,20 +19744,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             model_name = 'thresholding'
 
         posData = self.data[self.pos_i]
-        # Check if model needs to be imported
-        acdcSegment = self.acdcSegment_li[idx]
-        if acdcSegment is None:
-            self.logger.info(f'Importing {model_name}...')
-            acdcSegment = myutils.import_segment_module(model_name)
-            self.acdcSegment_li[idx] = acdcSegment
-
-        # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
-        # Prompt user to enter the model parameters
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
+        # Read all models parameters (from its isolated env if used)
+        model_spec = self.prepareModelExecution(model_name)
+        if model_spec is None:
+            return
+        init_params, segment_params, url = model_spec
         
         if model_name == 'thresholding':
             autoThreshWin = apps.QDialogAutomaticThresholding(
@@ -19629,7 +19759,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
         
         win = self.initSegmModelParams(
-            model_name, acdcSegment, init_params, segment_params
+            model_name, url, init_params, segment_params
         )
         if win is None:
             return
@@ -19662,7 +19792,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.titleLabel.setText('Segmentation process cancelled.')
             return
 
-        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+        model = self.initSegmModel(model_name, win.init_kwargs, posData)
         if model is None:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -19671,6 +19801,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             model.setupLogger(self.logger)
         except Exception as e:
             pass
+        # The video model is used only by this worker: stop it when done
+        previous = getattr(self, 'segmVideoModel', None)
+        if previous is not None:
+            self.releaseSegmModel(*previous)
+        self.segmVideoModel = (model_name, model)
         
         self.extendSegmDataIfNeeded(stopFrameNum)
         self.reInitLastSegmFrame(
@@ -19709,6 +19844,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.thread.start()
 
     def segmVideoWorkerFinished(self, exec_time, startFrameNum, stopFrameNum):
+        segmVideoModel = getattr(self, 'segmVideoModel', None)
+        if segmVideoModel is not None:
+            self.segmVideoModel = None
+            self.releaseSegmModel(*segmVideoModel)
         self.progressWin.workerFinished = True
         self.progressWin.close()
         self.progressWin = None
@@ -19816,6 +19955,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.lazyLoader = None
 
     def segmWorkerFinished(self, lab, exec_time):
+        self.setDisabled(False)
         posData = self.data[self.pos_i]
 
         if posData.segmInfo_df is not None and posData.SizeZ>1:
@@ -33339,7 +33479,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         msg.critical(self, err_title, err_msg)
 
     def reinitStoredSegmModels(self):
+        old_models = [
+            (getattr(model, 'model_name', None), model) 
+            for model in self.models if model is not None
+        ]
         self.models = [None]*len(self.models)
+        for model_name, model in old_models:
+            self.releaseSegmModel(model_name, model)
+        self.releaseSegForLostIDsModels()
     
     def checkAskSavePointsLayers(self):
         for toolbar in self.pointsLayersToolbars:
@@ -36624,6 +36771,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.stopPreprocWorker()
         self.stopCombineWorker()
         self.stopCcaIntegrityCheckerWorker()
+        self.stopModelExecutions()
         
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:
