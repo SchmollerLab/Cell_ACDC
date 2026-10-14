@@ -158,6 +158,25 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
     from cellacdc import myutils
 
     init_kwargs = dict(init_kwargs)
+    init_params, _ = myutils.getModelArgSpec(acdcSegment)
+    path_params = {
+        param.name for param in init_params
+        if myutils._serialize_model_param_type(param.type)['kind']
+        in ('path', 'csv_path', 'folder')
+    }
+    unsupported_paths = {
+        key for key in path_params & set(init_kwargs)
+        if init_kwargs[key] is not None and not (
+            isinstance(init_kwargs[key], str)
+            and init_kwargs[key] in ('', 'None')
+        )
+    }
+    if unsupported_paths:
+        raise ValueError(
+            f'Init kwargs {sorted(unsupported_paths)} reference client files. '
+            'The worker cannot access client-side paths; send the file data '
+            'instead.'
+        )
     # Empty selections ('' / 'None') mean "no file" and carry no client path
     for key in ('segm_endname', 'input_points_path'):
         if init_kwargs.get(key) in (None, '', 'None'):
@@ -210,8 +229,35 @@ def create_app(
     acdcSegment = myutils.import_segment_module(model_name)
     # Mutable holder, so `/init` can replace the model for all endpoints
     state = {'model': None}
+    model_lock = threading.Lock()
     if not defer_init:
-        state['model'] = instantiate_model(acdcSegment, init_kwargs or {})
+        with model_lock:
+            state['model'] = instantiate_model(acdcSegment, init_kwargs or {})
+
+    init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+
+    def serialize_params(params):
+        return [
+            [
+                param.name,
+                json.loads(json.dumps(param.default, default=str)),
+                myutils._serialize_model_param_type(param.type),
+                param.desc,
+                param.docstring,
+            ]
+            for param in params
+        ]
+
+    def call_model_method(method_name, *args, **kwargs):
+        with model_lock:
+            current_model = state['model']
+            if current_model is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail='Model is not initialized yet. POST /init first.'
+                )
+            method = getattr(current_model, method_name)
+            return method(*args, **_filter_kwargs(method, kwargs))
 
     class _ModelProxy:
         """Stands in for the model in the endpoints below.
@@ -254,7 +300,8 @@ def create_app(
         try:
             content = await data.read() if data is not None else None
             decoded = payload.decode(kwargs, content)
-            state['model'] = instantiate_model(acdcSegment, decoded)
+            with model_lock:
+                state['model'] = instantiate_model(acdcSegment, decoded)
             return {"status": "initialized"}
         except Exception:
             import traceback
@@ -270,6 +317,14 @@ def create_app(
         """
         return HealthResponse(status="ok", model=model_name)
 
+    @app.get("/spec")
+    def spec():
+        """Return model argument specs without requiring model initialization."""
+        return {
+            "init_params": serialize_params(init_params),
+            "segment_params": serialize_params(segment_params),
+        }
+
     @app.get("/info", response_model=InfoResponse)
     def info():
         """Describe the loaded model (read by `ModelClient` when connecting).
@@ -279,25 +334,26 @@ def create_app(
         (`segment3DT`, `second_ch_img_to_stack`, `predictCcaState`). HTTP 503
         before `/init`.
         """
-        if state['model'] is None:
-            raise HTTPException(
-                status_code=503,
-                detail='Model is not initialized yet. POST /init first.'
+        with model_lock:
+            model = state['model']
+            if model is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail='Model is not initialized yet. POST /init first.'
+                )
+            has_segment3DT = hasattr(model, "segment3DT")
+            has_second_ch = hasattr(model, "second_ch_img_to_stack")
+            return InfoResponse(
+                name=model_name,
+                version=getattr(model, "version", "1.0.0"),
+                gpu=_check_gpu(),
+                capabilities=Capabilities(
+                    segment=True,
+                    segment3DT=has_segment3DT,
+                    second_ch_img_to_stack=has_second_ch,
+                    predictCcaState=hasattr(model, "predictCcaState"),
+                )
             )
-        model = state['model']
-        has_segment3DT = hasattr(model, "segment3DT")
-        has_second_ch = hasattr(model, "second_ch_img_to_stack")
-        return InfoResponse(
-            name=model_name,
-            version=getattr(model, "version", "1.0.0"),
-            gpu=_check_gpu(),
-            capabilities=Capabilities(
-                segment=True,
-                segment3DT=has_segment3DT,
-                second_ch_img_to_stack=has_second_ch,
-                predictCcaState=hasattr(model, "predictCcaState"),
-            )
-        )
 
     # ---------------------------------------------------- direct segmentation
     # The request waits until the result is ready (used by the GUI/CLI).
@@ -317,7 +373,7 @@ def create_app(
             # Read the uploaded bytes and turn them back into a numpy array
             content = await image.read()
             arr = np.load(io.BytesIO(content))
-            out = model.segment(arr, **_filter_kwargs(model.segment, p))
+            out = call_model_method("segment", arr, **p)
             # Send the result back the same way: as `.npy` bytes
             buf = io.BytesIO()
             np.save(buf, out)
@@ -344,7 +400,7 @@ def create_app(
             p = json.loads(params) if params else {}
             content = await image.read()
             arr = np.load(io.BytesIO(content))
-            out = model.segment3DT(arr, **_filter_kwargs(model.segment3DT, p))
+            out = call_model_method("segment3DT", arr, **p)
             buf = io.BytesIO()
             np.save(buf, out)
             return Response(
@@ -381,7 +437,9 @@ def create_app(
         try:
             first_arr = np.load(io.BytesIO(await first.read()))
             second_arr = np.load(io.BytesIO(await second.read()))
-            out = model.second_ch_img_to_stack(first_arr, second_arr)
+            out = call_model_method(
+                "second_ch_img_to_stack", first_arr, second_arr
+            )
             buf = io.BytesIO()
             np.save(buf, out)
             return Response(
@@ -413,7 +471,7 @@ def create_app(
         try:
             img = np.load(io.BytesIO(await image.read()))
             lab = np.load(io.BytesIO(await precomputed_lab.read()))
-            cca_df = model.predictCcaState(img, lab)
+            cca_df = call_model_method("predictCcaState", img, lab)
             return {"cca_df": cca_df.to_json(orient="table")}
         except Exception:
             import traceback
@@ -434,9 +492,9 @@ def create_app(
             return
         try:
             if is_3dt:
-                out = model.segment3DT(arr, **_filter_kwargs(model.segment3DT, params))
+                out = call_model_method("segment3DT", arr, **params)
             else:
-                out = model.segment(arr, **_filter_kwargs(model.segment, params))
+                out = call_model_method("segment", arr, **params)
         except Exception:
             import traceback
             _transition_job(job_id, "failed", error=traceback.format_exc())

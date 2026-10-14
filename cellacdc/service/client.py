@@ -49,6 +49,32 @@ def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
     )
     ModelClient._raise_for_status(res)
 
+def get_model_arg_spec(base_url: str, timeout: float = 10.0):
+    """Fetch and decode model argument specs from a worker."""
+    from cellacdc import myutils
+
+    res = requests.get(f"{base_url.rstrip('/')}/spec", timeout=timeout)
+    ModelClient._raise_for_status(res)
+    data = res.json()
+
+    def decode_params(params):
+        return [
+            myutils.ArgSpec(
+                name=name,
+                default=default,
+                type=myutils._deserialize_model_param_type(param_type),
+                desc=desc,
+                docstring=docstring,
+            )
+            for name, default, param_type, desc, docstring in params
+        ]
+
+    return (
+        decode_params(data['init_params']),
+        decode_params(data['segment_params']),
+    )
+
+
 class ModelClient:
     """HTTP client interface for Cell-ACDC segmentation models.
     Presents the same interface as an in-process acdcSegment.Model instance.

@@ -1179,6 +1179,26 @@ def _jobs_app(monkeypatch, segment, **extra_methods):
     return endpoints, executor
 
 
+def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch):
+    import types
+    from cellacdc import myutils
+    from cellacdc.service import worker
+
+    class Model:
+        def __init__(self, model_path: os.PathLike = ''):
+            self.model_path = model_path
+
+        def segment(self, image):
+            return image
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(myutils, 'model_init_requires_segm_data', lambda _: False)
+
+    with pytest.raises(ValueError, match='model_path'):
+        worker.instantiate_model(module, {'model_path': '/client/model.pth'})
+    assert worker.instantiate_model(module, {}).model_path == ''
+
+
 def _submit_job(endpoints, arr):
     import asyncio
     submit = endpoints[('/jobs/segment', ('POST',))]
@@ -1325,6 +1345,91 @@ def test_worker_runs_model_specific_methods(monkeypatch):
     assert not endpoints[('/info', ('GET',))]().capabilities.predictCcaState
 
 
+def test_worker_serializes_inference_calls(monkeypatch):
+    import asyncio
+    import threading
+    import time
+
+    active = 0
+    max_active = 0
+    active_lock = threading.Lock()
+
+    def segment(image):
+        nonlocal active, max_active
+        with active_lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)
+        with active_lock:
+            active -= 1
+        return image
+
+    endpoints, executor = _jobs_app(monkeypatch, segment)
+    job_id = _submit_job(endpoints, np.zeros((2, 2)))
+    run_job, job_args = executor.calls[0]
+    barrier = threading.Barrier(2)
+
+    def run_direct():
+        barrier.wait()
+        asyncio.run(endpoints[('/segment', ('POST',))](
+            image=_FakeUpload(np.zeros((2, 2))), params='{}'
+        ))
+
+    def run_background():
+        barrier.wait()
+        run_job(*job_args)
+
+    direct_thread = threading.Thread(target=run_direct)
+    background_thread = threading.Thread(target=run_background)
+    direct_thread.start()
+    background_thread.start()
+    direct_thread.join(5)
+    background_thread.join(5)
+
+    assert not direct_thread.is_alive()
+    assert not background_thread.is_alive()
+    assert max_active == 1
+
+
+def test_worker_exposes_argument_specs_to_client(monkeypatch):
+    import types
+    from cellacdc import myutils
+    from cellacdc.service import client as client_module
+    from cellacdc.service import worker
+
+    class Model:
+        def __init__(self, diameter: int = 30):
+            pass
+
+        def segment(self, image, gauss_sigma: float = 0.5):
+            return image
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(myutils, 'import_segment_module', lambda _: module)
+    app = worker.create_app('fake')
+    endpoints = {
+        route.path: route.endpoint for route in app.routes
+        if hasattr(route, 'methods')
+    }
+    spec_data = endpoints['/spec']()
+
+    class Response:
+        ok = True
+
+        def json(self):
+            return spec_data
+
+    monkeypatch.setattr(
+        client_module.requests, 'get', lambda *args, **kwargs: Response()
+    )
+    init_params, segment_params = client_module.get_model_arg_spec(
+        'http://worker'
+    )
+
+    assert next(p for p in init_params if p.name == 'diameter').type is int
+    assert next(p for p in segment_params if p.name == 'gauss_sigma').type is float
+
+
 def test_model_client_forwards_model_specific_methods(monkeypatch):
     import pandas as pd
     from cellacdc.core import getBaseCca_df
@@ -1386,6 +1491,19 @@ def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
     from cellacdc import myutils
     from cellacdc.service import client as client_module
 
+    argspecs = [
+        myutils.ArgSpec('diameter', 0, int, '', ''),
+    ]
+    segment_argspecs = [myutils.ArgSpec('threshold', 0.0, float, '', '')]
+    monkeypatch.setattr(
+        client_module, 'get_model_arg_spec',
+        lambda url: (argspecs, segment_argspecs),
+    )
+    monkeypatch.setattr(
+        myutils, 'getModelArgSpecFromEnv',
+        lambda *args: (argspecs, segment_argspecs, None),
+    )
+
     segm = np.ones((2, 2), dtype=np.uint32)
     received = {}
 
@@ -1420,7 +1538,8 @@ def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
     )
     kernel.model = None
     kernel.model_name = 'm'
-    kernel.init_model_kwargs = {'segm_endname': 'segm', 'diameter': 30}
+    kernel.init_model_kwargs = {'segm_endname': 'segm', 'diameter': '30'}
+    kernel.model_kwargs = {'threshold': '2.5'}
     kernel.signals = cli.KernelCliSignals(print)
     kernel.logger_func = print
     cli.SegmKernel.init_segm_model.__wrapped__(kernel, posData=object())
@@ -1428,6 +1547,7 @@ def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
     assert received['kwargs']['diameter'] == 30
     assert received['kwargs']['segm_data'] is segm
     assert 'segm_endname' not in received['kwargs']
+    assert kernel.model_kwargs['threshold'] == 2.5
 
 
 def test_pkg_spec_accepts_distribution_name():

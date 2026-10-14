@@ -949,7 +949,11 @@ class segmWin(QMainWindow):
             'use3DdataFor2Dsegm': self.use3DdataFor2Dsegm,
             'reduce_memory_usage': self.reduce_memory_usage,
             'backend_type': getattr(self, 'backend_type', 'in_process'),
-            'backend_url': getattr(self, 'backend_url', None),
+            'backend_url': (
+                getattr(self, 'backend_url', None)
+                if getattr(self, 'backend_type', 'in_process') == 'remote'
+                else None
+            ),
             'env_python': getattr(self, 'env_python', None),
         }
         metadata_params = {
