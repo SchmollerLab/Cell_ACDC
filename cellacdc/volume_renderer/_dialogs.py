@@ -118,7 +118,7 @@ class AnimationVolumeViewerSetupDialog(QBaseDialog):
         self.zPosOrderCombobox = QComboBox()
         self.zPosOrderCombobox.addItems(paramOrderItems)
         self.zPosOrderCombobox.setCurrentText('5')
-        self.zPosParamWidget = AnimationParamWidget('1/6')
+        self.zPosParamWidget = AnimationParamWidget('1/s')
         paramsLayout.addWidget(self.zPosOrderCombobox, row, 0)
         paramsLayout.addWidget(
             label, row, 1, alignment=Qt.AlignLeft
@@ -138,7 +138,7 @@ class AnimationVolumeViewerSetupDialog(QBaseDialog):
         self.distanceOrderCombobox = QComboBox()
         self.distanceOrderCombobox.addItems(paramOrderItems)
         self.distanceOrderCombobox.setCurrentText('6')
-        self.distanceParamWidget = AnimationParamWidget('1/6')
+        self.distanceParamWidget = AnimationParamWidget('1/s')
         paramsLayout.addWidget(self.distanceOrderCombobox, row, 0)
         paramsLayout.addWidget(
             label, row, 1, alignment=Qt.AlignLeft
@@ -176,47 +176,68 @@ class AnimationVolumeViewerSetupDialog(QBaseDialog):
         self.mainLayout = mainLayout
 
         self.setLayout(mainLayout)
-    
+
     def changeOrder(self, order_number_text):
         sender = self.sender()
+        new_order = int(order_number_text)
 
-        # Find the current order of the sender.
-        current_order = next(
-            i + 1
-            for i, widgets in enumerate(self._widgets)
+        # Find the current position of the sender.
+        current_index = next(
+            i for i, widgets in enumerate(self._widgets)
             if widgets[0] is sender
         )
 
-        new_order = int(order_number_text)
+        new_index = new_order - 1
 
-        if new_order == current_order:
+        if new_index == current_index:
             return
 
-        # Update the other combobox to avoid duplicate order numbers.
-        for widgets in self._widgets:
-            combobox = widgets[0]
+        # Move the widget to the requested position without swapping.
+        widgets = self._widgets.pop(current_index)
+        self._widgets.insert(new_index, widgets)
 
-            if combobox is sender:
-                continue
-
-            if combobox.currentText() == order_number_text:
-                combobox.blockSignals(True)
-                combobox.setCurrentText(str(current_order))
-                combobox.blockSignals(False)
-                break
-
-        # Reorder the Python list.
-        widgets = self._widgets.pop(current_order - 1)
-        self._widgets.insert(new_order - 1, widgets)
-
-        # Update all comboboxes to reflect the new order.
-        for i, widgets in enumerate(self._widgets):
-            combobox = widgets[0]
-            combobox.blockSignals(True)
-            combobox.setCurrentText(str(i + 1))
-            combobox.blockSignals(False)
-        
         self._add_params_widgets()
+    
+    # def changeOrder(self, order_number_text):
+    #     sender = self.sender()
+
+    #     # Find the current order of the sender.
+    #     current_order = next(
+    #         i + 1
+    #         for i, widgets in enumerate(self._widgets)
+    #         if widgets[0] is sender
+    #     )
+
+    #     new_order = int(order_number_text)
+
+    #     if new_order == current_order:
+    #         return
+
+    #     # Update the other combobox to avoid duplicate order numbers.
+    #     for widgets in self._widgets:
+    #         combobox = widgets[0]
+
+    #         if combobox is sender:
+    #             continue
+
+    #         if combobox.currentText() == order_number_text:
+    #             combobox.blockSignals(True)
+    #             combobox.setCurrentText(str(current_order))
+    #             combobox.blockSignals(False)
+    #             break
+
+    #     # Reorder the Python list.
+    #     widgets = self._widgets.pop(current_order - 1)
+    #     self._widgets.insert(new_order - 1, widgets)
+
+    #     # Update all comboboxes to reflect the new order.
+    #     for i, widgets in enumerate(self._widgets):
+    #         combobox = widgets[0]
+    #         combobox.blockSignals(True)
+    #         combobox.setCurrentText(str(i + 1))
+    #         combobox.blockSignals(False)
+        
+    #     self._add_params_widgets()
 
     def _add_params_widgets(self):
         paramsLayout = self.paramsLayout

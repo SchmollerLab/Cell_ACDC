@@ -360,8 +360,6 @@ class okPushButton(PushButton):
         self.setIcon(QIcon(':yesGray.svg'))
         if isDefault:
             self.setDefault(True)
-        # QShortcut(Qt.Key_Return, self, self.click)
-        # QShortcut(Qt.Key_Enter, self, self.click)
 
 class MagnifyingGlassPushButton(PushButton):
     def __init__(self, *args, **kwargs):
