@@ -14998,7 +14998,7 @@ class ExportCurrentViewToolbar(ToolBar):
 
         self.dstBrowseButton = self.addButton(
             ':folder-open.svg', 
-            text='Select destination folder',
+            text='Select destination folder...',
         )
         self.dstBrowseButton.triggered.connect(
             self.selectDstFolder
@@ -15006,7 +15006,7 @@ class ExportCurrentViewToolbar(ToolBar):
 
         self.selectDstFromRecentPathsAction = self.addButton(
             ':open_file.svg', 
-            text='Select destination folder from recent paths',
+            text='Select destination folder from recent paths...',
         )
         self.selectDstFromRecentPathsAction.triggered.connect(
             self.selectDstFromRecentPaths
@@ -15014,7 +15014,7 @@ class ExportCurrentViewToolbar(ToolBar):
 
         self.showInFileManagerAction = self.addButton(
             ':drawer.svg', 
-            text='Open folder in file manager...',
+            text='Open folder in file manager',
         )
         self.showInFileManagerAction.triggered.connect(
             self.showInFileManager
@@ -15029,10 +15029,10 @@ class ExportCurrentViewToolbar(ToolBar):
         )
         self.exportAction.setToolTip(
             'Save current view data\n\n'
-            'Shortcut: Alt+E'
+            'Shortcut: Shift+E'
         )
         self.exportAction.triggered.connect(self.emitExport)
-        self.exportAction.keyPressShortcut = KeySequenceFromText('Alt+E')
+        self.exportAction.keyPressShortcut = KeySequenceFromText('Shift+E')
 
         self.widgetsWithShortcut['Export - Save current view data'] = (
             self.exportAction
@@ -15053,7 +15053,9 @@ class ExportCurrentViewToolbar(ToolBar):
         self.addStretch(10)
     
     def selectDstFromRecentPaths(self):
-        recent_paths, dates = myutils.get_recent_paths(self)
+        recent_paths, dates = myutils.get_export_current_view_gui_recent_paths(
+            self
+        )
         if not recent_paths:
             return
         
