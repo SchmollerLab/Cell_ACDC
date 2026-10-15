@@ -1343,7 +1343,7 @@ def _serialize_model_param_type(param_type):
             ('vector', _types.Vector), ('folder', _types.FolderPath),
             ('second_channel', _types.SecondChannelImage),
             ('hidden', _types.NotGUIParam), ('yeaz_model', _types.YeazV2ModelType),
-            ('csv_path', _types.CsvFilePath),
+            ('csv_path', _types.CsvFilePath)
         ):
         if param_type is cls:
             return {'kind': name}

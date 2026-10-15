@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import sys
 import numpy as np
@@ -1082,6 +1083,176 @@ def test_init_payload_roundtrip():
     np.testing.assert_array_equal(decoded['segm_data'], segm)
     pd.testing.assert_frame_equal(decoded['input_points_df'], df)
     assert decoded['gpu'] is False
+
+
+def test_init_payload_uploads_selected_files(tmp_path):
+    from cellacdc.service import payload
+
+    path = tmp_path / 'FUCCI (1).txt'
+    path.write_bytes(b'\x00custom model\xff')
+    kwargs = {
+        'model_path': str(path), 'denoise_model_path': 'None',
+        'empty_path': '', 'unset_path': None, 'label': str(path),
+    }
+    kwargs_json, data = payload.encode(
+        kwargs,
+        file_params={'model_path', 'denoise_model_path', 'empty_path', 'unset_path'},
+    )
+    assert json.loads(kwargs_json)['model_path'] == {
+        '__acdc_file__': 'model_path', 'name': path.name,
+    }
+    decoded = payload.decode(kwargs_json, data)
+    assert decoded['model_path'] == payload.ModelFile(path.name, path.read_bytes())
+    assert decoded['denoise_model_path'] == 'None'
+    assert decoded['empty_path'] == ''
+    assert decoded['unset_path'] is None
+    assert decoded['label'] == str(path)
+    assert kwargs['model_path'] == str(path)
+
+    with pytest.raises(FileNotFoundError):
+        payload.encode(
+            {'model_path': str(tmp_path / 'missing.pt')},
+            file_params={'model_path'},
+        )
+
+
+def test_uploaded_model_files_live_until_model_is_released(monkeypatch):
+    import gc
+    import types
+    from pathlib import Path
+    from cellacdc import myutils
+    from cellacdc.service import payload, worker
+
+    class Model:
+        def __init__(
+                self, model_path: os.PathLike = '',
+                denoise_model_path: os.PathLike = '',
+            ):
+            self.model_path = model_path
+            self.denoise_model_path = denoise_model_path
+            assert Path(model_path).read_bytes() == b'model'
+            assert Path(denoise_model_path).read_bytes() == b'denoiser'
+
+        def segment(self, image):
+            return Path(self.model_path).read_bytes()
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(myutils, 'model_init_requires_segm_data', lambda _: False)
+    model = worker.instantiate_model(module, {
+        'model_path': payload.ModelFile('weights.pt', b'model'),
+        'denoise_model_path': payload.ModelFile('weights.pt', b'denoiser'),
+    })
+    model_path = Path(model.model_path)
+    denoise_path = Path(model.denoise_model_path)
+    assert model_path != denoise_path
+    assert model.segment(None) == b'model'
+    del model
+    gc.collect()
+    assert not model_path.exists()
+    assert not denoise_path.exists()
+
+
+@pytest.mark.parametrize('name', ['../weights.pt', r'..\weights.pt', 'C:weights.pt', ''])
+def test_model_file_rejects_invalid_names(name):
+    from cellacdc.service.payload import ModelFile
+
+    with pytest.raises(ValueError, match='Invalid uploaded model filename'):
+        ModelFile(name, b'weights')
+
+
+def test_remote_backend_uploads_and_reinitializes_model_files(monkeypatch, tmp_path):
+    import asyncio
+    import gc
+    import types
+    from pathlib import Path
+    from fastapi import BackgroundTasks, HTTPException
+    from cellacdc import myutils
+    from cellacdc.service import client as client_module, worker
+
+    worker_paths = []
+
+    class Model:
+        def __init__(self, model_path: os.PathLike = ''):
+            self.model_path = Path(model_path)
+            worker_paths.append(self.model_path)
+            if self.model_path.read_bytes() == b'bad':
+                raise ValueError('Invalid model weights')
+
+        def segment(self, image):
+            return np.full(image.shape, self.model_path.read_bytes()[0])
+
+    monkeypatch.setattr(
+        myutils, 'import_segment_module', lambda _: types.SimpleNamespace(Model=Model)
+    )
+    monkeypatch.setattr(myutils, 'model_init_requires_segm_data', lambda _: False)
+    app = worker.create_app('fake', defer_init=True)
+    endpoints = {
+        route.path: route.endpoint for route in app.routes
+        if hasattr(route, 'methods')
+    }
+
+    def response(url, data, status=200):
+        res = requests.Response()
+        res.url, res.status_code = url, status
+        res._content = json.dumps(data).encode()
+        return res
+
+    def get(url, **kwargs):
+        assert url == 'http://worker/spec'
+        return response(url, endpoints['/spec']())
+
+    def post(url, data, files, **kwargs):
+        assert url == 'http://worker/init'
+        assert str(tmp_path) not in data['kwargs']
+        upload = types.SimpleNamespace()
+
+        async def read():
+            return files['data'][1]
+
+        upload.read = read
+        try:
+            result = asyncio.run(endpoints['/init'](
+                kwargs=data['kwargs'], data=upload,
+            ))
+        except HTTPException as err:
+            return response(url, {'detail': err.detail}, err.status_code)
+        return response(url, result)
+
+    monkeypatch.setattr(client_module.requests, 'get', get)
+    monkeypatch.setattr(client_module.requests, 'post', post)
+    monkeypatch.setattr(
+        client_module.ModelClient, '_fetch_info', lambda _: endpoints['/info']()
+    )
+    backend = client_module.RemoteBackend('http://worker')
+    path = tmp_path / 'FUCCI (1).txt'
+    path.write_bytes(b'\x01model')
+    client = backend.get_client(init_model_kwargs={'model_path': path})
+    path.unlink()
+    assert worker_paths[0].name == 'FUCCI (1).txt'
+
+    def segment():
+        result = asyncio.run(endpoints['/segment'](
+            image=_FakeUpload(np.zeros((2, 2))), params='{}',
+        ))
+        return np.load(io.BytesIO(result.body))
+
+    np.testing.assert_array_equal(segment(), np.ones((2, 2)))
+    path.write_bytes(b'\x02model')
+    client_module.post_init(backend.url, {'model_path': str(path)})
+    gc.collect()
+    assert not worker_paths[0].exists()
+    np.testing.assert_array_equal(segment(), np.full((2, 2), 2))
+    path.write_bytes(b'bad')
+    with pytest.raises(RuntimeError, match='Invalid model weights'):
+        client_module.post_init(backend.url, {'model_path': str(path)})
+    assert not worker_paths[-1].exists()
+    assert worker_paths[1].exists()
+    np.testing.assert_array_equal(segment(), np.full((2, 2), 2))
+    result = endpoints['/shutdown'](BackgroundTasks())
+    assert result == {'status': 'shutting down'}
+    assert not worker_paths[1].exists()
+    client.close()
+    backend.stop()
 
 
 def _fake_segment_module(requires_segm):

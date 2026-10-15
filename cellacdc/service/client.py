@@ -35,9 +35,16 @@ def _sanitize_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
 
 def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
     """Initialize a worker started with `--defer-init` (sends data, not paths)."""
+    from cellacdc import myutils
     from cellacdc.service import payload
 
-    kwargs_json, data = payload.encode(init_kwargs)
+    init_params, _ = get_model_arg_spec(base_url, timeout=timeout)
+    file_params = {
+        param.name for param in init_params
+        if myutils._serialize_model_param_type(param.type)['kind']
+        in ('path', 'csv_path')
+    }
+    kwargs_json, data = payload.encode(init_kwargs, file_params=file_params)
     files = None
     if data is not None:
         files = {"data": ("init.npz", data, "application/octet-stream")}
@@ -288,19 +295,13 @@ class LocalBackend:
         return self.base_url
 
     def start(self, timeout: float = 120.0) -> ModelClient:
-        from cellacdc.service import payload
-
-        defer_init = payload.needs_payload(self.init_model_kwargs)
         cmd = [
             self.env_python, "-m", "cellacdc.service.worker", "--server",
             "--model", self.model_name,
             "--port", str(self.port),
             "--host", self.host,
+            "--defer-init",
         ]
-        if defer_init:
-            cmd.append("--defer-init")
-        else:
-            cmd += ["--init-kwargs", json.dumps(self.init_model_kwargs)]
         env = dict(os.environ, PYTHONUNBUFFERED="1")
         self._output = collections.deque(maxlen=200)
         self.proc = subprocess.Popen(
@@ -331,8 +332,7 @@ class LocalBackend:
                 healthy = False
                 last_error = f"{type(err).__name__}: {err}"
             if healthy:
-                if defer_init:
-                    self._initialize(cmd, timeout - (time.time() - t0))
+                self._initialize(cmd, timeout - (time.time() - t0))
                 try:
                     self.client = ModelClient(self.base_url)
                 except Exception as err:

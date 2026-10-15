@@ -154,22 +154,40 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
 
     The worker may run on another machine, so it never receives client file
     paths: the client loads files itself and sends the data (`segm_data`,
-    `input_points_df`). Remaining path parameters are rejected with an error.
+    `input_points_df`, or uploaded model files). Uploaded files are stored in
+    temporary directories until the model is released. Raw client paths and
+    directory selections are rejected with an error.
     Models whose `__init__` has a required positional argument receive the
     auxiliary segmentation as that argument.
     """
+    from contextlib import ExitStack
     import inspect
+    import tempfile
+    import weakref
     from cellacdc import myutils
+    from cellacdc.service.payload import ModelFile
 
     init_kwargs = dict(init_kwargs)
     init_params, _ = myutils.getModelArgSpec(acdcSegment)
     path_params = {
-        param.name for param in init_params
-        if myutils._serialize_model_param_type(param.type)['kind']
-        in ('path', 'csv_path', 'folder')
+        param.name: myutils._serialize_model_param_type(param.type)['kind']
+        for param in init_params
     }
+    uploaded = {
+        key for key, value in init_kwargs.items()
+        if isinstance(value, ModelFile)
+    }
+    invalid_uploads = {
+        key for key in uploaded
+        if path_params.get(key) not in ('path', 'csv_path')
+    }
+    if invalid_uploads:
+        raise ValueError(
+            f'Init kwargs {sorted(invalid_uploads)} do not accept file uploads.'
+        )
     unsupported_paths = {
-        key for key in path_params & set(init_kwargs)
+        key for key in (set(path_params) & set(init_kwargs)) - uploaded
+        if path_params[key] in ('path', 'csv_path', 'folder')
         if init_kwargs[key] is not None and not (
             isinstance(init_kwargs[key], str)
             and init_kwargs[key] in ('', 'None')
@@ -196,14 +214,30 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
     args = inspect.getfullargspec(acdcSegment.Model.__init__).args
     if 'is_rgb' not in args:
         init_kwargs.pop('is_rgb', None)
-    if myutils.model_init_requires_segm_data(acdcSegment):
-        if segm_data is None:
-            raise ValueError(
-                'This model requires an auxiliary segmentation (segm_data), '
-                'but none was sent.'
+    with ExitStack() as files:
+        for key in uploaded:
+            upload = init_kwargs[key]
+            directory = files.enter_context(
+                tempfile.TemporaryDirectory(prefix='cellacdc-model-')
             )
-        return acdcSegment.Model(segm_data, **init_kwargs)
-    return acdcSegment.Model(**init_kwargs)
+            path = os.path.join(directory, upload.name)
+            with open(path, 'wb') as stream:
+                stream.write(upload.data)
+            init_kwargs[key] = path
+        if myutils.model_init_requires_segm_data(acdcSegment):
+            if segm_data is None:
+                raise ValueError(
+                    'This model requires an auxiliary segmentation (segm_data), '
+                    'but none was sent.'
+                )
+            model = acdcSegment.Model(segm_data, **init_kwargs)
+        else:
+            model = acdcSegment.Model(**init_kwargs)
+        if uploaded:
+            model._acdc_uploaded_files_cleanup = weakref.finalize(
+                model, files.pop_all().close
+            )
+        return model
 
 def create_app(
         model_name: str,
@@ -225,7 +259,7 @@ def create_app(
         Keyword arguments for `acdcSegment.Model` (JSON values only).
     defer_init : bool
         If True, do not create the model now: the client sends the init
-        kwargs (possibly including arrays) later with `POST /init`.
+        kwargs (possibly including arrays or model files) with `POST /init`.
     """
     from cellacdc import myutils
     from cellacdc.service import payload
@@ -302,7 +336,7 @@ def create_app(
             kwargs: JSON text with the init kwargs; arrays are replaced by
                     placeholders, DataFrames are embedded as JSON (see
                     `payload.py`).
-            data:   optional `.npz` file with the arrays for those placeholders.
+            data:   optional `.npz` file with arrays and model-file bytes.
         Response: `{"status": "initialized"}` or HTTP 500 with the traceback.
         """
         try:
@@ -607,6 +641,12 @@ def create_app(
         `BackgroundTasks` runs `_kill` *after* the response has been sent, so
         the client still receives `{"status": "shutting down"}`.
         """
+        with model_lock:
+            cleanup = getattr(state['model'], '_acdc_uploaded_files_cleanup', None)
+            if cleanup is not None:
+                cleanup()
+            state['model'] = None
+
         def _kill():
             import time
             time.sleep(0.5)
@@ -633,7 +673,7 @@ def main():
     parser.add_argument(
         "--defer-init", action="store_true",
         help="Start without a model; initialize it via POST /init (needed "
-             "when init kwargs contain data such as arrays)"
+             "when init kwargs contain arrays or uploaded model files)"
     )
 
     parser.add_argument(
