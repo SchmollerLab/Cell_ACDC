@@ -22572,7 +22572,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if button in self.toolsActiveInProj3Dsegm:
                 continue
 
-            if action in self.functionsNotTested3D or button in self.functionsNotTested3D:
+            if action in self.functionsNotTested3D:
+                continue
+            
+            if button in self.functionsNotTested3D:
                 continue
             
             try:
@@ -22586,11 +22589,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         button.setToolTip(tooltip[len(prefix):])
             except:
                 pass
+
             action.setDisabled(disabled)
-            try:
-                button.setChecked(False)
-            except Exception as err:
-                pass
+
+            if disabled:
+                try:
+                    button.setChecked(False)
+                except Exception as err:
+                    pass
         
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
@@ -31052,8 +31058,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if single_slice_del_in_3D:
             lab2D = self.get_2Dlab(lab)
-            rp = rp.get_slice_rp(self.zSliceScrollBar.sliderPosition(), 
-                                         self.switchPlaneCombobox.depthAxes())
+            rp = rp.get_slice_rp(
+                self.zSliceScrollBar.sliderPosition(), 
+                self.switchPlaneCombobox.depthAxes()
+            )
 
         if isinstance(delID, int):
             delID = [delID]
