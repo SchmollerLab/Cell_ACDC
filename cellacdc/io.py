@@ -338,7 +338,10 @@ def export_current_view_gui_cellpose(
     seg_npy_filepath = os.path.join(dst_folderpath, seg_npy_filename)
 
     skimage.io.imsave(tif_filepath, tif_data)
-    np.save(seg_npy_filepath, lab)
+
+    # Cellpose expects a dictionary with key "masks", see `cellpose.io.imread`
+    segmentation = {"masks": lab}
+    np.save(seg_npy_filepath, segmentation)
 
     if not verbose:
         return
