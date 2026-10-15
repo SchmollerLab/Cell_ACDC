@@ -191,7 +191,15 @@ class QtHandler(PromptHandler):
     @staticmethod
     def _html(text):
         from cellacdc import html_utils
-        return html_utils.paragraph((text or '').replace('\n', '<br>'))
+        if not text:
+            return html_utils.paragraph(text)
+            
+        html_text = html_utils.paragraph(
+            html_utils.urls_to_html(
+                text.replace('\n', '<br>')
+            )
+        )
+        return html_text
 
     def _exec_dialog(self, prompt: Prompt):
         if prompt.kind == CHOICE and prompt.dialog == 'pytorch':

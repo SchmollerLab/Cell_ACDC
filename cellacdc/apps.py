@@ -10124,6 +10124,11 @@ class QLineEditDialog(QDialog):
         if not msg.startswith('<p'):
             msg = html_utils.paragraph(msg, center=True)
         msg = QLabel(msg)
+        msg.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
+        msg.setOpenExternalLinks(True)
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
         
         if isFloat:
