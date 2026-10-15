@@ -371,8 +371,8 @@ class SegForLostIDsWorker(QObject):
                 customPostProcessFeatures = win.customPostProcessFeatures
                 customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
 
-            use_gpu = effective_init_kwargs.get('device_type', 'cpu').lower() != 'cpu'
-            use_gpu = use_gpu or effective_init_kwargs.get('use_gpu', False)
+            use_gpu = myutils.check_gpu_requested_segm_model(effective_init_kwargs)
+            use_gpu = use_gpu or effective_init_kwargs.get('device_type', 'cpu').lower() != 'cpu'
 
             # self.logger.info('[SegForLostIDs] Checking GPU availability...')
             self.emitSigAskInstallGPU(base_model_name, use_gpu)
@@ -388,6 +388,9 @@ class SegForLostIDsWorker(QObject):
                     changed_smth = True
                 if 'use_gpu' in effective_init_kwargs:
                     effective_init_kwargs = dict(effective_init_kwargs, use_gpu=False)
+                    changed_smth = True
+                if 'gpu' in effective_init_kwargs:
+                    effective_init_kwargs = dict(effective_init_kwargs, gpu=False)
                     changed_smth = True
                 if 'device_type' in effective_init_kwargs:
                     effective_init_kwargs = dict(effective_init_kwargs, device_type='cpu')

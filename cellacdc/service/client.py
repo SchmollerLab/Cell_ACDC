@@ -20,6 +20,21 @@ def _find_free_port(host: str = "127.0.0.1") -> int:
         s.listen(1)
         return s.getsockname()[1]
 
+def _cast_value(value: Any):
+    if isinstance(value, (int, float, str, bool, type(None))):
+        return value
+    if isinstance(value, (list, tuple)):
+        return type(value)(_cast_value(v) for v in value)
+    if isinstance(value, dict):
+        return {k: _cast_value(v) for k, v in value.items()}
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, np.floating):
+        return float(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    return str(value)
+
 def _sanitize_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = {}
     for k, v in kwargs.items():
@@ -27,10 +42,13 @@ def _sanitize_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
             continue
         # Check JSON serializability
         try:
+            v = _cast_value(v)
+            k = _cast_value(k)
             json.dumps(v)
             sanitized[k] = v
-        except (TypeError, OverflowError):
-            pass
+        except Exception:
+            print(f"Failed to serialize key={k}, value={v}")
+            print(f"Type of key={type(k)}, type of value={type(v)}")
     return sanitized
 
 def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
@@ -123,12 +141,12 @@ class ModelClient:
             start_z_slice: Optional[int] = None, 
             **kwargs
         ) -> np.ndarray:
-        p = _sanitize_kwargs(kwargs)
         if frame_i is not None:
-            p["frame_i"] = frame_i
+            kwargs["frame_i"] = frame_i
         if start_z_slice is not None:
-            p["start_z_slice"] = start_z_slice
-
+            kwargs["start_z_slice"] = start_z_slice
+            
+        p = _sanitize_kwargs(kwargs)
         buf = io.BytesIO()
         np.save(buf, image)
         buf.seek(0)

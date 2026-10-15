@@ -16,6 +16,11 @@ Execution modes (`ModelExecution.backend_type`):
 
 Errors in the isolated mode are raised; there is no silent fallback to the
 in-process mode.
+
+GPU checks in the client must pass ``execution.env_python`` to
+``myutils.check_gpu_available`` after ``prepare()``. This inspects the selected
+model environment and targets GPU installation instructions to it. In-process
+executions leave ``env_python`` as None.
 """
 from typing import Any, Callable, Dict, List, Optional, Tuple
 import dataclasses

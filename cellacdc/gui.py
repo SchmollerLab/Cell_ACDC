@@ -9884,32 +9884,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self._ackSegForLostIDsWorker('init_model')
 
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
-        if hasattr(self, 'segForLostIDsGPUSettings'):
+        worker = self.SegForLostIDsWorker
+        worker.gpu_go = False
+        worker.dont_force_cpu = False
+        try:
+            python_exec = self.getModelExecution(model_name).env_python
+            cached = getattr(self, 'segForLostIDsGPUSettings', {})
             if (
-                self.segForLostIDsGPUSettings.get('model_name') == model_name
-                and self.segForLostIDsGPUSettings.get('use_gpu') == use_gpu
+                cached.get('model_name') == model_name
+                and cached.get('use_gpu') == use_gpu
+                and cached.get('python_exec') == python_exec
             ):
-                self.SegForLostIDsWorker.gpu_go = (
-                    self.segForLostIDsGPUSettings['gpu_go']
-                    )
-                self.SegForLostIDsWorker.dont_force_cpu = (
-                    self.segForLostIDsGPUSettings['dont_force_cpu']
-                    )
-                self._ackSegForLostIDsWorker('ask_install_gpu')
+                worker.gpu_go = cached['gpu_go']
+                worker.dont_force_cpu = cached['dont_force_cpu']
                 return
-        
-        result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
-        self.SegForLostIDsWorker.gpu_go = result
-        dont_force_cpu = myutils.check_gpu_available(
-            model_name, use_gpu, do_not_warn=True)
-        self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
-        self.segForLostIDsGPUSettings = {
-            'gpu_go': result,
-            'dont_force_cpu': dont_force_cpu,
-            'model_name': model_name,
-            'use_gpu': use_gpu,
-        }
-        self._ackSegForLostIDsWorker('ask_install_gpu')
+
+            result = myutils.check_gpu_available(
+                model_name, use_gpu, qparent=self, python_exec=python_exec
+            )
+            dont_force_cpu = myutils.check_gpu_available(
+                model_name, use_gpu, do_not_warn=True, python_exec=python_exec
+            )
+            worker.gpu_go = result
+            worker.dont_force_cpu = dont_force_cpu
+            self.segForLostIDsGPUSettings = {
+                'gpu_go': result,
+                'dont_force_cpu': dont_force_cpu,
+                'model_name': model_name,
+                'use_gpu': use_gpu,
+                'python_exec': python_exec,
+            }
+        except Exception:
+            self.logger.exception('Could not check GPU availability for %s', model_name)
+        finally:
+            self._ackSegForLostIDsWorker('ask_install_gpu')
 
     def onSigStoreDataSegForLostIDsWorker(self, autosave):
         self.onSigStoreData(
@@ -19586,8 +19594,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 custom_postprocess_features=self.customPostProcessFeatures
             )
 
-            use_gpu = win.init_kwargs.get('gpu', False)
-            proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+            use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
+            proceed = myutils.check_gpu_available(
+                model_name, use_gpu, qparent=self,
+                python_exec=self.getModelExecution(model_name).env_python,
+            )
             if not proceed:
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
@@ -19788,8 +19799,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if win.secondChannelName is not None:
             secondChannelData = self.getSecondChannelData()
 
-        use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+        use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
+        proceed = myutils.check_gpu_available(
+            model_name, use_gpu, qparent=self,
+            python_exec=self.getModelExecution(model_name).env_python,
+        )
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -20064,8 +20078,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.titleLabel.setText('Segmentation aborted.')
             return
 
-        use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+        use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
+        proceed = myutils.check_gpu_available(
+            model_name, use_gpu, qparent=self,
+            python_exec=self.getModelExecution(model_name).env_python,
+        )
         if not proceed:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')

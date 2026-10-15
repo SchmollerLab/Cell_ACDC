@@ -4704,7 +4704,7 @@ def get_pip_conda_prefix(list_return=False):
         return conda_prefix, pip_prefix
 
 
-def _warn_install_gpu(model_name, ask_installs, qparent=None):
+def _warn_install_gpu(model_name, ask_installs, qparent=None, python_exec=None):
     
     cellpose_cuda_url = (
         r'https://github.com/mouseland/cellpose#gpu-version-cuda-on-windows-or-linux'
@@ -4725,7 +4725,17 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     direct_ml_href = f'{html_utils.href_tag("direct_ml_DirectMLref", direct_ml_url)}'
     torch_directml_href = f'{html_utils.href_tag("directml pytorch", torch_directml_url)}'
 
-    conda_prefix, pip_prefix = get_pip_conda_prefix()
+    py_exec = python_exec or sys.executable
+    pip_args = [py_exec, '-m', 'pip']
+    pip_command = (
+        subprocess.list2cmdline(pip_args) if is_win
+        else ' '.join(shlex.quote(arg) for arg in pip_args)
+    )
+    cuda_commands = (
+        f'{pip_command} uninstall torch torchvision torchaudio',
+        f'{pip_command} install torch torchvision torchaudio '
+        '--index-url https://download.pytorch.org/whl/cu128',
+    )
 
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph(f"""
@@ -4733,19 +4743,15 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         to install a <b>PyTorch version which can use it</b>.<br>
         We recomment using CUDA over DirectML, but if you are using a Windows
         machine with an AMD GPU, you can use DirectML.<br>
+        Model environment: <code>{py_exec}</code><br>
         """)
     txt_cuda_title = html_utils.paragraph(f"<b>CUDA</b>", font_size='18px')
 
-    pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        First, uninstall the CPU version of PyTorch with the following command:<br><br>
-        <code>{pip_prefix} uninstall torch</code>.<br><br>
-        Then, install the CUDA version required by your GPU with the follwing 
-        command (in this case 12.8):<br><br>
-        <code>{pip_prefix} torch torchvision torchaudio --index-url 
-        https://download.pytorch.org/whl/cu128</code>
-        <br>
+        Run the two copyable commands below in order: first uninstall the CPU
+        version of PyTorch, then install the CUDA version required by your GPU
+        (CUDA 12.8 in the second command).<br>
         """)
     
     add_info = html_utils.to_admonition(
@@ -4807,6 +4813,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     msg.warning(
         qparent, 'PyTorch GPU version not installed', txt, 
         buttonsTexts=buttons,
+        commands=cuda_commands if 'cuda' in ask_installs else None,
     )
 
     if msg.cancel:
@@ -4814,14 +4821,26 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     
     if msg.clickedButton == directMLButton:
         py_ver = sys.version_info
-        if is_win and py_ver.major == 3 and py_ver.minor < 13:
+        if python_exec is not None and python_exec != sys.executable:
+            proc = subprocess.run(
+                [python_exec, '-c',
+                 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'],
+                capture_output=True, text=True, check=True,
+            )
+            major, minor = map(int, proc.stdout.strip().split('.'))
+        else:
+            major, minor = py_ver.major, py_ver.minor
+        if is_win and major == 3 and 8 <= minor < 13:
             success = check_install_package(
                 pkg_name = 'torch-directml',
                 import_pkg_name = 'torch_directml',
                 pypi_name = 'torch-directml',
                 return_outcome=True,
+                python_exec=python_exec,
+                qparent=qparent,
             )
-            purge_module('torch')
+            if python_exec in (None, sys.executable):
+                purge_module('torch')
             return success, True
         else:
             msg = widgets.myMessageBox()
@@ -4838,12 +4857,60 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         return True, False
 
 def check_gpu_requested_segm_model(init_kwargs):
-    gpu = init_kwargs.get('gpu', False)
+    gpu = init_kwargs.get('gpu', False) or init_kwargs.get('use_gpu', False)
     if gpu:
         return True
     
-    device_type = init_kwargs.get('device_type', 'cpu')
-    return device_type == 'gpu' or device_type == ''
+    device_type = init_kwargs.get('device_type', 'cpu').lower()
+    return device_type in ('gpu', 'directml_gpu', '')
+
+
+def _available_gpu_frameworks(cuda, directML):
+    """Inspect GPU backends only in the interpreter that runs the model."""
+    available = []
+    if cuda:
+        try:
+            import torch
+        except ModuleNotFoundError as err:
+            if err.name != 'torch':
+                raise
+        else:
+            if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+                available.append('cuda')
+            if is_mac_arm64 and torch.backends.mps.is_available():
+                available.append('mps')
+    if directML and is_win:
+        try:
+            import torch_directml
+        except ModuleNotFoundError as err:
+            if err.name != 'torch_directml':
+                raise
+        else:
+            if torch_directml.is_available():
+                available.append('directML')
+    return available
+
+
+def _available_gpu_frameworks_from_env(python_exec, cuda, directML):
+    script = f'''
+import json
+from cellacdc.myutils import _available_gpu_frameworks
+print("__ACDC_GPU__" + json.dumps(_available_gpu_frameworks({cuda!r}, {directML!r})))
+'''
+    proc = subprocess.run(
+        [python_exec, '-c', script, '--server'],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f'Failed to check GPU availability in {python_exec}:\n{proc.stderr}'
+        )
+    for line in proc.stdout.splitlines():
+        if line.startswith('__ACDC_GPU__'):
+            return json.loads(line[len('__ACDC_GPU__'):])
+    raise RuntimeError(
+        f'No GPU availability returned by {python_exec}:\n{proc.stdout}'
+    )
 
 def check_gpu_available(
         model_name, use_gpu, 
@@ -4851,68 +4918,39 @@ def check_gpu_available(
         qparent=None, 
         cuda=False, 
         directML=False, 
-        return_available_gpu_type=False
+        return_available_gpu_type=False,
+        python_exec=None,
     ):
+    """Check the model's GPU backends in `python_exec` (current process by default).
+
+    Pass the interpreter selected by ModelExecution for isolated models. GPU
+    warnings and installations stay in the client and target that interpreter.
+    `do_not_warn` never opens dialogs or installs packages.
+    """
     if not use_gpu:
         if return_available_gpu_type:
             return True, []
         else:
             return True
     
-    ask_for_cuda = False
-    if cuda:
-        try:
-            import torch
-            if not torch.cuda.is_available():
-                ask_for_cuda = True
-            if not torch.cuda.device_count() > 0:
-                ask_for_cuda = True
-        except ModuleNotFoundError:
-            ask_for_cuda = True
-    
-    ask_for_directML = False
-    if directML:
-        if is_win:
-            try:
-                import torch_directml
-                if not torch_directml.is_available():
-                    ask_for_directML = True
-            except ModuleNotFoundError:
-                ask_for_directML = True
-            
     frameworks = _available_frameworks(model_name)
-    ask_installs = set() if not ask_for_cuda else {'cuda'}
-    ask_installs.update(
-        {'directML'} if ask_for_directML else set()
-    )
-    framework_available = False
-    available_frameworks_list = []
-    for framework, model_compatible in frameworks.items():
-        if not model_compatible:
-            continue
-        if framework == 'cuda':
-            import torch
-            if not torch.cuda.is_available():
-                ask_installs.add('cuda')
-            elif not torch.cuda.device_count() > 0:
-                ask_installs.add('cuda')
-            else:
-                framework_available = True
-                available_frameworks_list.append('cuda')
-        elif framework == 'directML':
-            if is_win:
-                try:
-                    import torch_directml
-                    if not torch_directml.is_available():
-                        ask_installs.add('directML')
-                    else:
-                        framework_available = True
-                        available_frameworks_list.append('directML')
-                except ModuleNotFoundError:
-                    ask_installs.add('directML')
-        elif is_mac_arm64:
-            framework_available = True
-            break
+    check_cuda = cuda or frameworks['cuda']
+    check_directML = directML or frameworks['directML']
+    if python_exec is not None and python_exec != sys.executable:
+        detected = _available_gpu_frameworks_from_env(
+            python_exec, check_cuda, check_directML
+        )
+    else:
+        detected = _available_gpu_frameworks(check_cuda, check_directML)
+    ask_for_cuda = cuda and 'cuda' not in detected
+    ask_for_directML = directML and is_win and 'directML' not in detected
+    ask_installs = {
+        name for name, check in (
+            ('cuda', check_cuda), ('directML', check_directML and is_win)
+        ) if check and name not in detected
+    }
+    available_frameworks_list = detected
+    framework_available = bool(available_frameworks_list)
     
     if framework_available and not ask_for_cuda and not ask_for_directML:
         if return_available_gpu_type:
@@ -4926,7 +4964,19 @@ def check_gpu_available(
         else:
             return False
     
-    proceed, directML_installed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
+    if is_server_mode():
+        logging.getLogger(__name__).warning(
+            'GPU unavailable for %s in %s; using CPU. '
+            'Install GPU support from the Cell-ACDC client.',
+            model_name, sys.executable,
+        )
+        if return_available_gpu_type:
+            return True, available_frameworks_list
+        return True
+
+    proceed, directML_installed = _warn_install_gpu(
+        model_name, ask_installs, qparent=qparent, python_exec=python_exec
+    )
     if return_available_gpu_type:
         if directML_installed:
             available_frameworks_list.append('directML')
