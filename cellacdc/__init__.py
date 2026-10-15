@@ -373,19 +373,22 @@ def try_input_install_package(pkg_name, install_command, question=None):
             f'Install it with the command `{install_command}`.'
         )
 
-try:
-    # Force PyQt6 if available
+if not RUNNING_AS_SERVER:
     try:
-        from PyQt6 import QtCore
-        os.environ["QT_API"] = "pyqt6"
+        # Force PyQt6 if available
+        try:
+            from PyQt6 import QtCore
+            os.environ["QT_API"] = "pyqt6"
+        except Exception as e:
+            pass
+        from qtpy import QtCore
+        import pyqtgraph
+        import matplotlib
+        GUI_INSTALLED = True
     except Exception as e:
-        pass
-    from qtpy import QtCore
-    import pyqtgraph
-    import matplotlib
-    GUI_INSTALLED = True
-except Exception as e:
-    GUI_INSTALLED = False        
+        GUI_INSTALLED = False        
+else:
+    GUI_INSTALLED = False
 
 import pandas as pd
 

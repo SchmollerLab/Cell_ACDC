@@ -1345,6 +1345,136 @@ def test_worker_runs_model_specific_methods(monkeypatch):
     assert not endpoints[('/info', ('GET',))]().capabilities.predictCcaState
 
 
+@pytest.mark.parametrize('path', [
+    '/init', '/segment', '/segment3DT', '/second_ch_img_to_stack',
+    '/predictCcaState',
+])
+def test_worker_model_operations_leave_event_loop_responsive(monkeypatch, path):
+    import asyncio
+    import threading
+    import pandas as pd
+    from cellacdc.service import worker
+
+    started = threading.Event()
+    release = threading.Event()
+    operation_threads = []
+
+    def operation(*args):
+        operation_threads.append(threading.get_ident())
+        started.set()
+        if not release.wait(5):
+            raise RuntimeError('Event loop did not release the model operation')
+        if path == '/predictCcaState':
+            return pd.DataFrame({'state': [1]})
+        return args[0]
+
+    endpoints, _ = _jobs_app(
+        monkeypatch, operation, segment3DT=operation,
+        second_ch_img_to_stack=operation, predictCcaState=operation,
+    )
+    instantiate = worker.instantiate_model
+
+    def initialize(module, kwargs):
+        operation(None)
+        return instantiate(module, kwargs)
+
+    monkeypatch.setattr(worker, 'instantiate_model', initialize)
+    arr = np.ones((2, 2))
+    if path == '/init':
+        kwargs = {'kwargs': '{}', 'data': None}
+    elif path == '/second_ch_img_to_stack':
+        kwargs = {'first': _FakeUpload(arr), 'second': _FakeUpload(arr)}
+    elif path == '/predictCcaState':
+        kwargs = {
+            'image': _FakeUpload(arr), 'precomputed_lab': _FakeUpload(arr)
+        }
+    else:
+        kwargs = {'image': _FakeUpload(arr), 'params': '{}'}
+
+    async def exercise():
+        loop_thread = threading.get_ident()
+        task = asyncio.create_task(endpoints[(path, ('POST',))](**kwargs))
+        try:
+            async def wait_started():
+                while not started.is_set():
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(wait_started(), 2)
+            assert len(operation_threads) == 1
+            assert operation_threads[0] != loop_thread
+            assert not task.done()
+            assert endpoints[('/health', ('GET',))]().status == 'ok'
+        finally:
+            release.set()
+            response = await task
+        if path == '/init':
+            assert response == {'status': 'initialized'}
+        elif path == '/predictCcaState':
+            result = pd.read_json(io.StringIO(response['cca_df']), orient='table')
+            pd.testing.assert_frame_equal(result, pd.DataFrame({'state': [1]}))
+        else:
+            np.testing.assert_array_equal(np.load(io.BytesIO(response.body)), arr)
+
+    asyncio.run(exercise())
+
+
+@pytest.mark.parametrize('path', ['/init', '/segment'])
+def test_worker_lock_wait_leaves_event_loop_responsive(monkeypatch, path):
+    import asyncio
+    import threading
+    from cellacdc.service import worker
+
+    started = threading.Event()
+    release = threading.Event()
+
+    def segment(image):
+        started.set()
+        if not release.wait(5):
+            raise RuntimeError('Event loop did not release the background job')
+        return image
+
+    endpoints, executor = _jobs_app(monkeypatch, segment)
+    arr = np.ones((2, 2))
+    job_id = _submit_job(endpoints, arr)
+    run_job, job_args = executor.calls[0]
+    thread = threading.Thread(target=run_job, args=job_args)
+    thread.start()
+    try:
+        assert started.wait(2)
+        instantiate = worker.instantiate_model
+        initialized = threading.Event()
+
+        def initialize(module, kwargs):
+            initialized.set()
+            return instantiate(module, kwargs)
+
+        monkeypatch.setattr(worker, 'instantiate_model', initialize)
+
+        async def exercise():
+            kwargs = (
+                {'kwargs': '{}', 'data': None} if path == '/init'
+                else {'image': _FakeUpload(arr), 'params': '{}'}
+            )
+            task = asyncio.create_task(endpoints[(path, ('POST',))](**kwargs))
+            try:
+                await asyncio.sleep(0.1)
+                assert not task.done()
+                assert not initialized.is_set()
+                assert endpoints[('/health', ('GET',))]().status == 'ok'
+                assert endpoints[('/jobs/{job_id}', ('GET',))](job_id).status == 'running'
+                assert endpoints[('/jobs/{job_id}', ('DELETE',))](job_id)['status'] == 'cancelled'
+            finally:
+                release.set()
+                await task
+
+        asyncio.run(exercise())
+        assert endpoints[('/jobs/{job_id}', ('GET',))](job_id).status == 'cancelled'
+    finally:
+        release.set()
+        thread.join(5)
+    assert not thread.is_alive()
+
+
 def test_worker_serializes_inference_calls(monkeypatch):
     import asyncio
     import threading

@@ -44,6 +44,9 @@ FastAPI in a nutshell
 * `async def` handlers can `await` (e.g. reading the uploaded file) without
   blocking the server; plain `def` handlers are run in a thread pool by
   FastAPI. Both behave the same from the client's point of view.
+  Async handlers offload model initialization and inference to the thread
+  pool, including waiting for the shared model lock, so other requests can
+  still be served while a model operation is running.
 * While the worker runs, `http://<host>:<port>/docs` shows an interactive page
   listing all endpoints (generated automatically by FastAPI).
 
@@ -70,6 +73,7 @@ from typing import Dict, Any, Optional
 import numpy as np
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import Response
+from fastapi.concurrency import run_in_threadpool
 
 from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
 
@@ -230,9 +234,13 @@ def create_app(
     # Mutable holder, so `/init` can replace the model for all endpoints
     state = {'model': None}
     model_lock = threading.Lock()
-    if not defer_init:
+
+    def initialize_model(kwargs):
         with model_lock:
-            state['model'] = instantiate_model(acdcSegment, init_kwargs or {})
+            state['model'] = instantiate_model(acdcSegment, kwargs)
+
+    if not defer_init:
+        initialize_model(init_kwargs or {})
 
     init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
 
@@ -300,8 +308,7 @@ def create_app(
         try:
             content = await data.read() if data is not None else None
             decoded = payload.decode(kwargs, content)
-            with model_lock:
-                state['model'] = instantiate_model(acdcSegment, decoded)
+            await run_in_threadpool(initialize_model, decoded)
             return {"status": "initialized"}
         except Exception:
             import traceback
@@ -373,7 +380,7 @@ def create_app(
             # Read the uploaded bytes and turn them back into a numpy array
             content = await image.read()
             arr = np.load(io.BytesIO(content))
-            out = call_model_method("segment", arr, **p)
+            out = await run_in_threadpool(call_model_method, "segment", arr, **p)
             # Send the result back the same way: as `.npy` bytes
             buf = io.BytesIO()
             np.save(buf, out)
@@ -400,7 +407,7 @@ def create_app(
             p = json.loads(params) if params else {}
             content = await image.read()
             arr = np.load(io.BytesIO(content))
-            out = call_model_method("segment3DT", arr, **p)
+            out = await run_in_threadpool(call_model_method, "segment3DT", arr, **p)
             buf = io.BytesIO()
             np.save(buf, out)
             return Response(
@@ -437,8 +444,8 @@ def create_app(
         try:
             first_arr = np.load(io.BytesIO(await first.read()))
             second_arr = np.load(io.BytesIO(await second.read()))
-            out = call_model_method(
-                "second_ch_img_to_stack", first_arr, second_arr
+            out = await run_in_threadpool(
+                call_model_method, "second_ch_img_to_stack", first_arr, second_arr
             )
             buf = io.BytesIO()
             np.save(buf, out)
@@ -471,7 +478,9 @@ def create_app(
         try:
             img = np.load(io.BytesIO(await image.read()))
             lab = np.load(io.BytesIO(await precomputed_lab.read()))
-            cca_df = call_model_method("predictCcaState", img, lab)
+            cca_df = await run_in_threadpool(
+                call_model_method, "predictCcaState", img, lab
+            )
             return {"cca_df": cca_df.to_json(orient="table")}
         except Exception:
             import traceback

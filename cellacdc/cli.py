@@ -72,7 +72,7 @@ class _WorkflowKernel:
         self.backend_url = backend_url
         self.env_python = env_python
         self.backend = None
-
+        
     def init_backend_args(
             self,
             backend_type='in_process',
@@ -82,6 +82,13 @@ class _WorkflowKernel:
         self.backend_type = backend_type
         self.backend_url = backend_url
         self.env_python = env_python
+        
+        use_worker_backend = self.uses_worker_backend()
+        if use_worker_backend and not (self.backend_url or self.env_python):
+            raise ValueError(
+                "Worker backend requires either a backend URL or an "
+                "environment Python executable."
+            )
 
     def parse_backend_params(self, workflow_params):
         backend_section = workflow_params.get('backend', {})
@@ -104,9 +111,7 @@ class _WorkflowKernel:
     def uses_worker_backend(self):
         """True if the model runs in a (local or remote) worker process."""
         return (
-            self.backend_url is not None
-            or self.backend_type in ('remote', 'local')
-            or self.env_python is not None
+            self.backend_type in ('remote', 'local')
         )
 
     def init_backend(
