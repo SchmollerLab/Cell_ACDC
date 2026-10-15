@@ -311,13 +311,12 @@ def export_current_view_gui_cellpose(
     lab = posData.lab
     if lab is None:
         lab = posData.segm_data[posData.frame_i]
-
-    if np.any(lab > np.iinfo(np.uint16).max):
-        raise ValueError(
-            'Segmentation IDs exceed the uint16 range; '
-            f'Cellpose supports maximum ID {np.iinfo(np.uint16).max}.'
-        )
     
+    lab = lab.astype(
+        np.uint16 if lab.max() < 2**16 - 1 else np.uint32,
+        copy=False,
+    )
+
     last_saved_num = 0
     for file in myutils.listdir(dst_folderpath):
         end_num = re.findall(r'.+_(\d+)\.tif', file)

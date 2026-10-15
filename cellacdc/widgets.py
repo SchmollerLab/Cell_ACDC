@@ -8881,9 +8881,12 @@ class ScrollBarWithNumericControl(QWidget):
         if self.leftLabel is None:
             return
         
-        self.leftLabel.setText(
-            self.leftLabel.text().replace('n.', 'idx')
-        )
+        label_text = self.leftLabel.text()
+        if start_value == 0:
+            label_text = label_text.replace('n.', 'idx')
+        else:
+            label_text = label_text.replace('idx', 'n.')
+        self.leftLabel.setText(label_text)
         if not self.maxLabel.text():
             return
         
@@ -8915,6 +8918,7 @@ class ScrollBarWithNumericControl(QWidget):
         self.maxLabel.setText(f'/{maximum}')
         self.scrollbar.setMaximum(maximum)
         self.spinbox.setMaximum(maximum)
+        self.setStartValue(self.spinbox._start_value)
     
     def setMinimum(self, minumum):
         self.scrollbar.setMinimum(minumum)

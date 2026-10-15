@@ -9040,7 +9040,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setManualBackgroundImage()
         
         elif left_click and canAddManualBackgroundObj:
-            if not self.manualBackgroundToolbar.doesIDexist():
+            if getattr(self, 'manualBackgroundObj', None) is None:
                 blinker = qutils.QControlBlink(
                     self.manualBackgroundToolbar.infoLabel, 
                     qparent=self
@@ -20227,7 +20227,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def exportCurrentViewWorkerCritical(self, error):
         self.exportCurrentViewToolbar.setInfoText(
             html_utils.span(
-                'ERROR occured during export. See terminal for more info'
+                'ERROR occurred during export. See terminal for more info'
             )
         )
         self.exportCurrentViewWorkerLoop.exit()
@@ -20795,10 +20795,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         mode = str(self.modeComboBox.currentText())
         posData = self.data[self.pos_i]
-        self.exportCurrentView(isOnNext=True)
         
         if posData.frame_i >= posData.SizeT-1:
             # Store data for current frame
+            self.exportCurrentView(isOnNext=True)
             if mode != 'Viewer':
                 self.store_data(debug=False)
             msg = 'You reached the last segmented frame!'
@@ -20860,6 +20860,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateItemsMousePos()
         self.updateObjectCounts()
         
+        self.exportCurrentView(isOnNext=True)
         self.apply_tools_on_new_frame()
                 
     def applyAllDelROI(self):
@@ -28167,10 +28168,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.zSliceOverlay_SB.setDisabled(True)
             else:
                 z = self.zSliceOverlay_SB.sliderPosition()
-                start_value =  self.zSliceSpinbox._start_value
+                start_value = self.zSliceSpinbox._start_value
+                if start_value is None:
+                    start_value = self.zSliceSpinbox.minimum()
                 correction = start_value - self.zSliceSpinbox.minimum()
                 self.overlay_z_label.setText(
-                    f'Overlay z-slice {z-correction:02}'
+                    f'Overlay z-slice {z+start_value:02}'
                     f'/{posData.SizeZ+correction}'
                 )
                 self.zSliceOverlay_SB.setDisabled(False)
