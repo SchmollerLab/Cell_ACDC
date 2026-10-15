@@ -188,7 +188,8 @@ class VolumeRendererWindow(QMainWindow):
         self._view.camera = scene.cameras.TurntableCamera(
             fov=45, 
             elevation=30.0, 
-            azimuth=-60.0
+            azimuth=-60.0,
+            roll=180.0
         )
 
         self._canvas.events.mouse_press.connect(
@@ -725,6 +726,7 @@ class VolumeRendererWindow(QMainWindow):
         
         self._toolbar.sigUpdate.connect(self.sigUpdate.emit)
         self._toolbar.sigHomeView.connect(self.reset_view)
+        self._toolbar.sigTwoDView.connect(self.set_2d_view)
         self._toolbar.sigSave.connect(self.save_screenshot)
         self._toolbar.sigSetSingleChannel.connect(self._set_single_channel)
         # self._toolbar.sigSetupAnimation.connect(self.setup_animation_parameters)
@@ -1301,7 +1303,8 @@ class VolumeRendererWindow(QMainWindow):
             lut: np.ndarray=None,
             font_size: int=None,
             text_color='white',
-            SizeZ: int=None
+            SizeZ: int=None,
+            SizeT: int=None,
         ):
         """
         Parameters
@@ -1315,22 +1318,30 @@ class VolumeRendererWindow(QMainWindow):
                 'Only one labels volumes can be set'
             )
             return
-
-        if lab.ndim < 4:
-            # Add time dimension
-            lab = lab[np.newaxis]
-
-        if lab.ndim == 3 and SizeZ is None and self._SizeZ is None:
+        
+        if SizeZ is None:
+            SizeZ = self._SizeZ
+        
+        if SizeT is None:
+            SizeT = self._SizeT
+        
+        if lab.ndim == 2 and SizeZ is None:
             raise ValueError(
-                f'Labels array is 2D but SizeZ not set.'
+                'Labels array is 2D but SizeZ not set.'
+            )
+
+        if lab.ndim == 2 and SizeT > 1:
+            raise ValueError(
+                '2D labels array is not supported with timelapse data.'
             )
         
-        if lab.ndim == 3:
-            if SizeZ is None:
-                SizeZ = self._SizeZ
-        
+        if lab.ndim == 2:
+            # Stack the 2D labels along z-axis
+            lab = np.asarray([lab]*SizeZ)
+        elif lab.ndim == 3:
+            # User provided 2D+time labels --> stack along z-axis
             lab = np.asarray([np.asarray([lab_i]*SizeZ) for lab_i in lab])
-        
+
         if self._data_shape is None:
             self._data_shape = lab.shape
         
@@ -1571,6 +1582,7 @@ class VolumeRendererWindow(QMainWindow):
             self._set_voxel_size_strides_transform(voxel_size)
 
         num_frames = len(volumes[0])
+        self._SizeT = num_frames
         self._init_frames_scrollbar(num_frames)
         
         self._canvas.update()
@@ -1761,6 +1773,29 @@ class VolumeRendererWindow(QMainWindow):
         camera.scale_factor = self._default_scale_factor
         camera.roll = self._home_roll
     
+    def set_2d_view(self):
+        camera = self._view.camera
+
+        camera.azimuth = 180
+        camera.elevation = 90
+        camera.roll = 180
+
+        first_channel = list(self._channels_data.keys())[0]
+        first_node = self._channels_data[first_channel].node
+        bounds = [first_node.bounds(axis) for axis in range(3)]
+
+        center_local = np.array([
+            (axis_bounds[0] + axis_bounds[1]) / 2
+            for axis_bounds in bounds
+        ])
+
+        transform = first_node.transform
+        center_scene = transform.map(center_local)
+
+        camera.center = center_scene[:3]
+
+        camera.distance = self._home_distance
+            
     def set_camera_view(self):
         """Reset the camera to the default orientation and fit the volume."""
         if not self._channels_data:
@@ -1785,7 +1820,7 @@ class VolumeRendererWindow(QMainWindow):
         self._home_elevation = 30.0
         self._home_azimuth = 45.0
         self._home_fov = 60.0
-        self._home_roll = 0.0
+        self._home_roll = 180.0
         self._home_distance = diag
         
         self._view.camera.set_range()

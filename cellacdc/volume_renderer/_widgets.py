@@ -22,6 +22,7 @@ LABELS_TEXT_FONTSIZE = 10
 
 class VolumeRendererToolbar(ToolBar):
     sigHomeView = Signal()
+    sigTwoDView = Signal()
     sigSave = Signal()
     sigSetSingleChannel = Signal(bool)
     sigSelectObjects = Signal(bool)
@@ -52,6 +53,13 @@ class VolumeRendererToolbar(ToolBar):
             'Reset the view to the default orientation and zoom level'
         )
         self.addAction(self.homeViewAction)
+
+        self.twoDViewAction = QAction(QIcon(':2d.svg'), '2D view', self)
+        self.twoDViewAction.setShortcut('D')
+        self.twoDViewAction.setToolTip(
+            'Set the view to 2D (view from top)'
+        )
+        self.addAction(self.twoDViewAction)
         
         self.saveAction = QAction(QIcon(':file-save.svg'), 'Save', self)
         self.saveAction.setShortcut('Ctrl+S')
@@ -91,6 +99,7 @@ class VolumeRendererToolbar(ToolBar):
         
         self.emitSigUpdateAction.triggered.connect(self.sigUpdate.emit)
         self.homeViewAction.triggered.connect(self.sigHomeView.emit)
+        self.twoDViewAction.triggered.connect(self.sigTwoDView.emit)
         self.saveAction.triggered.connect(self.sigSave.emit)
         # self.selectObjectsAction.toggled.connect(
         #     self.sigSelectObjects.emit
