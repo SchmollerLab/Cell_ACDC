@@ -87,7 +87,7 @@ steps (see :ref:`model-environments` for the full guide with all options):
 5. Prepare and test the environment with ``acdc-setup-models MyModel``.
 
 Have a look at the ``cellacdc/models`` folder `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/cellacdc/models>`__ for **examples**.
-For more details, see the `model environments guide <https://github.com/SchmollerLab/Cell_ACDC/blob/main/docs/source/model-environments.rst>`__.
+For more details, see :ref:`model-environments`.
 
 Adding a tracker
 ~~~~~~~~~~~~~~~~

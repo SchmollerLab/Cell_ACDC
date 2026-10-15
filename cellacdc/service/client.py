@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 import numpy as np
 import requests
 
-from cellacdc.service.schema import InfoResponse
+from cellacdc.service.schema import InfoResponse, parse_response
 
 def _find_free_port(host: str = "127.0.0.1") -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -49,6 +49,32 @@ def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
     )
     ModelClient._raise_for_status(res)
 
+def get_model_arg_spec(base_url: str, timeout: float = 10.0):
+    """Fetch and decode model argument specs from a worker."""
+    from cellacdc import myutils
+
+    res = requests.get(f"{base_url.rstrip('/')}/spec", timeout=timeout)
+    ModelClient._raise_for_status(res)
+    data = res.json()
+
+    def decode_params(params):
+        return [
+            myutils.ArgSpec(
+                name=name,
+                default=default,
+                type=myutils._deserialize_model_param_type(param_type),
+                desc=desc,
+                docstring=docstring,
+            )
+            for name, default, param_type, desc, docstring in params
+        ]
+
+    return (
+        decode_params(data['init_params']),
+        decode_params(data['segment_params']),
+    )
+
+
 class ModelClient:
     """HTTP client interface for Cell-ACDC segmentation models.
     Presents the same interface as an in-process acdcSegment.Model instance.
@@ -69,6 +95,10 @@ class ModelClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
+        self.refresh_info()
+
+    def refresh_info(self):
+        """Read the model description again (e.g. after `POST /init`)."""
         self.info = self._fetch_info()
         self.model_name = self.info.name
         self.is_segment3DT_available = self.info.capabilities.segment3DT
@@ -76,7 +106,7 @@ class ModelClient:
     def _fetch_info(self) -> InfoResponse:
         res = self.session.get(f"{self.base_url}/info", timeout=10)
         res.raise_for_status()
-        return InfoResponse.model_validate(res.json())
+        return parse_response(InfoResponse, res.json())
 
     def segment(
             self, 
@@ -146,10 +176,47 @@ class ModelClient:
             first_ch_data: np.ndarray, 
             second_ch_data: np.ndarray
         ) -> np.ndarray:
-        rgb_stack = np.zeros((*first_ch_data.shape, 3), dtype=first_ch_data.dtype)
-        rgb_stack[..., 0] = first_ch_data
-        rgb_stack[..., 1] = second_ch_data
-        return rgb_stack
+        """Run the worker model's own `second_ch_img_to_stack`."""
+        if not self.info.capabilities.second_ch_img_to_stack:
+            raise NotImplementedError(
+                f"Model {self.model_name} does not support "
+                "second_ch_img_to_stack"
+            )
+        files = {}
+        for key, arr in (("first", first_ch_data), ("second", second_ch_data)):
+            buf = io.BytesIO()
+            np.save(buf, np.asarray(arr))
+            files[key] = (f"{key}.npy", buf.getvalue(), "application/octet-stream")
+        res = self.session.post(
+            f"{self.base_url}/second_ch_img_to_stack",
+            files=files,
+            timeout=self.timeout
+        )
+        self._raise_for_status(res)
+        return np.load(io.BytesIO(res.content))
+
+    def predictCcaState(
+            self, image: np.ndarray, precomputed_lab: np.ndarray
+        ):
+        """Run the worker model's `predictCcaState`; returns the cca_df."""
+        import pandas as pd
+
+        if not self.info.capabilities.predictCcaState:
+            raise NotImplementedError(
+                f"Model {self.model_name} does not support predictCcaState"
+            )
+        files = {}
+        for key, arr in (("image", image), ("precomputed_lab", precomputed_lab)):
+            buf = io.BytesIO()
+            np.save(buf, np.asarray(arr))
+            files[key] = (f"{key}.npy", buf.getvalue(), "application/octet-stream")
+        res = self.session.post(
+            f"{self.base_url}/predictCcaState",
+            files=files,
+            timeout=self.timeout
+        )
+        self._raise_for_status(res)
+        return pd.read_json(io.StringIO(res.json()["cca_df"]), orient="table")
 
     def submit_job(self, image: np.ndarray, **kwargs) -> str:
         p = _sanitize_kwargs(kwargs)
@@ -306,6 +373,30 @@ class LocalBackend:
                 self._output.append(line.decode(errors="replace").rstrip())
         except Exception:
             pass
+
+    def is_running(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def reinitialize(self, init_model_kwargs: Dict[str, Any]) -> ModelClient:
+        """Replace the model of the running worker (`POST /init`).
+
+        Much faster than a restart: the Python process, its imports (e.g.
+        torch) and the HTTP server are kept. If initialization fails, the
+        worker keeps its previous model and the error is raised.
+        """
+        if not self.is_running() or self.client is None:
+            raise RuntimeError(f"The {self.model_name} worker is not running.")
+        try:
+            post_init(self.base_url, init_model_kwargs)
+        except Exception as err:
+            output = "\n".join(self._output).strip()
+            raise RuntimeError(
+                f"Re-initializing the {self.model_name} model failed:\n{err}"
+                + (f"\nWorker output (last lines):\n{output}" if output else "")
+            ) from err
+        self.init_model_kwargs = init_model_kwargs
+        self.client.refresh_info()
+        return self.client
 
     def _describe_failure(self, reason, cmd, diagnose=False) -> str:
         output = "\n".join(self._output).strip()

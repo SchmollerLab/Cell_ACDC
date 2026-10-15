@@ -480,9 +480,15 @@ def ensure_model_dependencies(
 
     config = load_model_env_config(model_name)
     if config.get("torch"):
-        ensure_torch(
+        torch_ok = ensure_torch(
             python_exec, logger_func=logger_func, prompt_func=prompt_func
         )
+        if not torch_ok:
+            raise RuntimeError(
+                f"{model_name}: PyTorch is not installed in {python_exec} "
+                "(installation cancelled or failed, see the log above). "
+                "The model cannot run without it."
+            )
 
     specs = _normalize_package_specs(config.get("packages", []))
     if specs:
@@ -542,7 +548,11 @@ def ensure_worker_dependencies(
     """Ensure base dependencies needed by the model worker service are installed."""
     from cellacdc import myutils
 
-    ensure_cellacdc_cli(python_exec, logger_func=logger_func)
+    if not ensure_cellacdc_cli(python_exec, logger_func=logger_func):
+        raise RuntimeError(
+            f"Cell-ACDC could not be installed in {python_exec} "
+            "(see the log above). The model worker cannot start without it."
+        )
 
     method = install_method or get_install_method()
     installer = "conda" if method == "conda" else "pip"
@@ -722,7 +732,6 @@ def create_model_env(
 
     link_cellacdc_to_env(py_exec, logger_func=logger_func)
     if ensure_deps:
-        ensure_cellacdc_cli(py_exec, logger_func=logger_func)
         ensure_worker_dependencies(
             py_exec,
             install_method=method,
@@ -761,7 +770,6 @@ def get_or_create_model_env(
     if py_exec and os.path.isfile(py_exec):
         link_cellacdc_to_env(py_exec, logger_func=logger_func)
         if ensure_deps:
-            ensure_cellacdc_cli(py_exec, logger_func=logger_func)
             ensure_worker_dependencies(
                 py_exec,
                 install_method=method,

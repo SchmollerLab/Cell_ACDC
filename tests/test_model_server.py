@@ -3,6 +3,7 @@ import os
 import sys
 import numpy as np
 import pytest
+import requests
 
 from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
 from cellacdc.service.client import LocalBackend, ModelClient
@@ -28,6 +29,34 @@ def test_schema_models():
     assert job.status == "completed"
 
 
+def test_parse_response_supports_pydantic_1_and_2():
+    """Responses parse with Pydantic 2 and with an existing Pydantic 1."""
+    from cellacdc.service.schema import parse_response
+
+    data = {
+        "name": "m", "capabilities": {"segment3DT": True},
+    }
+    info = parse_response(InfoResponse, data)
+    assert info.capabilities.segment3DT is True
+
+    pydantic_v1 = pytest.importorskip("pydantic.v1")
+
+    class CapabilitiesV1(pydantic_v1.BaseModel):
+        segment: bool = True
+        segment3DT: bool = False
+
+    class InfoResponseV1(pydantic_v1.BaseModel):
+        name: str
+        capabilities: CapabilitiesV1 = pydantic_v1.Field(
+            default_factory=CapabilitiesV1
+        )
+
+    assert not hasattr(InfoResponseV1, "model_validate")
+    info_v1 = parse_response(InfoResponseV1, data)
+    assert info_v1.name == "m"
+    assert info_v1.capabilities.segment3DT is True
+
+
 def test_local_backend_lifecycle():
     with LocalBackend(model_name="thresholding") as client:
         assert isinstance(client, ModelClient)
@@ -43,12 +72,12 @@ def test_local_backend_lifecycle():
         assert lab.shape == (64, 64)
         assert np.max(lab) > 0
 
-        # Test multi-channel stacking
+        # thresholding has no `second_ch_img_to_stack`: like in-process,
+        # the client does not invent one
         ch2 = np.ones((64, 64), dtype=np.uint8) * 50
-        stacked = client.second_ch_img_to_stack(img, ch2)
-        assert stacked.shape == (64, 64, 3)
-        assert np.array_equal(stacked[..., 0], img)
-        assert np.array_equal(stacked[..., 1], ch2)
+        assert client.info.capabilities.second_ch_img_to_stack is False
+        with pytest.raises(NotImplementedError):
+            client.second_ch_img_to_stack(img, ch2)
 
         # Test job endpoints
         job_id = client.submit_job(img)
@@ -65,6 +94,9 @@ def test_local_backend_lifecycle():
         assert status["status"] == "completed"
         res = client.get_job_result(job_id)
         assert np.array_equal(res, lab)
+        # The result is removed from the worker once fetched
+        with pytest.raises(requests.HTTPError):
+            client.get_job_result(job_id)
 
 
 def test_segm_kernel_with_local_backend():
@@ -393,55 +425,173 @@ def test_get_model_arg_spec_from_env():
     assert types["segment_3D_volume"] is bool
 
 
+def _patch_model_execution(monkeypatch, use_model_env=True, **overrides):
+    from unittest.mock import Mock
+    from cellacdc.service import model_execution
+
+    mocks = dict(
+        get_or_create_model_env=Mock(return_value="model-python"),
+        getModelArgSpecFromEnv=Mock(return_value=([], [], "help")),
+        import_segment_module=Mock(),
+        getModelArgSpec=Mock(return_value=([], [])),
+        init_segm_model=Mock(),
+        LocalBackend=Mock(),
+        model_installed_in_main_env=Mock(return_value=False),
+        ensure_required_env=Mock(return_value=True),
+    )
+    mocks.update(overrides)
+    monkeypatch.setattr(model_execution, "USE_MODEL_ENV", use_model_env)
+    for name in (
+            "get_or_create_model_env", "LocalBackend",
+            "model_installed_in_main_env", "ensure_required_env",
+        ):
+        monkeypatch.setattr(model_execution, name, mocks[name])
+    for name in (
+            "getModelArgSpecFromEnv", "import_segment_module",
+            "getModelArgSpec", "init_segm_model",
+        ):
+        monkeypatch.setattr(model_execution.myutils, name, mocks[name])
+    monkeypatch.setattr(
+        model_execution.myutils, "resolve_segm_model_init_data",
+        lambda posData, init_kwargs: None,
+    )
+    return mocks
+
+
 @pytest.mark.parametrize("use_model_env", [False, True])
 def test_gui_model_execution_modes(monkeypatch, use_model_env):
     from types import SimpleNamespace
     from unittest.mock import Mock
-    from cellacdc import segm
+    from cellacdc.service.model_execution import ModelExecution
 
-    monkeypatch.setattr(segm, "USE_MODEL_ENV", use_model_env)
     spec = ([], [], "help")
     module = SimpleNamespace(url_help=lambda: "help")
     model = object()
-    resolve = Mock(return_value="model-python")
-    remote_spec = Mock(return_value=spec)
-    import_model = Mock(return_value=module)
-    local_spec = Mock(return_value=spec[:2])
-    local_init = Mock(return_value=model)
     backend = Mock(url="worker-url")
     backend.start.return_value = model
-    backend_factory = Mock(return_value=backend)
-    monkeypatch.setattr(segm, "get_or_create_model_env", resolve)
-    monkeypatch.setattr(segm.myutils, "getModelArgSpecFromEnv", remote_spec)
-    monkeypatch.setattr(segm.myutils, "import_segment_module", import_model)
-    monkeypatch.setattr(segm.myutils, "getModelArgSpec", local_spec)
-    monkeypatch.setattr(segm.myutils, "init_segm_model", local_init)
-    monkeypatch.setattr(segm, "LocalBackend", backend_factory)
-    window = SimpleNamespace(
-        log=Mock(), posData=object(),
-        runInBackground=lambda func, *args: func(*args),
+    mocks = _patch_model_execution(
+        monkeypatch, use_model_env,
+        getModelArgSpecFromEnv=Mock(return_value=spec),
+        import_segment_module=Mock(return_value=module),
+        init_segm_model=Mock(return_value=model),
+        LocalBackend=Mock(return_value=backend),
+    )
+    posData = object()
+    execution = ModelExecution(
+        "test_model", run_in_background=lambda f, *a: f(*a), log_func=Mock()
     )
 
-    assert segm.segmWin.prepareModelExecution(window, "test_model") == spec
-    assert segm.segmWin.initModelExecution(window, {}) is model
+    assert execution.prepare() == spec
+    assert execution.init_model({}, posData) is model
     if use_model_env:
-        resolve.assert_called_once_with("test_model")
-        remote_spec.assert_called_once_with("test_model", "model-python")
-        import_model.assert_not_called()
-        local_spec.assert_not_called()
-        local_init.assert_not_called()
+        mocks["get_or_create_model_env"].assert_called_once_with("test_model")
+        mocks["getModelArgSpecFromEnv"].assert_called_once_with(
+            "test_model", "model-python"
+        )
+        mocks["import_segment_module"].assert_not_called()
+        mocks["getModelArgSpec"].assert_not_called()
+        mocks["init_segm_model"].assert_not_called()
         backend.start.assert_called_once()
-        assert window.backend_url == "worker-url"
-        assert window.acdcSegment is None
+        assert execution.backend_type == "local"
+        assert execution.backend_url == "worker-url"
+        assert execution.acdcSegment is None
     else:
-        resolve.assert_not_called()
-        remote_spec.assert_not_called()
-        backend_factory.assert_not_called()
-        import_model.assert_called_once_with("test_model")
-        local_init.assert_called_once_with(module, window.posData, {})
-        assert window.env_python is None
-        assert window.backend is None
-        assert window.backend_url is None
+        mocks["get_or_create_model_env"].assert_not_called()
+        mocks["getModelArgSpecFromEnv"].assert_not_called()
+        mocks["LocalBackend"].assert_not_called()
+        mocks["import_segment_module"].assert_called_once_with("test_model")
+        mocks["init_segm_model"].assert_called_once_with(module, posData, {})
+        assert execution.backend_type == "in_process"
+        assert execution.env_python is None
+        assert execution.backend is None
+        assert execution.backend_url is None
+
+
+def test_model_execution_caches_spec_and_manages_workers(monkeypatch):
+    from unittest.mock import Mock
+    import numpy as np
+    from cellacdc.service.model_execution import ModelExecution
+
+    backends = []
+
+    def make_backend(**kwargs):
+        backend = Mock(url=f"url-{len(backends)}")
+        backend.start.return_value = object()
+        backend.is_running.return_value = True
+        backends.append(backend)
+        return backend
+
+    mocks = _patch_model_execution(
+        monkeypatch, LocalBackend=Mock(side_effect=make_backend)
+    )
+    execution = ModelExecution("test_model", log_func=Mock())
+    with pytest.raises(RuntimeError):
+        execution.init_model({})
+
+    assert execution.prepare() is execution.prepare()
+    mocks["get_or_create_model_env"].assert_called_once()
+    mocks["getModelArgSpecFromEnv"].assert_called_once()
+
+    # Same parameters (also array contents) share one worker
+    first = execution.init_model({"a": 1, "arr": np.zeros(3)})
+    shared = execution.init_model({"arr": np.zeros(3), "a": 1})
+    assert shared is first and len(backends) == 1
+    # Different parameters at the same time need another worker
+    second = execution.init_model({"a": 2})
+    assert second is not first and len(backends) == 2
+    assert execution.backend_url == "url-1"
+
+    # Released workers keep running and are re-initialized, not restarted
+    execution.release(first)
+    execution.release(shared)
+    backends[0].stop.assert_not_called()
+    third = execution.init_model({"a": 3})
+    assert third is first and len(backends) == 2
+    backends[0].reinitialize.assert_called_once_with({"a": 3})
+
+    # `replace` re-initializes the replaced worker for the new parameters
+    fourth = execution.init_model({"a": 4}, replace=second)
+    assert fourth is second and len(backends) == 2
+    backends[1].reinitialize.assert_called_once_with({"a": 4})
+
+    # Failed re-initialization keeps the replaced instance usable
+    backends[1].reinitialize.side_effect = RuntimeError("bad kwargs")
+    with pytest.raises(RuntimeError):
+        execution.init_model({"a": 5}, replace=fourth)
+    assert execution.init_model({"a": 4}) is fourth
+    execution.release(fourth)
+
+    # Only MAX_IDLE_WORKERS unused workers are kept
+    execution.release(fourth)
+    execution.release(third)
+    assert [b.stop.call_count for b in backends] == [0, 1]
+
+    # Dead workers are not reused
+    backends[0].is_running.return_value = False
+    execution.init_model({"a": 3})
+    assert len(backends) == 3
+    backends[0].stop.assert_called_once()
+
+    execution.stop()
+    backends[2].stop.assert_called_once()
+    assert execution.backend is None
+
+
+def test_model_execution_missing_required_env_cancels(monkeypatch):
+    from unittest.mock import Mock
+    from cellacdc.service.model_execution import ModelExecution
+
+    mocks = _patch_model_execution(
+        monkeypatch, ensure_required_env=Mock(return_value=False)
+    )
+    ask = Mock()
+    execution = ModelExecution("test_model", prompt_func=ask, log_func=Mock())
+    execution.prepare()
+    assert execution.init_model({}) is None
+    mocks["ensure_required_env"].assert_called_once_with(
+        "test_model", {}, prompt_func=ask
+    )
+    mocks["LocalBackend"].assert_not_called()
 
 
 @pytest.mark.parametrize("installed_version, expected", [
@@ -477,11 +627,8 @@ def test_main_model_detection_without_imports(monkeypatch, installed_version, ex
 def test_existing_main_model_environment_choice(monkeypatch, answer):
     from types import SimpleNamespace
     from unittest.mock import Mock
-    from cellacdc import segm
-    from cellacdc.service import prompts
+    from cellacdc.service.model_execution import ModelExecution
 
-    monkeypatch.setattr(segm, "USE_MODEL_ENV", True)
-    monkeypatch.setattr(segm, "model_installed_in_main_env", lambda name: True)
     seen = []
 
     def ask(prompt):
@@ -490,28 +637,34 @@ def test_existing_main_model_environment_choice(monkeypatch, answer):
             return None
         return prompt.choices[0 if answer == "isolated" else 1]
 
-    monkeypatch.setattr(prompts, "QtHandler", lambda parent: SimpleNamespace(ask=ask))
-    resolve = Mock(return_value="model-python")
-    module = SimpleNamespace(url_help=lambda: None)
-    import_model = Mock(return_value=module)
-    monkeypatch.setattr(segm, "get_or_create_model_env", resolve)
-    monkeypatch.setattr(segm.myutils, "getModelArgSpecFromEnv", Mock(return_value=([], [], None)))
-    monkeypatch.setattr(segm.myutils, "getModelArgSpec", Mock(return_value=([], [])))
-    monkeypatch.setattr(segm.myutils, "import_segment_module", import_model)
-    window = SimpleNamespace(log=Mock(), runInBackground=lambda f, *a: f(*a))
-    result = segm.segmWin.prepareModelExecution(window, "test_model")
+    mocks = _patch_model_execution(
+        monkeypatch,
+        model_installed_in_main_env=Mock(return_value=True),
+        getModelArgSpecFromEnv=Mock(return_value=([], [], None)),
+        import_segment_module=Mock(
+            return_value=SimpleNamespace(url_help=lambda: None)
+        ),
+    )
+    execution = ModelExecution(
+        "test_model", run_in_background=lambda f, *a: f(*a),
+        prompt_func=ask, log_func=Mock(),
+    )
+    result = execution.prepare()
     assert seen[0].default == seen[0].choices[0]
     assert "version conflicts" in seen[0].text
+    resolve = mocks["get_or_create_model_env"]
+    import_model = mocks["import_segment_module"]
     if answer == "isolated":
         resolve.assert_called_once()
         import_model.assert_not_called()
-        assert window.backend_type == "local"
+        assert execution.backend_type == "local"
     elif answer == "main":
         resolve.assert_not_called()
         import_model.assert_called_once()
-        assert window.backend_type == "in_process"
+        assert execution.backend_type == "in_process"
     else:
         assert result is None
+        assert execution.spec is None
         resolve.assert_not_called()
         import_model.assert_not_called()
 
@@ -543,11 +696,9 @@ def test_main_model_detection_custom_config_and_frameworks(monkeypatch):
 
 @pytest.mark.parametrize("failure_stage", ["environment", "spec", "startup"])
 def test_gui_isolated_mode_never_falls_back(monkeypatch, failure_stage):
-    from types import SimpleNamespace
     from unittest.mock import Mock
-    from cellacdc import segm
+    from cellacdc.service.model_execution import ModelExecution
 
-    monkeypatch.setattr(segm, "USE_MODEL_ENV", True)
     error = RuntimeError("original failure")
     resolve = Mock(return_value="model-python")
     remote_spec = Mock(return_value=([], [], None))
@@ -557,24 +708,25 @@ def test_gui_isolated_mode_never_falls_back(monkeypatch, failure_stage):
         resolve.side_effect = error
     elif failure_stage == "spec":
         remote_spec.side_effect = error
-    import_model = Mock()
-    local_init = Mock()
-    monkeypatch.setattr(segm, "get_or_create_model_env", resolve)
-    monkeypatch.setattr(segm.myutils, "getModelArgSpecFromEnv", remote_spec)
-    monkeypatch.setattr(segm.myutils, "import_segment_module", import_model)
-    monkeypatch.setattr(segm.myutils, "init_segm_model", local_init)
-    monkeypatch.setattr(segm, "LocalBackend", Mock(return_value=backend))
-    window = SimpleNamespace(log=Mock(), runInBackground=lambda f, *a: f(*a))
+    mocks = _patch_model_execution(
+        monkeypatch,
+        get_or_create_model_env=resolve,
+        getModelArgSpecFromEnv=remote_spec,
+        LocalBackend=Mock(return_value=backend),
+    )
+    execution = ModelExecution(
+        "test_model", run_in_background=lambda f, *a: f(*a), log_func=Mock()
+    )
 
     with pytest.raises(RuntimeError) as raised:
-        segm.segmWin.prepareModelExecution(window, "test_model")
-        segm.segmWin.initModelExecution(window, {})
+        execution.prepare()
+        execution.init_model({})
     assert raised.value is error
-    import_model.assert_not_called()
-    local_init.assert_not_called()
+    mocks["import_segment_module"].assert_not_called()
+    mocks["init_segm_model"].assert_not_called()
     if failure_stage == "startup":
         backend.stop.assert_called_once()
-        assert window.backend is None
+        assert execution.backend is None
 
 
 def test_model_param_types_roundtrip():
@@ -980,6 +1132,453 @@ def test_instantiate_model_with_segm_data():
     assert model.segm_data is None
 
 
+class _CapturingExecutor:
+    """Stands in for the worker's thread pool; jobs run when the test says."""
+    def __init__(self):
+        self.calls = []
+
+    def submit(self, fn, *args):
+        self.calls.append((fn, args))
+
+
+class _FakeUpload:
+    def __init__(self, arr):
+        buf = io.BytesIO()
+        np.save(buf, arr)
+        self._content = buf.getvalue()
+
+    async def read(self):
+        return self._content
+
+
+def _jobs_app(monkeypatch, segment, **extra_methods):
+    import types
+    from cellacdc import myutils
+    from cellacdc.service import worker
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def segment(self, image):
+            return segment(image)
+
+    for name, func in extra_methods.items():
+        setattr(Model, name, lambda self, *args, _f=func: _f(*args))
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(myutils, 'import_segment_module', lambda name: module)
+    executor = _CapturingExecutor()
+    monkeypatch.setattr(worker, '_executor', executor)
+    monkeypatch.setattr(worker, '_jobs', {})
+    app = worker.create_app('fake')
+    endpoints = {
+        (route.path, tuple(sorted(route.methods))): route.endpoint
+        for route in app.routes if hasattr(route, 'methods')
+    }
+    return endpoints, executor
+
+
+def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch):
+    import types
+    from cellacdc import myutils
+    from cellacdc.service import worker
+
+    class Model:
+        def __init__(self, model_path: os.PathLike = ''):
+            self.model_path = model_path
+
+        def segment(self, image):
+            return image
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(myutils, 'model_init_requires_segm_data', lambda _: False)
+
+    with pytest.raises(ValueError, match='model_path'):
+        worker.instantiate_model(module, {'model_path': '/client/model.pth'})
+    assert worker.instantiate_model(module, {}).model_path == ''
+
+
+def _submit_job(endpoints, arr):
+    import asyncio
+    submit = endpoints[('/jobs/segment', ('POST',))]
+    return asyncio.run(submit(image=_FakeUpload(arr), params='{}'))['job_id']
+
+
+def test_job_cancelled_while_pending_is_never_started(monkeypatch):
+    calls = []
+    endpoints, executor = _jobs_app(
+        monkeypatch, lambda image: calls.append(image) or image
+    )
+    job_id = _submit_job(endpoints, np.zeros((2, 2)))
+    cancel = endpoints[('/jobs/{job_id}', ('DELETE',))]
+    status = endpoints[('/jobs/{job_id}', ('GET',))]
+
+    assert cancel(job_id)['status'] == 'cancelled'
+    fn, args = executor.calls[0]
+    fn(*args)
+
+    assert calls == []
+    assert status(job_id).status == 'cancelled'
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_job_cancelled_while_running_stays_cancelled(monkeypatch, fails):
+    import threading
+
+    started = threading.Event()
+    proceed = threading.Event()
+
+    def segment(image):
+        started.set()
+        assert proceed.wait(5)
+        if fails:
+            raise RuntimeError('model failed')
+        return image + 1
+
+    endpoints, executor = _jobs_app(monkeypatch, segment)
+    job_id = _submit_job(endpoints, np.zeros((2, 2)))
+    cancel = endpoints[('/jobs/{job_id}', ('DELETE',))]
+    status = endpoints[('/jobs/{job_id}', ('GET',))]
+    result = endpoints[('/jobs/{job_id}/result', ('GET',))]
+
+    fn, args = executor.calls[0]
+    thread = threading.Thread(target=fn, args=args)
+    thread.start()
+    assert started.wait(5)
+    assert status(job_id).status == 'running'
+    assert cancel(job_id)['status'] == 'cancelled'
+    proceed.set()
+    thread.join(5)
+
+    job = status(job_id)
+    assert job.status == 'cancelled'
+    assert job.error is None
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException):
+        result(job_id)
+
+
+def test_cancel_deletes_finished_job(monkeypatch):
+    endpoints, executor = _jobs_app(monkeypatch, lambda image: image + 1)
+    job_id = _submit_job(endpoints, np.zeros((2, 2)))
+    fn, args = executor.calls[0]
+    fn(*args)
+    cancel = endpoints[('/jobs/{job_id}', ('DELETE',))]
+    status = endpoints[('/jobs/{job_id}', ('GET',))]
+
+    out = cancel(job_id)
+    assert out['status'] == 'completed' and out['deleted'] is True
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as err:
+        status(job_id)
+    assert err.value.status_code == 404
+
+
+def test_job_result_is_fetched_once_and_finished_jobs_are_bounded(monkeypatch):
+    from fastapi import HTTPException
+    from cellacdc.service import worker
+
+    monkeypatch.setattr(worker, 'MAX_FINISHED_JOBS', 2)
+    endpoints, executor = _jobs_app(monkeypatch, lambda image: image + 1)
+    status = endpoints[('/jobs/{job_id}', ('GET',))]
+    result = endpoints[('/jobs/{job_id}/result', ('GET',))]
+
+    job_ids = [_submit_job(endpoints, np.zeros((2, 2))) for _ in range(4)]
+    for fn, args in executor.calls:
+        fn(*args)
+    # Only the newest MAX_FINISHED_JOBS finished jobs are kept
+    assert list(worker._jobs) == job_ids[2:]
+    with pytest.raises(HTTPException):
+        status(job_ids[0])
+
+    labels = np.load(io.BytesIO(result(job_ids[3]).body))
+    np.testing.assert_array_equal(labels, np.ones((2, 2)))
+    with pytest.raises(HTTPException) as err:
+        result(job_ids[3])
+    assert err.value.status_code == 404
+    assert list(worker._jobs) == job_ids[2:3]
+
+
+def test_worker_runs_model_specific_methods(monkeypatch):
+    """second_ch_img_to_stack/predictCcaState run the model's own code."""
+    import asyncio
+    import pandas as pd
+    from fastapi import HTTPException
+    from cellacdc.core import getBaseCca_df
+
+    def to_stack(first, second):
+        return np.stack([first, second]).astype(np.float32)
+
+    def predict(image, lab):
+        df = getBaseCca_df([1, 2])
+        df.at[2, 'relationship'] = 'bud'
+        return df
+
+    endpoints, _ = _jobs_app(
+        monkeypatch, lambda image: image,
+        second_ch_img_to_stack=to_stack, predictCcaState=predict,
+    )
+    first, second = np.zeros((3, 3), np.uint8), np.ones((3, 3), np.uint8)
+    res = asyncio.run(endpoints[('/second_ch_img_to_stack', ('POST',))](
+        first=_FakeUpload(first), second=_FakeUpload(second)
+    ))
+    stack = np.load(io.BytesIO(res.body))
+    assert stack.shape == (2, 3, 3) and stack.dtype == np.float32
+
+    res = asyncio.run(endpoints[('/predictCcaState', ('POST',))](
+        image=_FakeUpload(first), precomputed_lab=_FakeUpload(second)
+    ))
+    cca_df = pd.read_json(io.StringIO(res['cca_df']), orient='table')
+    pd.testing.assert_frame_equal(cca_df, predict(None, None))
+
+    info = endpoints[('/info', ('GET',))]()
+    assert info.capabilities.second_ch_img_to_stack
+    assert info.capabilities.predictCcaState
+
+    endpoints, _ = _jobs_app(monkeypatch, lambda image: image)
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(endpoints[('/second_ch_img_to_stack', ('POST',))](
+            first=_FakeUpload(first), second=_FakeUpload(second)
+        ))
+    assert err.value.status_code == 400
+    assert not endpoints[('/info', ('GET',))]().capabilities.predictCcaState
+
+
+def test_worker_serializes_inference_calls(monkeypatch):
+    import asyncio
+    import threading
+    import time
+
+    active = 0
+    max_active = 0
+    active_lock = threading.Lock()
+
+    def segment(image):
+        nonlocal active, max_active
+        with active_lock:
+            active += 1
+            max_active = max(max_active, active)
+        time.sleep(0.05)
+        with active_lock:
+            active -= 1
+        return image
+
+    endpoints, executor = _jobs_app(monkeypatch, segment)
+    job_id = _submit_job(endpoints, np.zeros((2, 2)))
+    run_job, job_args = executor.calls[0]
+    barrier = threading.Barrier(2)
+
+    def run_direct():
+        barrier.wait()
+        asyncio.run(endpoints[('/segment', ('POST',))](
+            image=_FakeUpload(np.zeros((2, 2))), params='{}'
+        ))
+
+    def run_background():
+        barrier.wait()
+        run_job(*job_args)
+
+    direct_thread = threading.Thread(target=run_direct)
+    background_thread = threading.Thread(target=run_background)
+    direct_thread.start()
+    background_thread.start()
+    direct_thread.join(5)
+    background_thread.join(5)
+
+    assert not direct_thread.is_alive()
+    assert not background_thread.is_alive()
+    assert max_active == 1
+
+
+def test_worker_exposes_argument_specs_to_client(monkeypatch):
+    import types
+    from cellacdc import myutils
+    from cellacdc.service import client as client_module
+    from cellacdc.service import worker
+
+    class Model:
+        def __init__(self, diameter: int = 30):
+            pass
+
+        def segment(self, image, gauss_sigma: float = 0.5):
+            return image
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(myutils, 'import_segment_module', lambda _: module)
+    app = worker.create_app('fake')
+    endpoints = {
+        route.path: route.endpoint for route in app.routes
+        if hasattr(route, 'methods')
+    }
+    spec_data = endpoints['/spec']()
+
+    class Response:
+        ok = True
+
+        def json(self):
+            return spec_data
+
+    monkeypatch.setattr(
+        client_module.requests, 'get', lambda *args, **kwargs: Response()
+    )
+    init_params, segment_params = client_module.get_model_arg_spec(
+        'http://worker'
+    )
+
+    assert next(p for p in init_params if p.name == 'diameter').type is int
+    assert next(p for p in segment_params if p.name == 'gauss_sigma').type is float
+
+
+def test_model_client_forwards_model_specific_methods(monkeypatch):
+    import pandas as pd
+    from cellacdc.core import getBaseCca_df
+
+    cca_df = getBaseCca_df([1, 2])
+    posted = []
+
+    class FakeResponse:
+        ok = True
+
+        def __init__(self, content=b'', payload=None):
+            self.content = content
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+    class FakeSession:
+        def post(self, url, files=None, timeout=None, **kwargs):
+            posted.append((url.rsplit('/', 1)[1], sorted(files)))
+            if url.endswith('/predictCcaState'):
+                return FakeResponse(
+                    payload={'cca_df': cca_df.to_json(orient='table')}
+                )
+            buf = io.BytesIO()
+            np.save(buf, np.full((2, 3, 3), 7.0))
+            return FakeResponse(content=buf.getvalue())
+
+    client = ModelClient.__new__(ModelClient)
+    client.base_url = 'http://x'
+    client.timeout = None
+    client.session = FakeSession()
+    client.model_name = 'm'
+    client.info = InfoResponse(
+        name='m', capabilities=Capabilities(
+            second_ch_img_to_stack=True, predictCcaState=True
+        )
+    )
+    img = np.zeros((3, 3))
+    assert client.second_ch_img_to_stack(img, img).shape == (2, 3, 3)
+    pd.testing.assert_frame_equal(client.predictCcaState(img, img), cca_df)
+    assert posted == [
+        ('second_ch_img_to_stack', ['first', 'second']),
+        ('predictCcaState', ['image', 'precomputed_lab']),
+    ]
+
+    client.info = InfoResponse(name='m', capabilities=Capabilities(
+        second_ch_img_to_stack=False
+    ))
+    with pytest.raises(NotImplementedError):
+        client.second_ch_img_to_stack(img, img)
+    with pytest.raises(NotImplementedError):
+        client.predictCcaState(img, img)
+
+
+@pytest.mark.parametrize('backend_type', ['remote', 'local'])
+def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
+    """Workers (local and remote) get the loaded data and the init kwargs."""
+    from cellacdc import myutils
+    from cellacdc.service import client as client_module
+
+    argspecs = [
+        myutils.ArgSpec('diameter', 0, int, '', ''),
+    ]
+    segment_argspecs = [myutils.ArgSpec('threshold', 0.0, float, '', '')]
+    monkeypatch.setattr(
+        client_module, 'get_model_arg_spec',
+        lambda url: (argspecs, segment_argspecs),
+    )
+    monkeypatch.setattr(
+        myutils, 'getModelArgSpecFromEnv',
+        lambda *args: (argspecs, segment_argspecs, None),
+    )
+
+    segm = np.ones((2, 2), dtype=np.uint32)
+    received = {}
+
+    def fake_resolve(posData, init_kwargs):
+        init_kwargs.pop('segm_endname')
+        return segm
+
+    class FakeRemote:
+        def __init__(self, url):
+            pass
+
+        def get_client(self, init_model_kwargs=None):
+            received['kwargs'] = init_model_kwargs
+            return object()
+
+    class FakeLocal:
+        def __init__(self, model_name, env_python, init_model_kwargs):
+            received['kwargs'] = init_model_kwargs
+
+        def start(self):
+            return object()
+
+    monkeypatch.setattr(myutils, 'resolve_segm_model_init_data', fake_resolve)
+    monkeypatch.setattr(client_module, 'RemoteBackend', FakeRemote)
+    monkeypatch.setattr(client_module, 'LocalBackend', FakeLocal)
+
+    kernel = cli._WorkflowKernel(logger=None, log_path=None)
+    kernel.init_backend_args(
+        backend_type=backend_type,
+        backend_url='http://gpu:8520' if backend_type == 'remote' else None,
+        env_python=sys.executable if backend_type == 'local' else None,
+    )
+    kernel.model = None
+    kernel.model_name = 'm'
+    kernel.init_model_kwargs = {'segm_endname': 'segm', 'diameter': '30'}
+    kernel.model_kwargs = {'threshold': '2.5'}
+    kernel.signals = cli.KernelCliSignals(print)
+    kernel.logger_func = print
+    cli.SegmKernel.init_segm_model.__wrapped__(kernel, posData=object())
+
+    assert received['kwargs']['diameter'] == 30
+    assert received['kwargs']['segm_data'] is segm
+    assert 'segm_endname' not in received['kwargs']
+    assert kernel.model_kwargs['threshold'] == 2.5
+
+
+def test_pkg_spec_accepts_distribution_name():
+    from cellacdc import myutils
+
+    specs = myutils._normalize_pkg_specs(
+        [{'pkg_name': 'foo', 'distribution_name': 'foo-dist'}], '', '',
+        {key: None for key in myutils._PKG_SPEC_KEYS},
+    )
+    assert specs[0]['distribution_name'] == 'foo-dist'
+    assert specs[0]['pkg_name'] == 'foo'
+    with pytest.raises(TypeError, match='Unknown'):
+        myutils._normalize_pkg_specs([{'pkg_name': 'foo', 'bad': 1}], '', '', {})
+
+
+def test_failed_torch_or_cellacdc_install_aborts_setup(monkeypatch):
+    from cellacdc.service import environment
+
+    monkeypatch.setattr(
+        environment, 'load_model_env_config', lambda name: {'torch': True}
+    )
+    monkeypatch.setattr(environment, 'ensure_torch', lambda *a, **k: False)
+    with pytest.raises(RuntimeError, match='PyTorch is not installed'):
+        environment.ensure_model_dependencies('m', sys.executable)
+
+    monkeypatch.setattr(
+        environment, 'ensure_cellacdc_cli', lambda *a, **k: False
+    )
+    with pytest.raises(RuntimeError, match='Cell-ACDC could not be installed'):
+        environment.ensure_worker_dependencies(sys.executable)
+
 def test_local_backend_deferred_init_sends_segm_data():
     """Init data (arrays) is sent via POST /init, not as client file paths."""
     segm = np.arange(8, dtype=np.uint32).reshape(2, 2, 2)
@@ -1004,6 +1603,35 @@ def test_local_backend_deferred_init_error_is_reported():
     with pytest.raises(RuntimeError, match='Initializing the skip_segmentation'):
         backend.start(timeout=60)
     assert backend.proc is None or backend.proc.poll() is not None
+
+
+def test_local_backend_reinitialize_keeps_process():
+    """`reinitialize` replaces the model without restarting the worker."""
+    first = np.full((1, 2, 2), 1, dtype=np.uint32)
+    second = np.full((1, 2, 2), 2, dtype=np.uint32)
+    backend = LocalBackend(
+        'skip_segmentation', env_python=sys.executable,
+        init_model_kwargs={'segm_data': first},
+    )
+    try:
+        client = backend.start(timeout=60)
+        pid = backend.proc.pid
+        img = np.zeros((2, 2), dtype=np.uint8)
+        np.testing.assert_array_equal(client.segment(img, frame_i=0), first[0])
+
+        assert backend.reinitialize({'segm_data': second}) is client
+        assert backend.proc.pid == pid and backend.is_running()
+        np.testing.assert_array_equal(client.segment(img, frame_i=0), second[0])
+
+        with pytest.raises(RuntimeError, match='Re-initializing'):
+            backend.reinitialize({'segm_data': None, 'x': np.zeros(1)})
+        # The previous model is still loaded
+        np.testing.assert_array_equal(client.segment(img, frame_i=0), second[0])
+    finally:
+        backend.stop()
+    assert not backend.is_running()
+
+
 def test_find_python_interpreter_checks_all_python_aliases(monkeypatch, tmp_path):
     """`python`/`python3` on PATH are checked, not only `py` and `pythonX.Y`."""
     from cellacdc.service import environment as env

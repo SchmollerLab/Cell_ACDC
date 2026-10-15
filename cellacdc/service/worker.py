@@ -62,6 +62,7 @@ import io
 import json
 import os
 import signal
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional
@@ -76,7 +77,47 @@ from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, 
 # that submits a job returns immediately with a job id.
 _executor = ThreadPoolExecutor(max_workers=2)
 # job_id -> {"status", "progress", "error", "result"}; kept in memory only.
+# A completed job is removed when its result is fetched. Of the jobs nobody
+# collects, only the newest `MAX_FINISHED_JOBS` finished ones are kept, so a
+# long-running worker does not accumulate results.
 _jobs: Dict[str, Dict[str, Any]] = {}
+MAX_FINISHED_JOBS = 50
+_FINISHED_STATUSES = ("completed", "failed", "cancelled")
+# Job threads and request handlers both update `_jobs`. All reads and writes go
+# through this lock, so that a cancellation cannot be overwritten by a
+# concurrent "running"/"completed"/"failed" transition.
+_jobs_lock = threading.Lock()
+
+
+def _prune_finished_jobs():
+    """Drop the oldest finished jobs beyond `MAX_FINISHED_JOBS`.
+
+    Call with `_jobs_lock` held. Dicts keep insertion order, so the first
+    entries are the oldest submissions.
+    """
+    finished = [
+        job_id for job_id, job in _jobs.items()
+        if job["status"] in _FINISHED_STATUSES
+    ]
+    for job_id in finished[:max(0, len(finished) - MAX_FINISHED_JOBS)]:
+        del _jobs[job_id]
+
+
+def _transition_job(job_id: str, status: str, **fields) -> bool:
+    """Set the job's status (and `fields`) unless it was cancelled.
+
+    Returns False (and changes nothing) if the job was cancelled (or already
+    removed).
+    """
+    with _jobs_lock:
+        job = _jobs.get(job_id)
+        if job is None or job["status"] == "cancelled":
+            return False
+        job["status"] = status
+        job.update(fields)
+        if status in _FINISHED_STATUSES:
+            _prune_finished_jobs()
+        return True
 
 def _check_gpu() -> bool:
     try:
@@ -117,6 +158,25 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
     from cellacdc import myutils
 
     init_kwargs = dict(init_kwargs)
+    init_params, _ = myutils.getModelArgSpec(acdcSegment)
+    path_params = {
+        param.name for param in init_params
+        if myutils._serialize_model_param_type(param.type)['kind']
+        in ('path', 'csv_path', 'folder')
+    }
+    unsupported_paths = {
+        key for key in path_params & set(init_kwargs)
+        if init_kwargs[key] is not None and not (
+            isinstance(init_kwargs[key], str)
+            and init_kwargs[key] in ('', 'None')
+        )
+    }
+    if unsupported_paths:
+        raise ValueError(
+            f'Init kwargs {sorted(unsupported_paths)} reference client files. '
+            'The worker cannot access client-side paths; send the file data '
+            'instead.'
+        )
     # Empty selections ('' / 'None') mean "no file" and carry no client path
     for key in ('segm_endname', 'input_points_path'):
         if init_kwargs.get(key) in (None, '', 'None'):
@@ -169,8 +229,35 @@ def create_app(
     acdcSegment = myutils.import_segment_module(model_name)
     # Mutable holder, so `/init` can replace the model for all endpoints
     state = {'model': None}
+    model_lock = threading.Lock()
     if not defer_init:
-        state['model'] = instantiate_model(acdcSegment, init_kwargs or {})
+        with model_lock:
+            state['model'] = instantiate_model(acdcSegment, init_kwargs or {})
+
+    init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+
+    def serialize_params(params):
+        return [
+            [
+                param.name,
+                json.loads(json.dumps(param.default, default=str)),
+                myutils._serialize_model_param_type(param.type),
+                param.desc,
+                param.docstring,
+            ]
+            for param in params
+        ]
+
+    def call_model_method(method_name, *args, **kwargs):
+        with model_lock:
+            current_model = state['model']
+            if current_model is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail='Model is not initialized yet. POST /init first.'
+                )
+            method = getattr(current_model, method_name)
+            return method(*args, **_filter_kwargs(method, kwargs))
 
     class _ModelProxy:
         """Stands in for the model in the endpoints below.
@@ -213,7 +300,8 @@ def create_app(
         try:
             content = await data.read() if data is not None else None
             decoded = payload.decode(kwargs, content)
-            state['model'] = instantiate_model(acdcSegment, decoded)
+            with model_lock:
+                state['model'] = instantiate_model(acdcSegment, decoded)
             return {"status": "initialized"}
         except Exception:
             import traceback
@@ -229,32 +317,43 @@ def create_app(
         """
         return HealthResponse(status="ok", model=model_name)
 
+    @app.get("/spec")
+    def spec():
+        """Return model argument specs without requiring model initialization."""
+        return {
+            "init_params": serialize_params(init_params),
+            "segment_params": serialize_params(segment_params),
+        }
+
     @app.get("/info", response_model=InfoResponse)
     def info():
         """Describe the loaded model (read by `ModelClient` when connecting).
 
         Response (JSON, see `schema.InfoResponse`): name, version, whether a
         GPU is available, and which optional methods the model implements
-        (`segment3DT`, `second_ch_img_to_stack`). HTTP 503 before `/init`.
+        (`segment3DT`, `second_ch_img_to_stack`, `predictCcaState`). HTTP 503
+        before `/init`.
         """
-        if state['model'] is None:
-            raise HTTPException(
-                status_code=503,
-                detail='Model is not initialized yet. POST /init first.'
+        with model_lock:
+            model = state['model']
+            if model is None:
+                raise HTTPException(
+                    status_code=503,
+                    detail='Model is not initialized yet. POST /init first.'
+                )
+            has_segment3DT = hasattr(model, "segment3DT")
+            has_second_ch = hasattr(model, "second_ch_img_to_stack")
+            return InfoResponse(
+                name=model_name,
+                version=getattr(model, "version", "1.0.0"),
+                gpu=_check_gpu(),
+                capabilities=Capabilities(
+                    segment=True,
+                    segment3DT=has_segment3DT,
+                    second_ch_img_to_stack=has_second_ch,
+                    predictCcaState=hasattr(model, "predictCcaState"),
+                )
             )
-        model = state['model']
-        has_segment3DT = hasattr(model, "segment3DT")
-        has_second_ch = hasattr(model, "second_ch_img_to_stack")
-        return InfoResponse(
-            name=model_name,
-            version=getattr(model, "version", "1.0.0"),
-            gpu=_check_gpu(),
-            capabilities=Capabilities(
-                segment=True,
-                segment3DT=has_segment3DT,
-                second_ch_img_to_stack=has_second_ch
-            )
-        )
 
     # ---------------------------------------------------- direct segmentation
     # The request waits until the result is ready (used by the GUI/CLI).
@@ -274,7 +373,7 @@ def create_app(
             # Read the uploaded bytes and turn them back into a numpy array
             content = await image.read()
             arr = np.load(io.BytesIO(content))
-            out = model.segment(arr, **_filter_kwargs(model.segment, p))
+            out = call_model_method("segment", arr, **p)
             # Send the result back the same way: as `.npy` bytes
             buf = io.BytesIO()
             np.save(buf, out)
@@ -301,7 +400,7 @@ def create_app(
             p = json.loads(params) if params else {}
             content = await image.read()
             arr = np.load(io.BytesIO(content))
-            out = model.segment3DT(arr, **_filter_kwargs(model.segment3DT, p))
+            out = call_model_method("segment3DT", arr, **p)
             buf = io.BytesIO()
             np.save(buf, out)
             return Response(
@@ -312,27 +411,95 @@ def create_app(
             import traceback
             raise HTTPException(status_code=500, detail=traceback.format_exc())
 
+    @app.post("/second_ch_img_to_stack")
+    async def second_ch_img_to_stack(
+            first: UploadFile = File(...), second: UploadFile = File(...)
+        ):
+        """Combine two channels with the model's own `second_ch_img_to_stack`.
+
+        Each model stacks the channels differently (e.g. RGB for Cellpose,
+        a two-channel float stack for InstanSeg), so the client must not
+        reimplement it.
+
+        Request (multipart form, see `ModelClient.second_ch_img_to_stack`):
+            first, second: the two channel images as `.npy` bytes.
+        Response: the stacked image as `.npy` bytes. HTTP 400 if the model has
+        no `second_ch_img_to_stack` method, 500 with the traceback on errors.
+        """
+        if not hasattr(model, "second_ch_img_to_stack"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Model {model_name} does not support "
+                    "second_ch_img_to_stack"
+                )
+            )
+        try:
+            first_arr = np.load(io.BytesIO(await first.read()))
+            second_arr = np.load(io.BytesIO(await second.read()))
+            out = call_model_method(
+                "second_ch_img_to_stack", first_arr, second_arr
+            )
+            buf = io.BytesIO()
+            np.save(buf, out)
+            return Response(
+                content=buf.getvalue(),
+                media_type="application/octet-stream"
+            )
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    @app.post("/predictCcaState")
+    async def predictCcaState(
+            image: UploadFile = File(...),
+            precomputed_lab: UploadFile = File(...),
+        ):
+        """Run `model.predictCcaState(image, precomputed_lab)` (YeastMate).
+
+        Request (multipart form, see `ModelClient.predictCcaState`):
+            image, precomputed_lab: `.npy` bytes.
+        Response (JSON): `{"cca_df": <DataFrame as JSON, orient="table">}`
+        (`table` keeps the index name and dtypes). HTTP 400 if the model has
+        no `predictCcaState` method, 500 with the traceback on errors.
+        """
+        if not hasattr(model, "predictCcaState"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model {model_name} does not support predictCcaState"
+            )
+        try:
+            img = np.load(io.BytesIO(await image.read()))
+            lab = np.load(io.BytesIO(await precomputed_lab.read()))
+            cca_df = call_model_method("predictCcaState", img, lab)
+            return {"cca_df": cca_df.to_json(orient="table")}
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
     # ------------------------------------------------------- background jobs
     # Alternative to `/segment` for long runs: submit the image, get a job id
     # immediately, then poll the status and fetch the result when completed.
     # Useful for remote servers, where one long HTTP request may time out.
 
     def _run_job(job_id: str, arr: np.ndarray, params: dict, is_3dt: bool):
-        """Runs in an `_executor` thread (not an endpoint)."""
+        """Runs in an `_executor` thread (not an endpoint).
+
+        A job cancelled while pending is not started; a job cancelled while
+        running keeps the status `cancelled` and its result is discarded.
+        """
+        if not _transition_job(job_id, "running", progress=0.1):
+            return
         try:
-            _jobs[job_id]["status"] = "running"
-            _jobs[job_id]["progress"] = 0.1
             if is_3dt:
-                out = model.segment3DT(arr, **_filter_kwargs(model.segment3DT, params))
+                out = call_model_method("segment3DT", arr, **params)
             else:
-                out = model.segment(arr, **_filter_kwargs(model.segment, params))
-            _jobs[job_id]["result"] = out
-            _jobs[job_id]["status"] = "completed"
-            _jobs[job_id]["progress"] = 1.0
-        except Exception as e:
+                out = call_model_method("segment", arr, **params)
+        except Exception:
             import traceback
-            _jobs[job_id]["status"] = "failed"
-            _jobs[job_id]["error"] = traceback.format_exc()
+            _transition_job(job_id, "failed", error=traceback.format_exc())
+            return
+        _transition_job(job_id, "completed", result=out, progress=1.0)
 
     @app.post("/jobs/segment")
     async def submit_job(image: UploadFile = File(...), params: str = Form("{}")):
@@ -344,12 +511,14 @@ def create_app(
         p = json.loads(params) if params else {}
         content = await image.read()
         arr = np.load(io.BytesIO(content))
-        _jobs[job_id] = {
+        new_job = {
             "status": "pending",
             "progress": 0.0,
             "error": None,
             "result": None
         }
+        with _jobs_lock:
+            _jobs[job_id] = new_job
         _executor.submit(_run_job, job_id, arr, p, False)
         return {"job_id": job_id}
 
@@ -357,9 +526,10 @@ def create_app(
     def get_job_status(job_id: str):
         """`GET /jobs/<id>`: status (pending/running/completed/failed/
         cancelled), progress (0-1) and the traceback if it failed."""
-        if job_id not in _jobs:
-            raise HTTPException(status_code=404, detail="Job not found")
-        job = _jobs[job_id]
+        with _jobs_lock:
+            if job_id not in _jobs:
+                raise HTTPException(status_code=404, detail="Job not found")
+            job = dict(_jobs[job_id])
         return JobStatusResponse(
             job_id=job_id,
             status=job["status"],
@@ -370,16 +540,21 @@ def create_app(
     @app.get("/jobs/{job_id}/result")
     def get_job_result(job_id: str):
         """`GET /jobs/<id>/result`: the labels as `.npy` bytes once completed
-        (HTTP 400 before that)."""
-        if job_id not in _jobs:
-            raise HTTPException(status_code=404, detail="Job not found")
-        job = _jobs[job_id]
-        if job["status"] != "completed":
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Job status is {job['status']}, result not ready"
-            )
-        out = job["result"]
+        (HTTP 400 before that).
+
+        The result can be fetched only once: afterwards the job is removed
+        (a later request answers 404), so its array is freed.
+        """
+        with _jobs_lock:
+            if job_id not in _jobs:
+                raise HTTPException(status_code=404, detail="Job not found")
+            job = _jobs[job_id]
+            if job["status"] != "completed":
+                raise HTTPException(
+                    status_code=400, 
+                    detail=f"Job status is {job['status']}, result not ready"
+                )
+            out = _jobs.pop(job_id)["result"]
         buf = io.BytesIO()
         np.save(buf, out)
         return Response(
@@ -389,15 +564,30 @@ def create_app(
 
     @app.delete("/jobs/{job_id}")
     def cancel_job(job_id: str):
-        """`DELETE /jobs/<id>`: mark the job as cancelled.
+        """`DELETE /jobs/<id>`: cancel a pending/running job, or delete a
+        finished one.
 
-        Note: this only changes the status; a computation that is already
-        running is not interrupted.
+        A pending job is never started. A running computation is not
+        interrupted, but its result is discarded and the status stays
+        `cancelled`. A finished (completed, failed or cancelled) job is
+        removed together with its result.
+
+        Response (JSON): `{"job_id", "status", "deleted"}`, where `status` is
+        the job's status at the time of the request.
         """
-        if job_id not in _jobs:
-            raise HTTPException(status_code=404, detail="Job not found")
-        _jobs[job_id]["status"] = "cancelled"
-        return {"job_id": job_id, "status": "cancelled"}
+        with _jobs_lock:
+            if job_id not in _jobs:
+                raise HTTPException(status_code=404, detail="Job not found")
+            job = _jobs[job_id]
+            if job["status"] in _FINISHED_STATUSES:
+                del _jobs[job_id]
+                return {
+                    "job_id": job_id, "status": job["status"], "deleted": True
+                }
+            job["status"] = "cancelled"
+            job["result"] = None
+            _prune_finished_jobs()
+        return {"job_id": job_id, "status": "cancelled", "deleted": False}
 
     # ------------------------------------------------------------- shutdown
 

@@ -1,4 +1,5 @@
 import os
+import sys
 import traceback
 import time
 from tqdm import tqdm
@@ -100,6 +101,14 @@ class _WorkflowKernel:
             'env_python': env_python,
         }
 
+    def uses_worker_backend(self):
+        """True if the model runs in a (local or remote) worker process."""
+        return (
+            self.backend_url is not None
+            or self.backend_type in ('remote', 'local')
+            or self.env_python is not None
+        )
+
     def init_backend(
             self, 
             module_name, 
@@ -122,7 +131,7 @@ class _WorkflowKernel:
 
             from cellacdc.service.client import RemoteBackend
             self.backend = RemoteBackend(self.backend_url)
-            client = self.backend.get_client()
+            client = self.backend.get_client(init_model_kwargs=init_kwargs)
             return client
 
         if self.env_python is not None or self.backend_type == 'local':
@@ -389,12 +398,47 @@ class SegmKernel(_WorkflowKernel):
         if self.model is not None:
             return
 
-        backend_kwargs = self.init_model_kwargs
-        uses_local_worker = (
-            self.backend_url is None and self.backend_type != 'remote'
-            and (self.env_python is not None or self.backend_type == 'local')
+        if getattr(self, 'second_channel_name', None) is not None:
+            self.init_model_kwargs = dict(self.init_model_kwargs or {})
+            self.init_model_kwargs['is_rgb'] = True
+
+        if self.uses_worker_backend():
+            if self.backend_url is not None or self.backend_type == 'remote':
+                if self.backend_url is None:
+                    raise RuntimeError('A remote backend URL is required.')
+                from cellacdc.service.client import get_model_arg_spec
+                init_argspecs, segment_argspecs = get_model_arg_spec(
+                    self.backend_url
+                )
+            else:
+                init_argspecs, segment_argspecs, _ = (
+                    myutils.getModelArgSpecFromEnv(
+                        self.model_name, self.env_python or sys.executable
+                    )
+                )
+        else:
+            acdcSegment = myutils.import_segment_module(self.model_name)
+            init_argspecs, segment_argspecs = myutils.getModelArgSpec(
+                acdcSegment
+            )
+
+        raw_init_kwargs = self.init_model_kwargs or {}
+        self.init_model_kwargs = myutils.parse_model_params(
+            init_argspecs, raw_init_kwargs
         )
-        if uses_local_worker and posData is not None and backend_kwargs:
+        for key in (
+            'segm_endname', 'segm_data', 'input_points_df', 'input_points_path'
+        ):
+            if key in raw_init_kwargs:
+                self.init_model_kwargs[key] = raw_init_kwargs[key]
+        self.model_kwargs = myutils.parse_model_params(
+            segment_argspecs, self.model_kwargs or {}
+        )
+
+        backend_kwargs = self.init_model_kwargs
+        # Workers (local or remote) cannot read the client's files: send the
+        # loaded segmentation/points instead of their file names.
+        if self.uses_worker_backend() and posData is not None and backend_kwargs:
             backend_kwargs = dict(backend_kwargs)
             segm_data = myutils.resolve_segm_model_init_data(
                 posData, backend_kwargs
@@ -417,17 +461,6 @@ class SegmKernel(_WorkflowKernel):
         self.signals.progress.emit(
             f'\nInitializing {self.model_name} segmentation model...'
         )
-        acdcSegment = myutils.import_segment_module(self.model_name)
-        init_argspecs, segment_argspecs = myutils.getModelArgSpec(acdcSegment)
-        self.init_model_kwargs = myutils.parse_model_params(
-            init_argspecs, self.init_model_kwargs
-        )
-        self.model_kwargs = myutils.parse_model_params(
-            segment_argspecs, self.model_kwargs
-        )
-        if self.second_channel_name is not None:
-            self.init_model_kwargs['is_rgb'] = True
-
         self.model = myutils.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
         )
