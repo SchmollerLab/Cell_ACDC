@@ -4740,6 +4740,9 @@ class SpinBox(QSpinBox):
 
         self._start_value = int(value)
         self._updateDisplayCorrection()
+    
+    def startValue(self):
+        return self._start_value
 
     def _updateDisplayCorrection(self):
         self._display_correction = (
@@ -10092,11 +10095,29 @@ class Label(QLabel):
     def __init__(self, parent=None, force_html=False):
         super().__init__(parent)
         self._force_html = force_html
+        self._is_disabled = False
+        self._original_stylesheet = self.styleSheet()
         
     def setText(self, text):
         if self._force_html:
             text = html_utils.paragraph(text)
         super().setText(text)
+    
+    def setStyleSheet(self):
+        if self._is_disabled:
+            return
+        
+        self._original_stylesheet = self.styleSheet()
+    
+    def setDisabled(self, disabled: bool):
+        self._is_disabled = disabled
+        if disabled:
+            self.z_label.setStyleSheet('color: gray')
+        else:
+            self.z_label.setStyleSheet(self._original_stylesheet)
+        
+    def isDisabled(self):
+        return self._is_disabled
         
         
 class LabelItem(pg.LabelItem):    

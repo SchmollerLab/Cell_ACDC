@@ -4884,16 +4884,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.showFrameIndexAction.toggled.connect(self.showFrameIndexToggled)
         self.showZsliceIndexAction.toggled.connect(self.showZsliceIndexToggled)
 
-        if 'showFrameIndex' in self.df_settings.index:
-            checked = self.df_settings.at['showFrameIndex', 'value'] == 'Yes'
-            if checked:
-                self.showFrameIndexAction.setChecked(True)
-        
-        if 'showZsliceIndex' in self.df_settings.index:
-            checked = self.df_settings.at['showZsliceIndex', 'value'] == 'Yes'
-            if checked:
-                self.showZsliceIndexAction.setChecked(True)
-
         self.settingsMenu.insertAction(
             self.highLowResAction, self.showFrameIndexAction
         )
@@ -21961,6 +21951,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.navSizeLabel.setText(f'/{posData.SizeT}')
 
         self.enableZstackWidgets(posData.SizeZ > 1)
+
+        if 'showFrameIndex' in self.df_settings.index:
+            checked = self.df_settings.at['showFrameIndex', 'value'] == 'Yes'
+            if checked:
+                self.showFrameIndexAction.setChecked(True)
+        
+        if 'showZsliceIndex' in self.df_settings.index:
+            checked = self.df_settings.at['showZsliceIndex', 'value'] == 'Yes'
+            if checked:
+                self.showZsliceIndexAction.setChecked(True)
         
         self.exportToVideoAction.setDisabled(
             posData.SizeZ == 1 and posData.SizeT == 1
@@ -22413,7 +22413,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.enableZstackWidgets(True)
             self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
             self.zSliceSpinbox.setMaximum(self.data[0].SizeZ)
-            self.SizeZlabel.setText(f'/{self.data[0].SizeZ}')
+            start_value = self.zSliceSpinbox.startValue()
+            if start_value is None:
+                start_value = 1
+            correction = start_value - self.zSliceSpinbox.minimum()
+            maximum = self.zSliceSpinbox.maximum()
+            self.SizeZlabel.setText(f'/{maximum + correction}')
             qutils.tryDisconnectSignal(self.zSliceScrollBar, 'actionTriggered')
             qutils.tryDisconnectSignal(self.zSliceScrollBar, 'sliderReleased' )
             qutils.tryDisconnectSignal(self.zProjComboBox, 'currentTextChanged')
