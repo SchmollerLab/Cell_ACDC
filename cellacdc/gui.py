@@ -598,6 +598,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.labelRoiModel = None
         # model_name -> ModelExecution (environment chosen once per session)
         self.modelExecutions = {}
+        self.promptModelExecutions = {}
         # model_idx -> (settings key, model_name, model) for lost IDs
         self.segForLostIDsModels = {}
         self.autoSegmDoNotAskAgain = False
@@ -9891,14 +9892,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 id(posData),
             )
             cached = self.segForLostIDsModels.get(model_idx)
-            if cached is not None and cached[0] == key:
-                execution = self.getModelExecution(model_name)
-                if execution.is_model_running(cached[2]):
-                    worker.initModelResult = cached[2]
-                    return
-                self.segForLostIDsModels.pop(model_idx)
-                cached = None
-            
+
             self.logger.info(f'Initializing {model_name} model...')
             replace = None
             if cached is not None and cached[1] == model_name:
@@ -18222,10 +18216,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self, model_name, posData, win, acdcPromptSegment, toolbar
         ):
         self.logger.info(f'Initializing promptable model {model_name}...')
+        apps.downloadModel(model_name, parent=self).download()
         init_kwargs = win.init_kwargs
-        model = myutils.init_prompt_segm_model(
-            acdcPromptSegment, posData, win.init_kwargs
+        execution = self.getPromptModelExecution(model_name)
+        previous_model = getattr(toolbar, 'model', None)
+        model = execution.init_model(
+            init_kwargs, posData, replace=previous_model
         )
+        if model is None:
+            return
         toolbar.model = model
         toolbar.model_segment_kwargs = win.model_kwargs
         toolbar.model_name = model_name
@@ -18250,6 +18249,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             toolbar,
         ):
         posData = self.data[self.pos_i]
+        execution = self.getPromptModelExecution(model_name)
+        model_spec = execution.prepare()
+        if model_spec is None:
+            self.logger.info(
+                f'Initialization of {model_name} promptable model cancelled.'
+            )
+            return
+        init_argspecs, segment_argspecs, help_url = model_spec
+        acdcPromptSegment = None
+        toolbar._acdcPromptSegment = None
+        toolbar._init_argspecs = init_argspecs
+        toolbar._segment_argspecs = segment_argspecs
+        toolbar._help_url = help_url
         
         out = prompts.init_prompt_model_params(
             posData, model_name, init_argspecs, segment_argspecs, 
@@ -19412,6 +19424,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.modelExecutions[model_name] = execution
         return execution
 
+    def getPromptModelExecution(self, model_name):
+        execution = self.promptModelExecutions.get(model_name)
+        if execution is None:
+            from .service import model_execution, prompts as service_prompts
+
+            def run_in_background(func, *args, **kwargs):
+                return model_execution.run_in_background(
+                    self, func, *args, log_func=self.logger.info, **kwargs
+                )
+
+            execution = model_execution.ModelExecution(
+                model_name,
+                run_in_background=run_in_background,
+                prompt_func=lambda prompt: service_prompts.QtHandler(
+                    parent=self
+                ).ask(prompt),
+                log_func=self.setModelExecutionStatus,
+                model_kind='promptable',
+            )
+            self.promptModelExecutions[model_name] = execution
+        return execution
+
     def setModelExecutionStatus(self, text):
         self.logger.info(text)
         self.titleLabel.setText(text, color=self.titleColor)
@@ -19490,8 +19524,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return
         for execution in self.modelExecutions.values():
             execution.stop()
+        for execution in self.promptModelExecutions.values():
+            execution.stop()
         self.segForLostIDsModels = {}
         self.modelExecutions = {}
+        self.promptModelExecutions = {}
 
     def initSegmModelParams(
             self, model_name, url, init_params, segment_params, 

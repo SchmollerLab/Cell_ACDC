@@ -1385,7 +1385,9 @@ def _deserialize_model_param_type(data):
     }[data['kind']]
 
 
-def getModelArgSpecFromEnv(model_name: str, python_exec: str):
+def getModelArgSpecFromEnv(
+        model_name: str, python_exec: str, model_kind: str = 'segmentation'
+    ):
     """Query model argument specification (init_params, segment_params, url)
     by running inspection inside the model's dedicated Python environment.
     GUI types are transferred as metadata and reconstructed on the client.
@@ -1394,7 +1396,12 @@ def getModelArgSpecFromEnv(model_name: str, python_exec: str):
 import json, sys
 from cellacdc import myutils
 try:
-    acdcSegment = myutils.import_segment_module("{model_name}")
+    importer = (
+        myutils.import_promptable_segment_module
+        if "{model_kind}" == "promptable"
+        else myutils.import_segment_module
+    )
+    acdcSegment = importer("{model_name}")
     init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
     url = getattr(acdcSegment, "url_help", lambda: None)()
     def _serialize_p(p):

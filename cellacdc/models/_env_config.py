@@ -160,6 +160,11 @@ MODEL_ENVS = {
         'torch': True,
         'packages': ['segment_anything'],
     },
+    'nnInteractive': {
+        'python': '3.12',
+        'torch': True,
+        'packages': ['nnInteractive', 'huggingface_hub'],
+    },
     'cellsam': {
         'torch': True,
         'main_env_packages': [{'pkg_name': 'cellSAM'}],

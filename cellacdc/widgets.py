@@ -12405,34 +12405,12 @@ class MagicPromptsToolbar(ToolBar):
             return
         
         model_name = win.model_name
-        print(f'Importing promptable model {model_name}...')
+        print(f'Preparing promptable model {model_name}...')
 
-        # Download model weights, consistent with gui.py
-        downloadWin = apps.downloadModel(model_name, parent=self._parent)
-        downloadWin.download()
-
-        acdcPromptSegment = myutils.import_promptable_segment_module(model_name)
-        init_argspecs, segment_argspecs = myutils.getModelArgSpec(
-            acdcPromptSegment
-        )
-        
-        try:
-            help_url = acdcPromptSegment.url_help()
-        except AttributeError:
-            help_url = None
-        
         self._model_name = model_name
-        self._acdcPromptSegment = acdcPromptSegment
-        self._init_argspecs = init_argspecs
-        self._segment_argspecs = segment_argspecs
-        self._help_url = help_url
         
         self.sigInitSelectedModel.emit(
-            model_name, 
-            acdcPromptSegment,
-            init_argspecs, 
-            segment_argspecs,
-            help_url,
+            model_name, None, [], [], '',
             self
         )
     

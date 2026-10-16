@@ -227,6 +227,26 @@ class ModelClient:
         self._raise_for_status(res)
         return np.load(io.BytesIO(res.content))
 
+    def add_prompt(self, **kwargs):
+        """Forward a promptable model's state update to its worker."""
+        from cellacdc.service import payload
+
+        kwargs_json, attachment = payload.encode(kwargs)
+        files = None
+        if attachment is not None:
+            files = {
+                'data': (
+                    'prompt.npz', attachment, 'application/octet-stream'
+                )
+            }
+        res = self.session.post(
+            f'{self.base_url}/add_prompt',
+            data={'kwargs': kwargs_json},
+            files=files,
+            timeout=self.timeout,
+        )
+        self._raise_for_status(res)
+
     def second_ch_img_to_stack(
             self, 
             first_ch_data: np.ndarray, 
@@ -328,13 +348,15 @@ class LocalBackend:
             env_python: Optional[str] = None, 
             port: Optional[int] = None, 
             host: str = "127.0.0.1",
-            init_model_kwargs: Optional[Dict[str, Any]] = None
+            init_model_kwargs: Optional[Dict[str, Any]] = None,
+            model_kind: str = 'segmentation',
         ):
         self.model_name = model_name
         self.env_python = env_python if env_python else sys.executable
         self.host = host
         self.port = port if port is not None else _find_free_port(host)
         self.init_model_kwargs = init_model_kwargs or {}
+        self.model_kind = model_kind
         self.proc: Optional[subprocess.Popen] = None
         self.client: Optional[ModelClient] = None
         self.base_url = f"http://{self.host}:{self.port}"
@@ -349,6 +371,7 @@ class LocalBackend:
             "--model", self.model_name,
             "--port", str(self.port),
             "--host", self.host,
+            "--model-kind", self.model_kind,
             "--defer-init",
         ]
         env = dict(os.environ, PYTHONUNBUFFERED="1")

@@ -278,6 +278,7 @@ def create_app(
         model_name: str,
         init_kwargs: Optional[Dict[str, Any]] = None,
         defer_init: bool = False,
+        model_kind: str = 'segmentation',
     ) -> FastAPI:
     """Build the FastAPI application for `model_name`.
 
@@ -299,7 +300,11 @@ def create_app(
     from cellacdc import myutils
     from cellacdc.service import payload
 
-    acdcSegment = myutils.import_segment_module(model_name)
+    importer = (
+        myutils.import_promptable_segment_module
+        if model_kind == 'promptable' else myutils.import_segment_module
+    )
+    acdcSegment = importer(model_name)
     # Mutable holder, so `/init` can replace the model for all endpoints
     state = {'model': None}
     model_lock = threading.Lock()
@@ -491,6 +496,27 @@ def create_app(
                 media_type="application/octet-stream"
             )
         except Exception as e:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    @app.post('/add_prompt')
+    async def add_prompt(
+            kwargs: str = Form('{}'), data: Optional[UploadFile] = File(None)
+        ):
+        """Update a promptable model with one serialized prompt."""
+        if not hasattr(model, 'add_prompt'):
+            raise HTTPException(
+                status_code=400,
+                detail=f'Model {model_name} does not support add_prompt',
+            )
+        try:
+            content = await data.read() if data is not None else None
+            decoded = payload.decode(kwargs, content)
+            await run_in_threadpool(
+                call_model_method, 'add_prompt', **decoded
+            )
+            return {'status': 'ok'}
+        except Exception:
             import traceback
             raise HTTPException(status_code=500, detail=traceback.format_exc())
 
@@ -735,6 +761,10 @@ def main():
 
     parser = argparse.ArgumentParser(description="Cell-ACDC Model Worker Service")
     parser.add_argument("--model", required=True, help="Segmentation model name")
+    parser.add_argument(
+        '--model-kind', choices=('segmentation', 'promptable'),
+        default='segmentation',
+    )
     parser.add_argument("--port", type=int, default=8520, help="Port to listen on")
     parser.add_argument("--host", default="127.0.0.1", help="Host address to bind to")
     parser.add_argument("--init-kwargs", default="{}", help="JSON string with init kwargs")
@@ -760,7 +790,8 @@ def main():
     init_kwargs = json.loads(args.init_kwargs) if args.init_kwargs else {}
 
     app = create_app(
-        args.model, init_kwargs=init_kwargs, defer_init=args.defer_init
+        args.model, init_kwargs=init_kwargs, defer_init=args.defer_init,
+        model_kind=args.model_kind,
     )
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

@@ -193,8 +193,10 @@ class ModelExecution:
             prompt_func: Optional[Callable] = None,
             log_func: Callable = print,
             use_model_env: Optional[bool] = None,
+            model_kind: str = 'segmentation',
         ):
         self.model_name = model_name
+        self.model_kind = model_kind
         self.run_in_background = run_in_background or _call_directly
         self.prompt_func = prompt_func
         self.log = log_func
@@ -282,13 +284,21 @@ class ModelExecution:
                 raise RuntimeError(
                     f'No model environment found for {self.model_name}'
                 )
+            spec_args = [self.model_name, env_python]
+            if self.model_kind != 'segmentation':
+                spec_args.append(self.model_kind)
             spec = self.run_in_background(
-                myutils.getModelArgSpecFromEnv, self.model_name, env_python
+                myutils.getModelArgSpecFromEnv, *spec_args
             )
             self.env_python = env_python
         else:
             self.log(f'Importing {self.model_name}...')
-            self.acdcSegment = myutils.import_segment_module(self.model_name)
+            importer = (
+                myutils.import_promptable_segment_module
+                if self.model_kind == 'promptable'
+                else myutils.import_segment_module
+            )
+            self.acdcSegment = importer(self.model_name)
             init_params, segment_params = myutils.getModelArgSpec(
                 self.acdcSegment
             )
@@ -338,14 +348,19 @@ class ModelExecution:
             return None
 
         if self.backend_type == 'in_process':
-            return myutils.init_segm_model(
-                self.acdcSegment, posData, init_kwargs
-            )
+            if self.model_kind == 'promptable':
+                return myutils.init_prompt_segm_model(
+                    self.acdcSegment, posData, init_kwargs
+                )
+            return myutils.init_segm_model(self.acdcSegment, posData, init_kwargs)
 
         init_kwargs = dict(init_kwargs)
-        segm_data = myutils.resolve_segm_model_init_data(posData, init_kwargs)
-        if segm_data is not None:
-            init_kwargs['segm_data'] = segm_data
+        if self.model_kind == 'segmentation':
+            segm_data = myutils.resolve_segm_model_init_data(
+                posData, init_kwargs
+            )
+            if segm_data is not None:
+                init_kwargs['segm_data'] = segm_data
         key = _kwargs_key(init_kwargs)
         env_key = required_env_fingerprint(self.model_name)
 
@@ -374,11 +389,14 @@ class ModelExecution:
             f'Starting model server for {self.model_name} in '
             f'{self.env_python}...'
         )
-        backend = LocalBackend(
+        backend_kwargs = dict(
             model_name=self.model_name,
             env_python=self.env_python,
             init_model_kwargs=init_kwargs,
         )
+        if self.model_kind != 'segmentation':
+            backend_kwargs['model_kind'] = self.model_kind
+        backend = LocalBackend(**backend_kwargs)
         try:
             model = self.run_in_background(backend.start)
         except Exception:

@@ -508,6 +508,37 @@ def test_gui_model_execution_modes(monkeypatch, use_model_env):
         assert execution.backend_url is None
 
 
+def test_promptable_model_execution_uses_isolated_worker(monkeypatch):
+    from unittest.mock import Mock
+    from cellacdc.service.model_execution import ModelExecution
+
+    spec = (['init'], ['segment'], 'help')
+    backend = Mock(url='worker-url')
+    backend.start.return_value = object()
+    mocks = _patch_model_execution(
+        monkeypatch,
+        getModelArgSpecFromEnv=Mock(return_value=spec),
+        LocalBackend=Mock(return_value=backend),
+    )
+    execution = ModelExecution(
+        'segment_anything', model_kind='promptable', log_func=Mock()
+    )
+
+    assert execution.prepare() == spec
+    model = execution.init_model({'model_type': 'Small'}, posData=object())
+
+    mocks['getModelArgSpecFromEnv'].assert_called_once_with(
+        'segment_anything', 'model-python', 'promptable'
+    )
+    mocks['LocalBackend'].assert_called_once_with(
+        model_name='segment_anything',
+        env_python='model-python',
+        init_model_kwargs={'model_type': 'Small'},
+        model_kind='promptable',
+    )
+    assert model is backend.start.return_value
+
+
 def test_model_execution_restarts_for_required_env_change(monkeypatch):
     from unittest.mock import Mock
     from cellacdc.service import model_execution
@@ -1146,6 +1177,93 @@ def test_nested_array_payload_roundtrip():
     )
 
 
+def test_sam_embeddings_portable_and_legacy_roundtrip(tmp_path, monkeypatch):
+    import builtins
+    import torch
+    from cellacdc import sam_embeddings
+
+    embeddings = {
+        1: {
+            2: {
+                'original_size': (10, 12),
+                'features': torch.arange(6, dtype=torch.float32).reshape(2, 3),
+                'is_image_set': True,
+            }
+        }
+    }
+    portable_path = tmp_path / 'portable.pt'
+    sam_embeddings.save(embeddings, portable_path)
+
+    original_import = builtins.__import__
+
+    def without_torch(name, *args, **kwargs):
+        if name == 'torch' or name.startswith('torch.'):
+            raise ImportError('torch intentionally unavailable')
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', without_torch)
+    portable = sam_embeddings.load(portable_path)
+    np.testing.assert_array_equal(
+        portable[1][2]['features'], np.arange(6).reshape(2, 3)
+    )
+    assert portable[1][2]['original_size'] == (10, 12)
+
+    monkeypatch.setattr(builtins, '__import__', original_import)
+    legacy_path = tmp_path / 'legacy.pt'
+    torch.save(embeddings, legacy_path)
+    monkeypatch.setattr(builtins, '__import__', without_torch)
+    legacy = sam_embeddings.load(legacy_path)
+    np.testing.assert_array_equal(
+        legacy[1][2]['features'], np.arange(6).reshape(2, 3)
+    )
+    assert legacy[1][2]['original_size'] == (10, 12)
+
+
+@pytest.mark.parametrize(
+    'direct_url, version, expected',
+    [
+        (
+            {
+                'url': 'https://github.com/SchmollerLab/Cell_ACDC.git',
+                'vcs_info': {'vcs': 'git', 'commit_id': 'abc123'},
+            },
+            '1.7.0.dev1',
+            'cellacdc @ git+https://github.com/SchmollerLab/'
+            'Cell_ACDC.git@abc123',
+        ),
+        (None, '1.6.5', 'cellacdc==1.6.5'),
+    ],
+)
+def test_installed_cellacdc_spec_preserves_provenance(
+        monkeypatch, direct_url, version, expected
+    ):
+    import cellacdc
+    from cellacdc.service import environment
+
+    class Distribution:
+        def read_text(self, name):
+            assert name == 'direct_url.json'
+            return json.dumps(direct_url) if direct_url is not None else None
+
+    monkeypatch.setattr(cellacdc, '__version__', version)
+    monkeypatch.setattr(environment, 'distribution', lambda name: Distribution())
+    assert environment._installed_cellacdc_spec() == expected
+
+
+def test_unreproducible_development_build_fails(monkeypatch):
+    import cellacdc
+    from cellacdc.service import environment
+
+    class Distribution:
+        def read_text(self, name):
+            return None
+
+    monkeypatch.setattr(cellacdc, '__version__', '1.7.0.dev1+local')
+    monkeypatch.setattr(environment, 'distribution', lambda name: Distribution())
+    with pytest.raises(RuntimeError, match='Cannot reproduce'):
+        environment._installed_cellacdc_spec()
+
+
 def test_model_client_preserves_null_frame_and_sam_embeddings():
     from cellacdc.service import payload
 
@@ -1667,6 +1785,50 @@ def test_worker_runs_model_specific_methods(monkeypatch):
         ))
     assert err.value.status_code == 400
     assert not endpoints[('/info', ('GET',))]().capabilities.predictCcaState
+
+
+def test_worker_runs_promptable_model_protocol(monkeypatch):
+    import asyncio
+    import types
+    from cellacdc import myutils
+    from cellacdc.service import payload, worker
+
+    class Model:
+        def __init__(self):
+            self.prompts = []
+
+        def add_prompt(self, prompt, prompt_id, image, **kwargs):
+            self.prompts.append((prompt, prompt_id, image.copy()))
+
+        def segment(self, image, lab=None):
+            assert self.prompts
+            return np.full_like(image, self.prompts[-1][1], dtype=np.uint32)
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(
+        myutils, 'import_promptable_segment_module', lambda name: module
+    )
+    app = worker.create_app('fake', model_kind='promptable')
+    endpoints = {
+        route.path: route.endpoint
+        for route in app.routes if hasattr(route, 'methods')
+    }
+    image = np.zeros((2, 2), dtype=np.uint8)
+    kwargs, data = payload.encode({
+        'prompt': (0, 1, 1), 'prompt_id': 7, 'image': image,
+    })
+
+    result = asyncio.run(endpoints['/add_prompt'](
+        kwargs=kwargs, data=_FakeUploadBytes(data)
+    ))
+    assert result == {'status': 'ok'}
+    response = asyncio.run(endpoints['/segment'](
+        image=_FakeUpload(image), params=json.dumps({'lab': None}),
+        embedding_meta='', embeddings=None,
+    ))
+    np.testing.assert_array_equal(
+        np.load(io.BytesIO(response.body)), np.full((2, 2), 7)
+    )
 
 
 def test_worker_roundtrips_sam_embeddings(monkeypatch):

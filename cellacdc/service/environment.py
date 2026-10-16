@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import json
 import hashlib
+from importlib.metadata import distribution, PackageNotFoundError
 from typing import Optional, Callable, Any, List, Literal, Union
 
 from cellacdc import is_conda_env, user_profile_path
@@ -215,10 +216,7 @@ def install_cellacdc_cli(
         if _get_cellacdc_source_root() is not None:
             link_cellacdc_to_env(python_exec, logger_func=logger_func)
         else:
-            from cellacdc import __version__ as acdc_version
-
-            is_release = re.fullmatch(r"\d+(\.\d+)*", str(acdc_version)) is not None
-            spec = f"cellacdc=={acdc_version}" if is_release else "cellacdc"
+            spec = _installed_cellacdc_spec()
             logger_func(f"Installing {spec} (no dependencies)...")
             if run_streaming(pip_cmd + ["--no-deps", spec], logger_func) != 0:
                 logger_func(f"Warning: pip install of {spec} failed.")
@@ -234,6 +232,42 @@ def install_cellacdc_cli(
             f"Warning: Failed to install Cell-ACDC runtime into {python_exec}: {e}"
         )
         return False
+
+
+def _installed_cellacdc_spec() -> str:
+    """Return a pip spec that reproduces this installed Cell-ACDC build."""
+    from cellacdc import __version__ as acdc_version
+
+    try:
+        dist = distribution('cellacdc')
+    except PackageNotFoundError as err:
+        raise RuntimeError(
+            'Cannot reproduce this Cell-ACDC build in the model environment: '
+            'the installed distribution metadata is unavailable.'
+        ) from err
+
+    direct_url_text = dist.read_text('direct_url.json')
+    if direct_url_text:
+        direct_url = json.loads(direct_url_text)
+        url = direct_url.get('url')
+        vcs_info = direct_url.get('vcs_info') or {}
+        if url and vcs_info.get('commit_id'):
+            vcs = vcs_info.get('vcs', 'git')
+            spec = f'cellacdc @ {vcs}+{url}@{vcs_info["commit_id"]}'
+            subdirectory = direct_url.get('subdirectory')
+            if subdirectory:
+                spec += f'#subdirectory={subdirectory}'
+            return spec
+        if url and direct_url.get('archive_info') is not None:
+            return f'cellacdc @ {url}'
+
+    if re.fullmatch(r'\d+(\.\d+)*', str(acdc_version)):
+        return f'cellacdc=={acdc_version}'
+    raise RuntimeError(
+        'Cannot reproduce this development Cell-ACDC build in the model '
+        'environment. Install Cell-ACDC from a VCS URL or wheel that records '
+        'PEP 610 direct_url.json provenance, or run from a source checkout.'
+    )
 
 
 def ensure_cellacdc_cli(
