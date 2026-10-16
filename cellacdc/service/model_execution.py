@@ -72,7 +72,32 @@ def _kwargs_key(init_kwargs: Dict[str, Any]) -> str:
             digest.update(value.to_json(orient='split').encode())
         else:
             digest.update(json.dumps(value, sort_keys=True, default=str).encode())
+            digest.update(_path_stamp(value))
     return digest.hexdigest()
+
+
+def _path_stamp(value: Any) -> bytes:
+    """Modification time of a file/folder path value.
+
+    Existing paths contribute their mtime, so editing the file changes the
+    key. Path-like values whose mtime cannot be read contribute a unique
+    token, so the key never matches and the model is always re-initialized.
+    """
+    import os
+    import uuid
+
+    if not isinstance(value, (str, os.PathLike)):
+        return b''
+    path = os.fspath(value)
+    if not isinstance(path, str) or not path:
+        return b''
+    try:
+        return f'|mtime={os.stat(path).st_mtime_ns}'.encode()
+    except OSError:
+        pass
+    if os.sep in path or '/' in path:
+        return f'|unavailable={uuid.uuid4().hex}'.encode()
+    return b''
 
 
 def _call_directly(func, *args, **kwargs):

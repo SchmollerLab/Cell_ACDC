@@ -16701,43 +16701,67 @@ class QInput(QBaseDialog):
 
 class InstallPyTorchDialog(QBaseDialog):
     def __init__(
-            self, parent=None, caller_name='Cell-ACDC', platforms=None, 
-            default_platform=None, target_python=None
+            self, parent=None, caller_name='Cell-ACDC',
+            target_python=None, platform=None, found_cuda_version=None,
+            possible_links=None,
         ):
         """Dialog to choose how to install PyTorch.
 
-        If `platforms` (mapping label -> pip index URL, None for default 
-        PyPI) is given, the dialog installs into the environment of 
-        `target_python` and the selected label is stored in `self.platform`.
+        Parameters
+        ----------
+        possible_links : tuple, optional
+            Precomputed result of `myutils.get_torch_options`, i.e.
+            (options, preferred_index). If None, it is fetched here
+            (needs network access).
         """
         super().__init__(parent=parent)
-        
+
         self.cancel = True
         self.platform = None
-        self._platforms = platforms
+        self.indexUrl = None
         self._targetPython = target_python
-        
+
         mainLayout = QVBoxLayout()
-        
+
         innerLayout = QGridLayout()
-        
+
         iconLabel = QLabel(self)
         standardIcon = getattr(QStyle, 'SP_MessageBoxInformation')
         icon = self.style().standardIcon(standardIcon)
         pixmap = icon.pixmap(60, 60)
         iconLabel.setPixmap(pixmap)
         innerLayout.addWidget(iconLabel, 0, 0, alignment=Qt.AlignTop)
-        
+
+        if found_cuda_version is None:
+            found_cuda_version = myutils.get_driver_cuda_version()
+
+        if possible_links is None:
+            possible_links = myutils.get_torch_options_safe(
+                driver_cuda_version=found_cuda_version
+            )
+        self._options, self._preferred = possible_links
+        self._detectedOnMac = sys.platform == 'darwin'
+
         href = html_utils.href_tag('How to install PyTorch', urls.install_pytorch)
         important = html_utils.to_admonition("""
             Should you choose to install PyTorch yourself, <b>make sure to 
             activate<br>
             the correct <code>acdc</code> environment first</b>.
         """, admonition_type='important')
-        
+
         infoText = html_utils.paragraph(f"""
             {caller_name} needs to <b>install the package</b> <code>PyTorch</code>.<br><br>
-            Select your preferences and click ok to install it now. 
+            Select your preferences and click ok to install it now.<br>
+            You can check the currently running `CUDA UMD Version` by running:""")
+        if found_cuda_version is not None:
+            infoText += html_utils.paragraph(
+                f'Current CUDA UMD Version: {found_cuda_version[0]}.{found_cuda_version[1]}'
+            )
+
+        self.commandWidgetSMI = widgets.CopiableCommandWidget(
+            command='nvidia-smi'
+        )
+        infoText2 = html_utils.paragraph(f"""
             You will have to <b>confirm the installation in the terminal</b>.<br><br>
             Alternatively, you can close {caller_name} and run the command 
             yourself.<br><br>
@@ -16745,54 +16769,57 @@ class InstallPyTorchDialog(QBaseDialog):
             {important}
         """)
         innerLayout.addWidget(QLabel(infoText), 0, 1)
-        innerLayout.addItem(QSpacerItem(10, 10), 1, 1)
-        
+        innerLayout.addWidget(self.commandWidgetSMI, 1, 1)
+        innerLayout.addWidget(QLabel(infoText2), 2, 1)
+        innerLayout.addItem(QSpacerItem(10, 10), 3, 1)
+
         preferencesLayout = QGridLayout()
-        
+
         row = 0
         self.osCombobox = QComboBox()
         self.osCombobox.addItems(['Linux', 'Mac', 'Windows'])
         osLabel = QLabel('Your OS')
         preferencesLayout.addWidget(osLabel, row, 0)
         preferencesLayout.addWidget(self.osCombobox, row, 1)
-        
-        if is_mac:
-            self.osCombobox.setCurrentText('Mac')
-        elif is_win:
-            self.osCombobox.setCurrentText('Windows')
-        
+
+        if not platform:
+            if is_mac:
+                self.osCombobox.setCurrentText('Mac')
+            elif is_win:
+                self.osCombobox.setCurrentText('Windows')
+        else:
+            if platform.startswith('linux'):
+                platform = 'linux'
+            if platform.startswith('darwin'):
+                platform = 'mac'
+            if platform.startswith("win"):
+                platform = 'win'
+            if platform == 'mac':
+                self.osCombobox.setCurrentText('Mac')
+            elif platform == 'win':
+                self.osCombobox.setCurrentText('Windows')
+            elif platform == 'linux':
+                self.osCombobox.setCurrentText('Linux')
+
         row += 1
         self.pkgManagerCombobox = QComboBox()
         self.pkgManagerCombobox.addItems(['Pip'])
         if not is_conda_env():
             self.pkgManagerCombobox.setCurrentText('Pip')
             self.pkgManagerCombobox.setDisabled(True)
-        
+
         pkgManagerLabel = QLabel('Package manager')
         preferencesLayout.addWidget(pkgManagerLabel, row, 0)
         preferencesLayout.addWidget(self.pkgManagerCombobox, row, 1)
-        
+
         row += 1
+        # Items are filled in populatePlatforms() below
         self.cmptPlatformCombobox = QComboBox()
-        if platforms is None:
-            self.cmptPlatformCombobox.addItems(
-                ['CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)']
-            )
-        else:
-            self.cmptPlatformCombobox.addItems(list(platforms))
-            if default_platform in platforms:
-                self.cmptPlatformCombobox.setCurrentText(default_platform)
-            for widget in (
-                    osLabel, self.osCombobox, pkgManagerLabel, 
-                    self.pkgManagerCombobox
-                ):
-                widget.hide()
-        
         preferencesLayout.addWidget(QLabel('Compute Platform'), row, 0)
         preferencesLayout.addWidget(self.cmptPlatformCombobox, row, 1)
-        
+
         row += 1
-        pip_prefix, conda_prefix = myutils.get_pip_conda_prefix()
+        _, pip_prefix = myutils.get_pip_conda_prefix(exec_path=target_python)
         self.commandWidget = widgets.CopiableCommandWidget(
             command=f'{pip_prefix} torch'
         )
@@ -16801,42 +16828,64 @@ class InstallPyTorchDialog(QBaseDialog):
         preferencesLayout.setColumnStretch(0, 0)
         preferencesLayout.setColumnStretch(1, 0)
         preferencesLayout.setColumnStretch(2, 1)
-        
-        innerLayout.addLayout(preferencesLayout, 2, 1)
-        
+
+        innerLayout.addLayout(preferencesLayout, 4, 1)
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(innerLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-        
-        self.osCombobox.currentTextChanged.connect(self.updateCommand)
+
+        # Changing the OS changes the available platforms -> repopulate
+        self.osCombobox.currentTextChanged.connect(self.populatePlatforms)
         self.pkgManagerCombobox.currentTextChanged.connect(self.updateCommand)
         self.cmptPlatformCombobox.currentTextChanged.connect(self.updateCommand)
-        
+
+        self.populatePlatforms()
+
+    def _platformOptions(self, osText):
+        """(options, preferred_index) for the selected OS."""
+        if osText == 'Mac':
+            return [('Default (CPU / Apple GPU)', None)], 0
+        if self._detectedOnMac:
+            # Options were detected on a Mac, so there is no CUDA info
+            return [('CPU', f'{myutils.BASE}cpu')], 0
+        return self._options, self._preferred
+
+    def populatePlatforms(self, *args, **kwargs):
+        options, preferred = self._platformOptions(
+            self.osCombobox.currentText()
+        )
+        self._urls = dict(options)
+
+        self.cmptPlatformCombobox.blockSignals(True)
+        self.cmptPlatformCombobox.clear()
+        self.cmptPlatformCombobox.addItems([label for label, _ in options])
+        self.cmptPlatformCombobox.setCurrentIndex(preferred)
+        self.cmptPlatformCombobox.blockSignals(False)
+
         self.updateCommand()
-    
+
     def updateCommand(self, *args, **kwargs):
-        cmptPlatform = self.cmptPlatformCombobox.currentText()
-        if self._platforms is not None:
-            command = f'"{self._targetPython}" -m pip install torch torchvision'
-            index_url = self._platforms.get(cmptPlatform)
-            if index_url:
-                command = f'{command} --index-url {index_url}'
-            self.commandWidget.setCommand(command)
-            return
-        osText = self.osCombobox.currentText()
-        pkgManager = self.pkgManagerCombobox.currentText()
-        command = myutils.get_pytorch_command()[osText][pkgManager][cmptPlatform]
+        indexUrl = self._urls.get(self.cmptPlatformCombobox.currentText())
+        _, pip_prefix = myutils.get_pip_conda_prefix(
+            exec_path=self._targetPython
+            )
+        command = f'{pip_prefix} torch torchvision'
+        if indexUrl is not None:    # None -> default PyPI install (macOS)
+            command += f' --index-url {indexUrl}'
         self.commandWidget.setCommand(command)
-    
+
     def ok_cb(self):
-        self.platform = self.cmptPlatformCombobox.currentText()
+        label = self.cmptPlatformCombobox.currentText()
+        self.platform = label
+        self.indexUrl = self._urls.get(label)
         self.command = self.commandWidget.command()
         self.cancel = False
         self.close()

@@ -12,8 +12,6 @@ from .environment import (
     ensure_worker_dependencies,
     ensure_model_dependencies,
     load_model_env_config,
-    detect_torch_index,
-    ensure_torch,
     WORKER_RUNTIME_DEPENDENCIES,
 )
 
@@ -36,7 +34,5 @@ __all__ = [
     "ensure_worker_dependencies",
     "ensure_model_dependencies",
     "load_model_env_config",
-    "detect_torch_index",
-    "ensure_torch",
     "WORKER_RUNTIME_DEPENDENCIES",
 ]

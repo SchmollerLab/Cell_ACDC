@@ -57,8 +57,14 @@ class Prompt:
         return cls(**data)
 
 
-def choice(title, text, choices, default=None, **kwargs) -> Prompt:
-    return Prompt(CHOICE, title, text, list(choices), default, **kwargs)
+def choice(title=None, text=None, choices=None, default=None, **kwargs) -> Prompt:
+    if ((choices is None or text is None or title is None) 
+        and kwargs.get('dialog') is None):
+        raise ValueError("choices, title, and text must be provided for a choice prompt if no dialog is specified")
+    
+    return Prompt(CHOICE, title, text, 
+                  list(choices) if choices is not None else None, 
+                  default, **kwargs)
 
 
 def confirm(title, text, default=True, **kwargs) -> Prompt:
@@ -216,12 +222,13 @@ class QtHandler(PromptHandler):
         from cellacdc import apps
         win = apps.InstallPyTorchDialog(
             parent=self.parent,
-            platforms=prompt.extra.get('platforms'),
-            default_platform=prompt.default,
             target_python=prompt.extra.get('python'),
+            platform=prompt.extra.get('platform'),
+            found_cuda_version=prompt.extra.get('found_cuda_version'),
+            possible_links=prompt.extra.get('possible_links'),
         )
         win.exec_()
-        return None if win.cancel else win.platform
+        return None if win.cancel else win.command
 
     def _ask_choice_buttons(self, prompt: Prompt):
         from cellacdc import widgets

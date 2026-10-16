@@ -9,8 +9,7 @@ Entry fields (all optional):
     python: Python version of the environment, e.g. "3.11". Default is the
         Python version of the main Cell-ACDC environment.
     torch: True if the model needs PyTorch. It is installed automatically
-        with the build matching the machine (CPU or CUDA, see
-        ``cellacdc.service.environment.detect_torch_index``).
+        with the build matching the machine
     packages: list of packages to install. Each item is either a string
         (pip name, also used as import name) or a dict with the keys
         accepted by ``myutils.check_install_package``

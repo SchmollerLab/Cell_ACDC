@@ -683,14 +683,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.splineToObjModel.fit()
     
-    def setDisabled(self, disabled:bool, keepDisabled:bool=None, force:bool=False):
+    def setDisabled(self, 
+                    disabled:bool, 
+                    keepDisabled:bool=None, 
+                    force:bool=False):
         if force:
             if disabled:
+                self.gui_refreshToolCursor()
                 super().setDisabled(disabled)
+                # set override cursor to indicate the GUI is disabled only for the GUI itself
                 return
             else:
                 self.keepDisabled = False
                 super().setDisabled(disabled)
+                # restore the cursor when the GUI is enabled again
+                self.gui_refreshToolCursor()
                 return
 
         if keepDisabled is not None:
@@ -698,12 +705,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if self.keepDisabled:
             if disabled:
+                self.gui_refreshToolCursor()
                 super().setDisabled(disabled)
                 return
             else:
                 return
         else:
+            if disabled:
+                self.gui_refreshToolCursor()
             super().setDisabled(disabled)
+            if not disabled:
+                self.gui_refreshToolCursor()
+
     
     def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
@@ -1151,6 +1164,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.app.setOverrideCursor(Qt.SizeAllCursor)
 
     def gui_refreshToolCursor(self, *args):
+        # check if UI is disabled
+        disabled = not self.isEnabled()
+        # check if cursor is unobstructed hovering over self
+        is_hovering = self.underMouse()
+        if is_hovering and disabled:
+            self.setCursor(Qt.WaitCursor)
+            return
+        else:
+            self.unsetCursor()
+            
         isHoverImg1 = self._cursorHoverImage
         if isHoverImg1 is None:
             return
@@ -19366,22 +19389,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
             
             def ask(prompt):
-                # Dialogs stay usable while the GUI is disabled, but the 
-                # wait cursor must not be shown on top of them
-                cursor_was_overridden = self.app.overrideCursor() is not None
-                if cursor_was_overridden:
-                    self.app.restoreOverrideCursor()
-                try:
-                    return service_prompts.QtHandler(self).ask(prompt)
-                finally:
-                    if cursor_was_overridden:
-                        self.app.setOverrideCursor(Qt.WaitCursor)
-            
+                return service_prompts.QtHandler(parent=self).ask(prompt)
+
             execution = model_execution.ModelExecution(
                 model_name, 
                 run_in_background=run_in_background,
                 prompt_func=ask, 
-                log_func=self.setModelExecutionStatus
+                log_func=self.setModelExecutionStatus,
             )
             self.modelExecutions[model_name] = execution
         return execution
@@ -19402,7 +19416,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         """
         was_enabled = self.isEnabled()
         self.setDisabled(True)
-        self.app.setOverrideCursor(Qt.WaitCursor)
         self.setModelExecutionStatus(text)
         try:
             yield
@@ -19410,7 +19423,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.titleLabel.setText(f'{text} failed.', color='r')
             raise
         finally:
-            self.app.restoreOverrideCursor()
             if was_enabled:
                 self.setDisabled(False)
 
@@ -19539,8 +19551,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Otherwise this function is called by "computeSegm" function and
         # we use loaded parameters
         if askSegmParams:
-            if self.app.overrideCursor() == Qt.WaitCursor:
-                self.app.restoreOverrideCursor()
             self.segmModelName = model_name
             # Read all models parameters (from its isolated env if used)
             model_spec = self.prepareModelExecution(model_name)

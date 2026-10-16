@@ -355,61 +355,64 @@ def ensure_required_env(
     return True
 
 
-def detect_torch_index() -> Optional[str]:
-    """Pick the PyTorch wheel index matching this machine.
+# def detect_torch_index() -> Optional[str]:
+#     """Pick the PyTorch wheel index matching this machine.
 
-    Uses the CUDA version reported by `nvidia-smi` (the highest CUDA the
-    driver supports). Returns None to use the default PyPI wheels (CPU on
-    Windows/macOS, which is also all that exists on macOS).
-    """
-    base = "https://download.pytorch.org/whl/"
-    if sys.platform == "darwin":
-        return None
+#     Uses the CUDA version reported by `nvidia-smi` (the highest CUDA the
+#     driver supports). Returns None to use the default PyPI wheels (CPU on
+#     Windows/macOS, which is also all that exists on macOS).
+#     """
+#     base = "https://download.pytorch.org/whl/"
+#     if sys.platform == "darwin":
+#         return None
 
-    cuda_version = None
-    nvidia_smi = shutil.which("nvidia-smi")
-    if nvidia_smi:
-        try:
-            out = subprocess.run(
-                [nvidia_smi], capture_output=True, text=True, timeout=20
-            ).stdout
-            match = re.search(r"CUDA Version:\s*(\d+)\.(\d+)", out)
-            if match:
-                cuda_version = (int(match.group(1)), int(match.group(2)))
-        except Exception:
-            pass
+#     cuda_version = None
+#     nvidia_smi = shutil.which("nvidia-smi")
+#     if nvidia_smi:
+#         try:
+#             out = subprocess.run(
+#                 [nvidia_smi], capture_output=True, text=True, timeout=20
+#             ).stdout
+#             match = re.search(r"CUDA Version:\s*(\d+)\.(\d+)", out)
+#             if match:
+#                 cuda_version = (int(match.group(1)), int(match.group(2)))
+#         except Exception:
+#             pass
 
-    if cuda_version is None:
-        # Plain PyPI on Linux ships CUDA builds, so ask for CPU explicitly
-        return base + "cpu" if sys.platform.startswith("linux") else None
+#     if cuda_version is None:
+#         # Plain PyPI on Linux ships CUDA builds, so ask for CPU explicitly
+#         return base + "cpu" if sys.platform.startswith("linux") else None
 
-    for minimum, tag in (
-        ((12, 8), "cu128"), ((12, 6), "cu126"), ((12, 4), "cu124"),
-        ((12, 1), "cu121"), ((11, 8), "cu118"),
-    ):
-        if cuda_version >= minimum:
-            return base + tag
-    return base + "cpu"
-
-
-TORCH_CUDA_TAGS = ("cu128", "cu126", "cu124", "cu121", "cu118")
-_TORCH_BASE_URL = "https://download.pytorch.org/whl/"
+#     for minimum, tag in (
+#         ((12, 8), "cu128"), ((12, 6), "cu126"), ((12, 4), "cu124"),
+#         ((12, 1), "cu121"), ((11, 8), "cu118"),
+#     ):
+#         if cuda_version >= minimum:
+#             return base + tag
+#     return base + "cpu"
 
 
-def get_torch_choices() -> dict:
-    """Map of label -> pip index URL (None = default PyPI wheels)."""
-    choices = {"CPU": _TORCH_BASE_URL + "cpu"}
-    if sys.platform == "darwin":
-        return {"CPU": None}
-    for tag in reversed(TORCH_CUDA_TAGS):
-        choices[f"CUDA {tag[2:4]}.{tag[4:]} (NVIDIA GPU)"] = _TORCH_BASE_URL + tag
-    return choices
+# TORCH_CUDA_TAGS = ("cu128", "cu126", "cu124", "cu121", "cu118")
+# _TORCH_BASE_URL = "https://download.pytorch.org/whl/"
+
+
+# def get_torch_choices() -> dict:
+#     """Map of label -> pip index URL (None = default PyPI wheels)."""
+#     choices = {"CPU": _TORCH_BASE_URL + "cpu"}
+#     if sys.platform == "darwin":
+#         return {"CPU": None}
+#     for tag in reversed(TORCH_CUDA_TAGS):
+#         choices[f"CUDA {tag[2:4]}.{tag[4:]} (NVIDIA GPU)"] = _TORCH_BASE_URL + tag
+#     return choices
 
 
 def ensure_torch(
     python_exec: str,
     logger_func: Callable = print,
     prompt_func: Optional[Callable] = None,
+    platform: str = sys.platform,
+    found_cuda_version: Optional[str] = None,
+    possible_links: Optional[list[str]] = None,
 ) -> bool:
     """Install PyTorch into the model environment.
 
@@ -423,39 +426,25 @@ def ensure_torch(
     if check.returncode == 0:
         return True
 
-    index_url = detect_torch_index()
     if prompt_func is not None:
         from cellacdc.service import prompts
-
-        choices = get_torch_choices()
-        default = next(
-            (k for k, v in choices.items() if v == index_url),
-            next(iter(choices)),
-        )
-        answer = prompt_func(prompts.choice(
-            "Install PyTorch",
-            "This model needs PyTorch in its isolated environment.\n"
-            f"Detected: {default}.\nChoose the build to install:",
-            list(choices), default,
-            dialog="pytorch",
-            extra={"platforms": choices, "python": python_exec},
+        cmd = prompt_func(prompts.choice(
+            dialog='pytorch',
+            extra={'python': python_exec, 
+                   'platform': platform, 
+                   'found_cuda_version': found_cuda_version, 
+                   'possible_links': possible_links,},
         ))
-        if answer is None:
+        if cmd is None:
             logger_func("PyTorch installation cancelled.")
             return False
-        index_url = choices[answer]
-    base_cmd = [python_exec, "-m", "pip", "install", "torch", "torchvision"]
-    attempts = []
-    if index_url:
-        logger_func(f"Installing PyTorch from {index_url}")
-        attempts.append(base_cmd + ["--index-url", index_url])
-    attempts.append(base_cmd)
-    for cmd in attempts:
-        try:
-            run_streaming(cmd, logger_func, check=True)
-            return True
-        except Exception as err:
-            logger_func(f"PyTorch install failed ({err}), trying fallback...")
+
+    try:
+        run_streaming(cmd, logger_func, check=True)
+        return True
+    except Exception as err:
+        logger_func(f"PyTorch install failed ({err}), trying fallback...")
+        print(f"Command attempted: {cmd}")
     return False
 
 
@@ -474,14 +463,24 @@ def ensure_model_dependencies(
     parent: Any = None,
     auto_install: bool = True,
     prompt_func: Optional[Callable] = None,
+    found_cuda_version: Optional[str] = None,
+    possible_links: Optional[list[str]] = None,
+    platform: Optional[str] = None,
 ):
     """Ensure specific dependencies for a model are installed in its environment."""
     from cellacdc import myutils
 
     config = load_model_env_config(model_name)
     if config.get("torch"):
+        if found_cuda_version is None:
+            found_cuda_version = myutils.get_driver_cuda_version()
+        if possible_links is None:
+            possible_links = myutils.get_torch_options_safe(driver_cuda_version=found_cuda_version)
         torch_ok = ensure_torch(
-            python_exec, logger_func=logger_func, prompt_func=prompt_func
+            python_exec, logger_func=logger_func, prompt_func=prompt_func,
+            platform=platform or sys.platform,
+            found_cuda_version=found_cuda_version,
+            possible_links=possible_links,
         )
         if not torch_ok:
             raise RuntimeError(
@@ -739,6 +738,9 @@ def create_model_env(
             parent=parent,
             auto_install=auto_install,
         )
+        from cellacdc import myutils
+        found_cuda_version = myutils.get_driver_cuda_version()
+        possible_links = myutils.get_torch_options_safe(driver_cuda_version=found_cuda_version)
         ensure_model_dependencies(
             model_name,
             py_exec,
@@ -747,6 +749,9 @@ def create_model_env(
             parent=parent,
             auto_install=auto_install,
             prompt_func=prompt_func,
+            found_cuda_version=found_cuda_version,
+            possible_links=possible_links,
+            platform=sys.platform,
         )
     return py_exec
 
@@ -777,6 +782,9 @@ def get_or_create_model_env(
                 parent=parent,
                 auto_install=auto_install,
             )
+            from cellacdc import myutils
+            found_cuda_version = myutils.get_driver_cuda_version()
+            possible_links = myutils.get_torch_options_safe(driver_cuda_version=found_cuda_version)
             ensure_model_dependencies(
                 model_name,
                 py_exec,
@@ -785,6 +793,9 @@ def get_or_create_model_env(
                 parent=parent,
                 auto_install=auto_install,
                 prompt_func=prompt_func,
+                found_cuda_version=found_cuda_version,
+                possible_links=possible_links,
+                platform=sys.platform,
             )
         return py_exec
 
