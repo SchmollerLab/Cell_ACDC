@@ -19,6 +19,8 @@ import numpy as np
 _ARRAY = '__acdc_array__'
 _DATAFRAME = '__acdc_dataframe__'
 _FILE = '__acdc_file__'
+_DICT = '__acdc_dict__'
+_TUPLE = '__acdc_tuple__'
 
 
 @dataclass(frozen=True)
@@ -86,3 +88,66 @@ def decode(kwargs_json: str, data: Optional[bytes] = None) -> Dict[str, Any]:
                     io.StringIO(value[_DATAFRAME]), orient='split'
                 )
     return kwargs
+
+
+def encode_value(value: Any) -> Tuple[str, Optional[bytes]]:
+    """Safely encode a nested value containing arrays or tensor-like values."""
+    arrays = {}
+
+    def encode_item(item):
+        if isinstance(item, np.ndarray):
+            key = f'array_{len(arrays)}'
+            arrays[key] = item
+            return {_ARRAY: key}
+        if (
+            hasattr(item, 'detach') and hasattr(item, 'cpu')
+            and hasattr(item, 'numpy')
+        ):
+            key = f'array_{len(arrays)}'
+            arrays[key] = item.detach().cpu().numpy()
+            return {_ARRAY: key}
+        if isinstance(item, dict):
+            return {_DICT: [
+                [encode_item(key), encode_item(val)]
+                for key, val in item.items()
+            ]}
+        if isinstance(item, tuple):
+            return {_TUPLE: [encode_item(val) for val in item]}
+        if isinstance(item, list):
+            return [encode_item(val) for val in item]
+        if isinstance(item, np.generic):
+            return item.item()
+        return item
+
+    encoded = json.dumps(encode_item(value))
+    data = None
+    if arrays:
+        buf = io.BytesIO()
+        np.savez_compressed(buf, **arrays)
+        data = buf.getvalue()
+    return encoded, data
+
+
+def decode_value(value_json: str, data: Optional[bytes] = None) -> Any:
+    """Decode a value produced by :func:`encode_value` without pickle."""
+    encoded = json.loads(value_json)
+    with ExitStack() as stack:
+        arrays = stack.enter_context(np.load(io.BytesIO(data))) if data else {}
+
+        def decode_item(item):
+            if isinstance(item, list):
+                return [decode_item(val) for val in item]
+            if not isinstance(item, dict):
+                return item
+            if _ARRAY in item:
+                return arrays[item[_ARRAY]]
+            if _DICT in item:
+                return {
+                    decode_item(key): decode_item(val)
+                    for key, val in item[_DICT]
+                }
+            if _TUPLE in item:
+                return tuple(decode_item(val) for val in item[_TUPLE])
+            return {key: decode_item(val) for key, val in item.items()}
+
+        return decode_item(encoded)

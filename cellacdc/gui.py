@@ -9512,6 +9512,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         'customPostProcessFeatures': entry.get('customPostProcessFeatures', None),
                         'customPostProcessGroupedFeatures': entry.get('customPostProcessGroupedFeatures', None),
                     })
+                for model_name in dict.fromkeys(
+                    settings['base_model_name'] for settings in model_settings
+                ):
+                    if self.prepareModelExecution(model_name) is None:
+                        self.logger.info(
+                            'Loading segmentation recipe cancelled.'
+                        )
+                        return
                 self.SegForLostIDsSettings = {'models_settings': model_settings}
                 self.releaseSegForLostIDsModels()
                 # Restore model names in settings
@@ -9884,8 +9892,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             cached = self.segForLostIDsModels.get(model_idx)
             if cached is not None and cached[0] == key:
-                worker.initModelResult = cached[2]
-                return
+                execution = self.getModelExecution(model_name)
+                if execution.is_model_running(cached[2]):
+                    worker.initModelResult = cached[2]
+                    return
+                self.segForLostIDsModels.pop(model_idx)
+                cached = None
             
             self.logger.info(f'Initializing {model_name} model...')
             replace = None

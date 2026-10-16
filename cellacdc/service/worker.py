@@ -149,6 +149,41 @@ def _filter_kwargs(func, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         return kwargs
     return {k: v for k, v in kwargs.items() if k in params}
 
+
+class _EmbeddingPosData:
+    """Minimal position-data interface used by SAM models in a worker."""
+
+    def __init__(self, model, frame_i, embeddings):
+        self.model = model
+        self.frame_i = frame_i
+        self.sam_embeddings = {frame_i: embeddings}
+
+    def getSamEmbeddings(self, frame_i=0, z=0):
+        embedding = self.sam_embeddings.get(frame_i, {}).get(z)
+        if embedding is None:
+            return None
+        embedding = dict(embedding)
+        features = embedding.get('features')
+        if isinstance(features, np.ndarray):
+            import torch
+            device = getattr(self.model, 'device', None)
+            embedding['features'] = torch.as_tensor(features, device=device)
+        return embedding
+
+    def storeSamEmbeddings(self, sam_model, frame_i=0, z=0):
+        predictor = getattr(sam_model.model, 'predictor', sam_model.model)
+        embedding = {
+            'original_size': predictor.original_size,
+            'input_size': predictor.input_size,
+            'features': predictor.features,
+            'is_image_set': True,
+        }
+        self.sam_embeddings.setdefault(frame_i, {})[z] = embedding
+
+    @property
+    def frame_embeddings(self):
+        return self.sam_embeddings.get(self.frame_i, {})
+
 def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
     """Create `acdcSegment.Model` from decoded init kwargs.
 
@@ -400,21 +435,54 @@ def create_app(
     # The request waits until the result is ready (used by the GUI/CLI).
 
     @app.post("/segment")
-    async def segment(image: UploadFile = File(...), params: str = Form("{}")):
+    async def segment(
+            image: UploadFile = File(...), params: str = Form("{}"),
+            embedding_meta: str = Form(""),
+            embeddings: Optional[UploadFile] = File(None),
+        ):
         """Run `model.segment(image, **params)` and return the labels.
 
         Request (multipart form, see `ModelClient.segment`):
             image:  the image saved with `np.save` (`.npy` bytes).
             params: JSON text with the segment kwargs (e.g. `frame_i`).
                     Kwargs the model's `segment` does not accept are dropped.
+            embedding_meta/embeddings: optional safe payload containing SAM
+                    embeddings from the client-side position data.
         Response: the labels as `.npy` bytes, or HTTP 500 with the traceback.
+                  SAM embedding operations return a safe payload containing
+                  both labels and updated embeddings.
         """
         try:
             p = json.loads(params) if params else {}
             # Read the uploaded bytes and turn them back into a numpy array
             content = await image.read()
             arr = np.load(io.BytesIO(content))
+            embedding_pos_data = None
+            if isinstance(embedding_meta, str) and embedding_meta:
+                embedding_content = (
+                    await embeddings.read()
+                    if embeddings is not None and hasattr(embeddings, 'read')
+                    else None
+                )
+                frame_i = p.get('frame_i')
+                frame_embeddings = payload.decode_value(
+                    embedding_meta, embedding_content
+                )
+                embedding_pos_data = _EmbeddingPosData(
+                    model, frame_i, frame_embeddings
+                )
+                p['posData'] = embedding_pos_data
             out = await run_in_threadpool(call_model_method, "segment", arr, **p)
+            if embedding_pos_data is not None:
+                result_meta, result_data = payload.encode_value({
+                    'labels': out,
+                    'embeddings': embedding_pos_data.frame_embeddings,
+                })
+                return Response(
+                    content=result_data or b'',
+                    media_type='application/octet-stream',
+                    headers={'X-Cell-ACDC-Payload': result_meta},
+                )
             # Send the result back the same way: as `.npy` bytes
             buf = io.BytesIO()
             np.save(buf, out)

@@ -4894,7 +4894,8 @@ def get_pip_conda_prefix(list_return=False, exec_path=None):
     if no_cli_install:
         conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'"), '-c', 'conda-forge']
     else:
-        conda_list = ['conda', 'install', '-y', '-c', 'conda-forge']
+        conda = os.environ.get("CONDA_EXE") or shutil.which("conda")
+        conda_list = [conda, 'install', '-y', '-c', 'conda-forge']
     if list_return:
         return conda_list, pip_list
     else:

@@ -14,7 +14,7 @@ import yeaz.unet.neural_network as nn
 
 from cellacdc import myutils, printl, load
 
-from . import load_models_filepath
+from cellacdc.models._yeaz_v2_weights import load_models_filepath
 
 from cellacdc._types import YeazV2ModelType as ModelType
 

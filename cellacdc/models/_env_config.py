@@ -71,7 +71,7 @@ MODEL_ENVS = {
              'max_version': '4.0', 'include_lower_version': True},
         ],
         'packages': [
-            {'pkg_name': 'cellpose', 'min_version': '3',
+            {'pkg_name': 'cellpose', 'min_version': '3.1.1.2',
              'max_version': '4.0',
              'include_lower_version': True,},
         ],

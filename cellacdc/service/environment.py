@@ -1,16 +1,18 @@
 import os
 import re
+import shlex
 import sys
 import shutil
 import subprocess
 import json
-from typing import Optional, Callable, Any, List, Literal
+import hashlib
+from typing import Optional, Callable, Any, List, Literal, Union
 
 from cellacdc import is_conda_env, user_profile_path
 
 
 def run_streaming(
-    cmd: list, logger_func: Callable = print, check: bool = False
+    cmd: Union[list, str], logger_func: Callable = print, check: bool = False
 ) -> int:
     """Run `cmd`, forwarding each output line (stdout+stderr) to `logger_func`
     as it is produced. Returns the exit code."""
@@ -355,6 +357,18 @@ def ensure_required_env(
     return True
 
 
+def required_env_fingerprint(model_name: str) -> str:
+    """Fingerprint required values inherited by a newly started worker."""
+    digest = hashlib.sha256()
+    for spec in load_model_env_config(model_name).get("required_env", []):
+        name = spec["name"]
+        digest.update(name.encode())
+        digest.update(b'\0')
+        digest.update(os.environ.get(name, '').encode())
+        digest.update(b'\0')
+    return digest.hexdigest()
+
+
 # def detect_torch_index() -> Optional[str]:
 #     """Pick the PyTorch wheel index matching this machine.
 
@@ -426,18 +440,43 @@ def ensure_torch(
     if check.returncode == 0:
         return True
 
+    if possible_links is None:
+        from cellacdc import myutils
+        possible_links = myutils.get_torch_options_safe(
+            driver_cuda_version=found_cuda_version
+        )
+    options, preferred = possible_links
+    choices = [label for label, _ in options]
+    default = choices[preferred]
+    answer = default
     if prompt_func is not None:
         from cellacdc.service import prompts
-        cmd = prompt_func(prompts.choice(
+        answer = prompt_func(prompts.choice(
+            title='Install PyTorch',
+            text='Select the PyTorch build to install.',
+            choices=choices,
+            default=default,
             dialog='pytorch',
             extra={'python': python_exec, 
                    'platform': platform, 
                    'found_cuda_version': found_cuda_version, 
                    'possible_links': possible_links,},
         ))
-        if cmd is None:
+        if answer is None:
             logger_func("PyTorch installation cancelled.")
             return False
+    urls = dict(options)
+    if answer in urls:
+        cmd = [
+            python_exec, '-m', 'pip', 'install', 'torch', 'torchvision'
+        ]
+        index_url = urls[answer]
+        if index_url is not None:
+            cmd.extend(['--index-url', index_url])
+    else:
+        cmd = answer
+        if isinstance(cmd, str) and os.name != 'nt':
+            cmd = shlex.split(cmd)
 
     try:
         run_streaming(cmd, logger_func, check=True)

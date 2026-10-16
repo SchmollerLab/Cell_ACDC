@@ -33,6 +33,7 @@ from cellacdc.service import prompts
 from cellacdc.service.client import LocalBackend
 from cellacdc.service.environment import (
     ensure_required_env, get_or_create_model_env, model_installed_in_main_env,
+    required_env_fingerprint,
 )
 
 # False runs every model in-process (previous behaviour)
@@ -53,6 +54,7 @@ class _Worker:
     backend: LocalBackend
     model: Any
     key: str
+    env_key: str
     users: int = 0
     released_at: int = 0
 
@@ -345,18 +347,21 @@ class ModelExecution:
         if segm_data is not None:
             init_kwargs['segm_data'] = segm_data
         key = _kwargs_key(init_kwargs)
+        env_key = required_env_fingerprint(self.model_name)
 
         self._discard_dead_workers()
-        worker = self._find_worker(key=key)
+        worker = self._find_worker(key=key, env_key=env_key)
         if worker is None:
-            worker = self._find_worker(idle=True, replace=replace)
+            worker = self._find_worker(
+                idle=True, replace=replace, env_key=env_key
+            )
             if worker is not None:
                 self.log(f'Re-initializing {self.model_name} model...')
                 # The key is updated only if the worker accepted the kwargs
                 self.run_in_background(worker.backend.reinitialize, init_kwargs)
                 worker.key = key
             else:
-                worker = self._start_worker(init_kwargs, key)
+                worker = self._start_worker(init_kwargs, key, env_key)
         else:
             self.log(f'Reusing running {self.model_name} model.')
         worker.users += 1
@@ -364,7 +369,7 @@ class ModelExecution:
             self.release(replace)
         return worker.model
 
-    def _start_worker(self, init_kwargs, key) -> '_Worker':
+    def _start_worker(self, init_kwargs, key, env_key) -> '_Worker':
         self.log(
             f'Starting model server for {self.model_name} in '
             f'{self.env_python}...'
@@ -379,23 +384,28 @@ class ModelExecution:
         except Exception:
             backend.stop()
             raise
-        worker = _Worker(backend=backend, model=model, key=key)
+        worker = _Worker(
+            backend=backend, model=model, key=key, env_key=env_key
+        )
         self._workers.append(worker)
         self._last_started = worker
         return worker
 
-    def _find_worker(self, key=None, idle=False, replace=None):
+    def _find_worker(self, key=None, idle=False, replace=None, env_key=None):
         if key is not None:
             for worker in self._workers:
-                if worker.key == key:
+                if worker.key == key and worker.env_key == env_key:
                     return worker
             return None
         # Prefer the instance being replaced, then the most recently released
         for worker in self._workers:
             if replace is not None and worker.model is replace:
-                if worker.users <= 1:
+                if worker.users <= 1 and worker.env_key == env_key:
                     return worker
-        idle_workers = [w for w in self._workers if w.users == 0]
+        idle_workers = [
+            worker for worker in self._workers
+            if worker.users == 0 and worker.env_key == env_key
+        ]
         if not idle_workers:
             return None
         return max(idle_workers, key=lambda w: w.released_at)
@@ -406,6 +416,13 @@ class ModelExecution:
                 self.log(f'{self.model_name} worker is not running anymore.')
                 self._workers.remove(worker)
                 self._stop_backend(worker.backend)
+
+    def is_model_running(self, model) -> bool:
+        """Return whether an existing model instance is still usable."""
+        if self.backend_type == 'in_process':
+            return True
+        self._discard_dead_workers()
+        return any(worker.model is model for worker in self._workers)
 
     def release(self, model) -> None:
         """Give back an instance from `init_model` (no-op in-process).

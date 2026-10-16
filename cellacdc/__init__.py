@@ -1,4 +1,5 @@
 import os
+import shutil
 import sys
 
 # Server mode is selected with the `--server` command-line flag, e.g.
@@ -20,8 +21,9 @@ def is_conda_env():
         return False
     
     stdout = subprocess.DEVNULL
+    conda = os.environ.get("CONDA_EXE") or shutil.which("conda")
     try:
-        args = ['conda', '-V']
+        args = [conda, '-V']
         is_conda_present = subprocess.check_call(
             args, shell=True, stdout=stdout) == 0
         return True
@@ -29,7 +31,7 @@ def is_conda_env():
         pass
     
     try:
-        args = ['conda -V']
+        args = [f'"{conda}" -V']
         is_conda_present = subprocess.check_call(
             args, shell=True, stdout=stdout) == 0
         return True

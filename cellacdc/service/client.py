@@ -141,8 +141,9 @@ class ModelClient:
             start_z_slice: Optional[int] = None, 
             **kwargs
         ) -> np.ndarray:
-        if frame_i is not None:
-            kwargs["frame_i"] = frame_i
+        from cellacdc.service import payload
+
+        kwargs["frame_i"] = frame_i
         if start_z_slice is not None:
             kwargs["start_z_slice"] = start_z_slice
             
@@ -154,9 +155,30 @@ class ModelClient:
         files = {
             "image": ("image.npy", buf.getvalue(), "application/octet-stream")
         }
+        embedding_operation = any(
+            kwargs.get(name)
+            for name in (
+                'save_embeddings', 'only_embeddings', 'use_loaded_embeddings'
+            )
+        )
         data = {
             "params": json.dumps(p)
         }
+        if embedding_operation:
+            frame_embeddings = {}
+            if posData is not None and kwargs.get('use_loaded_embeddings'):
+                frame_embeddings = getattr(
+                    posData, 'sam_embeddings', {}
+                ).get(frame_i, {})
+            embedding_meta, embedding_data = payload.encode_value(
+                frame_embeddings
+            )
+            data['embedding_meta'] = embedding_meta
+            if embedding_data is not None:
+                files['embeddings'] = (
+                    'embeddings.npz', embedding_data,
+                    'application/octet-stream'
+                )
         res = self.session.post(
             f"{self.base_url}/segment",
             files=files,
@@ -164,6 +186,15 @@ class ModelClient:
             timeout=self.timeout
         )
         self._raise_for_status(res)
+        if embedding_operation:
+            result = payload.decode_value(
+                res.headers['X-Cell-ACDC-Payload'], res.content
+            )
+            if posData is not None:
+                if not hasattr(posData, 'sam_embeddings'):
+                    posData.sam_embeddings = {}
+                posData.sam_embeddings[frame_i] = result['embeddings']
+            return result['labels']
         return np.load(io.BytesIO(res.content))
 
     def segment3DT(

@@ -508,6 +508,47 @@ def test_gui_model_execution_modes(monkeypatch, use_model_env):
         assert execution.backend_url is None
 
 
+def test_model_execution_restarts_for_required_env_change(monkeypatch):
+    from unittest.mock import Mock
+    from cellacdc.service import model_execution
+    from cellacdc.service.model_execution import ModelExecution
+
+    backends = []
+
+    def make_backend(**kwargs):
+        backend = Mock(url=f'url-{len(backends)}')
+        backend.start.return_value = object()
+        backend.is_running.return_value = True
+        backends.append(backend)
+        return backend
+
+    _patch_model_execution(
+        monkeypatch, LocalBackend=Mock(side_effect=make_backend)
+    )
+    env_keys = iter(['first', 'second'])
+    monkeypatch.setattr(
+        model_execution, 'required_env_fingerprint',
+        lambda model_name: next(env_keys),
+    )
+    execution = ModelExecution('test_model', log_func=Mock())
+    execution.prepare()
+
+    first = execution.init_model({'weights': 'pretrained'})
+    execution.release(first)
+    second = execution.init_model({'weights': 'pretrained'})
+
+    assert second is not first
+    assert len(backends) == 2
+    backends[0].reinitialize.assert_not_called()
+
+
+def test_cellpose_v3_environment_matches_wrapper_minimum():
+    from cellacdc.models._env_config import MODEL_ENVS
+
+    package = MODEL_ENVS['cellpose_v3']['packages'][0]
+    assert package['min_version'] == '3.1.1.2'
+
+
 def test_model_execution_caches_spec_and_manages_workers(monkeypatch):
     from unittest.mock import Mock
     import numpy as np
@@ -1085,6 +1126,110 @@ def test_init_payload_roundtrip():
     assert decoded['gpu'] is False
 
 
+def test_nested_array_payload_roundtrip():
+    from cellacdc.service import payload
+
+    value = {
+        None: {
+            2: {
+                'original_size': (10, 12),
+                'features': np.arange(6, dtype=np.float32).reshape(2, 3),
+            }
+        }
+    }
+    value_json, data = payload.encode_value(value)
+    decoded = payload.decode_value(value_json, data)
+
+    assert decoded[None][2]['original_size'] == (10, 12)
+    np.testing.assert_array_equal(
+        decoded[None][2]['features'], value[None][2]['features']
+    )
+
+
+def test_model_client_preserves_null_frame_and_sam_embeddings():
+    from cellacdc.service import payload
+
+    labels = np.ones((2, 2), dtype=np.uint32)
+    returned_embeddings = {
+        0: {
+            'original_size': (2, 2),
+            'input_size': (2, 2),
+            'features': np.ones((1, 2), dtype=np.float32),
+            'is_image_set': True,
+        }
+    }
+    result_meta, result_data = payload.encode_value({
+        'labels': labels, 'embeddings': returned_embeddings,
+    })
+    posted = {}
+
+    class Response:
+        ok = True
+        content = result_data
+        headers = {'X-Cell-ACDC-Payload': result_meta}
+        url = 'http://worker/segment'
+
+    class Session:
+        def post(self, url, files, data, timeout):
+            posted.update(data)
+            return Response()
+
+    class PosData:
+        sam_embeddings = {None: returned_embeddings}
+
+    client = ModelClient.__new__(ModelClient)
+    client.base_url = 'http://worker'
+    client.timeout = None
+    client.session = Session()
+    pos_data = PosData()
+
+    result = client.segment(
+        np.zeros((2, 2)), frame_i=None, posData=pos_data,
+        save_embeddings=True, use_loaded_embeddings=True,
+    )
+
+    assert json.loads(posted['params'])['frame_i'] is None
+    np.testing.assert_array_equal(result, labels)
+    np.testing.assert_array_equal(
+        pos_data.sam_embeddings[None][0]['features'],
+        returned_embeddings[0]['features'],
+    )
+
+
+def test_ensure_torch_build_choice_and_qt_command(monkeypatch):
+    from unittest.mock import Mock
+    from cellacdc.service import environment
+
+    monkeypatch.setattr(
+        environment.subprocess, 'run',
+        lambda *args, **kwargs: type('Result', (), {'returncode': 1})(),
+    )
+    run = Mock(return_value=0)
+    monkeypatch.setattr(environment, 'run_streaming', run)
+    links = ([('CPU', 'https://example/cpu'), ('CUDA', 'https://example/cu')], 1)
+
+    assert environment.ensure_torch(
+        'model-python', prompt_func=lambda prompt: prompt.default,
+        possible_links=links,
+    )
+    run.assert_called_with([
+        'model-python', '-m', 'pip', 'install', 'torch', 'torchvision',
+        '--index-url', 'https://example/cu',
+    ], print, check=True)
+
+    run.reset_mock()
+    assert environment.ensure_torch(
+        'model-python',
+        prompt_func=lambda prompt: '"model python" -m pip install torch',
+        possible_links=links,
+    )
+    command = run.call_args.args[0]
+    if os.name == 'nt':
+        assert command == '"model python" -m pip install torch'
+    else:
+        assert command == ['model python', '-m', 'pip', 'install', 'torch']
+
+
 def test_init_payload_uploads_selected_files(tmp_path):
     from cellacdc.service import payload
 
@@ -1322,6 +1467,14 @@ class _FakeUpload:
         return self._content
 
 
+class _FakeUploadBytes:
+    def __init__(self, content):
+        self._content = content
+
+    async def read(self):
+        return self._content
+
+
 def _jobs_app(monkeypatch, segment, **extra_methods):
     import types
     from cellacdc import myutils
@@ -1514,6 +1667,73 @@ def test_worker_runs_model_specific_methods(monkeypatch):
         ))
     assert err.value.status_code == 400
     assert not endpoints[('/info', ('GET',))]().capabilities.predictCcaState
+
+
+def test_worker_roundtrips_sam_embeddings(monkeypatch):
+    import asyncio
+    import types
+    from cellacdc import myutils
+    from cellacdc.service import payload, worker
+
+    class Predictor:
+        original_size = (2, 2)
+        input_size = (2, 2)
+        features = np.ones((1, 2), dtype=np.float32)
+
+    class Model:
+        def __init__(self):
+            self.model = Predictor()
+
+        def segment(
+                self, image, frame_i, posData, save_embeddings=False,
+                use_loaded_embeddings=False,
+            ):
+            assert frame_i is None
+            assert use_loaded_embeddings
+            loaded = posData.getSamEmbeddings(frame_i, z=0)
+            np.testing.assert_array_equal(
+                loaded['features'], np.zeros((1, 2), dtype=np.float32)
+            )
+            if save_embeddings:
+                posData.storeSamEmbeddings(self, frame_i)
+            return np.ones_like(image, dtype=np.uint32)
+
+    module = types.SimpleNamespace(Model=Model)
+    monkeypatch.setattr(myutils, 'import_segment_module', lambda name: module)
+    monkeypatch.setitem(
+        sys.modules, 'torch',
+        types.SimpleNamespace(as_tensor=lambda value, device=None: value),
+    )
+    app = worker.create_app('fake')
+    endpoint = next(
+        route.endpoint for route in app.routes
+        if getattr(route, 'path', None) == '/segment'
+    )
+    embedding_meta, embedding_data = payload.encode_value({
+        0: {
+            'original_size': (2, 2),
+            'input_size': (2, 2),
+            'features': np.zeros((1, 2), dtype=np.float32),
+            'is_image_set': True,
+        }
+    })
+
+    response = asyncio.run(endpoint(
+        image=_FakeUpload(np.zeros((2, 2))),
+        params=json.dumps({
+            'frame_i': None, 'save_embeddings': True,
+            'use_loaded_embeddings': True,
+        }),
+        embedding_meta=embedding_meta,
+        embeddings=_FakeUploadBytes(embedding_data),
+    ))
+    result = payload.decode_value(
+        response.headers['x-cell-acdc-payload'], response.body
+    )
+    np.testing.assert_array_equal(result['labels'], np.ones((2, 2)))
+    np.testing.assert_array_equal(
+        result['embeddings'][0]['features'], Predictor.features
+    )
 
 
 @pytest.mark.parametrize('path', [
