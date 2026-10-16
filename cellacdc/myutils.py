@@ -3636,6 +3636,8 @@ def _get(url):
     r.raise_for_status()
     return r.text
 
+BASE_PYTORCH_LINK = "https://download.pytorch.org/whl/"
+
 def get_torch_options(driver_cuda_version=None, torch_max="", torch_min="",
                       compute_cap=None, allow_experimental=False, min_cuda=(12, 6)):
     """
@@ -3652,16 +3654,15 @@ def get_torch_options(driver_cuda_version=None, torch_max="", torch_min="",
     compute_cap           : (major, minor) of the weakest GPU; < (7, 5) caps the preference at cu126.
     min_cuda              : oldest CUDA build to list (hides ancient indexes still on the server).
     """
+    EXPERIMENTAL = {"cu132"}  # only offered if allow_experimental=True
+
     if sys.platform == "darwin":          # no CUDA wheels, default PyPI wheel has MPS
         return [("Default (CPU / Apple GPU)", None)], 0
-    
-    BASE = "https://download.pytorch.org/whl/"
-    EXPERIMENTAL = {"cu132"}  # only offered if allow_experimental=True
 
     def _cuda_tags():
         """CUDA builds on the server as {(12, 6): 'cu126', ...}."""
         return {(int(d[:-1]), int(d[-1])): f"cu{d}"
-                for d in set(re.findall(r"\bcu(\d{3})\b", _get(BASE)))}
+                for d in set(re.findall(r"\bcu(\d{3})\b", _get(BASE_PYTORCH_LINK)))}
 
 
     def _torch_versions(tag):
@@ -3669,7 +3670,7 @@ def get_torch_options(driver_cuda_version=None, torch_max="", torch_min="",
         py = f"cp{sys.version_info.major}{sys.version_info.minor}"
         plat = "win_amd64" if sys.platform == "win32" else platform.machine()
         wheels = re.findall(r"torch-(\d+(?:\.\d+)*)(?:%2B|\+)[\w.]+-(cp\d+)-\w+-([\w.]+?)\.whl",
-                            _get(f"{BASE}{tag}/torch/"))
+                            _get(f"{BASE_PYTORCH_LINK}{tag}/torch/"))
         return {tuple(map(int, v.split(".")))
                 for v, cp, p in wheels if cp == py and plat in p}
 
@@ -3682,7 +3683,7 @@ def get_torch_options(driver_cuda_version=None, torch_max="", torch_min="",
         return any(v[:len(lo)] >= lo and (hi is None or v[:len(hi)] <= hi)
                    for v in _torch_versions(tag))
 
-    options = [("CPU", f"{BASE}cpu")]
+    options = [("CPU", f"{BASE_PYTORCH_LINK}cpu")]
     preferred = 0
     for cuda, tag in sorted(_cuda_tags().items()):            # ascending, like your example
         if cuda < min_cuda or (tag in EXPERIMENTAL and not allow_experimental):
@@ -3690,7 +3691,7 @@ def get_torch_options(driver_cuda_version=None, torch_max="", torch_min="",
         if not has_release(tag):
             continue
         extra = ", experimental" if tag in EXPERIMENTAL else ""
-        options.append((f"CUDA {cuda[0]}.{cuda[1]} (NVIDIA GPU{extra})", f"{BASE}{tag}"))
+        options.append((f"CUDA {cuda[0]}.{cuda[1]} (NVIDIA GPU{extra})", f"{BASE_PYTORCH_LINK}{tag}"))
         if driver and cuda <= driver and cuda <= limit and tag not in EXPERIMENTAL:
             preferred = len(options) - 1                       # last match = highest
 
@@ -3708,7 +3709,7 @@ def _safe_torch_options(options_kwargs):
         return get_torch_options(**options_kwargs)
     except requests.RequestException:
         # Offline / server unreachable: fall back to a plain CPU install
-        return [('CPU', f'{BASE}cpu')], 0
+        return [('CPU', f'{BASE_PYTORCH_LINK}cpu')], 0
 
 def get_pytorch_command(**options_kwargs):
     """Get the pip commands to install PyTorch (CPU or CUDA) for this machine.
@@ -3752,7 +3753,7 @@ def get_torch_options_safe(**kwargs):
     try:
         return get_torch_options(**kwargs)
     except requests.RequestException:
-        return [('CPU', f'{BASE}cpu')], 0   # offline: plain CPU install
+        return [('CPU', f'{BASE_PYTORCH_LINK}cpu')], 0   # offline: plain CPU install
     
 def get_min_compute_cap():
     try:

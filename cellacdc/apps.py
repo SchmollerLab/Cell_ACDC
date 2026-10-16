@@ -16855,7 +16855,7 @@ class InstallPyTorchDialog(QBaseDialog):
             return [('Default (CPU / Apple GPU)', None)], 0
         if self._detectedOnMac:
             # Options were detected on a Mac, so there is no CUDA info
-            return [('CPU', f'{myutils.BASE}cpu')], 0
+            return [('CPU', f'{myutils.BASE_PYTORCH_LINK}cpu')], 0
         return self._options, self._preferred
 
     def populatePlatforms(self, *args, **kwargs):
