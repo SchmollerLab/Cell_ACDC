@@ -60,12 +60,11 @@ class Model:
             device = myutils.get_torch_device(gpu=run_on == 'gpu')
                       
         self.model = nnInteractiveInferenceSession(
-            device=device,  # Set inference device
-            use_torch_compile=False,  # Experimental: Not tested yet
+            device=device, 
+            use_torch_compile=True, 
             verbose=verbose,
             torch_n_threads=torch_number_of_threads,  # Use available CPU cores
             do_autozoom=True,  # Enables AutoZoom for better patching
-            use_pinned_memory=True,  # Optimizes GPU memory transfers
         )
         
         download_dir = os.path.join(user_profile_path, 'acdc-nnInteractive')
