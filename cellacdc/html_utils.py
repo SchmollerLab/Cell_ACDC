@@ -385,3 +385,20 @@ table_style_header = textwrap.dedent('''\
         <table style="border-collapse: collapse; width: 100%; 
         border: 1px solid black; padding: 5px; text-align: left;">
 ''')
+
+def urls_to_html(text: str) -> str:
+    pattern = r'https?://[^\s<>"\']+'
+
+    def replace(match):
+        url = match.group(0)
+
+        # Exclude common trailing punctuation from the link
+        trailing = ''
+        while url and url[-1] in '.,;:!?)]}':
+            trailing = url[-1] + trailing
+            url = url[:-1]
+
+        escaped_url = html.escape(url, quote=True)
+        return f'<a href="{escaped_url}">{html.escape(url)}</a>{trailing}'
+
+    return re.sub(pattern, replace, text)

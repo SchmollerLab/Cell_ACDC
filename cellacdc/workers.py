@@ -204,7 +204,7 @@ class SegForLostIDsWorker(QObject):
     sigUpdateRP = Signal(bool, bool)
     sigGetSegForLostIDsInputImg = Signal(str)
     sigSegForLostIDsWorkerAskInstallGPU = Signal(str, bool)
-    sigSegForLostIDsImportModel = Signal(str)
+    sigInitModel = Signal(int, str, object)
     sigTrackManuallyAddedObject = Signal(object, object, bool, bool)
 
     def __init__(self, guiWin, mutex, waitCond, debug=False):
@@ -216,6 +216,8 @@ class SegForLostIDsWorker(QObject):
         self.waitCond = waitCond
         self._debug = debug
         self.inputImgForSegForLostIDs = None
+        self.initModelResult = None
+        self.initModelError = None
         self.assignments = {}
         self._acks = defaultdict(int)
 
@@ -247,17 +249,26 @@ class SegForLostIDsWorker(QObject):
             'update_rp', self.sigUpdateRP, wl_update, wl_track_og_curr
         )
         
-    def emitSigSegForLostIDsImportModel(self, base_model_name):
-        self.importedSegmModule = None
-        self.importSegmModuleError = None
+    def emitSigInitModel(self, model_idx, base_model_name, init_kwargs):
+        """Ask the GUI thread for an initialized model.
+
+        Models may run in an isolated environment, whose startup can show
+        dialogs and run a Qt event loop, so it must happen on the GUI thread.
+        Returns ``(model, error)``.
+        """
+        self.initModelResult = None
+        self.initModelError = None
         self._emit_and_wait(
-            'import_model',
-            self.sigSegForLostIDsImportModel,
+            'init_model',
+            self.sigInitModel,
+            model_idx,
             base_model_name,
+            init_kwargs,
         )
-        acdcSegment = self.importedSegmModule
-        self.importedSegmModule = None
-        return acdcSegment
+        model, error = self.initModelResult, self.initModelError
+        self.initModelResult = None
+        self.initModelError = None
+        return model, error
 
     def emitGetSegForLostIDsInputImg(self, image_channel_name):
         self._emit_and_wait( # emit and waiting is handled here
@@ -360,8 +371,8 @@ class SegForLostIDsWorker(QObject):
                 customPostProcessFeatures = win.customPostProcessFeatures
                 customPostProcessGroupedFeatures = win.customPostProcessGroupedFeatures
 
-            use_gpu = effective_init_kwargs.get('device_type', 'cpu').lower() != 'cpu'
-            use_gpu = use_gpu or effective_init_kwargs.get('use_gpu', False)
+            use_gpu = myutils.check_gpu_requested_segm_model(effective_init_kwargs)
+            use_gpu = use_gpu or effective_init_kwargs.get('device_type', 'cpu').lower() != 'cpu'
 
             # self.logger.info('[SegForLostIDs] Checking GPU availability...')
             self.emitSigAskInstallGPU(base_model_name, use_gpu)
@@ -378,6 +389,9 @@ class SegForLostIDsWorker(QObject):
                 if 'use_gpu' in effective_init_kwargs:
                     effective_init_kwargs = dict(effective_init_kwargs, use_gpu=False)
                     changed_smth = True
+                if 'gpu' in effective_init_kwargs:
+                    effective_init_kwargs = dict(effective_init_kwargs, gpu=False)
+                    changed_smth = True
                 if 'device_type' in effective_init_kwargs:
                     effective_init_kwargs = dict(effective_init_kwargs, device_type='cpu')
                     changed_smth = True
@@ -387,25 +401,17 @@ class SegForLostIDsWorker(QObject):
                         'Please check the model settings.'
                     )
 
-            self.logger.info(f'Importing {base_model_name}...')
-            acdcSegment = self.emitSigSegForLostIDsImportModel(
-                base_model_name
+            effective_init_kwargs.pop('image_channel_name', None)
+            model, init_error = self.emitSigInitModel(
+                model_idx, base_model_name, effective_init_kwargs
             )
-            if acdcSegment is None:
+            if init_error is not None:
                 self.logger.warning(
-                    f'Cannot import {base_model_name} model. '
-                    'Please install it first.'
+                    f'Could not initialize {base_model_name} model.'
                 )
-                self.signals.critical.emit(
-                    (self, f'Cannot import {base_model_name} model. '
-                    'Please install it first.')
-                )
+                self.signals.critical.emit((self, init_error))
                 self.signals.finished.emit(self)
                 return
-
-            effective_init_kwargs.pop('image_channel_name', None)
-            # self.logger.info('[SegForLostIDs] Initializing segmentation model...')
-            model = myutils.init_segm_model(acdcSegment, posData, effective_init_kwargs)
             if model is None:
                 self.logger.info('Segmentation model was not initialized correctly!')
                 self.signals.critical.emit(

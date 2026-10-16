@@ -1979,8 +1979,8 @@ class loadData:
         logger_func(
             f'\nSaving SAM image embeddings to "{self.sam_embeddings_path}"...'
         )
-        import torch
-        torch.save(self.sam_embeddings, self.sam_embeddings_path)
+        from cellacdc import sam_embeddings
+        sam_embeddings.save(self.sam_embeddings, self.sam_embeddings_path)
         
     def loadSamEmbeddings(self, force_reload=False, logger_func=None):
         if hasattr(self, 'sam_embeddings') and not force_reload:
@@ -1994,8 +1994,8 @@ class loadData:
                 f'\nLoading SAM image embeddings from "{self.sam_embeddings_path}"...'
             )
         
-        import torch
-        self.sam_embeddings = torch.load(self.sam_embeddings_path)
+        from cellacdc import sam_embeddings
+        self.sam_embeddings = sam_embeddings.load(self.sam_embeddings_path)
     
     def getSamEmbeddings(self, frame_i=0, z=0):
         if not hasattr(self, 'sam_embeddings'):

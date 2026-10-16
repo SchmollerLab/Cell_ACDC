@@ -54,7 +54,11 @@ dependencies = [
     "setuptools-scm",
     "matplotlib",
     "sympy",
-    "imagecodecs"
+    "imagecodecs",
+    "fastapi",
+    "uvicorn",
+    "python-multipart",
+    "pydantic",
 ]
 dynamic = [
     "version",
@@ -146,6 +150,7 @@ dev = [
 cellacdc = "cellacdc.__main__:run"
 acdc = "cellacdc.__main__:run"
 Cell-ACDC = "cellacdc.__main__:run"
+acdc-setup-models = "cellacdc.service.setup_models:main"
 
 [tool.setuptools]
 include-package-data = true

@@ -72,6 +72,8 @@ import numpy as np
 import pandas as pd
 
 from cellacdc import load, core, features, cli
+from cellacdc.service import ModelClient
+from cellacdc.service.model_execution import ModelExecution, run_in_background
 
 class SegmWorker(QObject):
     def __init__(
@@ -118,22 +120,28 @@ class SegmWorker(QObject):
             preproc_recipe=mainWin.preproc_recipe, 
             reduce_memory_usage=mainWin.reduce_memory_usage,
             use_freehand_ROI=mainWin.useFreeHandROI,
+            backend_type=getattr(mainWin, 'backend_type', 'in_process'),
+            backend_url=getattr(mainWin, 'backend_url', None),
+            env_python=getattr(mainWin, 'env_python', None),
         )
     
     def run_kernels(self):
-        self.kernel.run(
-            self.img_path, 
-            self.stop_frame_n
-        )
-        if self.mainWin._measurements_kernel is None:
-            return
-        
-        segm_endname = self.kernel.segm_endname.replace('.npz', '')
-        self.mainWin._measurements_kernel.run(
-            img_path=self.img_path, 
-            stop_frame_n=self.stop_frame_n, 
-            end_filename_segm=segm_endname,
-        )
+        try:
+            self.kernel.run(
+                self.img_path, 
+                self.stop_frame_n
+            )
+            if self.mainWin._measurements_kernel is None:
+                return
+            
+            segm_endname = self.kernel.segm_endname.replace('.npz', '')
+            self.mainWin._measurements_kernel.run(
+                img_path=self.img_path, 
+                stop_frame_n=self.stop_frame_n, 
+                end_filename_segm=segm_endname,
+            )
+        finally:
+            self.kernel.close()
 
     @workers.worker_exception_handler
     def run(self):
@@ -473,20 +481,13 @@ class segmWin(QMainWindow):
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
         
-        self.log(f'Importing {model_name}...')
-        self.model_name = model_name
-        acdcSegment = myutils.import_segment_module(model_name)
-        self.acdcSegment =  acdcSegment
-
-        # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(self.acdcSegment)
+        model_spec = self.prepareModelExecution(model_name)
+        if model_spec is None:
+            self.processStopped()
+            return
+        init_params, segment_params, url = model_spec
 
         # Prompt user to enter the model parameters
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
-        
         out = prompts.init_segm_model_params(
             self.posData, model_name, init_params, segment_params, 
             help_url=url, qparent=self, init_last_params=False,
@@ -525,7 +526,8 @@ class segmWin(QMainWindow):
         if self.secondChannelName is not None:
             init_kwargs['is_rgb'] = True
         
-        self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs)
+        self.model = self.initModelExecution(init_kwargs)
+
         if self.model is None:
             self.logger.info('Segmentation model was not initialized correctly!')
             self.processStopped()
@@ -538,9 +540,11 @@ class segmWin(QMainWindow):
         self.predictCcaState_model = None
 
         self.is_segment3DT_available = False
-        if self.posData.SizeT>1 and not self.isSegm3D:
+        if hasattr(self.model, 'is_segment3DT_available'):
+            self.is_segment3DT_available = self.model.is_segment3DT_available
+        elif self.acdcSegment is not None and self.posData.SizeT>1 and not self.isSegm3D:
             self.is_segment3DT_available = any(
-                [name=='segment3DT' for name in dir(acdcSegment.Model)]
+                [name=='segment3DT' for name in dir(self.acdcSegment.Model)]
             )
 
         self.innerPbar_available = False
@@ -944,6 +948,13 @@ class segmWin(QMainWindow):
             'second_channel_name': self.secondChannelName,
             'use3DdataFor2Dsegm': self.use3DdataFor2Dsegm,
             'reduce_memory_usage': self.reduce_memory_usage,
+            'backend_type': getattr(self, 'backend_type', 'in_process'),
+            'backend_url': (
+                getattr(self, 'backend_url', None)
+                if getattr(self, 'backend_type', 'in_process') == 'remote'
+                else None
+            ),
+            'env_python': getattr(self, 'env_python', None),
         }
         metadata_params = {
             'SizeT': self.SizeT,
@@ -1237,6 +1248,52 @@ class segmWin(QMainWindow):
         button.clicked.connect(msg.buttonCallBack)
         button.click()
     
+    def prepareModelExecution(self, model_name):
+        """Choose where `model_name` runs; see `service/model_execution.py`.
+
+        Returns `(init_params, segment_params, url)` or None if cancelled.
+        """
+        from cellacdc.service import prompts as service_prompts
+        self.model_name = model_name
+        self.modelExecution = ModelExecution(
+            model_name,
+            run_in_background=self.runInBackground,
+            prompt_func=lambda p: service_prompts.QtHandler(self).ask(p),
+            log_func=self.log,
+        )
+        spec = self.modelExecution.prepare()
+        self._syncModelExecution()
+        return spec
+
+    def initModelExecution(self, init_kwargs):
+        model = self.modelExecution.init_model(
+            init_kwargs, getattr(self, 'posData', None)
+        )
+        self._syncModelExecution()
+        return model
+
+    def _syncModelExecution(self):
+        # Read by the segmentation workers and saved in the workflow config
+        execution = self.modelExecution
+        self.backend_type = execution.backend_type
+        self.env_python = execution.env_python
+        self.acdcSegment = execution.acdcSegment
+        self.backend = execution.backend
+        self.backend_url = execution.backend_url
+
+    def stopModelExecution(self):
+        execution = getattr(self, 'modelExecution', None)
+        if execution is not None:
+            execution.stop()
+        self.backend = None
+
+    def runInBackground(self, func, *args, **kwargs):
+        """Run `func` in a worker thread while keeping the GUI responsive.
+
+        See `service.model_execution.run_in_background`.
+        """
+        return run_in_background(self, func, *args, log_func=self.log, **kwargs)
+
     def log(self, text):
         self.logger.info(text)
         try:
@@ -1400,6 +1457,8 @@ class segmWin(QMainWindow):
         # from . import debugutils
         # debugutils.showRefGraph('segmWin')
 
+        self.stopModelExecution()
+
         msg = widgets.myMessageBox(showCentered=False)
         closeAnswer = msg.warning(
             self, 'Execution cancelled', 'Segmentation task cancelled.'
@@ -1460,6 +1519,8 @@ class segmWin(QMainWindow):
             self.model.closeLogger()
         except Exception as e:
             pass
+        
+        self.stopModelExecution()
         
         self.log('Segmentation module closed.')
         self.sigClosed.emit()

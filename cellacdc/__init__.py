@@ -1,5 +1,12 @@
 import os
+import shutil
 import sys
+
+# Server mode is selected with the `--server` command-line flag, e.g.
+# `python -m cellacdc.service.worker --server ...`. It must be read here, at
+# import time, because it decides which (GUI/config) modules are loaded.
+SERVER_FLAG = '--server'
+RUNNING_AS_SERVER = SERVER_FLAG in getattr(sys, 'argv', [])[1:]
 
 import subprocess
 
@@ -14,8 +21,9 @@ def is_conda_env():
         return False
     
     stdout = subprocess.DEVNULL
+    conda = os.environ.get("CONDA_EXE") or shutil.which("conda")
     try:
-        args = ['conda', '-V']
+        args = [conda, '-V']
         is_conda_present = subprocess.check_call(
             args, shell=True, stdout=stdout) == 0
         return True
@@ -23,7 +31,7 @@ def is_conda_env():
         pass
     
     try:
-        args = ['conda -V']
+        args = [f'"{conda}" -V']
         is_conda_present = subprocess.check_call(
             args, shell=True, stdout=stdout) == 0
         return True
@@ -367,19 +375,22 @@ def try_input_install_package(pkg_name, install_command, question=None):
             f'Install it with the command `{install_command}`.'
         )
 
-try:
-    # Force PyQt6 if available
+if not RUNNING_AS_SERVER:
     try:
-        from PyQt6 import QtCore
-        os.environ["QT_API"] = "pyqt6"
+        # Force PyQt6 if available
+        try:
+            from PyQt6 import QtCore
+            os.environ["QT_API"] = "pyqt6"
+        except Exception as e:
+            pass
+        from qtpy import QtCore
+        import pyqtgraph
+        import matplotlib
+        GUI_INSTALLED = True
     except Exception as e:
-        pass
-    from qtpy import QtCore
-    import pyqtgraph
-    import matplotlib
-    GUI_INSTALLED = True
-except Exception as e:
-    GUI_INSTALLED = False        
+        GUI_INSTALLED = False        
+else:
+    GUI_INSTALLED = False
 
 import pandas as pd
 

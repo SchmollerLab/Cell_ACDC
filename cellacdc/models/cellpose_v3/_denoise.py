@@ -13,7 +13,7 @@ from cellacdc.models._cellpose_base.acdcSegment import (_initialize_image, GPUDi
                                                         DealWithSecondChannelOptions, check_deal_with_second_channel)
 import torch
 
-from _types import NotGUIParam
+from cellacdc._types import NotGUIParam
 import itertools
 
 class CellposeDenoiseModel(DenoiseModel):

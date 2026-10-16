@@ -14,7 +14,7 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-from cellacdc import myutils, widgets, printl
+from cellacdc import myutils, printl, _types
 
 class AvailableModels:
     values = list(model_types.keys())
@@ -35,7 +35,7 @@ class Model:
     def __init__(
             self,
             model_type: AvailableModels='Large',
-            input_points_path: widgets.CsvFilePathControl='',
+            input_points_path: _types.CsvFilePath='',
             input_points_df: DataFrame='None',
             points_per_side=32,
             pred_iou_thresh=0.8,

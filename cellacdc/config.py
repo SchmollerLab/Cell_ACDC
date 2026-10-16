@@ -3,6 +3,7 @@ import configparser
 import pprint
 import os
 import json
+import sys
 
 from typing import get_type_hints 
 
@@ -52,7 +53,11 @@ help_text = (
 try:
     ap = argparse.ArgumentParser(
         prog='acdc', description=help_text, 
-        formatter_class=argparse.RawTextHelpFormatter
+        formatter_class=argparse.RawTextHelpFormatter,
+        add_help=not (
+            'acdc-setup-models' in os.path.basename(sys.argv[0])
+            or 'cellacdc.service.setup_models' in getattr(sys, 'orig_argv', [])
+        ),
     )
     
     ap.add_argument(
