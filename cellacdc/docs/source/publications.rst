@@ -20,10 +20,12 @@ Scientific publications where Cell-ACDC was used
   
 
 In the following publications, authors used Cell-ACDC to analyse microscopy data and obtain **biological insights**:
-
+ 
 .. raw:: html
 
     <ol>
+      <li>Athar, F., et al. <i>Glucose enrichment accelerates C. elegans reproductive aging via non-autonomous DAF-2/insulin-like receptor signaling in somatic tissues</i>. <b>Communications Biology</b> (2026) DOI: <a href="https://doi.org/10.1038/s42003-026-10564-7">10.1038/s42003-026-10564-7</a>.</li><br>
+
       <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>Nucleic Acids Research</b> (2026) DOI: <a href="https://doi.org/10.1093/nar/gkag949">10.1093/nar/gkag949</a>.</li><br>
 
       <li>Dengler, L., et al. <i>Swe1 delays cell cycle progression during impaired mitochondrial inheritance to promote mitochondrial homeostasis</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.09.18.752582">10.64898/2026.09.18.752582</a>.</li><br>
