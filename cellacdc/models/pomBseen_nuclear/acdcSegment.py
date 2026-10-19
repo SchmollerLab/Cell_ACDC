@@ -13,10 +13,11 @@ class Model:
         of the mask) and drops its first bin, so objects need at least 3 
         distinct values, otherwise Otsu fails on an empty histogram.
         """
-        segm = np.array(self.segm_data, copy=True)
+        segm = np.asarray(self.segm_data)
         if segm.ndim == image.ndim + 1:
             # Time-lapse auxiliary segmentation
             segm = segm[0 if frame_i is None else frame_i]
+        segm = segm.copy()
         if segm.shape != image.shape:
             raise ValueError(
                 f'pomBseen_nuclear: auxiliary segmentation shape {segm.shape} '

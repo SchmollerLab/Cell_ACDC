@@ -144,9 +144,15 @@ def run_in_background(parent, func, *args, log_func=None, **kwargs):
     thread.start()
     loop.exec_()
     thread.wait()
-    if thread.error is not None:
-        raise thread.error
-    return thread.result
+    result, error = thread.result, thread.error
+    thread.result = thread.error = None
+    thread.deleteLater()
+    loop.deleteLater()
+    task.deleteLater()
+    del thread, loop, task
+    if error is not None:
+        raise error
+    return result
 
 
 class ModelExecution:

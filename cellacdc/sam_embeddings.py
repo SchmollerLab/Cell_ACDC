@@ -88,7 +88,12 @@ class _TorchUnpickler(pickle.Unpickler):
             return _rebuild_tensor
         if module == 'torch' and name in _STORAGE_DTYPES:
             return _StorageType(_STORAGE_DTYPES[name])
-        return super().find_class(module, name)
+        if module == 'collections' and name == 'OrderedDict':
+            from collections import OrderedDict
+            return OrderedDict
+        raise pickle.UnpicklingError(
+             f'Unsupported global in SAM embeddings: {module}.{name}'
+         )
 
     def persistent_load(self, saved_id):
         kind, storage_type, key, _location, size = saved_id[:5]

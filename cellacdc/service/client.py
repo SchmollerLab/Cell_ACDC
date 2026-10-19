@@ -54,17 +54,23 @@ def _sanitize_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     return sanitized
 
 def _encode_segment_kwargs(kwargs: Dict[str, Any]):
-    """Keep array kwargs out of size-limited multipart text fields."""
+    """Encode segment kwargs, preserving arrays and DataFrames.
+
+    Arrays go into the `.npz` attachment (out of size-limited multipart text
+    fields); DataFrames are transported by `payload.encode` as JSON.
+    """
     from cellacdc.service import payload
 
-    arrays = {
+    data_kwargs = {
         key: value for key, value in kwargs.items()
-        if isinstance(value, np.ndarray) and key not in _LOCAL_ONLY_KWARGS
+        if key not in _LOCAL_ONLY_KWARGS and (
+            isinstance(value, np.ndarray) or payload._is_dataframe(value)
+        )
     }
     plain = _sanitize_kwargs({
-        key: value for key, value in kwargs.items() if key not in arrays
+        key: value for key, value in kwargs.items() if key not in data_kwargs
     })
-    plain.update(arrays)
+    plain.update(data_kwargs)
     return payload.encode(plain)
 
 def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):

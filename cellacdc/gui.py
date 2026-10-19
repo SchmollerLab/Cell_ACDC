@@ -18222,6 +18222,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         if model is None:
             return
+        previous_execution = self.promptModelExecutions.get(
+             getattr(toolbar, 'model_name', None)
+         )
+        if previous_execution is not None and previous_execution is not execution:
+             previous_execution.release(previous_model)
         toolbar.model = model
         toolbar.model_segment_kwargs = win.model_kwargs
         toolbar.model_name = model_name
@@ -18239,10 +18244,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setTitleText()
     
     @exception_handler
+    @disableWindow
     def magicPromptsInitModel(self, model_name):
         posData = self.data[self.pos_i]
         toolbar = self.magicPromptsToolbar
-        self.setDisabled(True)
         execution = self.getPromptModelExecution(model_name)
         model_spec = execution.prepare()
         if model_spec is None:
@@ -18266,13 +18271,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.logger.info(
                 f'Initialization of {model_name} promptable model cancelled.'
             )
-            self.setDisabled(False)
             return
         
         self._importInitMagicPromptModel(
             model_name, posData, win, acdcPromptSegment, toolbar
         )
-        self.setDisabled(False)
     
     def viewSetMagicPromptModelParams(
             self, 
