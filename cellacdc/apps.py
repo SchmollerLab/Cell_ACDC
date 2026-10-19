@@ -16753,7 +16753,7 @@ class InstallPyTorchDialog(QBaseDialog):
             {caller_name} needs to <b>install the package</b> <code>PyTorch</code>.<br><br>
             Select your preferences and click ok to install it now.<br>
             You can check the currently running `CUDA UMD Version` by running:""")
-        if found_cuda_version is not None:
+        if found_cuda_version is not False and found_cuda_version is not None:
             infoText += html_utils.paragraph(
                 f'Current CUDA UMD Version: {found_cuda_version[0]}.{found_cuda_version[1]}'
             )
