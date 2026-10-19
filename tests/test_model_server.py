@@ -1220,21 +1220,21 @@ def test_nested_array_payload_roundtrip():
 #     assert legacy[1][2]['original_size'] == (10, 12)
 
 
-# @pytest.mark.parametrize(
-#     'direct_url, version, expected',
-#     [
-#         (
-#             {
-#                 'url': 'https://github.com/SchmollerLab/Cell_ACDC.git',
-#                 'vcs_info': {'vcs': 'git', 'commit_id': 'abc123'},
-#             },
-#             '1.7.0.dev1',
-#             'cellacdc @ git+https://github.com/SchmollerLab/'
-#             'Cell_ACDC.git@abc123',
-#         ),
-#         (None, '1.6.5', 'cellacdc==1.6.5'),
-#     ],
-# )
+@pytest.mark.parametrize(
+    'direct_url, version, expected',
+    [
+        (
+            {
+                'url': 'https://github.com/SchmollerLab/Cell_ACDC.git',
+                'vcs_info': {'vcs': 'git', 'commit_id': 'abc123'},
+            },
+            '1.7.0.dev1',
+            'cellacdc @ git+https://github.com/SchmollerLab/'
+            'Cell_ACDC.git@abc123',
+        ),
+        (None, '1.6.5', 'cellacdc==1.6.5'),
+    ],
+)
 def test_installed_cellacdc_spec_preserves_provenance(
         monkeypatch, direct_url, version, expected
     ):
@@ -1790,8 +1790,8 @@ def test_worker_runs_model_specific_methods(monkeypatch):
 
 @pytest.mark.parametrize('method', ['segment', 'segment3DT', 'submit_job'])
 def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
+    import asyncio
     import types
-    from fastapi.testclient import TestClient
     from cellacdc import myutils
     from cellacdc.service import worker
 
@@ -1819,41 +1819,68 @@ def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
     monkeypatch.setattr(worker, '_executor', executor)
     monkeypatch.setattr(worker, '_jobs', {})
     app = worker.create_app('fake')
+    endpoints = {
+        route.path: route.endpoint
+        for route in app.routes if hasattr(route, 'methods')
+    }
 
-    with TestClient(app) as http:
-        class Session:
-            def post(self, url, files, data, timeout):
-                assert len(data['params']) < 1024 * 1024
-                assert len(files['params_data'][1]) > 1024 * 1024
-                request = requests.Request(
-                    'POST', url, files=files, data=data
-                ).prepare()
-                response = http.post(
-                    url, content=request.body, headers=request.headers
-                )
-                result = requests.Response()
-                result.status_code = response.status_code
-                result.url = url
-                result._content = response.content
+    class Session:
+        def post(self, url, files, data, timeout):
+            assert len(data['params']) < 1024 * 1024
+            assert len(files['params_data'][1]) > 1024 * 1024
+            path = url.removeprefix('http://testserver')
+            image_upload = _FakeUploadBytes(files['image'][1])
+            params_upload = _FakeUploadBytes(files['params_data'][1])
+            if path == '/segment':
+                response = asyncio.run(endpoints[path](
+                    image=image_upload, params=data['params'],
+                    embedding_meta='', embeddings=None,
+                    params_data=params_upload,
+                ))
+            elif path == '/segment3DT':
+                response = asyncio.run(endpoints[path](
+                    image=image_upload, params=data['params'],
+                    params_data=params_upload,
+                ))
+            else:
+                response = asyncio.run(endpoints[path](
+                    image=image_upload, params=data['params'],
+                    params_data=params_upload,
+                ))
+            return self._response(url, response)
+
+        def get(self, url, timeout):
+            job_id = url.split('/')[-2]
+            response = endpoints['/jobs/{job_id}/result'](job_id)
+            return self._response(url, response)
+
+        @staticmethod
+        def _response(url, response):
+            result = requests.Response()
+            result.status_code = getattr(response, 'status_code', 200)
+            result.url = url
+            if isinstance(response, dict):
+                result._content = json.dumps(response).encode()
+                result.headers['Content-Type'] = 'application/json'
+            else:
+                result._content = response.body
                 result.headers.update(response.headers)
-                return result
+            return result
 
-        client = ModelClient.__new__(ModelClient)
-        client.base_url = 'http://testserver'
-        client.timeout = None
-        client.info = InfoResponse(
-            name='fake', capabilities=Capabilities(segment3DT=True)
-        )
-        client.is_segment3DT_available = True
-        client.model_name = 'fake'
-        client.session = Session()
-        result = getattr(client, method)(image, lab=lab)
-        if method == 'submit_job':
-            fn, args = executor.calls.pop()
-            fn(*args)
-            response = http.get(f'/jobs/{result}/result')
-            response.raise_for_status()
-            result = np.load(io.BytesIO(response.content))
+    client = ModelClient.__new__(ModelClient)
+    client.base_url = 'http://testserver'
+    client.timeout = None
+    client.info = InfoResponse(
+        name='fake', capabilities=Capabilities(segment3DT=True)
+    )
+    client.is_segment3DT_available = True
+    client.model_name = 'fake'
+    client.session = Session()
+    result = getattr(client, method)(image, lab=lab)
+    if method == 'submit_job':
+        fn, args = executor.calls.pop()
+        fn(*args)
+        result = client.get_job_result(result)
 
     np.testing.assert_array_equal(result, lab)
     assert seen == [None]
