@@ -1409,9 +1409,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
-        navigateToolBar.addAction(self.exportCurrentViewAction)
-        navigateToolBar.addAction(self.searchAction)
+        navigateToolBar.addWidget(self.exportCurrentViewButton)
+        self.widgetsWithShortcut['Setup exporting data from current view'] = (
+            self.exportCurrentViewButton
+        )
         
+        navigateToolBar.addAction(self.searchAction)
         navigateToolBar.addWidget(self.zoomRectButton)
 
         self.slideshowButton = QToolButton(self)
@@ -2055,6 +2058,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     if isinstance(obj, QToolButton) and obj is not self
                     and obj is not target.parent
                     ]
+            
+            if name == 'Setup exporting data from current view':
+                printl(target, name, widgets, name in self.widgetsForActions)
+                import pdb; pdb.set_trace()
             if widgets is None or len(widgets) == 0:
                 return False, 0
             else:    
@@ -2067,6 +2074,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def _installRightClickFilter(self, widget: QWidget, menu: QMenu):
         if getattr(widget, 'installedEventFilter', False):
             return
+        
         if not hasattr(self, '_rightClickFilterObj'):
             self._rightClickFilterObj = RightClickMenuFilter()
         widget.installEventFilter(self._rightClickFilterObj)
@@ -2931,6 +2939,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.exportCurrentViewToolbar = widgets.ExportCurrentViewToolbar(self)
         for name, action in self.exportCurrentViewToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
+        
+        for name, widget in self.exportCurrentViewToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
 
         self.addToolBar(Qt.TopToolBarArea, self.exportCurrentViewToolbar)
         self.exportCurrentViewToolbar.setVisible(False)
@@ -2956,7 +2967,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             (self.whitelistIDsToolbar, self.whitelistIDsButton),
             (self.magicPromptsToolbar, self.magicPromptsToolButton),
             (self.promptSegmentPointsLayerToolbar, self.magicPromptsToolButton),
-            (self.exportCurrentViewToolbar, self.exportCurrentViewAction),
+            (self.exportCurrentViewToolbar, self.exportCurrentViewButton),
         )
         for toolbar, targets in toolbar_targets:
             self.searchWidget.registerToolbarTargets(toolbar, targets)
@@ -3267,10 +3278,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotButton.setCheckable(True)
         self.autoPilotButton.setShortcut('Ctrl+Shift+A')
 
-        self.exportCurrentViewAction = QAction(self)
-        self.exportCurrentViewAction.setIcon(QIcon(":folder-move.svg"))
-        self.exportCurrentViewAction.setCheckable(True)
-        self.exportCurrentViewAction.setShortcut('Ctrl+Shift+E')
+        self.exportCurrentViewButton = QToolButton(self)
+        self.exportCurrentViewButton.setIcon(QIcon(":folder-move.svg"))
+        self.exportCurrentViewButton.setCheckable(True)
+        self.exportCurrentViewButton.setShortcut('Ctrl+Shift+E')
         
         self.searchAction = QAction(self)
         self.searchAction.setIcon(QIcon(":find.svg"))
@@ -4056,7 +4067,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
-        self.exportCurrentViewAction.toggled.connect(
+        self.exportCurrentViewButton.toggled.connect(
             self.exportCurrentViewDataToggled
         )
         self.searchAction.triggered.connect(
@@ -28960,10 +28971,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'Ctrl+Z': ('Undo', self.undoAction),
             'Ctrl+Y': ('Redo', self.redoAction),
             'Ctrl+Shift+A': ('Autopilot', self.autoPilotButton),
-            'Ctrl+Shift+E': (
-                'Export data from current view', 
-                self.exportCurrentViewAction
-            ),
             'Ctrl+F': ('Search', self.focusOnSearchAction),
             'Ctrl+T': (
                 'Track current frame with real-time tracker', 
