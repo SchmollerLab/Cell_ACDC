@@ -690,9 +690,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     force:bool=False):
         if force:
             if disabled:
-                self.gui_refreshToolCursor()
                 super().setDisabled(disabled)
-                # set override cursor to indicate the GUI is disabled only for the GUI itself
+                self.gui_refreshToolCursor()
                 return
             else:
                 self.keepDisabled = False
@@ -706,17 +705,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if self.keepDisabled:
             if disabled:
-                self.gui_refreshToolCursor()
                 super().setDisabled(disabled)
+                self.gui_refreshToolCursor()
                 return
             else:
+                self.gui_refreshToolCursor()
                 return
         else:
-            if disabled:
-                self.gui_refreshToolCursor()
             super().setDisabled(disabled)
-            if not disabled:
-                self.gui_refreshToolCursor()
+        self.gui_refreshToolCursor()
 
     
     def readRecentPaths(self):
@@ -18237,18 +18234,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.logger.info(
             f'Promptable model {model_name} successfully initialised!'
         )
+        
+        # update title
+        self.setTitleText()
     
     @exception_handler
-    def magicPromptsInitModel(
-            self, 
-            model_name, 
-            acdcPromptSegment,
-            init_argspecs, 
-            segment_argspecs,
-            help_url,
-            toolbar,
-        ):
+    def magicPromptsInitModel(self, model_name):
         posData = self.data[self.pos_i]
+        toolbar = self.magicPromptsToolbar
+        self.setDisabled(True)
         execution = self.getPromptModelExecution(model_name)
         model_spec = execution.prepare()
         if model_spec is None:
@@ -18272,11 +18266,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.logger.info(
                 f'Initialization of {model_name} promptable model cancelled.'
             )
+            self.setDisabled(False)
             return
         
         self._importInitMagicPromptModel(
             model_name, posData, win, acdcPromptSegment, toolbar
         )
+        self.setDisabled(False)
     
     def viewSetMagicPromptModelParams(
             self, 

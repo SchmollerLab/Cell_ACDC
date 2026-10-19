@@ -14,6 +14,8 @@ import requests
 
 from cellacdc.service.schema import InfoResponse, parse_response
 
+_LOCAL_ONLY_KWARGS = ("posData", "signals", "logger_func", "signals_tqdm")
+
 def _find_free_port(host: str = "127.0.0.1") -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind((host, 0))
@@ -38,7 +40,7 @@ def _cast_value(value: Any):
 def _sanitize_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
     sanitized = {}
     for k, v in kwargs.items():
-        if k in ("posData", "signals", "logger_func", "signals_tqdm"):
+        if k in _LOCAL_ONLY_KWARGS:
             continue
         # Check JSON serializability
         try:
@@ -50,6 +52,20 @@ def _sanitize_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
             print(f"Failed to serialize key={k}, value={v}")
             print(f"Type of key={type(k)}, type of value={type(v)}")
     return sanitized
+
+def _encode_segment_kwargs(kwargs: Dict[str, Any]):
+    """Keep array kwargs out of size-limited multipart text fields."""
+    from cellacdc.service import payload
+
+    arrays = {
+        key: value for key, value in kwargs.items()
+        if isinstance(value, np.ndarray) and key not in _LOCAL_ONLY_KWARGS
+    }
+    plain = _sanitize_kwargs({
+        key: value for key, value in kwargs.items() if key not in arrays
+    })
+    plain.update(arrays)
+    return payload.encode(plain)
 
 def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
     """Initialize a worker started with `--defer-init` (sends data, not paths)."""
@@ -147,7 +163,7 @@ class ModelClient:
         if start_z_slice is not None:
             kwargs["start_z_slice"] = start_z_slice
             
-        p = _sanitize_kwargs(kwargs)
+        params, params_data = _encode_segment_kwargs(kwargs)
         buf = io.BytesIO()
         np.save(buf, image)
         buf.seek(0)
@@ -155,6 +171,10 @@ class ModelClient:
         files = {
             "image": ("image.npy", buf.getvalue(), "application/octet-stream")
         }
+        if params_data is not None:
+            files['params_data'] = (
+                'params.npz', params_data, 'application/octet-stream'
+            )
         embedding_operation = any(
             kwargs.get(name)
             for name in (
@@ -162,7 +182,7 @@ class ModelClient:
             )
         )
         data = {
-            "params": json.dumps(p)
+            "params": params
         }
         if embedding_operation:
             frame_embeddings = {}
@@ -207,7 +227,7 @@ class ModelClient:
             raise NotImplementedError(
                 f"Model {self.model_name} does not support segment3DT"
             )
-        p = _sanitize_kwargs(kwargs)
+        params, params_data = _encode_segment_kwargs(kwargs)
         buf = io.BytesIO()
         np.save(buf, video_data)
         buf.seek(0)
@@ -215,8 +235,12 @@ class ModelClient:
         files = {
             "image": ("image.npy", buf.getvalue(), "application/octet-stream")
         }
+        if params_data is not None:
+            files['params_data'] = (
+                'params.npz', params_data, 'application/octet-stream'
+            )
         data = {
-            "params": json.dumps(p)
+            "params": params
         }
         res = self.session.post(
             f"{self.base_url}/segment3DT",
@@ -295,14 +319,18 @@ class ModelClient:
         return pd.read_json(io.StringIO(res.json()["cca_df"]), orient="table")
 
     def submit_job(self, image: np.ndarray, **kwargs) -> str:
-        p = _sanitize_kwargs(kwargs)
+        params, params_data = _encode_segment_kwargs(kwargs)
         buf = io.BytesIO()
         np.save(buf, image)
         buf.seek(0)
         files = {
             "image": ("image.npy", buf.getvalue(), "application/octet-stream")
         }
-        data = {"params": json.dumps(p)}
+        if params_data is not None:
+            files['params_data'] = (
+                'params.npz', params_data, 'application/octet-stream'
+            )
+        data = {"params": params}
         res = self.session.post(
             f"{self.base_url}/jobs/segment",
             files=files,

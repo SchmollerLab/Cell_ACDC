@@ -12231,9 +12231,7 @@ class MagicPromptsToolbar(ToolBar):
     sigComputeOnImage = Signal(object)
     sigClearPoints = Signal(object)
     sigClearPointsOnZmom = Signal(object)
-    sigInitSelectedModel = Signal(
-        str, object, list, list, str, object
-    )
+    sigInitSelectedModel = Signal(str)
     sigViewModelParams = Signal(
         str, object, list, list, str, object, object, object
     )
@@ -12408,11 +12406,8 @@ class MagicPromptsToolbar(ToolBar):
         print(f'Preparing promptable model {model_name}...')
 
         self._model_name = model_name
-        
-        self.sigInitSelectedModel.emit(
-            model_name, None, [], [], '',
-            self
-        )
+
+        self.sigInitSelectedModel.emit(model_name)
     
     def setInitializedModel(self, init_kwargs, segment_kwargs):
         self._init_kwargs = init_kwargs

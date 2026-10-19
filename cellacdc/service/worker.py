@@ -149,6 +149,14 @@ def _filter_kwargs(func, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         return kwargs
     return {k: v for k, v in kwargs.items() if k in params}
 
+async def _decode_segment_params(params, params_data):
+    from cellacdc.service import payload
+
+    content = (
+        await params_data.read() if hasattr(params_data, 'read') else None
+    )
+    return payload.decode(params, content)
+
 
 class _EmbeddingPosData:
     """Minimal position-data interface used by SAM models in a worker."""
@@ -444,6 +452,7 @@ def create_app(
             image: UploadFile = File(...), params: str = Form("{}"),
             embedding_meta: str = Form(""),
             embeddings: Optional[UploadFile] = File(None),
+            params_data: Optional[UploadFile] = File(None),
         ):
         """Run `model.segment(image, **params)` and return the labels.
 
@@ -451,6 +460,9 @@ def create_app(
             image:  the image saved with `np.save` (`.npy` bytes).
             params: JSON text with the segment kwargs (e.g. `frame_i`).
                     Kwargs the model's `segment` does not accept are dropped.
+            params_data: optional `.npz` attachment for array kwargs such as
+                    the promptable model's existing labels (`lab`). Arrays
+                    stay binary to avoid the multipart text-field size limit.
             embedding_meta/embeddings: optional safe payload containing SAM
                     embeddings from the client-side position data.
         Response: the labels as `.npy` bytes, or HTTP 500 with the traceback.
@@ -458,7 +470,7 @@ def create_app(
                   both labels and updated embeddings.
         """
         try:
-            p = json.loads(params) if params else {}
+            p = await _decode_segment_params(params, params_data)
             # Read the uploaded bytes and turn them back into a numpy array
             content = await image.read()
             arr = np.load(io.BytesIO(content))
@@ -521,7 +533,10 @@ def create_app(
             raise HTTPException(status_code=500, detail=traceback.format_exc())
 
     @app.post("/segment3DT")
-    async def segment3DT(image: UploadFile = File(...), params: str = Form("{}")):
+    async def segment3DT(
+            image: UploadFile = File(...), params: str = Form("{}"),
+            params_data: Optional[UploadFile] = File(None),
+        ):
         """Like `/segment`, but for a whole time-lapse via `model.segment3DT`.
 
         HTTP 400 if the model has no `segment3DT` method.
@@ -532,7 +547,7 @@ def create_app(
                 detail=f"Model {model_name} does not support segment3DT"
             )
         try:
-            p = json.loads(params) if params else {}
+            p = await _decode_segment_params(params, params_data)
             content = await image.read()
             arr = np.load(io.BytesIO(content))
             out = await run_in_threadpool(call_model_method, "segment3DT", arr, **p)
@@ -639,13 +654,16 @@ def create_app(
         _transition_job(job_id, "completed", result=out, progress=1.0)
 
     @app.post("/jobs/segment")
-    async def submit_job(image: UploadFile = File(...), params: str = Form("{}")):
+    async def submit_job(
+            image: UploadFile = File(...), params: str = Form("{}"),
+            params_data: Optional[UploadFile] = File(None),
+        ):
         """Start segmenting in the background (same request as `/segment`).
 
         Response (JSON): `{"job_id": "<id>"}`, returned immediately.
         """
         job_id = uuid.uuid4().hex
-        p = json.loads(params) if params else {}
+        p = await _decode_segment_params(params, params_data)
         content = await image.read()
         arr = np.load(io.BytesIO(content))
         new_job = {
