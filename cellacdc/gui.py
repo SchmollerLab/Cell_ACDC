@@ -2059,9 +2059,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     and obj is not target.parent
                     ]
             
-            if name == 'Setup exporting data from current view':
-                printl(target, name, widgets, name in self.widgetsForActions)
-                import pdb; pdb.set_trace()
             if widgets is None or len(widgets) == 0:
                 return False, 0
             else:    
