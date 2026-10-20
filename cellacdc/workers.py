@@ -1076,7 +1076,8 @@ class AutoSaveWorker(QObject):
                 else:
                     saved_segm_data = lab
 
-            if self.isAutoSaveAnnotON:
+            isAutoSaveAnnotON = self.isAutoSaveAnnotON # make sure that it doesn't change during execution
+            if isAutoSaveAnnotON:
                 acdc_df = data_dict['acdc_df']
                 
                 if acdc_df is None:
@@ -1085,7 +1086,7 @@ class AutoSaveWorker(QObject):
             if not np.any(lab):
                 continue
             
-            if self.isAutoSaveAnnotON:
+            if isAutoSaveAnnotON:
                 acdc_df = load.pd_bool_and_float_to_int_to_str(
                     acdc_df, inplace=False, colsToCastInt=[]
                 )
