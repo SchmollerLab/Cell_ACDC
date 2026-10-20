@@ -5,6 +5,10 @@ pandas DataFrames are embedded as JSON (``orient='split'``). Selected model
 files are sent as bytes in the attachment, never as client-side paths.
 The worker keeps its own temporary copies for the lifetime of the model.
 Directory uploads are not supported.
+
+Embedding responses use a single binary body: an 8-byte big-endian metadata
+length, that many bytes of UTF-8 JSON, then the optional ``.npz`` attachment.
+Metadata stays out of HTTP headers, whose line lengths are limited.
 """
 
 from contextlib import ExitStack
@@ -151,3 +155,25 @@ def decode_value(value_json: str, data: Optional[bytes] = None) -> Any:
             return {key: decode_item(val) for key, val in item.items()}
 
         return decode_item(encoded)
+
+
+def encode_value_body(value: Any) -> bytes:
+    """Pack nested-value metadata and arrays into one HTTP response body."""
+    metadata, data = encode_value(value)
+    metadata_bytes = metadata.encode('utf-8')
+    return (
+        len(metadata_bytes).to_bytes(8, 'big')
+        + metadata_bytes + (data or b'')
+    )
+
+
+def decode_value_body(body: bytes) -> Any:
+    """Unpack a body produced by :func:`encode_value_body` without pickle."""
+    if len(body) < 8:
+        raise ValueError('Truncated payload metadata length')
+    metadata_end = 8 + int.from_bytes(body[:8], 'big')
+    if metadata_end > len(body):
+        raise ValueError('Truncated payload metadata')
+    return decode_value(
+        body[8:metadata_end].decode('utf-8'), body[metadata_end:]
+    )

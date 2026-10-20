@@ -266,3 +266,52 @@ def test_lost_ids_gpu_failure_releases_worker(monkeypatch, caplog):
 )
 def test_gpu_request_parameters(kwargs, expected):
     assert myutils.check_gpu_requested_segm_model(kwargs) is expected
+
+
+@pytest.mark.parametrize('python_exec', [None, 'model-python'])
+@pytest.mark.parametrize('kwargs,use_gpu,cuda,directml', [
+    ({'device_type': 'cpu'}, False, False, False),
+    ({'device_type': 'GPU'}, True, True, False),
+    ({'device_type': 'directml_gpu'}, True, False, True),
+    ({'gpu': True}, True, False, False),
+    ({'use_gpu': True}, True, False, False),
+])
+@pytest.mark.parametrize('proceed', [False, True])
+def test_segmentation_module_checks_gpu_before_init(
+        monkeypatch, python_exec, kwargs, use_gpu, cuda, directml, proceed,
+    ):
+    pytest.importorskip('qtpy')
+    from cellacdc.segm import segmWin
+
+    execution = SimpleNamespace(
+        env_python=python_exec, init_model=Mock(return_value=object()),
+    )
+    pos_data = object()
+    window = SimpleNamespace(
+        model_name='cellpose_v3', modelExecution=execution,
+        posData=pos_data, _syncModelExecution=Mock(), logger=Mock(),
+    )
+    events = []
+
+    def check(*args, **kwargs):
+        events.append('check')
+        return proceed
+
+    execution.init_model.side_effect = lambda *a: events.append('init') or 'model'
+    check_gpu = Mock(side_effect=check)
+    monkeypatch.setattr(myutils, 'check_gpu_available', check_gpu)
+    result = segmWin.initModelExecution(window, kwargs)
+    check_gpu.assert_called_once_with(
+        'cellpose_v3', use_gpu, qparent=window, cuda=cuda, directML=directml,
+        python_exec=python_exec,
+    )
+    if proceed:
+        assert result == 'model'
+        assert events == ['check', 'init']
+        execution.init_model.assert_called_once_with(kwargs, pos_data)
+        window._syncModelExecution.assert_called_once()
+    else:
+        assert result is None
+        assert events == ['check']
+        execution.init_model.assert_not_called()
+        window._syncModelExecution.assert_not_called()

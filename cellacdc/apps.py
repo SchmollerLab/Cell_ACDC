@@ -13564,12 +13564,15 @@ class QDialogModelParams(QDialog):
             self.postProcessGroupbox.restoreFromKwargs(kwargs)
 
             applyPostProcessing = configPars.getboolean(
-                postProcessSection, 'applyPostProcessing'
+                postProcessSection, 'applyPostProcessing',
+                fallback=configPars.getboolean(
+                    postProcessSection, 'applied_postprocessing', fallback=False
+                ),
             )
             self.postProcessGroupbox.setChecked(applyPostProcessing)
 
         customPostProcessSection = f'{self.model_name}.custom_postprocess'
-        if postProcessSection not in configPars.sections():
+        if customPostProcessSection not in configPars.sections():
             return
         
         selectFeaturesWidget = (

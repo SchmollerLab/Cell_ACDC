@@ -315,7 +315,10 @@ class ModelExecution:
         self.spec = tuple(spec)
         return self.spec
 
-    def init_model(self, init_kwargs: Dict[str, Any], posData=None, replace=None):
+    def init_model(
+            self, init_kwargs: Dict[str, Any], posData=None, replace=None,
+            *, is_rgb: Optional[bool] = None,
+        ):
         """Return a model instance; returns None if the user cancelled.
 
         In isolated mode, data the model needs from the client (e.g. an
@@ -334,6 +337,11 @@ class ModelExecution:
 
         Parameters
         ----------
+        is_rgb : bool, optional
+            Channel mode, including RGB stacks made from a second channel.
+            When provided, overrides the init kwarg and becomes part of the
+            reuse identity, so mutable channel state cannot leak between modes.
+            Models without an `is_rgb` init parameter ignore it during init.
         replace : model, optional
             Instance (from a previous call) that the caller replaces with the
             new one. It is released after the new instance is ready, and its
@@ -344,6 +352,9 @@ class ModelExecution:
             raise RuntimeError(
                 f'{self.model_name}: call prepare() before init_model().'
             )
+        init_kwargs = dict(init_kwargs)
+        if is_rgb is not None:
+            init_kwargs['is_rgb'] = is_rgb
         if not ensure_required_env(
             self.model_name, init_kwargs, prompt_func=self.prompt_func
         ):
@@ -360,7 +371,6 @@ class ModelExecution:
                 )
             return myutils.init_segm_model(self.acdcSegment, posData, init_kwargs)
 
-        init_kwargs = dict(init_kwargs)
         if self.model_kind == 'segmentation':
             segm_data = myutils.resolve_segm_model_init_data(
                 posData, init_kwargs

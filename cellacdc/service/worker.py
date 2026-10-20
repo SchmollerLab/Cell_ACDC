@@ -197,9 +197,9 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
 
     The worker may run on another machine, so it never receives client file
     paths: the client loads files itself and sends the data (`segm_data`,
-    `input_points_df`, or uploaded model files). Uploaded files are stored in
-    temporary directories until the model is released. Raw client paths and
-    directory selections are rejected with an error.
+    `input_points_df`, or uploaded model/CSV files). Uploaded files are stored
+    in temporary directories until the model is released. Raw client paths
+    and directory selections are rejected with an error.
     Models whose `__init__` has a required positional argument receive the
     auxiliary segmentation as that argument.
     """
@@ -246,7 +246,9 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
     for key in ('segm_endname', 'input_points_path'):
         if init_kwargs.get(key) in (None, '', 'None'):
             init_kwargs.pop(key, None)
-    unresolved = {'segm_endname', 'input_points_path'} & set(init_kwargs)
+    unresolved = (
+        {'segm_endname', 'input_points_path'} & set(init_kwargs)
+    ) - uploaded
     if unresolved:
         raise ValueError(
             f'Init kwargs {sorted(unresolved)} reference client files. The '
@@ -467,7 +469,8 @@ def create_app(
                     embeddings from the client-side position data.
         Response: the labels as `.npy` bytes, or HTTP 500 with the traceback.
                   SAM embedding operations return a safe payload containing
-                  both labels and updated embeddings.
+                  both labels and updated embeddings in the body (see
+                  `payload.encode_value_body`), not in response headers.
         """
         try:
             p = await _decode_segment_params(params, params_data)
@@ -491,14 +494,13 @@ def create_app(
                 p['posData'] = embedding_pos_data
             out = await run_in_threadpool(call_model_method, "segment", arr, **p)
             if embedding_pos_data is not None:
-                result_meta, result_data = payload.encode_value({
+                result_data = payload.encode_value_body({
                     'labels': out,
                     'embeddings': embedding_pos_data.frame_embeddings,
                 })
                 return Response(
-                    content=result_data or b'',
+                    content=result_data,
                     media_type='application/octet-stream',
-                    headers={'X-Cell-ACDC-Payload': result_meta},
                 )
             # Send the result back the same way: as `.npy` bytes
             buf = io.BytesIO()

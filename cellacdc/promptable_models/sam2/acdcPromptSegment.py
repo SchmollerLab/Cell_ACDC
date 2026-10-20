@@ -44,7 +44,8 @@ class Model:
 
         config_file, sam_checkpoint = model_types[model_type]
         sam_checkpoint = os.path.join(sam_models_path, sam_checkpoint)
-        sam = build_sam2(config_file=config_file, ckpt_path=sam_checkpoint, device=device)
+        sam = build_sam2(config_file=config_file, 
+                         ckpt_path=sam_checkpoint, device=device)
 
         self.model = SAM2ImagePredictor(sam)
         self._embedded_img = None

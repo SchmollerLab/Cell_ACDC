@@ -213,9 +213,7 @@ class ModelClient:
         )
         self._raise_for_status(res)
         if embedding_operation:
-            result = payload.decode_value(
-                res.headers['X-Cell-ACDC-Payload'], res.content
-            )
+            result = payload.decode_value_body(res.content)
             if posData is not None:
                 if not hasattr(posData, 'sam_embeddings'):
                     posData.sam_embeddings = {}
@@ -474,9 +472,12 @@ class LocalBackend:
             raise RuntimeError(message) from err
 
     def _read_output(self):
+        """Forward worker output live and retain recent lines for failures."""
         try:
             for line in iter(self.proc.stdout.readline, b""):
-                self._output.append(line.decode(errors="replace").rstrip())
+                text = line.decode(errors="replace").rstrip()
+                self._output.append(text)
+                print(f'[{self.model_name} worker] {text}', flush=True)
         except Exception:
             pass
 

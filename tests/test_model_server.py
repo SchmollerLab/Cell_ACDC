@@ -11,6 +11,30 @@ from cellacdc.service.client import LocalBackend, ModelClient
 from cellacdc import cli
 
 
+def test_local_backend_forwards_worker_output(capsys):
+    import collections
+    from types import SimpleNamespace
+
+    backend = LocalBackend.__new__(LocalBackend)
+    backend.model_name = 'segment_anything'
+    backend.proc = SimpleNamespace(stdout=io.BytesIO(
+        b'SAM: restored embeddings for frame 0, z-slice 2 on cpu.\n'
+        b'SAM: reusing loaded full-image embeddings; skipping image encoder.\n'
+    ))
+    backend._output = collections.deque(maxlen=200)
+
+    backend._read_output()
+
+    output = capsys.readouterr().out
+    assert '[segment_anything worker] SAM: restored embeddings' in output
+    assert (
+        '[segment_anything worker] SAM: reusing loaded full-image embeddings; '
+        'skipping image encoder.'
+    ) in output
+    assert len(backend._output) == 2
+    assert backend._output[-1].endswith('skipping image encoder.')
+
+
 def test_schema_models():
     caps = Capabilities(segment=True, segment3DT=False, second_ch_img_to_stack=True)
     info = InfoResponse(
@@ -651,6 +675,169 @@ def test_model_execution_caches_spec_and_manages_workers(monkeypatch):
     assert execution.backend is None
 
 
+@pytest.mark.parametrize('reuse', ['released', 'replace', 'concurrent'])
+def test_model_execution_channel_mode_isolates_mutable_state(monkeypatch, reuse):
+    from unittest.mock import Mock
+    from cellacdc.service.model_execution import ModelExecution
+
+    backends = []
+
+    class Model:
+        def __init__(self, weights, is_rgb=False):
+            self.is_rgb = is_rgb
+
+        def second_ch_img_to_stack(self, first, second):
+            self.is_rgb = True
+            return np.stack([first, second, np.zeros_like(first)], axis=-1)
+
+        def segment(self, image):
+            if self.is_rgb:
+                assert image.ndim == 3 and image.shape[-1] == 3
+                image = image[..., 0]
+            else:
+                assert image.ndim == 2
+            return np.ones_like(image, dtype=np.uint32)
+
+    def make_backend(**kwargs):
+        model = Model(**kwargs['init_model_kwargs'])
+
+        def initialize(init_kwargs):
+            model.__init__(**init_kwargs)
+
+        backend = Mock()
+        backend.start.return_value = model
+        backend.is_running.return_value = True
+        backend.reinitialize.side_effect = initialize
+        backends.append(backend)
+        return backend
+
+    _patch_model_execution(
+        monkeypatch, LocalBackend=Mock(side_effect=make_backend)
+    )
+    execution = ModelExecution('test_model', log_func=Mock())
+    execution.prepare()
+    kwargs = {'weights': 'pretrained'}
+    rgb = execution.init_model(kwargs, is_rgb=True)
+    assert rgb.is_rgb is True
+    image = np.zeros((8, 8), dtype=np.uint8)
+    rgb_image = rgb.second_ch_img_to_stack(image, image)
+    np.testing.assert_array_equal(rgb.segment(rgb_image), np.ones((8, 8)))
+    if reuse == 'released':
+        execution.release(rgb)
+    gray = execution.init_model(
+        kwargs, is_rgb=False, replace=rgb if reuse == 'replace' else None
+    )
+    assert gray.is_rgb is False
+    np.testing.assert_array_equal(gray.segment(image), np.ones((8, 8)))
+    assert kwargs == {'weights': 'pretrained'}
+    if reuse == 'concurrent':
+        assert gray is not rgb
+        assert rgb.is_rgb is True
+        assert len(backends) == 2
+    else:
+        assert gray is rgb
+        backends[0].reinitialize.assert_called_once_with({
+            'weights': 'pretrained', 'is_rgb': False,
+        })
+    assert execution.init_model(kwargs, is_rgb=False) is gray
+    execution.stop()
+
+
+@pytest.mark.parametrize('is_rgb', [False, True])
+def test_in_process_model_execution_initializes_channel_mode(monkeypatch, is_rgb):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from cellacdc.service.model_execution import ModelExecution
+
+    module = SimpleNamespace(url_help=lambda: None)
+    mocks = _patch_model_execution(
+        monkeypatch, use_model_env=False,
+        import_segment_module=Mock(return_value=module),
+    )
+    execution = ModelExecution('test_model', log_func=Mock())
+    execution.prepare()
+    kwargs = {'is_rgb': not is_rgb}
+    pos_data = object()
+    execution.init_model(kwargs, pos_data, is_rgb=is_rgb)
+    mocks['init_segm_model'].assert_called_once_with(
+        module, pos_data, {'is_rgb': is_rgb}
+    )
+    assert kwargs == {'is_rgb': not is_rgb}
+
+
+@pytest.mark.parametrize('scenario', [
+    'changed', 'unchanged', 'cancelled', 'other_consumer', 'stored_slot',
+])
+def test_magic_labeller_reinitialization_releases_ownership(monkeypatch, scenario):
+    from contextlib import nullcontext
+    from types import MethodType, SimpleNamespace
+    from unittest.mock import Mock
+    from cellacdc import gui
+    from cellacdc.service.model_execution import ModelExecution
+
+    def make_backend(**kwargs):
+        backend = Mock()
+        backend.start.return_value = SimpleNamespace(model_name='test_model')
+        backend.is_running.return_value = True
+        return backend
+
+    _patch_model_execution(
+        monkeypatch, LocalBackend=Mock(side_effect=make_backend)
+    )
+    execution = ModelExecution('test_model', log_func=Mock())
+    execution.prepare()
+    old = execution.init_model({'value': 0}, is_rgb=False)
+    if scenario == 'other_consumer':
+        assert execution.init_model({'value': 0}, is_rgb=False) is old
+    window = SimpleNamespace(
+        app=Mock(), logger=Mock(), labelRoiModel=old, models=[old],
+        modelExecutions={'test_model': execution},
+        labelRoiViewCurrentModelAction=Mock(),
+        getModelExecution=lambda name: execution,
+        modelExecutionBusy=lambda text: nullcontext(),
+    )
+    window.initSegmModel = MethodType(gui.guiWin.initSegmModel, window)
+    window.releaseSegmModel = MethodType(gui.guiWin.releaseSegmModel, window)
+    dialog = SimpleNamespace(cancel=False, selectedModel='test_model', exec_=Mock())
+    monkeypatch.setattr(gui.apps, 'QDialogSelectModel', lambda **kwargs: dialog)
+
+    def repeat(**kwargs):
+        if scenario == 'cancelled':
+            return None
+        value = 0 if scenario == 'unchanged' else len(values)
+        values.append(value)
+        model = window.initSegmModel(
+            'test_model', {'value': value}, posData=object(),
+            replace=window.models[0],
+        )
+        if scenario == 'stored_slot':
+            # Switching model names leaves the old model in its original slot.
+            window.models.append(model)
+        else:
+            window.models[0] = model
+        return model
+
+    values = [0]
+    window.repeatSegm = repeat
+    for _ in range(4 if scenario == 'changed' else 1):
+        assert gui.guiWin.initLabelRoiModel(window) is (scenario == 'cancelled')
+    old_worker = next(
+        (w for w in execution._workers if w.model is old), None
+    )
+    if scenario == 'cancelled':
+        assert window.labelRoiModel is old
+        assert old_worker.users == 1
+    elif scenario in ('unchanged', 'other_consumer', 'stored_slot'):
+        assert old_worker.users == 1
+    if scenario == 'changed':
+        assert len(execution._workers) <= 2
+        assert sum(w.users for w in execution._workers) == 1
+    if scenario == 'other_consumer':
+        execution.release(old)
+        assert old_worker.users == 0
+    execution.stop()
+
+
 def test_model_execution_missing_required_env_cancels(monkeypatch):
     from unittest.mock import Mock
     from cellacdc.service.model_execution import ModelExecution
@@ -1178,6 +1365,35 @@ def test_nested_array_payload_roundtrip():
     )
 
 
+@pytest.mark.parametrize('value', [
+    {}, None, {'text': '\u00e9', 'sizes': (2, 3), None: [1, True]},
+    {'labels': np.ones((2, 2), dtype=np.uint32), 'embeddings': {}},
+])
+def test_value_body_roundtrip(value):
+    from cellacdc.service import payload
+
+    body = payload.encode_value_body(value)
+    metadata, _ = payload.encode_value(value)
+    assert int.from_bytes(body[:8], 'big') == len(metadata.encode('utf-8'))
+    decoded = payload.decode_value_body(body)
+    if isinstance(value, dict) and 'labels' in value:
+        np.testing.assert_array_equal(decoded['labels'], value['labels'])
+        assert decoded['labels'].dtype == value['labels'].dtype
+        assert decoded['embeddings'] == {}
+    else:
+        assert decoded == value
+
+
+@pytest.mark.parametrize('body', [
+    b'', b'\x00' * 7, (100).to_bytes(8, 'big') + b'{}',
+])
+def test_value_body_rejects_truncated_metadata(body):
+    from cellacdc.service import payload
+
+    with pytest.raises(ValueError, match='Truncated payload metadata'):
+        payload.decode_value_body(body)
+
+
 # def test_sam_embeddings_portable_and_legacy_roundtrip(tmp_path, monkeypatch):
 #     import builtins
 #     import torch
@@ -1277,7 +1493,7 @@ def test_model_client_preserves_null_frame_and_sam_embeddings():
             'is_image_set': True,
         }
     }
-    result_meta, result_data = payload.encode_value({
+    result_data = payload.encode_value_body({
         'labels': labels, 'embeddings': returned_embeddings,
     })
     posted = {}
@@ -1285,7 +1501,7 @@ def test_model_client_preserves_null_frame_and_sam_embeddings():
     class Response:
         ok = True
         content = result_data
-        headers = {'X-Cell-ACDC-Payload': result_meta}
+        headers = {}
         url = 'http://worker/segment'
 
     class Session:
@@ -1424,20 +1640,26 @@ def test_model_file_rejects_invalid_names(name):
         ModelFile(name, b'weights')
 
 
-def test_remote_backend_uploads_and_reinitializes_model_files(monkeypatch, tmp_path):
+@pytest.mark.parametrize('file_param', ['model_path', 'input_points_path'])
+def test_remote_backend_uploads_and_reinitializes_model_files(
+        monkeypatch, tmp_path, file_param,
+    ):
     import asyncio
     import gc
     import types
     from pathlib import Path
     from fastapi import BackgroundTasks, HTTPException
-    from cellacdc import myutils
+    from cellacdc import _types, myutils
     from cellacdc.service import client as client_module, worker
 
     worker_paths = []
 
     class Model:
-        def __init__(self, model_path: os.PathLike = ''):
-            self.model_path = Path(model_path)
+        def __init__(
+                self, model_path: os.PathLike = '',
+                input_points_path: _types.CsvFilePath = '',
+            ):
+            self.model_path = Path(model_path or input_points_path)
             worker_paths.append(self.model_path)
             if self.model_path.read_bytes() == b'bad':
                 raise ValueError('Invalid model weights')
@@ -1488,11 +1710,13 @@ def test_remote_backend_uploads_and_reinitializes_model_files(monkeypatch, tmp_p
         client_module.ModelClient, '_fetch_info', lambda _: endpoints['/info']()
     )
     backend = client_module.RemoteBackend('http://worker')
-    path = tmp_path / 'FUCCI (1).txt'
+    path = tmp_path / (
+        'points.csv' if file_param == 'input_points_path' else 'FUCCI (1).txt'
+    )
     path.write_bytes(b'\x01model')
-    client = backend.get_client(init_model_kwargs={'model_path': path})
+    client = backend.get_client(init_model_kwargs={file_param: path})
     path.unlink()
-    assert worker_paths[0].name == 'FUCCI (1).txt'
+    assert worker_paths[0].name == path.name
 
     def segment():
         result = asyncio.run(endpoints['/segment'](
@@ -1502,13 +1726,13 @@ def test_remote_backend_uploads_and_reinitializes_model_files(monkeypatch, tmp_p
 
     np.testing.assert_array_equal(segment(), np.ones((2, 2)))
     path.write_bytes(b'\x02model')
-    client_module.post_init(backend.url, {'model_path': str(path)})
+    client_module.post_init(backend.url, {file_param: str(path)})
     gc.collect()
     assert not worker_paths[0].exists()
     np.testing.assert_array_equal(segment(), np.full((2, 2), 2))
     path.write_bytes(b'bad')
     with pytest.raises(RuntimeError, match='Invalid model weights'):
-        client_module.post_init(backend.url, {'model_path': str(path)})
+        client_module.post_init(backend.url, {file_param: str(path)})
     assert not worker_paths[-1].exists()
     assert worker_paths[1].exists()
     np.testing.assert_array_equal(segment(), np.full((2, 2), 2))
@@ -1517,6 +1741,25 @@ def test_remote_backend_uploads_and_reinitializes_model_files(monkeypatch, tmp_p
     assert not worker_paths[1].exists()
     client.close()
     backend.stop()
+
+
+def test_instantiate_model_rejects_raw_points_csv_path():
+    import types
+    from cellacdc import _types
+    from cellacdc.service.worker import instantiate_model
+
+    class Model:
+        def __init__(self, input_points_path: _types.CsvFilePath = ''):
+            raise AssertionError('Raw client paths must not reach the model')
+
+        def segment(self, image):
+            return image
+
+    with pytest.raises(ValueError, match='client files'):
+        instantiate_model(
+            types.SimpleNamespace(Model=Model),
+            {'input_points_path': 'points.csv'},
+        )
 
 
 def _fake_segment_module(requires_segm):
@@ -1930,8 +2173,13 @@ def test_worker_runs_promptable_model_protocol(monkeypatch):
     )
 
 
-def test_worker_roundtrips_sam_embeddings(monkeypatch):
+@pytest.mark.parametrize('num_slices', [1, 500])
+@pytest.mark.parametrize('operation', [
+    'save_embeddings', 'only_embeddings', 'use_loaded_embeddings',
+])
+def test_worker_roundtrips_sam_embeddings(monkeypatch, num_slices, operation):
     import asyncio
+    import http.client
     import types
     from cellacdc import myutils
     from cellacdc.service import payload, worker
@@ -1947,16 +2195,17 @@ def test_worker_roundtrips_sam_embeddings(monkeypatch):
 
         def segment(
                 self, image, frame_i, posData, save_embeddings=False,
-                use_loaded_embeddings=False,
+                only_embeddings=False, use_loaded_embeddings=False,
             ):
             assert frame_i is None
-            assert use_loaded_embeddings
-            loaded = posData.getSamEmbeddings(frame_i, z=0)
-            np.testing.assert_array_equal(
-                loaded['features'], np.zeros((1, 2), dtype=np.float32)
-            )
-            if save_embeddings:
-                posData.storeSamEmbeddings(self, frame_i)
+            for z in range(num_slices):
+                if use_loaded_embeddings:
+                    loaded = posData.getSamEmbeddings(frame_i, z=z)
+                    np.testing.assert_array_equal(
+                        loaded['features'], np.zeros((1, 2), dtype=np.float32)
+                    )
+                if save_embeddings or only_embeddings:
+                    posData.storeSamEmbeddings(self, frame_i, z=z)
             return np.ones_like(image, dtype=np.uint32)
 
     module = types.SimpleNamespace(Model=Model)
@@ -1970,31 +2219,69 @@ def test_worker_roundtrips_sam_embeddings(monkeypatch):
         route.endpoint for route in app.routes
         if getattr(route, 'path', None) == '/segment'
     )
-    embedding_meta, embedding_data = payload.encode_value({
-        0: {
+    frame_embeddings = {
+        z: {
             'original_size': (2, 2),
             'input_size': (2, 2),
             'features': np.zeros((1, 2), dtype=np.float32),
             'is_image_set': True,
-        }
-    })
+        } for z in range(num_slices)
+    }
 
-    response = asyncio.run(endpoint(
-        image=_FakeUpload(np.zeros((2, 2))),
-        params=json.dumps({
-            'frame_i': None, 'save_embeddings': True,
-            'use_loaded_embeddings': True,
-        }),
-        embedding_meta=embedding_meta,
-        embeddings=_FakeUploadBytes(embedding_data),
-    ))
-    result = payload.decode_value(
-        response.headers['x-cell-acdc-payload'], response.body
+    class Session:
+        def post(self, url, files, data, timeout):
+            response = asyncio.run(endpoint(
+                image=_FakeUploadBytes(files['image'][1]),
+                params=data['params'],
+                embedding_meta=data['embedding_meta'],
+                embeddings=(
+                    _FakeUploadBytes(files['embeddings'][1])
+                    if 'embeddings' in files else None
+                ),
+                params_data=None,
+            ))
+            assert 'x-cell-acdc-payload' not in response.headers
+            header_bytes = b''.join(
+                key + b': ' + value + b'\r\n'
+                for key, value in response.raw_headers
+            ) + b'\r\n'
+            # Exercise the same header-line limit used by Requests.
+            parsed_headers = http.client.parse_headers(io.BytesIO(header_bytes))
+            result = requests.Response()
+            result.status_code = response.status_code
+            result.url = url
+            result.headers.update(parsed_headers.items())
+            result._content = response.body
+            return result
+
+    pos_data = types.SimpleNamespace(sam_embeddings={None: frame_embeddings})
+    client = ModelClient.__new__(ModelClient)
+    client.base_url = 'http://worker'
+    client.timeout = None
+    client.session = Session()
+    image = np.zeros((num_slices, 2, 2), dtype=np.uint8)
+    result = client.segment(
+        image, frame_i=None, posData=pos_data, **{operation: True}
     )
-    np.testing.assert_array_equal(result['labels'], np.ones((2, 2)))
-    np.testing.assert_array_equal(
-        result['embeddings'][0]['features'], Predictor.features
-    )
+    np.testing.assert_array_equal(result, np.ones_like(image, dtype=np.uint32))
+    assert result.dtype == np.uint32
+    returned_embeddings = pos_data.sam_embeddings[None]
+    assert set(returned_embeddings) == set(range(num_slices))
+    for embedding in returned_embeddings.values():
+        assert embedding['original_size'] == (2, 2)
+        assert embedding['input_size'] == (2, 2)
+        assert embedding['is_image_set'] is True
+        np.testing.assert_array_equal(
+            embedding['features'],
+            np.zeros((1, 2), dtype=np.float32)
+            if operation == 'use_loaded_embeddings' else Predictor.features,
+        )
+        assert embedding['features'].dtype == np.float32
+    if num_slices == 500:
+        metadata, _ = payload.encode_value({
+            'labels': result, 'embeddings': returned_embeddings,
+        })
+        assert len(metadata.encode('utf-8')) > 64 * 1024
 
 
 @pytest.mark.parametrize('path', [

@@ -1,3 +1,10 @@
+"""Persist SAM embeddings without requiring PyTorch in the client.
+
+New files retain the existing ``.pt`` filename but contain JSON metadata and
+NumPy arrays. PyTorch ZIP files are read as NumPy arrays without importing
+PyTorch. Older non-ZIP files require PyTorch once to load and resave them.
+"""
+
 import io
 import json
 import os
@@ -68,10 +75,11 @@ _STORAGE_DTYPES = {
 
 
 def _rebuild_tensor(storage, offset, size, stride, *args):
-    array = storage.array[int(offset):]
+    array = storage.array
     strides = tuple(int(value) * array.dtype.itemsize for value in stride)
-    return np.lib.stride_tricks.as_strided(
-        array, shape=tuple(size), strides=strides
+    return np.ndarray(
+        shape=tuple(size), dtype=array.dtype, buffer=array,
+        offset=int(offset) * array.dtype.itemsize, strides=strides,
     ).copy()
 
 

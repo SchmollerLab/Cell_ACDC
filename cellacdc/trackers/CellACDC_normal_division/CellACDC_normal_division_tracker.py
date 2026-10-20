@@ -1154,7 +1154,9 @@ class normal_division_lineage_tree:
 
         df_li = self.lineage_list if not self.gui_mode else [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
         for frame_df in df_li:
-            if 'generation_num_tree' not in frame_df.columns or (not frame_df['generation_num_tree'].notna().any()):
+            if (frame_df is None
+                or 'generation_num_tree' not in frame_df.columns 
+                or (not frame_df['generation_num_tree'].notna().any())):
                 continue
             frame_df = checked_reset_index_Cell_ID(frame_df)
 

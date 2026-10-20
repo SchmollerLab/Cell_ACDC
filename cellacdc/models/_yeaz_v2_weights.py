@@ -1,3 +1,9 @@
+"""Shared weights registry for the YeaZ model and its GUI parameter widget.
+
+Keep YeaZ/PyTorch imports and dependency installation out of this module so
+the GUI can configure models running in isolated environments.
+"""
+
 import os
 
 from cellacdc import load, myutils

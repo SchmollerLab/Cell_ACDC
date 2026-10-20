@@ -1266,6 +1266,18 @@ class segmWin(QMainWindow):
         return spec
 
     def initModelExecution(self, init_kwargs):
+        """Check the requested GPU backend in the model environment before init."""
+        use_gpu = myutils.check_gpu_requested_segm_model(init_kwargs)
+        device_type = init_kwargs.get('device_type', 'cpu').lower()
+        proceed = myutils.check_gpu_available(
+            self.model_name, use_gpu, qparent=self,
+            cuda=device_type == 'gpu',
+            directML=device_type == 'directml_gpu',
+            python_exec=self.modelExecution.env_python,
+        )
+        if not proceed:
+            self.logger.info('Segmentation process cancelled.')
+            return None
         model = self.modelExecution.init_model(
             init_kwargs, getattr(self, 'posData', None)
         )

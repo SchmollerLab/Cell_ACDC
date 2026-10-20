@@ -19483,12 +19483,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.titleLabel.setText('Segmentation process cancelled.')
         return spec
 
-    def initSegmModel(self, model_name, init_kwargs, posData=None, replace=None):
+    def initSegmModel(
+            self, model_name, init_kwargs, posData=None, replace=None,
+            *, is_rgb=False,
+        ):
         """Return a model instance (a worker in isolated mode) or None.
 
         Running workers are reused (see `ModelExecution.init_model`). Pass 
         the instance that the new one replaces as `replace`, so that its 
         worker can be re-initialized instead of starting a new one.
+        Pass `is_rgb=True` when preparing a second-channel RGB stack.
         """
         if posData is None:
             posData = self.data[self.pos_i]
@@ -19499,7 +19503,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         with self.modelExecutionBusy(f'Initializing {model_name}...'):
             if execution.prepare() is None:
                 return None
-            return execution.init_model(init_kwargs, posData, replace=replace)
+            return execution.init_model(
+                init_kwargs, posData, replace=replace, is_rgb=is_rgb
+            )
 
     def releaseSegmModel(self, model_name, model):
         """Give back a model from `initSegmModel` that is not used anymore.
@@ -19664,7 +19670,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             previous_model = self.models[idx]
             model = self.initSegmModel(
-                model_name, win.init_kwargs, posData, replace=previous_model
+                model_name, win.init_kwargs, posData, replace=previous_model,
+                is_rgb=self.secondChannelName is not None,
             )
             if model is None:
                 self.logger.info('Segmentation process cancelled.')
@@ -19867,7 +19874,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.titleLabel.setText('Segmentation process cancelled.')
             return
 
-        model = self.initSegmModel(model_name, win.init_kwargs, posData)
+        model = self.initSegmModel(
+            model_name, win.init_kwargs, posData,
+            is_rgb=win.secondChannelName is not None,
+        )
         if model is None:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -28098,13 +28108,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             return True
         self.app.setOverrideCursor(Qt.WaitCursor)
         model_name = self.initLabelRoiModelDialog.selectedModel
-        self.labelRoiModel = self.repeatSegm(
+        previous_model = self.labelRoiModel
+        model = self.repeatSegm(
             model_name=model_name, askSegmParams=True,
             is_label_roi=True
         )
-        if self.labelRoiModel is None:
+        if model is None:
             self.initLabelRoiModelDialog = None
             return True
+        self.labelRoiModel = model
+        if previous_model is model:
+            # repeatSegm acquired another reference to the existing slot.
+            execution = self.modelExecutions.get(model.model_name)
+            if execution is not None:
+                execution.release(model)
+        elif not any(previous_model is stored for stored in self.models):
+            self.releaseSegmModel(
+                getattr(previous_model, 'model_name', None), previous_model
+            )
         self.labelRoiViewCurrentModelAction.setDisabled(False)
         self.initLabelRoiModelDialog = None
         return False

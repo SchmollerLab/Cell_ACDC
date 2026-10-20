@@ -17,6 +17,51 @@ from segment_anything import (
 )
 from cellacdc import myutils, printl, _types
 
+
+class _EmbeddingPredictor(SamPredictor):
+    """Reuse a restored embedding for SAM's first (full-image) crop."""
+
+    def set_image(self, image, image_format='RGB'):
+        if getattr(self, '_reuse_embedding', False):
+            print(
+                'SAM: reusing loaded full-image embeddings; '
+                'skipping image encoder (automatic segmentation).',
+                flush=True,
+            )
+            self._reuse_embedding = False
+        else:
+            print(
+                f'SAM: running image encoder for image/crop {image.shape[:2]}.',
+                flush=True,
+            )
+            super().set_image(image, image_format=image_format)
+        print(
+            f'SAM predictor state: is_image_set={self.is_image_set}, '
+            f'features_shape={getattr(self.features, "shape", None)}.',
+            flush=True,
+        )
+        if self._full_image_embedding is None:
+            self._full_image_embedding = {
+                name: getattr(self, name)
+                for name in ('original_size', 'input_size', 'features', 'is_image_set')
+            }
+
+
+class _EmbeddingMaskGenerator(SamAutomaticMaskGenerator):
+    def generate(self, image):
+        self.predictor._full_image_embedding = None
+        try:
+            return super().generate(image)
+        finally:
+            # SAM resets the predictor after each crop. Persist the full image,
+            # not the final crop, for saving and subsequent reuse.
+            embedding = self.predictor._full_image_embedding
+            if embedding is not None:
+                for name, value in embedding.items():
+                    setattr(self.predictor, name, value)
+            self.predictor._reuse_embedding = False
+
+
 class AvailableModels:
     values = list(model_types.keys())
 
@@ -161,7 +206,7 @@ class Model:
         sam = sam_model_registry[model_type](checkpoint=sam_checkpoint) 
         sam.to(device=device)
         if input_points_df is None:
-            self.model = SamAutomaticMaskGenerator(
+            self.model = _EmbeddingMaskGenerator(
                 sam, 
                 points_per_side=points_per_side,
                 pred_iou_thresh=pred_iou_thresh,
@@ -170,6 +215,8 @@ class Model:
                 crop_n_points_downscale_factor=crop_n_points_downscale_factor,
                 min_mask_region_area=min_mask_region_area,
             )
+            self.model.predictor = _EmbeddingPredictor(sam)
+            self.model.predictor._full_image_embedding = None
         else:
             self.model = SamPredictor(sam)
         
@@ -243,6 +290,9 @@ class Model:
             This is not a parameter configurable through the GUI. If `posData` 
             is not None, the image embeddings will be loaded from the dictionary 
             `posData.sam_embeddings`.
+            Reuses the full-image encoder result for prompted and automatic
+            segmentation. Automatic segmentation with crop layers still
+            encodes the additional crops and always runs mask prediction.
         
         start_z_slice : int, optional
             This is not a parameter configurable through the GUI. Cell-ACDC 
@@ -320,7 +370,7 @@ class Model:
             embeddings_init = False
             if use_loaded_embeddings:
                 embeddings_init = self._get_img_embeddings(
-                    posData, frame_i=frame_i
+                    posData, frame_i=frame_i, z=start_z_slice
                 )
             if only_embeddings:
                 self._init_embeddings(image)
@@ -331,17 +381,35 @@ class Model:
                     automatic_removal_of_background=auto_remove_bkgr
                 )
             if save_embeddings or only_embeddings:
-                posData.storeSamEmbeddings(self, frame_i=frame_i)
+                posData.storeSamEmbeddings(
+                    self, frame_i=frame_i, z=start_z_slice
+                )
         
         return labels
 
     def _get_img_embeddings(self, posData, frame_i=0, z=0):
         img_embeddings = posData.getSamEmbeddings(frame_i=frame_i, z=z)
         if img_embeddings is None:
+            print(
+                f'SAM embeddings missing for frame {frame_i}, z-slice {z}; '
+                'computing image embeddings.',
+                flush=True,
+            )
             return False
-        
+        predictor = getattr(self.model, 'predictor', self.model)
         for key, value in img_embeddings.items():
-            setattr(self, key, value)
+            if key == 'features':
+                import torch
+                value = torch.as_tensor(value, device=predictor.device)
+            setattr(predictor, key, value)
+        if isinstance(self.model, _EmbeddingMaskGenerator):
+            predictor._reuse_embedding = True
+        self._embedded_img = None
+        print(
+            f'SAM: restored embeddings for frame {frame_i}, z-slice {z} '
+            f'on {predictor.device}.',
+            flush=True,
+        )
         
         return True
     
@@ -420,8 +488,17 @@ class Model:
             predictor = self.model
         
         if init_embeddings: 
+            print(
+                f'SAM: running image encoder for image {img_rgb.shape[:2]}.',
+                flush=True,
+            )
             predictor.set_image(img_rgb)
             self._embedded_img = img_rgb
+        else:
+            print(
+                'SAM: reusing in-memory image embeddings; skipping image encoder.',
+                flush=True,
+            )
     
     def _segment_2D_image(
             self, image: np.ndarray,
@@ -437,6 +514,7 @@ class Model:
 
         # SAM Automatic mask generator (no prompts)
         if input_points is None:
+            self.model.predictor._reuse_embedding = embeddings_already_init
             masks = self.model.generate(img)
 
             # Identify and exclude background before labeling
@@ -460,6 +538,17 @@ class Model:
         # SAM with input points
         if not embeddings_already_init:
             self._init_embeddings(img)
+        else:
+            print(
+                'SAM: reusing loaded embeddings; '
+                'skipping image encoder (prompted segmentation).',
+                flush=True,
+            )
+        print(
+            f'SAM predictor state: is_image_set={self.model.is_image_set}, '
+            f'features_shape={getattr(self.model.features, "shape", None)}.',
+            flush=True,
+        )
         
         for id, point_coords in input_points.items():
             point_labels = input_labels[id]
