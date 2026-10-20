@@ -3778,14 +3778,22 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             voxel_size=voxel_size,
         )
         labels = []
+        max_ID = 1
         for frame_i in range(len(posData.segm_data)):
             lab = posData.allData_li[frame_i]['labels']
             if lab is None:
                 lab = posData.segm_data[frame_i]
+                max_ID_i = np.max(lab)
+            else:
+                max_ID_i = max(posData.allData_li[frame_i]['IDs'], default=1)
             labels.append(lab)
+            if max_ID_i > max_ID:
+                max_ID = max_ID_i
+
         labels = np.asarray(labels)
-        lut_idxs = [0, *list(range(min(posData.IDs), max(posData.IDs)))]
-        lut = self.lut[lut_idxs]
+        max_ID = max(posData.IDs, default=1)
+        lut = self.extendLabelsLUT(max_ID+1, return_lut=True)
+        lut = lut[:max_ID+1]
         self._volume_renderer.set_labels(
             labels,
             gradient_item_state=self.labelsGrad.item.saveState(),
@@ -26022,7 +26030,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             update_lab=wl_update_lab
         )
 
-    def extendLabelsLUT(self, lenNewLut):
+    def extendLabelsLUT(self, lenNewLut, return_lut=False):
         posData = self.data[self.pos_i]
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(self.lut):
@@ -26035,9 +26043,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             for i, idx in enumerate(randomIdx):
                 rgb = self.lut[idx]
                 _lut[len(self.lut)+i] = rgb
+            if return_lut:
+                return _lut
+
             self.lut = _lut
             self.initLabelsImageItems()
             return True
+        
+        if return_lut:
+            return self.lut
+
         return False
 
     def initLookupTableLab(self):

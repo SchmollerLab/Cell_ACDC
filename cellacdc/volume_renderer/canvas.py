@@ -73,7 +73,7 @@ class _ChannelData:
 class _PointsLayer:
     name: str
     
-    points_xyz: np.ndarray # (N, [x, y, z]) voxel coordinates
+    points_t_xyz: np.ndarray # (N, [t, x, y, z]) voxel coordinates
     _label_ids: np.ndarray | None # (N, id) id in self._orig_lab
     labels: list[str] | None
     
@@ -1322,6 +1322,12 @@ class VolumeRendererWindow(QMainWindow):
         if SizeZ is None:
             SizeZ = self._SizeZ
         
+        if SizeT is None and not hasattr(self, '_SizeT'):
+            raise ValueError(
+                'SizeT information not present. Either call `set_volumes` '
+                'before or pass `SizeT` to `set_labels`.'
+            )
+        
         if SizeT is None:
             SizeT = self._SizeT
         
@@ -1336,11 +1342,14 @@ class VolumeRendererWindow(QMainWindow):
             )
         
         if lab.ndim == 2:
-            # Stack the 2D labels along z-axis
-            lab = np.asarray([lab]*SizeZ)
+            # Stack the static mask along z and add a time axis.
+            lab = np.asarray([lab]*SizeZ)[np.newaxis]
         elif lab.ndim == 3:
-            # User provided 2D+time labels --> stack along z-axis
-            lab = np.asarray([np.asarray([lab_i]*SizeZ) for lab_i in lab])
+            if SizeT == 1 and (SizeZ is None or lab.shape[0] == SizeZ):
+                lab = lab[np.newaxis]
+            else:
+                # Stack 2D+time labels along z.
+                lab = np.asarray([np.asarray([lab_i]*SizeZ) for lab_i in lab])
 
         if self._data_shape is None:
             self._data_shape = lab.shape
@@ -1400,9 +1409,17 @@ class VolumeRendererWindow(QMainWindow):
         self._frames_scrollbar_connected = True
 
     def _frame_number_changed(self, frame_n: int):
+        if self._object_labels_list_buttongroup is None:
+            for channel_data in self._channels_data.values():
+                channel_data.node.set_data(channel_data._raw_volume[frame_n-1])
+            self._update_markers(update=False)
+            self._canvas.update()
+            return
+
         for checkbox in self._object_labels_list_buttongroup.buttons():
             self._object_labels_list_buttongroup.removeButton(checkbox)
             self._object_labels_list_layout.removeWidget(checkbox)
+            checkbox.hide()
 
         frame_i = frame_n - 1
         is_show_all = self._display_mode_show_all_rb.isChecked()
@@ -1411,13 +1428,16 @@ class VolumeRendererWindow(QMainWindow):
             if obj_checkbox is None:
                 obj_checkbox = QCheckBox(f'{obj.label}')
                 obj_checkbox.setChecked(True)
-                obj_checkbox.setDisabled(is_show_all)
                 self._obj_checkboxes_mapper[obj.label] = obj_checkbox
             else:
                 obj_checkbox.toggled.disconnect()
             obj_checkbox.obj = obj
+            obj_checkbox.setDisabled(is_show_all)
+            if is_show_all:
+                obj_checkbox.setChecked(True)
             self._object_labels_list_layout.addWidget(obj_checkbox)
             self._object_labels_list_buttongroup.addButton(obj_checkbox)
+            obj_checkbox.show()
             obj_checkbox.toggled.connect(
                 partial(self._set_object_checked, obj=obj)
             )
@@ -1612,26 +1632,22 @@ class VolumeRendererWindow(QMainWindow):
         if tzyx_columns_names is None:
             tzyx_columns_names = ['frame_i', 'z', 'y', 'x']
 
-        t_col_name = tzyx_columns_names
+        t_col_name = tzyx_columns_names[0]
         if points_df is not None:
             points_t_xyz = {}
             if t_col_name not in points_df.columns:
                 points_df[t_col_name] = 0
             for t, points_df_t in points_df.groupby(t_col_name):
                 zyx_columns_names = tzyx_columns_names[1:]
-                points_xyz = points_df[zyx_columns_names[::-1]].to_numpy()
+                points_xyz = points_df_t[zyx_columns_names[::-1]].to_numpy()
                 points_t_xyz[t] = points_xyz
         elif points is not None:
             points = np.asarray(points)
-            if points.ndim == 3:
-                frames = [0]
+            if points.shape[1] == 3:
+                points_t_xyz[0] = points[:, [2, 1, 0]]
             else:
-                frames = np.unique(points[:, 0])
-            points_t_xyz = {}
-            for t in frames:
-                points_zyx = points[points[:, 0] == t]
-                points_xyz = points_zyx[:, [2, 1, 0]]
-                points_t_xyz[t] = points_xyz
+                for t in np.unique(points[:, 0]):
+                    points_t_xyz[t] = points[points[:, 0] == t][:, [3, 2, 1]]
         else:
             raise ValueError(
                 "Either 'points' or 'points_df' must be provided."
@@ -1749,7 +1765,6 @@ class VolumeRendererWindow(QMainWindow):
         
         if self._hide_on_close:
             event.ignore()
-            self._toolbar.setupAnimationAction.setChecked(False)
             self.hide()
             return
         
@@ -1799,7 +1814,7 @@ class VolumeRendererWindow(QMainWindow):
     def set_camera_view(self):
         """Reset the camera to the default orientation and fit the volume."""
         if not self._channels_data:
-            Z, Y, X = self._lab.shape
+            T, Z, Y, X = self._lab.shape
             dummy_vol = np.zeros((Z, Y, X), dtype=np.float32)
             self.set_volume(dummy_vol, channel_name='1')
         
