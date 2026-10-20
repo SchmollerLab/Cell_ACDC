@@ -1481,7 +1481,9 @@ def test_unreproducible_development_build_fails(monkeypatch):
         environment._installed_cellacdc_spec()
 
 
-def test_model_client_preserves_null_frame_and_sam_embeddings():
+@pytest.mark.parametrize('automatic_save', [False, True])
+def test_model_client_preserves_null_frame_and_sam_embeddings(automatic_save):
+    from unittest.mock import Mock
     from cellacdc.service import payload
 
     labels = np.ones((2, 2), dtype=np.uint32)
@@ -1511,19 +1513,26 @@ def test_model_client_preserves_null_frame_and_sam_embeddings():
 
     class PosData:
         sam_embeddings = {None: returned_embeddings}
+        loadSamEmbeddings = Mock()
+        saveSamEmbeddings = Mock()
 
     client = ModelClient.__new__(ModelClient)
     client.base_url = 'http://worker'
     client.timeout = None
     client.session = Session()
+    if automatic_save:
+        client.model_name = 'segment_anything'
     pos_data = PosData()
 
     result = client.segment(
         np.zeros((2, 2)), frame_i=None, posData=pos_data,
-        save_embeddings=True, use_loaded_embeddings=True,
+        save_embeddings=not automatic_save, use_loaded_embeddings=True,
     )
 
     assert json.loads(posted['params'])['frame_i'] is None
+    assert json.loads(posted['params'])['save_embeddings'] is True
+    pos_data.loadSamEmbeddings.assert_called_once()
+    assert pos_data.saveSamEmbeddings.call_count == int(automatic_save)
     np.testing.assert_array_equal(result, labels)
     np.testing.assert_array_equal(
         pos_data.sam_embeddings[None][0]['features'],
@@ -2173,11 +2182,16 @@ def test_worker_runs_promptable_model_protocol(monkeypatch):
     )
 
 
-@pytest.mark.parametrize('num_slices', [1, 500])
+@pytest.mark.parametrize('num_slices,single_slice_payload', [
+    (1, False), (1, True), (500, False),
+])
+@pytest.mark.parametrize('start_z_slice', [0, 5])
 @pytest.mark.parametrize('operation', [
     'save_embeddings', 'only_embeddings', 'use_loaded_embeddings',
 ])
-def test_worker_roundtrips_sam_embeddings(monkeypatch, num_slices, operation):
+def test_worker_roundtrips_sam_embeddings(
+        monkeypatch, num_slices, single_slice_payload, start_z_slice, operation,
+    ):
     import asyncio
     import http.client
     import types
@@ -2188,6 +2202,15 @@ def test_worker_roundtrips_sam_embeddings(monkeypatch, num_slices, operation):
         original_size = (2, 2)
         input_size = (2, 2)
         features = np.ones((1, 2), dtype=np.float32)
+        is_image_set = True
+        _crop_embeddings = {
+            'crop-digest': {
+                'original_size': (1, 1),
+                'input_size': (1, 1),
+                'features': np.full((1, 2), 7, dtype=np.float32),
+                'is_image_set': True,
+            },
+        }
 
     class Model:
         def __init__(self):
@@ -2196,9 +2219,10 @@ def test_worker_roundtrips_sam_embeddings(monkeypatch, num_slices, operation):
         def segment(
                 self, image, frame_i, posData, save_embeddings=False,
                 only_embeddings=False, use_loaded_embeddings=False,
+                start_z_slice=0,
             ):
             assert frame_i is None
-            for z in range(num_slices):
+            for z in range(start_z_slice, start_z_slice + num_slices):
                 if use_loaded_embeddings:
                     loaded = posData.getSamEmbeddings(frame_i, z=z)
                     np.testing.assert_array_equal(
@@ -2225,8 +2249,11 @@ def test_worker_roundtrips_sam_embeddings(monkeypatch, num_slices, operation):
             'input_size': (2, 2),
             'features': np.zeros((1, 2), dtype=np.float32),
             'is_image_set': True,
-        } for z in range(num_slices)
+            'crops': Predictor._crop_embeddings,
+        } for z in range(start_z_slice, start_z_slice + num_slices)
     }
+    if single_slice_payload:
+        frame_embeddings = frame_embeddings[start_z_slice]
 
     class Session:
         def post(self, url, files, data, timeout):
@@ -2259,18 +2286,26 @@ def test_worker_roundtrips_sam_embeddings(monkeypatch, num_slices, operation):
     client.base_url = 'http://worker'
     client.timeout = None
     client.session = Session()
-    image = np.zeros((num_slices, 2, 2), dtype=np.uint8)
+    shape = (2, 2) if single_slice_payload else (num_slices, 2, 2)
+    image = np.zeros(shape, dtype=np.uint8)
     result = client.segment(
-        image, frame_i=None, posData=pos_data, **{operation: True}
+        image, frame_i=None, posData=pos_data, start_z_slice=start_z_slice,
+        **{operation: True},
     )
     np.testing.assert_array_equal(result, np.ones_like(image, dtype=np.uint32))
     assert result.dtype == np.uint32
     returned_embeddings = pos_data.sam_embeddings[None]
-    assert set(returned_embeddings) == set(range(num_slices))
+    assert set(returned_embeddings) == set(
+        range(start_z_slice, start_z_slice + num_slices)
+    )
     for embedding in returned_embeddings.values():
         assert embedding['original_size'] == (2, 2)
         assert embedding['input_size'] == (2, 2)
         assert embedding['is_image_set'] is True
+        crop = embedding['crops']['crop-digest']
+        assert crop['original_size'] == (1, 1)
+        assert crop['is_image_set'] is True
+        np.testing.assert_array_equal(crop['features'], np.full((1, 2), 7))
         np.testing.assert_array_equal(
             embedding['features'],
             np.zeros((1, 2), dtype=np.float32)

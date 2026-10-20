@@ -336,6 +336,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.original_df_lin_tree = None
         self.original_df_lin_tree_i = None
 
+        self._waitOverrideActive = False
+        self._busyTimer = QTimer(self)
+        self._busyTimer.setInterval(100)
+        self._busyTimer.timeout.connect(self.gui_refreshToolCursor)
+
     def setTooltips(self):
         tooltips = rst_utils.get_tooltips_from_docs()
 
@@ -684,35 +689,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.splineToObjModel.fit()
     
-    def setDisabled(self, 
-                    disabled:bool, 
-                    keepDisabled:bool=None, 
-                    force:bool=False):
+    def setDisabled(self,
+                    disabled: bool,
+                    keepDisabled: bool = None,
+                    force: bool = False):
         if force:
-            if disabled:
-                super().setDisabled(disabled)
-                self.gui_refreshToolCursor()
-                return
-            else:
+            if not disabled:
                 self.keepDisabled = False
-                super().setDisabled(disabled)
-                # restore the cursor when the GUI is enabled again
-                self.gui_refreshToolCursor()
-                return
-
-        if keepDisabled is not None:
-            self.keepDisabled = keepDisabled
-
-        if self.keepDisabled:
-            if disabled:
-                super().setDisabled(disabled)
-                self.gui_refreshToolCursor()
-                return
-            else:
-                self.gui_refreshToolCursor()
-                return
+            apply = True
         else:
+            if keepDisabled is not None:
+                self.keepDisabled = keepDisabled
+            # while keepDisabled is set, only disabling is allowed
+            apply = disabled or not self.keepDisabled
+
+        if apply:
             super().setDisabled(disabled)
+
+        # starts/stops the busy timer and sets/restores the cursor
         self.gui_refreshToolCursor()
 
     
@@ -1161,17 +1155,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.app.setOverrideCursor(Qt.SizeAllCursor)
 
+
+    def _isOnlyMainWinUnderPointer(self):
+        # widgetAt only sees this app's widgets: None for other apps' windows.
+        # .window() differs for dialogs, floating docks, popups, etc.
+        w = QApplication.widgetAt(QCursor.pos())
+        return w is not None and w.window() is self
+
+    def _releaseWaitOverride(self):
+        if getattr(self, '_waitOverrideActive', False):
+            self.app.restoreOverrideCursor()
+            self._waitOverrideActive = False
+
     def gui_refreshToolCursor(self, *args):
-        # check if UI is disabled
-        disabled = not self.isEnabled()
-        # check if cursor is unobstructed hovering over self
-        is_hovering = self.underMouse()
-        if is_hovering and disabled:
-            self.setCursor(Qt.WaitCursor)
+        if not self.isEnabled():
+            if not self._busyTimer.isActive():
+                self._busyTimer.start()   # re-check obstruction while disabled
+            if self._isOnlyMainWinUnderPointer():
+                if not self._waitOverrideActive:
+                    if self.app.overrideCursor() is None:
+                        self.app.setOverrideCursor(Qt.WaitCursor)
+                    else:
+                        self.app.changeOverrideCursor(Qt.WaitCursor)
+                    self._waitOverrideActive = True
+            else:
+                self._releaseWaitOverride()
             return
-        else:
-            self.unsetCursor()
-            
+
+        self._busyTimer.stop()
+        self._releaseWaitOverride()
+        self.unsetCursor()
+
         isHoverImg1 = self._cursorHoverImage
         if isHoverImg1 is None:
             return
@@ -5895,16 +5909,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setImageImg2()
             self.setAllTextAnnotations()
             self.setAllContoursImages(compute=False)
-
-            if self.isOverlaySegmMaskChecked(0):
-                self.labelsLayerImg1.image[delID_mask] = 0
-                self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
-            
-            ax1_segm_overlay = self.annotOverlaySegmMaskCheckbox(ax=1)
-            if ax1_segm_overlay and self.labelsLayerRightImg.image is not None:
-                self.labelsLayerRightImg.image[delID_mask] = 0
-                self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
-            
+            self.setOverlaySegmMasks()            
             self.highlightLostNew()
             
         # Separate bud or objects with same ID
@@ -8225,8 +8230,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.copyLostObjButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
         )
-        findNextMotherButtonON = self.findNextMotherButton.isChecked()
-        unknownLineageButtonON = self.unknownLineageButton.isChecked()
+        findNextMotherButtonON = (
+            self.findNextMotherButton.isChecked()
+            and mode == 'Normal division: Lineage tree'
+        )
+        unknownLineageButtonON = (
+            self.unknownLineageButton.isChecked()
+            and mode == 'Normal division: Lineage tree'
+        )
         drawClearRegionON = self.clearFreehandRoiButton.isChecked()
         zoomRectON = self.zoomRectButton.isChecked()
         drawMergeRegionON = self.mergeIDsButton.isChecked()
@@ -9328,8 +9339,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if point is None:
             return
+        
         posData = self.data[self.pos_i]
         acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
+
+        if 'parent_ID_tree' not in acdc_df_frame.columns:
+            self.logger.info('No parent_ID_tree column found in the current frame.')
+            return
+
         filtered_IDs = self.getDistanceListMissingIDs(point, ID)
         if len(filtered_IDs) == 0:
             self.logger.info('No mother candidates found.')
@@ -9339,7 +9356,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         i = abs(i)  # Ensure i is non-negative
         new_mother = filtered_IDs[i]
 
-        if acdc_df_frame.loc[ID]['parent_ID_tree'] == new_mother and self.original_mother_skipped == False: # if a mother is already present, skip it 
+        if (acdc_df_frame.loc[ID]['parent_ID_tree'] == new_mother 
+            and self.original_mother_skipped == False): # if a mother is already present, skip it 
             self.right_click_i += 1
             self.original_mother_skipped = True
 
@@ -31957,14 +31975,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     parent_cell_txt_raw.append(f'({parent}>{cells_str})')
 
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'New w/out mother', 'red', 
+                htmlTxt_li, htmlTxtFull_li, 'New w/out P', 'red', 
                 orphan_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Lost', 'yellow', lost_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Parent > Cell', 'green', 
+                htmlTxt_li, htmlTxtFull_li, 'P > D', 'green', 
                 parent_cell_txt_raw
             )
 

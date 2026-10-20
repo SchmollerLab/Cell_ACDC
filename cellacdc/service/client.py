@@ -165,6 +165,16 @@ class ModelClient:
         ) -> np.ndarray:
         from cellacdc.service import payload
 
+        persist_sam = (
+            getattr(self, 'model_name', None) in ('segment_anything', 'sam2')
+            and posData is not None
+        )
+        if persist_sam:
+            kwargs['save_embeddings'] = True
+        if posData is not None and kwargs.get('use_loaded_embeddings'):
+            load_embeddings = getattr(posData, 'loadSamEmbeddings', None)
+            if load_embeddings is not None:
+                load_embeddings()
         kwargs["frame_i"] = frame_i
         if start_z_slice is not None:
             kwargs["start_z_slice"] = start_z_slice
@@ -193,9 +203,9 @@ class ModelClient:
         if embedding_operation:
             frame_embeddings = {}
             if posData is not None and kwargs.get('use_loaded_embeddings'):
-                frame_embeddings = getattr(
+                frame_embeddings = dict(getattr(
                     posData, 'sam_embeddings', {}
-                ).get(frame_i, {})
+                ).get(frame_i, {}))
             embedding_meta, embedding_data = payload.encode_value(
                 frame_embeddings
             )
@@ -217,7 +227,15 @@ class ModelClient:
             if posData is not None:
                 if not hasattr(posData, 'sam_embeddings'):
                     posData.sam_embeddings = {}
-                posData.sam_embeddings[frame_i] = result['embeddings']
+                existing = posData.sam_embeddings.setdefault(frame_i, {})
+                if any(key in existing for key in ('features', '_features')):
+                    existing = {start_z_slice or 0: existing}
+                    posData.sam_embeddings[frame_i] = existing
+                existing.update(result['embeddings'])
+                if persist_sam:
+                    save_to_disk = getattr(posData, 'saveSamEmbeddings', None)
+                    if save_to_disk is not None:
+                        save_to_disk()
             return result['labels']
         return np.load(io.BytesIO(res.content))
 

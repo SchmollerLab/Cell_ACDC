@@ -1964,12 +1964,8 @@ class loadData:
         else:
             predictor = samAcdcSegment.model
         
-        embedding = {
-            'original_size': predictor.original_size,
-            'input_size': predictor.input_size,
-            'features': predictor.features,
-            'is_image_set': True,
-        }
+        from cellacdc import sam_embeddings
+        embedding = sam_embeddings.from_predictor(predictor)
         self.sam_embeddings[frame_i][z] = embedding
     
     def saveSamEmbeddings(self, logger_func=print):  

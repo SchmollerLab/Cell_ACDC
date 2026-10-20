@@ -14,7 +14,12 @@ from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
 from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
 
-from cellacdc import myutils, printl, _types
+from cellacdc import myutils, printl, _types, sam_embeddings
+
+
+class _EmbeddingPredictor(sam_embeddings.EmbeddingPredictorMixin, SAM2ImagePredictor):
+    """Cache SAM2's image and high-resolution features across crop resets."""
+
 
 class AvailableModels:
     values = list(model_types.keys())
@@ -169,10 +174,13 @@ class Model:
                 crop_n_points_downscale_factor=crop_n_points_downscale_factor,
                 min_mask_region_area=min_mask_region_area,
             )
+            self.model.predictor = _EmbeddingPredictor(
+                sam,
+                max_hole_area=min_mask_region_area,
+                max_sprinkle_area=min_mask_region_area,
+            )
         else:
-            self.model = SAM2ImagePredictor(sam)
-
-        self._embedded_img = None
+            self.model = _EmbeddingPredictor(sam)
 
     def segment(
             self,
@@ -227,10 +235,9 @@ class Model:
             `save_embeddings` is True.
 
         save_embeddings : bool, optional
-            This is not a parameter configurable through the GUI. If `posData`
-            is not None, the image embeddings will be stored in the dictionary
-            `posData.sam_embeddings`. This dictionary can be later used to
-            save the embeddings to disk.
+            Retained for compatibility. When `posData` is available, full-image
+            and crop predictor states are always stored and saved to disk if
+            the position provides `saveSamEmbeddings`.
 
         only_embeddings : bool, optional
             This is not a parameter configurable through the GUI. If `True`,
@@ -242,6 +249,8 @@ class Model:
             This is not a parameter configurable through the GUI. If `posData`
             is not None, the image embeddings will be loaded from the dictionary
             `posData.sam_embeddings`.
+            Restores SAM2's original dimensions, image embedding, high-resolution
+            features, and image/batch flags. Matching crops reuse cached features.
 
         start_z_slice : int, optional
             This is not a parameter configurable through the GUI. Cell-ACDC
@@ -255,6 +264,13 @@ class Model:
             the channel dimension. Every pixel belonging to the same object
             will have the same integer ID. ID = 0 is for the background.
         """
+
+        if posData is not None and use_loaded_embeddings:
+            load_embeddings = getattr(posData, 'loadSamEmbeddings', None)
+            if load_embeddings is not None:
+                load_embeddings()
+        predictor = getattr(self.model, 'predictor', self.model)
+        predictor._crop_embeddings = {}
 
         if isinstance(input_points_df, pd.DataFrame):
             self._input_points_df = input_points_df
@@ -280,6 +296,7 @@ class Model:
         if is_z_stack:
             for z, img in enumerate(image):
                 input_points_z = None
+                input_labels_z = None
                 if input_points is not None:
                     input_points_z = input_points.get(z, [])
                     input_labels_z = input_labels.get(z, [])
@@ -291,6 +308,7 @@ class Model:
                     )
 
                 if only_embeddings:
+                    predictor._reuse_embedding = embeddings_init
                     self._init_embeddings(img)
                 else:
                     lab_2D = self._segment_2D_image(
@@ -298,7 +316,7 @@ class Model:
                         embeddings_already_init=embeddings_init
                     )
                     labels[z] = lab_2D
-                if save_embeddings or only_embeddings:
+                if posData is not None and predictor._is_image_set:
                     posData.storeSamEmbeddings(
                         self, frame_i=frame_i, z=z+start_z_slice
                     )
@@ -312,9 +330,10 @@ class Model:
             embeddings_init = False
             if use_loaded_embeddings:
                 embeddings_init = self._get_img_embeddings(
-                    posData, frame_i=frame_i
+                    posData, frame_i=frame_i, z=start_z_slice
                 )
             if only_embeddings:
+                predictor._reuse_embedding = embeddings_init
                 self._init_embeddings(image)
             else:
                 labels = self._segment_2D_image(
@@ -323,20 +342,19 @@ class Model:
                     automatic_removal_of_background=automatic_removal_of_background
                 )
 
-            if save_embeddings or only_embeddings:
-                posData.storeSamEmbeddings(self, frame_i=frame_i)
+            if posData is not None and predictor._is_image_set:
+                posData.storeSamEmbeddings(self, frame_i=frame_i, z=start_z_slice)
 
+        if posData is not None:
+            save_to_disk = getattr(posData, 'saveSamEmbeddings', None)
+            if save_to_disk is not None:
+                save_to_disk()
         return labels
 
     def _get_img_embeddings(self, posData, frame_i=0, z=0):
         img_embeddings = posData.getSamEmbeddings(frame_i=frame_i, z=z)
-        if img_embeddings is None:
-            return False
-
-        for key, value in img_embeddings.items():
-            setattr(self, key, value)
-
-        return True
+        predictor = getattr(self.model, 'predictor', self.model)
+        return predictor.load_embeddings(img_embeddings, frame_i=frame_i, z=z)
 
     def _get_input_points(self, is_z_stack, df_points):
         if df_points is None:
@@ -358,14 +376,14 @@ class Model:
                 points_labels_z = np.ones(len(sub_df), dtype=int)  # 1 = positive
                 try:
                     neg_points_data_z = (
-                        neg_input_points_df.loc[z][['x', 'y']].to_numpy())
-                    points_data_z = np.row_stack((
+                        neg_input_points_df.loc[[z], ['x', 'y']].to_numpy())
+                    points_data_z = np.vstack((
                         neg_points_data_z, points_data_z
                     ))
                     points_labels_z = np.concatenate(
                         ([0]*len(neg_points_data_z), points_labels_z)
                     )
-                except IndexError:
+                except KeyError:
                     pass
 
                 input_points[z][id] = points_data_z
@@ -382,7 +400,7 @@ class Model:
                     continue
 
                 points_data_id = df_id[['x', 'y']].to_numpy()
-                points_data_id = np.row_stack((
+                points_data_id = np.vstack((
                     neg_input_points_data, points_data_id
                 ))
 
@@ -397,24 +415,13 @@ class Model:
         return input_points, input_labels
 
     def _init_embeddings(self, img_rgb):
+        """Prepare RGB input; the predictor owns encoder caching and restoration."""
         if img_rgb.ndim == 2:
             img_rgb = myutils.to_uint8(img_rgb)
             img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
 
-        # Create embeddings only if new image
-        try:
-            init_embeddings = not np.allclose(img_rgb, self._embedded_img)
-        except Exception as err:
-            init_embeddings = True
-
-        if hasattr(self.model, 'predictor'):
-            predictor = self.model.predictor
-        else:
-            predictor = self.model
-
-        if init_embeddings:
-            predictor.set_image(img_rgb)
-            self._embedded_img = img_rgb
+        predictor = getattr(self.model, 'predictor', self.model)
+        predictor.set_image(img_rgb)
 
     def _segment_2D_image(
             self, image: np.ndarray,
@@ -430,7 +437,18 @@ class Model:
 
         # SAM2 Automatic mask generator (no prompts)
         if input_points is None:
-            masks = self.model.generate(img)
+            predictor = self.model.predictor
+            if not embeddings_already_init:
+                predictor._crop_embeddings = {}
+                self._init_embeddings(img)
+                predictor._crop_embeddings = {}
+            embedding = sam_embeddings.predictor_state(predictor)
+            predictor._reuse_embedding = True
+            try:
+                masks = self.model.generate(img)
+            finally:
+                predictor.set_embeddings(embedding)
+                predictor._reuse_embedding = False
 
             # Identify and exclude background before labeling
             if automatic_removal_of_background and masks:
@@ -448,11 +466,12 @@ class Model:
 
         # No input points --> return empty labels
         if len(input_points) == 0:
+            self.model.reset_predictor()
             return labels
 
         # SAM2 with input points
-        if not embeddings_already_init:
-            self._init_embeddings(img)
+        self.model._reuse_embedding = embeddings_already_init
+        self._init_embeddings(img)
 
         for id, point_coords in input_points.items():
             point_labels = input_labels[id]

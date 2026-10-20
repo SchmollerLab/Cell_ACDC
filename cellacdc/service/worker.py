@@ -159,33 +159,25 @@ async def _decode_segment_params(params, params_data):
 
 
 class _EmbeddingPosData:
-    """Minimal position-data interface used by SAM models in a worker."""
+    """SAM position data, accepting a z-map or one embedding at explicit ``z``."""
 
-    def __init__(self, model, frame_i, embeddings):
+    def __init__(self, model, frame_i, embeddings, *, z=None):
         self.model = model
         self.frame_i = frame_i
+        if z is not None:
+            embeddings = {z: embeddings}
         self.sam_embeddings = {frame_i: embeddings}
 
     def getSamEmbeddings(self, frame_i=0, z=0):
         embedding = self.sam_embeddings.get(frame_i, {}).get(z)
         if embedding is None:
             return None
-        embedding = dict(embedding)
-        features = embedding.get('features')
-        if isinstance(features, np.ndarray):
-            import torch
-            device = getattr(self.model, 'device', None)
-            embedding['features'] = torch.as_tensor(features, device=device)
-        return embedding
+        return dict(embedding)
 
     def storeSamEmbeddings(self, sam_model, frame_i=0, z=0):
+        from cellacdc import sam_embeddings
         predictor = getattr(sam_model.model, 'predictor', sam_model.model)
-        embedding = {
-            'original_size': predictor.original_size,
-            'input_size': predictor.input_size,
-            'features': predictor.features,
-            'is_image_set': True,
-        }
+        embedding = sam_embeddings.from_predictor(predictor)
         self.sam_embeddings.setdefault(frame_i, {})[z] = embedding
 
     @property
@@ -489,7 +481,13 @@ def create_app(
                     embedding_meta, embedding_content
                 )
                 embedding_pos_data = _EmbeddingPosData(
-                    model, frame_i, frame_embeddings
+                    model, frame_i, frame_embeddings,
+                    z=(
+                        p.get('start_z_slice', 0)
+                        if any(
+                            key in frame_embeddings for key in ('features', '_features')
+                        ) else None
+                    ),
                 )
                 p['posData'] = embedding_pos_data
             out = await run_in_threadpool(call_model_method, "segment", arr, **p)
