@@ -24,6 +24,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li> Adhikaryr, S., et al. <i>Rad53/Chk2 couples mitochondrial outputs and ROS with G2/M cell cycle progression</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.10.14.759190">10.64898/2026.10.14.759190</a>.</li><br>
+
       <li>Athar, F., et al. <i>Glucose enrichment accelerates C. elegans reproductive aging via non-autonomous DAF-2/insulin-like receptor signaling in somatic tissues</i>. <b>Communications Biology</b> (2026) DOI: <a href="https://doi.org/10.1038/s42003-026-10564-7">10.1038/s42003-026-10564-7</a>.</li><br>
 
       <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>Nucleic Acids Research</b> (2026) DOI: <a href="https://doi.org/10.1093/nar/gkag949">10.1093/nar/gkag949</a>.</li><br>
