@@ -121,15 +121,17 @@ Code structure
      - ``acdc-setup-models`` command that prepares model environments ahead
        of time.
    * - ``cellacdc/myutils.py``
-     - ``getModelArgSpecFromEnv`` reads the model parameters inside the model
-       environment and sends them to the GUI as metadata.
+     - ``getModelArgSpecFromEnv`` provides standalone parameter inspection in
+       a disposable process. GUI execution instead reads ``/spec`` from the
+       persistent worker.
        ``resolve_segm_model_init_data`` loads the data that the GUI refers to
        by file name.
    * - ``cellacdc/service/model_execution.py``
      - ``ModelExecution``: shared by every GUI caller. ``prepare`` chooses
-       the execution path, prepares the environment and reads the
-       parameters; ``init_model`` asks for required variables, sends the data
-       and gets a worker (or creates the model in-process); ``release``
+       the execution path, prepares the environment, starts a deferred-init
+       worker and reads its parameters and help URL from ``/spec``.
+       ``init_model`` asks for required variables and initializes that same
+       process with ``POST /init`` (or creates the model in-process); ``release``
        gives an instance back and ``stop`` stops all workers.
        ``run_in_background`` runs slow steps in a ``QThread`` without
        freezing the GUI.
@@ -148,6 +150,16 @@ Code structure
        = ``in_process``, ``local`` or ``remote``; ``url``; ``env_python``)
        selects the backend.
 
+In isolated GUI execution, opening the parameter dialog imports the model
+module but does not construct the model or load its weights. After confirmation
+the same worker is initialized, so parameter inspection and inference share
+the module cache. Cancelling the dialog discards only the uninitialized worker,
+not previously initialized models. ``cancel_preparation`` provides this cleanup
+for callers; ``stop`` also cleans up any prepared worker. Cached parameter specs
+remain available after cancellation. If the worker exits or required environment
+variables change before initialization, a new worker is started with the current
+environment.
+
 What happens when a model is selected
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -163,9 +175,10 @@ What happens when a model is selected
    d. installs ``packages``;
    e. runs ``setup_steps``.
 
-3. ``getModelArgSpecFromEnv`` runs a short script with the model environment's
-   Python (``--server``) that inspects ``acdcSegment.Model`` and returns the
-   parameters. The GUI builds the parameter dialog from this metadata.
+3. ``LocalBackend.prepare`` starts the model environment's Python worker
+   (``--server --defer-init``) and reads parameter metadata and the help URL
+   from ``/spec``. The GUI builds the parameter dialog while this worker stays
+   alive without constructing the model.
 4. The user sets the parameters. ``ModelExecution.init_model`` then:
 
    a. asks for missing ``required_env`` variables;
@@ -192,7 +205,8 @@ them. For every ``init_model`` call it:
    previous model. Callers pass the instance they replace as ``replace``
    (e.g. ``repeatSegm`` with the previous model), so its worker can be
    re-initialized;
-3. otherwise starts a new worker. Instances used at the same time with
+3. otherwise initializes the worker retained from parameter inspection, or
+   starts a new worker if none is available. Instances used at the same time with
    different parameters (e.g. segmentation and segmentation for lost IDs)
    run in separate workers.
 
@@ -552,6 +566,43 @@ the model supports ``segment3DT``, ``second_ch_img_to_stack`` and
 ``predictCcaState``.
 ``ModelClient`` reads it when it connects and exposes, for example,
 ``is_segment3DT_available``.
+
+Diagnosing slow environment resolution
+-------------------------------------
+
+Launch Cell-ACDC in debug mode (``acdc --debug`` or ``acdc -d``) to log
+elapsed wall-clock times for main-environment metadata, environment discovery,
+source linking, runtime imports, individual dependency checks, PyTorch options
+discovery (only when installation is needed), model-spec inspection, and worker
+startup including process launch, waiting for ``/health``, ``/spec``, payload
+encoding, ``/init``, and the final ``/info`` connection::
+
+    acdc --debug
+
+Timing lines start with ``[model startup]`` and report seconds and
+``completed`` or ``failed``. Environment/dependency timings are emitted through
+the setup logger (normally the terminal); workflow totals use the workflow
+logger. Nested timings overlap and must not be added to their parent totals.
+Timings are disabled outside debug mode; no separate environment variable is
+needed.
+Debug mode is also passed to local workers, which report model-module import,
+argument inspection, and model construction timings through their output.
+
+Reusing an existing environment does not invoke a package solver when all
+dependency checks pass. Existing environments are checked in a single Python
+process: runtime, torch/torchvision (when required), base dependencies, and model
+dependencies share Python's import cache. Version constraints are still checked.
+If this combined check fails, its diagnostic is logged and the individual
+checks/installers repair the environment as before. Model-specific setup steps
+are checked even after a successful combined check. New environments use the
+normal installation sequence.
+
+Environment validation still uses a separate process from the model worker.
+GUI parameter inspection and inference, however, use the same persistent worker.
+Large libraries such as PyTorch and TensorFlow can still dominate preparation
+even when inference is fast.
+PyTorch wheel indexes and CUDA installation choices are only discovered if
+the target environment cannot import PyTorch and torchvision.
 
 Running a model on a remote server
 ----------------------------------

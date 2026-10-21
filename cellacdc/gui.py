@@ -9678,6 +9678,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
                 win_thresh.exec_()
                 if win_thresh.cancel:
+                    for selected in selected_models:
+                        name = 'thresholding' if selected == 'Automatic thresholding' else selected
+                        self.getModelExecution(name).cancel_preparation()
                     self.logger.info('Segmentation for lost IDs cancelled.')
                     return
                 self.model_kwargs = win_thresh.segment_kwargs
@@ -9704,6 +9707,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
 
             if win is None:
+                for selected in selected_models:
+                    name = 'thresholding' if selected == 'Automatic thresholding' else selected
+                    self.getModelExecution(name).cancel_preparation()
                 self.logger.info('Segmentation for lost IDs cancelled.')
                 return
 
@@ -18286,6 +18292,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         win = out.get('win')
         if win.cancel:
+            execution.cancel_preparation()
             self.logger.info(
                 f'Initialization of {model_name} promptable model cancelled.'
             )
@@ -19576,11 +19583,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
         win = out.get('win')
         if win is None:
+            self.getModelExecution(model_name).cancel_preparation()
             self.logger.info(text_if_cancelled)
             self.titleLabel.setText(text_if_cancelled)
             return
         
         if win.cancel:
+            self.getModelExecution(model_name).cancel_preparation()
             self.logger.info(text_if_cancelled)
             self.titleLabel.setText(text_if_cancelled)
             return
@@ -19638,6 +19647,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 )
                 win.exec_()
                 if win.cancel:
+                    self.getModelExecution(model_name).cancel_preparation()
                     return
                 self.model_kwargs = win.segment_kwargs
                 thresh_method = self.model_kwargs['threshold_method']
@@ -19682,6 +19692,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 python_exec=self.getModelExecution(model_name).env_python,
             )
             if not proceed:
+                self.getModelExecution(model_name).cancel_preparation()
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
@@ -19853,6 +19864,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             )
             autoThreshWin.exec_()
             if autoThreshWin.cancel:
+                self.getModelExecution(model_name).cancel_preparation()
                 return
         
         win = self.initSegmModelParams(
@@ -19888,6 +19900,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             python_exec=self.getModelExecution(model_name).env_python,
         )
         if not proceed:
+            self.getModelExecution(model_name).cancel_preparation()
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
             return
@@ -20161,6 +20174,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         win.exec_()
         if win.cancel:
+            self.getModelExecution(model_name).cancel_preparation()
             self.titleLabel.setText('Segmentation aborted.')
             return
 
@@ -20170,6 +20184,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             python_exec=self.getModelExecution(model_name).env_python,
         )
         if not proceed:
+            self.getModelExecution(model_name).cancel_preparation()
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
             return

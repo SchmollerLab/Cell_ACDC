@@ -465,6 +465,20 @@ def _patch_model_execution(monkeypatch, use_model_env=True, **overrides):
         ensure_required_env=Mock(return_value=True),
     )
     mocks.update(overrides)
+    backend_factory = mocks["LocalBackend"]
+    spec_mock = mocks["getModelArgSpecFromEnv"]
+    original_factory = backend_factory.side_effect
+
+    def make_prepared_backend(**kwargs):
+        backend = (
+            original_factory(**kwargs) if original_factory is not None
+            else backend_factory.return_value
+        )
+        backend.prepare.return_value = spec_mock.return_value
+        backend.prepare.side_effect = spec_mock.side_effect
+        return backend
+
+    backend_factory.side_effect = make_prepared_backend
     monkeypatch.setattr(model_execution, "USE_MODEL_ENV", use_model_env)
     for name in (
             "get_or_create_model_env", "LocalBackend",
@@ -510,9 +524,8 @@ def test_gui_model_execution_modes(monkeypatch, use_model_env):
     assert execution.init_model({}, posData) is model
     if use_model_env:
         mocks["get_or_create_model_env"].assert_called_once_with("test_model")
-        mocks["getModelArgSpecFromEnv"].assert_called_once_with(
-            "test_model", "model-python"
-        )
+        mocks["getModelArgSpecFromEnv"].assert_not_called()
+        backend.prepare.assert_called_once_with()
         mocks["import_segment_module"].assert_not_called()
         mocks["getModelArgSpec"].assert_not_called()
         mocks["init_segm_model"].assert_not_called()
@@ -552,13 +565,12 @@ def test_promptable_model_execution_uses_isolated_worker(monkeypatch):
     assert execution.prepare() == spec
     model = execution.init_model({'model_type': 'Small'}, posData=object())
 
-    mocks['getModelArgSpecFromEnv'].assert_called_once_with(
-        'segment_anything', 'model-python', 'promptable'
-    )
+    mocks['getModelArgSpecFromEnv'].assert_not_called()
+    backend.prepare.assert_called_once_with()
     mocks['LocalBackend'].assert_called_once_with(
         model_name='segment_anything',
         env_python='model-python',
-        init_model_kwargs={'model_type': 'Small'},
+        init_model_kwargs={},
         model_kind='promptable',
     )
     assert model is backend.start.return_value
@@ -581,7 +593,7 @@ def test_model_execution_restarts_for_required_env_change(monkeypatch):
     _patch_model_execution(
         monkeypatch, LocalBackend=Mock(side_effect=make_backend)
     )
-    env_keys = iter(['first', 'second'])
+    env_keys = iter(['first', 'first', 'second'])
     monkeypatch.setattr(
         model_execution, 'required_env_fingerprint',
         lambda model_name: next(env_keys),
@@ -596,6 +608,63 @@ def test_model_execution_restarts_for_required_env_change(monkeypatch):
     assert second is not first
     assert len(backends) == 2
     backends[0].reinitialize.assert_not_called()
+
+
+@pytest.mark.parametrize("reason", ["cancel", "stop", "dead", "env_changed", "init_failed"])
+def test_prepared_model_worker_lifecycle(monkeypatch, reason):
+    from unittest.mock import Mock
+    from cellacdc.service import model_execution
+
+    backends = []
+
+    def make_backend(**kwargs):
+        backend = Mock()
+        backend.start.return_value = object()
+        backend.is_running.return_value = True
+        backends.append(backend)
+        return backend
+
+    mocks = _patch_model_execution(
+        monkeypatch, LocalBackend=Mock(side_effect=make_backend)
+    )
+    env_key = Mock(return_value="initial")
+    monkeypatch.setattr(model_execution, "required_env_fingerprint", env_key)
+    execution = model_execution.ModelExecution("test_model", log_func=Mock())
+    spec = execution.prepare()
+    prepared = backends[0]
+    prepared.start.assert_not_called()
+
+    if reason == "stop":
+        execution.stop()
+        execution.stop()
+    elif reason == "cancel":
+        execution.cancel_preparation()
+        execution.cancel_preparation()
+        assert execution.prepare() is spec
+        assert len(backends) == 1
+        execution.init_model({})
+        assert len(backends) == 2
+    elif reason == "dead":
+        prepared.is_running.return_value = False
+        execution.init_model({})
+        assert len(backends) == 2
+    elif reason == "env_changed":
+        env_key.return_value = "new-token"
+        execution.init_model({})
+        assert len(backends) == 2
+    else:
+        prepared.start.side_effect = RuntimeError("bad initialization")
+        with pytest.raises(RuntimeError, match="bad initialization"):
+            execution.init_model({})
+        assert execution.backend is None
+        prepared.start.side_effect = None
+        execution.init_model({})
+        assert len(backends) == 2
+
+    prepared.stop.assert_called_once()
+    assert execution._prepared_backend is None
+    mocks["getModelArgSpecFromEnv"].assert_not_called()
+    execution.stop()
 
 
 def test_cellpose_v3_environment_matches_wrapper_minimum():
@@ -628,7 +697,8 @@ def test_model_execution_caches_spec_and_manages_workers(monkeypatch):
 
     assert execution.prepare() is execution.prepare()
     mocks["get_or_create_model_env"].assert_called_once()
-    mocks["getModelArgSpecFromEnv"].assert_called_once()
+    mocks["getModelArgSpecFromEnv"].assert_not_called()
+    backends[0].prepare.assert_called_once()
 
     # Same parameters (also array contents) share one worker
     first = execution.init_model({"a": 1, "arr": np.zeros(3)})
@@ -699,13 +769,19 @@ def test_model_execution_channel_mode_isolates_mutable_state(monkeypatch, reuse)
             return np.ones_like(image, dtype=np.uint32)
 
     def make_backend(**kwargs):
-        model = Model(**kwargs['init_model_kwargs'])
+        model = None
+        backend = Mock()
+        backend.init_model_kwargs = kwargs['init_model_kwargs']
+
+        def start():
+            nonlocal model
+            model = Model(**backend.init_model_kwargs)
+            return model
 
         def initialize(init_kwargs):
             model.__init__(**init_kwargs)
 
-        backend = Mock()
-        backend.start.return_value = model
+        backend.start.side_effect = start
         backend.is_running.return_value = True
         backend.reinitialize.side_effect = initialize
         backends.append(backend)
@@ -852,7 +928,9 @@ def test_model_execution_missing_required_env_cancels(monkeypatch):
     mocks["ensure_required_env"].assert_called_once_with(
         "test_model", {}, prompt_func=ask
     )
-    mocks["LocalBackend"].assert_not_called()
+    backend = mocks["LocalBackend"].return_value
+    backend.start.assert_not_called()
+    backend.stop.assert_called_once()
 
 
 @pytest.mark.parametrize("installed_version, expected", [
@@ -2508,7 +2586,7 @@ def test_worker_exposes_argument_specs_to_client(monkeypatch):
         def segment(self, image, gauss_sigma: float = 0.5):
             return image
 
-    module = types.SimpleNamespace(Model=Model)
+    module = types.SimpleNamespace(Model=Model, url_help=lambda: "https://model-help")
     monkeypatch.setattr(myutils, 'import_segment_module', lambda _: module)
     app = worker.create_app('fake')
     endpoints = {
@@ -2516,6 +2594,7 @@ def test_worker_exposes_argument_specs_to_client(monkeypatch):
         if hasattr(route, 'methods')
     }
     spec_data = endpoints['/spec']()
+    assert spec_data['url'] == "https://model-help"
 
     class Response:
         ok = True

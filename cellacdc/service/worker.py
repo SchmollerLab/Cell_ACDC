@@ -76,6 +76,7 @@ from fastapi.responses import Response
 from fastapi.concurrency import run_in_threadpool
 
 from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
+from cellacdc._model_startup import startup_timer
 
 # Background jobs (`/jobs/...`) run in these threads, so that the HTTP request
 # that submits a job returns immediately with a job id.
@@ -299,26 +300,30 @@ def create_app(
         If True, do not create the model now: the client sends the init
         kwargs (possibly including arrays or model files) with `POST /init`.
     """
-    from cellacdc import myutils
-    from cellacdc.service import payload
+    with startup_timer(f"{model_name}: worker runtime imports"):
+        from cellacdc import myutils
+        from cellacdc.service import payload
 
     importer = (
         myutils.import_promptable_segment_module
         if model_kind == 'promptable' else myutils.import_segment_module
     )
-    acdcSegment = importer(model_name)
+    with startup_timer(f"{model_name}: worker model module import"):
+        acdcSegment = importer(model_name)
     # Mutable holder, so `/init` can replace the model for all endpoints
     state = {'model': None}
     model_lock = threading.Lock()
 
     def initialize_model(kwargs):
         with model_lock:
-            state['model'] = instantiate_model(acdcSegment, kwargs)
+            with startup_timer(f"{model_name}: worker model construction"):
+                state['model'] = instantiate_model(acdcSegment, kwargs)
 
     if not defer_init:
         initialize_model(init_kwargs or {})
 
-    init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+    with startup_timer(f"{model_name}: worker model argument inspection"):
+        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
 
     def serialize_params(params):
         return [
@@ -406,6 +411,7 @@ def create_app(
         return {
             "init_params": serialize_params(init_params),
             "segment_params": serialize_params(segment_params),
+            "url": getattr(acdcSegment, "url_help", lambda: None)(),
         }
 
     @app.get("/info", response_model=InfoResponse)
@@ -778,6 +784,9 @@ def main():
     import uvicorn
 
     parser = argparse.ArgumentParser(description="Cell-ACDC Model Worker Service")
+    parser.add_argument(
+        "-d", "--debug", action=argparse.BooleanOptionalAction, default=None
+    )
     parser.add_argument("--model", required=True, help="Segmentation model name")
     parser.add_argument(
         '--model-kind', choices=('segmentation', 'promptable'),
@@ -800,6 +809,9 @@ def main():
 
     args = parser.parse_args()
     import cellacdc
+    if args.debug is not None:
+        from cellacdc.config import parser_args
+        parser_args["debug"] = args.debug
     if not (args.server and cellacdc.RUNNING_AS_SERVER):
         parser.error(
             "the worker must be started with --server, e.g. "

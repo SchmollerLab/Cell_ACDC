@@ -13,6 +13,7 @@ import numpy as np
 import requests
 
 from cellacdc.service.schema import InfoResponse, parse_response
+from cellacdc._model_startup import startup_timer
 
 _LOCAL_ONLY_KWARGS = ("posData", "signals", "logger_func", "signals_tqdm")
 
@@ -78,26 +79,35 @@ def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
     from cellacdc import myutils
     from cellacdc.service import payload
 
-    init_params, _ = get_model_arg_spec(base_url, timeout=timeout)
+    with startup_timer("worker /spec request"):
+        init_params, _ = get_model_arg_spec(base_url, timeout=timeout)
     file_params = {
         param.name for param in init_params
         if myutils._serialize_model_param_type(param.type)['kind']
         in ('path', 'csv_path')
     }
-    kwargs_json, data = payload.encode(init_kwargs, file_params=file_params)
+    with startup_timer("model initialization payload encoding"):
+        kwargs_json, data = payload.encode(init_kwargs, file_params=file_params)
     files = None
     if data is not None:
         files = {"data": ("init.npz", data, "application/octet-stream")}
-    res = requests.post(
-        f"{base_url.rstrip('/')}/init",
-        data={"kwargs": kwargs_json},
-        files=files,
-        timeout=timeout,
-    )
-    ModelClient._raise_for_status(res)
+    with startup_timer("worker /init request (model construction and weights)"):
+        res = requests.post(
+            f"{base_url.rstrip('/')}/init",
+            data={"kwargs": kwargs_json},
+            files=files,
+            timeout=timeout,
+        )
+        ModelClient._raise_for_status(res)
 
 def get_model_arg_spec(base_url: str, timeout: float = 10.0):
     """Fetch and decode model argument specs from a worker."""
+    init_params, segment_params, _ = get_model_spec(base_url, timeout=timeout)
+    return init_params, segment_params
+
+
+def get_model_spec(base_url: str, timeout: float = 10.0):
+    """Fetch model argument specs and help URL, including before initialization."""
     from cellacdc import myutils
 
     res = requests.get(f"{base_url.rstrip('/')}/spec", timeout=timeout)
@@ -119,6 +129,7 @@ def get_model_arg_spec(base_url: str, timeout: float = 10.0):
     return (
         decode_params(data['init_params']),
         decode_params(data['segment_params']),
+        data.get('url'),
     )
 
 
@@ -415,7 +426,38 @@ class LocalBackend:
     def url(self) -> str:
         return self.base_url
 
+    def prepare(self, timeout: float = 120.0):
+        """Start without constructing a model and retain the process for `start`."""
+        try:
+            if not self.is_running():
+                self._start_process(timeout)
+            return get_model_spec(self.base_url, timeout=timeout)
+        except Exception:
+            self.stop()
+            raise
+
     def start(self, timeout: float = 120.0) -> ModelClient:
+        t0 = time.monotonic()
+        if not self.is_running():
+            self._start_process(timeout)
+        cmd = self.proc.args
+        with startup_timer(f"{self.model_name}: deferred initialization"):
+            self._initialize(cmd, timeout - (time.monotonic() - t0))
+        try:
+            with startup_timer(f"{self.model_name}: client /info connection"):
+                self.client = ModelClient(self.base_url)
+        except Exception as err:
+            message = self._describe_failure(
+                f"Connecting to the {self.model_name} worker "
+                f"failed:\n{err}", cmd
+            )
+            self.stop()
+            raise RuntimeError(message) from err
+        return self.client
+
+    def _start_process(self, timeout):
+        from cellacdc.config import parser_args
+
         cmd = [
             self.env_python, "-m", "cellacdc.service.worker", "--server",
             "--model", self.model_name,
@@ -424,20 +466,26 @@ class LocalBackend:
             "--model-kind", self.model_kind,
             "--defer-init",
         ]
+        cmd.append("--debug" if parser_args["debug"] else "--no-debug")
         env = dict(os.environ, PYTHONUNBUFFERED="1")
         self._output = collections.deque(maxlen=200)
-        self.proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
+        with startup_timer(f"{self.model_name}: worker process launch"):
+            self.proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                env=env,
+            )
         self._reader = threading.Thread(target=self._read_output, daemon=True)
         self._reader.start()
 
-        t0 = time.time()
+        with startup_timer(f"{self.model_name}: waiting for worker /health"):
+            self._wait_for_health(cmd, timeout)
+
+    def _wait_for_health(self, cmd, timeout):
+        t0 = time.monotonic()
         last_error = None
-        while time.time() - t0 < timeout:
+        while time.monotonic() - t0 < timeout:
             if self.proc.poll() is not None:
                 self._reader.join(timeout=2)
                 raise RuntimeError(self._describe_failure(
@@ -454,17 +502,7 @@ class LocalBackend:
                 healthy = False
                 last_error = f"{type(err).__name__}: {err}"
             if healthy:
-                self._initialize(cmd, timeout - (time.time() - t0))
-                try:
-                    self.client = ModelClient(self.base_url)
-                except Exception as err:
-                    message = self._describe_failure(
-                        f"Connecting to the {self.model_name} worker "
-                        f"failed:\n{err}", cmd
-                    )
-                    self.stop()
-                    raise RuntimeError(message) from err
-                return self.client
+                return
             time.sleep(0.3)
 
         reason = (

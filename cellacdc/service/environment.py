@@ -10,6 +10,7 @@ from importlib.metadata import distribution, PackageNotFoundError
 from typing import Optional, Callable, Any, List, Literal, Union
 
 from cellacdc import is_conda_env, user_profile_path
+from cellacdc._model_startup import startup_timer
 
 
 def run_streaming(
@@ -274,9 +275,12 @@ def ensure_cellacdc_cli(
     python_exec: str, logger_func: Callable = print
 ) -> bool:
     """Ensure the lightweight Cell-ACDC runtime is installed and importable."""
-    if is_cellacdc_cli_installed(python_exec):
+    with startup_timer("Cell-ACDC runtime import check", logger_func):
+        installed = is_cellacdc_cli_installed(python_exec)
+    if installed:
         return True
-    return install_cellacdc_cli(python_exec, logger_func=logger_func)
+    with startup_timer("Cell-ACDC runtime installation", logger_func):
+        return install_cellacdc_cli(python_exec, logger_func=logger_func)
 
 
 def load_model_env_config(model_name: str) -> dict:
@@ -468,17 +472,21 @@ def ensure_torch(
     is given (see `cellacdc.service.prompts`), the user is asked on behalf
     of the worker with the detected build preselected.
     """
-    check = subprocess.run(
-        [python_exec, "-c", "import torch, torchvision"], capture_output=True
-    )
+    with startup_timer("torch/torchvision import check", logger_func):
+        check = subprocess.run(
+            [python_exec, "-c", "import torch, torchvision"], capture_output=True
+        )
     if check.returncode == 0:
         return True
 
     if possible_links is None:
         from cellacdc import myutils
-        possible_links = myutils.get_torch_options_safe(
-            driver_cuda_version=found_cuda_version
-        )
+        with startup_timer("PyTorch installation options discovery", logger_func):
+            if found_cuda_version is None:
+                found_cuda_version = myutils.get_driver_cuda_version()
+            possible_links = myutils.get_torch_options_safe(
+                driver_cuda_version=found_cuda_version
+            )
     options, preferred = possible_links
     choices = [label for label, _ in options]
     default = choices[preferred]
@@ -528,6 +536,74 @@ def _normalize_package_specs(packages) -> list:
     ]
 
 
+_WORKER_BASE_PACKAGES = [
+    ("fastapi", "fastapi"),
+    ("uvicorn", "uvicorn"),
+    ("pydantic", "pydantic"),
+    ("python-multipart", "multipart"),
+    ("requests", "requests"),
+    ("numpy", "numpy"),
+]
+
+
+def _check_environment_dependencies(
+    model_name: str, python_exec: str, logger_func: Callable = print
+) -> bool:
+    """Validate an existing environment in one disposable, non-installing process."""
+    from cellacdc.config import parser_args
+
+    config = load_model_env_config(model_name)
+    packages = [
+        {"pkg_name": name, "import_pkg_name": import_name}
+        for name, import_name in _WORKER_BASE_PACKAGES
+    ] + _normalize_package_specs(config.get("packages", []))
+    script = f'''
+import json
+from importlib import import_module
+from importlib.metadata import version, PackageNotFoundError
+from cellacdc._model_startup import startup_timer
+from cellacdc.config import parser_args
+parser_args["debug"] = {bool(parser_args["debug"])!r}
+with startup_timer("Cell-ACDC runtime imports"):
+    import cellacdc.core
+    from cellacdc import myutils
+    import cellacdc.service.worker
+if {bool(config.get("torch"))!r}:
+    with startup_timer("torch/torchvision imports (shared process)"):
+        import torch, torchvision
+defaults = dict(min_version="", max_version="", exact_version="",
+                include_lower_version=False, include_higher_version=False)
+specs = myutils._normalize_pkg_specs(json.loads({json.dumps(packages)!r}), "", "", defaults)
+for spec in specs:
+    with startup_timer("dependency check (shared process): " + spec["import_pkg_name"]):
+        module = import_module(spec["import_pkg_name"])
+        installed = getattr(module, "__version__", None)
+        if not installed:
+            try:
+                installed = version(spec["pkg_name"])
+            except PackageNotFoundError:
+                installed = ""
+        myutils._check_package_version_constraints(spec, installed)
+print("__ACDC_ENV_OK__")
+'''
+    with startup_timer(f"{model_name}: combined environment checks", logger_func):
+        result = subprocess.run(
+            [python_exec, "-c", script, "--server"],
+            capture_output=True, text=True,
+        )
+    for line in result.stdout.splitlines():
+        if line.startswith("[model startup]"):
+            logger_func(line)
+    if result.returncode == 0 and "__ACDC_ENV_OK__" in result.stdout.splitlines():
+        return True
+    logger_func(
+        f"{model_name}: combined environment check failed; "
+        f"checking dependencies individually for repair.\n"
+        f"{result.stderr or result.stdout}"
+    )
+    return False
+
+
 def ensure_model_dependencies(
     model_name: str,
     python_exec: str,
@@ -545,10 +621,6 @@ def ensure_model_dependencies(
 
     config = load_model_env_config(model_name)
     if config.get("torch"):
-        if found_cuda_version is None:
-            found_cuda_version = myutils.get_driver_cuda_version()
-        if possible_links is None:
-            possible_links = myutils.get_torch_options_safe(driver_cuda_version=found_cuda_version)
         torch_ok = ensure_torch(
             python_exec, logger_func=logger_func, prompt_func=prompt_func,
             platform=platform or sys.platform,
@@ -575,6 +647,14 @@ def ensure_model_dependencies(
             is_cli=(parent is None),
             auto_install=auto_install,
         )
+    _ensure_model_setup_steps(
+        model_name, python_exec, config, logger_func, auto_install, prompt_func
+    )
+
+
+def _ensure_model_setup_steps(
+    model_name, python_exec, config, logger_func, auto_install, prompt_func
+):
     for step in config.get("setup_steps", []):
         name = step["name"]
         check = step.get("check")
@@ -628,14 +708,7 @@ def ensure_worker_dependencies(
 
     method = install_method or get_install_method()
     installer = "conda" if method == "conda" else "pip"
-    base_pkgs_names = [
-        ("fastapi", "fastapi"),
-        ("uvicorn", "uvicorn"),
-        ("pydantic", "pydantic"),
-        ("python-multipart", "multipart"),
-        ("requests", "requests"),
-        ("numpy", "numpy"),
-    ]
+    base_pkgs_names = _WORKER_BASE_PACKAGES
     
     base_pkgs_import_names = [import_name for _, import_name in base_pkgs_names]
     base_pkgs = [pkg_name for pkg_name, _ in base_pkgs_names]
@@ -811,9 +884,6 @@ def create_model_env(
             parent=parent,
             auto_install=auto_install,
         )
-        from cellacdc import myutils
-        found_cuda_version = myutils.get_driver_cuda_version()
-        possible_links = myutils.get_torch_options_safe(driver_cuda_version=found_cuda_version)
         ensure_model_dependencies(
             model_name,
             py_exec,
@@ -822,8 +892,6 @@ def create_model_env(
             parent=parent,
             auto_install=auto_install,
             prompt_func=prompt_func,
-            found_cuda_version=found_cuda_version,
-            possible_links=possible_links,
             platform=sys.platform,
         )
     return py_exec
@@ -842,12 +910,20 @@ def get_or_create_model_env(
 ) -> str:
     """Get existing environment's python or create a new dedicated one."""
     method = install_method or get_install_method()
-    py_exec = get_model_python_exec(
-        model_name, install_method=method, env_root=env_root
-    )
+    with startup_timer(f"{model_name}: environment discovery", logger_func):
+        py_exec = get_model_python_exec(
+            model_name, install_method=method, env_root=env_root
+        )
     if py_exec and os.path.isfile(py_exec):
-        link_cellacdc_to_env(py_exec, logger_func=logger_func)
+        with startup_timer(f"{model_name}: source linking", logger_func):
+            link_cellacdc_to_env(py_exec, logger_func=logger_func)
         if ensure_deps:
+            if _check_environment_dependencies(model_name, py_exec, logger_func):
+                _ensure_model_setup_steps(
+                    model_name, py_exec, load_model_env_config(model_name),
+                    logger_func, auto_install, prompt_func,
+                )
+                return py_exec
             ensure_worker_dependencies(
                 py_exec,
                 install_method=method,
@@ -855,9 +931,6 @@ def get_or_create_model_env(
                 parent=parent,
                 auto_install=auto_install,
             )
-            from cellacdc import myutils
-            found_cuda_version = myutils.get_driver_cuda_version()
-            possible_links = myutils.get_torch_options_safe(driver_cuda_version=found_cuda_version)
             ensure_model_dependencies(
                 model_name,
                 py_exec,
@@ -866,8 +939,6 @@ def get_or_create_model_env(
                 parent=parent,
                 auto_install=auto_install,
                 prompt_func=prompt_func,
-                found_cuda_version=found_cuda_version,
-                possible_links=possible_links,
                 platform=sys.platform,
             )
         return py_exec

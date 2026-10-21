@@ -30,6 +30,7 @@ import json
 
 from cellacdc import myutils
 from cellacdc.service import prompts
+from cellacdc._model_startup import startup_timer
 from cellacdc.service.client import LocalBackend
 from cellacdc.service.environment import (
     ensure_required_env, get_or_create_model_env, model_installed_in_main_env,
@@ -170,7 +171,10 @@ class ModelExecution:
         execution.stop()             # stops all workers of this model
 
     `prepare` decides the environment once; later calls return the cached
-    parameter spec without asking again. In isolated mode, workers are kept
+    parameter spec without asking again. In isolated mode it retains a
+    deferred-init worker, so `init_model` can reuse the parameter-inspection
+    process. Call `cancel_preparation` when the parameter dialog is cancelled.
+    Initialized workers are kept
     running and reused by `init_model` (shared when the parameters are the
     same, re-initialized with `POST /init` otherwise), so the model server is
     not restarted for every segmentation. Different parameters used at the
@@ -215,6 +219,8 @@ class ModelExecution:
         self.spec: Optional[Tuple[list, list, Any]] = None
         self._workers: List[_Worker] = []
         self._last_started: Optional[_Worker] = None
+        self._prepared_backend: Optional[LocalBackend] = None
+        self._prepared_env_key: Optional[str] = None
 
     @classmethod
     def for_qt(cls, model_name: str, parent, log_func: Optional[Callable] = None):
@@ -272,9 +278,11 @@ class ModelExecution:
             return self.spec
 
         backend_type = 'local' if self.use_model_env else 'in_process'
-        if self.use_model_env and self.run_in_background(
-            model_installed_in_main_env, self.model_name
-        ):
+        with startup_timer(f'{self.model_name}: main environment metadata', self.log):
+            installed_in_main = self.use_model_env and self.run_in_background(
+                model_installed_in_main_env, self.model_name
+            )
+        if installed_in_main:
             answer = self._ask_environment()
             if answer is None:
                 return None
@@ -283,20 +291,27 @@ class ModelExecution:
 
         if backend_type == 'local':
             self.log(f'Resolving environment for {self.model_name}...')
-            env_python = self.run_in_background(
-                get_or_create_model_env, self.model_name
-            )
+            with startup_timer(f'{self.model_name}: environment resolution', self.log):
+                env_python = self.run_in_background(
+                    get_or_create_model_env, self.model_name
+                )
             if env_python is None:
                 raise RuntimeError(
                     f'No model environment found for {self.model_name}'
                 )
-            spec_args = [self.model_name, env_python]
-            if self.model_kind != 'segmentation':
-                spec_args.append(self.model_kind)
-            spec = self.run_in_background(
-                myutils.getModelArgSpecFromEnv, *spec_args
-            )
             self.env_python = env_python
+            backend = self._new_backend({})
+            env_key = required_env_fingerprint(self.model_name)
+            try:
+                with startup_timer(
+                    f'{self.model_name}: worker preparation and spec', self.log
+                ):
+                    spec = self.run_in_background(backend.prepare)
+            except Exception:
+                self._stop_backend(backend)
+                raise
+            self._prepared_backend = backend
+            self._prepared_env_key = env_key
         else:
             self.log(f'Importing {self.model_name}...')
             importer = (
@@ -362,6 +377,7 @@ class ModelExecution:
                 f'{self.model_name} cannot start without the required '
                 'environment variables.'
             )
+            self.cancel_preparation()
             return None
 
         if self.backend_type == 'in_process':
@@ -379,6 +395,11 @@ class ModelExecution:
                 init_kwargs['segm_data'] = segm_data
         key = _kwargs_key(init_kwargs)
         env_key = required_env_fingerprint(self.model_name)
+        if self._prepared_backend is not None and (
+            self._prepared_env_key != env_key
+            or not self._prepared_backend.is_running()
+        ):
+            self.cancel_preparation()
 
         self._discard_dead_workers()
         worker = self._find_worker(key=key, env_key=env_key)
@@ -400,11 +421,7 @@ class ModelExecution:
             self.release(replace)
         return worker.model
 
-    def _start_worker(self, init_kwargs, key, env_key) -> '_Worker':
-        self.log(
-            f'Starting model server for {self.model_name} in '
-            f'{self.env_python}...'
-        )
+    def _new_backend(self, init_kwargs):
         backend_kwargs = dict(
             model_name=self.model_name,
             env_python=self.env_python,
@@ -412,9 +429,24 @@ class ModelExecution:
         )
         if self.model_kind != 'segmentation':
             backend_kwargs['model_kind'] = self.model_kind
-        backend = LocalBackend(**backend_kwargs)
+        return LocalBackend(**backend_kwargs)
+
+    def _start_worker(self, init_kwargs, key, env_key) -> '_Worker':
+        backend = self._prepared_backend
+        self._prepared_backend = None
+        self._prepared_env_key = None
+        if backend is None:
+            self.log(
+                f'Starting model server for {self.model_name} in '
+                f'{self.env_python}...'
+            )
+            backend = self._new_backend(init_kwargs)
+        else:
+            self.log(f'Initializing prepared {self.model_name} worker...')
+            backend.init_model_kwargs = init_kwargs
         try:
-            model = self.run_in_background(backend.start)
+            with startup_timer(f'{self.model_name}: worker startup and init', self.log):
+                model = self.run_in_background(backend.start)
         except Exception:
             backend.stop()
             raise
@@ -483,10 +515,18 @@ class ModelExecution:
 
     def stop(self) -> None:
         """Stop all workers started by this execution."""
+        self.cancel_preparation()
         workers, self._workers = self._workers, []
         self._last_started = None
         for worker in workers:
             self._stop_backend(worker.backend)
+
+    def cancel_preparation(self) -> None:
+        """Discard only the uninitialized worker, preserving active models/specs."""
+        backend, self._prepared_backend = self._prepared_backend, None
+        self._prepared_env_key = None
+        if backend is not None:
+            self._stop_backend(backend)
 
     def _stop_backend(self, backend) -> None:
         try:

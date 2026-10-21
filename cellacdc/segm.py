@@ -495,6 +495,7 @@ class segmWin(QMainWindow):
         )
         win = out.get('win')
         if win.cancel:
+            self.modelExecution.cancel_preparation()
             self.processStopped()
             return
         
@@ -1276,6 +1277,7 @@ class segmWin(QMainWindow):
             python_exec=self.modelExecution.env_python,
         )
         if not proceed:
+            self.modelExecution.cancel_preparation()
             self.logger.info('Segmentation process cancelled.')
             return None
         model = self.modelExecution.init_model(

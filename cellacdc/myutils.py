@@ -3541,12 +3541,6 @@ def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, pyt
         else:
             handler = prompts.QtHandler(qparent)
         platform = platform or sys.platform
-        if found_cuda_version is None:
-            found_cuda_version = get_driver_cuda_version()
-        if possible_links is None:
-            possible_links = get_torch_options_safe(
-                driver_cuda_version=found_cuda_version
-            )
         if not ensure_torch(python_exec, prompt_func=handler.ask,
                             platform=platform, 
                             found_cuda_version=found_cuda_version,
@@ -3892,6 +3886,32 @@ def _normalize_pkg_specs(
     return specs
 
 
+def _check_package_version_constraints(spec: dict, installed_version: str):
+    """Apply the version bounds used for external environment checks."""
+    if not installed_version:
+        return
+    installed = packaging_version.parse(installed_version)
+    if spec['exact_version']:
+        if installed != packaging_version.parse(spec['exact_version']):
+            raise ModuleNotFoundError(
+                f"{spec['pkg_name']}: expected {spec['exact_version']}, "
+                f"found {installed_version}"
+            )
+    for key, inclusive_key, lower in (
+        ('min_version', 'include_lower_version', True),
+        ('max_version', 'include_higher_version', False),
+    ):
+        if not spec[key]:
+            continue
+        bound = packaging_version.parse(spec[key])
+        outside = installed < bound if lower else installed > bound
+        if outside or (installed == bound and not spec[inclusive_key]):
+            raise ModuleNotFoundError(
+                f"{spec['pkg_name']}: {key} {spec[key]} not satisfied "
+                f"(found {installed_version})"
+            )
+
+
 def _check_single_package(spec: dict, force_upgrade: bool, python_exec):
     """Check one package.
 
@@ -3935,29 +3955,7 @@ def _check_single_package(spec: dict, force_upgrade: bool, python_exec):
                 raise ModuleNotFoundError(
                     f'User requested to forcefully upgrade "{pkg_name}"'
                 )
-            if exact_version and installed_version:
-                if (packaging_version.parse(installed_version)
-                        != packaging_version.parse(exact_version)):
-                    raise ModuleNotFoundError(
-                        f'{pkg_name} exact version {exact_version} not '
-                        f'installed: found {installed_version}'
-                    )
-            if min_version and installed_version:
-                installed = packaging_version.parse(installed_version)
-                minimum = packaging_version.parse(min_version)
-                if installed < minimum or (installed == minimum and not include_lower_version):
-                    raise ModuleNotFoundError(
-                        f'{pkg_name} version < {min_version} '
-                        f'(found {installed_version})'
-                    )
-            if max_version and installed_version:
-                installed = packaging_version.parse(installed_version)
-                maximum = packaging_version.parse(max_version)
-                if installed > maximum or (installed == maximum and not include_higher_version):
-                    raise ModuleNotFoundError(
-                        f'{pkg_name} version > {max_version} '
-                        f'(found {installed_version})'
-                    )
+            _check_package_version_constraints(spec, installed_version)
         else:
             import_module(import_pkg_name)
             imported = True
@@ -4112,12 +4110,17 @@ def check_install_package(
         pkg_name, import_pkg_name, pypi_name, defaults
     )
 
+    from cellacdc._model_startup import startup_timer
+
     # 1) Check every package individually
     missing_specs = []
     for spec in specs:
-        satisfied, needs_upgrade = _check_single_package(
-            spec, force_upgrade, python_exec
-        )
+        with startup_timer(
+            f"dependency check: {spec['import_pkg_name']}", logger_func
+        ):
+            satisfied, needs_upgrade = _check_single_package(
+                spec, force_upgrade, python_exec
+            )
         if satisfied:
             continue
         missing_specs.append(spec)
