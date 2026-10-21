@@ -4741,6 +4741,12 @@ class SpinBox(QSpinBox):
         self._start_value = int(value)
         self._updateDisplayCorrection()
     
+    def getStartValue(self):
+        if self._start_value is None:
+            return self.minimum()
+        
+        return self._start_value
+    
     def startValue(self):
         return self._start_value
 
