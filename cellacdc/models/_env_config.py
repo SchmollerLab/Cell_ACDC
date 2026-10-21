@@ -65,7 +65,7 @@ MODEL_ENVS = {
     },
     'cellpose_v3': {
         'torch': True,
-        'python': '3.10',
+        'python': '3.11',
         'main_env_packages': [
             {'pkg_name': 'cellpose', 'min_version': '3.1.1.2',
              'max_version': '4.0', 'include_lower_version': True},
