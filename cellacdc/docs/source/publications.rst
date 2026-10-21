@@ -24,6 +24,8 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
 .. raw:: html
 
     <ol>
+      <li>Vandal, E. S., et al. <i>The role of cell growth rate on accumulation of the mitotic cyclin Cdc13 in fission yeast</i>. <b>Journal of Cell Biology</b> (2026) DOI: <a href="https://doi.org/10.1083/jcb.202605069">10.1083/jcb.202605069</a>.</li><br>
+
       <li> Adhikaryr, S., et al. <i>Rad53/Chk2 couples mitochondrial outputs and ROS with G2/M cell cycle progression</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.10.14.759190">10.64898/2026.10.14.759190</a>.</li><br>
 
       <li>Athar, F., et al. <i>Glucose enrichment accelerates C. elegans reproductive aging via non-autonomous DAF-2/insulin-like receptor signaling in somatic tissues</i>. <b>Communications Biology</b> (2026) DOI: <a href="https://doi.org/10.1038/s42003-026-10564-7">10.1038/s42003-026-10564-7</a>.</li><br>
@@ -47,8 +49,6 @@ In the following publications, authors used Cell-ACDC to analyse microscopy data
       <li>Serna, S. E., et al. <i>ABA-AA: A simple, reversible, and non-toxic anchor-away system for effective nuclear protein depletion</i>. <b>Cell Reports Methods</b> (2026) DOI: <a href="https://doi.org/10.1016/j.crmeth.2026.101517">10.1016/j.crmeth.2026.101517</a>.</li><br>
 
       <li>Moukham, H., et al. <i>SNF1/AMPK controls its own localization by phosphorylating its activating kinase Sak1</i>. <b>iScience</b> (2026) DOI: <a href="https://doi.org/10.1016/j.isci.2026.116357">10.1016/j.isci.2026.116357</a>.</li><br>
-
-      <li>Vandal, E. S., et al. <i>The role of cell growth rate on accumulation of the mitotic cyclin Cdc13 in fission yeast</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.05.14.724355">10.64898/2026.05.14.724355</a>.</li><br>
 
       <li>Kim, J., et al. <i>A Fkh1/2 binding site array in the WHI5 promoter drives sub-scaling transcription</i>. <b>Cell Reports</b> (2026) DOI: <a href="https://doi.org/10.1016/j.celrep.2026.117304">10.1016/j.celrep.2026.117304</a>.</li><br>
 
