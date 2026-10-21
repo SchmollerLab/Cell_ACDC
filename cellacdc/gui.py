@@ -28198,9 +28198,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.zSliceOverlay_SB.setDisabled(True)
             else:
                 z = self.zSliceOverlay_SB.sliderPosition()
-                start_value = self.zSliceSpinbox._start_value
-                if start_value is None:
-                    start_value = self.zSliceSpinbox.minimum()
+                start_value = self.zSliceSpinbox.getStartValue()
                 correction = start_value - self.zSliceSpinbox.minimum()
                 self.overlay_z_label.setText(
                     f'Overlay z-slice {z+start_value:02}'
@@ -28365,7 +28363,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         self.updateOverlayZslice
                     )
             if zProjHow == 'single z-slice':
-                start_value =  self.zSliceSpinbox._start_value
+                start_value =  self.zSliceSpinbox.getStartValue()
+                if start_value is None:
+                    start_value = self.zSliceSpinbox.minimum()
                 correction = start_value - self.zSliceSpinbox.minimum()
                 self.overlay_z_label.setText(
                     f'Overlay z-slice {z-correction:02}'
