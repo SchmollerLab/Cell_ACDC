@@ -554,6 +554,10 @@ If the worker cannot continue, raise a clear exception in the model code:
   error with the command, the Python executable and the last lines of the
   worker output. On timeout, it also checks whether the worker module can be
   imported at all.
+* Qt background tasks re-raise errors in the GUI thread. Model-launching GUI
+  entry points must use ``exception_handler`` so initialization failures are
+  logged and displayed in the standard error dialog rather than escaping a Qt
+  callback and potentially terminating the application.
 * Missing packages in server mode raise a ``ModuleNotFoundError`` that points
   to ``_env_config.py``. Fix the configuration instead of installing the
   package from the model code.

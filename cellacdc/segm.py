@@ -312,6 +312,7 @@ class segmWin(QMainWindow):
         )
         return msg.cancel, msg.clickedButton == yesButton, False
     
+    @exception_handler
     def main(self):
         selectFoldersWin = apps.SelectFoldersToAnalyse(
             parent=self, 

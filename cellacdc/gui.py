@@ -9347,6 +9347,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.logger.info('No parent_ID_tree column found in the current frame.')
             return
 
+        # check that the clicked cell is a new ID
+        if ID not in posData.new_IDs:
+            self.logger.info('Clicked cell is not a new ID.')
+            return
+
         filtered_IDs = self.getDistanceListMissingIDs(point, ID)
         if len(filtered_IDs) == 0:
             self.logger.info('No mother candidates found.')
@@ -9366,6 +9371,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             new_mother = filtered_IDs[i]
 
         acdc_df_frame.at[ID, 'parent_ID_tree'] = new_mother # update mother in the df, no need to propagate or stuff lile this
+        
+        acdc_df_frame_prev = posData.allData_li[posData.frame_i - 1]['acdc_df']
+        acdc_df_frame.at[ID, 'generation_num_tree'] = (
+            acdc_df_frame_prev.loc[new_mother]['generation_num_tree'] + 1
+            ) # update generation number in the df
         # dont need to update alldata_li as acdc_df_frame is just a view
         self.drawAllLineageTreeLines()
         self.setAllTextAnnotations()
@@ -9391,9 +9401,15 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if point is None:
             return
+        
+        if ID not in posData.new_IDs:
+            self.logger.info('Clicked cell is not a new ID.')
+            return
+            
         posData = self.data[self.pos_i]
         acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
         acdc_df_frame.at[ID, 'parent_ID_tree'] = -1
+        acdc_df_frame.at[ID, 'generation_num_tree'] = 1
         self.drawAllLineageTreeLines()
         self.setAllTextAnnotations()
 
@@ -20129,6 +20145,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         return posData.img_data[posData.frame_i]
 
+    @exception_handler
     def autoAssignBud_YeastMate(self):
         if not self.is_win:
             txt = (
