@@ -1712,7 +1712,8 @@ class filePathControl(QFrame):
             fileManagerTitle='Select file', 
             validExtensions=None, 
             startFolder='', 
-            elide=False
+            elide=False,
+            add_browse_recent=False
         ):
         super().__init__(parent)
 
@@ -1729,12 +1730,53 @@ class filePathControl(QFrame):
 
         layout.addWidget(self.le)
         layout.addWidget(self.browseButton)
+
+        if add_browse_recent and browseFolder:
+            recentPathsButton = PushButton()
+            recentPathsButton.setIcon(QIcon(':open_file.svg'))
+            recentPathsButton.setToolTip(
+                'Select one existing folder from recent paths.'
+            )
+            layout.addWidget(recentPathsButton)
+            self.recentPathsButton = recentPathsButton
+            self.recentPathsButton.clicked.connect(self.browseRecentPaths)
+
         self.setLayout(layout)
 
         self.le.editingFinished.connect(self.setTextTooltip)
         self.browseButton.sigPathSelected.connect(self.setText)
     
         self.setFrameStyle(QFrame.Shape.StyledPanel)
+
+    def browseRecentPaths(self):
+        recent_paths, dates = myutils.get_recent_paths(self)
+        if not recent_paths:
+            return
+        
+        try:
+            self.recentPathsDialog.cancel = True
+            self.recentPathsDialog.close()
+        except Exception as err:
+            pass
+
+        self.recentPathsDialog = apps.SearchableListboxDialog(
+            recent_paths,
+            title='Select recent paths',
+            searchLineEditText='Search recent paths...',
+            parent=self,
+            multiSelection=False,
+            dates=dates,
+        )
+        self.recentPathsDialog.sigOk.connect(
+            self.setFromRecentPath
+        )
+        self.recentPathsDialog.hide()
+        self.recentPathsDialog.show()
+        self.recentPathsDialog.raise_()
+        self.recentPathsDialog.activateWindow()
+    
+    def setFromRecentPath(self, recent_path: os.PathLike):
+        self.setText(recent_path)
 
     def setText(self, text):
         self.le.setText(text)

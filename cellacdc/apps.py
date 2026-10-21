@@ -21632,7 +21632,9 @@ as a single file containing multiple positions. If fields of view were acquired 
         )
 
         row += 1
-        self.sourceFolderPathControl = widgets.FolderPathControl()
+        self.sourceFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
 
         noteText = ("""
 Microscopy files are those files that are typically generated 
@@ -21664,7 +21666,9 @@ Please make sure this folder contains <b>only microscopy files</b> and no other 
         )
 
         row += 1
-        self.dstFolderPathControl = widgets.FolderPathControl()
+        self.dstFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
 
         data_structure_url_href = html_utils.href_tag(
             'documentation page', urls.data_structure_docs_url)
