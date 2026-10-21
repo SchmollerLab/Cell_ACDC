@@ -6239,17 +6239,20 @@ def find_distances_ID(rps, point=None, ID=None, relevant_IDs=None):
 
     Parameters
     ----------
-    rps : list
-        List of regionprops objects.
+    rps : acdcRegionprops
+        Regionprops collection.
     point : tuple, optional
-        The coordinates of the point. Defaults to None.
+        Point coordinates in (x, y) or (x, y, z) order. Defaults to None.
     ID : int, optional
         The label ID of the regionprops object. Defaults to None.
+    relevant_IDs : collection of int, optional
+        Restrict the distance calculation to these labels.
 
     Returns
     -------
     numpy.ndarray
-        A matrix of distances between the point and the centroids.
+        A (1, N) matrix of distances in regionprops iteration order, filtered
+        by relevant_IDs if provided.
 
     Raises
     ------
@@ -6262,23 +6265,25 @@ def find_distances_ID(rps, point=None, ID=None, relevant_IDs=None):
     """
 
     if ID is not None and point is None:
-        try:
-            point = rps.get_centroid(ID)
-        except IndexError:
+        if ID not in rps.IDs:
             raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
+        point = rps.get_centroid(ID)
 
     elif ID is None and point is None:
         raise ValueError('Either ID or point must be provided.')
 
     elif ID is not None and point is not None:
         raise ValueError('Only one of ID or point must be provided.')
-    
-    point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
+    else:
+        point = point[::-1]
+
     point = np.array([point])
     if relevant_IDs is not None:
         centroids = np.array([rps.get_centroid(obj.label) for obj in rps if obj.label in relevant_IDs])
     else:
         centroids = np.array([rps.get_centroid(obj.label) for obj in rps]) # here RPS is a list and not a regionprops object
+    if len(centroids) == 0:
+        return np.empty((1, 0))
     diff = point[:, np.newaxis] - centroids
     dist_matrix = np.linalg.norm(diff, axis=2)
     return dist_matrix
@@ -6288,20 +6293,22 @@ def sort_IDs_dist(rps, point=None, ID=None, relevant_IDs=None):
 
     Parameters
     ----------
-    rps : list
-        A list of regionprops objects representing cells.
+    rps : acdcRegionprops
+        Regionprops collection representing cells.
     point : tuple, optional
-        The coordinates of the point to calculate distances from. 
+        Point coordinates in (x, y) or (x, y, z) order.
         If not provided, it will be calculated based on the given ID.
     ID : int, optional
         The ID of the regionprops object to calculate distances from. 
         If this and point are both provided, or neither, an error will be 
         raised.
+    relevant_IDs : collection of int, optional
+        Restrict the returned IDs to these labels.
 
     Returns
     -------
     list
-        A sorted list of IDs based on their distances to the given point.
+        IDs sorted nearest first, with equal distances ordered by ID.
 
     Raises
     ------
@@ -6313,28 +6320,13 @@ def sort_IDs_dist(rps, point=None, ID=None, relevant_IDs=None):
         If both ID and point are provided.
 
     """
-    if ID is not None and point is None:
-        try:
-            point = rps.get_centroid(ID)
-        except IndexError:
-            raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
-
-    elif ID is None and point is None:
-        raise ValueError('Either ID or point must be provided.')
-
-    elif ID is not None and point is not None:
-        raise ValueError('Only one of ID or point must be provided.')
-    
-
-    IDs = rps.IDs
-    if relevant_IDs is not None:
-        IDs = [ID for ID in IDs if ID in relevant_IDs]
-    if len(IDs) == 0:
-        return []
-    elif len(IDs) == 1:
-        return IDs
-    dist_matrix = find_distances_ID(rps, point=point, relevant_IDs=relevant_IDs)        
-    dist_matrix = np.squeeze(dist_matrix)
+    IDs = [
+        obj.label for obj in rps
+        if relevant_IDs is None or obj.label in relevant_IDs
+    ]
+    dist_matrix = find_distances_ID(
+        rps, point=point, ID=ID, relevant_IDs=relevant_IDs
+    ).ravel()
 
     sorted_ids = sorted(zip(dist_matrix, IDs))
     sorted_ids = [ID for _, ID in sorted_ids]
