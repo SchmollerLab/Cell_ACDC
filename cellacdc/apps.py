@@ -20576,6 +20576,7 @@ class QTreeDialog(QBaseDialog):
             title='Select item',
             path_to_browse=None,
             additional_buttons=None,
+            cancelButtonText=None,
         ):
         self.cancel = True
         super().__init__(parent)
@@ -20604,6 +20605,16 @@ class QTreeDialog(QBaseDialog):
         # self.treeWidget.header().setStretchLastSection(False)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
+        if cancelButtonText is not None:
+            buttonsLayout.cancelButton.setText(cancelButtonText)
+        buttonsLayout.okButton.setEnabled(
+            self.treeWidget.currentItem() is not None
+        )
+        self.treeWidget.currentItemChanged.connect(
+            lambda current, previous: buttonsLayout.okButton.setEnabled(
+                current is not None
+            )
+        )
         
         if path_to_browse is not None:
             browseButton = widgets.showInFileManagerButton(

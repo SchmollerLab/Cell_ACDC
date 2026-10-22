@@ -23,13 +23,20 @@ the main GUI (`gui.guiWin`) through the mixins in:
 - `gui_overlay`: overlay of other channels and of other segmentation files.
 
 Run it with `python -m cellacdc.signals_viewer [folder_path]`.
+
+At startup, load a saved configuration or skip to start normally. The File
+menu can load, save or save a copy of a configuration; closing the window
+also offers to save. Configurations are JSON files in the settings folder
+and retain Images folders, image/overlay channels, segmentation, and both
+plot modes' selections (including X/Y order and signal normalization).
 """
 import os
 import sys
 import copy
+import json
 import logging
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from types import SimpleNamespace
 
@@ -38,7 +45,9 @@ import pandas as pd
 
 import skimage.measure
 
-from qtpy.QtCore import Qt, Signal, QTimer, QPoint, QEvent, QRect
+from qtpy.QtCore import (
+    Qt, Signal, QTimer, QPoint, QEvent, QRect, QSaveFile, QIODevice
+)
 from qtpy.QtGui import QFont, QIcon, QGuiApplication, QPixmap, QPainter
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QHBoxLayout,
@@ -51,7 +60,9 @@ from qtpy.QtWidgets import (
 import pyqtgraph as pg
 
 from . import widgets, core, load, myutils, colors, transformation
-from . import graphLayoutBkgrColor, darkBkgrColor, settings_csv_path
+from . import (
+    graphLayoutBkgrColor, darkBkgrColor, settings_csv_path, settings_folderpath
+)
 from . import cca_df_colnames, base_cca_dict
 from . import regionprops as acdc_regionprops
 from . import gui_navigation, gui_annotations, gui_viewer_tools, gui_overlay
@@ -301,6 +312,9 @@ class SignalsViewerWin(
     sigClosed = Signal(object)
     # The bottom layout is different from guiWin's --> separate setting
     bottomLayoutHeightSettingKey = 'signals_viewer_bottomLayoutHeight'
+    configurationsPath = os.path.join(
+        settings_folderpath, 'signals_viewer_configurations'
+    )
 
     def __init__(
             self, data=None, pos_i=0, frame_i=None, ID=None, isSegm3D=None,
@@ -320,6 +334,8 @@ class SignalsViewerWin(
         self._labKey = None
         self.isDataLoaded = False
         self.user_ch_name = None
+        self.configurationFilepath = None
+        self._startupConfigurationPrompted = False
         self.rescaleIntensChannelHowMapper = {}
         self.logger = logging.getLogger('cellacdc-signals-viewer')
         self.loadSettings()
@@ -349,6 +365,264 @@ class SignalsViewerWin(
         self.postInitLoadSetSettings()
         
         self.setData(data, pos_i=pos_i, frame_i=frame_i, ID=ID)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._startupConfigurationPrompted:
+            self._startupConfigurationPrompted = True
+            QTimer.singleShot(0, self.loadConfiguration)
+
+    def selectConfigurationFilepath(self):
+        from .apps import QTreeDialog
+
+        paths = {}
+        if os.path.isdir(self.configurationsPath):
+            for filename in sorted(os.listdir(self.configurationsPath)):
+                filepath = os.path.join(self.configurationsPath, filename)
+                if filename.lower().endswith('.json') and os.path.isfile(filepath):
+                    paths[filename] = filepath
+
+        def browse():
+            return QFileDialog.getOpenFileName(
+                self, 'Load signals viewer configuration',
+                self.configurationsPath, 'JSON (*.json)'
+            )[0]
+
+        browseButton =  widgets.browseFileButton('Browse configuration...', self)
+        skipButton = widgets.SkipPushButton('Skip/New configuration', self)
+        dialog = QTreeDialog(
+            [
+                (name, datetime.fromtimestamp(os.path.getmtime(path)).strftime(
+                    '%Y/%m/%d %H:%M'
+                ))
+                for name, path in paths.items()
+            ],
+            headerLabels=['Name', 'Date Modified'],
+            title='Load signals viewer configuration',
+            infoText='Select a configuration to load, or skip loading:',
+            parent=self,
+            path_to_browse=self.configurationsPath if paths else None,
+            additional_buttons=(browseButton,skipButton),
+        )
+        dialog.treeWidget.setCurrentItem(dialog.treeWidget.topLevelItem(0))
+        browsed = []
+
+        def browseSelected():
+            filepath = browse()
+            if filepath:
+                browsed.append(filepath)
+                dialog.close()
+
+        browseButton.clicked.connect(browseSelected)
+        skipButton.clicked.connect(lambda: setattr(dialog, 'cancel', True) or dialog.close())
+        dialog.exec_()
+        if browsed:
+            return browsed[0]
+        if dialog.cancel:
+            return None
+        return paths[dialog.selectedText]
+
+    def configuration(self):
+        posData = self.posData()
+        segm_filename = os.path.splitext(
+            os.path.basename(posData.segm_npz_path)
+        )[0]
+        segm_endname = segm_filename[len(posData.basename):].lstrip('_')
+        overlay_channels = (
+            sorted(self.checkedOverlayChannels)
+            if self.overlayButton.isChecked() else []
+        )
+        visible_channels = [
+            channel for channel, button in self.allOverlayToolbuttons.items()
+            if button.isChecked()
+            and (channel == self.user_ch_name or channel in overlay_channels)
+        ]
+        return {
+            'version': 1,
+            'images_paths': [
+                os.path.abspath(pos.images_path) for pos in self.data
+            ],
+            'channel': self.user_ch_name,
+            'segm_endname': segm_endname,
+            'overlay_channels': overlay_channels,
+            'visible_channels': visible_channels,
+            'signals_mode': self.signalsModeCombobox.currentIndex(),
+            'time_course_columns': (
+                self.checkedColumns() if self._signalsMode == 0
+                else sorted(self._timeCourseColumns)
+            ),
+            'signals_axes': self.signalsAxes.copy(),
+            'normalize_signals': self.normalizeCheckbox.isChecked(),
+        }
+
+    @staticmethod
+    def validateConfiguration(configuration):
+        if not isinstance(configuration, dict) or configuration.get('version') != 1:
+            raise ValueError('Unsupported signals viewer configuration.')
+        for key in (
+                'images_paths', 'overlay_channels', 'visible_channels',
+                'time_course_columns'):
+            value = configuration.get(key)
+            if not isinstance(value, list) or any(
+                    not isinstance(item, str) or not item for item in value):
+                raise ValueError(f'Invalid configuration field: {key}.')
+        if not configuration['images_paths']:
+            raise ValueError('The configuration contains no Images folders.')
+        for key in ('channel', 'segm_endname'):
+            if not isinstance(configuration.get(key), str) or not configuration[key]:
+                raise ValueError(f'Invalid configuration field: {key}.')
+        axes = configuration.get('signals_axes')
+        if (not isinstance(axes, dict) or set(axes) != {'X', 'Y'}
+                or any(not isinstance(value, str) for value in axes.values())
+                or (axes['X'] and axes['X'] == axes['Y'])):
+            raise ValueError('Invalid comparison axes in configuration.')
+        if (type(configuration.get('signals_mode')) is not int
+                or configuration['signals_mode'] not in (0, 1)
+                or type(configuration.get('normalize_signals')) is not bool):
+            raise ValueError('Invalid plotting options in configuration.')
+        available = {
+            configuration['channel'], *configuration['overlay_channels']
+        }
+        if (not configuration['visible_channels']
+                or not set(configuration['visible_channels']) <= available):
+            raise ValueError('Invalid visible image channels in configuration.')
+
+    def configurationError(self, operation, error):
+        self.logger.error('Could not %s configuration: %s', operation, error)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Configuration failed',
+            f'Could not {operation} configuration:\n\n{error}'
+        )
+
+    def saveConfiguration(self, checked=False, save_as=False):
+        if not self.isDataLoaded:
+            self.configurationError('save', 'Load image data before saving.')
+            return False
+        filepath = self.configurationFilepath
+        if save_as or filepath is None:
+            try:
+                os.makedirs(self.configurationsPath, exist_ok=True)
+            except OSError as err:
+                self.configurationError('save', err)
+                return False
+            filepath, _ = QFileDialog.getSaveFileName(
+                self, 'Save signals viewer configuration as',
+                filepath or os.path.join(
+                    self.configurationsPath, 'signals_viewer_configuration.json'
+                ),
+                'JSON (*.json)'
+            )
+            if not filepath:
+                return False
+            if not filepath.lower().endswith('.json'):
+                filepath += '.json'
+                if os.path.exists(filepath):
+                    msg = widgets.myMessageBox(wrapText=False)
+                    no, yes = msg.question(
+                        self, 'Overwrite configuration?',
+                        f'The file "{filepath}" already exists. Overwrite it?',
+                        buttonsTexts=('Cancel', 'Overwrite')
+                    )
+                    if msg.clickedButton != yes:
+                        return False
+        try:
+            configuration = self.configuration()
+            self.validateConfiguration(configuration)
+            payload = json.dumps(configuration, indent=2).encode('utf-8')
+            output = QSaveFile(filepath)
+            if not output.open(QIODevice.WriteOnly):
+                raise OSError(output.errorString())
+            if output.write(payload) != len(payload):
+                output.cancelWriting()
+                raise OSError(output.errorString())
+            if not output.commit():
+                raise OSError(output.errorString())
+        except (OSError, ValueError, TypeError, AttributeError) as err:
+            self.configurationError('save', err)
+            return False
+        self.configurationFilepath = filepath
+        self.statusBar().showMessage(f'Configuration saved to "{filepath}".', 5000)
+        return True
+
+    def saveConfigurationAs(self, checked=False):
+        return self.saveConfiguration(save_as=True)
+
+    def loadConfiguration(self, checked=False, filepath=None):
+        if filepath is None:
+            filepath = self.selectConfigurationFilepath()
+        if not filepath:
+            return False
+        try:
+            with open(filepath, encoding='utf-8') as file:
+                configuration = json.load(file)
+            self.validateConfiguration(configuration)
+            for path in configuration['images_paths']:
+                if not os.path.isdir(path):
+                    raise FileNotFoundError(f'Images folder not found: "{path}".')
+                channels, segmentations = get_channels_and_segm_endnames(path)
+                required = {
+                    configuration['channel'], *configuration['overlay_channels']
+                }
+                missing = required.difference(channels)
+                if missing:
+                    raise ValueError(f'Missing channels in "{path}": {sorted(missing)}.')
+                if configuration['segm_endname'] not in segmentations:
+                    raise ValueError(f'Segmentation not found in "{path}".')
+            self.setCursor(Qt.WaitCursor)
+            try:
+                data = [
+                    load_position(
+                        path, configuration['channel'],
+                        configuration['segm_endname']
+                    )
+                    for path in configuration['images_paths']
+                ]
+            finally:
+                self.unsetCursor()
+        except (OSError, ValueError, TypeError, KeyError) as err:
+            self.configurationError('load', err)
+            return False
+
+        self.isSegm3D = None
+        self.setData(data)
+        self.configurationFilepath = None
+        overlays = configuration['overlay_channels']
+        if overlays:
+            if not self.loadOverlayData(overlays):
+                self.configurationError('load', 'Could not load overlay channels.')
+                return False
+            self.setCheckedOverlayContextMenusActions(overlays)
+            self.overlayButton.setChecked(True)
+        for channel, button in self.allOverlayToolbuttons.items():
+            button.setChecked(channel in configuration['visible_channels'])
+        self.setOverlayItemsOpacities()
+
+        columns = {
+            self.columnsModel.item(i).text()
+            for i in range(self.columnsModel.rowCount())
+        }
+        selected = set(configuration['time_course_columns'])
+        axes = configuration['signals_axes']
+        missing = (selected | set(axes.values())).difference(columns, {''})
+        self.signalsModeCombobox.blockSignals(True)
+        self.signalsModeCombobox.setCurrentIndex(configuration['signals_mode'])
+        self.signalsModeCombobox.blockSignals(False)
+        # Do not replace the restored time-course selection with the old checks.
+        self._signalsMode = 1
+        self._timeCourseColumns = selected & columns
+        self.signalsAxes = {
+            axis: value if value in columns else '' for axis, value in axes.items()
+        }
+        self.signalsModeChanged()
+        self.normalizeCheckbox.setChecked(configuration['normalize_signals'])
+        self.configurationFilepath = filepath
+        if missing:
+            self.configurationError(
+                'restore all plot selections',
+                f'Columns no longer available: {", ".join(sorted(missing))}.'
+            )
+        return True
     
     def postInitLoadSetSettings(self):
         followID = self._get_setting_value('followID', default=True, cast=bool)
@@ -518,6 +792,11 @@ class SignalsViewerWin(
             '(e.g., after saving in the main GUI)'
         )
         self.exitAction = QAction("&Exit", self)
+        self.loadConfigurationAction = QAction('Load configuration...', self)
+        self.saveConfigurationAction = QAction('Save configuration', self)
+        self.saveConfigurationAction.setShortcut('Ctrl+S')
+        self.saveConfigurationAsAction = QAction('Save configuration as...', self)
+        self.saveConfigurationAsAction.setShortcut('Ctrl+Shift+S')
         
         # Annotations actions (same as in the main GUI)
         self.scalingLabelsAction = widgets.CheckableAction(
@@ -693,6 +972,10 @@ class SignalsViewerWin(
         fileMenu.addAction(self.showInExplorerAction)
         fileMenu.addAction(self.reloadAction)
         fileMenu.addSeparator()
+        fileMenu.addAction(self.loadConfigurationAction)
+        fileMenu.addAction(self.saveConfigurationAction)
+        fileMenu.addAction(self.saveConfigurationAsAction)
+        fileMenu.addSeparator()
         fileMenu.addAction(self.exitAction)
         
         editMenu = self.menuBar().addMenu('&Edit')
@@ -855,6 +1138,9 @@ class SignalsViewerWin(
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.reloadAction.triggered.connect(self.reloadButtonClicked)
         self.exitAction.triggered.connect(self.close)
+        self.loadConfigurationAction.triggered.connect(self.loadConfiguration)
+        self.saveConfigurationAction.triggered.connect(self.saveConfiguration)
+        self.saveConfigurationAsAction.triggered.connect(self.saveConfigurationAs)
         
         self.scalingLabelsAction.toggled.connect(self.scalingLabelsToggled)
         self.highLowResAction.toggled.connect(self.highLowResToggled)
@@ -3695,6 +3981,20 @@ class SignalsViewerWin(
             super().keyPressEvent(event)
     
     def closeEvent(self, event):
+        if self.isDataLoaded:
+            msg = widgets.myMessageBox(wrapText=False)
+            cancel, discard, save = msg.question(
+                self, 'Save signals viewer configuration?',
+                'Save the current configuration before closing?',
+                buttonsTexts=('Cancel', 'Do not save', 'Save configuration')
+            )
+            if msg.clickedButton == save:
+                if not self.saveConfiguration():
+                    event.ignore()
+                    return
+            elif msg.clickedButton != discard:
+                event.ignore()
+                return
         if self.isDataLoaded:
             self.saveAnnotationOptions()
         if self.slideshowWin is not None:
