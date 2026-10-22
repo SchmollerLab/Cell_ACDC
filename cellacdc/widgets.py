@@ -854,7 +854,7 @@ class browseFileButton(PushButton):
 
     def __init__(
             self, *args, ext=None, title='Select file', start_dir='', 
-            openFolder=False, **kwargs
+            openFolder=False, get_start_dir_func=None, **kwargs
         ):
         """PushButton with sigPathSelected Signal to select file or folder
 
@@ -875,6 +875,9 @@ class browseFileButton(PushButton):
         openFolder : bool, optional
             If True, allows for selection of folders instead of files. 
             Default is False
+        get_start_dir_func : callable, optional
+            If a callable function without arguments, it will be used to retrieve the directory where the file manager window will initially open. 
+            If the retrieved directory is not valid or not existing, `start_dir` will be used instead.
         """        
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-open.svg'))
@@ -883,6 +886,7 @@ class browseFileButton(PushButton):
         self._title = title
         self._start_dir = start_dir
         self._openFolder = openFolder
+        self._get_start_dir_func = get_start_dir_func
         self._file_types = 'All Files (*)'
         if ext is not None:
             s_li = []
@@ -900,13 +904,24 @@ class browseFileButton(PushButton):
     def setStartPath(self, start_path):
         self._start_dir = start_path
     
+    def getStartPath(self):
+        if self._get_start_dir_func is None:
+            return self._start_dir
+        
+        try:
+            start_dir = str(self._get_start_dir_func())
+            if os.path.exists(start_dir):
+                return start_dir
+        except Exception as err:
+            return self._start_dir
+    
     def browse(self):
         if self._openFolder:
             fileDialog = QFileDialog.getExistingDirectory
-            args = (self, self._title, self._start_dir)
+            args = (self, self._title, self.getStartPath())
         else:
             fileDialog = QFileDialog.getOpenFileName
-            args = (self, self._title, self._start_dir, self._file_types)
+            args = (self, self._title, self.getStartPath(), self._file_types)
         file_path = fileDialog(*args)
         if not isinstance(file_path, str):
             file_path = file_path[0]
@@ -1724,8 +1739,11 @@ class filePathControl(QFrame):
             self.le = ValidLineEdit()
             
         self.browseButton = browseFileButton(
-            openFolder=browseFolder, title=fileManagerTitle, 
-            ext=validExtensions, start_dir=startFolder
+            openFolder=browseFolder, 
+            title=fileManagerTitle, 
+            ext=validExtensions, 
+            start_dir=startFolder,
+            get_start_dir_func=self.le.text
         )
 
         layout.addWidget(self.le)
