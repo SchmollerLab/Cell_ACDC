@@ -11308,7 +11308,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.changeIDfutureFrames(
             endFrame_i, oldIDnewIDMapper, includeUnvisited,
-            shift=shift, merging_IDs=merging_IDs
+            merging_IDs=merging_IDs,
+            is_2d_edit_on_3d=is_2d_edit_on_3d,
+            is_entire_obj=is_entire_obj,
+            is_to_last_z=is_to_last_z,
+            is_to_first_z=is_to_first_z,
+            is_custom_z_range=is_custom_z_range,
+            z_start=z_start,
+            z_end=z_end,
         )
         
         self.annotateAllObjectTracks()
@@ -25486,18 +25493,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             posData.cca_df = cca_df
             
-    def _changeIDhelper(self, lab, oldID, newID, rp, assignments):
+    def _changeIDhelper(
+            self, lab, oldID, newID, rp, assignments,
+            z_start=None,
+            z_end=None,
+        ):
         did_find_newID = False
-        if newID in rp.IDs: # should here also self.editIDmergeIDs?
+        if newID in rp.IDs:
             # Relabel old_ID to tempID, safe as RP is safe so no merging
             objo = rp.get_obj_from_ID(oldID, warn=False)
+            objn = rp.get_obj_from_ID(newID) 
+
             if objo is not None:
                 slc_o = objo.slice
                 mask_o = objo.image
+
+                if z_start is not None:
+                    local_z_o = z_start - objo.bbox[0]
+                    mask_o[:local_z_o] = False
+
+                if z_end is not None:
+                    local_z_o = z_end - objo.bbox[0]
+                    mask_o[local_z_o+1:] = False
+
                 lab[slc_o][mask_o] = newID
                 assignments[oldID] = newID
+            
+            if z_start is not None:
+                local_z_n = z_start - objo.bbox[0]
+                mask_n[:local_z_n] = False
+
+            if z_end is not None:
+                local_z_n = z_end - objo.bbox[0]
+                mask_n[local_z_n+1:] = False
+
             # Relabel new_ID to old_ID
-            objn = rp.get_obj_from_ID(newID) # here warn, we check in the if if it should be there
             objn_slice = objn.slice
             objn_mask = objn.image
             lab[objn_slice][objn_mask] = oldID
@@ -25508,13 +25538,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if obj is not None:
                 slc = obj.slice
                 mask = obj.image
+                if z_start is not None:
+                    local_z = z_start - obj.bbox[0]
+                    mask[:local_z] = False
+
+                if z_end is not None:
+                    local_z = z_end - obj.bbox[0]
+                    mask[local_z+1:] = False
+
                 lab[slc][mask] = newID
                 assignments[oldID] = newID
         return did_find_newID
 
     def changeIDfutureFrames(
             self, endFrame_i, oldIDnewIDMapper, includeUnvisited,
-            shift=False, merging_IDs=False
+            merging_IDs=False,
+            is_2d_edit_on_3d=False,
+            is_entire_obj=True,
+            is_to_last_z=False,
+            is_to_first_z=False,
+            is_custom_z_range=False,
+            z_start=None,
+            z_end=None,
         ):
         posData = self.data[self.pos_i]
         self.current_frame_i = posData.frame_i
@@ -25537,7 +25582,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # Visited frame
                 posData.frame_i = i
                 self.get_data(lin_tree_init=False)
-                if shift and self.isSegm3D:
+                if is_2d_edit_on_3d:
                     lab = self.get_2Dlab(posData.lab)
                     rp = self.rpCurr2D()
                 else:
@@ -25551,19 +25596,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     for old_ID, new_ID in oldIDnewIDMapper:
                         self._changeIDhelper(
-                            lab, old_ID, new_ID, rp, assignments)  
+                            lab, old_ID, new_ID, rp, assignments,
+                            z_start=z_start, z_end=z_end,
+                        )  
 
-                    if shift and self.isSegm3D:
+                    if is_2d_edit_on_3d:
                         self.set_2Dlab(lab)
 
+                    assignments = assignments if not merging_IDs else None
+                    assignments = assignments if is_entire_obj else None
                     self.update_rp(
                         draw=False,
-                        assignments=assignments if not ((shift and self.isSegm3D) or merging_IDs) else None)
+                        assignments=assignments
+                    )
                 self.store_data(autosave=i==endFrame_i)
             elif includeUnvisited:
                 # Unvisited frame (includeUnvisited = True)
                 lab = posData.segm_data[i]
-                if shift and self.isSegm3D:
+                if is_2d_edit_on_3d:
                     lab = self.get_2Dlab(lab)
                     rp = self.rpCurr2D(frame_i=i)
                 else:
@@ -25573,13 +25623,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 assignments = {}
                 for old_ID, new_ID in oldIDnewIDMapper:
                     self._changeIDhelper(
-                        lab, old_ID, new_ID, rp, assignments) 
+                        lab, old_ID, new_ID, rp, assignments,
+                        z_start=z_start, z_end=z_end,
+                    ) 
 
-                if (shift and self.isSegm3D) or merging_IDs:
+                use_assignments = (
+                    is_entire_obj and not merging_IDs
+                )
+
+                if use_assignments:
+                    rp.update_regionprops_via_assignments(assignments, lab)
+                else:
                     posData.segm_data[i][self.z_lab()] = lab
                     rp.update_regionprops(lab)
-                else:
-                    rp.update_regionprops_via_assignments(assignments, lab)
         
         # Back to current frame
         posData.frame_i = self.current_frame_i
