@@ -15153,8 +15153,10 @@ class ShortcutEditorDialog(QBaseDialog):
             parent=None,
             mouseBindings: dict=None,
             hard_shortcuts: dict=None,
-            highlighted_shortcut: str=None
+            highlighted_shortcut: str=None,
+            show_delete_object_shortcut: bool=True
         ):
+        self.show_delete_object_shortcut = show_delete_object_shortcut
         self.cancel = True
         super().__init__(parent)
 
@@ -15202,35 +15204,37 @@ class ShortcutEditorDialog(QBaseDialog):
         max_warn_width = int(doc.idealWidth() + 10)
         
         row = 0
-        name = 'Delete object'
-        button = widgets.PushButton(self, flat=True)
-        button.setIcon(QIcon(":del_obj_click.svg"))
-        self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
-            allowModifiers=True, notAllowedModifier=Qt.AltModifier,
-            allowMouseButtons=True
-        )
-        if delObjectKey is not None:
-            self.delObjShortcutLineEdit.setText(delObjectKey)
-        self.delObjButtonCombobox = QComboBox()
-        self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
-        self.delObjButtonCombobox.setCurrentText(delObjectButton)
-        entriesLayout.addWidget(button, row, 0)
-        entriesLayout.addWidget(QLabel('Delete object:'), row, 1)
-        entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 2)
-        entriesLayout.addWidget(
-            self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
-        )
-        warnConflictLabel = QLabel('')
-        self.delObjShortcutLineEdit.warnConflictLabel = warnConflictLabel
-        entriesLayout.addWidget(warnConflictLabel, row, 4)
-        warnConflictLabel.setMinimumWidth(max_warn_width)
-        self.delObjShortcutLineEdit.name = name
-        self.shortcutLineEdits[name] = self.delObjShortcutLineEdit
-        self.delObjShortcutLineEdit.textChanged.connect(self.shortcutChanged)
-        self.delObjShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
-        self.delObjShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter)
-                
-        row += 1
+        
+        if self.show_delete_object_shortcut:
+            name = 'Delete object'
+            button = widgets.PushButton(self, flat=True)
+            button.setIcon(QIcon(":del_obj_click.svg"))
+            self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
+                allowModifiers=True, notAllowedModifier=Qt.AltModifier,
+                allowMouseButtons=True
+            )
+            if delObjectKey is not None:
+                self.delObjShortcutLineEdit.setText(delObjectKey)
+            self.delObjButtonCombobox = QComboBox()
+            self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
+            self.delObjButtonCombobox.setCurrentText(delObjectButton)
+            entriesLayout.addWidget(button, row, 0)
+            entriesLayout.addWidget(QLabel('Delete object:'), row, 1)
+            entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 2)
+            entriesLayout.addWidget(
+                self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
+            )
+            warnConflictLabel = QLabel('')
+            self.delObjShortcutLineEdit.warnConflictLabel = warnConflictLabel
+            entriesLayout.addWidget(warnConflictLabel, row, 4)
+            warnConflictLabel.setMinimumWidth(max_warn_width)
+            self.delObjShortcutLineEdit.name = name
+            self.shortcutLineEdits[name] = self.delObjShortcutLineEdit
+            self.delObjShortcutLineEdit.textChanged.connect(self.shortcutChanged)
+            self.delObjShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
+            self.delObjShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter) 
+            row += 1
+
         name = 'Zoom out'
         button = widgets.PushButton(self, flat=True)
         label = QLabel('Zoom out:')
@@ -15548,11 +15552,12 @@ class ShortcutEditorDialog(QBaseDialog):
         msg.warning(self, 'Invalid key sequence to delete objects', txt)
     
     def ok_cb(self):
-        delObjButtonText = self.delObjButtonCombobox.currentText()
-        delObjKeySequence = self.delObjShortcutLineEdit.keySequence
-        if delObjButtonText == 'Left click' and delObjKeySequence is None:
-            self.warnInvalidKeySequenceDelObjWithLeftClick()
-            return
+        if self.show_delete_object_shortcut:
+            delObjButtonText = self.delObjButtonCombobox.currentText()
+            delObjKeySequence = self.delObjShortcutLineEdit.keySequence
+            if delObjButtonText == 'Left click' and delObjKeySequence is None:
+                self.warnInvalidKeySequenceDelObjWithLeftClick()
+                return
         
         self.shortcutLineEdits.pop('Zoom out')
         self.shortcutLineEdits.pop('Delete object')
