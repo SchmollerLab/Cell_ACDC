@@ -1,6 +1,13 @@
 """Standalone window to navigate frames, z-slices and cell IDs of Cell-ACDC 
-data while plotting the time-course of `acdc_output` table columns (signals) 
-of the selected cell.
+data while plotting the time-course of `acdc_output` table columns (signals)
+of the selected cell, or two signals against each other for all cells and
+frames of the current position. Hover over a point for measurement details;
+click a point to navigate to its frame and zoom to its cell.
+In comparison mode, check two columns to select X and Y. X/Y markers replace
+the color swatches; comparison and time-course selections are independent.
+Column names are read-only, and the fixed-width selection indicator displays
+the color or axis instead of a separate checkbox tick. Clicking anywhere on a
+column (indicator or name) toggles its selection.
 
 The window loads data on its own (menu `File --> Load Folder...`, 
 `Open Image File...` or `Open Recent`) and it shares only GUI elements with 
@@ -31,14 +38,14 @@ import pandas as pd
 
 import skimage.measure
 
-from qtpy.QtCore import Qt, Signal, QTimer, QPoint
-from qtpy.QtGui import QFont, QIcon, QGuiApplication, QPixmap
+from qtpy.QtCore import Qt, Signal, QTimer, QPoint, QEvent, QRect
+from qtpy.QtGui import QFont, QIcon, QGuiApplication, QPixmap, QPainter
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QHBoxLayout,
     QGroupBox, QSplitter, QListView, QLineEdit,
     QCheckBox, QComboBox, QAbstractItemView, QFileDialog, QAction,
     QApplication, QToolButton, QPushButton, QActionGroup, QAbstractSlider,
-    QWidgetAction, QMenu, QColorDialog
+    QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem
 )
 
 import pyqtgraph as pg
@@ -68,6 +75,63 @@ INDEX_COLUMNS = ('frame_i', 'Cell_ID', 'time_seconds')
 CCA_DF_INT_COLS = [
     col for col in cca_df_colnames if type(base_cca_dict[col]) == int
 ]
+
+class _SignalColumnDelegate(widgets._ButtonSearchHighlightDelegate):
+    indicatorWidth = 28
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        option.features &= ~(
+            QStyleOptionViewItem.HasCheckIndicator
+            | QStyleOptionViewItem.HasDecoration
+        )
+        option.icon = QIcon()
+        option.rect.adjust(self.indicatorWidth, 0, 0, 0)
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        rect = QRect(
+            option.rect.left()+2, option.rect.center().y()-8, 24, 16
+        )
+        icon = index.data(Qt.DecorationRole)
+        painter.save()
+        if icon is not None and not icon.isNull():
+            icon.paint(painter, rect, Qt.AlignCenter)
+        else:
+            painter.setPen(option.palette.mid().color())
+            painter.drawRect(rect.adjusted(4, 2, -4, -2))
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index):
+        if not index.flags() & Qt.ItemIsEnabled:
+            return False
+        if event.type() in (
+                QEvent.MouseButtonPress, QEvent.MouseButtonDblClick,
+                QEvent.MouseButtonRelease):
+            # The whole row (indicator and name) toggles the selection
+            if event.button() != Qt.LeftButton:
+                return False
+            if not option.rect.contains(event.pos()):
+                return False
+            if event.type() != QEvent.MouseButtonRelease:
+                return True
+        elif event.type() == QEvent.KeyPress:
+            if event.key() not in (Qt.Key_Space, Qt.Key_Select):
+                return False
+        else:
+            return False
+        state = (
+            Qt.Unchecked
+            if Qt.CheckState(index.data(Qt.CheckStateRole)) == Qt.Checked
+            else Qt.Checked
+        )
+        return model.setData(index, state, Qt.CheckStateRole)
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        size.setWidth(size.width()+self.indicatorWidth)
+        size.setHeight(max(size.height(), 20))
+        return size
 
 def get_images_paths(folderpath):
     """Get the list of `Images` folders from an experiment, Position or 
@@ -1857,9 +1921,10 @@ class SignalsViewerWin(
 
         self.columnsListWidget = QListView()
         self.columnsListWidget.setModel(self.columnsSearchProxy)
-        self.columnsHighlightDelegate = (
-            widgets._ButtonSearchHighlightDelegate(self.columnsListWidget)
+        self.columnsHighlightDelegate = _SignalColumnDelegate(
+            self.columnsListWidget
         )
+        self.columnsListWidget.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.columnsListWidget.setItemDelegate(
             self.columnsHighlightDelegate
         )
@@ -1870,11 +1935,24 @@ class SignalsViewerWin(
             Qt.ContextMenuPolicy.CustomContextMenu
         )
         self.columnsListWidget.setToolTip(
-            'Check the columns to plot. Right-click on a column to '
-            'plot/unplot it or to change its color.'
+            'Click a column to plot/unplot it. Right-click on a column to '
+            'change its color.'
         )
         # Custom plotting colors set by the user {column: QColor}
         self.signalsColors = {}
+
+        self.signalsModeCombobox = QComboBox()
+        self.signalsModeCombobox.addItems(
+            ['Time course', 'Signal vs signal']
+        )
+        self.signalsModeCombobox.setToolTip(
+            'Time course: selected cell. Signal vs signal: all cells and '
+            'all frames of the current position. Hover for details; click '
+            'a point to zoom to its cell.'
+        )
+        self.signalsAxes = {'X': '', 'Y': ''}
+        self._signalsMode = 0
+        self._timeCourseColumns = set()
         
         self.normalizeCheckbox = QCheckBox('Normalize signals (0-1)')
         self.normalizeCheckbox.setToolTip(
@@ -1887,10 +1965,17 @@ class SignalsViewerWin(
             '(e.g., after saving in the main GUI)'
         )
         
+        timeCourseLayout = QVBoxLayout()
+        timeCourseLayout.setContentsMargins(0, 0, 0, 0)
+        timeCourseLayout.addWidget(QLabel('Columns to plot:'))
+        timeCourseLayout.addWidget(self.columnsSearchLineEdit)
+        timeCourseLayout.addWidget(self.columnsListWidget)
+        self.timeCourseColumnsWidget = QWidget()
+        self.timeCourseColumnsWidget.setLayout(timeCourseLayout)
+
         columnsLayout = QVBoxLayout()
-        columnsLayout.addWidget(QLabel('Columns to plot:'))
-        columnsLayout.addWidget(self.columnsSearchLineEdit)
-        columnsLayout.addWidget(self.columnsListWidget)
+        columnsLayout.addWidget(self.signalsModeCombobox)
+        columnsLayout.addWidget(self.timeCourseColumnsWidget)
         columnsLayout.addWidget(self.normalizeCheckbox)
         columnsLayout.addWidget(self.refreshButton)
         columnsWidget = QWidget()
@@ -2022,11 +2107,14 @@ class SignalsViewerWin(
             self.currentFrameLineMoved
         )
         self.columnsSearchLineEdit.textChanged.connect(self.filterColumns)
-        self.columnsModel.itemChanged.connect(self.plotSignals)
+        self.columnsModel.itemChanged.connect(self.signalColumnChanged)
         self.columnsListWidget.customContextMenuRequested.connect(
             self.showColumnsContextMenu
         )
         self.normalizeCheckbox.toggled.connect(self.plotSignals)
+        self.signalsModeCombobox.currentIndexChanged.connect(
+            self.signalsModeChanged
+        )
         self.refreshButton.clicked.connect(self.reloadButtonClicked)
     
     def posData(self):
@@ -2348,13 +2436,14 @@ class SignalsViewerWin(
         self.columnsModel.clear()
         if self.acdc_df is None:
             self.columnsModel.blockSignals(False)
+            self.updateSignalAxes([])
             return
         
         numericColumns = [
             col for col in self.acdc_df.select_dtypes(include='number').columns
             if col not in INDEX_COLUMNS
         ]
-        if isFirstInit:
+        if isFirstInit and self.signalsModeCombobox.currentIndex() == 0:
             for col in DEFAULT_SIGNALS_COLUMNS:
                 if col in numericColumns:
                     checkedColumns = {col}
@@ -2364,6 +2453,7 @@ class SignalsViewerWin(
         
         for col in numericColumns:
             item = widgets.QStandardItem(col)
+            item.setEditable(False)
             item.setCheckable(True)
             if col in checkedColumns:
                 item.setCheckState(Qt.Checked)
@@ -2374,7 +2464,15 @@ class SignalsViewerWin(
             )
             self.columnsModel.appendRow(item)
         self.columnsModel.blockSignals(False)
+        self.updateSignalAxes(numericColumns)
         self.filterColumns(self.columnsSearchLineEdit.text())
+
+    def updateSignalAxes(self, columns):
+        for axis, col in self.signalsAxes.items():
+            if col not in columns:
+                self.signalsAxes[axis] = ''
+        self._timeCourseColumns.intersection_update(columns)
+        self.updateColumnsIcons()
     
     def checkedColumns(self):
         columns = []
@@ -2859,6 +2957,21 @@ class SignalsViewerWin(
         self.signalsLegend.clear()
         self.updateCurrentFrameLine()
         self.updateColumnsIcons()
+
+        isComparison = self.signalsModeCombobox.currentIndex() == 1
+        self.currentFrameLine.setVisible(not isComparison)
+        if not self.data:
+            self.signalsPlot.setTitle('No data loaded')
+            return
+        if isComparison:
+            self.plotSignalsComparison()
+            return
+
+        self.signalsPlot.setLabel('bottom', 'Frame n.')
+        isNormalized = self.normalizeCheckbox.isChecked()
+        self.signalsPlot.setLabel(
+            'left', 'Normalized value' if isNormalized else 'Value'
+        )
         
         posData = self.posData()
         self.signalsPlot.setXRange(1, max(posData.SizeT, 2), padding=0.02)
@@ -2873,24 +2986,172 @@ class SignalsViewerWin(
         if df_ID is None or not columns:
             return
         
-        isNormalized = self.normalizeCheckbox.isChecked()
-        self.signalsPlot.setLabel(
-            'left', 'Normalized value' if isNormalized else 'Value'
-        )
         frames_n = df_ID.index.get_level_values(0).to_numpy() + 1
         for c, col in enumerate(columns):
             if col not in df_ID.columns:
                 continue
             values = pd.to_numeric(df_ID[col], errors='coerce').to_numpy()
-            values = values.astype(float)
+            rawValues = values.astype(float)
+            values = rawValues
             if isNormalized:
                 values = self._normalize(values)
             color = self.getSignalColor(col, c, len(columns))
-            self.signalsPlot.plot(
+            pointData = [
+                {
+                    'frame_i': int(frame_n-1),
+                    'Cell_ID': self.selectedID,
+                    'values': {col: (raw, value)},
+                    'normalized': isNormalized,
+                }
+                for frame_n, raw, value in zip(frames_n, rawValues, values)
+            ]
+            item = self.signalsPlot.plot(
                 frames_n, values, name=col,
                 pen=pg.mkPen(color=color, width=2),
-                symbol='o', symbolSize=5, symbolBrush=color, symbolPen=None
+                symbol='o', symbolSize=5, symbolBrush=color, symbolPen=None,
+                data=pointData
             )
+            self.connectSignalPoints(item)
+
+    def signalsModeChanged(self, *args):
+        isComparison = self.signalsModeCombobox.currentIndex() == 1
+        if self._signalsMode == 0:
+            self._timeCourseColumns = set(self.checkedColumns())
+        self._signalsMode = self.signalsModeCombobox.currentIndex()
+        columns = (
+            set(self.signalsAxes.values()) if isComparison
+            else self._timeCourseColumns
+        )
+        self.columnsModel.blockSignals(True)
+        for i in range(self.columnsModel.rowCount()):
+            item = self.columnsModel.item(i)
+            item.setCheckState(
+                Qt.Checked if item.text() in columns else Qt.Unchecked
+            )
+        self.columnsModel.blockSignals(False)
+        self.columnsListWidget.setToolTip(
+            'Click two columns to plot: first X, then Y. '
+            'Click a selected column again to free its axis.'
+            if isComparison else
+            'Click a column to plot/unplot it. Right-click on a column to '
+            'change its color.'
+        )
+        self.plotSignals()
+
+    def signalColumnChanged(self, item):
+        if self.signalsModeCombobox.currentIndex() == 1:
+            col = item.text()
+            if item.checkState() != Qt.Checked:
+                for axis, signal in self.signalsAxes.items():
+                    if signal == col:
+                        self.signalsAxes[axis] = ''
+            elif col not in self.signalsAxes.values():
+                axis = next(
+                    (axis for axis, signal in self.signalsAxes.items()
+                     if not signal), None
+                )
+                if axis is None:
+                    self.columnsModel.blockSignals(True)
+                    item.setCheckState(Qt.Unchecked)
+                    self.columnsModel.blockSignals(False)
+                    self.statusBar().showMessage(
+                        'Two signals are already selected. Uncheck X or Y '
+                        'before selecting another signal.', 5000
+                    )
+                else:
+                    self.signalsAxes[axis] = col
+        self.plotSignals()
+
+    def plotSignalsComparison(self):
+        xCol = self.signalsAxes['X']
+        yCol = self.signalsAxes['Y']
+        isNormalized = self.normalizeCheckbox.isChecked()
+        suffix = ' (normalized)' if isNormalized else ''
+        self.signalsPlot.setLabel('bottom', f'{xCol}{suffix}')
+        self.signalsPlot.setLabel('left', f'{yCol}{suffix}')
+        self.signalsPlot.setTitle('All cells, all frames (current position)')
+        self.signalsPlot.enableAutoRange()
+        if self.acdc_df is None:
+            self.signalsPlot.setTitle('No signals available')
+            return
+        if not xCol or not yCol:
+            self.signalsPlot.setTitle('Select X and Y signals from the column list')
+            return
+
+        df = self.acdc_df
+        frames = df.index.get_level_values('frame_i').to_numpy()
+        IDs = df.index.get_level_values('Cell_ID').to_numpy()
+        inRange = (frames >= 0) & (frames < self.posData().SizeT) & (IDs > 0)
+        df = df.loc[inRange]
+        frames, IDs = frames[inRange], IDs[inRange]
+        rawX = pd.to_numeric(df[xCol], errors='coerce').to_numpy(dtype=float)
+        rawY = pd.to_numeric(df[yCol], errors='coerce').to_numpy(dtype=float)
+        finite = np.isfinite(rawX) & np.isfinite(rawY)
+        frames, IDs = frames[finite], IDs[finite]
+        rawX, rawY = rawX[finite], rawY[finite]
+        if not len(rawX):
+            self.signalsPlot.setTitle('No finite paired measurements')
+            return
+        x = self._normalize(rawX) if isNormalized else rawX
+        y = self._normalize(rawY) if isNormalized else rawY
+        pointData = [
+            {
+                'frame_i': int(frame_i),
+                'Cell_ID': int(ID),
+                'values': {xCol: (rx, vx), yCol: (ry, vy)},
+                'normalized': isNormalized,
+            }
+            for frame_i, ID, rx, ry, vx, vy
+            in zip(frames, IDs, rawX, rawY, x, y)
+        ]
+        item = self.signalsPlot.plot(
+            x, y, pen=None, symbol='o', symbolSize=7,
+            symbolBrush=self.getSignalColor(yCol), symbolPen=None,
+            data=pointData
+        )
+        self.connectSignalPoints(item)
+
+    def connectSignalPoints(self, item):
+        # PlotDataItem does not forward hover options to its scatter item.
+        item.scatter.setData(
+            x=item.xData, y=item.yData, data=item.opts['data'],
+            hoverable=True, tip=self.signalPointTip,
+            hoverSize=11, hoverBrush=pg.mkBrush(255, 100, 100)
+        )
+        item.scatter.sigClicked.connect(self.signalPointClicked)
+
+    @staticmethod
+    def signalPointTip(x, y, data):
+        lines = [
+            f'Cell ID: {data["Cell_ID"]}',
+            f'Frame: {data["frame_i"]+1}',
+        ]
+        for col, (raw, value) in data['values'].items():
+            lines.append(f'{col}: {raw:.6g}')
+            if data['normalized']:
+                lines.append(f'{col} (normalized): {value:.6g}')
+        return '\n'.join(lines)
+
+    def signalPointClicked(self, item, points, event):
+        if event.button() != Qt.LeftButton or not len(points):
+            return
+        data = points[0].data()
+        ID, frame_i = data['Cell_ID'], data['frame_i']
+        if ID not in self.IDs or not 0 <= frame_i < self.posData().SizeT:
+            self.statusBar().showMessage(
+                f'Cell ID {ID} at frame {frame_i+1} is not available.', 5000
+            )
+            return
+        # Navigating replots the signals, deleting the clicked scatter item
+        # while pyqtgraph is still dispatching the click to it --> defer
+        QTimer.singleShot(
+            100, partial(self.navigateToSignalPoint, ID, frame_i)
+        )
+
+    def navigateToSignalPoint(self, ID, frame_i):
+        self.idScrollBar.setValue(self.IDs.index(ID))
+        self.setFrame(frame_i)
+        self.zoomToSelectedID(goToZslice=True, force=True)
     
     def getSignalColor(self, col, c=None, numColumns=None):
         """Get the plotting color of column `col`: the custom color if set 
@@ -2908,12 +3169,35 @@ class SignalsViewerWin(
         return pg.intColor(c, hues=max(numColumns, 9))
     
     def updateColumnsIcons(self):
-        """Show a color swatch next to the plotted columns."""
+        """Show color swatches or comparison-axis markers beside columns."""
         columns = self.checkedColumns()
+        isComparison = self.signalsModeCombobox.currentIndex() == 1
         self.columnsModel.blockSignals(True)
         for i in range(self.columnsModel.rowCount()):
             item = self.columnsModel.item(i)
             col = item.text()
+            item.setCheckable(True)
+            if isComparison:
+                axes = '/'.join(
+                    axis for axis, signal in self.signalsAxes.items()
+                    if signal == col
+                )
+                item.setData(axes, Qt.AccessibleDescriptionRole)
+                if not axes:
+                    item.setIcon(QIcon())
+                    continue
+                pixmap = QPixmap(24, 16)
+                pixmap.fill(Qt.transparent)
+                painter = QPainter(pixmap)
+                painter.setPen(self.columnsListWidget.palette().text().color())
+                font = self.columnsListWidget.font()
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(pixmap.rect(), Qt.AlignCenter, axes)
+                painter.end()
+                item.setIcon(QIcon(pixmap))
+                continue
+            item.setData('', Qt.AccessibleDescriptionRole)
             if col not in columns:
                 item.setIcon(QIcon())
                 continue
@@ -2921,6 +3205,8 @@ class SignalsViewerWin(
             pixmap.fill(self.getSignalColor(col))
             item.setIcon(QIcon(pixmap))
         self.columnsModel.blockSignals(False)
+        # Signals were blocked to avoid itemChanged, so repaint explicitly
+        self.columnsListWidget.viewport().update()
     
     def showColumnsContextMenu(self, pos):
         proxy_index = self.columnsListWidget.indexAt(pos)
@@ -2931,7 +3217,7 @@ class SignalsViewerWin(
         
         col = item.text()
         menu = QMenu(self.columnsListWidget)
-        
+
         plotAction = QAction('Plot', menu)
         plotAction.setCheckable(True)
         plotAction.setChecked(item.checkState() == Qt.Checked)
@@ -2941,6 +3227,9 @@ class SignalsViewerWin(
             )
         )
         menu.addAction(plotAction)
+        if self.signalsModeCombobox.currentIndex() == 1:
+            menu.popup(self.columnsListWidget.viewport().mapToGlobal(pos))
+            return
         menu.addSeparator()
         
         changeColorAction = QAction('Change color...', menu)
@@ -2975,10 +3264,16 @@ class SignalsViewerWin(
     
     @staticmethod
     def _normalize(values):
-        _min, _max = np.nanmin(values), np.nanmax(values)
-        if not np.isfinite(_min) or _max == _min:
-            return values - _min
-        return (values - _min) / (_max - _min)
+        finite = np.isfinite(values)
+        normalized = np.full(values.shape, np.nan, dtype=float)
+        if not finite.any():
+            return normalized
+        _min, _max = values[finite].min(), values[finite].max()
+        if _max == _min:
+            normalized[finite] = 0
+        else:
+            normalized[finite] = (values[finite] - _min) / (_max - _min)
+        return normalized
     
     def stepID(self, step):
         if not self.IDs:

@@ -1,0 +1,218 @@
+@@ -2022,11 +2107,14 @@ class SignalsViewerWin(
+             self.currentFrameLineMoved
+         )
+         self.columnsSearchLineEdit.textChanged.connect(self.filterColumns)
+-        self.columnsModel.itemChanged.connect(self.plotSignals)
++        self.columnsModel.itemChanged.connect(self.signalColumnChanged)
+         self.columnsListWidget.customContextMenuRequested.connect(
+             self.showColumnsContextMenu
+         )
+         self.normalizeCheckbox.toggled.connect(self.plotSignals)
++        self.signalsModeCombobox.currentIndexChanged.connect(
++            self.signalsModeChanged
++        )
+         self.refreshButton.clicked.connect(self.reloadButtonClicked)
+     
+     def posData(self):
+@@ -2859,6 +2957,21 @@ class SignalsViewerWin(
+         self.signalsLegend.clear()
+         self.updateCurrentFrameLine()
+         self.updateColumnsIcons()
++
++        isComparison = self.signalsModeCombobox.currentIndex() == 1
++        self.currentFrameLine.setVisible(not isComparison)
++        if not self.data:
++            self.signalsPlot.setTitle('No data loaded')
++            return
++        if isComparison:
++            self.plotSignalsComparison()
++            return
++
++        self.signalsPlot.setLabel('bottom', 'Frame n.')
++        isNormalized = self.normalizeCheckbox.isChecked()
++        self.signalsPlot.setLabel(
++            'left', 'Normalized value' if isNormalized else 'Value'
++        )
+         
+         posData = self.posData()
+         self.signalsPlot.setXRange(1, max(posData.SizeT, 2), padding=0.02)
+@@ -2873,24 +2986,172 @@ class SignalsViewerWin(
+         if df_ID is None or not columns:
+             return
+         
+-        isNormalized = self.normalizeCheckbox.isChecked()
+-        self.signalsPlot.setLabel(
+-            'left', 'Normalized value' if isNormalized else 'Value'
+-        )
+         frames_n = df_ID.index.get_level_values(0).to_numpy() + 1
+         for c, col in enumerate(columns):
+             if col not in df_ID.columns:
+                 continue
+             values = pd.to_numeric(df_ID[col], errors='coerce').to_numpy()
+-            values = values.astype(float)
++            rawValues = values.astype(float)
++            values = rawValues
+             if isNormalized:
+                 values = self._normalize(values)
+             color = self.getSignalColor(col, c, len(columns))
+-            self.signalsPlot.plot(
++            pointData = [
++                {
++                    'frame_i': int(frame_n-1),
++                    'Cell_ID': self.selectedID,
++                    'values': {col: (raw, value)},
++                    'normalized': isNormalized,
++                }
++                for frame_n, raw, value in zip(frames_n, rawValues, values)
++            ]
++            item = self.signalsPlot.plot(
+                 frames_n, values, name=col,
+                 pen=pg.mkPen(color=color, width=2),
+-                symbol='o', symbolSize=5, symbolBrush=color, symbolPen=None
++                symbol='o', symbolSize=5, symbolBrush=color, symbolPen=None,
++                data=pointData
+             )
++            self.connectSignalPoints(item)
++
++    def signalsModeChanged(self, *args):
++        isComparison = self.signalsModeCombobox.currentIndex() == 1
++        if self._signalsMode == 0:
++            self._timeCourseColumns = set(self.checkedColumns())
++        self._signalsMode = self.signalsModeCombobox.currentIndex()
++        columns = (
++            set(self.signalsAxes.values()) if isComparison
++            else self._timeCourseColumns
++        )
++        self.columnsModel.blockSignals(True)
++        for i in range(self.columnsModel.rowCount()):
++            item = self.columnsModel.item(i)
++            item.setCheckState(
++                Qt.Checked if item.text() in columns else Qt.Unchecked
++            )
++        self.columnsModel.blockSignals(False)
++        self.columnsListWidget.setToolTip(
++            'Click two columns to plot: first X, then Y. '
++            'Click a selected column again to free its axis.'
++            if isComparison else
++            'Click a column to plot/unplot it. Right-click on a column to '
++            'change its color.'
++        )
++        self.plotSignals()
++
++    def signalColumnChanged(self, item):
++        if self.signalsModeCombobox.currentIndex() == 1:
++            col = item.text()
++            if item.checkState() != Qt.Checked:
++                for axis, signal in self.signalsAxes.items():
++                    if signal == col:
++                        self.signalsAxes[axis] = ''
++            elif col not in self.signalsAxes.values():
++                axis = next(
++                    (axis for axis, signal in self.signalsAxes.items()
++                     if not signal), None
++                )
++                if axis is None:
++                    self.columnsModel.blockSignals(True)
++                    item.setCheckState(Qt.Unchecked)
++                    self.columnsModel.blockSignals(False)
++                    self.statusBar().showMessage(
++                        'Two signals are already selected. Uncheck X or Y '
++                        'before selecting another signal.', 5000
++                    )
++                else:
++                    self.signalsAxes[axis] = col
++        self.plotSignals()
++
++    def plotSignalsComparison(self):
++        xCol = self.signalsAxes['X']
++        yCol = self.signalsAxes['Y']
++        isNormalized = self.normalizeCheckbox.isChecked()
++        suffix = ' (normalized)' if isNormalized else ''
++        self.signalsPlot.setLabel('bottom', f'{xCol}{suffix}')
++        self.signalsPlot.setLabel('left', f'{yCol}{suffix}')
++        self.signalsPlot.setTitle('All cells, all frames (current position)')
++        self.signalsPlot.enableAutoRange()
++        if self.acdc_df is None:
++            self.signalsPlot.setTitle('No signals available')
++            return
++        if not xCol or not yCol:
++            self.signalsPlot.setTitle('Select X and Y signals from the column list')
++            return
++
++        df = self.acdc_df
++        frames = df.index.get_level_values('frame_i').to_numpy()
++        IDs = df.index.get_level_values('Cell_ID').to_numpy()
++        inRange = (frames >= 0) & (frames < self.posData().SizeT) & (IDs > 0)
++        df = df.loc[inRange]
++        frames, IDs = frames[inRange], IDs[inRange]
++        rawX = pd.to_numeric(df[xCol], errors='coerce').to_numpy(dtype=float)
++        rawY = pd.to_numeric(df[yCol], errors='coerce').to_numpy(dtype=float)
++        finite = np.isfinite(rawX) & np.isfinite(rawY)
++        frames, IDs = frames[finite], IDs[finite]
++        rawX, rawY = rawX[finite], rawY[finite]
++        if not len(rawX):
++            self.signalsPlot.setTitle('No finite paired measurements')
++            return
++        x = self._normalize(rawX) if isNormalized else rawX
++        y = self._normalize(rawY) if isNormalized else rawY
++        pointData = [
++            {
++                'frame_i': int(frame_i),
++                'Cell_ID': int(ID),
++                'values': {xCol: (rx, vx), yCol: (ry, vy)},
++                'normalized': isNormalized,
++            }
++            for frame_i, ID, rx, ry, vx, vy
++            in zip(frames, IDs, rawX, rawY, x, y)
++        ]
++        item = self.signalsPlot.plot(
++            x, y, pen=None, symbol='o', symbolSize=7,
++            symbolBrush=self.getSignalColor(yCol), symbolPen=None,
++            data=pointData
++        )
++        self.connectSignalPoints(item)
++
++    def connectSignalPoints(self, item):
++        # PlotDataItem does not forward hover options to its scatter item.
++        item.scatter.setData(
++            x=item.xData, y=item.yData, data=item.opts['data'],
++            hoverable=True, tip=self.signalPointTip,
++            hoverSize=11, hoverBrush=pg.mkBrush(255, 100, 100)
++        )
++        item.scatter.sigClicked.connect(self.signalPointClicked)
++
++    @staticmethod
++    def signalPointTip(x, y, data):
++        lines = [
++            f'Cell ID: {data["Cell_ID"]}',
++            f'Frame: {data["frame_i"]+1}',
++        ]
++        for col, (raw, value) in data['values'].items():
++            lines.append(f'{col}: {raw:.6g}')
++            if data['normalized']:
++                lines.append(f'{col} (normalized): {value:.6g}')
++        return '\n'.join(lines)
++
++    def signalPointClicked(self, item, points, event):
++        if event.button() != Qt.LeftButton or not len(points):
++            return
++        data = points[0].data()
++        ID, frame_i = data['Cell_ID'], data['frame_i']
++        if ID not in self.IDs or not 0 <= frame_i < self.posData().SizeT:
++            self.statusBar().showMessage(
++                f'Cell ID {ID} at frame {frame_i+1} is not available.', 5000
++            )
++            return
++        # Navigating replots the signals, deleting the clicked scatter item
++        # while pyqtgraph is still dispatching the click to it --> defer
++        QTimer.singleShot(
++            100, partial(self.navigateToSignalPoint, ID, frame_i)
++        )
++
++    def navigateToSignalPoint(self, ID, frame_i):
++        self.idScrollBar.setValue(self.IDs.index(ID))
++        self.setFrame(frame_i)
++        self.zoomToSelectedID(goToZslice=True, force=True)
+     
+     def getSignalColor(self, col, c=None, numColumns=None):
+         """Get the plotting color of column `col`: the custom color if set 
