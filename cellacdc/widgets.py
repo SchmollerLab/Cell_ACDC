@@ -11846,19 +11846,20 @@ class LineEdit(QLineEdit):
 
 class PreProcessingSelector(QComboBox):
     sigValuesChanged = Signal(dict, int)
+    preprocessMapper = PREPROCESS_MAPPER
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self._parent = parent
         
-        self.addItems(PREPROCESS_MAPPER.keys())
+        self.addItems(self.preprocessMapper.keys())
         self.methodToDefaultValuesMapper = {}
         self.step_n = -1
         self.setParamsWindow = None
 
     def htmlInfo(self):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
-        docstring = PREPROCESS_MAPPER[self.currentText()]['docstring']
+        docstring = self.preprocessMapper[self.currentText()]['docstring']
         if docstring is None:
             text = 'This function is not documented, yet. Sorry :('
         else:
@@ -11875,7 +11876,7 @@ class PreProcessingSelector(QComboBox):
     
     def askSetParams(self, df_metadata=None, addApplyButton=False):
         method = self.currentText()
-        function = PREPROCESS_MAPPER[method]['function']
+        function = self.preprocessMapper[method]['function']
         params_argspecs = myutils.get_function_argspec(
             function, 
             args_to_skip={
@@ -11929,6 +11930,10 @@ class PreProcessingSelector(QComboBox):
     def emitValuesChanged(self, functionKwargs: dict):
         self.sigValuesChanged.emit(functionKwargs, self.step_n)
     
+class SignalProcessingSelector(PreProcessingSelector):
+    from .signal_processing import SIGNAL_PROCESSING_MAPPER as preprocessMapper
+
+
 class RescaleImageJroisGroupbox(QGroupBox):
     def __init__(self, TZYX_out_shape, parent=None):
         super().__init__(parent)

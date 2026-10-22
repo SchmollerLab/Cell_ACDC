@@ -5869,6 +5869,23 @@ class CustomPreprocessWorkerGUI(QObject):
 
         self.signals.finished.emit(self)
 
+class SignalProcessingWorkerGUI(CustomPreprocessWorkerGUI):
+    """One-shot measurement job using the preprocessing worker's job API."""
+
+    def applyRecipe(self, func, measurements, recipe):
+        return func(measurements, recipe)
+
+    def run(self):
+        try:
+            processed = self.runJob()
+            self.sigDone.emit(processed, self._how)
+        except Exception as error:
+            self.logger.exception(traceback.format_exc())
+            self.signals.critical.emit((self, error))
+        finally:
+            self.signals.finished.emit(self)
+
+
 class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)
     sigPreviewDone = Signal(object, list)

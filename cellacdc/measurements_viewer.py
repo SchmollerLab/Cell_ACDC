@@ -29,6 +29,14 @@ menu can load, save or save a copy of a configuration; closing the window
 also offers to save. Configurations are JSON files in the settings folder
 and retain Images folders, image/overlay channels, segmentation, and both
 plot modes' selections (including X/Y order and signal normalization).
+
+Use ``Process signals...`` to apply a recipe to selected measurements of the
+current position. Smooth signal uses a centered moving average independently
+for each cell; Dummy leaves values unchanged. Accepting prompts for an output
+name and adds ``<measurement>_<name>`` columns without changing the originals.
+Results stay in memory across position switches; Reload table discards them.
+``Export measurements...`` saves the table, including processed columns, to a
+separate CSV. Processing is applied to raw measurements before plot normalization.
 """
 import os
 import sys
@@ -46,7 +54,8 @@ import pandas as pd
 import skimage.measure
 
 from qtpy.QtCore import (
-    Qt, Signal, QTimer, QPoint, QEvent, QRect, QSaveFile, QIODevice
+    Qt, Signal, QTimer, QPoint, QEvent, QRect, QSaveFile, QIODevice,
+    QThread, QMutex, QWaitCondition
 )
 from qtpy.QtGui import QFont, QIcon, QGuiApplication, QPixmap, QPainter
 from qtpy.QtWidgets import (
@@ -338,6 +347,8 @@ class MeasurementsViewerWin(
         self.user_ch_name = None
         self.configurationFilepath = None
         self._startupConfigurationPrompted = False
+        self.signalProcessingThread = None
+        self.signalProcessingWorker = None
         self.rescaleIntensChannelHowMapper = {}
         self.logger = logging.getLogger('cellacdc-measurements-viewer')
         self.loadSettings()
@@ -2241,10 +2252,10 @@ class MeasurementsViewerWin(
 
         self.measurementsModeCombobox = QComboBox()
         self.measurementsModeCombobox.addItems(
-            ['Time course', 'Signal vs signal']
+            ['Time course', 'Measurement vs Measurement']
         )
         self.measurementsModeCombobox.setToolTip(
-            'Time course: selected cell. Signal vs signal: all cells and '
+            'Time course: selected cell. Measurement vs Measurement: all cells and '
             'all frames of the current position. Hover for details; click '
             'a point to zoom to its cell.'
         )
@@ -2262,6 +2273,12 @@ class MeasurementsViewerWin(
             'Reload the acdc_output table from the file '
             '(e.g., after saving in the main GUI)'
         )
+        self.processSignalsButton = widgets.setPushButton('Process signals...')
+        self.processSignalsButton.clicked.connect(self.processSignals)
+        self.exportMeasurementsButton = widgets.savePushButton(
+            'Export measurements...'
+        )
+        self.exportMeasurementsButton.clicked.connect(self.exportMeasurements)
         
         timeCourseLayout = QVBoxLayout()
         timeCourseLayout.setContentsMargins(0, 0, 0, 0)
@@ -2275,6 +2292,8 @@ class MeasurementsViewerWin(
         columnsLayout.addWidget(self.measurementsModeCombobox)
         columnsLayout.addWidget(self.timeCourseColumnsWidget)
         columnsLayout.addWidget(self.normalizeCheckbox)
+        columnsLayout.addWidget(self.processSignalsButton)
+        columnsLayout.addWidget(self.exportMeasurementsButton)
         columnsLayout.addWidget(self.refreshButton)
         columnsWidget = QWidget()
         columnsWidget.setLayout(columnsLayout)
@@ -2646,6 +2665,138 @@ class MeasurementsViewerWin(
     def reloadButtonClicked(self, checked=False):
         self.reloadAcdcDfFile()
         self.refreshAcdcDf()
+
+    def signalProcessingWarning(self, title, text):
+        self.logger.warning('%s: %s', title, text)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, title, text)
+
+    def processSignals(self, checked=False):
+        if self.signalProcessingThread is not None:
+            return
+        if self.acdc_df is None or self.acdc_df.empty:
+            self.signalProcessingWarning('No measurements', 'Load measurements first.')
+            return
+        columns = [
+            col for col in self.acdc_df.select_dtypes(include='number').columns
+            if col not in INDEX_COLUMNS
+        ]
+        if not columns:
+            self.signalProcessingWarning(
+                'No measurements', 'The table has no numeric measurements to process.'
+            )
+            return
+        dialog = apps.SignalProcessingRecipeDialog(columns, parent=self)
+        dialog.exec_()
+        if dialog.cancel:
+            return
+
+        while True:
+            nameDialog = apps.filenameDialog(
+                basename='', ext='', defaultEntry='processed', allowEmpty=False,
+                title='Name processed measurements',
+                hintText='Name to append to the processed measurement column(s):',
+                parent=self
+            )
+            nameDialog.exec_()
+            if nameDialog.cancel:
+                return
+            name = nameDialog.entryText.strip()
+            outputColumns = [
+                f'{column}_{name}' for column in dialog.selectedChannels
+            ]
+            if name and not any(col in self.acdc_df.columns for col in outputColumns):
+                break
+            self.signalProcessingWarning(
+                'Invalid measurement name',
+                'Choose a non-empty name that does not overwrite existing columns.'
+            )
+
+        self.startSignalProcessing(
+            dialog.selectedChannels, dialog.selectedRecipe, name
+        )
+
+    def startSignalProcessing(self, columns, recipe, name):
+        from . import workers, signal_processing
+
+        posData = self.posData()
+        self._signalProcessingTarget = (
+            posData, self.acdc_df, getattr(posData, 'acdc_df', None)
+        )
+        self.signalProcessingThread = QThread(self)
+        self.signalProcessingWorker = workers.SignalProcessingWorkerGUI(
+            QMutex(), QWaitCondition()
+        )
+        worker = self.signalProcessingWorker
+        worker.setupJob(
+            signal_processing.apply_recipe, self.acdc_df[columns].copy(),
+            copy.deepcopy(recipe), name
+        )
+        worker.moveToThread(self.signalProcessingThread)
+        self.signalProcessingThread.started.connect(worker.run)
+        worker.sigDone.connect(self.signalProcessingDone)
+        worker.signals.critical.connect(self.signalProcessingFailed)
+        worker.signals.finished.connect(self.signalProcessingThread.quit)
+        worker.signals.finished.connect(worker.deleteLater)
+        self.signalProcessingThread.finished.connect(self.signalProcessingFinished)
+        self.processSignalsButton.setEnabled(False)
+        self.refreshButton.setEnabled(False)
+        self.signalProcessingThread.start()
+
+    def signalProcessingDone(self, processed, name):
+        posData, source, original = self._signalProcessingTarget
+        if (not any(pos is posData for pos in self.data)
+                or getattr(posData, 'acdc_df', None) is not original
+                or (self.posData() is posData
+                    and (self.acdc_df is None or not self.acdc_df.sort_index().equals(
+                        source.sort_index()
+                    )))):
+            self.signalProcessingWarning(
+                'Measurements changed',
+                'The source table changed during processing. Results were not applied.'
+            )
+            return
+        outputColumns = [f'{column}_{name}' for column in processed.columns]
+        if any(col in source.columns for col in outputColumns):
+            self.signalProcessingWarning(
+                'Measurements changed', 'Output measurement names already exist.'
+            )
+            return
+        result = source.copy()
+        for column, output in zip(processed.columns, outputColumns):
+            result[output] = processed[column]
+        posData.acdc_df = result
+        if self.posData() is posData:
+            self.acdc_df = result
+            self.updateColumnsList()
+            self.plotMeasurements()
+
+    def signalProcessingFailed(self, out):
+        worker, error = out
+        self.signalProcessingWarning('Signal processing failed', str(error))
+
+    def signalProcessingFinished(self):
+        self.signalProcessingThread.deleteLater()
+        self.signalProcessingThread = None
+        self.signalProcessingWorker = None
+        self.processSignalsButton.setEnabled(True)
+        self.refreshButton.setEnabled(True)
+
+    def exportMeasurements(self, checked=False):
+        if self.acdc_df is None or self.acdc_df.empty:
+            self.signalProcessingWarning('No measurements', 'Load measurements first.')
+            return
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, 'Export measurements', 'processed_measurements.csv', 'CSV (*.csv)'
+        )
+        if not filepath:
+            return
+        try:
+            self.acdc_df.to_csv(filepath)
+        except (OSError, ValueError) as error:
+            self.signalProcessingWarning('Export failed', str(error))
+            return
+        self.statusBarLabel.setText(f'Measurements exported to {filepath}')
     
     def refreshAcdcDf(self, plot=True):
         self.acdc_df = self.getAcdcDf()
@@ -3993,6 +4144,13 @@ class MeasurementsViewerWin(
             super().keyPressEvent(event)
     
     def closeEvent(self, event):
+        if self.signalProcessingThread is not None:
+            self.signalProcessingWarning(
+                'Signal processing running',
+                'Wait for signal processing to finish before closing the viewer.'
+            )
+            event.ignore()
+            return
         if self.isDataLoaded:
             if not self.saveConfiguration():
                 event.ignore()

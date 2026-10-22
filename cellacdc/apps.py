@@ -17822,6 +17822,8 @@ class PreProcessParamsWidget(QWidget):
     sigLoadRecipe = Signal()
     sigLoadSavedRecipe = Signal()
     sigValuesChanged = Signal(list)
+    recipesPath = preproc_recipes_path
+    recipePrefix = 'preprocessing_recipe'
     
     def __init__(self, df_metadata=None, addApplyButton=False, parent=None):
         super().__init__(parent)
@@ -17964,13 +17966,14 @@ class PreProcessParamsWidget(QWidget):
         default_text = ''
         for step in recipe[:2]:
             method = step['method']
-            func_name = config.PREPROCESS_MAPPER[method]['function_name']
+            selector = next(iter(self.stepsWidgets.values()))['selector']
+            func_name = selector.preprocessMapper[method]['function_name']
             default_text = f'{default_text}-{func_name}'
         default_text = default_text.lstrip('-')
         
-        proceed, ini_filepath = self.saveRecipeUI(preproc_recipes_path, '.ini', 
+        proceed, ini_filepath = self.saveRecipeUI(self.recipesPath, '.ini',
                           'Filename for pre-processing recipe',
-                          'preprocessing_recipe', 
+                          self.recipePrefix,
                           'Insert a <b>filename</b> for the pre-processing recipe:',
                           default_text
                           )
@@ -18103,7 +18106,7 @@ class PreProcessParamsWidget(QWidget):
     
     def selectAndLoadRecipe(self):
         filepath = self.selectRecipeFilepath(
-            preproc_recipes_path, 'preprocessing_recipe', 'INI', 'ini'
+            self.recipesPath, self.recipePrefix, 'INI', 'ini'
         )
         if filepath is None:
             return
@@ -18137,6 +18140,9 @@ class PreProcessParamsWidget(QWidget):
             path_to_browse=os.path.dirname(ini_filepath)
         )
         
+    def createSelector(self):
+        return widgets.PreProcessingSelector()
+
     def addStep(self, is_first=False):
         stepWidgets = {}
         
@@ -18147,7 +18153,7 @@ class PreProcessParamsWidget(QWidget):
         self.gridLayout.addWidget(label, self.row, 0)
         stepWidgets['stepLabel'] = label
         
-        selector = widgets.PreProcessingSelector()
+        selector = self.createSelector()
         self.gridLayout.addWidget(selector, self.row, 1)
         stepWidgets['selector'] = selector
         
@@ -19615,6 +19621,7 @@ class PreProcessRecipeDialog(QBaseDialog):
     sigValuesChanged = Signal(list)
     sigSavePreprocData = Signal(object)
     sigClose = Signal(object)
+    paramsWidgetClass = PreProcessParamsWidget
     
     def __init__(
             self, 
@@ -19650,7 +19657,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         )
         self.keepInputDataTypeLayout = keepInputDataTypeLayout
         
-        self.preProcessParamsWidget = PreProcessParamsWidget(
+        self.preProcessParamsWidget = self.paramsWidgetClass(
             df_metadata=df_metadata, 
             addApplyButton=addApplyButton, 
             parent=self
@@ -19875,6 +19882,8 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.sigClose.emit(self)
 
 class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
+    selectionLabel = 'Select channel(s) to pre-process:'
+
     def __init__(
             self,
             channel_names: Iterable[str],
@@ -19901,7 +19910,7 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         
         self.mainLayout.insertWidget(0, self.listSelector)
         self.mainLayout.insertWidget(
-            0, QLabel('Select channel(s) to pre-process:')
+            0, QLabel(self.selectionLabel)
         )
         self.mainLayout.insertSpacing(2, 10)
         self.mainLayout.insertWidget(2, widgets.QHLine())
@@ -19944,6 +19953,69 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         
         self.cancel = False
         self.close()
+
+
+class SignalProcessingParamsWidget(PreProcessParamsWidget):
+    recipesPath = os.path.join(settings_folderpath, 'signal_processing_recipes')
+    recipePrefix = 'signal_processing_recipe'
+
+    def createSelector(self):
+        return widgets.SignalProcessingSelector()
+
+    def recipe(self, warn=True):
+        recipe = []
+        for step in self.stepsWidgets.values():
+            selector = step['selector']
+            method = selector.currentText()
+            function = selector.preprocessMapper[method]['function']
+            saved = selector.methodToDefaultValuesMapper.get(method, {})
+            kwargs = {
+                param.name: param.type(saved.get(param.name, param.default))
+                for param in myutils.get_function_argspec(function)
+            }
+            kwargs.update(step.get('step_kwargs', {}))
+            recipe.append({'method': method, 'kwargs': kwargs})
+        return recipe
+
+    def loadRecipe(self, configPars):
+        from .signal_processing import SIGNAL_PROCESSING_MAPPER
+
+        methods = [section.get('method') for section in configPars.values()]
+        if any(method not in SIGNAL_PROCESSING_MAPPER for method in methods):
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.warning(
+                self, 'Invalid signal recipe',
+                'This recipe contains unsupported signal-processing steps.'
+            )
+            return
+        super().loadRecipe(configPars)
+        for step in self.stepsWidgets.values():
+            step.pop('step_kwargs', None)
+
+
+class SignalProcessingRecipeDialog(PreProcessRecipeDialogUtil):
+    paramsWidgetClass = SignalProcessingParamsWidget
+    selectionLabel = 'Select measurement(s) to process:'
+
+    def __init__(self, measurement_names, parent=None):
+        super().__init__(measurement_names, parent=parent)
+        self.setWindowTitle('Signal-processing recipe')
+        self.preProcessParamsWidget.groupbox.setTitle('Signal processing')
+        self.keepInputDataTypeToggle.setChecked(False)
+        for i in range(self.keepInputDataTypeLayout.count()):
+            widget = self.keepInputDataTypeLayout.itemAt(i).widget()
+            if widget is not None:
+                widget.hide()
+
+    def ok_cb(self):
+        if not self.listSelector.selectedItems():
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.warning(
+                self, 'No measurements selected',
+                'Select at least one measurement to process.'
+            )
+            return
+        super().ok_cb()
 
 
 # class ComboDelegate(QStyledItemDelegate):
