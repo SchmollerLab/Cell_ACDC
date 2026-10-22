@@ -5819,7 +5819,7 @@ def download_3d_renderer_demo_data():
     
     return exp_folderpath
     
-def get_recent_paths(self):
+def get_recent_paths(*args):
     """Return existing unique paths and their aligned most recent dates."""
     if os.path.exists(recentPaths_path):
         df = pd.read_csv(recentPaths_path, index_col='index')

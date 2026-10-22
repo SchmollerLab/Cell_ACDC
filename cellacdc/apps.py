@@ -20996,7 +20996,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
 
     def addFromRecentPaths(self):
         """Open a multi-select dialog containing existing recent folders."""
-        recent_paths, dates = myutils.get_recent_paths(self)
+        recent_paths, dates = myutils.get_recent_paths()
         if not recent_paths:
             return
         
@@ -22400,7 +22400,7 @@ class SearchableListboxDialog(QBaseDialog):
 
         # add all items to the search model
         for item_text in self.allItems:
-            model_item = widgets.QStandardItem(item_text)
+            model_item = widgets.StandardItem(item_text)
             model_item.setData(
                 self._normalizeSearchText(item_text),
                 widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
@@ -22521,7 +22521,10 @@ class SearchableListboxDialog(QBaseDialog):
             last_edited = self.searchModel.item(
                 source_index.row(), 1
             ).text()
-            tree_item = QTreeWidgetItem([item_text, last_edited])
+            if os.path.exists(item_text):
+                tree_item = widgets.PathTreeWidgetItem(item_text, [last_edited])
+            else:
+                tree_item = QTreeWidgetItem([item_text, last_edited])
             tree_item.setToolTip(
                 1,
                 self.searchModel.item(

@@ -86,6 +86,7 @@ from . import _base_widgets
 from . import debugutils
 from . import rst_utils
 from . import tooltips_rst_filepath
+from . import path as acdc_path
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -15281,3 +15282,24 @@ class EditIDToolbar(ToolBar):
         end_z = self.howToPropagateRangeEndZSpinbox.value()
         if start_z > end_z:
             self.howToPropagateRangeEndZSpinbox.setValue(start_z)
+
+class StandardItem(QStandardItem):
+    def __init__(self, other):
+        super().__init__(other)
+    
+    def setData(self, value, role = ...):
+        return super().setData(value, role)
+
+class PathTreeWidgetItem(QTreeWidgetItem):
+    def __init__(self, path, strings):
+        path = acdc_path.unexpanduser(path)
+        strings = [path, *strings]
+        super().__init__(strings)
+    
+    def text(self, column):
+        if column == 0:
+            path = super().text(column)
+            path = os.path.expanduser(path)
+            return path
+            
+        return super().text(column)

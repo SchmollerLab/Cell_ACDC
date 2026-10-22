@@ -1027,7 +1027,7 @@ class mainWin(QMainWindow):
         # Step 0. Remove the old options from the menu
         self.recentPathsMenu.clear()
         # Step 1. Read recent Paths
-        recentPaths, dates = myutils.get_recent_paths(self)
+        recentPaths, dates = myutils.get_recent_paths()
         # Step 2. Dynamically create the actions
         actions = []
         for path in recentPaths[:20]:

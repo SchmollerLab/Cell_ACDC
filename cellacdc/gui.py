@@ -704,7 +704,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()        
-        recentPaths, dates = myutils.get_recent_paths(self)
+        recentPaths, dates = myutils.get_recent_paths()
         
         # Step 2. Dynamically create 20 actions
         actions = []
