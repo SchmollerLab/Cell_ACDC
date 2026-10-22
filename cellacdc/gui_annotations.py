@@ -3,7 +3,7 @@ segmentation masks (contours, segm. masks overlay, IDs, cell cycle and lineage
 info, mother-daughter lines and object tracks) on the image axes.
 
 It is shared by the main GUI (`gui.guiWin`) and the signals viewer 
-(`signals_viewer.SignalsViewerWin`).
+(`measurements_viewer.SignalsViewerWin`).
 
 Requirements on the inheriting class
 ------------------------------------

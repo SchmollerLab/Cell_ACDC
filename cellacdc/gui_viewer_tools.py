@@ -1,5 +1,5 @@
 """Mixin classes with the 'Viewer' mode tools of `cellacdc.gui.guiWin` 
-shared with other windows (e.g., `cellacdc.signals_viewer.SignalsViewerWin`): 
+shared with other windows (e.g., `cellacdc.measurements_viewer.SignalsViewerWin`): 
 zoom, ruler, scale bar and timestamp, color scheme, labels colormap, image 
 properties, cell cycle table, objects count, search ID, hover info, keyboard 
 shortcuts, default settings, slideshow, 3D viewer and region properties 

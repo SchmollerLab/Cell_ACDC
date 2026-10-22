@@ -1,6 +1,6 @@
 """Standalone window to navigate frames, z-slices and cell IDs of Cell-ACDC 
-data while plotting the time-course of `acdc_output` table columns (signals)
-of the selected cell, or two signals against each other for all cells and
+data while plotting the time-course of `acdc_output` table columns (measurements)
+of the selected cell, or two measurements against each other for all cells and
 frames of the current position. Hover over a point for measurement details;
 click a point to navigate to its frame and zoom to its cell.
 In comparison mode, check two columns to select X and Y. X/Y markers replace
@@ -22,7 +22,7 @@ the main GUI (`gui.guiWin`) through the mixins in:
   3D viewer, objects properties, cell cycle table and objects count).
 - `gui_overlay`: overlay of other channels and of other segmentation files.
 
-Run it with `python -m cellacdc.signals_viewer [folder_path]`.
+Run it with `python -m cellacdc.measurements_viewer [folder_path]`.
 
 At startup, load a saved configuration or skip to start normally. The File
 menu can load, save or save a copy of a configuration; closing the window
@@ -68,6 +68,8 @@ from . import regionprops as acdc_regionprops
 from . import gui_navigation, gui_annotations, gui_viewer_tools, gui_overlay
 from .config import STANDARD_MOUSE_BUTTONS
 from . import gui_core
+from . import apps
+from . import html_utils
 
 RESCALE_INTENS_HOW_TEXTS = (
     'Rescale each 2D image',
@@ -81,11 +83,14 @@ pg.setConfigOption('imageAxisOrder', 'row-major')
 _font = QFont()
 _font.setPixelSize(11)
 
-DEFAULT_SIGNALS_COLUMNS = ('cell_area_pxl', 'cell_vol_vox', 'cell_area_um2')
+DEFAULT_MEASUREMENTS_COLUMNS = ('cell_area_pxl', 'cell_vol_vox', 'cell_area_um2')
 INDEX_COLUMNS = ('frame_i', 'Cell_ID', 'time_seconds')
 CCA_DF_INT_COLS = [
     col for col in cca_df_colnames if type(base_cca_dict[col]) == int
 ]
+MEASUREMENTS_CONFIGURATIONS_PATH = os.path.join(
+    settings_folderpath, 'measurements_viewer_configurations'
+)
 
 class _SignalColumnDelegate(widgets._ButtonSearchHighlightDelegate):
     indicatorWidth = 28
@@ -256,7 +261,7 @@ class _NoAutoPilotProfile:
     def storeLoadedFluoChannels(self, *args, **kwargs):
         pass
 
-class SignalsViewerWin(
+class MeasurementsViewerWin(
         QMainWindow,
         gui_navigation.FramesNavigationGuiElements,
         gui_navigation.ZsliceNavigationGuiElements,
@@ -286,7 +291,7 @@ class SignalsViewerWin(
         gui_overlay.ChannelImageHelpersGuiElements,
         gui_core.GUICoreElements,
     ):
-    """Window to view images, navigate cells and plot their signals.
+    """Window to view images, navigate cells and plot their measurements.
 
     Parameters
     ----------
@@ -311,10 +316,7 @@ class SignalsViewerWin(
     """
     sigClosed = Signal(object)
     # The bottom layout is different from guiWin's --> separate setting
-    bottomLayoutHeightSettingKey = 'signals_viewer_bottomLayoutHeight'
-    configurationsPath = os.path.join(
-        settings_folderpath, 'signals_viewer_configurations'
-    )
+    bottomLayoutHeightSettingKey = 'measurements_viewer_bottomLayoutHeight'
 
     def __init__(
             self, data=None, pos_i=0, frame_i=None, ID=None, isSegm3D=None,
@@ -337,7 +339,7 @@ class SignalsViewerWin(
         self.configurationFilepath = None
         self._startupConfigurationPrompted = False
         self.rescaleIntensChannelHowMapper = {}
-        self.logger = logging.getLogger('cellacdc-signals-viewer')
+        self.logger = logging.getLogger('cellacdc-measurements-viewer')
         self.loadSettings()
         self.initAnnotationsAttributes()
         self.initViewerToolsAttributes()
@@ -346,7 +348,7 @@ class SignalsViewerWin(
         else:
             self.openFolderText = 'Reveal in Finder...'
         
-        self.setWindowTitle('Cell-ACDC - Signals viewer')
+        self.setWindowTitle('Cell-ACDC - Measurements viewer')
         
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -355,7 +357,7 @@ class SignalsViewerWin(
         self.gui_createGraphicsPlots()
         self.gui_createNavigationWidgets()
         self.gui_createAnnotationsWidgets()
-        self.gui_createSignalsPanel()
+        self.gui_createMeasurementsPanel()
         self.gui_createLayout()
         self.gui_createStatusBar()
         self.gui_connectSignals()
@@ -376,16 +378,16 @@ class SignalsViewerWin(
         from .apps import QTreeDialog
 
         paths = {}
-        if os.path.isdir(self.configurationsPath):
-            for filename in sorted(os.listdir(self.configurationsPath)):
-                filepath = os.path.join(self.configurationsPath, filename)
+        if os.path.isdir(MEASUREMENTS_CONFIGURATIONS_PATH):
+            for filename in sorted(os.listdir(MEASUREMENTS_CONFIGURATIONS_PATH)):
+                filepath = os.path.join(MEASUREMENTS_CONFIGURATIONS_PATH, filename)
                 if filename.lower().endswith('.json') and os.path.isfile(filepath):
                     paths[filename] = filepath
 
         def browse():
             return QFileDialog.getOpenFileName(
-                self, 'Load signals viewer configuration',
-                self.configurationsPath, 'JSON (*.json)'
+                self, 'Load measurements viewer configuration',
+                MEASUREMENTS_CONFIGURATIONS_PATH, 'JSON (*.json)'
             )[0]
 
         browseButton =  widgets.browseFileButton('Browse configuration...', self)
@@ -398,10 +400,10 @@ class SignalsViewerWin(
                 for name, path in paths.items()
             ],
             headerLabels=['Name', 'Date Modified'],
-            title='Load signals viewer configuration',
+            title='Load measurements viewer configuration',
             infoText='Select a configuration to load, or skip loading:',
             parent=self,
-            path_to_browse=self.configurationsPath if paths else None,
+            path_to_browse=MEASUREMENTS_CONFIGURATIONS_PATH if paths else None,
             additional_buttons=(browseButton,skipButton),
         )
         dialog.treeWidget.setCurrentItem(dialog.treeWidget.topLevelItem(0))
@@ -446,19 +448,19 @@ class SignalsViewerWin(
             'segm_endname': segm_endname,
             'overlay_channels': overlay_channels,
             'visible_channels': visible_channels,
-            'signals_mode': self.signalsModeCombobox.currentIndex(),
+            'measurements_mode': self.measurementsModeCombobox.currentIndex(),
             'time_course_columns': (
-                self.checkedColumns() if self._signalsMode == 0
+                self.checkedColumns() if self._measurementsMode == 0
                 else sorted(self._timeCourseColumns)
             ),
-            'signals_axes': self.signalsAxes.copy(),
-            'normalize_signals': self.normalizeCheckbox.isChecked(),
+            'measurements_axes': self.measurementsAxes.copy(),
+            'normalize_measurements': self.normalizeCheckbox.isChecked(),
         }
 
     @staticmethod
     def validateConfiguration(configuration):
         if not isinstance(configuration, dict) or configuration.get('version') != 1:
-            raise ValueError('Unsupported signals viewer configuration.')
+            raise ValueError('Unsupported measurements viewer configuration.')
         for key in (
                 'images_paths', 'overlay_channels', 'visible_channels',
                 'time_course_columns'):
@@ -471,14 +473,14 @@ class SignalsViewerWin(
         for key in ('channel', 'segm_endname'):
             if not isinstance(configuration.get(key), str) or not configuration[key]:
                 raise ValueError(f'Invalid configuration field: {key}.')
-        axes = configuration.get('signals_axes')
+        axes = configuration.get('measurements_axes')
         if (not isinstance(axes, dict) or set(axes) != {'X', 'Y'}
                 or any(not isinstance(value, str) for value in axes.values())
                 or (axes['X'] and axes['X'] == axes['Y'])):
             raise ValueError('Invalid comparison axes in configuration.')
-        if (type(configuration.get('signals_mode')) is not int
-                or configuration['signals_mode'] not in (0, 1)
-                or type(configuration.get('normalize_signals')) is not bool):
+        if (type(configuration.get('measurements_mode')) is not int
+                or configuration['measurements_mode'] not in (0, 1)
+                or type(configuration.get('normalize_measurements')) is not bool):
             raise ValueError('Invalid plotting options in configuration.')
         available = {
             configuration['channel'], *configuration['overlay_channels']
@@ -502,17 +504,27 @@ class SignalsViewerWin(
         filepath = self.configurationFilepath
         if save_as or filepath is None:
             try:
-                os.makedirs(self.configurationsPath, exist_ok=True)
+                os.makedirs(MEASUREMENTS_CONFIGURATIONS_PATH, exist_ok=True)
             except OSError as err:
                 self.configurationError('save', err)
                 return False
-            filepath, _ = QFileDialog.getSaveFileName(
-                self, 'Save signals viewer configuration as',
-                filepath or os.path.join(
-                    self.configurationsPath, 'signals_viewer_configuration.json'
-                ),
-                'JSON (*.json)'
+            current_files = sorted(os.listdir(MEASUREMENTS_CONFIGURATIONS_PATH))
+            helpText = html_utils.paragraph(
+                '''Select a filename for the measurements viewer configuration.
+                Which allows you to later reload it, preserving displayed measurements.'''
+                )
+            date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            msg = apps.filenameDialog(
+                ext='json', title='Save measurements viewer configuration as',
+                parent=self, helpText=helpText,existingNames=current_files,
+                allowEmpty=False, addDoNotSaveButton=True, defaultEntry=date
             )
+            msg.exec_()
+            if msg.cancel:
+                return False
+            if msg.doNotSave:
+                return True
+            filepath = msg.filepath
             if not filepath:
                 return False
             if not filepath.lower().endswith('.json'):
@@ -603,19 +615,19 @@ class SignalsViewerWin(
             for i in range(self.columnsModel.rowCount())
         }
         selected = set(configuration['time_course_columns'])
-        axes = configuration['signals_axes']
+        axes = configuration['measurements_axes']
         missing = (selected | set(axes.values())).difference(columns, {''})
-        self.signalsModeCombobox.blockSignals(True)
-        self.signalsModeCombobox.setCurrentIndex(configuration['signals_mode'])
-        self.signalsModeCombobox.blockSignals(False)
+        self.measurementsModeCombobox.blockSignals(True)
+        self.measurementsModeCombobox.setCurrentIndex(configuration['measurements_mode'])
+        self.measurementsModeCombobox.blockSignals(False)
         # Do not replace the restored time-course selection with the old checks.
-        self._signalsMode = 1
+        self._measurementsMode = 1
         self._timeCourseColumns = selected & columns
-        self.signalsAxes = {
+        self.measurementsAxes = {
             axis: value if value in columns else '' for axis, value in axes.items()
         }
-        self.signalsModeChanged()
-        self.normalizeCheckbox.setChecked(configuration['normalize_signals'])
+        self.measurementsModeChanged()
+        self.normalizeCheckbox.setChecked(configuration['normalize_measurements'])
         self.configurationFilepath = filepath
         if missing:
             self.configurationError(
@@ -1500,7 +1512,7 @@ class SignalsViewerWin(
             return
         
         relPath = getattr(self.data[0], 'relPath', '')
-        self.setWindowTitle(f'Cell-ACDC - Signals viewer - {relPath}')
+        self.setWindowTitle(f'Cell-ACDC - Measurements viewer - {relPath}')
         self.pos_i = pos_i
         self.setPosDataDefaults()
         self.initLut()
@@ -2170,15 +2182,15 @@ class SignalsViewerWin(
         
         self.restoreViewerAnnotationOptions()
     
-    def gui_createSignalsPanel(self):
-        self.signalsPlot = pg.PlotWidget()
+    def gui_createMeasurementsPanel(self):
+        self.measurementsPlot = pg.PlotWidget()
         if self.invertBwAction.isChecked():
-            self.signalsPlot.setBackground(graphLayoutBkgrColor)
+            self.measurementsPlot.setBackground(graphLayoutBkgrColor)
         else:
-            self.signalsPlot.setBackground(darkBkgrColor)
-        self.signalsPlot.setLabel('bottom', 'Frame n.')
-        self.signalsPlot.showGrid(x=True, y=True, alpha=0.3)
-        self.signalsLegend = self.signalsPlot.addLegend()
+            self.measurementsPlot.setBackground(darkBkgrColor)
+        self.measurementsPlot.setLabel('bottom', 'Frame n.')
+        self.measurementsPlot.showGrid(x=True, y=True, alpha=0.3)
+        self.measurementsLegend = self.measurementsPlot.addLegend()
         
         self.currentFrameLine = pg.InfiniteLine(
             angle=90, movable=True, 
@@ -2189,7 +2201,7 @@ class SignalsViewerWin(
             'Current frame. Drag the line to change frame.'
         )
         self.currentFrameLine.setZValue(10)
-        self.signalsPlot.addItem(self.currentFrameLine, ignoreBounds=True)
+        self.measurementsPlot.addItem(self.currentFrameLine, ignoreBounds=True)
         
         self.columnsSearchLineEdit = QLineEdit()
         self.columnsSearchLineEdit.setPlaceholderText('Search column...')
@@ -2225,24 +2237,24 @@ class SignalsViewerWin(
             'change its color.'
         )
         # Custom plotting colors set by the user {column: QColor}
-        self.signalsColors = {}
+        self.measurementsColors = {}
 
-        self.signalsModeCombobox = QComboBox()
-        self.signalsModeCombobox.addItems(
+        self.measurementsModeCombobox = QComboBox()
+        self.measurementsModeCombobox.addItems(
             ['Time course', 'Signal vs signal']
         )
-        self.signalsModeCombobox.setToolTip(
+        self.measurementsModeCombobox.setToolTip(
             'Time course: selected cell. Signal vs signal: all cells and '
             'all frames of the current position. Hover for details; click '
             'a point to zoom to its cell.'
         )
-        self.signalsAxes = {'X': '', 'Y': ''}
-        self._signalsMode = 0
+        self.measurementsAxes = {'X': '', 'Y': ''}
+        self._measurementsMode = 0
         self._timeCourseColumns = set()
         
-        self.normalizeCheckbox = QCheckBox('Normalize signals (0-1)')
+        self.normalizeCheckbox = QCheckBox('Normalize measurements (0-1)')
         self.normalizeCheckbox.setToolTip(
-            'Rescale each signal to the range 0-1 to compare signals with '
+            'Rescale each signal to the range 0-1 to compare measurements with '
             'different scales'
         )
         self.refreshButton = widgets.reloadPushButton(' Reload table ')
@@ -2260,23 +2272,23 @@ class SignalsViewerWin(
         self.timeCourseColumnsWidget.setLayout(timeCourseLayout)
 
         columnsLayout = QVBoxLayout()
-        columnsLayout.addWidget(self.signalsModeCombobox)
+        columnsLayout.addWidget(self.measurementsModeCombobox)
         columnsLayout.addWidget(self.timeCourseColumnsWidget)
         columnsLayout.addWidget(self.normalizeCheckbox)
         columnsLayout.addWidget(self.refreshButton)
         columnsWidget = QWidget()
         columnsWidget.setLayout(columnsLayout)
         
-        self.signalsSplitter = QSplitter(Qt.Horizontal)
-        self.signalsSplitter.addWidget(self.signalsPlot)
-        self.signalsSplitter.addWidget(columnsWidget)
-        self.signalsSplitter.setStretchFactor(0, 3)
-        self.signalsSplitter.setStretchFactor(1, 1)
+        self.measurementsSplitter = QSplitter(Qt.Horizontal)
+        self.measurementsSplitter.addWidget(self.measurementsPlot)
+        self.measurementsSplitter.addWidget(columnsWidget)
+        self.measurementsSplitter.setStretchFactor(0, 3)
+        self.measurementsSplitter.setStretchFactor(1, 1)
         
-        self.signalsGroupbox = QGroupBox('Signals')
-        signalsGroupboxLayout = QVBoxLayout()
-        signalsGroupboxLayout.addWidget(self.signalsSplitter)
-        self.signalsGroupbox.setLayout(signalsGroupboxLayout)
+        self.measurementsGroupbox = QGroupBox('Measurements')
+        measurementsGroupboxLayout = QVBoxLayout()
+        measurementsGroupboxLayout.addWidget(self.measurementsSplitter)
+        self.measurementsGroupbox.setLayout(measurementsGroupboxLayout)
     
     def gui_createLayout(self):
         self.gui_createRegionPropsDockWidget()
@@ -2326,7 +2338,7 @@ class SignalsViewerWin(
         
         self.mainSplitter = QSplitter(Qt.Horizontal)
         self.mainSplitter.addWidget(imagePanel)
-        self.mainSplitter.addWidget(self.signalsGroupbox)
+        self.mainSplitter.addWidget(self.measurementsGroupbox)
         self.mainSplitter.setStretchFactor(0, 1)
         self.mainSplitter.setStretchFactor(1, 1)
         
@@ -2397,9 +2409,9 @@ class SignalsViewerWin(
         self.columnsListWidget.customContextMenuRequested.connect(
             self.showColumnsContextMenu
         )
-        self.normalizeCheckbox.toggled.connect(self.plotSignals)
-        self.signalsModeCombobox.currentIndexChanged.connect(
-            self.signalsModeChanged
+        self.normalizeCheckbox.toggled.connect(self.plotMeasurements)
+        self.measurementsModeCombobox.currentIndexChanged.connect(
+            self.measurementsModeChanged
         )
         self.refreshButton.clicked.connect(self.reloadButtonClicked)
     
@@ -2451,7 +2463,7 @@ class SignalsViewerWin(
         self.updateImages()
         self.ax1.autoRange()
         self.zoomToSelectedID()
-        self.plotSignals()
+        self.plotMeasurements()
     
     def initPosAnnotData(self, posData):
         """Initialize the per-frame stored data (`allData_li`) and the 
@@ -2645,7 +2657,7 @@ class SignalsViewerWin(
         self.initIDsNavigation(ID=self.selectedID)
         self.updateFramesRange()
         self.updateImages()
-        self.plotSignals()
+        self.plotMeasurements()
     
     def onMotherDaughterLine(self, checked, checkbox, ax=0):
         super().onMotherDaughterLine(checked, checkbox, ax=ax)
@@ -2729,8 +2741,8 @@ class SignalsViewerWin(
             col for col in self.acdc_df.select_dtypes(include='number').columns
             if col not in INDEX_COLUMNS
         ]
-        if isFirstInit and self.signalsModeCombobox.currentIndex() == 0:
-            for col in DEFAULT_SIGNALS_COLUMNS:
+        if isFirstInit and self.measurementsModeCombobox.currentIndex() == 0:
+            for col in DEFAULT_MEASUREMENTS_COLUMNS:
                 if col in numericColumns:
                     checkedColumns = {col}
                     break
@@ -2754,9 +2766,9 @@ class SignalsViewerWin(
         self.filterColumns(self.columnsSearchLineEdit.text())
 
     def updateSignalAxes(self, columns):
-        for axis, col in self.signalsAxes.items():
+        for axis, col in self.measurementsAxes.items():
             if col not in columns:
-                self.signalsAxes[axis] = ''
+                self.measurementsAxes[axis] = ''
         self._timeCourseColumns.intersection_update(columns)
         self.updateColumnsIcons()
     
@@ -3058,7 +3070,7 @@ class SignalsViewerWin(
         self.updateFramesRange()
         self.zoomToSelectedID(goToZslice=True)
         self.updateImages()
-        self.plotSignals()
+        self.plotMeasurements()
     
     def getIDframes(self, ID):
         """Get the sorted frame indices where `ID` is present."""
@@ -3225,7 +3237,7 @@ class SignalsViewerWin(
         self.setFrame(frame_n-1)
         self.updateCurrentFrameLine()
     
-    def getSignalsDf(self):
+    def getMeasurementsDf(self):
         """Get the subset of acdc_df for the selected ID (index is frame_i)"""
         if self.acdc_df is None or self.selectedID is None:
             return
@@ -3237,37 +3249,37 @@ class SignalsViewerWin(
         
         return df_ID.sort_index()
     
-    def plotSignals(self, *args):
-        for item in self.signalsPlot.listDataItems():
-            self.signalsPlot.removeItem(item)
-        self.signalsLegend.clear()
+    def plotMeasurements(self, *args):
+        for item in self.measurementsPlot.listDataItems():
+            self.measurementsPlot.removeItem(item)
+        self.measurementsLegend.clear()
         self.updateCurrentFrameLine()
         self.updateColumnsIcons()
 
-        isComparison = self.signalsModeCombobox.currentIndex() == 1
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
         self.currentFrameLine.setVisible(not isComparison)
         if not self.data:
-            self.signalsPlot.setTitle('No data loaded')
+            self.measurementsPlot.setTitle('No data loaded')
             return
         if isComparison:
-            self.plotSignalsComparison()
+            self.plotMeasurementsComparison()
             return
 
-        self.signalsPlot.setLabel('bottom', 'Frame n.')
+        self.measurementsPlot.setLabel('bottom', 'Frame n.')
         isNormalized = self.normalizeCheckbox.isChecked()
-        self.signalsPlot.setLabel(
+        self.measurementsPlot.setLabel(
             'left', 'Normalized value' if isNormalized else 'Value'
         )
         
         posData = self.posData()
-        self.signalsPlot.setXRange(1, max(posData.SizeT, 2), padding=0.02)
+        self.measurementsPlot.setXRange(1, max(posData.SizeT, 2), padding=0.02)
         
-        df_ID = self.getSignalsDf()
+        df_ID = self.getMeasurementsDf()
         columns = self.checkedColumns()
         if self.selectedID is None:
-            self.signalsPlot.setTitle('')
+            self.measurementsPlot.setTitle('')
         else:
-            self.signalsPlot.setTitle(f'Cell ID {self.selectedID}')
+            self.measurementsPlot.setTitle(f'Cell ID {self.selectedID}')
         
         if df_ID is None or not columns:
             return
@@ -3291,7 +3303,7 @@ class SignalsViewerWin(
                 }
                 for frame_n, raw, value in zip(frames_n, rawValues, values)
             ]
-            item = self.signalsPlot.plot(
+            item = self.measurementsPlot.plot(
                 frames_n, values, name=col,
                 pen=pg.mkPen(color=color, width=2),
                 symbol='o', symbolSize=5, symbolBrush=color, symbolPen=None,
@@ -3299,13 +3311,13 @@ class SignalsViewerWin(
             )
             self.connectSignalPoints(item)
 
-    def signalsModeChanged(self, *args):
-        isComparison = self.signalsModeCombobox.currentIndex() == 1
-        if self._signalsMode == 0:
+    def measurementsModeChanged(self, *args):
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        if self._measurementsMode == 0:
             self._timeCourseColumns = set(self.checkedColumns())
-        self._signalsMode = self.signalsModeCombobox.currentIndex()
+        self._measurementsMode = self.measurementsModeCombobox.currentIndex()
         columns = (
-            set(self.signalsAxes.values()) if isComparison
+            set(self.measurementsAxes.values()) if isComparison
             else self._timeCourseColumns
         )
         self.columnsModel.blockSignals(True)
@@ -3322,18 +3334,18 @@ class SignalsViewerWin(
             'Click a column to plot/unplot it. Right-click on a column to '
             'change its color.'
         )
-        self.plotSignals()
+        self.plotMeasurements()
 
     def signalColumnChanged(self, item):
-        if self.signalsModeCombobox.currentIndex() == 1:
+        if self.measurementsModeCombobox.currentIndex() == 1:
             col = item.text()
             if item.checkState() != Qt.Checked:
-                for axis, signal in self.signalsAxes.items():
+                for axis, signal in self.measurementsAxes.items():
                     if signal == col:
-                        self.signalsAxes[axis] = ''
-            elif col not in self.signalsAxes.values():
+                        self.measurementsAxes[axis] = ''
+            elif col not in self.measurementsAxes.values():
                 axis = next(
-                    (axis for axis, signal in self.signalsAxes.items()
+                    (axis for axis, signal in self.measurementsAxes.items()
                      if not signal), None
                 )
                 if axis is None:
@@ -3341,27 +3353,27 @@ class SignalsViewerWin(
                     item.setCheckState(Qt.Unchecked)
                     self.columnsModel.blockSignals(False)
                     self.statusBar().showMessage(
-                        'Two signals are already selected. Uncheck X or Y '
+                        'Two measurements are already selected. Uncheck X or Y '
                         'before selecting another signal.', 5000
                     )
                 else:
-                    self.signalsAxes[axis] = col
-        self.plotSignals()
+                    self.measurementsAxes[axis] = col
+        self.plotMeasurements()
 
-    def plotSignalsComparison(self):
-        xCol = self.signalsAxes['X']
-        yCol = self.signalsAxes['Y']
+    def plotMeasurementsComparison(self):
+        xCol = self.measurementsAxes['X']
+        yCol = self.measurementsAxes['Y']
         isNormalized = self.normalizeCheckbox.isChecked()
         suffix = ' (normalized)' if isNormalized else ''
-        self.signalsPlot.setLabel('bottom', f'{xCol}{suffix}')
-        self.signalsPlot.setLabel('left', f'{yCol}{suffix}')
-        self.signalsPlot.setTitle('All cells, all frames (current position)')
-        self.signalsPlot.enableAutoRange()
+        self.measurementsPlot.setLabel('bottom', f'{xCol}{suffix}')
+        self.measurementsPlot.setLabel('left', f'{yCol}{suffix}')
+        self.measurementsPlot.setTitle('All cells, all frames (current position)')
+        self.measurementsPlot.enableAutoRange()
         if self.acdc_df is None:
-            self.signalsPlot.setTitle('No signals available')
+            self.measurementsPlot.setTitle('No measurements available')
             return
         if not xCol or not yCol:
-            self.signalsPlot.setTitle('Select X and Y signals from the column list')
+            self.measurementsPlot.setTitle('Select X and Y measurements from the column list')
             return
 
         df = self.acdc_df
@@ -3376,7 +3388,7 @@ class SignalsViewerWin(
         frames, IDs = frames[finite], IDs[finite]
         rawX, rawY = rawX[finite], rawY[finite]
         if not len(rawX):
-            self.signalsPlot.setTitle('No finite paired measurements')
+            self.measurementsPlot.setTitle('No finite paired measurements')
             return
         x = self._normalize(rawX) if isNormalized else rawX
         y = self._normalize(rawY) if isNormalized else rawY
@@ -3390,7 +3402,7 @@ class SignalsViewerWin(
             for frame_i, ID, rx, ry, vx, vy
             in zip(frames, IDs, rawX, rawY, x, y)
         ]
-        item = self.signalsPlot.plot(
+        item = self.measurementsPlot.plot(
             x, y, pen=None, symbol='o', symbolSize=7,
             symbolBrush=self.getSignalColor(yCol), symbolPen=None,
             data=pointData
@@ -3428,7 +3440,7 @@ class SignalsViewerWin(
                 f'Cell ID {ID} at frame {frame_i+1} is not available.', 5000
             )
             return
-        # Navigating replots the signals, deleting the clicked scatter item
+        # Navigating replots the measurements, deleting the clicked scatter item
         # while pyqtgraph is still dispatching the click to it --> defer
         QTimer.singleShot(
             100, partial(self.navigateToSignalPoint, ID, frame_i)
@@ -3443,7 +3455,7 @@ class SignalsViewerWin(
         """Get the plotting color of column `col`: the custom color if set 
         by the user, otherwise the default color based on the index `c` of 
         the column among the plotted ones."""
-        color = self.signalsColors.get(col)
+        color = self.measurementsColors.get(col)
         if color is not None:
             return color
         
@@ -3457,7 +3469,7 @@ class SignalsViewerWin(
     def updateColumnsIcons(self):
         """Show color swatches or comparison-axis markers beside columns."""
         columns = self.checkedColumns()
-        isComparison = self.signalsModeCombobox.currentIndex() == 1
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
         self.columnsModel.blockSignals(True)
         for i in range(self.columnsModel.rowCount()):
             item = self.columnsModel.item(i)
@@ -3465,7 +3477,7 @@ class SignalsViewerWin(
             item.setCheckable(True)
             if isComparison:
                 axes = '/'.join(
-                    axis for axis, signal in self.signalsAxes.items()
+                    axis for axis, signal in self.measurementsAxes.items()
                     if signal == col
                 )
                 item.setData(axes, Qt.AccessibleDescriptionRole)
@@ -3513,7 +3525,7 @@ class SignalsViewerWin(
             )
         )
         menu.addAction(plotAction)
-        if self.signalsModeCombobox.currentIndex() == 1:
+        if self.measurementsModeCombobox.currentIndex() == 1:
             menu.popup(self.columnsListWidget.viewport().mapToGlobal(pos))
             return
         menu.addSeparator()
@@ -3525,7 +3537,7 @@ class SignalsViewerWin(
         menu.addAction(changeColorAction)
         
         resetColorAction = QAction('Reset to default color', menu)
-        resetColorAction.setEnabled(col in self.signalsColors)
+        resetColorAction.setEnabled(col in self.measurementsColors)
         resetColorAction.triggered.connect(
             lambda checked=False, col=col: self.resetSignalColor(col)
         )
@@ -3541,12 +3553,12 @@ class SignalsViewerWin(
         if not color.isValid():
             return
         
-        self.signalsColors[col] = color
-        self.plotSignals()
+        self.measurementsColors[col] = color
+        self.plotMeasurements()
     
     def resetSignalColor(self, col):
-        self.signalsColors.pop(col, None)
-        self.plotSignals()
+        self.measurementsColors.pop(col, None)
+        self.plotMeasurements()
     
     @staticmethod
     def _normalize(values):
@@ -3578,7 +3590,7 @@ class SignalsViewerWin(
         self._lab = None
         self._labKey = None
         self.updateCurrentFrameLine()
-        self.plotSignals()
+        self.plotMeasurements()
         self.updateIDnotPresentLabel()
     
     def invertBw(self, checked, update=True):
@@ -3598,9 +3610,9 @@ class SignalsViewerWin(
         
         self.isBwInverted = checked
         if checked:
-            self.signalsPlot.setBackground(graphLayoutBkgrColor)
+            self.measurementsPlot.setBackground(graphLayoutBkgrColor)
         else:
-            self.signalsPlot.setBackground(darkBkgrColor)
+            self.measurementsPlot.setBackground(darkBkgrColor)
     
     def highlightSearchedID(self, ID, force=False, greyOthers=True):
         self.highlightedID = ID
@@ -3928,8 +3940,8 @@ class SignalsViewerWin(
                 return
         
         if key == self.zoomOutKeyValue and isNoModifier:
-            if self.signalsPlot.underMouse():
-                self.signalsPlot.autoRange()
+            if self.measurementsPlot.underMouse():
+                self.measurementsPlot.autoRange()
                 return
             if not self.img1.isUnderMouse():
                 return
@@ -3982,17 +3994,7 @@ class SignalsViewerWin(
     
     def closeEvent(self, event):
         if self.isDataLoaded:
-            msg = widgets.myMessageBox(wrapText=False)
-            cancel, discard, save = msg.question(
-                self, 'Save signals viewer configuration?',
-                'Save the current configuration before closing?',
-                buttonsTexts=('Cancel', 'Do not save', 'Save configuration')
-            )
-            if msg.clickedButton == save:
-                if not self.saveConfiguration():
-                    event.ignore()
-                    return
-            elif msg.clickedButton != discard:
+            if not self.saveConfiguration():
                 event.ignore()
                 return
         if self.isDataLoaded:
@@ -4011,11 +4013,11 @@ class SignalsViewerWin(
         self.sigClosed.emit(self)
 
 def run(folderpath=None):
-    """Launch the signals viewer as a standalone application, optionally 
+    """Launch the measurements viewer as a standalone application, optionally 
     loading `folderpath` (experiment, Position or Images folder)."""
     from ._run import _setup_app
     app, _ = _setup_app()
-    win = SignalsViewerWin()
+    win = MeasurementsViewerWin()
     win.show()
     if folderpath:
         win.openFolder(folderpath=folderpath)
