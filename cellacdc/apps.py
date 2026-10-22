@@ -10632,7 +10632,7 @@ class EditIDDialog(QDialog):
         start_z = self.howToPropagateRangeStartZSpinbox.value()
         end_z = self.howToPropagateRangeEndZSpinbox.value()
         if start_z > end_z:
-            self.howToPropagateRangeEndZSpinbox.setValue(value)
+            self.howToPropagateRangeEndZSpinbox.setValue(start_z)
 
     def onTextChanged(self, text):
         self.warnExistingIDLabel.setText('')
