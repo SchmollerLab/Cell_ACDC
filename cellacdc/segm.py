@@ -658,7 +658,7 @@ class segmWin(QMainWindow):
             
             self.use3DdataFor2Dsegm = use3DdataFor2Dsegm
         
-        segm2D_never_visualized_dataPrep = (
+        segm2Don3DzPlaneViewMissing = (
             not self.isSegm3D
             and self.posData.SizeZ > 1
             and not isSegmInfoPresent
@@ -670,7 +670,6 @@ class segmWin(QMainWindow):
             and isSegmInfoPresent
             and not self.use3DdataFor2Dsegm
         )
-        launchDataPrep = segm2D_never_visualized_dataPrep or selectROI
         if segm2D_on_3D_visualized:
             # segmInfo_df exists --> check if it has channel z-slice info
             filenames = self.posData.segmInfo_df.index.get_level_values(0).unique()
@@ -678,68 +677,45 @@ class segmWin(QMainWindow):
                 if _filename.endswith(user_ch_name):
                     break
             else:
-                launchDataPrep = True
+                segm2Don3DzPlaneViewMissing = True
 
-        if launchDataPrep:
-            dataPrepWin = dataPrep.dataPrepWin(
-                mainWin=self.mainWin, version=self._version
+        if segm2Don3DzPlaneViewMissing:
+            win = apps.askZPlaneView(
+                user_ch_file_paths, user_ch_name, 
+                self.mainWin, self._version, parent=self,
+                logger_func=self.log
             )
-            dataPrepWin.show()
-            if selectROI:
-                dataPrepWin.titleText = (
-                """
-                If you need to crop press the green tick button,<br>
-                otherwise you can close the window.
-                """
-                )
+            win.exec_()
+            if win.cancel:
+                self.processStopped()
+                return
+        elif selectROI:
+            if self.posData.SizeT > 1:
+                for img_path in user_ch_file_paths: 
+                    dataPrep.launchDataPrepSelectROI(
+                        exp_path, 
+                        [img_path],
+                        user_ch_name,
+                        self.posData.SizeZ, 
+                        mainWin=self.mainWin,
+                        parent=self,
+                        version=self._version,
+                        logger_func=self.log
+                    )
             else:
-                print('')
-                self.log(
-                    f'WARNING: The image data in {img_path} is 3D but '
-                    f'_segmInfo.csv file not found. Launching dataPrep.py...'
+                dataPrep.launchDataPrepSelectROI(
+                    exp_path, 
+                    user_ch_file_paths,
+                    user_ch_name,
+                    self.posData.SizeZ, 
+                    mainWin=self.mainWin,
+                    parent=self,
+                    version=self._version,
+                    logger_func=self.log
                 )
-                self.logTerminal.setText(
-                    f'The image data in {img_path} is 3D but '
-                    f'_segmInfo.csv file not found. Launching dataPrep.py...'
-                )
-                msg = widgets.myMessageBox()
-                txt = html_utils.paragraph(f"""
-                    You loaded 3D z-stacks, but (in some or all Positions) 
-                    you <b>never selected which
-                    z-slice or projection method to use for segmentation</b>
-                    (this is required for 2D segmentation of 3D data).<br><br>
-                    I opened a window where you can visualize
-                    your z-stacks and <b>select an appropriate z-slice
-                    or projection for each Position or frame</b>.
-                """)
-                msg.warning(
-                    self, '3D z-stacks info missing', txt, 
-                    buttonsTexts=('Cancel', 'Ok')
-                )
-                if msg.cancel:
-                    self.processStopped()
-                    return
 
-                dataPrepWin.titleText = (
-                """
-                Select z-slice (or projection) for each frame/position.<br>
-                Then, if you want to segment the entire field of view,
-                close the window.<br>
-                Otherwise, if you need to select a ROI,
-                press the "Start" button, draw the ROI<br>
-                and confirm with the green tick button.
-                """
-                )
-                autoStart = False
-            dataPrepWin.initLoading()
-            dataPrepWin.loadFiles(
-                exp_path, user_ch_file_paths, user_ch_name)
-            if self.posData.SizeZ == 1:
-                dataPrepWin.prepData(None)
-            loop = QEventLoop(self)
-            dataPrepWin.loop = loop
-            loop.exec_()
 
+        if segm2Don3DzPlaneViewMissing or selectROI:
             # If data was aligned then we make sure to load it here
             user_ch_file_paths = load.get_user_ch_paths(
                 images_paths,
@@ -763,7 +739,12 @@ class segmWin(QMainWindow):
                 load_metadata=True
             )
             self.posData.isSegm3D = self.isSegm3D
-        elif self.posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
+
+        if (
+                self.posData.SizeZ > 1 
+                and not self.isSegm3D 
+                and not self.use3DdataFor2Dsegm
+            ):
             df = self.posData.segmInfo_df.loc[self.posData.filename]
             zz = df['z_slice_used_dataPrep'].to_list()
 

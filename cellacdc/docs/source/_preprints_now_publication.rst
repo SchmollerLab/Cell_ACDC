@@ -6,6 +6,8 @@ The following preprints **have been published in a peer-reviewed journal**, and 
 .. raw:: html
 
     <ol>
+      <li>Vandal, E. S., et al. <i>The role of cell growth rate on accumulation of the mitotic cyclin Cdc13 in fission yeast</i>. <b>bioRxiv</b> (2026) DOI: <a href="https://doi.org/10.64898/2026.05.14.724355">10.64898/2026.05.14.724355</a>.</li><br>
+      
       <li>Muñoz-Barrera, M., et al. <i>HLH-30/TFEB is necessary for chromatin reorganization and maintenance of cell quiescence during starvation in C. elegans</i>. <b>bioRxiv</b> (2025) DOI: <a href="https://doi.org/10.1101/2025.10.31.685810">10.1101/2025.10.31.685810</a>.</li><br>
       
       <li>Gao, X., et al. <i>Yeast growth is controlled by the proportional scaling of mRNA and ribosome concentrations</i>. <b>arXiv</b> (2025) DOI: <a href="https://doi.org/10.48550/arXiv.2508.14997">10.48550/arXiv.2508.14997</a>.</li><br>
