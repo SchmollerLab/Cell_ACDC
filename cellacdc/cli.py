@@ -2052,7 +2052,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         for newColName, equation in mixedChannelsEquations.items():
             if newColName in self.mixedChCombineMetricsToSkip:
                 continue
-            cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
+            cols = [
+                name for name, _, _ in measurements.equation_variable_spans(equation)
+            ]
             if all([col in df.columns for col in cols]):
                 self._df_eval_equation(
                     df, newColName, equation, saveDataWorker=saveDataWorker

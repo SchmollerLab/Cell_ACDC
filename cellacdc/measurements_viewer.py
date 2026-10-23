@@ -8,6 +8,12 @@ the color swatches; comparison and time-course selections are independent.
 Column names are read-only, and the fixed-width selection indicator displays
 the color or axis instead of a separate checkbox tick. Clicking anywhere on a
 column (indicator or name) toggles its selection.
+Measurement selectors use the equation editor's tree organization: numerical
+and categorical inputs, channel-specific cell/background/custom measurements,
+size measurements, region properties, and other numerical inputs. Plotting
+lists only numerical and boolean columns. Search keeps matching leaves and
+their ancestors visible; group headings cannot be selected for plotting or
+processing.
 
 The window loads data on its own (menu `File --> Load Folder...`, 
 `Open Image File...` or `Open Recent`) and it shares only GUI elements with 
@@ -28,13 +34,19 @@ At startup, load a saved configuration or skip to start normally. The File
 menu can load, save or save a copy of a configuration; closing the window
 also offers to save. Configurations are JSON files in the settings folder
 and retain Images folders, image/overlay channels, segmentation, and both
-plot modes' selections (including X/Y order and signal normalization).
+plot modes' selections (including X/Y order and measurement normalization).
 
 Use ``Process measurements...`` to apply a recipe to selected measurements of the
-current position. Smooth signal uses a centered moving average independently
+current position. Smooth measurement uses a centered moving average independently
 for each cell; Dummy leaves values unchanged. Accepting prompts for an output
 name and adds ``<measurement>_<name>`` columns without changing the originals.
 Results stay in memory across position switches; Reload table discards them.
+``Combine measurements...`` opens the combined-measurement equation editor.
+Equations are evaluated on the current position's raw table, including
+categorical inputs, and add columns without overwriting existing measurements.
+Combined columns stay in memory and are not saved to the global equation
+configuration. Numerical and boolean results are available for plotting;
+string/category results are retained in the exported table.
 ``Export measurements...`` saves the table, including processed columns, to a
 separate CSV. Processing is applied to raw measurements before plot normalization.
 """
@@ -63,7 +75,7 @@ from qtpy.QtWidgets import (
     QGroupBox, QSplitter, QListView, QLineEdit,
     QCheckBox, QComboBox, QAbstractItemView, QFileDialog, QAction,
     QApplication, QToolButton, QPushButton, QActionGroup, QAbstractSlider,
-    QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem
+    QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem, QTreeView
 )
 
 import pyqtgraph as pg
@@ -79,6 +91,8 @@ from .config import STANDARD_MOUSE_BUTTONS
 from . import gui_core
 from . import apps
 from . import html_utils
+from . import printl
+from . import workers
 
 RESCALE_INTENS_HOW_TEXTS = (
     'Rescale each 2D image',
@@ -101,11 +115,13 @@ MEASUREMENTS_CONFIGURATIONS_PATH = os.path.join(
     settings_folderpath, 'measurements_viewer_configurations'
 )
 
-class _SignalColumnDelegate(widgets._ButtonSearchHighlightDelegate):
+class _MeasurementColumnDelegate(widgets._ButtonSearchHighlightDelegate):
     indicatorWidth = 28
 
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
+        if not index.flags() & Qt.ItemIsUserCheckable:
+            return
         option.features &= ~(
             QStyleOptionViewItem.HasCheckIndicator
             | QStyleOptionViewItem.HasDecoration
@@ -115,6 +131,8 @@ class _SignalColumnDelegate(widgets._ButtonSearchHighlightDelegate):
 
     def paint(self, painter, option, index):
         super().paint(painter, option, index)
+        if not index.flags() & Qt.ItemIsUserCheckable:
+            return
         rect = QRect(
             option.rect.left()+2, option.rect.center().y()-8, 24, 16
         )
@@ -128,7 +146,7 @@ class _SignalColumnDelegate(widgets._ButtonSearchHighlightDelegate):
         painter.restore()
 
     def editorEvent(self, event, model, option, index):
-        if not index.flags() & Qt.ItemIsEnabled:
+        if not index.flags() & Qt.ItemIsUserCheckable:
             return False
         if event.type() in (
                 QEvent.MouseButtonPress, QEvent.MouseButtonDblClick,
@@ -347,8 +365,8 @@ class MeasurementsViewerWin(
         self.user_ch_name = None
         self.configurationFilepath = None
         self._startupConfigurationPrompted = False
-        self.signalProcessingThread = None
-        self.signalProcessingWorker = None
+        self.measurementProcessingThread = None
+        self.measurementProcessingWorker = None
         self.rescaleIntensChannelHowMapper = {}
         self.logger = logging.getLogger('cellacdc-measurements-viewer')
         self.loadSettings()
@@ -622,10 +640,7 @@ class MeasurementsViewerWin(
             button.setChecked(channel in configuration['visible_channels'])
         self.setOverlayItemsOpacities()
 
-        columns = {
-            self.columnsModel.item(i).text()
-            for i in range(self.columnsModel.rowCount())
-        }
+        columns = {item.text() for item in self.columnsModel.measurementItems()}
         selected = set(configuration['time_course_columns'])
         axes = configuration['measurements_axes']
         missing = (selected | set(axes.values())).difference(columns, {''})
@@ -2219,19 +2234,18 @@ class MeasurementsViewerWin(
         self.columnsSearchLineEdit.setPlaceholderText('Search column...')
         self.columnsSearchLineEdit.setClearButtonEnabled(True)
         
-        self.columnsModel = widgets.QStandardItemModel(self)
-        self.columnsSearchProxy = widgets.ButtonSearchCompleter(
-            self,
-            searchRoles=(widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,),
-            tooltipRole=None,
-        )
+        self.columnsModel = widgets.MeasurementTreeModel(self)
+        self.columnsSearchProxy = widgets.MeasurementTreeSearchProxy(self)
         self.columnsSearchProxy.setSourceModel(self.columnsModel)
         self.columnsSearchProxy.setDynamicSortFilter(True)
         self.columnsSearchProxy.sort(0, Qt.AscendingOrder)
 
-        self.columnsListWidget = QListView()
+        self.columnsListWidget = QTreeView()
+        self.columnsListWidget.setHeaderHidden(True)
+        self.columnsListWidget.setIndentation(6)
+        self.columnsListWidget.setUniformRowHeights(True)
         self.columnsListWidget.setModel(self.columnsSearchProxy)
-        self.columnsHighlightDelegate = _SignalColumnDelegate(
+        self.columnsHighlightDelegate = _MeasurementColumnDelegate(
             self.columnsListWidget
         )
         self.columnsListWidget.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -2266,7 +2280,7 @@ class MeasurementsViewerWin(
         
         self.normalizeCheckbox = QCheckBox('Normalize measurements (0-1)')
         self.normalizeCheckbox.setToolTip(
-            'Rescale each signal to the range 0-1 to compare measurements with '
+            'Rescale each measurement to the range 0-1 to compare measurements with '
             'different scales'
         )
         self.refreshButton = widgets.reloadPushButton(' Reload table ')
@@ -2276,6 +2290,14 @@ class MeasurementsViewerWin(
         )
         self.processMeasurementsButton = widgets.setPushButton('Process measurements...')
         self.processMeasurementsButton.clicked.connect(self.processMeasurements)
+        self.combineMeasurementsButton = widgets.calcPushButton(
+            'Combine measurements...'
+        )
+        self.combineMeasurementsButton.setToolTip(
+            'Add columns calculated from the current position. '
+            'Use Export measurements to save the results.'
+        )
+        self.combineMeasurementsButton.clicked.connect(self.combineMeasurements)
         self.exportMeasurementsButton = widgets.savePushButton(
             'Export measurements...'
         )
@@ -2294,6 +2316,7 @@ class MeasurementsViewerWin(
         columnsLayout.addWidget(self.timeCourseColumnsWidget)
         columnsLayout.addWidget(self.normalizeCheckbox)
         columnsLayout.addWidget(self.processMeasurementsButton)
+        columnsLayout.addWidget(self.combineMeasurementsButton)
         columnsLayout.addWidget(self.exportMeasurementsButton)
         columnsLayout.addWidget(self.refreshButton)
         columnsWidget = QWidget()
@@ -2425,7 +2448,7 @@ class MeasurementsViewerWin(
             self.currentFrameLineMoved
         )
         self.columnsSearchLineEdit.textChanged.connect(self.filterColumns)
-        self.columnsModel.itemChanged.connect(self.signalColumnChanged)
+        self.columnsModel.itemChanged.connect(self.measurementColumnChanged)
         self.columnsListWidget.customContextMenuRequested.connect(
             self.showColumnsContextMenu
         )
@@ -2667,130 +2690,171 @@ class MeasurementsViewerWin(
         self.reloadAcdcDfFile()
         self.refreshAcdcDf()
 
-    def signalProcessingWarning(self, title, text):
+    def measurementProcessingWarning(self, title, text):
         self.logger.warning('%s: %s', title, text)
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, title, text)
 
-    def processMeasurements(self, checked=False):
-        if self.signalProcessingThread is not None:
+    def combineMeasurements(self, checked=False):
+        if self.measurementProcessingThread is not None:
+            self.measurementProcessingWarning(
+                'Measurement processing running',
+                'Wait for measurement processing to finish before combining measurements.'
+            )
             return
         if self.acdc_df is None or self.acdc_df.empty:
-            self.signalProcessingWarning('No measurements', 'Load measurements first.')
+            self.measurementProcessingWarning('No measurements', 'Load measurements first.')
+            return
+        posData = self.posData()
+        source = self.acdc_df
+        dialog = apps.CombineMetricsEquationDialog(
+            posData.chNames, posData.SizeZ > 1, self.isSegm3D,
+            parent=self, closeOnOk=False, acdc_df=source, saveToConfig=False
+        )
+        dialog.setToolTip(
+            'Results are added to the current position in memory. '
+            'Use Export measurements to save them.'
+        )
+        dialog.sigOk.connect(
+            partial(self.applyCombinedMeasurements, posData=posData, source=source)
+        )
+        dialog.exec_()
+        dialog.deleteLater()
+
+    def applyCombinedMeasurements(self, dialog, *, posData, source):
+        dialog.cancel = True
+        if (
+            self.measurementProcessingThread is not None
+            or not any(pos is posData for pos in self.data)
+            or self.posData() is not posData
+            or self.acdc_df is not source
+        ):
+            self.measurementProcessingWarning(
+                'Measurements changed',
+                'The source table changed. Reopen Combine measurements and try again.'
+            )
+            return
+        equations, _ = dialog.getEquationsDict()
+        collisions = set(equations).intersection(source.columns)
+        if collisions:
+            self.measurementProcessingWarning(
+                'Invalid measurement name',
+                'Choose a name that does not overwrite existing columns: '
+                + ', '.join(sorted(collisions))
+            )
+            return
+        try:
+            result = source.copy()
+            for name, expression in equations.items():
+                values = source.eval(expression)
+                if not isinstance(values, pd.Series):
+                    raise ValueError('The equation must return one value per row.')
+                result[name] = values
+        except Exception as err:
+            self.logger.exception('Combining measurements failed')
+            self.measurementProcessingWarning('Combining measurements failed', str(err))
+            return
+        posData.acdc_df = result
+        self.acdc_df = result
+        self.updateColumnsList()
+        self.plotMeasurements()
+        dialog.cancel = False
+        dialog.close()
+        self.statusBar().showMessage(
+            'Combined measurements added. Use Export measurements to save them.',
+            5000
+        )
+
+    def processMeasurements(self, checked=False):
+        if self.measurementProcessingThread is not None:
+            return
+        if self.acdc_df is None or self.acdc_df.empty:
+            self.measurementProcessingWarning('No measurements', 'Load measurements first.')
             return
         columns = [
             col for col in self.acdc_df.select_dtypes(include='number').columns
             if col not in INDEX_COLUMNS
         ]
         if not columns:
-            self.signalProcessingWarning(
+            self.measurementProcessingWarning(
                 'No measurements', 'The table has no numeric measurements to process.'
             )
             return
-        dialog = apps.SignalProcessingRecipeDialog(columns, parent=self)
+        dialog = apps.MeasurementProcessingRecipeDialog(
+            columns, parent=self, acdc_df=self.acdc_df,
+            allChNames=self.posData().chNames
+        )
         dialog.exec_()
         if dialog.cancel:
-            return
+            return       
 
-        if len(dialog.selectedChannels) > 1:
-            selectedChannels = ', '.join(dialog.selectedChannels)
-        else:
-            selectedChannels = dialog.selectedChannels[0]
-
-        while True:
-            nameDialog = apps.filenameDialog(
-                basename=selectedChannels, ext='', defaultEntry='processed', allowEmpty=False,
-                title='Name processed measurements',
-                hintText='Name to append to the processed measurement column(s):',
-                parent=self
-            )
-            nameDialog.exec_()
-            if nameDialog.cancel:
-                return
-            name = nameDialog.entryText.strip()
-            outputColumns = [
-                f'{column}_{name}' for column in dialog.selectedChannels
-            ]
-            if name and not any(col in self.acdc_df.columns for col in outputColumns):
-                break
-            self.signalProcessingWarning(
-                'Invalid measurement name',
-                'Choose a non-empty name that does not overwrite existing columns.'
-            )
-
-        self.startSignalProcessing(
-            dialog.selectedChannels, dialog.selectedRecipe, name
+        self.startMeasurementsProcessing(
+            dialog.selectedChannels, dialog.selectedRecipe, dialog.saveNames
         )
 
-    def startSignalProcessing(self, columns, recipe, name):
-        from . import workers, measurement_processing
-
+    def startMeasurementsProcessing(self, columns, recipe, saveNames):
         posData = self.posData()
-        self._signalProcessingTarget = (
+        self._measurementProcessingTarget = (
             posData, self.acdc_df, getattr(posData, 'acdc_df', None)
         )
-        self.signalProcessingThread = QThread(self)
-        self.signalProcessingWorker = workers.SignalProcessingWorkerGUI(
+        self.measurementProcessingThread = QThread(self)
+        self.measurementProcessingWorker = workers.MeasurementProcessingWorkerGUI(
             QMutex(), QWaitCondition()
         )
-        worker = self.signalProcessingWorker
+        worker = self.measurementProcessingWorker
         worker.setupJob(
-            measurement_processing.apply_recipe, self.acdc_df[columns].copy(),
-            copy.deepcopy(recipe), name
+            df=self.acdc_df.copy(),
+            cols=columns,
+            recipe=recipe,
+            new_colnames=saveNames
         )
-        worker.moveToThread(self.signalProcessingThread)
-        self.signalProcessingThread.started.connect(worker.run)
-        worker.sigDone.connect(self.signalProcessingDone)
-        worker.signals.critical.connect(self.signalProcessingFailed)
-        worker.signals.finished.connect(self.signalProcessingThread.quit)
+        worker.moveToThread(self.measurementProcessingThread)
+        self.measurementProcessingThread.started.connect(worker.runJob)
+        worker.sigDone.connect(self.measurementProcessingDone)
+        worker.signals.critical.connect(self.measurementProcessingFailed)
+        worker.signals.finished.connect(self.measurementProcessingThread.quit)
         worker.signals.finished.connect(worker.deleteLater)
-        self.signalProcessingThread.finished.connect(self.signalProcessingFinished)
+        self.measurementProcessingThread.finished.connect(self.measurementProcessingFinished)
         self.processMeasurementsButton.setEnabled(False)
+        self.combineMeasurementsButton.setEnabled(False)
         self.refreshButton.setEnabled(False)
-        self.signalProcessingThread.start()
+        self.measurementProcessingThread.start()
 
-    def signalProcessingDone(self, processed, name):
-        posData, source, original = self._signalProcessingTarget
+    def measurementProcessingDone(self, processed):
+        posData, source, original = self._measurementProcessingTarget
         if (not any(pos is posData for pos in self.data)
                 or getattr(posData, 'acdc_df', None) is not original
                 or (self.posData() is posData
                     and (self.acdc_df is None or not self.acdc_df.sort_index().equals(
                         source.sort_index()
                     )))):
-            self.signalProcessingWarning(
+            self.measurementProcessingWarning(
                 'Measurements changed',
                 'The source table changed during processing. Results were not applied.'
             )
             return
-        outputColumns = [f'{column}_{name}' for column in processed.columns]
-        if any(col in source.columns for col in outputColumns):
-            self.signalProcessingWarning(
-                'Measurements changed', 'Output measurement names already exist.'
-            )
-            return
-        result = source.copy()
-        for column, output in zip(processed.columns, outputColumns):
-            result[output] = processed[column]
-        posData.acdc_df = result
+
+        posData.acdc_df = processed
         if self.posData() is posData:
-            self.acdc_df = result
+            self.acdc_df = processed
             self.updateColumnsList()
             self.plotMeasurements()
 
-    def signalProcessingFailed(self, out):
+    def measurementProcessingFailed(self, out):
         worker, error = out
-        self.signalProcessingWarning('Signal processing failed', str(error))
+        self.measurementProcessingWarning('Measurement processing failed', str(error))
 
-    def signalProcessingFinished(self):
-        self.signalProcessingThread.deleteLater()
-        self.signalProcessingThread = None
-        self.signalProcessingWorker = None
+    def measurementProcessingFinished(self):
+        self.measurementProcessingThread.deleteLater()
+        self.measurementProcessingThread = None
+        self.measurementProcessingWorker = None
         self.processMeasurementsButton.setEnabled(True)
+        self.combineMeasurementsButton.setEnabled(True)
         self.refreshButton.setEnabled(True)
 
     def exportMeasurements(self, checked=False):
         if self.acdc_df is None or self.acdc_df.empty:
-            self.signalProcessingWarning('No measurements', 'Load measurements first.')
+            self.measurementProcessingWarning('No measurements', 'Load measurements first.')
             return
         filepath, _ = QFileDialog.getSaveFileName(
             self, 'Export measurements', 'processed_measurements.csv', 'CSV (*.csv)'
@@ -2800,7 +2864,7 @@ class MeasurementsViewerWin(
         try:
             self.acdc_df.to_csv(filepath)
         except (OSError, ValueError) as error:
-            self.signalProcessingWarning('Export failed', str(error))
+            self.measurementProcessingWarning('Export failed', str(error))
             return
         self.statusBarLabel.setText(f'Measurements exported to {filepath}')
     
@@ -2895,7 +2959,9 @@ class MeasurementsViewerWin(
             return
         
         numericColumns = [
-            col for col in self.acdc_df.select_dtypes(include='number').columns
+            col for col in self.acdc_df.select_dtypes(
+                include=['number', 'bool']
+            ).columns
             if col not in INDEX_COLUMNS
         ]
         if isFirstInit and self.measurementsModeCombobox.currentIndex() == 0:
@@ -2906,19 +2972,18 @@ class MeasurementsViewerWin(
             else:
                 checkedColumns = set(numericColumns[:1])
         
-        for col in numericColumns:
-            item = widgets.QStandardItem(col)
-            item.setEditable(False)
-            item.setCheckable(True)
+        channels = getattr(self.posData(), 'chNames', ()) if self.data else ()
+        self.columnsModel.populate(
+            self.acdc_df[numericColumns], channels, checkable=True
+        )
+        for item in self.columnsModel.measurementItems():
+            col = item.text()
             if col in checkedColumns:
                 item.setCheckState(Qt.Checked)
             else:
                 item.setCheckState(Qt.Unchecked)
-            item.setData(
-                col, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE
-            )
-            self.columnsModel.appendRow(item)
         self.columnsModel.blockSignals(False)
+        self.columnsListWidget.expandAll()
         self.updateSignalAxes(numericColumns)
         self.filterColumns(self.columnsSearchLineEdit.text())
 
@@ -2931,8 +2996,7 @@ class MeasurementsViewerWin(
     
     def checkedColumns(self):
         columns = []
-        for i in range(self.columnsModel.rowCount()):
-            item = self.columnsModel.item(i)
+        for item in self.columnsModel.measurementItems():
             if item.checkState() == Qt.Checked:
                 columns.append(item.text())
         return columns
@@ -2940,6 +3004,8 @@ class MeasurementsViewerWin(
     def filterColumns(self, text):
         self.columnsSearchProxy.setFilterText(text)
         self.columnsHighlightDelegate.setFilterText(text)
+        if text.strip():
+            self.columnsListWidget.expandAll()
         self.columnsListWidget.viewport().update()
     
     def getAllIDs(self):
@@ -3478,8 +3544,7 @@ class MeasurementsViewerWin(
             else self._timeCourseColumns
         )
         self.columnsModel.blockSignals(True)
-        for i in range(self.columnsModel.rowCount()):
-            item = self.columnsModel.item(i)
+        for item in self.columnsModel.measurementItems():
             item.setCheckState(
                 Qt.Checked if item.text() in columns else Qt.Unchecked
             )
@@ -3493,17 +3558,19 @@ class MeasurementsViewerWin(
         )
         self.plotMeasurements()
 
-    def signalColumnChanged(self, item):
+    def measurementColumnChanged(self, item):
+        if not item.isCheckable():
+            return
         if self.measurementsModeCombobox.currentIndex() == 1:
             col = item.text()
             if item.checkState() != Qt.Checked:
-                for axis, signal in self.measurementsAxes.items():
-                    if signal == col:
+                for axis, measurement in self.measurementsAxes.items():
+                    if measurement == col:
                         self.measurementsAxes[axis] = ''
             elif col not in self.measurementsAxes.values():
                 axis = next(
-                    (axis for axis, signal in self.measurementsAxes.items()
-                     if not signal), None
+                    (axis for axis, measurement in self.measurementsAxes.items()
+                     if not measurement), None
                 )
                 if axis is None:
                     self.columnsModel.blockSignals(True)
@@ -3511,7 +3578,7 @@ class MeasurementsViewerWin(
                     self.columnsModel.blockSignals(False)
                     self.statusBar().showMessage(
                         'Two measurements are already selected. Uncheck X or Y '
-                        'before selecting another signal.', 5000
+                        'before selecting another measurement.', 5000
                     )
                 else:
                     self.measurementsAxes[axis] = col
@@ -3570,13 +3637,13 @@ class MeasurementsViewerWin(
         # PlotDataItem does not forward hover options to its scatter item.
         item.scatter.setData(
             x=item.xData, y=item.yData, data=item.opts['data'],
-            hoverable=True, tip=self.signalPointTip,
+            hoverable=True, tip=self.measurementPointTip,
             hoverSize=11, hoverBrush=pg.mkBrush(255, 100, 100)
         )
-        item.scatter.sigClicked.connect(self.signalPointClicked)
+        item.scatter.sigClicked.connect(self.measurementPointClicked)
 
     @staticmethod
-    def signalPointTip(x, y, data):
+    def measurementPointTip(x, y, data):
         lines = [
             f'Cell ID: {data["Cell_ID"]}',
             f'Frame: {data["frame_i"]+1}',
@@ -3587,7 +3654,7 @@ class MeasurementsViewerWin(
                 lines.append(f'{col} (normalized): {value:.6g}')
         return '\n'.join(lines)
 
-    def signalPointClicked(self, item, points, event):
+    def measurementPointClicked(self, item, points, event):
         if event.button() != Qt.LeftButton or not len(points):
             return
         data = points[0].data()
@@ -3628,14 +3695,13 @@ class MeasurementsViewerWin(
         columns = self.checkedColumns()
         isComparison = self.measurementsModeCombobox.currentIndex() == 1
         self.columnsModel.blockSignals(True)
-        for i in range(self.columnsModel.rowCount()):
-            item = self.columnsModel.item(i)
+        for item in self.columnsModel.measurementItems():
             col = item.text()
             item.setCheckable(True)
             if isComparison:
                 axes = '/'.join(
-                    axis for axis, signal in self.measurementsAxes.items()
-                    if signal == col
+                    axis for axis, measurement in self.measurementsAxes.items()
+                    if measurement == col
                 )
                 item.setData(axes, Qt.AccessibleDescriptionRole)
                 if not axes:
@@ -3669,6 +3735,8 @@ class MeasurementsViewerWin(
             return
         source_index = self.columnsSearchProxy.mapToSource(proxy_index)
         item = self.columnsModel.itemFromIndex(source_index)
+        if not item.isCheckable():
+            return
         
         col = item.text()
         menu = QMenu(self.columnsListWidget)
@@ -4150,10 +4218,10 @@ class MeasurementsViewerWin(
             super().keyPressEvent(event)
     
     def closeEvent(self, event):
-        if self.signalProcessingThread is not None:
-            self.signalProcessingWarning(
+        if self.measurementProcessingThread is not None:
+            self.measurementProcessingWarning(
                 'Signal processing running',
-                'Wait for signal processing to finish before closing the viewer.'
+                'Wait for measurement processing to finish before closing the viewer.'
             )
             event.ignore()
             return

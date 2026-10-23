@@ -58,7 +58,7 @@ from qtpy.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
     QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
-    QStyleOptionViewItem, QAbstractButton
+    QStyleOptionViewItem, QAbstractButton, QTreeView
 )
 import qtpy.compat
 
@@ -2482,6 +2482,10 @@ class readOnlyQList(QTextEdit):
         items = [str(item) for item in self.items]
         columnList = html_utils.paragraph('<br>'.join(items))
         self.setText(columnList)
+        
+    def clear(self):
+        self.items = []
+        self.setText('')
 
 class pgScatterSymbolsCombobox(QComboBox):
     def __init__(self, parent=None):
@@ -2550,7 +2554,9 @@ class alphaNumericLineEdit(QLineEdit):
         return re.findall(fr'{self.invalidPattern}', text)
     
     def keyPressEvent(self, event: QKeyEvent):
-        if not event.text():
+        text = event.text()
+
+        if not text:
             return super().keyPressEvent(event)
 
         if event.modifiers() & (
@@ -2560,14 +2566,23 @@ class alphaNumericLineEdit(QLineEdit):
         ):
             return super().keyPressEvent(event)
 
-        if not event.text().isprintable():
+        if not text.isprintable():
             return super().keyPressEvent(event)
-        
+
+        if text == ' ':
+            # replace the space with an underscore before QLineEdit processes it
+            event = QKeyEvent(
+                event.type(),
+                Qt.Key.Key_Underscore,
+                event.modifiers(),
+                '_',
+            )
+
         super().keyPressEvent(event)
-        
+
         if event.text() in self.text():
             return
-        
+
         self.sigInvalidCharacterPressed.emit(event.text())
 
 class NumericCommaLineEdit(QLineEdit):
@@ -13666,6 +13681,68 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
             )
             self._similarityCache[cache_key] = similarity
         return similarity
+
+
+class MeasurementTreeModel(QStandardItemModel):
+    """Shared measurement hierarchy with selectable/checkable leaves only."""
+
+    def populate(self, dataframe, channels=(), checkable=False):
+        self.clear()
+        nodes = {(): self.invisibleRootItem()}
+        for path, columns in measurements.measurement_column_groups(dataframe, channels):
+            for depth in range(1, len(path)+1):
+                prefix = path[:depth]
+                if prefix not in nodes:
+                    group = QStandardItem(prefix[-1])
+                    group.setFlags(Qt.ItemIsEnabled)
+                    nodes[prefix[:-1]].appendRow(group)
+                    nodes[prefix] = group
+            for column in columns:
+                item = QStandardItem(column)
+                item.setEditable(False)
+                item.setCheckable(checkable)
+                item.setData(column, ButtonSearchCompleter.SEARCH_NAME_ROLE)
+                nodes[path].appendRow(item)
+
+    def measurementItems(self, parent=None):
+        if parent is None:
+            parent = self.invisibleRootItem()
+        for row in range(parent.rowCount()):
+            item = parent.child(row)
+            if item.hasChildren():
+                yield from self.measurementItems(item)
+            else:
+                yield item
+
+
+class MeasurementTreeSearchProxy(ButtonSearchCompleter):
+    """Keep ancestors of fuzzy-matched measurement leaves visible."""
+
+    def __init__(self, parent=None):
+        super().__init__(
+            parent, searchRoles=(self.SEARCH_NAME_ROLE,), tooltipRole=None
+        )
+        self.setRecursiveFilteringEnabled(True)
+        self.setDynamicSortFilter(True)
+        self.sort(0, Qt.AscendingOrder)
+
+    def _getScore(self, index):
+        # Sibling row numbers repeat across tree branches.
+        key = (index, self._filterText)
+        if key not in self._scoreCache:
+            self._scoreCache[key] = self._matchScore(index)
+        return self._scoreCache[key]
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        index = self.sourceModel().index(source_row, 0, source_parent)
+        if self._filterText and self.sourceModel().hasChildren(index):
+            return False
+        return super().filterAcceptsRow(source_row, source_parent)
+
+    def lessThan(self, left, right):
+        if self.sourceModel().hasChildren(left) or self.sourceModel().hasChildren(right):
+            return left.row() < right.row()
+        return super().lessThan(left, right)
 
 
 def _fuzzySearchSimilarity(query, text, minimum_similarity=0.0):

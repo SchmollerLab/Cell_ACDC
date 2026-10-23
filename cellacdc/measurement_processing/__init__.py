@@ -51,25 +51,26 @@ def _load_processors():
 MEASUREMENT_PROCESSING_MAPPER = _load_processors()
 
 
-def apply_recipe(measurements, recipe):
+def apply_recipe(df, cols, recipe, new_colnames):
     """Apply a recipe to selected numeric columns without modifying the input."""
-    if not isinstance(measurements, pd.DataFrame):
-        raise ValueError('Measurements must be a pandas DataFrame.')
-    if list(measurements.index.names) != ['frame_i', 'Cell_ID']:
-        raise ValueError('Measurements must be indexed by frame_i and Cell_ID.')
-    if not measurements.index.is_unique:
+    if not isinstance(df, pd.DataFrame):
+        raise ValueError('df must be a pandas DataFrame.')
+    if list(df.index.names) != ['frame_i', 'Cell_ID']:
+        raise ValueError('df must be indexed by frame_i and Cell_ID.')
+    if not df.index.is_unique:
         raise ValueError('Measurement frame and cell pairs must be unique.')
-    if measurements.empty or not len(measurements.columns):
+    if df.empty or not len(df.columns):
         raise ValueError('Select at least one measurement with data.')
     if not recipe:
         raise ValueError('The measurement-processing recipe cannot be empty.')
 
-    result = measurements.copy()
+    result = df[cols].copy()
+    new_col_name_dict = dict(zip(cols, new_colnames))
     for step in recipe:
         processor = MEASUREMENT_PROCESSING_MAPPER[step['method']]['class']
         if processor.is_timelapse and processor.is_bulk_processing:
             raise ValueError('Bulk and timelapse processing are mutually exclusive.')
-        if processor.numeric_input and any(not pd.api.types.is_numeric_dtype(np.dtype)
+        if processor.numeric_input and any(not pd.api.types.is_numeric_dtype(dtype)
                                          for dtype in result.dtypes):
             raise ValueError('Processor requires numeric measurements.')
         kwargs = step['kwargs']
@@ -95,4 +96,8 @@ def apply_recipe(measurements, recipe):
                     raise ValueError('Measurement processing must preserve the number of values.')
                 values[indices] = processed
             result[column] = values
-    return result
+            
+    # merge new column names
+    result = result.rename(columns=new_col_name_dict)
+    df = df.join(result, how='left')
+    return df

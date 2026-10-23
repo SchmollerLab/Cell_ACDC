@@ -30283,8 +30283,9 @@ class guiWin(
     def addCombineMetric(self):
         posData = self.data[self.pos_i]
         isZstack = posData.SizeZ > 1
-        win = apps.combineMetricsEquationDialog(
-            self.ch_names, isZstack, self.isSegm3D, parent=self
+        win = apps.CombineMetricsEquationDialog(
+            self.ch_names, isZstack, self.isSegm3D, parent=self,
+            acdc_df=posData.acdc_df
         )
         win.sigOk.connect(self.saveCombineMetricsToPosData)
         win.exec_()

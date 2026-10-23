@@ -309,9 +309,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
     
     def addCombineMetric(self):
         isZstack = self.posData.SizeZ > 1
-        self.combineMetricWindow = apps.combineMetricsEquationDialog(
+        self.combineMetricWindow = apps.CombineMetricsEquationDialog(
             self.posData.chNames, isZstack, self.posData.isSegm3D,
-            parent=self.measurementsWin, closeOnOk=False
+            parent=self.measurementsWin, closeOnOk=False,
+            acdc_df=self.posData.acdc_df
         )
         self.combineMetricWindow.sigOk.connect(self.saveCombineMetricsToPosData)
         self.combineMetricWindow.show()

@@ -77,6 +77,8 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
             filePath, _ = load.get_path_from_endname(end, self.imagesPath)
             acdc_df = pd.read_csv(filePath)
             acdcDfsDict[end] = acdc_df
+            
+        self.combineWindow.addAcdcDfs(acdcDfsDict)
 
     def criticalNotEnoughSegmFiles(self, exp_path):
         text = html_utils.paragraph(f"""

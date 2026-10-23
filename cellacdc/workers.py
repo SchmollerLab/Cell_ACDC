@@ -44,6 +44,7 @@ from . import cca_df_colnames_with_tree
 from . import cli
 from .utils import resize
 from . import segm_utils
+from . import measurement_processing
 DEBUG = False
 
 def worker_exception_handler(func):
@@ -5869,21 +5870,64 @@ class CustomPreprocessWorkerGUI(QObject):
 
         self.signals.finished.emit(self)
 
-class SignalProcessingWorkerGUI(CustomPreprocessWorkerGUI):
+class MeasurementProcessingWorkerGUI(CustomPreprocessWorkerGUI):
     """One-shot measurement job using the preprocessing worker's job API."""
-
-    def applyRecipe(self, func, measurements, recipe):
-        return func(measurements, recipe)
-
-    def run(self):
+    sigDone = Signal(object)
+    def applyRecipe(self, df, cols, recipe, new_colnames):
+        return measurement_processing.apply_recipe(df, cols, recipe, new_colnames)
+            
+    def setupJob(self, df, cols, recipe, new_colnames):
+        self._df = df
+        self._cols = cols
+        self._recipe = recipe
+        self._new_colnames = new_colnames
+        
+    def runJob(self):
         try:
-            processed = self.runJob()
-            self.sigDone.emit(processed, self._how)
+            df = self.applyRecipe(
+                self._df,
+                self._cols,
+                self._recipe,
+                self._new_colnames
+            )
+            self.sigDone.emit(df)
+            return
         except Exception as error:
             self.logger.exception(traceback.format_exc())
             self.signals.critical.emit((self, error))
         finally:
             self.signals.finished.emit(self)
+        
+    @worker_exception_handler
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing measurement processing worker...')
+                break
+            elif self.wait:
+                self.logger.log('Measurement processing worker paused.')
+                self.pause()
+            elif len(self.dataQ) > 0:
+                func, image, recipe, key = self.dataQ.pop()
+                processed_data = self.applyRecipe(func, image, recipe, self._new_colnames)
+                self.sigPreviewDone.emit(processed_data, key)
+                if len(self.dataQ) == 0:
+                    self.wait = True
+                    self.sigIsQueueEmpty.emit(True)
+            else:
+                self.logger.log('Measurement processing worker resumed.')
+                processed_data = self.runJob()
+                self.sigDone.emit(processed_data)
+                self.wait = True
+
+        self.signals.finished.emit(self)
+        
+    def enqueue(self, df, cols, recipe, new_colnames):
+        self.dataQ.append((df, cols, recipe, new_colnames))
+        if len(self.dataQ) == 1:
+            self.sigIsQueueEmpty.emit(False)
+            # Wake up worker upon inserting first element
+            self.wakeUp()
 
 
 class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
