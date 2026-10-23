@@ -17002,36 +17002,34 @@ When working with 3D segmentation masks:
         height = geometry.height()
         self.setGeometry(left, top+10, width, height-200)
     
-    def checkSetDelObjActionActive(self, event):
+    def checkSetDelObjActionActive(self, event, checked=True):
         if self.delObjAction is None and self.is_win:
             return
         
         if self.delObjAction is None:
             # On mac we check for Key_Control
             if event.key() == Qt.Key_Control:
-                self.delObjToolAction.setChecked(True)
-            return
+                self.delObjToolAction.setChecked(checked)
+                return True
+
+            return False
 
         delObjKeySequence, delObjQtButton = self.delObjAction
         keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
 
         if delObjKeySequence is None:
-            # self.delObjToolAction.setChecked(True)
-            return
+            return False
 
         delObjKeySequenceText = widgets.macShortcutToWindows(
             delObjKeySequence.toString()
         )
         keySequenceText = widgets.macShortcutToWindows(keySequenceText)
-
-        # printl(
-        #     delObjKeySequence.toString(), 
-        #     keySequenceText, 
-        #     delObjKeySequenceText
-        # )
         
         if keySequenceText == delObjKeySequenceText:
-            self.delObjToolAction.setChecked(True)
+            self.delObjToolAction.setChecked(checked)
+            return True
+        
+        return False
     
     def changeRightClickToLeftOnMac(self, mouseEvent):
         button = mouseEvent.button()
@@ -17589,7 +17587,7 @@ When working with 3D segmentation masks:
             or ev.key() == Qt.Key_Down
             or ev.key() == Qt.Key_Control
             or ev.key() == Qt.Key_Backspace
-            or self.delObjToolAction.isChecked()
+            or self.checkSetDelObjActionActive(ev, checked=False)
         )
 
         if (
@@ -17622,8 +17620,6 @@ When working with 3D segmentation masks:
         
         if canRepeat and ev.isAutoRepeat():
             return
-        
-        self.delObjToolAction.setChecked(False)
         
         if ev.isAutoRepeat() and not ev.key() == Qt.Key_Z:
             if self.warnKeyPressedMsg is not None:
@@ -31726,7 +31722,9 @@ When working with 3D segmentation masks:
         self.annotateAllObjectTracks()
         self.annotateAssignedObjsAcdcTrackerSecondStep()
         self.store_data(autosave=False)
-        self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
+        self.whitelistPropagateIDs(
+            IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames)
+        )
         return delID_mask
     
     def hideOverlayLabelsItems(self, specific=None):
