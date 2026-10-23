@@ -334,21 +334,33 @@ def test_install_dialog_preserves_pin_across_platforms(
         myutils, "get_pip_conda_prefix", lambda **kwargs: ("", "python -m pip install")
     )
     dialog = apps.InstallPyTorchDialog(
-        target_python="model-python", platform="win32", found_cuda_version=False,
+        target_python="model-python", platform=sys.platform, found_cuda_version=False,
         torch_version=torch_version,
     )
     try:
+        base_command = f"python -m pip install {torch_spec} torchvision"
+        expected_index = "" if sys.platform == "darwin" else " --index-url cuda-index"
         assert dialog.commandWidget.command() == (
-            f"python -m pip install {torch_spec} torchvision --index-url cuda-index"
+            base_command + expected_index
         )
         if torch_version:
             assert torch_version in [label.text() for label in dialog.findChildren(QLabel)]
-        dialog.cmptPlatformCombobox.setCurrentIndex(0)
-        assert dialog.commandWidget.command().endswith("--index-url cpu-index")
-        dialog.osCombobox.setCurrentText("Mac")
-        assert dialog.commandWidget.command() == (
-            f"python -m pip install {torch_spec} torchvision"
-        )
+        for os_name in ("Windows", "Linux", "Mac"):
+            dialog.osCombobox.setCurrentText(os_name)
+            if os_name == "Mac":
+                assert dialog.commandWidget.command() == base_command
+            else:
+                if sys.platform == "darwin":
+                    preferred_index = cpu_index = f"{_torch_utils.BASE_PYTORCH_LINK}cpu"
+                else:
+                    preferred_index, cpu_index = "cuda-index", "cpu-index"
+                assert dialog.commandWidget.command() == (
+                    f"{base_command} --index-url {preferred_index}"
+                )
+                dialog.cmptPlatformCombobox.setCurrentIndex(0)
+                assert dialog.commandWidget.command() == (
+                    f"{base_command} --index-url {cpu_index}"
+                )
         dialog.ok_cb()
         assert not dialog.cancel
         assert dialog.command == dialog.commandWidget.command()
