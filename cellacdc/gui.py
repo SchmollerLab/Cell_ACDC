@@ -25519,6 +25519,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 lab[slc_o][mask_o] = newID
                 assignments[oldID] = newID
             
+            objn_slice = objn.slice
+            mask_n = objn.image
             if z_start is not None:
                 local_z_n = z_start - objo.bbox[0]
                 mask_n[:local_z_n] = False
@@ -25528,9 +25530,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 mask_n[local_z_n+1:] = False
 
             # Relabel new_ID to old_ID
-            objn_slice = objn.slice
-            objn_mask = objn.image
-            lab[objn_slice][objn_mask] = oldID
+            lab[objn_slice][mask_n] = oldID
             assignments[newID] = oldID
             did_find_newID = True
         else:
