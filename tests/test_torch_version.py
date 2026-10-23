@@ -1,5 +1,6 @@
 import importlib.metadata
 import json
+import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -196,23 +197,31 @@ def test_satisfied_pin_does_not_discover_or_install(monkeypatch):
     (">=1.13,<2", ["cpu", "cu117"]),
 ])
 def test_cuda_options_filter_pinned_release(monkeypatch, torch_version, expected_tags):
-    monkeypatch.setattr(myutils.sys, "platform", "win32")
     py = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    wheel_platform = (
+        "win_amd64"
+        if sys.platform == "win32" and platform.machine().lower() in ("amd64", "x86_64")
+        else platform.machine()
+    )
     pages = {
         _torch_utils.BASE_PYTORCH_LINK: "cu117 cu124 cu126",
         f"{_torch_utils.BASE_PYTORCH_LINK}cu117/torch/":
-            f"torch-1.13.1%2Bcu117-{py}-{py}-win_amd64.whl",
+            f"torch-1.13.1%2Bcu117-{py}-{py}-{wheel_platform}.whl",
         f"{_torch_utils.BASE_PYTORCH_LINK}cu124/torch/":
-            f"torch-2.5.1%2Bcu124-{py}-{py}-win_amd64.whl",
+            f"torch-2.5.1%2Bcu124-{py}-{py}-{wheel_platform}.whl",
         f"{_torch_utils.BASE_PYTORCH_LINK}cu126/torch/":
-            f"torch-2.6.0%2Bcu126-{py}-{py}-win_amd64.whl",
+            f"torch-2.6.0%2Bcu126-{py}-{py}-{wheel_platform}.whl",
     }
     monkeypatch.setattr(_torch_utils, "_get", pages.__getitem__)
     options, preferred = _torch_utils.get_torch_options(
         driver_cuda_version=(13, 0), torch_version=torch_version
     )
-    assert [url.rsplit("/", 1)[-1] for _, url in options] == expected_tags
-    assert preferred == 1
+    actual_tags = [url.rsplit("/", 1)[-1] if url else None for _, url in options]
+    if sys.platform == "darwin":
+        expected_tags = [None]
+        assert options == [("Default (CPU / Apple GPU)", None)]
+    assert actual_tags == expected_tags
+    assert preferred == (0 if sys.platform == "darwin" else 1)
 
 
 @pytest.mark.parametrize("target_version, target_platform, machine, wheel_platform", [
