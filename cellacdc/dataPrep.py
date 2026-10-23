@@ -2921,11 +2921,12 @@ class dataPrepWin(QMainWindow):
         self.num_pos = len(user_ch_file_paths)
 
         proceed = self.init_data(user_ch_file_paths, user_ch_name)
-        self.initNavigateWidgets()
 
         if not proceed:
             self.openFolderAction.setEnabled(True)
             return
+
+        self.initNavigateWidgets()
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
@@ -3450,3 +3451,94 @@ class dataPrepWin(QMainWindow):
             self.df_settings = pd.read_csv(
                 settings_csv_path, index_col='setting'
             )
+
+def launchDataPrepSelectZPlane(
+        exp_path, 
+        user_ch_file_paths, 
+        user_ch_name, 
+        mainWin=None, 
+        parent=None,
+        version: str | None=None,
+        logger_func=print
+    ):
+    win = dataPrepWin(
+        mainWin=mainWin, version=version
+    )
+    win.show()
+
+    logger_func(
+        'WARNING: The image data in is 3D but '
+        '_segmInfo.csv file not found. Launching dataPrep.py...'
+    )
+
+    msg = widgets.myMessageBox()
+    txt = html_utils.paragraph(f"""
+        You loaded 3D z-stacks, but (in some or all Positions) 
+        you <b>never selected which
+        z-slice or projection method to use for segmentation</b>
+        (this is required for 2D segmentation of 3D data).<br><br>
+        I opened a window where you can visualize
+        your z-stacks and <b>select an appropriate z-slice
+        or projection for each Position or frame</b>.
+    """)
+    msg.warning(
+        parent, '3D z-stacks info missing', txt, 
+        buttonsTexts=('Cancel', 'Ok')
+    )
+    if msg.cancel:
+        return True
+    
+    win.titleText = (
+        """
+        Select z-slice (or projection) for each frame/position.<br>
+        Then, if you want to segment the entire field of view,
+        close the window.<br>
+        Otherwise, if you need to select a ROI,
+        press the "Start" button, draw the ROI<br>
+        and confirm with the green tick button.
+        """
+    )
+
+    win.initLoading()
+    win.loadFiles(
+        exp_path, user_ch_file_paths, user_ch_name
+    )
+
+    loop = QEventLoop(parent)
+    win.loop = loop
+    loop.exec_()
+
+    return False
+
+def launchDataPrepSelectROI(
+        exp_path, 
+        user_ch_file_paths, 
+        user_ch_name, 
+        SizeZ,
+        mainWin=None, 
+        parent=None,
+        version: str | None=None,
+        logger_func=print
+    ):
+    win = dataPrepWin(
+        mainWin=mainWin, version=version
+    )
+    win.show()
+    
+    win.titleText = (
+        """
+        If you need to crop press the green tick button,<br>
+        otherwise you can close the window.
+        """
+    )
+
+    win.initLoading()
+    win.loadFiles(
+        exp_path, user_ch_file_paths, user_ch_name
+    )
+    if SizeZ == 1:
+        dataPrepWin.prepData(None)
+
+    loop = QEventLoop(parent)
+    win.loop = loop
+    loop.exec_()

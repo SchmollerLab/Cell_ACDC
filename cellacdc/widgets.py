@@ -387,6 +387,11 @@ class AssignNewIDButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':assign_new_id.svg'))
 
+class dataPrepButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':prep.svg'))
+
 class LockPushButton(PushButton):
     sigToggled = Signal(bool)
     
@@ -2573,19 +2578,6 @@ class NumericCommaLineEdit(QLineEdit):
             vals = []
         return vals
 
-class mySpinBox(QSpinBox):
-    sigTabEvent = Signal(object, object)
-
-    def __init__(self, *args) -> None:
-        super().__init__(*args)
-    
-    def event(self, event):
-        if event.type()==QtScoped.QEventTypeAttribute('KeyPress') and event.key() == Qt.Key_Tab:
-            self.sigTabEvent.emit(event, self)
-            return True
-
-        return super().event(event)
-
 class KeptObjectIDsList(list):
     def __init__(self, lineEdit, confirmSelectionAction, *args):
         self.lineEdit = lineEdit
@@ -4693,6 +4685,7 @@ class SpinBox(QSpinBox):
     sigValueChanged = Signal(int)
     sigUpClicked = Signal()
     sigDownClicked = Signal()
+    sigTabEvent = Signal(object, object)
 
     def __init__(
         self,
@@ -4792,6 +4785,10 @@ class SpinBox(QSpinBox):
     def keyPressEvent(self, event):
         isBackSpaceKey = event.key() == Qt.Key.Key_Backspace
         isDeleteKey = event.key() == Qt.Key.Key_Delete
+        isTabKeyPress = event.key() == Qt.Key.Key_Tab
+
+        if isTabKeyPress:
+            self.sigTabEvent.emit(event, self)
 
         try:
             int(event.text())
