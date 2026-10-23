@@ -19,7 +19,7 @@ import time
 import subprocess
 import importlib
 from uuid import uuid4
-from importlib import import_module
+from importlib import import_module, metadata
 from math import pow, ceil, floor
 from functools import wraps, partial
 from collections import namedtuple, Counter
@@ -1027,14 +1027,53 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
     return 'ND'  
 
 def get_git_branch_name():
-    command = (
-        f'git -C "{cellacdc_installation_path}" rev-parse --abbrev-ref HEAD'
+    # First, try the existing Git checkout approach.
+    try:
+        result = subprocess.run(
+            [
+                'git',
+                '-C',
+                str(cellacdc_installation_path),
+                'rev-parse',
+                '--abbrev-ref',
+                'HEAD',
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        branch_name = result.stdout.strip()
+
+        if branch_name and branch_name != 'HEAD':
+            return branch_name
+
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Fall back to pip's installation metadata.
+    # Find the distribution corresponding to the cellacdc package.
+    distributions = metadata.packages_distributions().get(
+        'cellacdc', []
     )
-    output = _subprocess_run_command(
-        command, shell=False, callback='check_output'
-    )
-    branch_name = output.decode().strip()
-    return branch_name
+
+    for dist_name in distributions:
+        try:
+            dist = metadata.distribution(dist_name)
+            direct_url = dist.read_text('direct_url.json')
+
+            if not direct_url:
+                continue
+
+            data = json.loads(direct_url)
+            vcs_info = data.get('vcs_info', {})
+
+            if vcs_info.get('vcs') == 'git':
+                return vcs_info.get('requested_revision')
+
+        except (metadata.PackageNotFoundError, json.JSONDecodeError):
+            continue
+
+    return None
 
 def get_git_remote_repos_names():
     command = (

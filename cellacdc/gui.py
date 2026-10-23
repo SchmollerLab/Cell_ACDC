@@ -17024,8 +17024,8 @@ When working with 3D segmentation masks:
             delObjKeySequence.toString()
         )
         keySequenceText = widgets.macShortcutToWindows(keySequenceText)
-        
-        if keySequenceText == delObjKeySequenceText:
+
+        if keySequenceText.endswith(delObjKeySequenceText):
             self.delObjToolAction.setChecked(checked)
             return True
         
@@ -17570,12 +17570,17 @@ When working with 3D segmentation masks:
             self.updateBrushCursorOnShiftRelease()
     
     def keyReleaseEvent(self, ev):
+        is_modifier = False
         if self.app.overrideCursor() == Qt.SizeAllCursor:
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
             self.onCtrlReleased()
+            is_modifier = True
         elif ev.key() == Qt.Key_Shift:
             self.onShiftReleased()
+            is_modifier = True
+        elif ev.key() == Qt.Key_Alt:
+            is_modifier = True
         
         self.resetEditIDOptions()
         self.resetSplitIDsOptions()
@@ -17588,6 +17593,8 @@ When working with 3D segmentation masks:
             or ev.key() == Qt.Key_Control
             or ev.key() == Qt.Key_Backspace
             or self.checkSetDelObjActionActive(ev, checked=False)
+            or is_modifier
+            or self.delObjToolAction.isChecked()
         )
 
         if (
@@ -31579,18 +31586,17 @@ When working with 3D segmentation masks:
                 continue
             obj = rp.get_obj_from_ID(_delID)
             obj_mask = obj.image
-
-            if z_start is not None:
-                local_z = z_start - obj.bbox[0]
-                obj_mask[:local_z] = False
-
-            if z_end is not None:
-                local_z = z_end - obj.bbox[0]
-                obj_mask[local_z+1:] = False
-
             if single_slice_del_in_3D:
                 delMask2D[obj.slice][obj_mask] = True
             else:
+                if z_start is not None:
+                    local_z = z_start - obj.bbox[0]
+                    obj_mask[:local_z] = False
+
+                if z_end is not None:
+                    local_z = z_end - obj.bbox[0]
+                    obj_mask[local_z+1:] = False
+                
                 delMask[obj.slice][obj_mask] = True
 
         if single_slice_del_in_3D:
@@ -31669,8 +31675,6 @@ When working with 3D segmentation masks:
                     break
                 
                 if lab is not None:
-                    # Visited frame
-
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
