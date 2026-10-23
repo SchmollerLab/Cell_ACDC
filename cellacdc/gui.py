@@ -3764,7 +3764,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         posData = self.data[self.pos_i]
         
         volumes = {
-            self.user_ch_name: posData.img_data[posData.frame_i]
+            self.user_ch_name: posData.img_data
         }
         lut_items_states = {
             self.user_ch_name: self.imgGrad.super_saveState()
@@ -3775,7 +3775,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ol_data = {}
 
         for filename, ol_image_data in ol_data.items():
-            volume = ol_image_data[posData.frame_i]
+            volume = ol_image_data
 
             channel_name = myutils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
@@ -3794,7 +3794,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self._volume_renderer = VolumeRendererWindow(
             app=self.app, 
-            parent=self,
+            parent=self.mainWin,
+            parent_gui=self,
             version=self._version,
             hide_on_close=False,
             logger_func=self.logger.info
@@ -3804,10 +3805,30 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             lut_items_states=lut_items_states,
             voxel_size=voxel_size,
         )
+        labels = []
+        max_ID = 1
+        for frame_i in range(len(posData.segm_data)):
+            lab = posData.allData_li[frame_i]['labels']
+            if lab is None:
+                lab = posData.segm_data[frame_i]
+                max_ID_i = np.max(lab)
+            else:
+                max_ID_i = max(posData.allData_li[frame_i]['IDs'], default=1)
+            labels.append(lab)
+            if max_ID_i > max_ID:
+                max_ID = max_ID_i
+
+        labels = np.asarray(labels)
+        max_ID = max(posData.IDs, default=1)
+        lut = self.extendLabelsLUT(max_ID+1, return_lut=True)
+        lut = lut[:max_ID+1]
         self._volume_renderer.set_labels(
-            posData.lab,
+            labels,
             gradient_item_state=self.labelsGrad.item.saveState(),
-            SizeZ=posData.SizeZ
+            lut=lut,
+            SizeZ=posData.SizeZ,
+            font_size=self.fontSizeSpinBox.value(),
+            text_color=self.imgGrad.textColorButton.color(),
         ) 
         
         self.addPointsLayersToVolumeViewer(self._volume_renderer)
@@ -20868,10 +20889,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.zoomToCells()
         self.updateItemsMousePos()
         self.updateObjectCounts()
+        self.update3DViewer()
         
         self.exportCurrentView(isOnNext=True)
         self.apply_tools_on_new_frame()
-                
+    
+    def update3DViewer(self):
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is None:
+            return
+
+        if not volume_renderer.are_frames_synced():
+            return 
+        
+        volume_renderer.set_frame_number(self.navigateScrollBar.value())
+
     def applyAllDelROI(self):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
@@ -21256,6 +21288,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateViewerWindow()
         self.updateItemsMousePos()
         self.updateObjectCounts()
+        self.update3DViewer()
         
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
@@ -26217,7 +26250,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             update_lab=wl_update_lab
         )
 
-    def extendLabelsLUT(self, lenNewLut):
+    def extendLabelsLUT(self, lenNewLut, return_lut=False):
         posData = self.data[self.pos_i]
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(self.lut):
@@ -26230,9 +26263,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             for i, idx in enumerate(randomIdx):
                 rgb = self.lut[idx]
                 _lut[len(self.lut)+i] = rgb
+            if return_lut:
+                return _lut
+
             self.lut = _lut
             self.initLabelsImageItems()
             return True
+        
+        if return_lut:
+            return self.lut
+
         return False
 
     def initLookupTableLab(self):
@@ -27836,24 +27876,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     self.getCentroidsPointsData(action)
                 
                 frames = action.pointsData.get(self.pos_i, set())
-                if posData.frame_i not in frames:
-                    continue
-                
-                framePointsData = action.pointsData[self.pos_i][posData.frame_i]
-                xx, yy, zz = [], [], []
-                for z, z_data in framePointsData.items():
-                    xx.extend(z_data['x'])
-                    yy.extend(z_data['y'])
-                    zz.extend([z]*len(z_data['x']))
+
+                tt, xx, yy, zz = [], [], [], []
+                for frame_i in frames:
+                    framePointsData = action.pointsData[self.pos_i][frame_i]
+                    for z, z_data in framePointsData.items():
+                        tt.extend([frame_i]*len(z_data['x']))
+                        xx.extend(z_data['x'])
+                        yy.extend(z_data['y'])
+                        zz.extend([z]*len(z_data['x']))
                 
                 color = np.array(action.penColor)/255
                 vispy_symbol = (
                     PyQtGraphScatterPlotSymbolToVispyMapper[action.symbol]
                 )
-                points_zyx = np.column_stack((zz, yy, xx))
+                points_tzyx = np.column_stack((tt, zz, yy, xx))
                 volume_renderer.add_points_layer(
                     str(id(action.button)),
-                    points=points_zyx,
+                    points=points_tzyx,
                     color=color,
                     size=action.pointSize,
                     opacity=1.0,
