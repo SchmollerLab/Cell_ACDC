@@ -5819,11 +5819,12 @@ def download_3d_renderer_demo_data():
     
     return exp_folderpath
     
-def get_recent_paths(self):
+def get_recent_paths(*args, only_existing=True):
     """Return existing unique paths and their aligned most recent dates."""
     if os.path.exists(recentPaths_path):
         df = pd.read_csv(recentPaths_path, index_col='index')
-        df = df[df['path'].apply(os.path.exists)]
+        if only_existing:
+            df = df[df['path'].apply(os.path.exists)]
         if 'opened_last_on' in df.columns:
             df = df.sort_values('opened_last_on', ascending=False)
         df['path'] = df['path'].map(str)
