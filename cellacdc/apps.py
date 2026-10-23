@@ -22343,8 +22343,12 @@ class SearchableListboxDialog(QBaseDialog):
     
     def showInFileManager(self):
         selected_items = self.listWidget.selectedItems()
+        selected_texts = [
+            item.data(0, Qt.UserRole) or item.text(0)
+            for item in selected_items
+        ]
         valid_paths = [
-            item for item in selected_items if os.path.exists(item)
+            text for text in selected_texts if os.path.exists(text)
         ]
         if not valid_paths:
             print('WARNING: None of the selected items is a valid path')
