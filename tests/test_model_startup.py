@@ -3,7 +3,7 @@ import sys
 
 import pytest
 
-from cellacdc import config, myutils
+from cellacdc import _torch_utils, config, myutils
 from cellacdc.service import environment
 from cellacdc.service.client import LocalBackend
 from cellacdc import _model_startup
@@ -35,8 +35,8 @@ def test_environment_only_discovers_torch_options_when_installing(
     monkeypatch.setattr(environment.subprocess, "run", run)
     driver = Mock(side_effect=AssertionError("No CUDA detection needed"))
     options = Mock(side_effect=AssertionError("No network discovery needed"))
-    monkeypatch.setattr(myutils, "get_driver_cuda_version", driver)
-    monkeypatch.setattr(myutils, "get_torch_options_safe", options)
+    monkeypatch.setattr(_torch_utils, "get_driver_cuda_version", driver)
+    monkeypatch.setattr(_torch_utils, "get_torch_options_safe", options)
 
     result = environment.get_or_create_model_env(
         "test", install_method="venv", env_root=str(tmp_path)
@@ -56,8 +56,8 @@ def test_missing_torch_still_discovers_and_installs_preferred_build(monkeypatch)
     links = ([("CPU", "cpu-index"), ("CUDA", "cuda-index")], 1)
     options = Mock(return_value=links)
     install = Mock(return_value=0)
-    monkeypatch.setattr(myutils, "get_driver_cuda_version", driver)
-    monkeypatch.setattr(myutils, "get_torch_options_safe", options)
+    monkeypatch.setattr(_torch_utils, "get_driver_cuda_version", driver)
+    monkeypatch.setattr(_torch_utils, "get_torch_options_safe", options)
     monkeypatch.setattr(environment, "run_streaming", install)
     logger = Mock()
     prompt = Mock(side_effect=lambda request: request.default)
@@ -67,7 +67,9 @@ def test_missing_torch_still_discovers_and_installs_preferred_build(monkeypatch)
     )
 
     driver.assert_called_once_with()
-    options.assert_called_once_with(driver_cuda_version=(12, 6))
+    options.assert_called_once_with(
+        driver_cuda_version=(12, 6), exec_path="model-python"
+    )
     assert prompt.call_args.args[0].extra["found_cuda_version"] == (12, 6)
     install.assert_called_once_with(
         ["model-python", "-m", "pip", "install", "torch", "torchvision",
@@ -80,11 +82,11 @@ def test_external_check_install_torch_defers_discovery(monkeypatch):
     ensure = Mock(return_value=True)
     monkeypatch.setattr(environment, "ensure_torch", ensure)
     monkeypatch.setattr(
-        myutils, "get_driver_cuda_version",
+        _torch_utils, "get_driver_cuda_version",
         Mock(side_effect=AssertionError("Must be lazy")),
     )
     monkeypatch.setattr(
-        myutils, "get_torch_options_safe",
+        _torch_utils, "get_torch_options_safe",
         Mock(side_effect=AssertionError("Must be lazy")),
     )
     monkeypatch.setattr(myutils, "is_server_mode", lambda: False)

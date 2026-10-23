@@ -8571,11 +8571,13 @@ class CopiableCommandWidget(QGroupBox):
         cb.setText(plain_command, mode=cb.Clipboard)
         print('Command copied!')
     
-    def setCommand(self, command, font_size=None):
+    def setCommand(self, command, font_size=None, escape_html=True):
         if font_size is None:
             font_size = self._font_size
         
         self._command = command
+        
+        command = html.escape(command)
         txt = html_utils.paragraph(
             f'<code>{command}</code>', font_size=font_size
         )

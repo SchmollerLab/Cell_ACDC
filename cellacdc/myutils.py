@@ -22,7 +22,6 @@ from uuid import uuid4
 from importlib import import_module
 from math import pow, ceil, floor
 from functools import wraps, partial
-import functools
 from collections import namedtuple, Counter
 from tqdm import tqdm
 import requests
@@ -32,7 +31,6 @@ import numpy as np
 import pandas as pd
 import skimage
 import inspect
-import ctypes
 import traceback
 import itertools
 from packaging import version as packaging_version
@@ -58,6 +56,13 @@ from . import urls
 from . import qrc_resources_path
 from . import settings_folderpath
 from . import cellacdc_installation_path
+# Keep the existing model-facing imports working.
+from ._torch_utils import (
+    BASE_PYTORCH_LINK, check_install_torch, get_driver_cuda_version,
+    get_min_compute_cap, get_pytorch_command, get_torch_device,
+    get_torch_options, get_torch_options_safe, resolve_torch_link,
+)
+
 
 from .models._cellpose_base import min_target_versions_cp
 
@@ -3483,22 +3488,6 @@ def _run_command(command: str | list[str], shell=False):
     except Exception as err:
         pass
 
-def _warn_dll_torch(qparent=None):
-    msg = widgets.myMessageBox()
-    txt = html_utils.paragraph("""
-    <b>An error message will occur after you close this message.</b><br>
-    <b>Please save your data and restart Cell-ACDC.</b><br>
-    Sorry for the inconvenience!<br>
-    This error is not critical for the main functionality of Cell-ACDC,
-    and only concerns the segmentation model. Your can save your data without
-    a problem.<br>
-    The specific reason is that PyTorch and QtPy have weird issues with 
-    DLL conflicts.
-    """)
-    msg.information(
-    qparent, 'Please restart Cell-ACDC', txt, 
-    buttonsTexts=('Ok, I will save my data and restart Cell-ACDC'),
-    )
 
 def is_server_mode():
     """True when running inside a model worker process (`service.worker`).
@@ -3517,255 +3506,6 @@ def _raise_server_missing(what):
         f'cellacdc/models/_env_config.py and restart, or install it in the '
         f'environment: {sys.executable}'
     )
-
-def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, python_exec=None,
-                        platform=None, found_cuda_version=None, possible_links=None):
-    if is_server_mode() and python_exec in (None, sys.executable):
-        try:
-            import torch
-            import torchvision
-            return
-        except Exception as err:
-            raise ModuleNotFoundError(
-                f'PyTorch could not be imported in the model worker '
-                f'environment ({err}). It is installed by the client when '
-                f'`torch: True` is set in cellacdc/models/_env_config.py.'
-            ) from err
-
-    if python_exec is not None and python_exec != sys.executable:
-        # Isolated model env: single installer that detects CPU/CUDA
-        from cellacdc.service.environment import ensure_torch
-        from cellacdc.service import prompts
-        if is_cli or not is_gui_running():
-            handler = prompts.CliHandler()
-        else:
-            handler = prompts.QtHandler(qparent)
-        platform = platform or sys.platform
-        if not ensure_torch(python_exec, prompt_func=handler.ask,
-                            platform=platform, 
-                            found_cuda_version=found_cuda_version,
-                            possible_links=possible_links,
-                            ):
-            raise ModuleNotFoundError(
-                f'PyTorch is not installed in {python_exec} (installation '
-                'cancelled or failed). The model cannot run without it.'
-            )
-        return
-
-    try:
-        import torch
-        import torchvision
-        return
-
-    except OSError as err:
-        if 'dll' in str(err):
-            _warn_dll_torch(qparent=qparent)
-            raise err
-        else:
-            traceback.print_exc()
-    except Exception as err:
-        traceback.print_exc()
-        print(f'Failed to import PyTorch in venv ({sys.executable}): {err}')
-    
-    if is_cli:
-        _install_pytorch_cli(caller_name=caller_name) 
-        return
-    
-    win = apps.InstallPyTorchDialog(parent=qparent, caller_name=caller_name)
-    win.exec_()
-    if win.cancel:
-        _warnings.log_pytorch_not_installed() 
-        return
-    
-    command = win.command
-    print(f'Running command: "{command}"')
-    _run_command(command)
-    
-    try:
-        import torch
-    except OSError as e:
-        if 'dll' in str(e):
-            _warn_dll_torch(qparent=qparent)
-        raise e
-    
-    purge_module('torch')
-
-def get_driver_cuda_version():
-    """Max CUDA version supported by the driver, as (major, minor), or False."""
-    # 1) CUDA driver API (no dependencies, no nvidia-smi parsing)
-
-        
-    def _decode(v: int):
-        return v // 1000, (v % 1000) // 10  # 13040 -> (13, 4)
-
-    libname = "nvcuda.dll" if sys.platform == "win32" else "libcuda.so.1"
-    try:
-        lib = ctypes.CDLL(libname)
-        v = ctypes.c_int()
-        if lib.cuDriverGetVersion(ctypes.byref(v)) == 0:
-            return _decode(v.value)
-    except (OSError, AttributeError):
-        pass
-
-    # 2) NVML, if pynvml / nvidia-ml-py is installed
-    try:
-        import pynvml
-        pynvml.nvmlInit()
-        try:
-            return _decode(pynvml.nvmlSystemGetCudaDriverVersion())
-        finally:
-            pynvml.nvmlShutdown()
-    except Exception:
-        pass
-
-    # 3) Last resort: parse nvidia-smi, tolerant of label changes
-    #    ("CUDA Version: 12.4", "CUDA UMD Version: 13.4", ...)
-    try:
-        out = subprocess.run(["nvidia-smi"], capture_output=True, text=True,
-                             check=True, timeout=15).stdout
-        m = re.search(r"CUDA\s+(?:\w+\s+)?Version\s*:\s*(\d+)\.(\d+)", out)
-        if m:
-            return int(m.group(1)), int(m.group(2))
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-
-    return False
-
-@functools.lru_cache(maxsize=None)
-def _get(url):
-    r = requests.get(url, timeout=20)
-    r.raise_for_status()
-    return r.text
-
-BASE_PYTORCH_LINK = "https://download.pytorch.org/whl/"
-
-def get_torch_options(driver_cuda_version=None, torch_max="", torch_min="",
-                      compute_cap=None, allow_experimental=False, min_cuda=(12, 6)):
-    """
-    Returns (options, preferred_index).
-
-    options: list of (label, index_url) tuples, e.g.
-        [('CPU', '.../cpu'), ('CUDA 12.6 (NVIDIA GPU)', '.../cu126'), ('CUDA 13.0 (NVIDIA GPU)', '.../cu130')]
-    index_url is None where the default PyPI install applies (macOS).
-    preferred_index: the option that fits this machine (highest CUDA build the driver
-        and GPU support, else CPU).
-
-    torch_min / torch_max : inclusive bounds like '2.9' or '2.12'; builds without a release
-                            in that range are not listed.
-    compute_cap           : (major, minor) of the weakest GPU; < (7, 5) caps the preference at cu126.
-    min_cuda              : oldest CUDA build to list (hides ancient indexes still on the server).
-    """
-    EXPERIMENTAL = {"cu132"}  # only offered if allow_experimental=True
-
-    if sys.platform == "darwin":          # no CUDA wheels, default PyPI wheel has MPS
-        return [("Default (CPU / Apple GPU)", None)], 0
-
-    def _cuda_tags():
-        """CUDA builds on the server as {(12, 6): 'cu126', ...}."""
-        return {(int(d[:-1]), int(d[-1])): f"cu{d}"
-                for d in set(re.findall(r"\bcu(\d{3})\b", _get(BASE_PYTORCH_LINK)))}
-
-
-    def _torch_versions(tag):
-        """Torch versions on this index with a wheel for the current Python + OS/arch."""
-        py = f"cp{sys.version_info.major}{sys.version_info.minor}"
-        plat = "win_amd64" if sys.platform == "win32" else platform.machine()
-        wheels = re.findall(r"torch-(\d+(?:\.\d+)*)(?:%2B|\+)[\w.]+-(cp\d+)-\w+-([\w.]+?)\.whl",
-                            _get(f"{BASE_PYTORCH_LINK}{tag}/torch/"))
-        return {tuple(map(int, v.split(".")))
-                for v, cp, p in wheels if cp == py and plat in p}
-
-    driver = driver_cuda_version or get_driver_cuda_version()
-    lo = tuple(map(int, torch_min.split("."))) if torch_min else ()
-    hi = tuple(map(int, torch_max.split("."))) if torch_max else None
-    limit = (12, 6) if compute_cap and compute_cap < (7, 5) else driver  # Pascal/Volta
-
-    def has_release(tag):
-        return any(v[:len(lo)] >= lo and (hi is None or v[:len(hi)] <= hi)
-                   for v in _torch_versions(tag))
-
-    options = [("CPU", f"{BASE_PYTORCH_LINK}cpu")]
-    preferred = 0
-    for cuda, tag in sorted(_cuda_tags().items()):            # ascending, like your example
-        if cuda < min_cuda or (tag in EXPERIMENTAL and not allow_experimental):
-            continue
-        if not has_release(tag):
-            continue
-        extra = ", experimental" if tag in EXPERIMENTAL else ""
-        options.append((f"CUDA {cuda[0]}.{cuda[1]} (NVIDIA GPU{extra})", f"{BASE_PYTORCH_LINK}{tag}"))
-        if driver and cuda <= driver and cuda <= limit and tag not in EXPERIMENTAL:
-            preferred = len(options) - 1                       # last match = highest
-
-    return options, preferred
-
-def resolve_torch_link(*args, **kwargs):
-    """Index URL of the preferred option (None -> default PyPI install)."""
-    options, preferred = get_torch_options(*args, **kwargs)
-    return options[preferred][1]
-
-def _safe_torch_options(options_kwargs):
-    options_kwargs = dict(options_kwargs)
-    options_kwargs.setdefault('compute_cap', get_min_compute_cap())
-    try:
-        return get_torch_options(**options_kwargs)
-    except requests.RequestException:
-        # Offline / server unreachable: fall back to a plain CPU install
-        return [('CPU', f'{BASE_PYTORCH_LINK}cpu')], 0
-
-def get_pytorch_command(**options_kwargs):
-    """Get the pip commands to install PyTorch (CPU or CUDA) for this machine.
-
-    Parameters
-    ----------
-    **options_kwargs
-        Passed to `get_torch_options` (torch_min, torch_max, allow_experimental,
-        min_cuda, driver_cuda_version, compute_cap). `compute_cap` is detected
-        automatically if not given.
-
-    Returns
-    -------
-    dict
-        {os_name: {'Pip': {label: command}}} for the OS we are running on.
-        Labels are in display order (use `list(...)` for the combobox).
-        See `get_preferred_pytorch_platform` for the label to preselect.
-
-    Notes
-    -----
-    As of Oct 2024, the `pytorch` channel on Anaconda was deprecated.
-    See here https://github.com/pytorch/pytorch/issues/138506
-    Conda commands are therefore no longer generated.
-    """
-    
-    _, pip_prefix = get_pip_conda_prefix(exec_path=options_kwargs.get('exec_path'))
-    options, _ = _safe_torch_options(options_kwargs)
-
-    os_name = {'win32': 'Windows', 'darwin': 'Mac'}.get(sys.platform, 'Linux')
-    pip_commands = {}
-    for label, index_url in options:
-        command = f'{pip_prefix} torch torchvision'
-        if index_url is not None:   # None -> default PyPI install (macOS)
-            command += f' --index-url {index_url}'
-        pip_commands[label] = command
-
-    return {os_name: {'Pip': pip_commands}}
-    
-def get_torch_options_safe(**kwargs):
-    kwargs.setdefault('compute_cap', get_min_compute_cap())
-    try:
-        return get_torch_options(**kwargs)
-    except requests.RequestException:
-        return [('CPU', f'{BASE_PYTORCH_LINK}cpu')], 0   # offline: plain CPU install
-    
-def get_min_compute_cap():
-    try:
-        out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
-            capture_output=True, text=True, check=True, timeout=15).stdout
-        caps = [tuple(int(x) for x in line.strip().split(".")) for line in out.splitlines() if line.strip()]
-        return min(caps) if caps else None
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
-        return None
-        
 def _install_tensorflow(max_version='', min_version='', python_exec=None):
     cpu = platform.processor()
     pkg_command = _get_pkg_command_pip_install(
@@ -4364,89 +4104,6 @@ def get_cli_multi_choice_question(question, choices):
     text = f'{question} {choices_format} q) Quit. ({choices_opts})?: '
     return text
 
-def _install_pytorch_cli(
-        caller_name='Cell-ACDC', action='install', logger_func=print,
-        python_exec=None
-    ):
-    separator = '-'*60
-    txt = (
-        f'{separator}\n{caller_name} needs to {action} PyTorch\n\n'
-        'You can choose to install it now or stop the process and install it '
-        'later. To install it correctly, we need to know your preferences.\n'
-    )
-    logger_func(txt)
-    questions = {
-        'Choose your OS:': ('Windows', 'Mac', 'Linux'), 
-        'Package manager:': ('Pip'), 
-        'Compute platform:': (
-            'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
-        )
-    }
-    selected_command = get_pytorch_command()
-    selected_preferences = []
-    for question, choices in questions.items():
-        input_txt = get_cli_multi_choice_question(question, choices)
-        while True:
-            answer = input(input_txt)
-            if answer.lower() == 'q':
-                exit('Execution stopped by the user.')
-            
-            try:
-                idx = int(answer) - 1
-                if idx >= len(choices):
-                    raise TypeError('Not a valid answer')
-            except Exception as err:
-                print('-'*100)
-                logger_func(
-                    f'"{answer}" is not a valid answer.'
-                    'Choose one of the options or "q" to quit.'
-                )
-                print('^'*100)
-                continue
-            
-            preference = choices[idx]
-            selected_command = selected_command[preference]
-            selected_preferences.append(preference)
-            print('')
-            break
-    
-    print('-'*100)
-    selected_preferences = ', '.join(selected_preferences)
-    logger_func(f'Selected preferences: {selected_preferences}')
-    print('-'*100)
-    logger_func(f'Command:\n\n{selected_command}\n')
-    while True:
-        answer = input('Do you want to run the command now ([y]/n)?: ')
-        if answer.lower() == 'n':
-            exit('Execution stopped by the user.')
-        
-        if answer.lower() == 'y' or not answer:
-            break
-        
-        print('-'*100)
-        print(
-            f'"{answer}" is not a valid answer. '
-            'Choose "y" for yes or "n" for no.'
-        )
-        print('^'*100)
-    
-    if selected_command.startswith('conda'):
-        try:
-            subprocess.check_call([selected_command], shell=True)
-        except Exception as err:
-            cmd_list = shlex.split(selected_command)
-            cmd_list = [cmd.strip('"') for cmd in cmd_list]
-            cmd_list = [cmd.strip("'") for cmd in cmd_list]
-            cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
-            subprocess.check_call(cmd_list, shell=False)
-    else:
-        cmd_list = shlex.split(selected_command)
-        cmd_list = cmd_list[1:]
-        cmd_list = [cmd.strip('"') for cmd in cmd_list]
-        cmd_list = [cmd.strip("'") for cmd in cmd_list]
-        cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
-        py_exec = python_exec or sys.executable
-        subprocess.check_call([py_exec, *cmd_list], shell=False)
 
 def _get_pkg_command_pip_install(
         pkg_command, 
@@ -5451,15 +5108,6 @@ def check_install_trackastra():
         pypi_name='trackastra'
     )
 
-def get_torch_device(gpu=False):
-    import torch
-    if torch.cuda.is_available() and gpu:
-        device = torch.device('cuda')
-    elif torch.backends.mps.is_available():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
-    return device
 
 def parse_model_params(model_argspecs, model_params):
     parsed_model_params = {}

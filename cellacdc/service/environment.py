@@ -1,6 +1,5 @@
 import os
 import re
-import shlex
 import sys
 import shutil
 import subprocess
@@ -11,6 +10,9 @@ from typing import Optional, Callable, Any, List, Literal, Union
 
 from cellacdc import is_conda_env, user_profile_path
 from cellacdc._model_startup import startup_timer
+from cellacdc._torch_utils import (
+    _torch_import_check, ensure_torch, torch_version_specifier,
+)
 
 
 def run_streaming(
@@ -326,10 +328,16 @@ def model_installed_in_main_env(model_name: str) -> bool:
         return False
     specs = _normalize_package_specs(packages)
     if config.get("torch"):
-        specs += [{"pkg_name": "torch"}, {"pkg_name": "torchvision"}]
+        specs += [
+            {"pkg_name": "torch",
+             "version_specifier": torch_version_specifier(config.get("torch_version"))},
+            {"pkg_name": "torchvision"},
+        ]
     for spec in specs:
         distribution = spec.get("distribution_name") or spec.get("pypi_name") or spec["pkg_name"]
         constraints = []
+        if spec.get("version_specifier"):
+            constraints.append(spec["version_specifier"])
         if spec.get("exact_version"):
             constraints.append(f"=={spec['exact_version']}")
         for key, operator, inclusive_key in (
@@ -407,128 +415,6 @@ def required_env_fingerprint(model_name: str) -> str:
     return digest.hexdigest()
 
 
-# def detect_torch_index() -> Optional[str]:
-#     """Pick the PyTorch wheel index matching this machine.
-
-#     Uses the CUDA version reported by `nvidia-smi` (the highest CUDA the
-#     driver supports). Returns None to use the default PyPI wheels (CPU on
-#     Windows/macOS, which is also all that exists on macOS).
-#     """
-#     base = "https://download.pytorch.org/whl/"
-#     if sys.platform == "darwin":
-#         return None
-
-#     cuda_version = None
-#     nvidia_smi = shutil.which("nvidia-smi")
-#     if nvidia_smi:
-#         try:
-#             out = subprocess.run(
-#                 [nvidia_smi], capture_output=True, text=True, timeout=20
-#             ).stdout
-#             match = re.search(r"CUDA Version:\s*(\d+)\.(\d+)", out)
-#             if match:
-#                 cuda_version = (int(match.group(1)), int(match.group(2)))
-#         except Exception:
-#             pass
-
-#     if cuda_version is None:
-#         # Plain PyPI on Linux ships CUDA builds, so ask for CPU explicitly
-#         return base + "cpu" if sys.platform.startswith("linux") else None
-
-#     for minimum, tag in (
-#         ((12, 8), "cu128"), ((12, 6), "cu126"), ((12, 4), "cu124"),
-#         ((12, 1), "cu121"), ((11, 8), "cu118"),
-#     ):
-#         if cuda_version >= minimum:
-#             return base + tag
-#     return base + "cpu"
-
-
-# TORCH_CUDA_TAGS = ("cu128", "cu126", "cu124", "cu121", "cu118")
-# _TORCH_BASE_URL = "https://download.pytorch.org/whl/"
-
-
-# def get_torch_choices() -> dict:
-#     """Map of label -> pip index URL (None = default PyPI wheels)."""
-#     choices = {"CPU": _TORCH_BASE_URL + "cpu"}
-#     if sys.platform == "darwin":
-#         return {"CPU": None}
-#     for tag in reversed(TORCH_CUDA_TAGS):
-#         choices[f"CUDA {tag[2:4]}.{tag[4:]} (NVIDIA GPU)"] = _TORCH_BASE_URL + tag
-#     return choices
-
-
-def ensure_torch(
-    python_exec: str,
-    logger_func: Callable = print,
-    prompt_func: Optional[Callable] = None,
-    platform: str = sys.platform,
-    found_cuda_version: Optional[str] = None,
-    possible_links: Optional[list[str]] = None,
-) -> bool:
-    """Install PyTorch into the model environment.
-
-    The build (CPU or CUDA) is detected from `nvidia-smi`. If `prompt_func`
-    is given (see `cellacdc.service.prompts`), the user is asked on behalf
-    of the worker with the detected build preselected.
-    """
-    with startup_timer("torch/torchvision import check", logger_func):
-        check = subprocess.run(
-            [python_exec, "-c", "import torch, torchvision"], capture_output=True
-        )
-    if check.returncode == 0:
-        return True
-
-    if possible_links is None:
-        from cellacdc import myutils
-        with startup_timer("PyTorch installation options discovery", logger_func):
-            if found_cuda_version is None:
-                found_cuda_version = myutils.get_driver_cuda_version()
-            possible_links = myutils.get_torch_options_safe(
-                driver_cuda_version=found_cuda_version
-            )
-    options, preferred = possible_links
-    choices = [label for label, _ in options]
-    default = choices[preferred]
-    answer = default
-    if prompt_func is not None:
-        from cellacdc.service import prompts
-        answer = prompt_func(prompts.choice(
-            title='Install PyTorch',
-            text='Select the PyTorch build to install.',
-            choices=choices,
-            default=default,
-            dialog='pytorch',
-            extra={'python': python_exec, 
-                   'platform': platform, 
-                   'found_cuda_version': found_cuda_version, 
-                   'possible_links': possible_links,},
-        ))
-        if answer is None:
-            logger_func("PyTorch installation cancelled.")
-            return False
-    urls = dict(options)
-    if answer in urls:
-        cmd = [
-            python_exec, '-m', 'pip', 'install', 'torch', 'torchvision'
-        ]
-        index_url = urls[answer]
-        if index_url is not None:
-            cmd.extend(['--index-url', index_url])
-    else:
-        cmd = answer
-        if isinstance(cmd, str) and os.name != 'nt':
-            cmd = shlex.split(cmd)
-
-    try:
-        run_streaming(cmd, logger_func, check=True)
-        return True
-    except Exception as err:
-        logger_func(f"PyTorch install failed ({err}), trying fallback...")
-        print(f"Command attempted: {cmd}")
-    return False
-
-
 def _normalize_package_specs(packages) -> list:
     return [
         {"pkg_name": pkg} if isinstance(pkg, str) else dict(pkg)
@@ -570,7 +456,7 @@ with startup_timer("Cell-ACDC runtime imports"):
     import cellacdc.service.worker
 if {bool(config.get("torch"))!r}:
     with startup_timer("torch/torchvision imports (shared process)"):
-        import torch, torchvision
+        exec({_torch_import_check(config.get("torch_version"))!r})
 defaults = dict(min_version="", max_version="", exact_version="",
                 include_lower_version=False, include_higher_version=False)
 specs = myutils._normalize_pkg_specs(json.loads({json.dumps(packages)!r}), "", "", defaults)
@@ -612,8 +498,8 @@ def ensure_model_dependencies(
     parent: Any = None,
     auto_install: bool = True,
     prompt_func: Optional[Callable] = None,
-    found_cuda_version: Optional[str] = None,
-    possible_links: Optional[list[str]] = None,
+    found_cuda_version: Optional[Union[tuple[int, int], Literal[False]]] = None,
+    possible_links: Optional[tuple[list[tuple[str, Optional[str]]], int]] = None,
     platform: Optional[str] = None,
 ):
     """Ensure specific dependencies for a model are installed in its environment."""
@@ -626,6 +512,7 @@ def ensure_model_dependencies(
             platform=platform or sys.platform,
             found_cuda_version=found_cuda_version,
             possible_links=possible_links,
+            torch_version=config.get("torch_version"),
         )
         if not torch_ok:
             raise RuntimeError(

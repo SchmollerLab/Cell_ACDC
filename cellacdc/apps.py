@@ -79,6 +79,8 @@ from . import printl
 from . import colors
 from . import issues_url
 from . import myutils
+from . import _torch_utils
+from ._torch_utils import torch_requirement
 from . import qutils
 from . import _palettes
 from . import base_cca_dict
@@ -16706,16 +16708,19 @@ class InstallPyTorchDialog(QBaseDialog):
     def __init__(
             self, parent=None, caller_name='Cell-ACDC',
             target_python=None, platform=None, found_cuda_version=None,
-            possible_links=None,
+            possible_links=None, torch_version=None,
         ):
         """Dialog to choose how to install PyTorch.
 
         Parameters
         ----------
         possible_links : tuple, optional
-            Precomputed result of `myutils.get_torch_options`, i.e.
+            Precomputed result of `_torch_utils.get_torch_options`, i.e.
             (options, preferred_index). If None, it is fetched here
             (needs network access).
+        torch_version : str, optional
+            PyTorch release or PEP 440 constraint (e.g. '<2') required by the
+            model. Pip resolves a compatible torchvision release.
         """
         super().__init__(parent=parent)
 
@@ -16723,6 +16728,7 @@ class InstallPyTorchDialog(QBaseDialog):
         self.platform = None
         self.indexUrl = None
         self._targetPython = target_python
+        self._torchVersion = torch_version
 
         mainLayout = QVBoxLayout()
 
@@ -16736,12 +16742,15 @@ class InstallPyTorchDialog(QBaseDialog):
         innerLayout.addWidget(iconLabel, 0, 0, alignment=Qt.AlignTop)
 
         if found_cuda_version is None:
-            found_cuda_version = myutils.get_driver_cuda_version()
+            found_cuda_version = _torch_utils.get_driver_cuda_version()
 
         if possible_links is None:
-            possible_links = myutils.get_torch_options_safe(
-                driver_cuda_version=found_cuda_version
-            )
+            options_kwargs = {'driver_cuda_version': found_cuda_version}
+            if target_python is not None:
+                options_kwargs['exec_path'] = target_python
+            if torch_version:
+                options_kwargs['torch_version'] = torch_version
+            possible_links = _torch_utils.get_torch_options_safe(**options_kwargs)
         self._options, self._preferred = possible_links
         self._detectedOnMac = sys.platform == 'darwin'
 
@@ -16779,6 +16788,10 @@ class InstallPyTorchDialog(QBaseDialog):
         preferencesLayout = QGridLayout()
 
         row = 0
+        if torch_version:
+            preferencesLayout.addWidget(QLabel('PyTorch version'), row, 0)
+            preferencesLayout.addWidget(QLabel(torch_version), row, 1)
+            row += 1
         self.osCombobox = QComboBox()
         self.osCombobox.addItems(['Linux', 'Mac', 'Windows'])
         osLabel = QLabel('Your OS')
@@ -16858,7 +16871,7 @@ class InstallPyTorchDialog(QBaseDialog):
             return [('Default (CPU / Apple GPU)', None)], 0
         if self._detectedOnMac:
             # Options were detected on a Mac, so there is no CUDA info
-            return [('CPU', f'{myutils.BASE_PYTORCH_LINK}cpu')], 0
+            return [('CPU', f'{_torch_utils.BASE_PYTORCH_LINK}cpu')], 0
         return self._options, self._preferred
 
     def populatePlatforms(self, *args, **kwargs):
@@ -16880,7 +16893,8 @@ class InstallPyTorchDialog(QBaseDialog):
         _, pip_prefix = myutils.get_pip_conda_prefix(
             exec_path=self._targetPython
             )
-        command = f'{pip_prefix} torch torchvision'
+        torch_spec = torch_requirement(self._torchVersion, quoted=True)
+        command = f'{pip_prefix} {torch_spec} torchvision'
         if indexUrl is not None:    # None -> default PyPI install (macOS)
             command += f' --index-url {indexUrl}'
         self.commandWidget.setCommand(command)
