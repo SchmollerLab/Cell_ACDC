@@ -22352,6 +22352,11 @@ class SearchableListboxDialog(QBaseDialog):
         ]
         if not valid_paths:
             print('WARNING: None of the selected items is a valid path')
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                'None of the selected items is a valid path :(.'
+            )
+            msg.warning(self, 'Not a valid path', txt)
             return
         
         first_valid_path = valid_paths[0]
