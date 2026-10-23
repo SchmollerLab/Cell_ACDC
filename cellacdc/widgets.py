@@ -14722,6 +14722,53 @@ class SeparateBudToolbar(ToolBar):
         super().__init__(parent)
         self.seg_3D = False
         self.parent = parent
+
+        self.howToPropagateRadioEntireObj, self.howToPropagateButtonsGroup = (
+            self.addRadioButton(
+                'Entire object'
+            )
+        )
+        self.howToPropagateRadioEntireObj.setChecked(True)
+        self.howToPropagateRadioEntireObj.setToolTip(
+            'Change the object ID in the entire object.'
+        )
+
+        self.howToPropagateRadioCurrent, _ = (
+            self.addRadioButton(
+                'Current z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioCurrent.setToolTip(
+            'Change the object ID only in the current z-slice.\n\n'
+            'Shortcut: Shift'
+        )
+
+        self.howToPropagateRadioToEnd, _ = (
+            self.addRadioButton(
+                'From current to last z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToEnd.setToolTip(
+            'Change the object ID from the current Z-slice to the last '
+            "Z-slice of the object's bounding box (inclusive).\n\n"
+            'Shortcut: Shift + Ctrl'
+        )
+
+        self.howToPropagateRadioToStart, _ = (
+            self.addRadioButton(
+                'From current to first z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToStart.setToolTip(
+            'Change the object ID from the first Z-slice of the '
+            "object's bounding box to the current Z-slice (inclusive).\n\n"
+            'Shortcut: Alt + Ctrl'
+        )
+
+        self.addSeparator()
         
         sepModeSelector = QComboBox(self)
         sepModeSelector.addItems(['Slice by slice', '3D Convexity defects'])
@@ -14955,6 +15002,30 @@ class SeparateBudToolbar(ToolBar):
                 widget.isChecked() if value_type is bool else widget.value()
             )
         return kwargs
+    
+    def getHowToPropagateZslices(self, current_z: int):
+        how = self.howToPropagateButtonsGroup.checkedButton().text()
+        if how == 'Entire object':
+            return None, None
+        
+        if how == 'Current z-slice':
+            return None, None
+        
+        if how == 'From current to last z-slice':
+            return current_z, None
+        
+        return None, current_z
+
+    def setHowToPropagateZslicesVisible(self, isSegm3D: bool):
+        self.howToPropagateRadioEntireObj.setVisible(isSegm3D)
+        self.howToPropagateRadioCurrent.setVisible(isSegm3D)
+        self.howToPropagateRadioToEnd.setVisible(isSegm3D)
+        self.howToPropagateRadioToStart.setVisible(isSegm3D)
+
+        self.howToPropagateRadioEntireObj.action.setVisible(isSegm3D)
+        self.howToPropagateRadioCurrent.action.setVisible(isSegm3D)
+        self.howToPropagateRadioToEnd.action.setVisible(isSegm3D)
+        self.howToPropagateRadioToStart.action.setVisible(isSegm3D)
 
 class PrefixFilenameLineEdit(QWidget):
     def __init__(self, endNameLabel, *args):      

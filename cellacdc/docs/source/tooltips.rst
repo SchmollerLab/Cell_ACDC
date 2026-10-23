@@ -479,7 +479,15 @@ Edit tools: Segmentation and tracking
 * **Move object mask (** |moveLabelToolButton| **"P"):** Right-click drag and drop a labels to move it around.
 * **Expand/Shrink object mask (** |expandLabelToolButton| **"E"):** Leave mouse cursor on the label you want to expand/shrink and press arrow up/down on the keyboard to expand/shrink the mask.
 * **Edit ID (** |editIDbutton| **"N"):** Manually change the ID of a cell by right-clicking on it. When working with 3D segmentation masks, the default behaviour is to edit the ID across the entire object. Hold **Shift** while right-clicking to edit the ID only on the currently viewed z-slice. Hold **Ctrl+Shift** to edit from the current Z-slice to the last Z-slice of the object's bounding box, or **Alt+Shift** to edit from the current Z-slice to the first Z-slice of the object's bounding box. You can also edit the ID in custom range of z-slices. For that, see the top toolbar that appears when you activate the Edit ID button.
-* **Manual bud separation (** |separateBudButton| **"S"):** Separate mother-bud fused together or separate objects that have the same ID. Right-click to attempt automatic separation or Ctrl+right-click to skip automatic attempt and go straight to manual mode. Use "Shift" while right-clicking to only apply the separation on the viewed z-slice when working with 3D segmentation masks.
+* **Split merged objects (** |separateBudButton| **"S"):** Separate objects fused together or separate objects that have the same ID:
+    - **Right-click** to attempt automatic separation
+    - **Ctrl+right-click** to skip automatic attempt and go straight to manual mode. 
+    
+    When working with 3D segmentation masks:
+
+    - **Shift+right-click** to only apply the separation on the viewed z-slice.
+    - **Ctrl+Shift** to split and apply a new ID from the current Z-slice to the last Z-slice of the object's bounding box
+    - **Alt+Shift** to split and apply a new ID from the current Z-slice to the first Z-slice of the object's bounding box
 * **Merge IDs (** |mergeIDsButton| **"M"):** Merge multiple objects together. 
     * Usage: Draw a freehand region to merge all objects present in that region. Drawing with right button will merge all objects touched by the ROI, while drawing with the left button will merge only objects fully enclosed by the ROI. Once activated, additional options will appear in a new toolbar. Check 'Only current z-slice' to only merge in current z-slice. This can be toggled on by holding down "shift". Note that you don't need to close the ROI manually, it will be automatically closed once you release the mouse button. So when drawing lines with the right button, all objects touched by the line will be merged as the area is closed.
 * **Select objects to keep (** |keepIDsButton| **"K"):** Select the objects to keep. Press "Enter" to confirm selection or "Esc" to clear the selection. After confirming, all the NON selected objects will be deleted. Left-click on objects to keep.

@@ -2926,12 +2926,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.delObjToolAction.setIcon(QIcon(":del_obj_click.svg"))
         self.delObjToolAction.setCheckable(True)
         self.delObjToolAction.setToolTip(
-            'Customisable delete object action\n\n'
-            'Go to the `Settings --> Customise keyboard shortcuts...` menu '
-            'on the top menubar\n'
-            'to customise the action required to delete '
-            'an object with a click.\n\n'
-            'When working with 3D segmentations, to delete only the z-slice mask, hold "Shift" while clicking.'
+"""
+Customisable delete object action
+
+Go to the `Settings --> Customise keyboard shortcuts...` menu on the top menubar
+to customise the action required to delete an object with a click.
+
+When working with 3D segmentation masks:
+
+- Shift+right-click to delete only the viewed z-slice.
+- Ctrl+Shift to delete from the current Z-slice to the last Z-slice of the object's bounding box.
+- Alt+Shift to delete from the current Z-slice to the first Z-slice of the object's bounding box.
+"""
         )
         secondLevelToolbar.addAction(self.delObjToolAction)
         secondLevelToolbar.setMovable(False)
@@ -5925,10 +5931,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
-            del_shift = shift_regardless and isZslice 
             
             delID_mask = self.deleteIDmiddleClick(
-                delIDs, applyFutFrames, includeUnvisited, shift=del_shift
+                delIDs, applyFutFrames, includeUnvisited, 
+                modifiers=modifiers
             )
             if delID_mask.ndim == 3:
                 delID_mask = delID_mask[self.z_lab()]
@@ -5985,18 +5991,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             max_ID = max(posData.IDs, default=1)
 
             separation_mode = self.separateBudToolbar.separationMode()
-            if (
-                self.isSegm3D and not ctrl and not (shift and isZslice)
-                and separation_mode == '3D Convexity defects'
-            ):
-                posData.lab, success, splittedIDs = core_split_IDs.split_along_convexity_defects_3D(
-                    ID, posData.lab, max_ID, rp=posData.rp,
-                    voxel_size=(
-                        posData.PhysicalSizeZ,
-                        posData.PhysicalSizeY,
-                        posData.PhysicalSizeX,
-                    ),
-                    **self.separateBudToolbar.splitConv3DKwargs(),
+            if self.splitIDwith3DActionModifiers(modifiers, ID):
+                splittedIDs = [ID, posData.brushID]
+                printl(splittedIDs)
+                success = True
+            elif (
+                    self.isSegm3D and not ctrl and not (shift and isZslice)
+                    and separation_mode == '3D Convexity defects'
+                ):
+                posData.lab, success, splittedIDs = (
+                    core_split_IDs.split_along_convexity_defects_3D(
+                        ID, posData.lab, max_ID, rp=posData.rp,
+                        voxel_size=(
+                            posData.PhysicalSizeZ,
+                            posData.PhysicalSizeY,
+                            posData.PhysicalSizeX,
+                        ),
+                        **self.separateBudToolbar.splitConv3DKwargs(),
+                    )
                 )
             elif (
                 self.isSegm3D and not ctrl and not (shift and isZslice)
@@ -17161,13 +17173,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         return super().eventFilter(obj, ev)
     
-    def applyEditIDKeyModifiers(self, modifiers):
-        if not self.editIDbutton.isChecked():
-            return False
-        
+    def get3DActionKeyboardModifier(self, modifiers):
         if not self.isSegm3D:
-            return False
-
+            return
+        
         is_shift = modifiers == Qt.KeyboardModifier.ShiftModifier
         is_control_shift = modifiers == (
             Qt.KeyboardModifier.ControlModifier
@@ -17178,19 +17187,73 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             | Qt.KeyboardModifier.ShiftModifier
         )
 
+        return is_shift, is_control_shift, is_alt_shift
+
+    def get3DZrangeFromKeyModifiers(self, modifiers):
+        z_start, z_end = None, None
+
+        if not self.isSegm3D:
+            return z_start, z_end
+
+        is_shift, is_control_shift, is_alt_shift = (
+            self.get3DActionKeyboardModifier(modifiers)
+        )
+        if is_control_shift:
+            z_start = self.zSliceScrollBar.sliderPosition()
+        elif is_alt_shift:
+            z_end = self.zSliceScrollBar.sliderPosition()
+        elif is_shift:
+            z_start = self.zSliceScrollBar.sliderPosition()
+            z_end = self.zSliceScrollBar.sliderPosition()
+        
+        return z_start, z_end
+
+    def applyEditIDKeyModifiers(self, modifiers):
+        if not self.editIDbutton.isChecked():
+            return False
+        
+        self._applyKeymodifiersToolbarSegm3D(
+            modifiers, self.editIDToolbar
+        )
+    
+    def applySplitIDsKeyModifiers(self, modifiers):
+        if not self.separateBudButton.isChecked():
+            return False
+        
+        self._applyKeymodifiersToolbarSegm3D(
+            modifiers, self.separateBudToolbar
+        )
+
+    def _applyKeymodifiersToolbarSegm3D(self, modifiers, toolbar):    
+        if not self.isSegm3D:
+            return False
+
+        is_shift, is_control_shift, is_alt_shift = (
+            self.get3DActionKeyboardModifier(modifiers)
+        )
+
         if is_shift:
-            self.editIDToolbar.howToPropagateRadioCurrent.setChecked(True)
+            toolbar.howToPropagateRadioCurrent.setChecked(True)
             return True
         
         elif is_control_shift:
-            self.editIDToolbar.howToPropagateRadioToEnd.setChecked(True)
+            toolbar.howToPropagateRadioToEnd.setChecked(True)
             return True
         
         elif is_alt_shift:
-            self.editIDToolbar.howToPropagateRadioToStart.setChecked(True)
+            toolbar.howToPropagateRadioToStart.setChecked(True)
             return True
         
         return False
+    
+    def resetSplitIDsOptions(self):
+        if not self.separateBudButton.isChecked():
+            return
+        
+        if not self.isSegm3D:
+            return
+        
+        self.separateBudToolbar.howToPropagateRadioEntireObj.setChecked(True)
     
     def resetEditIDOptions(self):
         if not self.editIDbutton.isChecked():
@@ -17237,6 +17300,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
 
         applied = self.applyEditIDKeyModifiers(modifiers)
+        if applied:
+            return
+
+        applied = self.applySplitIDsKeyModifiers(modifiers)
         if applied:
             return
 
@@ -17513,6 +17580,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.onShiftReleased()
         
         self.resetEditIDOptions()
+        self.resetSplitIDsOptions()
             
         canRepeat = (
             ev.key() == Qt.Key_Left
@@ -22323,6 +22391,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.interpZConfirmAction.setVisible(self.isSegm3D)
         self.interpZButton.action.setDisabled(not self.isSegm3D)
         self.interpZButton.setDisabled(not self.isSegm3D)
+
+        self.separateBudToolbar.setHowToPropagateZslicesVisible(self.isSegm3D)
 
     def resizeGuiAndAutoRange(self):
         self.resizeGui()
@@ -31461,7 +31531,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.timestamp.setText(posData.frame_i)
     
     def deleteIDFromLab(
-            self, lab, delID, frame_i=None, delMask=None, shift=False
+            self, lab, delID, 
+            frame_i=None, 
+            delMask=None, 
+            z_start=None, 
+            z_end=None,
         ):
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i if frame_i is None else frame_i
@@ -31472,7 +31546,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = posData.allData_li[frame_i]['regionprops']
         if rp is None:
             rp = self._acdcRegionProps(lab, precache_centroids=False)
-        single_slice_del_in_3D = shift and self.isSegm3D
+
+        single_slice_del_in_3D = (
+            z_start == z_end and z_start is not None
+        )
 
         if single_slice_del_in_3D:
             lab2D = self.get_2Dlab(lab)
@@ -31505,10 +31582,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if _delID not in rp.IDs_set:
                 continue
             obj = rp.get_obj_from_ID(_delID)
+            obj_mask = obj.image
+
+            if z_start is not None:
+                local_z = z_start - obj.bbox[0]
+                obj_mask[:local_z] = False
+
+            if z_end is not None:
+                local_z = z_end - obj.bbox[0]
+                obj_mask[local_z+1:] = False
+
             if single_slice_del_in_3D:
-                delMask2D[obj.slice][obj.image] = True
+                delMask2D[obj.slice][obj_mask] = True
             else:
-                delMask[obj.slice][obj.image] = True
+                delMask[obj.slice][obj_mask] = True
 
         if single_slice_del_in_3D:
             lab2D[delMask2D] = 0
@@ -31522,18 +31609,55 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return lab, delMask
     
+    def splitIDwith3DActionModifiers(
+            self, 
+            modifiers,
+            clickedID: int
+        ):
+        if not self.isSegm3D:
+            return False
+        
+        z_start, z_end = self.separateBudToolbar.getHowToPropagateZslices(
+            self.zSliceScrollBar.sliderPosition()
+        )
+        if z_start is None and z_end is None:
+            return False
+
+        posData = self.data[self.pos_i]
+        newID = self.setBrushID(return_val=True)
+        lab = posData.lab
+        obj = posData.rp.get_obj_from_ID(clickedID)
+        slc = obj.slice
+        mask = obj.image
+        if z_start is not None:
+            local_z = z_start - obj.bbox[0]
+            mask[:local_z] = False
+
+        if z_end is not None:
+            local_z = z_end - obj.bbox[0]
+            mask[local_z+1:] = False
+
+        lab[slc][mask] = newID
+        return True
+
+        
     @disableWindow
     def deleteIDmiddleClick(
             self, 
             delIDs: Iterable, 
             applyFutFrames, 
             includeUnvisited,
-            shift=False
+            modifiers=None
         ):
         self.clearHighlightedID()
 
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
+
+        z_start, z_end = (
+            self.get3DZrangeFromKeyModifiers(modifiers)
+        )
+        is_entire_obj = z_start is None and z_end is None
         
         # Apply Delete ID to future frames if requested
         if applyFutFrames:
@@ -31541,8 +31665,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             # Store current data before going to future frames
             self.store_data()
             segmSizeT = len(posData.segm_data)
-
-            local_rp_update = shift and self.isSegm3D
 
             for i in range(posData.frame_i+1, segmSizeT):
                 lab = posData.allData_li[i]['labels']
@@ -31557,38 +31679,48 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     posData.frame_i = i
                     self.get_data()
                     lab, _ = self.deleteIDFromLab(
-                        lab, delIDs, frame_i=i, delMask=delMask, shift=shift
+                        lab, delIDs, 
+                        frame_i=i, 
+                        delMask=delMask,
+                        z_start=z_start,
+                        z_end=z_end,
                     )
+            
                     # Store change
                     posData.lab = lab
-                    self.update_rp(deletionIDs=delIDs if not local_rp_update else None)
+                    self.update_rp(
+                        deletionIDs=delIDs if is_entire_obj else None
+                    )
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     posData.segm_data[i], _ = self.deleteIDFromLab(
-                        posData.segm_data[i], delIDs, frame_i=i, delMask=delMask, shift=shift
+                        posData.segm_data[i], delIDs, 
+                        frame_i=i, 
+                        delMask=delMask, 
+                        z_start=z_start,
+                        z_end=z_end,
                     )
-                    self.update_rp(frame_i=i, deletionIDs=delIDs if not local_rp_update else None)
+                    self.update_rp(
+                        frame_i=i, 
+                        deletionIDs=delIDs if is_entire_obj else None
+                    )
 
         # Back to current frame
         if applyFutFrames:
             posData.frame_i = current_frame_i
             self.get_data()   
-
-        z_slice = None
-        if shift and self.isSegm3D:
-            z_slice = self.z_lab()
             
         posData.lab, delID_mask = self.deleteIDFromLab(
-            posData.lab, delIDs, shift=shift
+            posData.lab, delIDs, z_start=z_start, z_end=z_end,
         )
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
-        if z_slice is None:
+
+        if is_entire_obj:
             self.removeObjectFromRp(delIDs,posData.lab)
-        
-        if shift and self.isSegm3D:
+        else:
             self.update_rp()
 
         self.annotateAllObjectTracks()
