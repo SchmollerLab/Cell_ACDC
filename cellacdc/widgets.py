@@ -1769,6 +1769,11 @@ class filePathControl(QFrame):
     def browseRecentPaths(self):
         recent_paths, dates = myutils.get_recent_paths(self)
         if not recent_paths:
+            msg = myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                'There are no existing recent paths :(.<br><br>'
+            )
+            msg.warning(self, 'No existing recent paths', txt)
             return
         
         try:
