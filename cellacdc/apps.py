@@ -22316,6 +22316,14 @@ class SearchableListboxDialog(QBaseDialog):
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
+        is_any_item_path = any([os.path.exists(item) for item in items])
+        if is_any_item_path:
+            showInFileManagerButton = widgets.showInFileManagerButton(
+                myutils.get_open_filemaneger_os_string()
+            )
+            buttonsLayout.insertWidget(3, showInFileManagerButton)
+            showInFileManagerButton.clicked.connect(self.showInFileManager)
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         if not self.multiSelection:
@@ -22332,6 +22340,18 @@ class SearchableListboxDialog(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.setFont(fonts.font)
+    
+    def showInFileManager(self):
+        selected_items = self.listWidget.selectedItems()
+        valid_paths = [
+            item for item in selected_items if os.path.exists(item)
+        ]
+        if not valid_paths:
+            print('WARNING: None of the selected items is a valid path')
+            return
+        
+        first_valid_path = valid_paths[0]
+        myutils.showInExplorer(first_valid_path)
 
     def _lastEditedDate(self, item_text):
         """Return a display date and tooltip for an item's modification time.
