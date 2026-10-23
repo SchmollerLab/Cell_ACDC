@@ -7,7 +7,7 @@ import subprocess
 
 from natsort import natsorted
 
-from . import is_mac, is_linux
+from . import is_mac, is_linux, is_win
 from . import printl
 from . import myutils
 
@@ -152,3 +152,18 @@ def get_exp_path_pos_foldernames_mapper(paths):
         
     return mapper
 
+def unexpanduser(path):
+    if is_win:
+        return path
+
+    home_directory = os.path.expanduser("~")
+    home_isabs = os.path.isabs(home_directory)
+    path_isabs = os.path.isabs(path)
+    is_commonpath_home = (
+        os.path.commonpath((home_directory, path)) == home_directory
+    )
+    if home_isabs and path_isabs and is_commonpath_home:
+        relative_path = os.path.relpath(path, start=home_directory)
+        return "~"  if relative_path == "."  else os.path.join("~", relative_path)
+    else:
+        return path

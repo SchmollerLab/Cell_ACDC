@@ -46,6 +46,7 @@ from . import qutils
 from .help import about
 from . import fonts
 from . import settings_csv_path
+from . import path as acdc_path
 
 if os.name == 'nt':
     try:
@@ -2859,10 +2860,11 @@ class dataPrepWin(QMainWindow):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
         # Step 1. Read recent Paths
-        recentPaths, dates = myutils.get_recent_paths(self)
+        recentPaths, dates = myutils.get_recent_paths()
         actions = []
         for path in recentPaths[:20]:
-            action = QAction(path, self)
+            path_text = acdc_path.unexpanduser(path)
+            action = QAction(path_text, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
         # Step 3. Add the actions to the menu

@@ -42,7 +42,7 @@ def test_recent_paths_dates_stay_aligned(
         },
     )
 
-    assert myutils.get_recent_paths(None) == (expected_paths, expected_dates)
+    assert myutils.get_recent_paths() == (expected_paths, expected_dates)
 
 
 def test_recent_paths_without_dates(tmp_path, monkeypatch):
@@ -54,7 +54,7 @@ def test_recent_paths_without_dates(tmp_path, monkeypatch):
     df.to_csv(csv_path, index_label='index')
     monkeypatch.setattr(myutils, 'recentPaths_path', str(csv_path))
 
-    assert myutils.get_recent_paths(None) == (
+    assert myutils.get_recent_paths() == (
         [existing_path.replace('\\', '/')], None
     )
 
@@ -64,4 +64,4 @@ def test_recent_paths_without_file(tmp_path, monkeypatch):
         myutils, 'recentPaths_path', str(tmp_path / 'missing.csv')
     )
 
-    assert myutils.get_recent_paths(None) == ([], None)
+    assert myutils.get_recent_paths() == ([], None)
