@@ -65,7 +65,8 @@ class Model:
             verbose=verbose,
             torch_n_threads=torch_number_of_threads,  # Use available CPU cores
             do_autozoom=True,  # Enables AutoZoom for better patching
-            use_pinned_memory=True,  # Optimizes GPU memory transfers
+            enable_undo=False, # we have our own undo
+            
         )
         
         download_dir = os.path.join(user_profile_path, 'acdc-nnInteractive')

@@ -4,7 +4,7 @@ import ast
 import shlex
 
 import typing
-from typing import Literal, List, Callable, Tuple, Dict
+from typing import Literal, List, Callable, Tuple, Dict, Optional, Union
 
 import pathlib
 import difflib
@@ -31,7 +31,6 @@ import numpy as np
 import pandas as pd
 import skimage
 import inspect
-
 import traceback
 import itertools
 from packaging import version as packaging_version
@@ -42,7 +41,7 @@ import tifffile
 import skimage.io
 import skimage.measure
 
-from . import GUI_INSTALLED, KNOWN_EXTENSIONS, is_conda_env
+from . import GUI_INSTALLED, RUNNING_AS_SERVER, KNOWN_EXTENSIONS, is_conda_env
     
 from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
@@ -58,6 +57,13 @@ from . import urls
 from . import qrc_resources_path
 from . import settings_folderpath
 from . import cellacdc_installation_path
+# Keep the existing model-facing imports working.
+from ._torch_utils import (
+    BASE_PYTORCH_LINK, check_install_torch, get_driver_cuda_version,
+    get_min_compute_cap, get_pytorch_command, get_torch_device,
+    get_torch_options, get_torch_options_safe, resolve_torch_link,
+)
+
 
 from .models._cellpose_base import min_target_versions_cp
 
@@ -66,7 +72,10 @@ if GUI_INSTALLED:
     from qtpy.QtCore import Signal, QObject, QCoreApplication
     
     from . import widgets, apps
+
+if GUI_INSTALLED or RUNNING_AS_SERVER:
     from . import config
+
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type', 'desc', 'docstring'])
 
@@ -1327,6 +1336,117 @@ def getModelArgSpec(acdcSegment):
     )
     
     return init_params, segment_params
+
+def _serialize_model_param_type(param_type):
+    """Transfer GUI type metadata without importing model dependencies on the client side.
+    Used in insertModelArgSpec and testing"""
+    from . import _types
+
+    if _types.is_optional(param_type):
+        param_type = next(t for t in typing.get_args(param_type) if t is not type(None))
+    for name, cls in (
+            ('bool', bool), ('int', int), ('float', float), ('str', str),
+            ('path', os.PathLike), ('none', type(None)),
+            ('vector', _types.Vector), ('folder', _types.FolderPath),
+            ('second_channel', _types.SecondChannelImage),
+            ('hidden', _types.NotGUIParam), ('yeaz_model', _types.YeazV2ModelType),
+            ('csv_path', _types.CsvFilePath)
+        ):
+        if param_type is cls:
+            return {'kind': name}
+    if getattr(param_type, 'not_a_param', False):
+        return {'kind': 'hidden'}
+    if typing.get_origin(param_type) is Literal:
+        return {'kind': 'choices', 'values': list(typing.get_args(param_type))}
+    if hasattr(param_type, 'values'):
+        return {
+            'kind': 'choices',
+            'values': list(param_type.values),
+            'is_exclusive_with': getattr(param_type, 'is_exclusive_with', []),
+            'default_exclusive': getattr(param_type, 'default_exclusive', ''),
+        }
+    if getattr(param_type, 'isWidget', False):
+        raise TypeError(f'No client-side widget registered for {param_type}')
+    # Other annotations (e.g. torch.device unions) use the existing text editor.
+    return {'kind': 'str'}
+
+
+def _deserialize_model_param_type(data):
+    from . import _types
+
+    if data['kind'] == 'choices':
+        return type('ModelParamChoices', (), {
+            'values': data['values'],
+            'is_exclusive_with': data.get('is_exclusive_with', []),
+            'default_exclusive': data.get('default_exclusive', ''),
+            'cast_dtype': staticmethod(_types.to_str),
+        })
+    return {
+        'bool': bool, 'int': int, 'float': float, 'str': str,
+        'path': os.PathLike, 'none': type(None),
+        'vector': _types.Vector, 'folder': _types.FolderPath,
+        'second_channel': _types.SecondChannelImage, 'hidden': _types.NotGUIParam,
+        'yeaz_model': _types.YeazV2ModelType,
+        'csv_path': _types.CsvFilePath,
+    }[data['kind']]
+
+
+def getModelArgSpecFromEnv(
+        model_name: str, python_exec: str, model_kind: str = 'segmentation'
+    ):
+    """Query model argument specification (init_params, segment_params, url)
+    by running inspection inside the model's dedicated Python environment.
+    GUI types are transferred as metadata and reconstructed on the client.
+    """
+    script = f'''
+import json, sys
+from cellacdc import myutils
+try:
+    importer = (
+        myutils.import_promptable_segment_module
+        if "{model_kind}" == "promptable"
+        else myutils.import_segment_module
+    )
+    acdcSegment = importer("{model_name}")
+    init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+    url = getattr(acdcSegment, "url_help", lambda: None)()
+    def _serialize_p(p):
+        return [p.name, p.default, myutils._serialize_model_param_type(p.type), p.desc, p.docstring]
+    res = {{
+        "init_params": [_serialize_p(p) for p in init_params],
+        "segment_params": [_serialize_p(p) for p in segment_params],
+        "url": url
+    }}
+    print("__ACDC_SPEC__" + json.dumps(res))
+except Exception as e:
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+'''
+    proc = subprocess.run(
+        [python_exec, "-c", script, "--server"],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"Failed to query model spec for {model_name} from {python_exec}:\n{proc.stderr}"
+        )
+
+    for line in proc.stdout.splitlines():
+        if line.startswith("__ACDC_SPEC__"):
+            data = json.loads(line[len("__ACDC_SPEC__"):])
+            init_params = [
+                ArgSpec(*p)._replace(type=_deserialize_model_param_type(p[2]))
+                for p in data["init_params"]
+            ]
+            segment_params = [
+                ArgSpec(*p)._replace(type=_deserialize_model_param_type(p[2]))
+                for p in data["segment_params"]
+            ]
+            url = data.get("url")
+            return init_params, segment_params, url
+    raise RuntimeError(f"No spec returned by model worker:\n{proc.stdout}")
 
 def _get_doc_stop_idx(docstring, start_idx, next_param_name=None, debug=False):
     if debug:
@@ -2910,15 +3030,39 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
+def _run_command_streaming(command: List[str], logger: Callable = print):
+    """Run `command`, forwarding each output line to `logger` as it appears.
+    Raises CalledProcessError on non-zero exit."""
+    proc = subprocess.Popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding='utf-8', errors='replace', bufsize=1
+    )
+    for line in proc.stdout:
+        line = line.rstrip()
+        if line:
+            logger(line)
+    proc.stdout.close()
+    returncode = proc.wait()
+    if returncode != 0:
+        raise subprocess.CalledProcessError(returncode, command)
+
 def _install_pip_package(
-        pkg_name: str,
+        pkg_name: Union[str, List[str]],
         logger: Callable = print,
         install_dependencies: bool = True,
         force_binary: bool = True,
         pref_binary: bool = True,
+        python_exec: Optional[str] = None,
         ) -> None:
-    pkg_name = pkg_name.replace('"', '')
-    command = [sys.executable, '-m', 'pip', 'install', pkg_name,]
+    """Install one requirement or, if a list is given, all of them with a 
+    single pip command (so pip can resolve them together)."""
+    if isinstance(pkg_name, str):
+        pkg_names = [pkg_name.replace('"', '')]
+    else:
+        pkg_names = [p.replace('"', '') for p in pkg_name]
+    pkg_name = ' '.join(pkg_names)
+    py_exec = python_exec or sys.executable
+    command = [py_exec, '-m', 'pip', 'install', *pkg_names]
     if force_binary:
         command.append('--only-binary=:all:')
     elif pref_binary:
@@ -2926,29 +3070,29 @@ def _install_pip_package(
     if not install_dependencies:
         command.append('--no-deps')
     try:
-        subprocess.check_call(
-            command
-            )
+        _run_command_streaming(command, logger)
     except subprocess.CalledProcessError as e:
         if "--only-binary=:all:" in str(e):
             logger(f"Error: {pkg_name} does not have a binary distribution available, trying preferred binary.")
             _install_pip_package(
-                pkg_name=pkg_name,
+                pkg_name=pkg_names,
                 logger=logger,
                 install_dependencies=install_dependencies,
                 force_binary=False,
                 pref_binary=True,
+                python_exec=python_exec,
             )
         elif "--prefer-binary" in str(e):
             logger(f"Error: {pkg_name} does not have a preferred binary distribution available, trying source.")
             command.remove('--prefer-binary')
             command.append('--no-binary=:all:')
             _install_pip_package(
-                pkg_name=pkg_name,
+                pkg_name=pkg_names,
                 logger=logger,
                 install_dependencies=install_dependencies,
                 force_binary=False,
                 pref_binary=False,
+                python_exec=python_exec,
             )
         else:
             logger(f"""Error: {pkg_name} installation failed. Please check the error message. This is probably due to the package 
@@ -3248,20 +3392,35 @@ def check_pkg_max_version(
     else:
         return is_version_correct
 
-def install_package_conda(conda_pkg_name, channel='conda-forge'):
-    if not is_conda_env():
+def install_package_conda(
+        conda_pkg_name, 
+        channel='conda-forge', 
+        env_name=None, 
+        env_prefix=None
+    ):
+    if not is_conda_env() and env_name is None and env_prefix is None:
         raise EnvironmentError(
             'Cell-ACDC is not running in a `conda` environment.'
         )
     
-    conda_pkg_name = conda_pkg_name.replace('"', '')
-    conda_prefix, pip_prefix = get_pip_conda_prefix()
-    conda_prefix = re.sub(
-        r'(-c\sconda-forge\s?|--channel=conda-forge\s?)', f'-c {channel} ', 
-        conda_prefix
-    )
-
-    command = f'{conda_prefix} -y {conda_pkg_name}'
+    if isinstance(conda_pkg_name, (list, tuple)):
+        # Keep quotes so that specifiers like ">=1.0" survive the shell
+        conda_pkg_name = ' '.join(conda_pkg_name)
+    else:
+        conda_pkg_name = conda_pkg_name.replace('"', '')
+    if env_name is not None:
+        conda_exe = shutil.which('conda') or os.environ.get('CONDA_EXE', 'conda')
+        command = f'{conda_exe} install -y -n {env_name} -c {channel} {conda_pkg_name}'
+    elif env_prefix is not None:
+        conda_exe = shutil.which('conda') or os.environ.get('CONDA_EXE', 'conda')
+        command = f'{conda_exe} install -y -p "{env_prefix}" -c {channel} {conda_pkg_name}'
+    else:
+        conda_prefix, pip_prefix = get_pip_conda_prefix()
+        conda_prefix = re.sub(
+            r'(-c\sconda-forge\s?|--channel=conda-forge\s?)', f'-c {channel} ', 
+            conda_prefix
+        )
+        command = f'{conda_prefix} -y {conda_pkg_name}'
     _subprocess_run_command(command)
 
 def _subprocess_run_command(command, shell=True, callback='check_call'):
@@ -3283,7 +3442,8 @@ def check_install_omnipose():
         import_module('omnipose')
         return
     except ModuleNotFoundError:
-        pass
+        if is_server_mode():
+            _raise_server_missing('omnipose')
     
     try:
         check_install_package('omnipose', pypi_name='omnipose_acdc')
@@ -3329,95 +3489,297 @@ def _run_command(command: str | list[str], shell=False):
     except Exception as err:
         pass
 
-def _warn_dll_torch(qparent=None):
-    msg = widgets.myMessageBox()
-    txt = html_utils.paragraph("""
-    <b>An error message will occur after you close this message.</b><br>
-    <b>Please save your data and restart Cell-ACDC.</b><br>
-    Sorry for the inconvenience!<br>
-    This error is not critical for the main functionality of Cell-ACDC,
-    and only concerns the segmentation model. Your can save your data without
-    a problem.<br>
-    The specific reason is that PyTorch and QtPy have weird issues with 
-    DLL conflicts.
-    """)
-    msg.information(
-    qparent, 'Please restart Cell-ACDC', txt, 
-    buttonsTexts=('Ok, I will save my data and restart Cell-ACDC'),
+
+def is_server_mode():
+    """True when running inside a model worker process (`service.worker`).
+
+    In this mode nothing is installed and no prompt is shown: the client
+    prepares the environment (see `cellacdc/models/_env_config.py`).
+    """
+    import cellacdc
+    return cellacdc.RUNNING_AS_SERVER
+
+def _raise_server_missing(what):
+    raise ModuleNotFoundError(
+        f'The model worker environment is missing or has an incompatible '
+        f'version of: {what}. The worker does not install packages by '
+        f'itself. Add the package to this model\'s entry in '
+        f'cellacdc/models/_env_config.py and restart, or install it in the '
+        f'environment: {sys.executable}'
+    )
+def _install_tensorflow(max_version='', min_version='', python_exec=None):
+    cpu = platform.processor()
+    pkg_command = _get_pkg_command_pip_install(
+        'tensorflow', 
+        max_version=max_version, 
+        min_version=min_version
+    )
+    pkg_command = pkg_command.replace('"', '')
+
+    py_exec = python_exec or sys.executable
+    if is_mac and cpu == 'arm' and py_exec == sys.executable:
+        conda_prefix, pip_prefix = get_pip_conda_prefix()
+        args = [f'{conda_prefix} "{pkg_command}"']
+        shell = True
+    else:
+        args = [py_exec, '-m', 'pip', 'install', '-U', pkg_command]
+        shell = False
+    subprocess.check_call(args, shell=shell)
+    
+    if py_exec == sys.executable:
+        print('TensorFlow installed. Restart Cell-ACDC before using it; '
+              'NumPy cannot safely be reloaded in this process.')
+
+def _install_segment_anything(python_exec=None):
+    py_exec = python_exec or sys.executable
+    args = [
+        py_exec, '-m', 'pip', 'install',
+        '-U', '--use-pep517',
+        'git+https://github.com/facebookresearch/segment-anything.git'
+    ]
+    subprocess.check_call(args)
+
+def _install_sam2(python_exec=None):
+    py_exec = python_exec or sys.executable
+    args = [
+        py_exec, '-m', 'pip', 'install',
+        '-U', '--use-pep517',
+        'git+https://github.com/facebookresearch/sam2.git'
+    ]
+    subprocess.check_call(args)
+
+def _install_deepsea(python_exec=None):
+    py_exec = python_exec or sys.executable
+    subprocess.check_call(
+        [py_exec, '-m', 'pip', 'install', 'deepsea']
     )
 
-def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None):
-    try:
-        import torch
-        import torchvision
-        return
+def import_tracker_module(tracker_name):
+    module_name =  f'cellacdc.trackers.{tracker_name}.{tracker_name}_tracker'
+    tracker_module = import_module(module_name)
+    return tracker_module
 
-    except OSError as err:
-        if 'dll' in str(err):
-            _warn_dll_torch(qparent=qparent)
-            raise err
+_PKG_SPEC_KEYS = (
+    'pkg_name', 'import_pkg_name', 'pypi_name', 'min_version', 'max_version',
+    'exact_version', 'include_higher_version', 'include_lower_version',
+    # Only used to detect an installation (see models/_env_config.py);
+    # installation uses `pkg_name`/`pypi_name`.
+    'distribution_name',
+)
+_SPECIAL_INSTALLERS = {
+    'tensorflow': _install_tensorflow,
+    'deepsea': _install_deepsea,
+    'segment_anything': _install_segment_anything,
+    'sam2': _install_sam2,
+}
+
+
+def _align_to_packages(value, n_pkgs: int, arg_name: str) -> list:
+    """Return a list with one entry per package.
+
+    A list/tuple must have exactly `n_pkgs` entries (use '' for "use the
+    default"). A non-empty plain string is only allowed for a single package.
+    """
+    if isinstance(value, (list, tuple)):
+        if len(value) != n_pkgs:
+            raise ValueError(
+                f'`{arg_name}` has {len(value)} entries but {n_pkgs} '
+                'packages were given'
+            )
+        return list(value)
+    if value and n_pkgs > 1:
+        raise ValueError(
+            f'`{arg_name}` must be a list with one entry per package '
+            f'when checking {n_pkgs} packages'
+        )
+    return [value] * n_pkgs
+
+
+def _normalize_pkg_specs(
+        pkg_name, import_pkg_name, pypi_name, defaults: dict
+    ) -> list:
+    """Turn str | dict | list[str | dict] into a list of full spec dicts.
+    `import_pkg_name` and `pypi_name` are str or lists aligned with the
+    packages. Keys given in a dict entry override everything else."""
+    entries = [pkg_name] if isinstance(pkg_name, (str, dict)) else list(pkg_name)
+    n_pkgs = len(entries)
+    import_names = _align_to_packages(
+        import_pkg_name, n_pkgs, 'import_pkg_name'
+    )
+    pypi_names = _align_to_packages(pypi_name, n_pkgs, 'pypi_name')
+
+    specs = []
+    for entry, imp_name, pypi in zip(entries, import_names, pypi_names):
+        spec = dict(defaults)
+        spec['import_pkg_name'] = imp_name
+        spec['pypi_name'] = pypi
+        if isinstance(entry, str):
+            spec['pkg_name'] = entry
         else:
-            traceback.print_exc()
-    except Exception as err:
-        traceback.print_exc()
-    
-    if is_cli:
-        _install_pytorch_cli(caller_name=caller_name) 
+            unknown = set(entry) - set(_PKG_SPEC_KEYS)
+            if unknown:
+                raise TypeError(f'Unknown package spec keys: {unknown}')
+            spec.update(entry)
+        if not spec['import_pkg_name']:
+            spec['import_pkg_name'] = spec['pkg_name']
+        spec['import_pkg_name'] = spec['import_pkg_name'].replace('-', '_')
+        specs.append(spec)
+    return specs
+
+
+def _check_package_version_constraints(spec: dict, installed_version: str):
+    """Apply the version bounds used for external environment checks."""
+    if not installed_version:
         return
-    
-    win = apps.InstallPyTorchDialog(parent=qparent, caller_name=caller_name)
-    win.exec_()
-    if win.cancel:
-        _warnings.log_pytorch_not_installed() 
-        return
-    
-    command = win.command
-    print(f'Running command: "{command}"')
-    _run_command(command)
-    
+    installed = packaging_version.parse(installed_version)
+    if spec['exact_version']:
+        if installed != packaging_version.parse(spec['exact_version']):
+            raise ModuleNotFoundError(
+                f"{spec['pkg_name']}: expected {spec['exact_version']}, "
+                f"found {installed_version}"
+            )
+    for key, inclusive_key, lower in (
+        ('min_version', 'include_lower_version', True),
+        ('max_version', 'include_higher_version', False),
+    ):
+        if not spec[key]:
+            continue
+        bound = packaging_version.parse(spec[key])
+        outside = installed < bound if lower else installed > bound
+        if outside or (installed == bound and not spec[inclusive_key]):
+            raise ModuleNotFoundError(
+                f"{spec['pkg_name']}: {key} {spec[key]} not satisfied "
+                f"(found {installed_version})"
+            )
+
+
+def _check_single_package(spec: dict, force_upgrade: bool, python_exec):
+    """Check one package.
+
+    Returns
+    -------
+    (satisfied, needs_upgrade) : tuple[bool, bool]
+        `satisfied` is True if nothing has to be installed.
+        `needs_upgrade` is True if the package is installed but must be
+        upgraded/downgraded.
+    """
+    pkg_name = spec['pkg_name']
+    import_pkg_name = spec['import_pkg_name']
+    exact_version = spec['exact_version']
+    min_version = spec['min_version']
+    max_version = spec['max_version']
+    include_higher_version = spec['include_higher_version']
+    include_lower_version = spec['include_lower_version']
+
+    imported = False
     try:
-        import torch
-    except OSError as e:
-        if 'dll' in str(e):
-            _warn_dll_torch(qparent=qparent)
-        raise e
-    
-    purge_module('torch')
+        if python_exec is not None and python_exec != sys.executable:
+            code = (
+                f"import {import_pkg_name}\n"
+                f"import importlib.metadata as m\n"
+                f"try:\n"
+                f"    v = getattr({import_pkg_name}, '__version__', None) or m.version('{pkg_name}')\n"
+                f"except Exception:\n"
+                f"    v = ''\n"
+                f"print(v)\n"
+            )
+            proc = subprocess.run(
+                [python_exec, '-c', code], capture_output=True, text=True
+            )
+            if proc.returncode != 0:
+                raise ModuleNotFoundError(
+                    f"Package '{pkg_name}' not installed in {python_exec}"
+                )
+            imported = True
+            installed_version = proc.stdout.strip()
+            if force_upgrade:
+                raise ModuleNotFoundError(
+                    f'User requested to forcefully upgrade "{pkg_name}"'
+                )
+            _check_package_version_constraints(spec, installed_version)
+        else:
+            import_module(import_pkg_name)
+            imported = True
+            if force_upgrade:
+                raise ModuleNotFoundError(
+                    f'User requested to forcefully upgrade "{pkg_name}"'
+                )
+            if exact_version:
+                check_pkg_exact_version(import_pkg_name, exact_version)
+            if min_version:
+                check_pkg_version(
+                    import_pkg_name, min_version, include_lower_version
+                )
+            if max_version:
+                check_pkg_max_version(
+                    import_pkg_name, max_version, include_higher_version
+                )
+    except ModuleNotFoundError:
+        # If the import worked, the failure was a version mismatch -> upgrade
+        return False, imported
+    return True, False
+
+
+def _describe_spec(spec: dict) -> str:
+    """Human readable 'name (constraints)' string for messages."""
+    constraints = []
+    if spec['exact_version']:
+        constraints.append(f"=={spec['exact_version']}")
+    if spec['min_version']:
+        constraints.append(f">={spec['min_version']}")
+    if spec['max_version']:
+        constraints.append(f"<={spec['max_version']}")
+    name = spec['pypi_name'] or spec['pkg_name']
+    return f"{name} ({', '.join(constraints)})" if constraints else name
+
 
 def check_install_package(
-        pkg_name: str, 
-        import_pkg_name: str='',
-        pypi_name='', 
-        note='', 
-        parent=None, 
-        raise_on_cancel=True, 
-        logger_func=print, 
+        pkg_name: Union[str, dict, list],
+        import_pkg_name: Union[str, List[str]]='',
+        pypi_name: Union[str, List[str]]='',
+        note='',
+        parent=None,
+        raise_on_cancel=True,
+        logger_func=print,
         is_cli=False,
-        caller_name='Cell-ACDC', 
+        caller_name='Cell-ACDC',
         force_upgrade=False,
-        upgrade=False, 
-        min_version='', 
+        upgrade=False,
+        min_version='',
         max_version='',
         exact_version='',
         install_dependencies=True,
         return_outcome=False,
         installer: Literal['pip', 'conda']='pip',
         include_higher_version: bool = False,
-        include_lower_version: bool = False
+        include_lower_version: bool = False,
+        python_exec: Optional[str] = None,
+        conda_env_name: Optional[str] = None,
+        conda_env_prefix: Optional[str] = None,
+        auto_install: bool = False
     ):
-    """Try to import a package. If import fails, ask user to install it 
-    automatically.
+    """Try to import one or more packages. Each package is checked
+    individually; all missing/outdated ones are then installed together after
+    a single confirmation prompt.
 
     Parameters
     ----------
-    pkg_name : str
-        The name of the package that is displayed to the user.
-    import_pkg_name : str, optional
-        The name of the package as it should be imported (case sensitive).
-        If empty string, `pkg_name` will be imported instead. Default is ''
-    pypi_name : str, optional
-        The name of the package to be installed with pip.
-        If empty string, `pkg_name` will be installed instead. Default is ''
+    pkg_name : str, dict or list of (str or dict)
+        Package(s) to check. A plain string is the name displayed to the user
+        (and imported if `import_pkg_name` is empty). A dict may contain any of
+        the per-package keys: 'pkg_name' (required), 'import_pkg_name',
+        'pypi_name', 'min_version', 'max_version', 'exact_version',
+        'include_higher_version', 'include_lower_version'. Keys that are not
+        given fall back to the function arguments of the same name.
+    import_pkg_name : str or list of str, optional
+        Name(s) used to import the package(s) (case sensitive). If a list, it
+        must have one entry per package in `pkg_name` (same order); use ''
+        for packages that should be imported by their `pkg_name`. A plain
+        string is only valid when checking a single package. A 'import_pkg_name'
+        key in a dict entry takes precedence. Default is ''
+    pypi_name : str or list of str, optional
+        Name(s) used with pip, same list rules as `import_pkg_name`. If
+        empty, the entry's `pkg_name` is installed. Default is ''
     note : str, optional
         Additional text to display to the user. Default is ''
     parent : QObject, optional
@@ -3427,127 +3789,181 @@ def check_install_package(
     logger_func : callable, optional
         Function used to log text. Default is print
     is_cli : bool, optional
-        If True, message will be displayed in the terminal. 
+        If True, message will be displayed in the terminal.
         If False, message will be displayed in a Qt message box.
         Default is False
     caller_name : str, optional
         Program calling this function. Default is 'Cell-ACDC'
     force_upgrade : bool, optional
-        If True, we force the upgrade even if package is installed.
+        If True, we force the upgrade of all packages even if installed.
     upgrade : bool, optional
-        If True, pip will upgrade the package. This value is True if 
-        `force_upgrade` is True. Without min_version and max_version
-        it will never upgrade or downgrade the package.
-    min_version : str, optional
-        If not empty it must be a valid version `major[.minor][.patch]` where 
-        minor and patch are optional. If the installed package is older the 
-        upgrade will be forced. 
-    max_version : str, optional
-        If not empty it must be a valid version `major[.minor][.patch]` where 
-        minor and patch are optional. If the installed package is newer the 
-        upgrade will be forced. 
-    exact_version : str, optional
-        If not empty, install this exact version. It must be a valid 
-        `major[.minor][.patch]`.
+        If True, pip will upgrade the packages. This value is True if
+        `force_upgrade` is True or any package needs an upgrade.
+    min_version, max_version, exact_version : str, optional
+        Default version constraints (`major[.minor][.patch]`) for entries
+        that do not define their own. A violated constraint forces an upgrade.
     install_dependencies : bool, optional
         If False, the `--no-deps` flag will be added to the pip command.
+        Applies to the whole batch.
     return_outcome : bool, optional
-        If True, returns 1 on successfull action
+        If True, returns True after a successful installation.
     installer : str, optional
-        Package manager to use to install the package. Either 'pip' or 'conda'. 
-        Default is 'pip'
+        Package manager to use to install the packages. Either 'pip' or
+        'conda'. Default is 'pip'
     include_higher_version : bool, optional
-        If True, if the higher version is installed, it will not be downgraded.
+        If True, a higher installed version will not be downgraded.
         Default is False
     include_lower_version : bool, optional
-        If True, if the lower version is installed, it will not be upgraded.
+        If True, a lower installed version will not be upgraded.
         Default is False
-        
+    python_exec : str, optional
+        Target python executable in which to check and install the packages.
+        If None, sys.executable is used. Default is None.
+    conda_env_name : str, optional
+        Target conda environment name when installer='conda'.
+    conda_env_prefix : str, optional
+        Target conda environment prefix path when installer='conda'.
+    auto_install : bool, optional
+        If True, install without asking the user. Default is False
+
     Raises
     ------
     ModuleNotFoundError
         Error raised if process is cancelled and `raise_on_cancel=True`.
     """
-    if not import_pkg_name:
-        import_pkg_name = pkg_name
-    
     if not is_gui_running():
-        is_cli=True
-    
-    try: # check_pkg_version and check_pkg_max_version
-        import_pkg_name = import_pkg_name.replace('-', '_')
-        import_module(import_pkg_name)
-        if force_upgrade:
-            upgrade = True
-            raise ModuleNotFoundError(
-                f'User requested to forcefully upgrade the package "{pkg_name}"')
-        if exact_version:
-            check_pkg_exact_version(import_pkg_name, exact_version)
-        if min_version:
-            check_pkg_version(
-                import_pkg_name, min_version, include_lower_version)
-        if max_version:
-            check_pkg_max_version(
-                import_pkg_name, max_version, include_higher_version)
-    except ModuleNotFoundError:
-        proceed = _install_package_msg(
-            pkg_name, 
-            note=note, 
-            parent=parent, 
-            upgrade=upgrade,
-            is_cli=is_cli, 
-            caller_name=caller_name, 
-            logger_func=logger_func,
-            pkg_command=pypi_name, 
-            max_version=max_version, 
-            min_version=min_version,
-            exact_version=exact_version,
-            installer=installer,
-            include_higher_version=include_higher_version,
-            include_lower_version=include_lower_version
-        )
-        if pypi_name:
-            pkg_name = pypi_name
-        if not proceed:
-            if raise_on_cancel:
-                raise ModuleNotFoundError(
-                    f'User aborted {pkg_name} installation'
-                )
-            else:
-                return traceback.format_exc()
-        try:
-            if pkg_name == 'tensorflow':
-                _install_tensorflow(
-                    max_version=max_version, min_version=min_version
-                )
-            elif pkg_name == 'deepsea':
-                _install_deepsea()
-            elif pkg_name == 'segment_anything':
-                _install_segment_anything()
-            elif pkg_name == 'sam2':
-                _install_sam2()
-            else:
-                pkg_command = _get_pkg_command_pip_install(
-                    pkg_name, 
-                    exact_version=exact_version,
-                    max_version=max_version, 
-                    min_version=min_version,
-                    including_higher_version=include_higher_version,
-                    including_lower_version=include_lower_version,
-                )
-                if installer == 'pip':
-                    _install_pip_package(
-                        pkg_command, install_dependencies=install_dependencies
-                    )
-                else:
-                    install_package_conda(pkg_command)
-        except Exception as e:
-            printl(traceback.format_exc())
-            _inform_install_package_failed(
-                pkg_name, parent=parent, do_exit=raise_on_cancel
+        is_cli = True
+
+    if python_exec is not None and python_exec != sys.executable:
+        # `conda install` without an env name targets the active env, so 
+        # for another interpreter always use its own pip
+        installer = 'pip'
+
+    defaults = {
+        'pkg_name': '',
+        'min_version': min_version,
+        'max_version': max_version,
+        'exact_version': exact_version,
+        'include_higher_version': include_higher_version,
+        'include_lower_version': include_lower_version,
+    }
+    specs = _normalize_pkg_specs(
+        pkg_name, import_pkg_name, pypi_name, defaults
+    )
+
+    from cellacdc._model_startup import startup_timer
+
+    # 1) Check every package individually
+    missing_specs = []
+    for spec in specs:
+        with startup_timer(
+            f"dependency check: {spec['import_pkg_name']}", logger_func
+        ):
+            satisfied, needs_upgrade = _check_single_package(
+                spec, force_upgrade, python_exec
             )
-        if return_outcome:
-            return True
+        if satisfied:
+            continue
+        missing_specs.append(spec)
+        if needs_upgrade:
+            upgrade = True
+
+    if force_upgrade:
+        upgrade = True
+
+    if not missing_specs:
+        return
+
+    if is_server_mode() and python_exec in (None, sys.executable):
+        _raise_server_missing(
+            ', '.join(_describe_spec(s) for s in missing_specs)
+        )
+
+    # 2) Ask once for everything that is missing
+    display_name = ', '.join(_describe_spec(s) for s in missing_specs)
+    pkg_commands = [
+        _get_pkg_command_pip_install(
+            spec['pypi_name'] or spec['pkg_name'],
+            exact_version=spec['exact_version'],
+            max_version=spec['max_version'],
+            min_version=spec['min_version'],
+            including_higher_version=spec['include_higher_version'],
+            including_lower_version=spec['include_lower_version'],
+        )
+        for spec in missing_specs
+    ]
+    if auto_install:
+        proceed = True
+    else:
+        proceed = _install_package_msg(
+            display_name,
+            note=note,
+            parent=parent,
+            upgrade=upgrade,
+            is_cli=is_cli,
+            caller_name=caller_name,
+            logger_func=logger_func,
+            installer=installer,
+            pkg_commands=pkg_commands
+        )
+
+    if not proceed:
+        if raise_on_cancel:
+            raise ModuleNotFoundError(
+                f'User aborted installation of: {display_name}'
+            )
+        return f'User aborted installation of: {display_name}'
+
+    # 3) Install: special packages individually, everything else in one go
+    try:
+        batch_commands = []
+        for spec, command in zip(missing_specs, pkg_commands):
+            name = spec['pypi_name'] or spec['pkg_name']
+            special_installer = _SPECIAL_INSTALLERS.get(name)
+            if name == 'tensorflow' and python_exec not in (None, sys.executable):
+                # Resolve model and runtime constraints together in isolated envs.
+                special_installer = None
+            if special_installer is None:
+                batch_commands.append(command)
+            elif name == 'tensorflow':
+                special_installer(
+                    max_version=spec['max_version'],
+                    min_version=spec['min_version'],
+                    python_exec=python_exec
+                )
+            else:
+                special_installer(python_exec=python_exec)
+
+        if batch_commands:
+            # `batch_commands` is a list of requirement strings. The helpers
+            # must append them as separate arguments (one per requirement).
+            if installer == 'pip':
+                _install_pip_package(
+                    batch_commands,
+                    install_dependencies=install_dependencies,
+                    logger=logger_func,
+                    python_exec=python_exec
+                )
+            else:
+                install_package_conda(
+                    batch_commands,
+                    env_name=conda_env_name,
+                    env_prefix=conda_env_prefix
+                )
+    except Exception:
+        printl(traceback.format_exc())
+        if is_cli or (python_exec is not None and python_exec != sys.executable):
+            logger_func(
+                f'Installation of {display_name} failed in '
+                f'{python_exec or sys.executable}.'
+            )
+            raise
+        _inform_install_package_failed(
+            display_name, parent=parent, do_exit=raise_on_cancel
+        )
+
+    if return_outcome:
+        return True
 
 def check_install_custom_dependencies(custom_install_requires, *args, **kwargs):
     """Used to install a package with custom dependencies, usefull if they have
@@ -3656,12 +4072,13 @@ def _install_package_msg(
         exact_version='', max_version='', min_version='', 
         installer: Literal['pip', 'conda']='pip',
         include_higher_version: bool = False,
-        include_lower_version: bool = False
+        include_lower_version: bool = False,
+        pkg_commands: Optional[List[str]] = None
     ):
     if is_cli:
         proceed = _install_package_cli_msg(
             pkg_name, note=note, upgrade=upgrade, caller_name=caller_name,
-            pkg_command=pkg_command, 
+            pkg_command=pkg_command, pkg_commands=pkg_commands,
             exact_version=exact_version,
             max_version=max_version, 
             min_version=min_version, logger_func=logger_func, 
@@ -3673,7 +4090,7 @@ def _install_package_msg(
         proceed = _install_package_gui_msg(
             pkg_name, note=note, parent=parent, upgrade=upgrade, 
             caller_name=caller_name, pkg_command=pkg_command,
-            exact_version=exact_version,
+            pkg_commands=pkg_commands, exact_version=exact_version,
             max_version=max_version, min_version=min_version, 
             logger_func=logger_func, installer=installer,
             including_higher_version=include_higher_version,
@@ -3688,87 +4105,6 @@ def get_cli_multi_choice_question(question, choices):
     text = f'{question} {choices_format} q) Quit. ({choices_opts})?: '
     return text
 
-def _install_pytorch_cli(
-        caller_name='Cell-ACDC', action='install', logger_func=print
-    ):
-    separator = '-'*60
-    txt = (
-        f'{separator}\n{caller_name} needs to {action} PyTorch\n\n'
-        'You can choose to install it now or stop the process and install it '
-        'later. To install it correctly, we need to know your preferences.\n'
-    )
-    logger_func(txt)
-    questions = {
-        'Choose your OS:': ('Windows', 'Mac', 'Linux'), 
-        'Package manager:': ('Pip'), 
-        'Compute platform:': (
-            'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
-        )
-    }
-    selected_command = get_pytorch_command()
-    selected_preferences = []
-    for question, choices in questions.items():
-        input_txt = get_cli_multi_choice_question(question, choices)
-        while True:
-            answer = input(input_txt)
-            if answer.lower() == 'q':
-                exit('Execution stopped by the user.')
-            
-            try:
-                idx = int(answer) - 1
-                if idx >= len(choices):
-                    raise TypeError('Not a valid answer')
-            except Exception as err:
-                print('-'*100)
-                logger_func(
-                    f'"{answer}" is not a valid answer.'
-                    'Choose one of the options or "q" to quit.'
-                )
-                print('^'*100)
-                continue
-            
-            preference = choices[idx]
-            selected_command = selected_command[preference]
-            selected_preferences.append(preference)
-            print('')
-            break
-    
-    print('-'*100)
-    selected_preferences = ', '.join(selected_preferences)
-    logger_func(f'Selected preferences: {selected_preferences}')
-    print('-'*100)
-    logger_func(f'Command:\n\n{selected_command}\n')
-    while True:
-        answer = input('Do you want to run the command now ([y]/n)?: ')
-        if answer.lower() == 'n':
-            exit('Execution stopped by the user.')
-        
-        if answer.lower() == 'y' or not answer:
-            break
-        
-        print('-'*100)
-        print(
-            f'"{answer}" is not a valid answer. '
-            'Choose "y" for yes or "n" for no.'
-        )
-        print('^'*100)
-    
-    if selected_command.startswith('conda'):
-        try:
-            subprocess.check_call([selected_command], shell=True)
-        except Exception as err:
-            cmd_list = shlex.split(selected_command)
-            cmd_list = [cmd.strip('"') for cmd in cmd_list]
-            cmd_list = [cmd.strip("'") for cmd in cmd_list]
-            cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
-            subprocess.check_call(cmd_list, shell=False)
-    else:
-        cmd_list = shlex.split(selected_command)
-        cmd_list = cmd_list[1:]
-        cmd_list = [cmd.strip('"') for cmd in cmd_list]
-        cmd_list = [cmd.strip("'") for cmd in cmd_list]
-        cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
-        subprocess.check_call([sys.executable, *cmd_list], shell=False)
 
 def _get_pkg_command_pip_install(
         pkg_command, 
@@ -3807,17 +4143,21 @@ def _install_package_cli_msg(
         logger_func=print, pkg_command='', exact_version='', max_version='', 
         min_version='', installer: Literal['pip', 'conda']='pip',
         include_lower_version=False,
-        include_higher_version=False
+        include_higher_version=False,
+        pkg_commands=None
     ):
-    if not pkg_command:
-        pkg_command = pkg_name
-    
-    pkg_command = _get_pkg_command_pip_install(
-        pkg_command, exact_version=exact_version, 
-        max_version=max_version, min_version=min_version,
-        including_lower_version=include_lower_version,
-        including_higher_version=include_higher_version
-    )
+    if pkg_commands:
+        pkg_command = ' '.join(pkg_commands)
+    else:
+        if not pkg_command:
+            pkg_command = pkg_name
+        
+        pkg_command = _get_pkg_command_pip_install(
+            pkg_command, exact_version=exact_version, 
+            max_version=max_version, min_version=min_version,
+            including_lower_version=include_lower_version,
+            including_higher_version=include_higher_version
+        )
     
     if upgrade:
         action = 'upgrade'
@@ -3826,10 +4166,10 @@ def _install_package_cli_msg(
     
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
-    if installer == 'pip':
-        install_command = f'{pip_prefix} --upgrade {pkg_command}'
-    elif installer == 'conda':
+    if installer == 'conda':
         install_command = f'{conda_prefix} {pkg_command}'
+    else:
+        install_command = f'{pip_prefix} --upgrade {pkg_command}'
         
     separator = '-'*60
     txt = (
@@ -3858,7 +4198,8 @@ def _install_package_gui_msg(
         pkg_command='', logger_func=None, exact_version='', 
         max_version='', min_version='',
         including_lower_version=False, including_higher_version=False,
-        installer: Literal['pip', 'conda']='pip'
+        installer: Literal['pip', 'conda']='pip',
+        pkg_commands=None
     ):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
@@ -3868,15 +4209,18 @@ def _install_package_gui_msg(
     if pkg_name == 'BayesianTracker':
         pkg_name = 'btrack'
     
-    if not pkg_command:
-        pkg_command = pkg_name
-    
-    pkg_command = _get_pkg_command_pip_install(
-        pkg_command, exact_version=exact_version,
-        max_version=max_version, min_version=min_version,
-        including_lower_version=including_lower_version,
-        including_higher_version=including_higher_version
-    )
+    if pkg_commands:
+        pkg_command = ' '.join(pkg_commands)
+    else:
+        if not pkg_command:
+            pkg_command = pkg_name
+        
+        pkg_command = _get_pkg_command_pip_install(
+            pkg_command, exact_version=exact_version,
+            max_version=max_version, min_version=min_version,
+            including_lower_version=including_lower_version,
+            including_higher_version=including_higher_version
+        )
     
     conda_prefix, pip_prefix = get_pip_conda_prefix()
 
@@ -3906,54 +4250,6 @@ def _install_package_gui_msg(
         commands=(command_html,)
     )
     return msg.clickedButton == okButton
-
-def _install_tensorflow(max_version='', min_version=''):
-    cpu = platform.processor()
-    pkg_command = _get_pkg_command_pip_install(
-        'tensorflow', 
-        max_version=max_version, 
-        min_version=min_version
-    )
-    conda_prefix, pip_prefix = get_pip_conda_prefix()
-    
-    pkg_command = pkg_command.replace('"', '')
-
-    if is_mac and cpu == 'arm':
-        args = [f'{conda_prefix} "{pkg_command}"']
-        shell = True
-    else:
-        args = [sys.executable, '-m', 'pip', 'install', '-U', pkg_command]
-        shell = False
-    subprocess.check_call(args, shell=shell)
-    
-    # purge numpy
-    purge_module('numpy')
-
-def _install_segment_anything():
-    args = [
-        sys.executable, '-m', 'pip', 'install',
-        '-U', '--use-pep517',
-        'git+https://github.com/facebookresearch/segment-anything.git'
-    ]
-    subprocess.check_call(args)
-
-def _install_sam2():
-    args = [
-        sys.executable, '-m', 'pip', 'install',
-        '-U', '--use-pep517',
-        'git+https://github.com/facebookresearch/sam2.git'
-    ]
-    subprocess.check_call(args)
-
-def _install_deepsea():
-    subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', 'deepsea']
-    )
-
-def import_tracker_module(tracker_name):
-    module_name =  f'cellacdc.trackers.{tracker_name}.{tracker_name}_tracker'
-    tracker_module = import_module(module_name)
-    return tracker_module
 
 def download_ffmpeg():    
     ffmpeg_folderpath = acdc_ffmpeg_path
@@ -4227,7 +4523,7 @@ def import_segment_module(model_name, parent=None):
         spec.loader.exec_module(acdcSegment)
     return acdcSegment
 
-def get_pip_conda_prefix(list_return=False):
+def get_pip_conda_prefix(list_return=False, exec_path=None):
     from .config import parser_args
     try:
         cp = parser_args
@@ -4244,28 +4540,37 @@ def get_pip_conda_prefix(list_return=False):
         no_cli_install = False
         pass
 
+    exec_path = exec_path or sys.executable
+    if exec_path != sys.executable:
+        uses_different_exec = True
+    else:
+        uses_different_exec = False
+        
     if no_cli_install:
         conda_prefix = f'{conda_path} install -y -p {venv_path} -c conda-forge'
-        exec_path = sys.executable
         if ' ' in exec_path:
             exec_path = f'"{exec_path}"'
         pip_prefix = f"{exec_path} -m pip install"
     else:
         conda_prefix = 'conda install -y -c conda-forge'
-        pip_prefix = 'pip install'
+        if uses_different_exec:
+            pip_prefix = f'"{exec_path}" -m pip install'
+        else:
+            pip_prefix = 'pip install'
     
-    pip_list = [sys.executable, '-m', 'pip', 'install']
+    pip_list = [exec_path, '-m', 'pip', 'install']
     if no_cli_install:
         conda_list = [conda_path.strip('"').strip("'"), 'install', '-y', '-p', venv_path.strip('"').strip("'"), '-c', 'conda-forge']
     else:
-        conda_list = ['conda', 'install', '-y', '-c', 'conda-forge']
+        conda = os.environ.get("CONDA_EXE") or shutil.which("conda")
+        conda_list = [conda, 'install', '-y', '-c', 'conda-forge']
     if list_return:
         return conda_list, pip_list
     else:
         return conda_prefix, pip_prefix
 
 
-def _warn_install_gpu(model_name, ask_installs, qparent=None):
+def _warn_install_gpu(model_name, ask_installs, qparent=None, python_exec=None):
     
     cellpose_cuda_url = (
         r'https://github.com/mouseland/cellpose#gpu-version-cuda-on-windows-or-linux'
@@ -4286,7 +4591,17 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     direct_ml_href = f'{html_utils.href_tag("direct_ml_DirectMLref", direct_ml_url)}'
     torch_directml_href = f'{html_utils.href_tag("directml pytorch", torch_directml_url)}'
 
-    conda_prefix, pip_prefix = get_pip_conda_prefix()
+    py_exec = python_exec or sys.executable
+    pip_args = [py_exec, '-m', 'pip']
+    pip_command = (
+        subprocess.list2cmdline(pip_args) if is_win
+        else ' '.join(shlex.quote(arg) for arg in pip_args)
+    )
+    cuda_commands = (
+        f'{pip_command} uninstall torch torchvision torchaudio',
+        f'{pip_command} install torch torchvision torchaudio '
+        '--index-url https://download.pytorch.org/whl/cu128',
+    )
 
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph(f"""
@@ -4294,19 +4609,15 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         to install a <b>PyTorch version which can use it</b>.<br>
         We recomment using CUDA over DirectML, but if you are using a Windows
         machine with an AMD GPU, you can use DirectML.<br>
+        Model environment: <code>{py_exec}</code><br>
         """)
     txt_cuda_title = html_utils.paragraph(f"<b>CUDA</b>", font_size='18px')
 
-    pip_prefix = pip_prefix.replace('install -y', 'uninstall')
     txt_cuda = html_utils.paragraph(f"""
         Check out these instructions {cellpose_href}, and {torch_href}.<br>
-        First, uninstall the CPU version of PyTorch with the following command:<br><br>
-        <code>{pip_prefix} uninstall torch</code>.<br><br>
-        Then, install the CUDA version required by your GPU with the follwing 
-        command (in this case 12.8):<br><br>
-        <code>{pip_prefix} torch torchvision torchaudio --index-url 
-        https://download.pytorch.org/whl/cu128</code>
-        <br>
+        Run the two copyable commands below in order: first uninstall the CPU
+        version of PyTorch, then install the CUDA version required by your GPU
+        (CUDA 12.8 in the second command).<br>
         """)
     
     add_info = html_utils.to_admonition(
@@ -4368,6 +4679,7 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     msg.warning(
         qparent, 'PyTorch GPU version not installed', txt, 
         buttonsTexts=buttons,
+        commands=cuda_commands if 'cuda' in ask_installs else None,
     )
 
     if msg.cancel:
@@ -4375,14 +4687,26 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
     
     if msg.clickedButton == directMLButton:
         py_ver = sys.version_info
-        if is_win and py_ver.major == 3 and py_ver.minor < 13:
+        if python_exec is not None and python_exec != sys.executable:
+            proc = subprocess.run(
+                [python_exec, '-c',
+                 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")'],
+                capture_output=True, text=True, check=True,
+            )
+            major, minor = map(int, proc.stdout.strip().split('.'))
+        else:
+            major, minor = py_ver.major, py_ver.minor
+        if is_win and major == 3 and 8 <= minor < 13:
             success = check_install_package(
                 pkg_name = 'torch-directml',
                 import_pkg_name = 'torch_directml',
                 pypi_name = 'torch-directml',
                 return_outcome=True,
+                python_exec=python_exec,
+                qparent=qparent,
             )
-            purge_module('torch')
+            if python_exec in (None, sys.executable):
+                purge_module('torch')
             return success, True
         else:
             msg = widgets.myMessageBox()
@@ -4399,12 +4723,60 @@ def _warn_install_gpu(model_name, ask_installs, qparent=None):
         return True, False
 
 def check_gpu_requested_segm_model(init_kwargs):
-    gpu = init_kwargs.get('gpu', False)
+    gpu = init_kwargs.get('gpu', False) or init_kwargs.get('use_gpu', False)
     if gpu:
         return True
     
-    device_type = init_kwargs.get('device_type', 'cpu')
-    return device_type == 'gpu' or device_type == ''
+    device_type = init_kwargs.get('device_type', 'cpu').lower()
+    return device_type in ('gpu', 'directml_gpu', '')
+
+
+def _available_gpu_frameworks(cuda, directML):
+    """Inspect GPU backends only in the interpreter that runs the model."""
+    available = []
+    if cuda:
+        try:
+            import torch
+        except ModuleNotFoundError as err:
+            if err.name != 'torch':
+                raise
+        else:
+            if torch.cuda.is_available() and torch.cuda.device_count() > 0:
+                available.append('cuda')
+            if is_mac_arm64 and torch.backends.mps.is_available():
+                available.append('mps')
+    if directML and is_win:
+        try:
+            import torch_directml
+        except ModuleNotFoundError as err:
+            if err.name != 'torch_directml':
+                raise
+        else:
+            if torch_directml.is_available():
+                available.append('directML')
+    return available
+
+
+def _available_gpu_frameworks_from_env(python_exec, cuda, directML):
+    script = f'''
+import json
+from cellacdc.myutils import _available_gpu_frameworks
+print("__ACDC_GPU__" + json.dumps(_available_gpu_frameworks({cuda!r}, {directML!r})))
+'''
+    proc = subprocess.run(
+        [python_exec, '-c', script, '--server'],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f'Failed to check GPU availability in {python_exec}:\n{proc.stderr}'
+        )
+    for line in proc.stdout.splitlines():
+        if line.startswith('__ACDC_GPU__'):
+            return json.loads(line[len('__ACDC_GPU__'):])
+    raise RuntimeError(
+        f'No GPU availability returned by {python_exec}:\n{proc.stdout}'
+    )
 
 def check_gpu_available(
         model_name, use_gpu, 
@@ -4412,68 +4784,39 @@ def check_gpu_available(
         qparent=None, 
         cuda=False, 
         directML=False, 
-        return_available_gpu_type=False
+        return_available_gpu_type=False,
+        python_exec=None,
     ):
+    """Check the model's GPU backends in `python_exec` (current process by default).
+
+    Pass the interpreter selected by ModelExecution for isolated models. GPU
+    warnings and installations stay in the client and target that interpreter.
+    `do_not_warn` never opens dialogs or installs packages.
+    """
     if not use_gpu:
         if return_available_gpu_type:
             return True, []
         else:
             return True
     
-    ask_for_cuda = False
-    if cuda:
-        try:
-            import torch
-            if not torch.cuda.is_available():
-                ask_for_cuda = True
-            if not torch.cuda.device_count() > 0:
-                ask_for_cuda = True
-        except ModuleNotFoundError:
-            ask_for_cuda = True
-    
-    ask_for_directML = False
-    if directML:
-        if is_win:
-            try:
-                import torch_directml
-                if not torch_directml.is_available():
-                    ask_for_directML = True
-            except ModuleNotFoundError:
-                ask_for_directML = True
-            
     frameworks = _available_frameworks(model_name)
-    ask_installs = set() if not ask_for_cuda else {'cuda'}
-    ask_installs.update(
-        {'directML'} if ask_for_directML else set()
-    )
-    framework_available = False
-    available_frameworks_list = []
-    for framework, model_compatible in frameworks.items():
-        if not model_compatible:
-            continue
-        if framework == 'cuda':
-            import torch
-            if not torch.cuda.is_available():
-                ask_installs.add('cuda')
-            elif not torch.cuda.device_count() > 0:
-                ask_installs.add('cuda')
-            else:
-                framework_available = True
-                available_frameworks_list.append('cuda')
-        elif framework == 'directML':
-            if is_win:
-                try:
-                    import torch_directml
-                    if not torch_directml.is_available():
-                        ask_installs.add('directML')
-                    else:
-                        framework_available = True
-                        available_frameworks_list.append('directML')
-                except ModuleNotFoundError:
-                    ask_installs.add('directML')
-        elif is_mac_arm64:
-            framework_available = True
-            break
+    check_cuda = cuda or frameworks['cuda']
+    check_directML = directML or frameworks['directML']
+    if python_exec is not None and python_exec != sys.executable:
+        detected = _available_gpu_frameworks_from_env(
+            python_exec, check_cuda, check_directML
+        )
+    else:
+        detected = _available_gpu_frameworks(check_cuda, check_directML)
+    ask_for_cuda = cuda and 'cuda' not in detected
+    ask_for_directML = directML and is_win and 'directML' not in detected
+    ask_installs = {
+        name for name, check in (
+            ('cuda', check_cuda), ('directML', check_directML and is_win)
+        ) if check and name not in detected
+    }
+    available_frameworks_list = detected
+    framework_available = bool(available_frameworks_list)
     
     if framework_available and not ask_for_cuda and not ask_for_directML:
         if return_available_gpu_type:
@@ -4487,7 +4830,19 @@ def check_gpu_available(
         else:
             return False
     
-    proceed, directML_installed = _warn_install_gpu(model_name, ask_installs, qparent=qparent)
+    if is_server_mode():
+        logging.getLogger(__name__).warning(
+            'GPU unavailable for %s in %s; using CPU. '
+            'Install GPU support from the Cell-ACDC client.',
+            model_name, sys.executable,
+        )
+        if return_available_gpu_type:
+            return True, available_frameworks_list
+        return True
+
+    proceed, directML_installed = _warn_install_gpu(
+        model_name, ask_installs, qparent=qparent, python_exec=python_exec
+    )
     if return_available_gpu_type:
         if directML_installed:
             available_frameworks_list.append('directML')
@@ -4681,7 +5036,12 @@ def init_prompt_segm_model(acdcPromptSegment, posData, init_kwargs):
     model = acdcPromptSegment.Model(**init_kwargs)
     return model
     
-def init_segm_model(acdcSegment, posData, init_kwargs):
+def resolve_segm_model_init_data(posData, init_kwargs):
+    """Replace GUI file selections in `init_kwargs` with the data itself.
+
+    Pops `segm_endname` (returned as loaded `segm_data`, or None) and replaces
+    `input_points_path` with `input_points_df`. Modifies `init_kwargs` in place.
+    """
     segm_endname = init_kwargs.pop('segm_endname', 'None')
     if segm_endname != 'None':
         load_segm = True
@@ -4707,6 +5067,15 @@ def init_segm_model(acdcSegment, posData, init_kwargs):
             posData, input_points_filepath
         )
         init_kwargs['input_points_df'] = input_points_df
+    return segm_data
+
+def model_init_requires_segm_data(acdcSegment):
+    argspec = inspect.getfullargspec(acdcSegment.Model.__init__)
+    num_kwargs = len(argspec.defaults or ())
+    return len(argspec.args) - num_kwargs > 1
+
+def init_segm_model(acdcSegment, posData, init_kwargs):
+    segm_data = resolve_segm_model_init_data(posData, init_kwargs)
     
     try:
         # Models introduced before 1.3.2 do not have the segm_data as input
@@ -4740,15 +5109,6 @@ def check_install_trackastra():
         pypi_name='trackastra'
     )
 
-def get_torch_device(gpu=False):
-    import torch
-    if torch.cuda.is_available() and gpu:
-        device = torch.device('cuda')
-    elif torch.backends.mps.is_available():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
-    return device
 
 def parse_model_params(model_argspecs, model_params):
     parsed_model_params = {}
@@ -5301,62 +5661,6 @@ def translateStrNone(*args):
     
     return args
 
-def get_pytorch_command():
-    """Get the command to install pytorch CPU or CUDA
-
-    Returns
-    -------
-    dict
-        Dictionary mapping OS to commands for installing PyTorch
-    
-    Notes
-    -----
-    As of Oct 2024, the `pytorch` channel on Anaconda was deprecated. 
-    See here https://github.com/pytorch/pytorch/issues/138506
-    """
-    conda_prefix, pip_prefix = get_pip_conda_prefix()
-
-    pytorch_commands = {
-        'Windows': {
-            # 'Conda': {
-            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-            #     'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
-            #     'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
-            # },
-            'Pip': {
-                'CPU': f'{pip_prefix} torch torchvision',
-                'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
-                'CUDA 12.1 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu121'
-            }
-        },
-        'Mac': {
-            # 'Conda': {
-            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-            #     'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
-            #     'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
-            # },
-            'Pip': {
-                'CPU': f'{pip_prefix} torch torchvision',
-                'CUDA 11.8 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS',
-                'CUDA 12.1 (NVIDIA GPU)': '[WARNING]: CUDA is not available on MacOS'
-            }
-        },
-        'Linux': {
-            # 'Conda': {
-            #     'CPU': f'{conda_prefix} pytorch torchvision cpuonly -c conda-forge',
-            #     'CUDA 11.8 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=11.8 -c conda-forge -c nvidia',
-            #     'CUDA 12.1 (NVIDIA GPU)': f'{conda_prefix} pytorch torchvision pytorch-cuda=12.1 -c conda-forge -c nvidia'
-            # },
-            'Pip': {
-                'CPU': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cpu',
-                'CUDA 11.8 (NVIDIA GPU)': f'{pip_prefix} torch torchvision --index-url https://download.pytorch.org/whl/cu118',
-                'CUDA 12.1 (NVIDIA GPU)': f'{pip_prefix} torch torchvision'
-            }
-        }
-    }
-
-    return pytorch_commands
-
 def get_package_info(package_name):
     try:
         result = subprocess.run([
@@ -5584,17 +5888,20 @@ def find_distances_ID(rps, point=None, ID=None, relevant_IDs=None):
 
     Parameters
     ----------
-    rps : list
-        List of regionprops objects.
+    rps : acdcRegionprops
+        Regionprops collection.
     point : tuple, optional
-        The coordinates of the point. Defaults to None.
+        Point coordinates in (x, y) or (x, y, z) order. Defaults to None.
     ID : int, optional
         The label ID of the regionprops object. Defaults to None.
+    relevant_IDs : collection of int, optional
+        Restrict the distance calculation to these labels.
 
     Returns
     -------
     numpy.ndarray
-        A matrix of distances between the point and the centroids.
+        A (1, N) matrix of distances in regionprops iteration order, filtered
+        by relevant_IDs if provided.
 
     Raises
     ------
@@ -5607,23 +5914,25 @@ def find_distances_ID(rps, point=None, ID=None, relevant_IDs=None):
     """
 
     if ID is not None and point is None:
-        try:
-            point = rps.get_centroid(ID)
-        except IndexError:
+        if ID not in rps.IDs:
             raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
+        point = rps.get_centroid(ID)
 
     elif ID is None and point is None:
         raise ValueError('Either ID or point must be provided.')
 
     elif ID is not None and point is not None:
         raise ValueError('Only one of ID or point must be provided.')
-    
-    point = point[::-1] # rp are in (y, x) format (or (z, y, x) for 3D data) so I need to reverse order
+    else:
+        point = point[::-1]
+
     point = np.array([point])
     if relevant_IDs is not None:
         centroids = np.array([rps.get_centroid(obj.label) for obj in rps if obj.label in relevant_IDs])
     else:
         centroids = np.array([rps.get_centroid(obj.label) for obj in rps]) # here RPS is a list and not a regionprops object
+    if len(centroids) == 0:
+        return np.empty((1, 0))
     diff = point[:, np.newaxis] - centroids
     dist_matrix = np.linalg.norm(diff, axis=2)
     return dist_matrix
@@ -5633,20 +5942,22 @@ def sort_IDs_dist(rps, point=None, ID=None, relevant_IDs=None):
 
     Parameters
     ----------
-    rps : list
-        A list of regionprops objects representing cells.
+    rps : acdcRegionprops
+        Regionprops collection representing cells.
     point : tuple, optional
-        The coordinates of the point to calculate distances from. 
+        Point coordinates in (x, y) or (x, y, z) order.
         If not provided, it will be calculated based on the given ID.
     ID : int, optional
         The ID of the regionprops object to calculate distances from. 
         If this and point are both provided, or neither, an error will be 
         raised.
+    relevant_IDs : collection of int, optional
+        Restrict the returned IDs to these labels.
 
     Returns
     -------
     list
-        A sorted list of IDs based on their distances to the given point.
+        IDs sorted nearest first, with equal distances ordered by ID.
 
     Raises
     ------
@@ -5658,28 +5969,13 @@ def sort_IDs_dist(rps, point=None, ID=None, relevant_IDs=None):
         If both ID and point are provided.
 
     """
-    if ID is not None and point is None:
-        try:
-            point = rps.get_centroid(ID)
-        except IndexError:
-            raise ValueError(f'ID {ID} not found in regionprops (list of cells).')
-
-    elif ID is None and point is None:
-        raise ValueError('Either ID or point must be provided.')
-
-    elif ID is not None and point is not None:
-        raise ValueError('Only one of ID or point must be provided.')
-    
-
-    IDs = rps.IDs
-    if relevant_IDs is not None:
-        IDs = [ID for ID in IDs if ID in relevant_IDs]
-    if len(IDs) == 0:
-        return []
-    elif len(IDs) == 1:
-        return IDs
-    dist_matrix = find_distances_ID(rps, point=point, relevant_IDs=relevant_IDs)        
-    dist_matrix = np.squeeze(dist_matrix)
+    IDs = [
+        obj.label for obj in rps
+        if relevant_IDs is None or obj.label in relevant_IDs
+    ]
+    dist_matrix = find_distances_ID(
+        rps, point=point, ID=ID, relevant_IDs=relevant_IDs
+    ).ravel()
 
     sorted_ids = sorted(zip(dist_matrix, IDs))
     sorted_ids = [ID for _, ID in sorted_ids]

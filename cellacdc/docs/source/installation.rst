@@ -20,6 +20,27 @@ section :ref:`contributing-guide`.
 * :ref:`Install latest version <install-latest-version>`
 * :ref:`Install from source <install-from-source-developer-version>`
 
+Preinstall segmentation models in isolated environments
+-------------------------------------------------------
+
+Install Cell-ACDC first, then prepare any desired models::
+
+    pip install "cellacdc[gui]"
+    acdc-setup-models cellpose cellpose3 stardist yeaz deepsea
+
+The setup command uses the same per-model environment configuration as the
+GUI, streams installation output, and prompts for the PyTorch build when needed.
+Use ``--yes`` to accept detected defaults. Model folder names (for example,
+``cellpose_v3`` or ``StarDist``) are also accepted. From a source checkout,
+run ``python -m cellacdc.service.setup_models`` with the same arguments.
+
+The existing model pip extras still install packages into the main environment.
+To keep model dependencies isolated, omit those extras and use the setup command
+above instead. Pip cannot execute environment creation. Alternatively, the GUI
+prepares each environment when the model is first selected. Existing
+main-environment installations are not automatically removed. For details on
+how model environments work, see :ref:`model-environments`.
+
 .. _install-windows:
 
 Install Cell-ACDC on Windows using the installer

@@ -1,4 +1,5 @@
 import os
+import sys
 import traceback
 import time
 from tqdm import tqdm
@@ -52,10 +53,137 @@ class KernelCliSignals:
         self.critical = HeadlessSignal(object)
 
 class _WorkflowKernel:
-    def __init__(self, logger, log_path, is_cli=False):
+    def __init__(
+            self, 
+            logger, 
+            log_path, 
+            is_cli=False,
+            backend_type='in_process',
+            backend_url=None,
+            env_python=None
+        ):
+        if logger is None:
+            import logging
+            logger = logging.getLogger('cellacdc')
         self.logger = logger
         self.log_path = log_path
         self.is_cli = is_cli
+        self.backend_type = backend_type
+        self.backend_url = backend_url
+        self.env_python = env_python
+        self.backend = None
+        
+    def init_backend_args(
+            self,
+            backend_type='in_process',
+            backend_url=None,
+            env_python=None
+        ):
+        self.backend_type = backend_type
+        self.backend_url = backend_url
+        self.env_python = env_python
+        
+        use_worker_backend = self.uses_worker_backend()
+        if use_worker_backend and not (self.backend_url or self.env_python):
+            raise ValueError(
+                "Worker backend requires either a backend URL or an "
+                "environment Python executable."
+            )
+
+    def parse_backend_params(self, workflow_params):
+        backend_section = workflow_params.get('backend', {})
+        initialization_section = workflow_params.get('initialization', {})
+        backend_type = backend_section.get(
+            'type', initialization_section.get('backend_type', 'in_process')
+        )
+        backend_url = backend_section.get(
+            'url', initialization_section.get('backend_url', None)
+        )
+        env_python = backend_section.get(
+            'env_python', initialization_section.get('env_python', None)
+        )
+        return {
+            'backend_type': backend_type,
+            'backend_url': backend_url,
+            'env_python': env_python,
+        }
+
+    def uses_worker_backend(self):
+        """True if the model runs in a (local or remote) worker process."""
+        return (
+            self.backend_type in ('remote', 'local')
+        )
+
+    def init_backend(
+            self, 
+            module_name, 
+            init_kwargs=None, 
+            signals=None, 
+            logger_func=None
+        ):
+        if logger_func is None:
+            logger_func = getattr(self, 'logger_func', self.logger.info)
+
+        if self.backend_url is not None or self.backend_type == 'remote':
+            msg = (
+                f'\nConnecting to remote {module_name} worker at '
+                f'{self.backend_url}...'
+            )
+            if signals is not None and hasattr(signals, 'progress'):
+                signals.progress.emit(msg)
+            else:
+                logger_func(msg)
+
+            from cellacdc.service.client import RemoteBackend
+            self.backend = RemoteBackend(self.backend_url)
+            client = self.backend.get_client(init_model_kwargs=init_kwargs)
+            return client
+
+        if self.env_python is not None or self.backend_type == 'local':
+            msg = (
+                f'\nSpawning local {module_name} worker using '
+                f'{self.env_python}...'
+            )
+            if signals is not None and hasattr(signals, 'progress'):
+                signals.progress.emit(msg)
+            else:
+                logger_func(msg)
+
+            from cellacdc.service.client import LocalBackend
+            self.backend = LocalBackend(
+                model_name=module_name,
+                env_python=self.env_python,
+                init_model_kwargs=init_kwargs
+            )
+            client = self.backend.start()
+            return client
+
+        return None
+
+    def close(self):
+        if hasattr(self, 'backend') and self.backend is not None:
+            try:
+                self.backend.stop()
+            except Exception as e:
+                logger_func = getattr(self, 'logger_func', self.logger.info)
+                logger_func(f'Error stopping backend: {e}')
+            self.backend = None
+        for attr in ('model', 'tracker', 'client'):
+            obj = getattr(self, attr, None)
+            if obj is not None and hasattr(obj, 'close'):
+                try:
+                    obj.close()
+                except Exception:
+                    pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def __del__(self):
+        self.close()
     
     @exception_handler_cli
     def parse_paths(self, workflow_params):
@@ -187,6 +315,8 @@ class SegmKernel(_WorkflowKernel):
             'reduce_memory_usage', False
         )
         
+        args.update(self.parse_backend_params(workflow_params))
+        
         self.init_args(**args)
     
     @exception_handler_cli
@@ -221,7 +351,10 @@ class SegmKernel(_WorkflowKernel):
             innerPbar_available=False,
             is_segment3DT_available=False, 
             reduce_memory_usage=False,
-            use_freehand_ROI=True
+            use_freehand_ROI=True,
+            backend_type='in_process',
+            backend_url=None,
+            env_python=None
         ):
         self.user_ch_name = user_ch_name
         self.segm_endname = segm_endname
@@ -243,6 +376,11 @@ class SegmKernel(_WorkflowKernel):
         self.SizeZ = SizeZ
         self.init_model_kwargs = init_model_kwargs
         self.init_tracker_kwargs = init_tracker_kwargs
+        self.init_backend_args(
+            backend_type=backend_type,
+            backend_url=backend_url,
+            env_python=env_python
+        )
         self.is_segment3DT_available = (
             is_segment3DT_available and not reduce_memory_usage
         )
@@ -261,21 +399,73 @@ class SegmKernel(_WorkflowKernel):
         )
     
     @exception_handler_cli
-    def init_segm_model(self, posData):
+    def init_segm_model(self, posData=None):
+        if self.model is not None:
+            return
+
+        if getattr(self, 'second_channel_name', None) is not None:
+            self.init_model_kwargs = dict(self.init_model_kwargs or {})
+            self.init_model_kwargs['is_rgb'] = True
+
+        if self.uses_worker_backend():
+            if self.backend_url is not None or self.backend_type == 'remote':
+                if self.backend_url is None:
+                    raise RuntimeError('A remote backend URL is required.')
+                from cellacdc.service.client import get_model_arg_spec
+                init_argspecs, segment_argspecs = get_model_arg_spec(
+                    self.backend_url
+                )
+            else:
+                init_argspecs, segment_argspecs, _ = (
+                    myutils.getModelArgSpecFromEnv(
+                        self.model_name, self.env_python or sys.executable
+                    )
+                )
+        else:
+            acdcSegment = myutils.import_segment_module(self.model_name)
+            init_argspecs, segment_argspecs = myutils.getModelArgSpec(
+                acdcSegment
+            )
+
+        raw_init_kwargs = self.init_model_kwargs or {}
+        self.init_model_kwargs = myutils.parse_model_params(
+            init_argspecs, raw_init_kwargs
+        )
+        for key in (
+            'segm_endname', 'segm_data', 'input_points_df', 'input_points_path'
+        ):
+            if key in raw_init_kwargs:
+                self.init_model_kwargs[key] = raw_init_kwargs[key]
+        self.model_kwargs = myutils.parse_model_params(
+            segment_argspecs, self.model_kwargs or {}
+        )
+
+        backend_kwargs = self.init_model_kwargs
+        # Workers (local or remote) cannot read the client's files: send the
+        # loaded segmentation/points instead of their file names.
+        if self.uses_worker_backend() and posData is not None and backend_kwargs:
+            backend_kwargs = dict(backend_kwargs)
+            segm_data = myutils.resolve_segm_model_init_data(
+                posData, backend_kwargs
+            )
+            if segm_data is not None:
+                backend_kwargs['segm_data'] = segm_data
+        client = self.init_backend(
+            module_name=self.model_name,
+            init_kwargs=backend_kwargs,
+            signals=self.signals,
+            logger_func=self.logger_func
+        )
+        if client is not None:
+            self.model = client
+            self.is_segment3DT_available = getattr(
+                self.model, 'is_segment3DT_available', False
+            )
+            return
+
         self.signals.progress.emit(
             f'\nInitializing {self.model_name} segmentation model...'
         )
-        acdcSegment = myutils.import_segment_module(self.model_name)
-        init_argspecs, segment_argspecs = myutils.getModelArgSpec(acdcSegment)
-        self.init_model_kwargs = myutils.parse_model_params(
-            init_argspecs, self.init_model_kwargs
-        )
-        self.model_kwargs = myutils.parse_model_params(
-            segment_argspecs, self.model_kwargs
-        )
-        if self.second_channel_name is not None:
-            self.init_model_kwargs['is_rgb'] = True
-
         self.model = myutils.init_segm_model(
             acdcSegment, posData, self.init_model_kwargs
         )

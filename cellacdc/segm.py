@@ -72,6 +72,8 @@ import numpy as np
 import pandas as pd
 
 from cellacdc import load, core, features, cli
+from cellacdc.service import ModelClient
+from cellacdc.service.model_execution import ModelExecution, run_in_background
 
 class SegmWorker(QObject):
     def __init__(
@@ -118,22 +120,28 @@ class SegmWorker(QObject):
             preproc_recipe=mainWin.preproc_recipe, 
             reduce_memory_usage=mainWin.reduce_memory_usage,
             use_freehand_ROI=mainWin.useFreeHandROI,
+            backend_type=getattr(mainWin, 'backend_type', 'in_process'),
+            backend_url=getattr(mainWin, 'backend_url', None),
+            env_python=getattr(mainWin, 'env_python', None),
         )
     
     def run_kernels(self):
-        self.kernel.run(
-            self.img_path, 
-            self.stop_frame_n
-        )
-        if self.mainWin._measurements_kernel is None:
-            return
-        
-        segm_endname = self.kernel.segm_endname.replace('.npz', '')
-        self.mainWin._measurements_kernel.run(
-            img_path=self.img_path, 
-            stop_frame_n=self.stop_frame_n, 
-            end_filename_segm=segm_endname,
-        )
+        try:
+            self.kernel.run(
+                self.img_path, 
+                self.stop_frame_n
+            )
+            if self.mainWin._measurements_kernel is None:
+                return
+            
+            segm_endname = self.kernel.segm_endname.replace('.npz', '')
+            self.mainWin._measurements_kernel.run(
+                img_path=self.img_path, 
+                stop_frame_n=self.stop_frame_n, 
+                end_filename_segm=segm_endname,
+            )
+        finally:
+            self.kernel.close()
 
     @workers.worker_exception_handler
     def run(self):
@@ -304,6 +312,7 @@ class segmWin(QMainWindow):
         )
         return msg.cancel, msg.clickedButton == yesButton, False
     
+    @exception_handler
     def main(self):
         selectFoldersWin = apps.SelectFoldersToAnalyse(
             parent=self, 
@@ -473,20 +482,13 @@ class segmWin(QMainWindow):
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
         
-        self.log(f'Importing {model_name}...')
-        self.model_name = model_name
-        acdcSegment = myutils.import_segment_module(model_name)
-        self.acdcSegment =  acdcSegment
-
-        # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(self.acdcSegment)
+        model_spec = self.prepareModelExecution(model_name)
+        if model_spec is None:
+            self.processStopped()
+            return
+        init_params, segment_params, url = model_spec
 
         # Prompt user to enter the model parameters
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
-        
         out = prompts.init_segm_model_params(
             self.posData, model_name, init_params, segment_params, 
             help_url=url, qparent=self, init_last_params=False,
@@ -494,6 +496,7 @@ class segmWin(QMainWindow):
         )
         win = out.get('win')
         if win.cancel:
+            self.modelExecution.cancel_preparation()
             self.processStopped()
             return
         
@@ -525,7 +528,8 @@ class segmWin(QMainWindow):
         if self.secondChannelName is not None:
             init_kwargs['is_rgb'] = True
         
-        self.model = myutils.init_segm_model(acdcSegment, self.posData, init_kwargs)
+        self.model = self.initModelExecution(init_kwargs)
+
         if self.model is None:
             self.logger.info('Segmentation model was not initialized correctly!')
             self.processStopped()
@@ -538,9 +542,11 @@ class segmWin(QMainWindow):
         self.predictCcaState_model = None
 
         self.is_segment3DT_available = False
-        if self.posData.SizeT>1 and not self.isSegm3D:
+        if hasattr(self.model, 'is_segment3DT_available'):
+            self.is_segment3DT_available = self.model.is_segment3DT_available
+        elif self.acdcSegment is not None and self.posData.SizeT>1 and not self.isSegm3D:
             self.is_segment3DT_available = any(
-                [name=='segment3DT' for name in dir(acdcSegment.Model)]
+                [name=='segment3DT' for name in dir(self.acdcSegment.Model)]
             )
 
         self.innerPbar_available = False
@@ -652,7 +658,7 @@ class segmWin(QMainWindow):
             
             self.use3DdataFor2Dsegm = use3DdataFor2Dsegm
         
-        segm2D_never_visualized_dataPrep = (
+        segm2Don3DzPlaneViewMissing = (
             not self.isSegm3D
             and self.posData.SizeZ > 1
             and not isSegmInfoPresent
@@ -664,7 +670,6 @@ class segmWin(QMainWindow):
             and isSegmInfoPresent
             and not self.use3DdataFor2Dsegm
         )
-        launchDataPrep = segm2D_never_visualized_dataPrep or selectROI
         if segm2D_on_3D_visualized:
             # segmInfo_df exists --> check if it has channel z-slice info
             filenames = self.posData.segmInfo_df.index.get_level_values(0).unique()
@@ -672,68 +677,45 @@ class segmWin(QMainWindow):
                 if _filename.endswith(user_ch_name):
                     break
             else:
-                launchDataPrep = True
+                segm2Don3DzPlaneViewMissing = True
 
-        if launchDataPrep:
-            dataPrepWin = dataPrep.dataPrepWin(
-                mainWin=self.mainWin, version=self._version
+        if segm2Don3DzPlaneViewMissing:
+            win = apps.askZPlaneView(
+                user_ch_file_paths, user_ch_name, 
+                self.mainWin, self._version, parent=self,
+                logger_func=self.log
             )
-            dataPrepWin.show()
-            if selectROI:
-                dataPrepWin.titleText = (
-                """
-                If you need to crop press the green tick button,<br>
-                otherwise you can close the window.
-                """
-                )
+            win.exec_()
+            if win.cancel:
+                self.processStopped()
+                return
+        elif selectROI:
+            if self.posData.SizeT > 1:
+                for img_path in user_ch_file_paths: 
+                    dataPrep.launchDataPrepSelectROI(
+                        exp_path, 
+                        [img_path],
+                        user_ch_name,
+                        self.posData.SizeZ, 
+                        mainWin=self.mainWin,
+                        parent=self,
+                        version=self._version,
+                        logger_func=self.log
+                    )
             else:
-                print('')
-                self.log(
-                    f'WARNING: The image data in {img_path} is 3D but '
-                    f'_segmInfo.csv file not found. Launching dataPrep.py...'
+                dataPrep.launchDataPrepSelectROI(
+                    exp_path, 
+                    user_ch_file_paths,
+                    user_ch_name,
+                    self.posData.SizeZ, 
+                    mainWin=self.mainWin,
+                    parent=self,
+                    version=self._version,
+                    logger_func=self.log
                 )
-                self.logTerminal.setText(
-                    f'The image data in {img_path} is 3D but '
-                    f'_segmInfo.csv file not found. Launching dataPrep.py...'
-                )
-                msg = widgets.myMessageBox()
-                txt = html_utils.paragraph(f"""
-                    You loaded 3D z-stacks, but (in some or all Positions) 
-                    you <b>never selected which
-                    z-slice or projection method to use for segmentation</b>
-                    (this is required for 2D segmentation of 3D data).<br><br>
-                    I opened a window where you can visualize
-                    your z-stacks and <b>select an appropriate z-slice
-                    or projection for each Position or frame</b>.
-                """)
-                msg.warning(
-                    self, '3D z-stacks info missing', txt, 
-                    buttonsTexts=('Cancel', 'Ok')
-                )
-                if msg.cancel:
-                    self.processStopped()
-                    return
 
-                dataPrepWin.titleText = (
-                """
-                Select z-slice (or projection) for each frame/position.<br>
-                Then, if you want to segment the entire field of view,
-                close the window.<br>
-                Otherwise, if you need to select a ROI,
-                press the "Start" button, draw the ROI<br>
-                and confirm with the green tick button.
-                """
-                )
-                autoStart = False
-            dataPrepWin.initLoading()
-            dataPrepWin.loadFiles(
-                exp_path, user_ch_file_paths, user_ch_name)
-            if self.posData.SizeZ == 1:
-                dataPrepWin.prepData(None)
-            loop = QEventLoop(self)
-            dataPrepWin.loop = loop
-            loop.exec_()
 
+        if segm2Don3DzPlaneViewMissing or selectROI:
             # If data was aligned then we make sure to load it here
             user_ch_file_paths = load.get_user_ch_paths(
                 images_paths,
@@ -757,7 +739,12 @@ class segmWin(QMainWindow):
                 load_metadata=True
             )
             self.posData.isSegm3D = self.isSegm3D
-        elif self.posData.SizeZ > 1 and not self.isSegm3D and not self.use3DdataFor2Dsegm:
+
+        if (
+                self.posData.SizeZ > 1 
+                and not self.isSegm3D 
+                and not self.use3DdataFor2Dsegm
+            ):
             df = self.posData.segmInfo_df.loc[self.posData.filename]
             zz = df['z_slice_used_dataPrep'].to_list()
 
@@ -944,6 +931,13 @@ class segmWin(QMainWindow):
             'second_channel_name': self.secondChannelName,
             'use3DdataFor2Dsegm': self.use3DdataFor2Dsegm,
             'reduce_memory_usage': self.reduce_memory_usage,
+            'backend_type': getattr(self, 'backend_type', 'in_process'),
+            'backend_url': (
+                getattr(self, 'backend_url', None)
+                if getattr(self, 'backend_type', 'in_process') == 'remote'
+                else None
+            ),
+            'env_python': getattr(self, 'env_python', None),
         }
         metadata_params = {
             'SizeT': self.SizeT,
@@ -1237,6 +1231,65 @@ class segmWin(QMainWindow):
         button.clicked.connect(msg.buttonCallBack)
         button.click()
     
+    def prepareModelExecution(self, model_name):
+        """Choose where `model_name` runs; see `service/model_execution.py`.
+
+        Returns `(init_params, segment_params, url)` or None if cancelled.
+        """
+        from cellacdc.service import prompts as service_prompts
+        self.model_name = model_name
+        self.modelExecution = ModelExecution(
+            model_name,
+            run_in_background=self.runInBackground,
+            prompt_func=lambda p: service_prompts.QtHandler(self).ask(p),
+            log_func=self.log,
+        )
+        spec = self.modelExecution.prepare()
+        self._syncModelExecution()
+        return spec
+
+    def initModelExecution(self, init_kwargs):
+        """Check the requested GPU backend in the model environment before init."""
+        use_gpu = myutils.check_gpu_requested_segm_model(init_kwargs)
+        device_type = init_kwargs.get('device_type', 'cpu').lower()
+        proceed = myutils.check_gpu_available(
+            self.model_name, use_gpu, qparent=self,
+            cuda=device_type == 'gpu',
+            directML=device_type == 'directml_gpu',
+            python_exec=self.modelExecution.env_python,
+        )
+        if not proceed:
+            self.modelExecution.cancel_preparation()
+            self.logger.info('Segmentation process cancelled.')
+            return None
+        model = self.modelExecution.init_model(
+            init_kwargs, getattr(self, 'posData', None)
+        )
+        self._syncModelExecution()
+        return model
+
+    def _syncModelExecution(self):
+        # Read by the segmentation workers and saved in the workflow config
+        execution = self.modelExecution
+        self.backend_type = execution.backend_type
+        self.env_python = execution.env_python
+        self.acdcSegment = execution.acdcSegment
+        self.backend = execution.backend
+        self.backend_url = execution.backend_url
+
+    def stopModelExecution(self):
+        execution = getattr(self, 'modelExecution', None)
+        if execution is not None:
+            execution.stop()
+        self.backend = None
+
+    def runInBackground(self, func, *args, **kwargs):
+        """Run `func` in a worker thread while keeping the GUI responsive.
+
+        See `service.model_execution.run_in_background`.
+        """
+        return run_in_background(self, func, *args, log_func=self.log, **kwargs)
+
     def log(self, text):
         self.logger.info(text)
         try:
@@ -1400,6 +1453,8 @@ class segmWin(QMainWindow):
         # from . import debugutils
         # debugutils.showRefGraph('segmWin')
 
+        self.stopModelExecution()
+
         msg = widgets.myMessageBox(showCentered=False)
         closeAnswer = msg.warning(
             self, 'Execution cancelled', 'Segmentation task cancelled.'
@@ -1460,6 +1515,8 @@ class segmWin(QMainWindow):
             self.model.closeLogger()
         except Exception as e:
             pass
+        
+        self.stopModelExecution()
         
         self.log('Segmentation module closed.')
         self.sigClosed.emit()

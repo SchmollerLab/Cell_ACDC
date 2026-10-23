@@ -615,6 +615,7 @@ def check_directml_gpu_gpu(model_name, directml_gpu, gpu, ask_install=True):
             model_name, 
             use_gpu=(gpu or directml_gpu), 
             cuda=gpu, 
+            directML=directml_gpu,
             return_available_gpu_type=True
         )
     else:

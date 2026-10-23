@@ -15,7 +15,15 @@ from . import model_types, sam_models_path
 from segment_anything import (
     sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 )
-from cellacdc import myutils, widgets, printl
+from cellacdc import myutils, printl, _types, sam_embeddings
+
+
+class _EmbeddingPredictor(sam_embeddings.EmbeddingPredictorMixin, SamPredictor):
+    """Cache encoder states for prompted images and automatic SAM crops."""
+
+    def reset_image(self):
+        print("SAM: resetting image and embeddings.", flush=True)
+        super().reset_image()
 
 class AvailableModels:
     values = list(model_types.keys())
@@ -36,7 +44,7 @@ class Model:
     def __init__(
             self, 
             model_type: AvailableModels='Large', 
-            input_points_path: widgets.CsvFilePathControl='',
+            input_points_path: _types.CsvFilePath='',
             input_points_df: DataFrame='None',
             points_per_side=32,
             pred_iou_thresh=0.88,
@@ -170,10 +178,9 @@ class Model:
                 crop_n_points_downscale_factor=crop_n_points_downscale_factor,
                 min_mask_region_area=min_mask_region_area,
             )
+            self.model.predictor = _EmbeddingPredictor(sam)
         else:
-            self.model = SamPredictor(sam)
-        
-        self._embedded_img = None
+            self.model = _EmbeddingPredictor(sam)
     
     def segment(
             self, 
@@ -228,10 +235,9 @@ class Model:
             `save_embeddings` is True.
         
         save_embeddings : bool, optional
-            This is not a parameter configurable through the GUI. If `posData` 
-            is not None, the image embeddings will be stored in the dictionary 
-            `posData.sam_embeddings`. This dictionary can be later used to 
-            save the embeddings to disk.
+            Retained for compatibility. Whenever `posData` is available,
+            full-image and crop embeddings are stored after prediction and
+            saved to disk if the position provides `saveSamEmbeddings`.
         
         only_embeddings : bool, optional
             This is not a parameter configurable through the GUI. If `True`, 
@@ -243,6 +249,9 @@ class Model:
             This is not a parameter configurable through the GUI. If `posData` 
             is not None, the image embeddings will be loaded from the dictionary 
             `posData.sam_embeddings`.
+            Both prompted and automatic segmentation reuse the full-image
+            embeddings. Matching cached crops are reused too; missing crops
+            are encoded. SAM's normal `reset_image` behavior is unchanged.
         
         start_z_slice : int, optional
             This is not a parameter configurable through the GUI. Cell-ACDC 
@@ -257,6 +266,13 @@ class Model:
             will have the same integer ID. ID = 0 is for the background.
         """        
         
+        if posData is not None and use_loaded_embeddings:
+            load_embeddings = getattr(posData, 'loadSamEmbeddings', None)
+            if load_embeddings is not None:
+                load_embeddings()
+        predictor = getattr(self.model, 'predictor', self.model)
+        predictor._crop_embeddings = {}
+
         if isinstance(input_points_df, pd.DataFrame):
             self._input_points_df = input_points_df
         
@@ -296,6 +312,7 @@ class Model:
                     )
                 
                 if only_embeddings:
+                    predictor._reuse_embedding = embeddings_init
                     self._init_embeddings(img)
                 else:
                     lab_2D = self._segment_2D_image(
@@ -303,7 +320,12 @@ class Model:
                         embeddings_already_init=embeddings_init,
                     )
                     labels[z] = lab_2D
-                if save_embeddings or only_embeddings:
+                
+                print(
+                    f'{z = }, {start_z_slice = }',
+                    flush=True,
+                    )
+                if posData is not None and predictor.is_image_set:
                     posData.storeSamEmbeddings(
                         self, frame_i=frame_i, z=z+start_z_slice
                     )
@@ -320,9 +342,10 @@ class Model:
             embeddings_init = False
             if use_loaded_embeddings:
                 embeddings_init = self._get_img_embeddings(
-                    posData, frame_i=frame_i
+                    posData, frame_i=frame_i, z=start_z_slice
                 )
             if only_embeddings:
+                predictor._reuse_embedding = embeddings_init
                 self._init_embeddings(image)
             else:
                 labels = self._segment_2D_image(
@@ -330,20 +353,21 @@ class Model:
                     embeddings_already_init=embeddings_init,
                     automatic_removal_of_background=auto_remove_bkgr
                 )
-            if save_embeddings or only_embeddings:
-                posData.storeSamEmbeddings(self, frame_i=frame_i)
-        
+            if posData is not None and predictor.is_image_set:
+                print(f'{start_z_slice = }, {frame_i = }', flush=True)
+                posData.storeSamEmbeddings(
+                    self, frame_i=frame_i, z=start_z_slice
+                )
+        if posData is not None:
+            save_to_disk = getattr(posData, 'saveSamEmbeddings', None)
+            if save_to_disk is not None:
+                save_to_disk()
         return labels
 
     def _get_img_embeddings(self, posData, frame_i=0, z=0):
         img_embeddings = posData.getSamEmbeddings(frame_i=frame_i, z=z)
-        if img_embeddings is None:
-            return False
-        
-        for key, value in img_embeddings.items():
-            setattr(self, key, value)
-        
-        return True
+        predictor = getattr(self.model, 'predictor', self.model)
+        return predictor.load_embeddings(img_embeddings, frame_i=frame_i, z=z)
     
     def _get_input_points(self, is_z_stack, df_points):
         if df_points is None:
@@ -403,25 +427,13 @@ class Model:
         
         return input_points, input_labels
     
-    def _init_embeddings(self, img_rgb): 
+    def _init_embeddings(self, img_rgb):
+        """Prepare image input; the predictor decides whether to encode or reuse."""
         if img_rgb.ndim == 2:
             img_rgb = myutils.to_uint8(img_rgb)
             img_rgb = cv2.cvtColor(img_rgb, cv2.COLOR_BGR2RGB)
-            
-        # Create embeddings only if new image     
-        try:
-            init_embeddings = not np.allclose(img_rgb, self._embedded_img)
-        except Exception as err:
-            init_embeddings = True
-        
-        if hasattr(self.model, 'predictor'):
-            predictor = self.model.predictor
-        else:
-            predictor = self.model
-        
-        if init_embeddings: 
-            predictor.set_image(img_rgb)
-            self._embedded_img = img_rgb
+        predictor = getattr(self.model, 'predictor', self.model)
+        predictor.set_image(img_rgb)
     
     def _segment_2D_image(
             self, image: np.ndarray,
@@ -437,7 +449,19 @@ class Model:
 
         # SAM Automatic mask generator (no prompts)
         if input_points is None:
-            masks = self.model.generate(img)
+            predictor = self.model.predictor
+            if not embeddings_already_init:
+                predictor._crop_embeddings = {}
+                self._init_embeddings(img)
+                predictor._crop_embeddings = {}
+            embedding = sam_embeddings.predictor_state(predictor)
+            predictor._reuse_embedding = True
+            try:
+                masks = self.model.generate(img)
+            finally:
+                # Upstream SAM clears the predictor after each crop.
+                predictor.set_embeddings(embedding)
+                predictor._reuse_embedding = False
 
             # Identify and exclude background before labeling
             if automatic_removal_of_background and masks:
@@ -455,11 +479,17 @@ class Model:
         
         # No input points --> return empty labels
         if len(input_points) == 0:
+            self.model.reset_image()
             return labels
         
         # SAM with input points
-        if not embeddings_already_init:
-            self._init_embeddings(img)
+        self.model._reuse_embedding = embeddings_already_init
+        self._init_embeddings(img)
+        print(
+            f'SAM predictor state: is_image_set={self.model.is_image_set}, '
+            f'features_shape={getattr(self.model.features, "shape", None)}.',
+            flush=True,
+        )
         
         for id, point_coords in input_points.items():
             point_labels = input_labels[id]
