@@ -12210,7 +12210,7 @@ class FunctionParamsDialog(QBaseDialog):
 
         self.buttonsLayout = buttonsLayout
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
-        buttonsLayout.cancelButton.clicked.connect(self.close)
+        buttonsLayout.cancelButton.clicked.connect(self.cancel_cb)
         
         if addApplyButton:
             applyButton = widgets.viewPushButton('Apply')
@@ -12223,6 +12223,15 @@ class FunctionParamsDialog(QBaseDialog):
         self.mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(self.mainLayout)
+        
+        # original value for cancel
+        self.original_function_kwargs = self.functionKwargs()
+
+    def cancel_cb(self):
+        self.cancel = True
+        # revert function kwargs to original values
+        self.function_kwargs = self.original_function_kwargs
+        self.close()
     
     def emitValuesChanged(self, *args, **kwargs):
         self.sigValuesChanged.emit(self.functionKwargs())
@@ -19902,11 +19911,7 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             hideOnClosing=False
         )
                 
-        self.listSelector = widgets.listWidget(
-            isMultipleSelection=True, minimizeHeight=True
-        )
-        self.listSelector.addItems(channel_names)
-        self.listSelector.setCurrentRow(0)
+        self.listSelector = self.createListSelector(channel_names)
         
         self.mainLayout.insertWidget(0, self.listSelector)
         self.mainLayout.insertWidget(
@@ -19932,6 +19937,14 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         
         buttonsLayout.addItem(saveRecipeButtonItem, 0, 2)
     
+    def createListSelector(self, names):
+        selector = widgets.listWidget(
+            isMultipleSelection=True, minimizeHeight=True
+        )
+        selector.addItems(names)
+        selector.setCurrentRow(0)
+        return selector
+
     def warnChannelSelectionEmpty(self):
         txt = html_utils.paragraph("""
             You did <b>not select any channel</b>.<br><br>
@@ -19940,7 +19953,7 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         """)
     
     def ok_cb(self):
-        selectedChannelItems = self.listSelector.selectedItems()
+        selectedChannelItems = self.listSelector.selectedIndexes()
         if not selectedChannelItems:
             self.warnChannelSelectionEmpty()
         
@@ -19949,15 +19962,15 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             return
         
         self.selectedRecipe = recipe
-        self.selectedChannels = [item.text() for item in selectedChannelItems]
+        self.selectedChannels = [item.data() for item in selectedChannelItems]
         
         self.cancel = False
         self.close()
 
 
 class SignalProcessingParamsWidget(PreProcessParamsWidget):
-    recipesPath = os.path.join(settings_folderpath, 'signal_processing_recipes')
-    recipePrefix = 'signal_processing_recipe'
+    recipesPath = os.path.join(settings_folderpath, 'measurement_processing_recipes')
+    recipePrefix = 'measurement_processing_recipe'
 
     def createSelector(self):
         return widgets.SignalProcessingSelector()
@@ -19978,10 +19991,10 @@ class SignalProcessingParamsWidget(PreProcessParamsWidget):
         return recipe
 
     def loadRecipe(self, configPars):
-        from .signal_processing import SIGNAL_PROCESSING_MAPPER
+        from .measurement_processing import MEASUREMENT_PROCESSING_MAPPER
 
         methods = [section.get('method') for section in configPars.values()]
-        if any(method not in SIGNAL_PROCESSING_MAPPER for method in methods):
+        if any(method not in MEASUREMENT_PROCESSING_MAPPER for method in methods):
             msg = widgets.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Invalid signal recipe',
@@ -19999,6 +20012,14 @@ class SignalProcessingRecipeDialog(PreProcessRecipeDialogUtil):
 
     def __init__(self, measurement_names, parent=None):
         super().__init__(measurement_names, parent=parent)
+        self.measurementsSearchLineEdit = QLineEdit()
+        self.measurementsSearchLineEdit.setPlaceholderText('Search measurement...')
+        self.measurementsSearchLineEdit.setClearButtonEnabled(True)
+        self.measurementsSearchLineEdit.textChanged.connect(self.filterMeasurements)
+        self.mainLayout.insertWidget(
+            self.mainLayout.indexOf(self.listSelector),
+            self.measurementsSearchLineEdit
+        )
         self.setWindowTitle('Signal-processing recipe')
         self.preProcessParamsWidget.groupbox.setTitle('Signal processing')
         self.keepInputDataTypeToggle.setChecked(False)
@@ -20007,8 +20028,39 @@ class SignalProcessingRecipeDialog(PreProcessRecipeDialogUtil):
             if widget is not None:
                 widget.hide()
 
+    def createListSelector(self, names):
+        self.measurementsModel = widgets.QStandardItemModel(self)
+        for name in names:
+            item = widgets.QStandardItem(name)
+            item.setData(name, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE)
+            self.measurementsModel.appendRow(item)
+        self.measurementsSearchProxy = widgets.ButtonSearchCompleter(
+            self,
+            searchRoles=(widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,),
+            tooltipRole=None,
+        )
+        self.measurementsSearchProxy.setSourceModel(self.measurementsModel)
+        self.measurementsSearchProxy.setDynamicSortFilter(True)
+        self.measurementsSearchProxy.sort(0, Qt.AscendingOrder)
+        selector = widgets.QListView()
+        selector.setModel(self.measurementsSearchProxy)
+        selector.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        selector.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.measurementsHighlightDelegate = widgets._ButtonSearchHighlightDelegate(
+            selector
+        )
+        selector.setItemDelegate(self.measurementsHighlightDelegate)
+        selector.setCurrentIndex(self.measurementsSearchProxy.index(0, 0))
+        return selector
+
+    def filterMeasurements(self, text):
+        """Filter and highlight measurements with the viewer's fuzzy search."""
+        self.measurementsSearchProxy.setFilterText(text)
+        self.measurementsHighlightDelegate.setFilterText(text)
+        self.listSelector.viewport().update()
+
     def ok_cb(self):
-        if not self.listSelector.selectedItems():
+        if not self.listSelector.selectedIndexes():
             msg = widgets.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'No measurements selected',

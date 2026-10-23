@@ -2,11 +2,28 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cellacdc import signal_processing
+from cellacdc import measurement_processing
 
 
-def recipe(method='Smooth signal', **kwargs):
+def recipe(method='Smooth measurement', **kwargs):
     return [{'method': method, 'kwargs': kwargs}]
+
+
+def test_registry_loads_processors_from_model_style_packages():
+    from cellacdc.measurement_processing.Dummy.acdcProcess import Model as Dummy
+    from cellacdc.measurement_processing.SmoothMeasurement.acdcProcess import (
+        Model as SmoothMeasurement
+    )
+
+    registry = measurement_processing.MEASUREMENT_PROCESSING_MAPPER
+    assert list(registry) == ['Smooth measurement', 'Dummy']
+    assert registry['Smooth measurement']['class'] is SmoothMeasurement
+    assert registry['Dummy']['class'] is Dummy
+    assert registry['Smooth measurement']['function'] is SmoothMeasurement.run
+    assert registry['Smooth measurement']['function_name'] == 'SmoothMeasurement'
+    assert registry['Smooth measurement']['docstring'] == SmoothMeasurement.__doc__
+    assert measurement_processing.SmoothMeasurement is SmoothMeasurement
+    assert measurement_processing.Dummy is Dummy
 
 
 @pytest.fixture
@@ -21,7 +38,7 @@ def measurements():
 
 def test_smoothing_sorts_per_cell_without_changing_input(measurements):
     original = measurements.copy()
-    result = signal_processing.apply_recipe(measurements, recipe(window=3))
+    result = measurement_processing.apply_recipe(measurements, recipe(window=3))
     np.testing.assert_allclose(result['value'], [4.5, 0, 3, 100, 100, 100])
     np.testing.assert_allclose(result['other'], [45, 0, 30, 10, 10, 10])
     pd.testing.assert_index_equal(result.index, measurements.index)
@@ -29,7 +46,7 @@ def test_smoothing_sorts_per_cell_without_changing_input(measurements):
 
 
 def test_integer_measurements_keep_fractional_results(measurements):
-    result = signal_processing.apply_recipe(measurements, recipe(window=3))
+    result = measurement_processing.apply_recipe(measurements, recipe(window=3))
     assert result.iloc[0]['value'] == 4.5
     assert result['value'].dtype.kind == 'f'
 
@@ -40,44 +57,44 @@ def test_smoothing_short_tracks_missing_frames_and_values():
         'Cell_ID': [1, 1, 1, 2],
         'value': [2, np.nan, 8, np.nan],
     }).set_index(['frame_i', 'Cell_ID'])
-    result = signal_processing.apply_recipe(df, recipe(window=9))
+    result = measurement_processing.apply_recipe(df, recipe(window=9))
     np.testing.assert_allclose(result['value'], [5, np.nan, 5, np.nan])
 
 
 @pytest.mark.parametrize('window', [0, -1, 2.5, True])
 def test_invalid_smoothing_window(measurements, window):
     with pytest.raises(ValueError, match='positive integer'):
-        signal_processing.apply_recipe(measurements, recipe(window=window))
+        measurement_processing.apply_recipe(measurements, recipe(window=window))
 
 
 def test_recipe_steps_are_sequential(measurements):
     steps = recipe(window=3) + recipe('Dummy') + recipe(window=3)
-    result = signal_processing.apply_recipe(measurements, steps)
+    result = measurement_processing.apply_recipe(measurements, steps)
     np.testing.assert_allclose(result['value'], [3.75, 1.5, 2.5, 100, 100, 100])
 
 
 def register(monkeypatch, processor):
     monkeypatch.setitem(
-        signal_processing.SIGNAL_PROCESSING_MAPPER,
+        measurement_processing.MEASUREMENT_PROCESSING_MAPPER,
         'Test', {'class': processor}
     )
 
 
 def test_per_frame_processing_does_not_mix_frames(measurements, monkeypatch):
-    class Center(signal_processing.Dummy):
+    class Center(measurement_processing.Dummy):
         @staticmethod
         def run(values):
             return values - values.mean()
 
     register(monkeypatch, Center)
-    result = signal_processing.apply_recipe(measurements, recipe('Test'))
+    result = measurement_processing.apply_recipe(measurements, recipe('Test'))
     np.testing.assert_allclose(result['value'], [-45.5, -50, -50, 50, 45.5, 50])
 
 
 def test_bulk_processing_receives_selected_table_once(measurements, monkeypatch):
     calls = []
 
-    class Bulk(signal_processing.Dummy):
+    class Bulk(measurement_processing.Dummy):
         is_bulk_processing = True
 
         @staticmethod
@@ -86,24 +103,24 @@ def test_bulk_processing_receives_selected_table_once(measurements, monkeypatch)
             return table + 1
 
     register(monkeypatch, Bulk)
-    result = signal_processing.apply_recipe(measurements, recipe('Test'))
+    result = measurement_processing.apply_recipe(measurements, recipe('Test'))
     assert len(calls) == 1
     pd.testing.assert_frame_equal(calls[0], measurements)
     pd.testing.assert_frame_equal(result, measurements + 1)
 
 
 def test_bulk_and_timelapse_are_exclusive(measurements, monkeypatch):
-    class Invalid(signal_processing.SmoothSignal):
+    class Invalid(measurement_processing.SmoothMeasurement):
         is_bulk_processing = True
 
     register(monkeypatch, Invalid)
     with pytest.raises(ValueError, match='mutually exclusive'):
-        signal_processing.apply_recipe(measurements, recipe('Test'))
+        measurement_processing.apply_recipe(measurements, recipe('Test'))
 
 
 @pytest.mark.parametrize('bulk', [False, True])
 def test_processors_must_preserve_shape(measurements, monkeypatch, bulk):
-    class Invalid(signal_processing.Dummy):
+    class Invalid(measurement_processing.Dummy):
         is_bulk_processing = bulk
 
         @staticmethod
@@ -112,9 +129,9 @@ def test_processors_must_preserve_shape(measurements, monkeypatch, bulk):
 
     register(monkeypatch, Invalid)
     with pytest.raises(ValueError, match='preserve'):
-        signal_processing.apply_recipe(measurements, recipe('Test'))
+        measurement_processing.apply_recipe(measurements, recipe('Test'))
 
 
 def test_empty_recipe_is_rejected(measurements):
     with pytest.raises(ValueError, match='cannot be empty'):
-        signal_processing.apply_recipe(measurements, [])
+        measurement_processing.apply_recipe(measurements, [])

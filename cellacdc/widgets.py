@@ -11918,6 +11918,7 @@ class PreProcessingSelector(QComboBox):
         self.setParamsWindow.emitValuesChanged()
         self.setParamsWindow.exec_()
         if self.setParamsWindow.cancel:
+            self.setParamsWindow = None
             return
         
         self.setParams(method, self.setParamsWindow.function_kwargs)
@@ -11931,7 +11932,7 @@ class PreProcessingSelector(QComboBox):
         self.sigValuesChanged.emit(functionKwargs, self.step_n)
     
 class SignalProcessingSelector(PreProcessingSelector):
-    from .signal_processing import SIGNAL_PROCESSING_MAPPER as preprocessMapper
+    from .measurement_processing import MEASUREMENT_PROCESSING_MAPPER as preprocessMapper
 
 
 class RescaleImageJroisGroupbox(QGroupBox):

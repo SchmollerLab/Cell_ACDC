@@ -6,54 +6,55 @@ Steps operate per frame by default (one measurement across that frame's cells).
 once and must return a DataFrame with the same index and columns. Bulk and
 timelapse are mutually exclusive. Recipes preserve row order and missing values;
 time windows count observations, not elapsed time or absent frames.
+
+Like segmentation models, each processor lives in its own package containing
+an ``acdcProcess.py`` module with a ``Model`` class. The module's ``name`` is
+the label stored in recipes. Public processor folders are discovered locally;
+no model server or separate environment is needed.
+
+``Model.run`` takes the measurement as its required first argument. Annotate
+optional parameters and document them in a NumPy-style ``Parameters`` section:
+the processing window uses the same argument parser as models to build typed
+controls and parameter help buttons. Class docstrings provide step-level help.
+Per-frame and timelapse processors receive a one-dimensional NumPy array;
+bulk processors receive a DataFrame. Return the same shape (and, for bulk
+processing, the same index and columns).
 """
+from importlib import import_module
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
-
-class Dummy:
-    """Return measurements unchanged (per-frame processing)."""
-
-    is_timelapse = False
-    is_bulk_processing = False
-
-    @staticmethod
-    def run(signal):
-        return signal.copy()
-
-
-class SmoothSignal:
-    """Centered moving average per cell, ignoring missing observations.
-
-    Missing input values remain missing. At the ends, use the available
-    observations. ``window`` must be a positive number of observations.
-    """
-
-    is_timelapse = True
-    is_bulk_processing = False
-
-    @staticmethod
-    def run(signal, window: int = 3):
-        if isinstance(window, bool) or not isinstance(window, int) or window < 1:
-            raise ValueError('The smoothing window must be a positive integer.')
-        values = pd.Series(signal, dtype=float)
-        result = values.rolling(window, center=True, min_periods=1).mean()
-        return result.mask(values.isna()).to_numpy()
+def _load_processors():
+    mapper = {}
+    folders = sorted(
+        Path(__file__).parent.iterdir(),
+        key=lambda folder: (folder.name != 'SmoothMeasurement', folder.name)
+    )
+    for folder in folders:
+        if folder.name.startswith('_') or not (folder / 'acdcProcess.py').is_file():
+            continue
+        module = import_module(f'.{folder.name}.acdcProcess', package=__name__)
+        if module.name in mapper:
+            raise ValueError(f'Duplicate measurement processor name: {module.name}')
+        processor = module.Model
+        mapper[module.name] = {
+            'class': processor,
+            'function': processor.run,
+            'function_name': folder.name,
+            'docstring': processor.__doc__,
+        }
+    return mapper
 
 
-SIGNAL_PROCESSING_MAPPER = {
-    name: {
-        'class': step,
-        'function': step.run,
-        'function_name': step.__name__,
-        'docstring': step.__doc__,
-    }
-    for name, step in (('Smooth signal', SmoothSignal), ('Dummy', Dummy))
-}
+MEASUREMENT_PROCESSING_MAPPER = _load_processors()
 
 
 def apply_recipe(measurements, recipe):
     """Apply a recipe to selected numeric columns without modifying the input."""
+    if not isinstance(measurements, pd.DataFrame):
+        raise ValueError('Measurements must be a pandas DataFrame.')
     if list(measurements.index.names) != ['frame_i', 'Cell_ID']:
         raise ValueError('Measurements must be indexed by frame_i and Cell_ID.')
     if not measurements.index.is_unique:
@@ -61,16 +62,16 @@ def apply_recipe(measurements, recipe):
     if measurements.empty or not len(measurements.columns):
         raise ValueError('Select at least one measurement with data.')
     if not recipe:
-        raise ValueError('The signal-processing recipe cannot be empty.')
-    if any(not pd.api.types.is_numeric_dtype(dtype)
-           for dtype in measurements.dtypes):
-        raise ValueError('Signal processing requires numeric measurements.')
+        raise ValueError('The measurement-processing recipe cannot be empty.')
 
     result = measurements.copy()
     for step in recipe:
-        processor = SIGNAL_PROCESSING_MAPPER[step['method']]['class']
+        processor = MEASUREMENT_PROCESSING_MAPPER[step['method']]['class']
         if processor.is_timelapse and processor.is_bulk_processing:
             raise ValueError('Bulk and timelapse processing are mutually exclusive.')
+        if processor.numeric_input and any(not pd.api.types.is_numeric_dtype(np.dtype)
+                                         for dtype in result.dtypes):
+            raise ValueError('Processor requires numeric measurements.')
         kwargs = step['kwargs']
         if processor.is_bulk_processing:
             processed = processor.run(result.copy(), **kwargs)
@@ -91,7 +92,7 @@ def apply_recipe(measurements, recipe):
                     indices = indices[np.argsort(frames.take(indices), kind='stable')]
                 processed = np.asarray(processor.run(values[indices].copy(), **kwargs))
                 if processed.shape != indices.shape:
-                    raise ValueError('Signal processing must preserve the number of values.')
+                    raise ValueError('Measurement processing must preserve the number of values.')
                 values[indices] = processed
             result[column] = values
     return result

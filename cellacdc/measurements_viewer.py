@@ -30,7 +30,7 @@ also offers to save. Configurations are JSON files in the settings folder
 and retain Images folders, image/overlay channels, segmentation, and both
 plot modes' selections (including X/Y order and signal normalization).
 
-Use ``Process signals...`` to apply a recipe to selected measurements of the
+Use ``Process measurements...`` to apply a recipe to selected measurements of the
 current position. Smooth signal uses a centered moving average independently
 for each cell; Dummy leaves values unchanged. Accepting prompts for an output
 name and adds ``<measurement>_<name>`` columns without changing the originals.
@@ -535,9 +535,10 @@ class MeasurementsViewerWin(
                 return False
             if msg.doNotSave:
                 return True
-            filepath = msg.filepath
-            if not filepath:
+            filename = msg.filename
+            if not filename:
                 return False
+            filepath = os.path.join(MEASUREMENTS_CONFIGURATIONS_PATH, filename)
             if not filepath.lower().endswith('.json'):
                 filepath += '.json'
                 if os.path.exists(filepath):
@@ -2273,8 +2274,8 @@ class MeasurementsViewerWin(
             'Reload the acdc_output table from the file '
             '(e.g., after saving in the main GUI)'
         )
-        self.processSignalsButton = widgets.setPushButton('Process signals...')
-        self.processSignalsButton.clicked.connect(self.processSignals)
+        self.processMeasurementsButton = widgets.setPushButton('Process measurements...')
+        self.processMeasurementsButton.clicked.connect(self.processMeasurements)
         self.exportMeasurementsButton = widgets.savePushButton(
             'Export measurements...'
         )
@@ -2292,7 +2293,7 @@ class MeasurementsViewerWin(
         columnsLayout.addWidget(self.measurementsModeCombobox)
         columnsLayout.addWidget(self.timeCourseColumnsWidget)
         columnsLayout.addWidget(self.normalizeCheckbox)
-        columnsLayout.addWidget(self.processSignalsButton)
+        columnsLayout.addWidget(self.processMeasurementsButton)
         columnsLayout.addWidget(self.exportMeasurementsButton)
         columnsLayout.addWidget(self.refreshButton)
         columnsWidget = QWidget()
@@ -2671,7 +2672,7 @@ class MeasurementsViewerWin(
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, title, text)
 
-    def processSignals(self, checked=False):
+    def processMeasurements(self, checked=False):
         if self.signalProcessingThread is not None:
             return
         if self.acdc_df is None or self.acdc_df.empty:
@@ -2691,9 +2692,14 @@ class MeasurementsViewerWin(
         if dialog.cancel:
             return
 
+        if len(dialog.selectedChannels) > 1:
+            selectedChannels = ', '.join(dialog.selectedChannels)
+        else:
+            selectedChannels = dialog.selectedChannels[0]
+
         while True:
             nameDialog = apps.filenameDialog(
-                basename='', ext='', defaultEntry='processed', allowEmpty=False,
+                basename=selectedChannels, ext='', defaultEntry='processed', allowEmpty=False,
                 title='Name processed measurements',
                 hintText='Name to append to the processed measurement column(s):',
                 parent=self
@@ -2717,7 +2723,7 @@ class MeasurementsViewerWin(
         )
 
     def startSignalProcessing(self, columns, recipe, name):
-        from . import workers, signal_processing
+        from . import workers, measurement_processing
 
         posData = self.posData()
         self._signalProcessingTarget = (
@@ -2729,7 +2735,7 @@ class MeasurementsViewerWin(
         )
         worker = self.signalProcessingWorker
         worker.setupJob(
-            signal_processing.apply_recipe, self.acdc_df[columns].copy(),
+            measurement_processing.apply_recipe, self.acdc_df[columns].copy(),
             copy.deepcopy(recipe), name
         )
         worker.moveToThread(self.signalProcessingThread)
@@ -2739,7 +2745,7 @@ class MeasurementsViewerWin(
         worker.signals.finished.connect(self.signalProcessingThread.quit)
         worker.signals.finished.connect(worker.deleteLater)
         self.signalProcessingThread.finished.connect(self.signalProcessingFinished)
-        self.processSignalsButton.setEnabled(False)
+        self.processMeasurementsButton.setEnabled(False)
         self.refreshButton.setEnabled(False)
         self.signalProcessingThread.start()
 
@@ -2779,7 +2785,7 @@ class MeasurementsViewerWin(
         self.signalProcessingThread.deleteLater()
         self.signalProcessingThread = None
         self.signalProcessingWorker = None
-        self.processSignalsButton.setEnabled(True)
+        self.processMeasurementsButton.setEnabled(True)
         self.refreshButton.setEnabled(True)
 
     def exportMeasurements(self, checked=False):
