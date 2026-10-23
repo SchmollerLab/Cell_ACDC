@@ -582,14 +582,14 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         except Exception as err:
             info_txts.append('Qt: Not installed')
     
+    try:
+        branch_name = get_git_branch_name()
+        info_txts.append(f'Git branch: "{branch_name}"')
+    except Exception as err:
+        pass
+
     from . import IS_CLONED
-    if IS_CLONED:
-        try:
-            branch_name = get_git_branch_name()
-            info_txts.append(f'Git branch: "{branch_name}"')
-        except Exception as err:
-            pass
-        
+    if IS_CLONED:        
         try:
             remote_repos = get_git_remote_repos_names()
             indentation = ' '*8
