@@ -14548,6 +14548,1097 @@ class CombineMetricsEquationDialog(_CombineMetricsDialog):
 
         measurements.save_common_combine_metrics(config)
 
+
+class TimepointPredictorEquationDialog(_CombineMetricsDialog):
+    """Equation editor (as in `CombineMetricsEquationDialog`) to predict 
+    the time points of each cell from the columns of `acdc_df`."""
+    def __init__(
+            self, allChNames, isZstack, isSegm3D, acdc_df=None, name='',
+            equation='', mode='first_true', parent=None
+        ):
+        from . import timepoint_predictors
+        self._predictors = timepoint_predictors
+        super().__init__(
+            allChNames, isZstack, isSegm3D, parent=parent, acdc_df=acdc_df
+        )
+        self.setWindowTitle(f'Time point predictor equation - {name}')
+        self.equation = equation
+        self.mode = mode
+        self.newColNameLineEdit.setText(name)
+        self.newColNameLineEdit.setReadOnly(True)
+        for label in self.findChildren(QLabel):
+            if label.text() == 'New measurement name:':
+                label.setText('Time point identifier:')
+        self.formulaEditWidget._edit.setPlaceholderText(
+            'e.g. cell_area_pxl > 0.5 * MAX(cell_area_pxl) or '
+            'cell_cycle_stage == "S"'
+        )
+        
+        self.modeCombobox = QComboBox()
+        modes = list(timepoint_predictors.EQUATION_MODES)
+        for key in modes:
+            self.modeCombobox.addItem(
+                timepoint_predictors.EQUATION_MODES[key], key
+            )
+        self.modeCombobox.setCurrentIndex(
+            modes.index(mode) if mode in modes else 0
+        )
+        self.modeCombobox.setToolTip(
+            'The equation is evaluated for every frame of each cell. This '
+            'rule converts the per-frame results into the cell\'s time points.'
+        )
+        modeLayout = QHBoxLayout()
+        modeLayout.addWidget(QLabel('Time point(s) of each cell:'))
+        modeLayout.addWidget(self.modeCombobox)
+        modeLayout.addStretch(1)
+        
+        functionsLayout = QHBoxLayout()
+        functionsLayout.addWidget(QLabel('Per-cell functions:'))
+        self.cellFunctionButtons = []
+        for funcName, (_, description) in (
+                timepoint_predictors.CELL_FUNCTIONS.items()):
+            button = QPushButton(funcName)
+            button.setToolTip(description)
+            button.clicked.connect(
+                partial(self.insertEquationText, f'{funcName}(')
+            )
+            functionsLayout.addWidget(button)
+            self.cellFunctionButtons.append(button)
+        functionsLayout.addStretch(1)
+        
+        mainLayout = self.layout()
+        # Insert above the equation layout (followed by buttons and output)
+        mainLayout.insertLayout(mainLayout.count()-3, functionsLayout)
+        mainLayout.insertLayout(mainLayout.count()-2, modeLayout)
+        self.modeCombobox.currentIndexChanged.connect(self.equationChanged)
+        if equation:
+            self.formulaEditWidget.setText(equation)
+    
+    def currentMode(self):
+        return self.modeCombobox.currentData()
+    
+    def validateEquation(self, formula):
+        try:
+            if not formula.strip():
+                return False, 'Equation cannot be empty'
+            if not self.formulaEditWidget.referencedVariableNames():
+                return False, 'No measurement inputs used'
+            self._predictors.eval_cell_equation(
+                self.getTestData(preview=True), formula
+            )
+        except Exception as err:
+            return False, str(err)
+        return True, formula
+    
+    def _showTestError(self, message):
+        self.statusLabel.setText(message)
+        self.testOutputDisplay.setPlainText(message)
+        self.testOutputDisplay.setStyleSheet('border: 2px solid red')
+    
+    def test_cb(self):
+        if self.acdcDf is None:
+            super().test_cb()
+            return
+        self.equationChanged()
+        success, message = self.formulaEditWidget.checkValidity()
+        if not success:
+            self._showTestError(message)
+            return
+        try:
+            timepoints = self._predictors.predict_from_equation(
+                self.acdcDf, self.formulaEditWidget.text(), self.currentMode()
+            )
+        except Exception as err:
+            traceback.print_exc()
+            self._showTestError(str(err))
+            return
+        withTimepoints = {ID: frames for ID, frames in timepoints.items() if frames}
+        preview = pd.DataFrame({
+            'Cell_ID': list(withTimepoints),
+            'Predicted frame n.': [
+                ', '.join(str(frame+1) for frame in frames)
+                for frames in withTimepoints.values()
+            ]
+        }).head(20)
+        self.testOutputDisplay.setHtml(preview.to_html(index=False))
+        self.testOutputDisplay.setStyleSheet('border: 2px solid green')
+        self.statusLabel.setText(
+            f'Predicted time points for {len(withTimepoints)} of '
+            f'{len(timepoints)} cells.'
+        )
+        self.okButton.setEnabled(True)
+    
+    def ok_cb(self):
+        if not self.okButton.isEnabled():
+            self.test_cb()
+            return
+        self.equation = self.formulaEditWidget.text()
+        self.mode = self.currentMode()
+        self.cancel = False
+        self.close()
+    
+    def showHelp(self):
+        functions = '<br>'.join(
+            f'<code>{name}(x)</code>: {html.escape(description)}'
+            for name, (_, description) 
+            in self._predictors.CELL_FUNCTIONS.items()
+        )
+        txt = html_utils.paragraph(f"""
+            The equation is evaluated <b>separately for each cell</b> on its 
+            rows of the measurements table (one row per frame).<br><br>
+            Use conditions (e.g., <code>cell_area_pxl &gt; 500</code>) with the 
+            rules based on "true", or numerical expressions with the 
+            "maximum"/"minimum" rules.<br><br>
+            <b>Per-cell functions</b> are computed over all frames of the 
+            cell (NaNs are ignored) and can be combined with the other 
+            inputs, e.g. <code>cell_area_pxl &gt; 0.5 * MAX(cell_area_pxl)</code> 
+            or <code>DIFF(cell_area_pxl) &gt; 50</code>:<br>{functions}<br><br>
+            <b>Per-cell constants</b> defined with the "Per-cell constants" 
+            button of the Time points toolbar are listed with the inputs and 
+            can be used like columns, e.g. 
+            <code>cell_area_pxl &gt; 0.8 * max_cell_area_pxl</code>.<br><br>
+            Double-click an input to add it to the equation.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Time point predictor help', txt)
+
+
+class TimepointIdentifierDialog(QBaseDialog):
+    """Set name, color, shortcut and predictor of a time point identifier.
+
+    After closing, `cancel` is False if accepted and `identifier` is a dict 
+    with keys 'name', 'color', 'shortcut' and 'predictor'.
+    """
+    def __init__(
+            self, name, color, shortcut, predictor=None, 
+            existingNames=(), reservedShortcuts=None, acdc_df=None, 
+            SizeT=None, allChNames=(), isZstack=False, isSegm3D=False,
+            title='Add time point identifier', parent=None
+        ):
+        from . import timepoint_predictors
+        self._predictors = timepoint_predictors
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.cancel = True
+        self.identifier = None
+        self.existingNames = set(existingNames)
+        # {normalized key sequence: name of the action using it}
+        self.reservedShortcuts = dict(reservedShortcuts or {})
+        self.acdc_df = acdc_df
+        self.SizeT = SizeT
+        self.allChNames = list(allChNames)
+        self.isZstack = isZstack
+        self.isSegm3D = isSegm3D
+        if predictor is None:
+            predictor = {'type': timepoint_predictors.PREDICTOR_NONE}
+        self.equation = predictor.get('equation', '')
+        self.equationMode = predictor.get('mode', 'first_true')
+        
+        formLayout = QFormLayout()
+        self.nameLineEdit = QLineEdit(name)
+        formLayout.addRow('Name:', self.nameLineEdit)
+        
+        self.colorButton = pg.ColorButton(color=color)
+        self.colorButton.setToolTip('Color of the time point lines')
+        formLayout.addRow('Color:', self.colorButton)
+        
+        self.shortcutLineEdit = widgets.ShortcutLineEdit(allowModifiers=True)
+        self.shortcutLineEdit.setText(shortcut)
+        self.shortcutLineEdit.setToolTip(
+            'Click and press a key (combination). Press Backspace to clear.\n\n'
+            'Hover over the measurements plot and press the shortcut to add '
+            'a time point at the frame under the mouse cursor.'
+        )
+        formLayout.addRow('Shortcut:', self.shortcutLineEdit)
+        
+        # auto apply on new cells 
+        self.autoApplyCheckBox = widgets.Toggle(label_text='Auto apply on unvisited cells',
+                                                parent=self)
+        formLayout.addRow('', self.autoApplyCheckBox)
+        
+        self.predictorCombobox = QComboBox()
+        self.predictorCombobox.addItem(
+            'None (manual annotation)', timepoint_predictors.PREDICTOR_NONE
+        )
+        self.predictorCombobox.addItem(
+            'Equation', timepoint_predictors.PREDICTOR_EQUATION
+        )
+        self.predictorCombobox.addItem(
+            'Select own function (Python file)', 
+            timepoint_predictors.PREDICTOR_FILE
+        )
+        self.predictorCombobox.setToolTip(
+            'Predict the time points of each cell when the identifier is '
+            'added (and when other positions are loaded).\n'
+            'Predicted time points can be moved or removed afterwards.'
+        )
+        formLayout.addRow('Predictor:', self.predictorCombobox)
+        
+        self.equationWidget = QWidget()
+        equationLayout = QGridLayout(self.equationWidget)
+        equationLayout.setContentsMargins(0, 0, 0, 0)
+        self.equationLineEdit = QLineEdit(self.equation)
+        self.equationLineEdit.setReadOnly(True)
+        self.equationLineEdit.setPlaceholderText('No equation set')
+        self.equationModeLabel = QLabel()
+        self.editEquationButton = widgets.calcPushButton('Edit equation...')
+        equationLayout.addWidget(self.equationLineEdit, 0, 0)
+        equationLayout.addWidget(self.editEquationButton, 0, 1)
+        equationLayout.addWidget(self.equationModeLabel, 1, 0, 1, 2)
+        formLayout.addRow('', self.equationWidget)
+        
+        self.fileWidget = QWidget()
+        fileLayout = QGridLayout(self.fileWidget)
+        fileLayout.setContentsMargins(0, 0, 0, 0)
+        self.fileLineEdit = QLineEdit(predictor.get('filepath', ''))
+        self.fileLineEdit.setPlaceholderText('Python file with predictor(df)')
+        self.browseFileButton = widgets.browseFileButton(
+            'Browse...', ext={'Python': '.py'}, 
+            title='Select Python file with predictor(df)'
+        )
+        self.saveTemplateButton = widgets.savePushButton('Save template...')
+        fileInfo = QLabel(html_utils.paragraph(
+            'The file must define <code>predictor(df)</code>. '
+            '<code>df</code> is the table of <b>one cell</b> (one row per '
+            'frame, with <code>frame_i</code> and <code>Cell_ID</code> '
+            'columns). Return a <code>frame_i</code> (0-based), a list of '
+            '<code>frame_i</code>, or <code>None</code>.<br>'
+            'Optionally, add the keyword argument <code>entire_df</code> '
+            '(<code>predictor(df, entire_df=None)</code>) to also receive '
+            'the table of all cells.', font_size='11px'
+        ))
+        fileInfo.setWordWrap(True)
+        fileLayout.addWidget(self.fileLineEdit, 0, 0)
+        fileLayout.addWidget(self.browseFileButton, 0, 1)
+        fileLayout.addWidget(self.saveTemplateButton, 0, 2)
+        fileLayout.addWidget(fileInfo, 1, 0, 1, 3)
+        formLayout.addRow('', self.fileWidget)
+        
+        self.statusLabel = QLabel()
+        self.statusLabel.setWordWrap(True)
+        
+        buttonsLayout = QHBoxLayout()
+        self.testButton = widgets.calcPushButton('Test predictor')
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton(' Ok ')
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(self.testButton)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addWidget(okButton)
+        
+        mainLayout = QVBoxLayout()
+        mainLayout.addLayout(formLayout)
+        mainLayout.addWidget(self.statusLabel)
+        mainLayout.addLayout(buttonsLayout)
+        self.setLayout(mainLayout)
+        self.setFont(fonts.font)
+        
+        index = self.predictorCombobox.findData(predictor.get('type'))
+        self.predictorCombobox.setCurrentIndex(max(index, 0))
+        self.predictorChanged()
+        self.updateEquationModeLabel()
+        
+        self.predictorCombobox.currentIndexChanged.connect(self.predictorChanged)
+        self.editEquationButton.clicked.connect(self.editEquation)
+        self.browseFileButton.sigPathSelected.connect(self.fileLineEdit.setText)
+        self.saveTemplateButton.clicked.connect(self.saveTemplate)
+        self.testButton.clicked.connect(self.testPredictor)
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+    
+    def predictorType(self):
+        return self.predictorCombobox.currentData()
+    
+    def predictorChanged(self, *args):
+        kind = self.predictorType()
+        self.equationWidget.setVisible(
+            kind == self._predictors.PREDICTOR_EQUATION
+        )
+        self.fileWidget.setVisible(kind == self._predictors.PREDICTOR_FILE)
+        self.testButton.setVisible(kind != self._predictors.PREDICTOR_NONE)
+        self.statusLabel.clear()
+    
+    def updateEquationModeLabel(self):
+        mode = self._predictors.EQUATION_MODES.get(self.equationMode, '')
+        self.equationModeLabel.setText(f'Time point(s) of each cell: {mode}')
+    
+    def editEquation(self):
+        win = TimepointPredictorEquationDialog(
+            self.allChNames, self.isZstack, self.isSegm3D, 
+            acdc_df=self.acdc_df, name=self.nameLineEdit.text(),
+            equation=self.equation, mode=self.equationMode, parent=self
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        self.equation = win.equation
+        self.equationMode = win.mode
+        self.equationLineEdit.setText(self.equation)
+        self.updateEquationModeLabel()
+        self.statusLabel.clear()
+    
+    def saveTemplate(self):
+        filepath = QFileDialog.getSaveFileName(
+            self, 'Save predictor template', 'timepoint_predictor.py',
+            'Python (*.py)'
+        )[0]
+        if not filepath:
+            return
+        try:
+            with open(filepath, 'w', encoding='utf-8') as file:
+                file.write(self._predictors.PREDICTOR_FILE_TEMPLATE)
+        except OSError as err:
+            self.warn('Saving template failed', str(err))
+            return
+        self.fileLineEdit.setText(filepath)
+    
+    def predictor(self):
+        kind = self.predictorType()
+        if kind == self._predictors.PREDICTOR_EQUATION:
+            return {
+                'type': kind, 'equation': self.equation, 
+                'mode': self.equationMode
+            }
+        if kind == self._predictors.PREDICTOR_FILE:
+            return {'type': kind, 'filepath': self.fileLineEdit.text().strip()}
+        return {'type': kind}
+    
+    def validatePredictor(self):
+        predictor = self.predictor()
+        self._predictors.validate_predictor(predictor)
+        if predictor['type'] == self._predictors.PREDICTOR_FILE:
+            self._predictors.load_predictor_function(predictor['filepath'])
+        return predictor
+    
+    def testPredictor(self):
+        try:
+            predictor = self.validatePredictor()
+            if self.acdc_df is None or self.acdc_df.empty:
+                self.statusLabel.setText(
+                    'Predictor is valid. Load measurements to test it on data.'
+                )
+                return
+            timepoints = self._predictors.predict_timepoints(
+                self.acdc_df, predictor, SizeT=self.SizeT
+            )
+        except Exception as err:
+            traceback.print_exc()
+            self.statusLabel.setText(html_utils.paragraph(
+                f'<font color="red">{html.escape(str(err))}</font>'
+            ))
+            return False
+        numCells = self.acdc_df.index.get_level_values('Cell_ID').nunique()
+        numTimepoints = sum(len(frames) for frames in timepoints.values())
+        self.statusLabel.setText(
+            f'Predicted {numTimepoints} time point(s) for {len(timepoints)} '
+            f'of {numCells} cells.'
+        )
+        return True
+    
+    def warn(self, title, text):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, title, html_utils.paragraph(text))
+    
+    def ok_cb(self):
+        name = self.nameLineEdit.text().strip()
+        if not name:
+            self.warn('Empty name', 'The name of the time point cannot be empty.')
+            return
+        if name in self.existingNames:
+            self.warn(
+                'Name already used', 
+                f'A time point identifier called "{name}" already exists.'
+            )
+            return
+        shortcut = self.shortcutLineEdit.text().strip()
+        if shortcut:
+            if shortcut.startswith('Mouse '):
+                self.warn('Invalid shortcut', 'Mouse buttons are not supported.')
+                return
+            shortcut = QKeySequence(shortcut).toString()
+            usedBy = self.reservedShortcuts.get(shortcut)
+            if usedBy is not None:
+                self.warn(
+                    'Shortcut already used', 
+                    f'The shortcut "{shortcut}" is already used by '
+                    f'"{usedBy}". Choose a different shortcut.'
+                )
+                return
+        try:
+            predictor = self.validatePredictor()
+        except Exception as err:
+            self.warn('Invalid predictor', html.escape(str(err)))
+            return
+
+        self.autoApply = self.autoApplyCheckBox.isChecked()
+        self.identifier = {
+            'name': name,
+            'color': tuple(self.colorButton.color().getRgb()[:3]),
+            'shortcut': shortcut,
+            'predictor': predictor,
+            'autoApply': self.autoApply,
+        }
+        self.cancel = False
+        self.close()
+
+
+class CellConstantEquationDialog(_CombineMetricsDialog):
+    """Shared formula editor with candidate and enquiring-cell input trees."""
+    def __init__(
+            self, constant, acdc_df=None, SizeT=None, condition=False,
+            parent=None
+        ):
+        from . import timepoint_predictors
+        self._predictors = timepoint_predictors
+        self.constant = dict(constant)
+        self.SizeT = SizeT
+        self.isCondition = condition
+        self.sourceDf = acdc_df
+        df = (
+            timepoint_predictors._flat_df(acdc_df)
+            if acdc_df is not None else pd.DataFrame(columns=['frame_i', 'Cell_ID'])
+        )
+        super().__init__(
+            [], False, False, parent=parent,
+            acdcDfs={'Candidate cell': df, 'Enquiring cell': df}
+        )
+        self.setWindowTitle('Cell filter formula' if condition else 'Constant formula')
+        self.newColNameLineEdit.setText(constant['name'])
+        self.newColNameLineEdit.setReadOnly(True)
+        self.equation = ''
+        functions = QHBoxLayout()
+        for name, (_, description) in timepoint_predictors.CELL_FUNCTIONS.items():
+            button = QPushButton(name)
+            button.setToolTip(description)
+            button.clicked.connect(partial(self.insertEquationText, f'{name}('))
+            functions.addWidget(button)
+        self.layout().insertLayout(self.layout().count()-3, functions)
+        infoLabel = QLabel(html_utils.paragraph(
+            'Left: candidate measurements. '
+            'Right: enquiring-cell measurements at the same frame, prefixed '
+            '<code>this_</code>. Double-click inputs to insert them.<br>'
+            + ('Return bool or 0/1, either a scalar or one value per overlapping '
+               'frame. Any/All selects cells; Only where true selects frames.'
+               if condition else
+               'Reduce the selected source rows to one value using MAX, MEAN, '
+               'FIRST, etc. Time scope determines whether this is per frame '
+               'over the entire video, or within a custom window around t.')
+        ))
+        infoLabel.setWordWrap(True)
+        self.layout().insertWidget(0, infoLabel)
+        self.formulaEditWidget.setText(
+            constant['condition' if condition else 'equation']
+        )
+
+    def addTreeItems(self, parentItem, itemsText, **kwargs):
+        start = parentItem.childCount()
+        super().addTreeItems(parentItem, itemsText, **kwargs)
+        for i in range(start, parentItem.childCount()):
+            item = parentItem.child(i)
+            if not getattr(item, 'isCol', False):
+                continue
+            old = item.variableName
+            name = item.text(0)
+            item.variableName = f'this_{name}' if kwargs.get('index') == 1 else name
+            self.variableNames[self.variableNames.index(old)] = item.variableName
+
+    def getTestData(self, preview=False):
+        df = self.acdcDfs['Candidate cell'].head(10).reset_index(drop=True).copy()
+        for col in list(df.columns):
+            df[f'this_{col}'] = df[col]
+        return df
+
+    def validateEquation(self, formula):
+        try:
+            if not formula.strip():
+                raise ValueError('Formula cannot be empty.')
+            result = self._predictors.eval_cell_equation(
+                self.getTestData(), formula,
+                {'SizeT': self.SizeT} if self.SizeT is not None else None
+            )
+            if self.isCondition:
+                self._predictors.boolean_filter_values(result, len(self.getTestData()))
+        except Exception as err:
+            return False, str(err)
+        return True, formula
+
+    def test_cb(self):
+        formula = self.formulaEditWidget.text()
+        success, message = self.validateEquation(formula)
+        if success:
+            constant = dict(self.constant)
+            constant['condition' if self.isCondition else 'equation'] = formula
+            if self.isCondition:
+                constant['condition_type'] = 'equation'
+                # Show selected source-cell counts independently of the value formula.
+                constant['equation'] = 'NUNIQUE(Cell_ID)'
+            try:
+                values = self._predictors.compute_cell_constants(
+                    self.sourceDf, [constant], SizeT=self.SizeT
+                )
+            except Exception as err:
+                success, message = False, str(err)
+            else:
+                if values and self.sourceDf is not None:
+                    preview = self._predictors.add_constants_columns(
+                        self.sourceDf, values
+                    ).reset_index()
+                    preview = preview[['frame_i', 'Cell_ID', constant['name']]]
+                    self.testOutputDisplay.setHtml(preview.head(20).to_html(index=False))
+                else:
+                    self.testOutputDisplay.setPlainText('Formula is valid; no data to preview.')
+        self.statusLabel.setText('Formula is valid.' if success else message)
+        if not success:
+            self.testOutputDisplay.setPlainText(message)
+        self.testOutputDisplay.setStyleSheet(
+            f'border: 2px solid {"green" if success else "red"}'
+        )
+        self.okButton.setEnabled(success)
+
+    def ok_cb(self):
+        self.test_cb()
+        if not self.okButton.isEnabled():
+            return
+        self.equation = self.formulaEditWidget.text()
+        self.cancel = False
+        self.close()
+
+    def showHelp(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Constant formulas', html_utils.paragraph(
+            'Candidate inputs have their measurement names. Enquiring-cell '
+            'inputs have the prefix <code>this_</code>, for example '
+            '<code>area &gt; this_area</code>. Functions such as MAX and MEAN '
+            'operate on the candidate/enquirer overlapping frames when filtering. '
+            'Custom ranges use inclusive integer bounds relative to t, '
+            'the frame receiving the result (e.g. t - 5 to t + 2). '
+            'SizeT is the total number of video frames.'
+        ))
+
+
+class CellConstantDefinitionDialog(QBaseDialog):
+    """One form for a constant's scope, source/filter, and formula."""
+    def __init__(self, constant, acdc_df=None, SizeT=None, parent=None):
+        from . import timepoint_predictors
+        super().__init__(parent)
+        self._predictors = timepoint_predictors
+        self.constant = timepoint_predictors.normalize_constant(constant)
+        self.acdc_df, self.SizeT = acdc_df, SizeT
+        self.cancel = True
+        self.setWindowTitle('Per-cell constant')
+        layout = QVBoxLayout()
+        form = QGridLayout()
+        self.nameEdit = QLineEdit(self.constant['name'])
+        self.scopeCombobox = QComboBox()
+        for key, label in timepoint_predictors.CONSTANT_TIME_SCOPES.items():
+            self.scopeCombobox.addItem(label, key)
+        self.scopeCombobox.setCurrentIndex(
+            self.scopeCombobox.findData(self.constant['time_scope'])
+        )
+        self.sourceCombobox = QComboBox()
+        for key, label in timepoint_predictors.SOURCE_CELLS.items():
+            self.sourceCombobox.addItem(label, key)
+        self.sourceCombobox.setCurrentIndex(
+            self.sourceCombobox.findData(self.constant['source'])
+        )
+        self.filterTypeCombobox = QComboBox()
+        self.filterTypeCombobox.addItem('Formula', 'equation')
+        self.filterTypeCombobox.addItem('Python file', 'file')
+        self.filterTypeCombobox.setCurrentIndex(
+            self.filterTypeCombobox.findData(self.constant['condition_type'])
+        )
+        self.matchCombobox = QComboBox()
+        for key, label in timepoint_predictors.FILTER_FRAME_MODES.items():
+            self.matchCombobox.addItem(label, key)
+        self.matchCombobox.setCurrentIndex(
+            self.matchCombobox.findData(self.constant['condition_mode'])
+        )
+        self.rangeStartEdit = QLineEdit(self.constant['range_start'])
+        self.rangeEndEdit = QLineEdit(self.constant['range_end'])
+        for edit in (self.rangeStartEdit, self.rangeEndEdit):
+            edit.setToolTip(
+                'Inclusive frame bound: integers and t with +, -, *, //, %, '
+                'and parentheses. t is the enquiring frame receiving the result.'
+            )
+        self.sourceCombobox.setToolTip(
+            'Mother/sister/daughter use parent_ID_tree and sister_ID_tree '
+            '(relative_ID if tree annotations are unavailable). Custom filters '
+            'compare other cells to the enquiring cell over overlapping frames.'
+        )
+        self.conditionEdit = QLineEdit(self.constant['condition'])
+        self.conditionEdit.setReadOnly(True)
+        self.editConditionButton = widgets.editPushButton('Edit filter...')
+        self.fileEdit = QLineEdit(self.constant['condition_filepath'])
+        self.fileButton = widgets.browseFileButton(
+            'Browse...', ext={'Python': '.py'},
+            title='Select file defining filter_cells(df, enquiring_df)'
+        )
+        self.templateButton = widgets.savePushButton('Save filter template...')
+        self.equationEdit = QLineEdit(self.constant['equation'])
+        self.equationEdit.setReadOnly(True)
+        self.editEquationButton = widgets.editPushButton('Edit formula...')
+        controls = [
+            ('Name:', self.nameEdit), ('Time scope:', self.scopeCombobox),
+            ('Cell filtering:', self.sourceCombobox),
+            ('Custom filter type:', self.filterTypeCombobox),
+            ('Filter formula:', self.conditionEdit),
+            ('Filter Python file:', self.fileEdit),
+            ('Consider frames:', self.matchCombobox),
+            ('Range start (inclusive):', self.rangeStartEdit),
+            ('Range end (inclusive):', self.rangeEndEdit),
+            ('Constant formula:', self.equationEdit),
+        ]
+        self.filterLabels = {}
+        for row, (label, control) in enumerate(controls):
+            labelWidget = QLabel(label)
+            form.addWidget(labelWidget, row, 0)
+            form.addWidget(control, row, 1)
+            self.filterLabels[control] = labelWidget
+        form.addWidget(self.editConditionButton, 4, 2)
+        form.addWidget(self.fileButton, 5, 2)
+        form.addWidget(self.templateButton, 5, 3)
+        form.addWidget(self.editEquationButton, 9, 2)
+        layout.addLayout(form)
+        infoLabel = QLabel(html_utils.paragraph(
+            '<b>Any / All</b>: include a candidate if the filter is true on any / '
+            'all overlapping frames. <b>Only where true</b>: use only matching '
+            'frames. Per frame gives a frame-indexed series; Entire video '
+            'reduces the selected rows to one value.<br>'
+            'Custom range aggregates an inclusive window, e.g. '
+            '<code>t - 5</code> to <code>t + 2</code>, for every frame t. '
+            'Only available frames are used; filtering is applied within each window. '
+            'Frames without a source give NaN (counts give 0).'
+        ))
+        infoLabel.setWordWrap(True)
+        layout.addWidget(infoLabel)
+        self.statusLabel = QLabel()
+        self.statusLabel.setWordWrap(True)
+        layout.addWidget(self.statusLabel)
+        buttons = widgets.CancelOkButtonsLayout()
+        buttons.okButton.clicked.connect(self.ok_cb)
+        buttons.cancelButton.clicked.connect(self.close)
+        layout.addLayout(buttons)
+        self.setLayout(layout)
+        self.resize(760, 420)
+        self.sourceCombobox.currentIndexChanged.connect(self.updateFilterControls)
+        self.filterTypeCombobox.currentIndexChanged.connect(self.updateFilterControls)
+        self.scopeCombobox.currentIndexChanged.connect(self.updateRangeControls)
+        self.editConditionButton.clicked.connect(partial(self.editFormula, True))
+        self.editEquationButton.clicked.connect(partial(self.editFormula, False))
+        self.fileButton.sigPathSelected.connect(self.fileEdit.setText)
+        self.templateButton.clicked.connect(self.saveFilterTemplate)
+        self.updateFilterControls()
+        self.updateRangeControls()
+
+    def currentConstant(self):
+        constant = dict(self.constant)
+        constant.update(
+            name=self.nameEdit.text().strip(),
+            per_frame=self.scopeCombobox.currentData() != 'video',
+            time_scope=self.scopeCombobox.currentData(),
+            source=self.sourceCombobox.currentData(),
+            condition=self.conditionEdit.text(),
+            equation=self.equationEdit.text(),
+            condition_type=self.filterTypeCombobox.currentData(),
+            condition_filepath=self.fileEdit.text().strip(),
+            condition_mode=self.matchCombobox.currentData(),
+            range_start=self.rangeStartEdit.text().strip(),
+            range_end=self.rangeEndEdit.text().strip(),
+        )
+        return constant
+
+    def updateRangeControls(self):
+        custom = self.scopeCombobox.currentData() == 'custom'
+        for control in (self.rangeStartEdit, self.rangeEndEdit):
+            control.setVisible(custom)
+            self.filterLabels[control].setVisible(custom)
+
+    def updateFilterControls(self):
+        custom = self.sourceCombobox.currentData() == 'custom'
+        # Preserve optional filters in existing configurations.
+        active = custom or bool(self.constant['condition']) or (
+            self.constant['condition_type'] == 'file'
+        )
+        isFile = self.filterTypeCombobox.currentData() == 'file'
+        for control, visible in (
+            (self.filterTypeCombobox, active), (self.conditionEdit, active and not isFile),
+            (self.fileEdit, active and isFile), (self.matchCombobox, active),
+        ):
+            control.setVisible(visible)
+            self.filterLabels[control].setVisible(visible)
+        self.editConditionButton.setVisible(active and not isFile)
+        self.fileButton.setVisible(active and isFile)
+        self.templateButton.setVisible(active and isFile)
+
+    def editFormula(self, condition, checked=False):
+        constant = self.currentConstant()
+        if not constant['name']:
+            self.statusLabel.setText('Enter a constant name first.')
+            return
+        df = self.acdc_df
+        dialog = CellConstantEquationDialog(
+            constant, acdc_df=df, SizeT=self.SizeT, condition=condition, parent=self
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return
+        (self.conditionEdit if condition else self.equationEdit).setText(dialog.equation)
+
+    def saveFilterTemplate(self, checked=False):
+        filepath = QFileDialog.getSaveFileName(
+            self, 'Save filter template', 'cell_filter.py', 'Python files (*.py)'
+        )[0]
+        if filepath:
+            try:
+                with open(filepath, 'w', encoding='utf-8') as file:
+                    file.write(self._predictors.CELL_FILTER_FILE_TEMPLATE)
+            except OSError as err:
+                self.statusLabel.setText(str(err))
+                return
+            self.fileEdit.setText(filepath)
+
+    def ok_cb(self):
+        constant = self.currentConstant()
+        if constant['source'] != 'custom' and not (
+                self.constant['condition'] or self.constant['condition_type'] == 'file'):
+            constant.update(condition='', condition_type='equation', condition_filepath='')
+        try:
+            columns = (
+                self._predictors._flat_df(self.acdc_df).columns
+                if self.acdc_df is not None else ()
+            )
+            self._predictors.validate_constants([constant], columns=columns)
+            self._predictors.compute_cell_constants(
+                self.acdc_df, [constant], SizeT=self.SizeT
+            )
+        except Exception as err:
+            self.statusLabel.setText(str(err))
+            return
+        self.constant = constant
+        self.cancel = False
+        self.close()
+
+
+class CellConstantsDialog(QBaseDialog):
+    """Define per-cell constants (equation evaluated once per cell, or per 
+    frame, on the rows of the source cells) usable in time point predictors.
+
+    After closing, `cancel` is False if accepted and `constants` is a list 
+    of dicts describing the source, time scope, filter, and value formula
+    (see `timepoint_predictors.default_constant`).
+    """
+    NAME_COL, SOURCE_COL, CONDITION_COL, PER_FRAME_COL, EQUATION_COL = range(5)
+    
+    def __init__(
+            self, constants=(), acdc_df=None, SizeT=None, 
+            title='Per-cell constants', parent=None
+        ):
+        from qtpy.QtWidgets import QTableWidget, QTableWidgetItem
+        from . import timepoint_predictors
+        self._predictors = timepoint_predictors
+        self._QTableWidgetItem = QTableWidgetItem
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.cancel = True
+        self.constants = None
+        self.acdc_df = acdc_df
+        self.SizeT = SizeT
+        
+        mainLayout = QVBoxLayout()
+        infoLabel = QLabel(html_utils.paragraph(
+            'Define reusable values for time point formulas and Python predictors. '
+            'Each constant has a <b>time scope</b> (Entire video, Per frame, '
+            'or Custom frame range), '
+            'a <b>cell filter</b>, and a <b>formula</b>. '
+            'Add a preset or a custom constant, then configure it in one form.'
+        ))
+        infoLabel.setWordWrap(True)
+        mainLayout.addWidget(infoLabel)
+        
+        presetLayout = QHBoxLayout()
+        presetLayout.addWidget(QLabel('Preset:'))
+        self.presetCombobox = QComboBox()
+        self.presetCombobox.addItems(list(timepoint_predictors.CONSTANT_PRESETS))
+        presetLayout.addWidget(self.presetCombobox)
+        presetLayout.addWidget(QLabel('of'))
+        self.columnCombobox = QComboBox()
+        self.columnCombobox.setEditable(True)
+        self.columnCombobox.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.columnCombobox.setMinimumWidth(200)
+        self.columnCombobox.addItems(self.numericColumns())
+        presetLayout.addWidget(self.columnCombobox, 1)
+        self.addPresetButton = widgets.addPushButton('Add preset')
+        presetLayout.addWidget(self.addPresetButton)
+        mainLayout.addLayout(presetLayout)
+        
+        self.table = QTableWidget(0, 5)
+        self.table.setHorizontalHeaderLabels(
+            ['Name', 'Cell filtering', 'Filter / frame rule', 'Time scope', 'Formula']
+        )
+        self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        header = self.table.horizontalHeader()
+        for col in range(self.EQUATION_COL):
+            header.setSectionResizeMode(
+                col, QHeaderView.ResizeMode.ResizeToContents
+            )
+        header.setSectionResizeMode(
+            self.EQUATION_COL, QHeaderView.ResizeMode.Stretch
+        )
+        self.table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.table.verticalHeader().setVisible(False)
+        for constant in constants:
+            self.addConstant(constant)
+        mainLayout.addWidget(self.table)
+        
+        functions = ', '.join(timepoint_predictors.CELL_FUNCTIONS)
+        variables = ', '.join(
+            f'{name} ({description.lower()})' for name, description 
+            in timepoint_predictors.CONSTANT_VARIABLES.items()
+        )
+        prefix = timepoint_predictors.THIS_PREFIX
+        helpLabel = QLabel(html_utils.paragraph(
+            f'Functions: <code>{functions}</code>.<br>'
+            f'Variables: <code>{variables}</code>, columns of the '
+            'measurements table and constants defined above.<br>'
+            '<b>Double-click a constant</b> or click Edit selected to set its '
+            'time scope, filter, Any/All/Only where true rule, and custom range. '
+            'Filter and value formulas use the standard formula editor with '
+            'separate candidate and enquiring-cell inputs. Custom filters can '
+            'also use a Python file defining '
+            '<code>filter_cells(df, enquiring_df)</code>.<br>'
+            f'Enquiring inputs use <code>{prefix}</code>, for example '
+            f'<code>cell_area_pxl &gt; {prefix}cell_area_pxl</code>.',
+            font_size='11px'
+        ))
+        helpLabel.setWordWrap(True)
+        mainLayout.addWidget(helpLabel)
+        
+        tableButtonsLayout = QHBoxLayout()
+        self.addCustomButton = widgets.addPushButton('Add custom constant')
+        self.editButton = widgets.editPushButton('Edit selected')
+        self.removeButton = widgets.delPushButton('Remove selected')
+        self.previewButton = widgets.calcPushButton('Preview values')
+        tableButtonsLayout.addWidget(self.addCustomButton)
+        tableButtonsLayout.addWidget(self.editButton)
+        tableButtonsLayout.addWidget(self.removeButton)
+        tableButtonsLayout.addStretch(1)
+        tableButtonsLayout.addWidget(self.previewButton)
+        mainLayout.addLayout(tableButtonsLayout)
+        
+        self.previewDisplay = QTextEdit()
+        self.previewDisplay.setReadOnly(True)
+        self.previewDisplay.setMaximumHeight(180)
+        mainLayout.addWidget(self.previewDisplay)
+        self.statusLabel = QLabel()
+        self.statusLabel.setWordWrap(True)
+        mainLayout.addWidget(self.statusLabel)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        mainLayout.addLayout(buttonsLayout)
+        
+        self.addPresetButton.clicked.connect(self.addPreset)
+        self.addCustomButton.clicked.connect(self.addCustomConstant)
+        self.editButton.clicked.connect(self.editSelected)
+        self.table.cellDoubleClicked.connect(self.editSelected)
+        self.removeButton.clicked.connect(self.removeSelected)
+        self.previewButton.clicked.connect(self.preview)
+        self.presetCombobox.currentTextChanged.connect(self.presetChanged)
+        self.presetChanged(self.presetCombobox.currentText())
+        
+        self.setLayout(mainLayout)
+        self.resize(900, 560)
+    
+    def numericColumns(self):
+        if self.acdc_df is None:
+            return []
+        df = self.acdc_df.reset_index()
+        return [
+            str(col) for col in df.columns 
+            if pd.api.types.is_numeric_dtype(df[col].dtype)
+            and not pd.api.types.is_bool_dtype(df[col].dtype)
+            and col not in ('frame_i', 'Cell_ID')
+        ]
+    
+    def tableColumns(self):
+        if self.acdc_df is None:
+            return set()
+        return set(map(str, self.acdc_df.reset_index().columns))
+    
+    def presetChanged(self, label):
+        self.columnCombobox.setEnabled(
+            bool(label) and self._predictors.preset_needs_column(label)
+        )
+    
+    def addConstant(self, constant):
+        constant = self._predictors.normalize_constant(constant)
+        row = self.table.rowCount()
+        self.table.insertRow(row)
+        self.updateConstantRow(row, constant)
+        return row
+
+    def updateConstantRow(self, row, constant):
+        Item = self._QTableWidgetItem
+        nameItem = Item(constant['name'])
+        nameItem.setData(Qt.ItemDataRole.UserRole, dict(constant))
+        self.table.setItem(row, self.NAME_COL, nameItem)
+        self.table.setItem(row, self.SOURCE_COL, Item(
+            self._predictors.SOURCE_CELLS[constant['source']]
+        ))
+        condition = (
+            constant['condition_filepath'] if constant['condition_type'] == 'file'
+            else constant['condition']
+        )
+        rule = self._predictors.FILTER_FRAME_MODES[constant['condition_mode']]
+        description = f'{rule}: {condition}' if condition else ''
+        self.table.setItem(row, self.CONDITION_COL, Item(description))
+        scope = self._predictors.CONSTANT_TIME_SCOPES[constant['time_scope']]
+        if constant['time_scope'] == 'custom':
+            scope += f' [{constant["range_start"]}, {constant["range_end"]}]'
+        self.table.setItem(row, self.PER_FRAME_COL, Item(scope))
+        self.table.setItem(row, self.EQUATION_COL, Item(constant['equation']))
+    
+    def uniqueName(self, name):
+        names = {constant['name'] for constant in self.currentConstants()}
+        unique, n = name, 2
+        while unique in names:
+            unique, n = f'{name}_{n}', n + 1
+        return unique
+    
+    def addPreset(self, checked=False):
+        label = self.presetCombobox.currentText()
+        col = self.columnCombobox.currentText().strip()
+        if self._predictors.preset_needs_column(label) and not col:
+            self.statusLabel.setText('Select a column for this preset.')
+            return
+        constant = self._predictors.constant_from_preset(label, col)
+        constant['name'] = self.uniqueName(constant['name'])
+        self.addConfiguredConstant(constant)
+    
+    def addCustomConstant(self, checked=False):
+        constant = self._predictors.default_constant(
+            self.uniqueName('constant')
+        )
+        self.addConfiguredConstant(constant)
+
+    def addConfiguredConstant(self, constant):
+        try:
+            df = self.editorData(self.table.rowCount())
+        except Exception as err:
+            self._showError(err)
+            return
+        dialog = CellConstantDefinitionDialog(
+            constant, acdc_df=df, SizeT=self.SizeT, parent=self
+        )
+        dialog.exec_()
+        if not dialog.cancel:
+            row = self.addConstant(dialog.constant)
+            self.table.selectRow(row)
+
+    def editorData(self, row):
+        values = self._predictors.compute_cell_constants(
+            self.acdc_df, self.currentConstants()[:row], SizeT=self.SizeT
+        )
+        return self._predictors.add_constants_columns(self.acdc_df, values)
+
+    def editSelected(self, *args):
+        row = self.table.currentRow()
+        if row < 0:
+            self.statusLabel.setText('Select a constant to edit.')
+            return
+        try:
+            df = self.editorData(row)
+        except Exception as err:
+            self._showError(err)
+            return
+        dialog = CellConstantDefinitionDialog(
+            self.currentConstants()[row], acdc_df=df, SizeT=self.SizeT, parent=self
+        )
+        dialog.exec_()
+        if not dialog.cancel:
+            self.updateConstantRow(row, dialog.constant)
+    
+    def removeSelected(self, checked=False):
+        rows = sorted(
+            {index.row() for index in self.table.selectedIndexes()}, 
+            reverse=True
+        )
+        for row in rows:
+            self.table.removeRow(row)
+    
+    def currentConstants(self):
+        return [
+            dict(self.table.item(row, self.NAME_COL).data(Qt.ItemDataRole.UserRole))
+            for row in range(self.table.rowCount())
+        ]
+    
+    def validateConstants(self):
+        constants = self.currentConstants()
+        self._predictors.validate_constants(
+            constants, columns=self.tableColumns()
+        )
+        values = None
+        if self.acdc_df is not None and not self.acdc_df.empty:
+            values = self._predictors.compute_cell_constants(
+                self.acdc_df, constants, SizeT=self.SizeT
+            )
+        return constants, values
+    
+    def _showError(self, err):
+        self.previewDisplay.setPlainText(str(err))
+        self.previewDisplay.setStyleSheet('border: 2px solid red')
+        self.statusLabel.setText(html_utils.paragraph(
+            f'<font color="red">{html.escape(str(err))}</font>'
+        ))
+    
+    def preview(self, checked=False):
+        try:
+            constants, values = self.validateConstants()
+        except Exception as err:
+            traceback.print_exc()
+            self._showError(err)
+            return False
+        if values is None:
+            self.statusLabel.setText(
+                'Constants are valid. Load measurements to preview the values.'
+            )
+            return True
+        preview = self._predictors.add_constants_columns(
+            self.acdc_df, values
+        ).reset_index()
+        isPerFrame = any(isinstance(v, pd.Series) for v in values.values())
+        if not isPerFrame:
+            preview = preview.drop_duplicates('Cell_ID')
+        cols = ['frame_i', 'Cell_ID'] if isPerFrame else ['Cell_ID']
+        preview = preview[[*cols, *values]]
+        self.previewDisplay.setHtml(preview.head(20).to_html(index=False))
+        self.previewDisplay.setStyleSheet('border: 2px solid green')
+        what = 'rows' if isPerFrame else 'cells'
+        self.statusLabel.setText(
+            f'Computed {len(constants)} constant(s) for {len(preview)} '
+            f'{what} (showing the first 20).'
+        )
+        return True
+    
+    def warn(self, title, text):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, title, html_utils.paragraph(text))
+    
+    def ok_cb(self):
+        try:
+            constants, _ = self.validateConstants()
+        except Exception as err:
+            self._showError(err)
+            self.warn('Invalid constants', html.escape(str(err)))
+            return
+        self.constants = constants
+        self.cancel = False
+        self.close()
+
+
 class stopFrameDialog(QBaseDialog):
     def __init__(self, posDatas, parent=None):
         super().__init__(parent=parent)
