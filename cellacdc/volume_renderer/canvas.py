@@ -1249,7 +1249,6 @@ class VolumeRendererWindow(QMainWindow):
             ]
             visible = np.isin(points_layer._label_ids, visible_label_ids)
             points_xyz = points_xyz[visible]
-
         
         markers.set_data(
             points_xyz, 
@@ -1411,7 +1410,7 @@ class VolumeRendererWindow(QMainWindow):
     def _frame_number_changed(self, frame_n: int):
         if self._object_labels_list_buttongroup is None:
             for channel_data in self._channels_data.values():
-                channel_data.node.set_data(channel_data._raw_volume[frame_n-1])
+                channel_data.node.set_data(channel_data._raw_volume[frame_n - 1])
             self._update_markers(update=False)
             self._canvas.update()
             return
