@@ -21780,7 +21780,9 @@ as a single file containing multiple positions. If fields of view were acquired 
         )
 
         row += 1
-        self.sourceFolderPathControl = widgets.FolderPathControl()
+        self.sourceFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
 
         noteText = ("""
 Microscopy files are those files that are typically generated 
@@ -21812,7 +21814,9 @@ Please make sure this folder contains <b>only microscopy files</b> and no other 
         )
 
         row += 1
-        self.dstFolderPathControl = widgets.FolderPathControl()
+        self.dstFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
 
         data_structure_url_href = html_utils.href_tag(
             'documentation page', urls.data_structure_docs_url)
@@ -22460,6 +22464,14 @@ class SearchableListboxDialog(QBaseDialog):
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
+        is_any_item_path = any([os.path.exists(item) for item in items])
+        if is_any_item_path:
+            showInFileManagerButton = widgets.showInFileManagerButton(
+                myutils.get_open_filemaneger_os_string()
+            )
+            buttonsLayout.insertWidget(3, showInFileManagerButton)
+            showInFileManagerButton.clicked.connect(self.showInFileManager)
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         if not self.multiSelection:
@@ -22476,6 +22488,27 @@ class SearchableListboxDialog(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.setFont(fonts.font)
+    
+    def showInFileManager(self):
+        selected_items = self.listWidget.selectedItems()
+        selected_texts = [
+            item.data(0, Qt.UserRole) or item.text(0)
+            for item in selected_items
+        ]
+        valid_paths = [
+            text for text in selected_texts if os.path.exists(text)
+        ]
+        if not valid_paths:
+            print('WARNING: None of the selected items is a valid path')
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                'None of the selected items is a valid path :(.'
+            )
+            msg.warning(self, 'Not a valid path', txt)
+            return
+        
+        first_valid_path = valid_paths[0]
+        myutils.showInExplorer(first_valid_path)
 
     def _lastEditedDate(self, item_text):
         """Return a display date and tooltip for an item's modification time.

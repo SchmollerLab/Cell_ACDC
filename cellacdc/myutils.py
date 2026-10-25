@@ -5858,10 +5858,12 @@ def download_3d_renderer_demo_data():
     
     return exp_folderpath
     
-def get_recent_paths(*args):
+def get_recent_paths(*args, only_existing=True):
     """Return existing unique paths and their aligned most recent dates."""
     if os.path.exists(recentPaths_path):
         df = pd.read_csv(recentPaths_path, index_col='index')
+        if only_existing:
+            df = df[df['path'].apply(os.path.exists)]
         if 'opened_last_on' in df.columns:
             df = df.sort_values('opened_last_on', ascending=False)
         df['path'] = df['path'].map(str)
@@ -5967,6 +5969,7 @@ def get_export_current_view_gui_most_recent_path():
             export_current_view_gui_recent_paths_csv_path, 
             index_col='index'
         )
+        df = df[df['path'].apply(os.path.exists)]
         if 'opened_last_on' in df.columns:
             df = df.sort_values('opened_last_on', ascending=False)
         most_recent_path = ''
@@ -5987,6 +5990,7 @@ def get_export_current_view_gui_recent_paths(self):
         if 'opened_last_on' in df.columns:
             df = df.sort_values('opened_last_on', ascending=False)
         df['path'] = df['path'].map(str)
+        df = df[df['path'].apply(os.path.exists)]
         df = df.loc[df['path'].map(os.path.isdir).astype(bool)].copy()
         df['path'] = df['path'].str.replace('\\', '/')
         df = df.drop_duplicates(subset='path', keep='first')

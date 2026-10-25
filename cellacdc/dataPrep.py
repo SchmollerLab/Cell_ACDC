@@ -501,7 +501,6 @@ class dataPrepWin(QMainWindow):
 
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
         self.zSliceScrollBar.setFixedHeight(20)
-        self.zSliceScrollBar.setDisabled(True)
         self.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
@@ -514,7 +513,6 @@ class dataPrepWin(QMainWindow):
                                      'max z-projection',
                                      'mean z-projection',
                                      'median z-proj.'])
-        self.zProjComboBox.setDisabled(True)
 
         self.zProjLockViewButton = widgets.LockPushButton()
         self.zProjLockViewButton.setCheckable(True)
@@ -527,7 +525,6 @@ class dataPrepWin(QMainWindow):
             'To apply the selected view to all frames, use the tools on the top '
             'toolbar.'
         )
-        self.zProjLockViewButton.setDisabled(True)
 
         self.img_Widglayout.addWidget(navSB_label, 0, 0, alignment=Qt.AlignCenter)
         self.img_Widglayout.addWidget(self.navSpinBox, 0, 1)
@@ -2230,10 +2227,8 @@ class dataPrepWin(QMainWindow):
         posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
         
         if how == 'single z-slice':
-            self.zSliceScrollBar.setDisabled(False)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.zSliceScrollBar.setDisabled(True)
             self.update_img()
 
         self.save_segmInfo_df_pos()
@@ -2973,6 +2968,7 @@ class dataPrepWin(QMainWindow):
         self.SizeZlabel.setVisible(posData.SizeZ > 1)
         self.zProjComboBox.setVisible(posData.SizeZ > 1)
         self.zProjLockViewButton.setVisible(posData.SizeZ > 1)
+        self.SizeZlabel.setText(f'/{posData.SizeZ}')
 
         self.navigateScrollbar.setMinimum(1)
         self.navSpinBox.setMinimum(1)
