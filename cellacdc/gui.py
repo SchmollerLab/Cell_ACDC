@@ -3808,18 +3808,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         labels = []
         max_ID = 1
         for frame_i in range(len(posData.segm_data)):
-            lab = posData.allData_li[frame_i]['labels']
-            if lab is None:
-                lab = posData.segm_data[frame_i]
-                max_ID_i = np.max(lab)
+            if frame_i == posData.frame_i:
+                lab = posData.lab
             else:
-                max_ID_i = max(posData.allData_li[frame_i]['IDs'], default=1)
+                lab = posData.allData_li[frame_i]['labels']
+                if lab is None:
+                    lab = posData.segm_data[frame_i]
             labels.append(lab)
+            try:
+                max_ID_i = np.max(lab)
+            except Exception as err:
+                max_ID_i = 1
             if max_ID_i > max_ID:
                 max_ID = max_ID_i
 
         labels = np.asarray(labels)
-        max_ID = max(posData.IDs, default=1)
         lut = self.extendLabelsLUT(max_ID+1, return_lut=True)
         lut = lut[:max_ID+1]
         self._volume_renderer.set_labels(
@@ -23275,6 +23278,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateLostNewCurrentIDs()
         self.updateLostNewCurrentIDs()
         self.updateAllImages()
+        self.update3DViewer()
         if do_store_data: 
             self.updateFramePosLabel()
             self.updateViewerWindow()

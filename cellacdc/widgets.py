@@ -4755,6 +4755,7 @@ class DoubleSpinBox(QDoubleSpinBox):
 class SpinBox(QSpinBox):
     sigUpClicked = Signal()
     sigDownClicked = Signal()
+    sigValueChanged = Signal(int)
 
     def __init__(
         self,
@@ -4777,6 +4778,7 @@ class SpinBox(QSpinBox):
         self._linkedWidget = None
         self._start_value = None
         self._display_correction = 0
+        self.valueChanged.connect(self.sigValueChanged.emit)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -13203,7 +13205,7 @@ class AutoSaveIntervalWidget(QWidget):
         layout.setStretch(0, 1)
         layout.setStretch(1, 0)
         layout.setContentsMargins(5, 0, 5, 0)
-        
+    
         self.setLayout(layout)
         
         self.spinbox.sigValueChanged.connect(self.emitSigValueChanged)

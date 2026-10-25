@@ -235,10 +235,7 @@ class LabelsOverlay(QWidget):
         self.update()
 
     def setAnnotationsVisible(self, visible: bool):
-        for ann in self.renderer._label_annotations.values():
-            ann.visible = visible
-
-        self.update()
+        self.setVisible(visible)
 
     # -------------------------------------------------------------------------
 

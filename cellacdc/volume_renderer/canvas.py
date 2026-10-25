@@ -387,6 +387,7 @@ class VolumeRendererWindow(QMainWindow):
 
         frame_i = self._frames_scrollbar.value() - 1
         self._set_labels_text(self._rp[frame_i], font_size)
+        self._labels_text_overlay.setTextColor(pg.mkColor(text_color))
 
         text_settings_groupbox = QGroupBox('Text settings')
         text_settings_layout = widgets.FormLayout()
@@ -469,11 +470,13 @@ class VolumeRendererWindow(QMainWindow):
                 visible=visible,
             )
 
-        self._labels_text_overlay = _widgets.LabelsOverlay(
-            self, font_size=font_size
-        )
-
-        self._canvas.events.draw.connect(self._update_labels_overlay)
+        if self._labels_text_overlay is None:
+            self._labels_text_overlay = _widgets.LabelsOverlay(
+                self, font_size=font_size
+            )
+            self._canvas.events.draw.connect(self._update_labels_overlay)
+        else:
+            self._labels_text_overlay.setFontSize(font_size)
 
     def _update_labels_overlay(self, event=None):
         if not self._label_annotations:
@@ -519,6 +522,7 @@ class VolumeRendererWindow(QMainWindow):
             self._label_annotations[checkbox.obj.label].visible = checked
 
         self._update_lab_node(update=False)
+        self._update_display(exclude_lab=True)
         self._labels_text_overlay.update()
     
     def _update_lab_node(self, update=True):
@@ -1240,7 +1244,7 @@ class VolumeRendererWindow(QMainWindow):
             markers.visible = False
             return
 
-        markers.visible = True
+        markers.visible = points_layer.toolbutton.isChecked()
         if self._orig_lab is not None:
             visible_label_ids = [
                 int(cb.text()) 
@@ -1641,6 +1645,7 @@ class VolumeRendererWindow(QMainWindow):
                 points_xyz = points_df_t[zyx_columns_names[::-1]].to_numpy()
                 points_t_xyz[t] = points_xyz
         elif points is not None:
+            points_t_xyz = {}
             points = np.asarray(points)
             if points.shape[1] == 3:
                 points_t_xyz[0] = points[:, [2, 1, 0]]
