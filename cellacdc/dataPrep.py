@@ -45,6 +45,7 @@ from . import io
 from . import qutils
 from .help import about
 from . import fonts
+from . import settings_csv_path
 
 if os.name == 'nt':
     try:
@@ -95,6 +96,8 @@ class dataPrepWin(QMainWindow):
         self.log_filename = log_filename
         self.logs_path = logs_path
 
+        self.loadLastSessionSettings()
+
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         if mainWin is not None:
@@ -137,7 +140,7 @@ class dataPrepWin(QMainWindow):
 
         mainLayout = QGridLayout()
         mainLayout.addWidget(self.graphLayout, 0, 0, 1, 1)
-        mainLayout.addLayout(self.img_Widglayout, 1, 0)
+        mainLayout.addWidget(self.bottomContainer, 1, 0)
 
         mainContainer.setLayout(mainLayout)
 
@@ -228,18 +231,24 @@ class dataPrepWin(QMainWindow):
         self.addBkrgRoiActon = QAction(QIcon(":bkgrRoi.svg"), toolTip, self)
         self.addBkrgRoiActon.setDisabled(True)
 
-        self.ZbackAction = QAction(QIcon(":zback.svg"),
-                                "Use same z-slice from first frame to here",
-                                self)
+        self.ZbackAction = QAction(
+            QIcon(":zback.svg"),
+            "Use the same z-slice or projection from first frame to current frame",
+            self
+        )
         self.ZbackAction.setEnabled(False)
-        self.ZforwAction = QAction(QIcon(":zforw.svg"),
-                                "Use same z-slice from here to last frame",
-                                self)
+        self.ZforwAction = QAction(
+            QIcon(":zforw.svg"),
+            "Use the same z-slice or projection from current frame to last frame",
+            self
+        )
         self.ZforwAction.setEnabled(False)
 
-        self.interpAction = QAction(QIcon(":interp.svg"),
-                                "Interpolate z-slice from first slice to here",
-                                self)
+        self.interpAction = QAction(
+            QIcon(":interp.svg"),
+            "Interpolate the z-slice from first frame to current frame",
+            self
+        )
         self.interpAction.setEnabled(False)
 
 
@@ -470,22 +479,31 @@ class dataPrepWin(QMainWindow):
 
     def gui_createImgWidgets(self):
         self.img_Widglayout = QGridLayout()
+        self.bottomContainer = QWidget()
+        self.bottomContainer.setLayout(self.img_Widglayout)
 
         _font = QFont()
         _font.setPixelSize(13)
 
+        self.bottomLayoutContextMenu = QMenu('Bottom layout', self)
+
         self.navigateScrollbar = QScrollBar(Qt.Horizontal)
         self.navigateScrollbar.setFixedHeight(20)
         self.navigateScrollbar.setDisabled(True)
+        self.navSpinBox = widgets.SpinBox(disableKeyPress=True)
+        self.navSpinBox.setMinimum(1)
+        self.navSpinBox.setMaximum(100)
+        self.navSizeLabel = QLabel('/ND')
         navSB_label = QLabel('')
         navSB_label.setFont(_font)
         self.navigateSB_label = navSB_label
 
-
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
         self.zSliceScrollBar.setFixedHeight(20)
-        self.zSliceScrollBar.setDisabled(True)
-        _z_label = QLabel('z-slice  ')
+        self.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.zSliceSpinbox.setMinimum(1)
+        self.SizeZlabel = QLabel('/ND')
+        _z_label = widgets.Label('z-slice  ')
         _z_label.setFont(_font)
         self.z_label = _z_label
 
@@ -494,35 +512,96 @@ class dataPrepWin(QMainWindow):
                                      'max z-projection',
                                      'mean z-projection',
                                      'median z-proj.'])
-        self.zProjComboBox.setDisabled(True)
 
         self.zProjLockViewButton = widgets.LockPushButton()
         self.zProjLockViewButton.setCheckable(True)
         self.zProjLockViewButton.setToolTip(
             'If active (lock closed), '
-            'the selected z-slice view is applied to all frames or Positions.\n\n'
+            'the selected z-slice view will be applied to the frames or Positions you will visit.\n\n'
             'IMPORTANT: The z-slice/projection mode are stored as the view '
             'to use for segmentation\n'
-            'only when you visit the frame/Position.'
+            'only when you visit the frame/Position.\n\n'
+            'To apply the selected view to all frames, use the tools on the top '
+            'toolbar.'
         )
-        self.zProjLockViewButton.setDisabled(True)
 
         self.img_Widglayout.addWidget(navSB_label, 0, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.navigateScrollbar, 0, 1)
+        self.img_Widglayout.addWidget(self.navSpinBox, 0, 1)
+        self.img_Widglayout.addWidget(self.navSizeLabel, 0, 2)
+        self.img_Widglayout.addWidget(self.navigateScrollbar, 0, 3)
 
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1)
+        self.img_Widglayout.addWidget(self.zSliceSpinbox, 1, 1)
+        self.img_Widglayout.addWidget(self.SizeZlabel, 1, 2)
+        self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 3)
 
-        self.img_Widglayout.addWidget(self.zProjComboBox, 1, 2)
+        self.img_Widglayout.addWidget(self.zProjComboBox, 1, 4)
 
-        self.img_Widglayout.addWidget(self.zProjLockViewButton, 1, 3)
+        self.img_Widglayout.addWidget(self.zProjLockViewButton, 1, 5)
 
         self.img_Widglayout.setColumnStretch(0, 0)
-        self.img_Widglayout.setColumnStretch(1, 1)
+        self.img_Widglayout.setColumnStretch(1, 0)
         self.img_Widglayout.setColumnStretch(2, 0)
-        self.img_Widglayout.setColumnStretch(3, 0)
+        self.img_Widglayout.setColumnStretch(3, 1)
+        self.img_Widglayout.setColumnStretch(4, 0)
+        self.img_Widglayout.setColumnStretch(5, 0)
 
         self.img_Widglayout.setContentsMargins(100, 0, 20, 0)
+
+        self.showFrameIndexAction = (
+                self.bottomLayoutContextMenu.addAction(
+                    'Show frame index (starts at 0)'
+            )
+        )
+        self.showFrameIndexAction.setCheckable(True)
+        self.showZsliceIndexAction = (
+                self.bottomLayoutContextMenu.addAction(
+                    'Show z-slice index (starts at 0)'
+            )
+        )
+        self.showZsliceIndexAction.setCheckable(True)
+
+        self.showFrameIndexAction.toggled.connect(self.showFrameIndexToggled)
+        self.showZsliceIndexAction.toggled.connect(self.showZsliceIndexToggled)
+
+        self.bottomContainer.setVisible(False)
+    
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.RightButton:
+            pos = self.bottomContainer.mapFromGlobal(event.globalPos())
+            if pos.y()>=0:
+                self.gui_raiseBottomLayoutContextMenu(event)
+    
+    def showFrameIndexToggled(self, checked):
+        start_value = 0 if checked else 1
+        self.navSpinBox.setStartValue(start_value)
+
+        correction = start_value - self.navSpinBox.minimum()
+        maximum = self.navSpinBox.maximum()
+        self.navSizeLabel.setText(f'/{maximum + correction}')
+
+        value = 'Yes' if checked else 'No'
+        self.df_settings.at['showFrameIndex_dataPrep', 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
+    
+    def showZsliceIndexToggled(self, checked):
+        start_value = 0 if checked else 1
+        self.zSliceSpinbox.setStartValue(start_value)
+
+        correction = start_value - self.zSliceSpinbox.minimum()
+        maximum = self.zSliceSpinbox.maximum()
+        self.SizeZlabel.setText(f'/{maximum + correction}')
+
+        value = 'Yes' if checked else 'No'
+        self.df_settings.at['showZsliceIndex_dataPrep', 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
+    
+    def gui_raiseBottomLayoutContextMenu(self, event):
+        try:
+            # Convert QPointF to QPoint
+            self.bottomLayoutContextMenu.popup(event.globalPos().toPoint())
+        except AttributeError:
+            self.bottomLayoutContextMenu.popup(event.globalPos())
 
     def gui_hoverEventImg(self, event):
         # Update x, y, value label bottom right
@@ -599,26 +678,6 @@ class dataPrepWin(QMainWindow):
             self.frame_i = self.num_frames-1
         self.update_img()
 
-    def updateNavigateItems(self):
-        posData = self.data[self.pos_i]
-        if self.num_pos > 1:
-            self.navigateSB_label.setText(f'Pos n. {self.pos_i+1}')
-            try:
-                self.navigateScrollbar.valueChanged.disconnect()
-            except TypeError:
-                pass
-            self.navigateScrollbar.setValue(self.pos_i+1)
-        else:
-            self.navigateSB_label.setText(f'frame n. {self.frame_i+1}')
-            try:
-                self.navigateScrollbar.valueChanged.disconnect()
-            except TypeError:
-                pass
-            self.navigateScrollbar.setValue(self.frame_i+1)
-        self.navigateScrollbar.valueChanged.connect(
-            self.navigateScrollbarValueChanged
-        )
-
     def zSlice(self, posData, frame_i):
         df = posData.segmInfo_df
         idx = (posData.filename, frame_i)
@@ -660,6 +719,7 @@ class dataPrepWin(QMainWindow):
         
         # With lock button we use the projection of the combobox and we store it
         posData.segmInfo_df.at[idx, 'which_z_proj'] = currentZprojHow
+        posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = currentZprojHow
         self.save_segmInfo_df_pos()
 
         return currentZprojHow
@@ -671,7 +731,6 @@ class dataPrepWin(QMainWindow):
             img = img_data.copy()
         if posData.SizeZ > 1:
             if force_z is not None:
-                self.z_label.setText(f'z-slice  {force_z+1}/{posData.SizeZ}')
                 img = img[force_z]
                 return img
             
@@ -680,7 +739,6 @@ class dataPrepWin(QMainWindow):
             z = self.zSlice(posData, frame_i)
             zProjHow = self.zProjHow(posData, frame_i)
             if zProjHow == 'single z-slice':
-                self.z_label.setText(f'z-slice  {z+1}/{posData.SizeZ}')
                 img = img[z]
             elif zProjHow == 'max z-projection':
                 img = img.max(axis=0)
@@ -695,7 +753,6 @@ class dataPrepWin(QMainWindow):
 
     @exception_handler
     def update_img(self):
-        self.updateNavigateItems()
         posData = self.data[self.pos_i]
         img = self.getImage(posData, posData.img_data, self.frame_i)
         if self.zProjComboBox.currentText() == 'single z-slice':
@@ -780,19 +837,6 @@ class dataPrepWin(QMainWindow):
                 pass
 
     def init_attr(self):
-        posData = self.data[0]
-        self.navigateScrollbar.setEnabled(True)
-        self.navigateScrollbar.setMinimum(1)
-        if posData.SizeT > 1:
-            self.navigateScrollbar.setMaximum(posData.SizeT)
-        elif self.num_pos > 1:
-            self.navigateScrollbar.setMaximum(self.num_pos)
-        else:
-            self.navigateScrollbar.setDisabled(True)
-        self.navigateScrollbar.setValue(1)
-        self.navigateScrollbar.valueChanged.connect(
-            self.navigateScrollbarValueChanged
-        )
         self.startFrameIdxCrop = 0
         self.endFrameIdxCrop = None
         self.isFreeRoiDrag = False
@@ -806,6 +850,10 @@ class dataPrepWin(QMainWindow):
         else:
             self.frame_i = value-1
             self.update_img()
+        
+        self.navSpinBox.blockSignals(True)
+        self.navSpinBox.setValue(value)
+        self.navSpinBox.blockSignals(False)
 
     @exception_handler
     def crop(self, data, posData, cropROI):
@@ -2155,57 +2203,31 @@ class dataPrepWin(QMainWindow):
                     posData.segmInfo_df = pd.concat([df, posData.segmInfo_df])
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
-        posData = self.data[0]
-        qutils.tryDisconnectSignal(self.zSliceScrollBar, 'valueChanged')
-        qutils.tryDisconnectSignal(self.zProjComboBox, 'currentTextChanged')
-        qutils.tryDisconnectSignal(self.zProjLockViewButton, 'sigToggled')
-        if posData.SizeZ > 1:
-            self.z_label.setDisabled(False)
-            self.zSliceScrollBar.setDisabled(False)
-            self.zProjComboBox.setDisabled(False)
-            self.zProjLockViewButton.setDisabled(False)
-            self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
-            self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
-            self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
-            self.zProjLockViewButton.sigToggled.connect(
-                self.zProjLockViewToggled
-            )
-            if posData.SizeT > 1:
-                self.interpAction.setEnabled(True)
-            self.ZbackAction.setEnabled(True)
-            self.ZforwAction.setEnabled(True)
-            df = posData.segmInfo_df
-            idx = (posData.filename, self.frame_i)
-            how = posData.segmInfo_df.at[idx, 'which_z_proj']
-            self.zProjComboBox.setCurrentText(how)
-        else:
-            self.zSliceScrollBar.setDisabled(True)
-            self.zProjComboBox.setDisabled(True)
-            self.z_label.setDisabled(True)
-            self.zProjLockViewButton.setDisabled(True)
-
     def update_z_slice(self, z):
-        if self.zProjComboBox.currentText() == 'single z-slice':
-            posData = self.data[self.pos_i]
-            df = posData.segmInfo_df
-            idx = (posData.filename, self.frame_i)
-            posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep'] = z
-            self.update_img()
-            self.save_segmInfo_df_pos()
+        if self.zProjComboBox.currentText() != 'single z-slice':
+            return
+
+        self.zSliceSpinbox.blockSignals(True)
+        self.zSliceSpinbox.setValue(z+1)
+        self.zSliceSpinbox.blockSignals(False)
+
+        posData = self.data[self.pos_i]
+        df = posData.segmInfo_df
+        idx = (posData.filename, self.frame_i)
+        posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep'] = z
+        self.update_img()
+        self.save_segmInfo_df_pos()
 
 
     def updateZproj(self, how):
         posData = self.data[self.pos_i]
         idx = (posData.filename, self.frame_i)
         posData.segmInfo_df.at[idx, 'which_z_proj'] = how
+        posData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
         
         if how == 'single z-slice':
-            self.zSliceScrollBar.setDisabled(False)
-            self.z_label.setStyleSheet(None)
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.zSliceScrollBar.setDisabled(True)
-            self.z_label.setStyleSheet('color: gray')
             self.update_img()
 
         self.save_segmInfo_df_pos()
@@ -2251,6 +2273,7 @@ class dataPrepWin(QMainWindow):
                 df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = z
                 df.at[(posData.filename, i), 'z_slice_used_gui'] = z
                 df.at[(posData.filename, i), 'which_z_proj'] = how
+                df.at[(posData.filename, i), 'which_z_proj_gui'] = how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         elif posData.SizeZ > 1:
             for _posData in self.data[:self.pos_i]:
@@ -2258,6 +2281,7 @@ class dataPrepWin(QMainWindow):
                 df.at[(_posData.filename, 0), 'z_slice_used_dataPrep'] = z
                 df.at[(_posData.filename, 0), 'z_slice_used_gui'] = z
                 df.at[(_posData.filename, 0), 'which_z_proj'] = how
+                df.at[(_posData.filename, 0), 'which_z_proj_gui'] = how
             self.save_segmInfo_df_pos()
 
     def useSameZ_fromHereForw(self, event):
@@ -2270,6 +2294,7 @@ class dataPrepWin(QMainWindow):
                 df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = z
                 df.at[(posData.filename, i), 'z_slice_used_gui'] = z
                 df.at[(posData.filename, i), 'which_z_proj'] = how
+                df.at[(posData.filename, i), 'which_z_proj_gui'] = how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         elif posData.SizeZ > 1:
             for _posData in self.data[self.pos_i:]:
@@ -2277,6 +2302,7 @@ class dataPrepWin(QMainWindow):
                 df.at[(_posData.filename, 0), 'z_slice_used_dataPrep'] = z
                 df.at[(_posData.filename, 0), 'z_slice_used_gui'] = z
                 df.at[(_posData.filename, 0), 'which_z_proj'] = how
+                df.at[(_posData.filename, 0), 'which_z_proj_gui'] = how
 
             self.save_segmInfo_df_pos()
 
@@ -2293,6 +2319,7 @@ class dataPrepWin(QMainWindow):
             df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = zz[i]
             df.at[(posData.filename, i), 'z_slice_used_gui'] = zz[i]
             df.at[(posData.filename, i), 'which_z_proj'] = 'single z-slice'
+            df.at[(posData.filename, i), 'which_z_proj_gui'] = 'single z-slice'
         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
     
     def waitAlignDataWorker(self):
@@ -2834,7 +2861,7 @@ class dataPrepWin(QMainWindow):
         # Step 1. Read recent Paths
         recentPaths, dates = myutils.get_recent_paths(self)
         actions = []
-        for path in recentPaths:
+        for path in recentPaths[:20]:
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
@@ -2889,6 +2916,7 @@ class dataPrepWin(QMainWindow):
         self.num_pos = len(user_ch_file_paths)
 
         proceed = self.init_data(user_ch_file_paths, user_ch_name)
+        self.initNavigateWidgets()
 
         if not proceed:
             self.openFolderAction.setEnabled(True)
@@ -2926,6 +2954,89 @@ class dataPrepWin(QMainWindow):
         self.setFontSizeROIlabels()
 
         self.stopAutomaticLoadingPos()
+    
+    def initNavigateWidgets(self):
+        posData = self.data[self.pos_i]
+
+        self.bottomContainer.setVisible(True)
+        
+        self.z_label.setVisible(posData.SizeZ > 1)
+        self.zSliceScrollBar.setVisible(posData.SizeZ > 1)
+        self.zSliceSpinbox.setVisible(posData.SizeZ > 1)
+        self.SizeZlabel.setVisible(posData.SizeZ > 1)
+        self.zProjComboBox.setVisible(posData.SizeZ > 1)
+        self.zProjLockViewButton.setVisible(posData.SizeZ > 1)
+        self.SizeZlabel.setText(f'/{posData.SizeZ}')
+
+        self.navigateScrollbar.setMinimum(1)
+        self.navSpinBox.setMinimum(1)
+        self.navigateSB_label.setDisabled(False)
+        self.navSizeLabel.setDisabled(False)
+        self.navigateScrollbar.setDisabled(False)
+        self.navSpinBox.setDisabled(False)
+        if posData.SizeT > 1:
+            self.navigateSB_label.setText('Frame ')
+            self.navSizeLabel.setText(f'/{posData.SizeT}')
+            self.navigateScrollbar.setMaximum(posData.SizeT)
+            self.navSpinBox.setMaximum(posData.SizeT)
+        elif self.num_pos > 1:
+            self.navigateSB_label.setText('Position ')
+            self.navSizeLabel.setText(f'/{len(self.data)}')
+            self.navigateScrollbar.setMaximum(self.num_pos)
+            self.navSpinBox.setMaximum(self.num_pos)
+        else:
+            self.navigateSB_label.setDisabled(True)
+            self.navSizeLabel.setDisabled(True)
+            self.navigateScrollbar.setDisabled(True)
+            self.navSpinBox.setDisabled(True)
+
+        self.navigateScrollbar.setValue(1)
+        self.navSpinBox.setValue(1)
+        self.navSpinBox.valueChanged.connect(
+            self.navigateScrollbarValueChanged
+        )   
+        self.navigateScrollbar.valueChanged.connect(
+            self.navigateScrollbarValueChanged
+        )   
+        
+        qutils.tryDisconnectSignal(self.zSliceScrollBar, 'valueChanged')
+        qutils.tryDisconnectSignal(self.zProjComboBox, 'currentTextChanged')
+        qutils.tryDisconnectSignal(self.zProjLockViewButton, 'sigToggled')
+
+        if posData.SizeZ > 1:
+            self.zSliceSpinbox.setValue(1)
+            self.zSliceSpinbox.setMinimum(1)
+            self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+            self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
+            self.zProjLockViewButton.sigToggled.connect(
+                self.zProjLockViewToggled
+            )
+            self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
+            self.zSliceSpinbox.setMaximum(posData.SizeZ)
+            if posData.SizeT > 1:
+                self.interpAction.setDisabled(False)
+            self.ZbackAction.setDisabled(False)
+            self.ZforwAction.setDisabled(False)
+            df = posData.segmInfo_df
+            idx = (posData.filename, self.frame_i)
+            how = posData.segmInfo_df.at[idx, 'which_z_proj']
+            self.zProjComboBox.setCurrentText(how)        
+
+        if 'showFrameIndex_dataPrep' in self.df_settings.index:
+            checked = (
+                self.df_settings.at['showFrameIndex_dataPrep', 'value']
+                == 'Yes'
+            )
+            if checked:
+                self.showFrameIndexAction.setChecked(True)
+        
+        if 'showZsliceIndex_dataPrep' in self.df_settings.index:
+            checked = (
+                self.df_settings.at['showZsliceIndex_dataPrep', 'value'] 
+                == 'Yes'
+            )
+            if checked:
+                self.showZsliceIndexAction.setChecked(True) 
 
     def setImageNameText(self):
         self.statusbar.clearMessage()
@@ -3328,3 +3439,10 @@ class dataPrepWin(QMainWindow):
         QMainWindow.show(self)
         self.readSettings()
         self.graphLayout.setFocus()
+
+    def loadLastSessionSettings(self):
+        self.settings_csv_path = settings_csv_path
+        if os.path.exists(settings_csv_path):
+            self.df_settings = pd.read_csv(
+                settings_csv_path, index_col='setting'
+            )

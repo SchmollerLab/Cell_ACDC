@@ -1357,8 +1357,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         helpMenu.addAction(self.showLogFilesAction)
         helpMenu.addAction(self.tipsAction)
         helpMenu.addAction(self.UserManualAction)
-        helpMenu.addSeparator()
-        helpMenu.addAction(self.aboutAction)
         self.helpMenu = helpMenu
 
         self.searchWidget = widgets.ButtonSearchWidget(self)
@@ -1376,6 +1374,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.searchWidget.setMinimumHeight(
             self.searchWidget.sizeHint().height()
         )
+
+        helpMenu.addSeparator()
+        helpMenu.addAction(self.aboutAction)
         
         
     def gui_createToolBars(self):        
@@ -1408,8 +1409,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
-        navigateToolBar.addAction(self.searchAction)
+        navigateToolBar.addWidget(self.exportCurrentViewButton)
+        self.widgetsWithShortcut['Setup exporting data from current view'] = (
+            self.exportCurrentViewButton
+        )
         
+        navigateToolBar.addAction(self.searchAction)
         navigateToolBar.addWidget(self.zoomRectButton)
 
         self.slideshowButton = QToolButton(self)
@@ -2053,6 +2058,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     if isinstance(obj, QToolButton) and obj is not self
                     and obj is not target.parent
                     ]
+            
             if widgets is None or len(widgets) == 0:
                 return False, 0
             else:    
@@ -2065,6 +2071,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def _installRightClickFilter(self, widget: QWidget, menu: QMenu):
         if getattr(widget, 'installedEventFilter', False):
             return
+        
         if not hasattr(self, '_rightClickFilterObj'):
             self._rightClickFilterObj = RightClickMenuFilter()
         widget.installEventFilter(self._rightClickFilterObj)
@@ -2926,6 +2933,21 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.secondLevelToolbar = secondLevelToolbar
         self.secondLevelToolbar.setVisible(False)
 
+        self.exportCurrentViewToolbar = widgets.ExportCurrentViewToolbar(self)
+        for name, action in self.exportCurrentViewToolbar.widgetsWithShortcut.items():
+            self.widgetsWithShortcut[name] = action
+        
+        for name, widget in self.exportCurrentViewToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
+
+        self.addToolBar(Qt.TopToolBarArea, self.exportCurrentViewToolbar)
+        self.exportCurrentViewToolbar.setVisible(False)
+        self.exportCurrentViewToolbar.keepVisibleWhenActive = True
+        self.exportCurrentViewToolbar.sigExport.connect(
+            self.exportCurrentView
+        )
+        self.controlToolBars.append(self.exportCurrentViewToolbar)
+
         toolbar_targets = (
             (self.overlayToolbar, self.overlayButton),
             (self.autoPilotZoomToObjToolbar, self.autoPilotButton),
@@ -2942,6 +2964,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             (self.whitelistIDsToolbar, self.whitelistIDsButton),
             (self.magicPromptsToolbar, self.magicPromptsToolButton),
             (self.promptSegmentPointsLayerToolbar, self.magicPromptsToolButton),
+            (self.exportCurrentViewToolbar, self.exportCurrentViewButton),
         )
         for toolbar, targets in toolbar_targets:
             self.searchWidget.registerToolbarTargets(toolbar, targets)
@@ -3251,6 +3274,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.autoPilotButton.setIcon(QIcon(":auto-pilot.svg"))
         self.autoPilotButton.setCheckable(True)
         self.autoPilotButton.setShortcut('Ctrl+Shift+A')
+
+        self.exportCurrentViewButton = QToolButton(self)
+        self.exportCurrentViewButton.setIcon(QIcon(":folder-move.svg"))
+        self.exportCurrentViewButton.setCheckable(True)
+        self.exportCurrentViewButton.setShortcut('Ctrl+Shift+E')
         
         self.searchAction = QAction(self)
         self.searchAction.setIcon(QIcon(":find.svg"))
@@ -4057,7 +4085,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.loadPosAction.triggered.connect(self.loadPosTriggered)
-        # self.reloadAction.triggered.connect(self.reload_cb)
+        self.exportCurrentViewButton.toggled.connect(
+            self.exportCurrentViewDataToggled
+        )
         self.searchAction.triggered.connect(
             partial(self.focusOnSearch, blinking=True)
         )
@@ -4635,7 +4665,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             'any frame with current mode.\n\n'
             'Note that the "Viewer" mode allows you to scroll ALL frames.'
         )
-        t_label = QLabel('frame n.  ')
+        t_label = QLabel()
         t_label.setFont(_font)
         self.t_label = t_label
 
@@ -4859,10 +4889,40 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             actions.append(action)
             self.bottomLayoutContextMenu.zoomActionGroup.addAction(action)
         zoomMenu.addActions(actions)
-        editObjectTrackSettingsAction = self.bottomLayoutContextMenu.addAction(
-            'Edit object track settings...'
+        self.bottomLayoutContextMenu.addSeparator()
+
+        self.editObjectTrackSettingsAction = (
+                self.bottomLayoutContextMenu.addAction(
+                    'Edit object track settings...'
+            )
         )
-        editObjectTrackSettingsAction.triggered.connect(
+        self.editObjectTrackSettingsAction.setCheckable(True)
+        self.showFrameIndexAction = (
+                self.bottomLayoutContextMenu.addAction(
+                    'Show frame index (starts at 0)'
+            )
+        )
+        self.showFrameIndexAction.setCheckable(True)
+        self.showZsliceIndexAction = (
+                self.bottomLayoutContextMenu.addAction(
+                    'Show z-slice index (starts at 0)'
+            )
+        )
+        self.showZsliceIndexAction.setCheckable(True)
+
+        self.showFrameIndexAction.toggled.connect(self.showFrameIndexToggled)
+        self.showZsliceIndexAction.toggled.connect(self.showZsliceIndexToggled)
+
+        self.settingsMenu.insertAction(
+            self.highLowResAction, self.showFrameIndexAction
+        )
+        self.settingsMenu.insertAction(
+            self.highLowResAction, self.showZsliceIndexAction
+        )
+
+        self.bottomLayoutContextMenu.addSeparator()
+
+        self.editObjectTrackSettingsAction.triggered.connect(
             self.setAnnotateObjTrackSettings 
         )
         resetAction = self.bottomLayoutContextMenu.addAction(
@@ -9002,6 +9062,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.setManualBackgroundImage()
         
         elif left_click and canAddManualBackgroundObj:
+            if getattr(self, 'manualBackgroundObj', None) is None:
+                blinker = qutils.QControlBlink(
+                    self.manualBackgroundToolbar.infoLabel, 
+                    qparent=self
+                )
+                blinker.start()
+                return
+
             x, y = event.pos().x(), event.pos().y()
             
             self.addManualBackgroundObject(x, y)            
@@ -10386,6 +10454,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.progressWin = None
         
         self.searchIDworkerLoop.exit()
+    
+    def exportCurrentViewWorkerFinished(self):
+        self.exportCurrentViewToolbar.setInfoText('Exported!')
+        self.exportCurrentViewWorkerLoop.exit()
+        QTimer.singleShot(
+            2000, 
+            partial(self.exportCurrentViewToolbar.setInfoText, '')
+        )
     
     def searchIDworkerCallback(self, posData, searchedID):
         self.searchIDworker.signals.initProgressBar.emit(0)
@@ -14233,6 +14309,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.launch3dViewerButton.setDisabled(True)
             self.launch3dViewerAction.setDisabled(True)
         
+        self.showZsliceIndexAction.setVisible(enabled)
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not enabled)
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
@@ -16754,6 +16831,45 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.df_settings.at['bottom_sliders_zoom_perc', 'value'] = perc
         self.df_settings.to_csv(self.settings_csv_path)
         QTimer.singleShot(150, self.resizeGui)
+    
+    def showFrameIndexToggled(self, checked):
+        start_value = 0 if checked else 1
+        self.navSpinBox.setStartValue(start_value)
+        self.rightImageFramesScrollbar.setStartValue(start_value)
+
+        correction = start_value - self.navSpinBox.minimum()
+        maximum = self.navSpinBox.maximum()
+        self.navSizeLabel.setText(f'/{maximum + correction}')
+
+        value = 'Yes' if checked else 'No'
+        self.df_settings.at['showFrameIndex', 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
+
+        if start_value:
+            self.t_label.setText('Frame n. ')
+        else:
+            self.t_label.setText('Frame idx')
+    
+    def showZsliceIndexToggled(self, checked):
+        start_value = 0 if checked else 1
+        self.zSliceSpinbox.setStartValue(start_value)
+
+        correction = start_value - self.zSliceSpinbox.minimum()
+        maximum = self.zSliceSpinbox.maximum()
+        self.SizeZlabel.setText(f'/{maximum + correction}')
+
+        value = 'Yes' if checked else 'No'
+        self.df_settings.at['showZsliceIndex', 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
+
+        if not self.overlay_z_label.isVisible():
+            return
+        
+        z = self.zSliceScrollBar.sliderPosition()
+        posData = self.data[self.pos_i]
+        self.overlay_z_label.setText(
+            f'Overlay z-slice {z-correction:02}/{posData.SizeZ+correction}'
+        )
     
     def defaultRescaleIntensLutActionToggled(self, action):
         how = action.text()
@@ -20068,6 +20184,84 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.curvTool_cb(True)
         
         self.updatePropsWidget('')
+    
+    @disableWindow
+    def exportCurrentView(self, isOnNext=False):
+        if isOnNext and not self.exportCurrentViewToolbar.isAutoExportOnNext():
+            # Automatic export on next disabled --> do not export
+            return
+
+        dstFolderPath = self.exportCurrentViewToolbar.dstFolderPath()
+        if not dstFolderPath or not os.path.exists(dstFolderPath):
+            self.setDisabled(False)
+            blinker = qutils.QControlBlink(
+                self.exportCurrentViewToolbar.dstFolderPathControl, 
+                qparent=self
+            )
+            blinker.start()
+            _warnings.warnExportCurrentViewDstFolderPathInvalid(
+                dstFolderPath, qparent=self
+            )
+            return
+
+        self.exportCurrentViewToolbar.setInfoText('Exporting...')
+
+        posData = self.data[self.pos_i]
+        self.exportCurrentViewThread = QThread()
+        self.exportCurrentViewWorker = workers.SimpleWorker(
+            posData, 
+            io.export_current_view, 
+            func_args=(
+                self.exportCurrentViewToolbar.selectedModelName(),
+                dstFolderPath, 
+            ),
+            func_kwargs={
+                'logger_func': self.logger.info,
+                'verbose': True
+            }
+        )
+        self.exportCurrentViewWorker.moveToThread(self.exportCurrentViewThread)
+        self.exportCurrentViewWorker.signals.finished.connect(
+            self.exportCurrentViewThread.quit
+        )
+        self.exportCurrentViewWorker.signals.finished.connect(
+            self.exportCurrentViewWorker.deleteLater
+        )
+        self.exportCurrentViewThread.finished.connect(
+            self.exportCurrentViewThread.deleteLater
+        )
+        self.exportCurrentViewWorker.signals.critical.connect(
+            self.exportCurrentViewWorkerCritical
+        )
+        self.exportCurrentViewWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.exportCurrentViewWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.exportCurrentViewWorker.signals.progress.connect(
+            self.workerProgress
+        )
+        self.exportCurrentViewWorker.signals.finished.connect(
+            self.exportCurrentViewWorkerFinished
+        )
+        
+        self.exportCurrentViewThread.started.connect(
+            self.exportCurrentViewWorker.run
+        )
+        self.exportCurrentViewThread.start()
+        
+        self.exportCurrentViewWorkerLoop = QEventLoop()
+        self.exportCurrentViewWorkerLoop.exec_()
+    
+    def exportCurrentViewWorkerCritical(self, error):
+        self.exportCurrentViewToolbar.setInfoText(
+            html_utils.span(
+                'ERROR occurred during export. See terminal for more info'
+            )
+        )
+        self.exportCurrentViewWorkerLoop.exit()
+        self.workerCritical(error)
 
     @exception_handler
     def prev_cb(self):
@@ -20377,6 +20571,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     
     def next_pos(self):
         self.store_data(autosave=False)
+        self.exportCurrentView(isOnNext=True)
         prev_pos_i = self.pos_i
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
@@ -20633,6 +20828,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if posData.frame_i >= posData.SizeT-1:
             # Store data for current frame
+            self.exportCurrentView(isOnNext=True)
             if mode != 'Viewer':
                 self.store_data(debug=False)
             msg = 'You reached the last segmented frame!'
@@ -20695,6 +20891,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateObjectCounts()
         self.update3DViewer()
         
+        self.exportCurrentView(isOnNext=True)
         self.apply_tools_on_new_frame()
     
     def update3DViewer(self):
@@ -21806,6 +22003,16 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.navSizeLabel.setText(f'/{posData.SizeT}')
 
         self.enableZstackWidgets(posData.SizeZ > 1)
+
+        if 'showFrameIndex' in self.df_settings.index:
+            checked = self.df_settings.at['showFrameIndex', 'value'] == 'Yes'
+            if checked:
+                self.showFrameIndexAction.setChecked(True)
+        
+        if 'showZsliceIndex' in self.df_settings.index:
+            checked = self.df_settings.at['showZsliceIndex', 'value'] == 'Yes'
+            if checked:
+                self.showZsliceIndexAction.setChecked(True)
         
         self.exportToVideoAction.setDisabled(
             posData.SizeZ == 1 and posData.SizeT == 1
@@ -22121,7 +22328,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.modeComboBox.setCurrentText('Snapshot')
             self.annotateToolbar.setVisible(True)
             self.labelsGrad.showNextFrameAction.setDisabled(True)
-
             self.rightImageFramesScrollbar.setVisible(False)
             self.rightImageFramesScrollbar.setDisabled(True)
             if not self.isSegm3D:
@@ -22145,7 +22351,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.manualBackgroundButton.setVisible(True)
             self.manualBackgroundButton.setDisabled(False)
             self.manualBackgroundButton.setCheckable(True)
-
+            self.editObjectTrackSettingsAction
+            self.showFrameIndexAction.setVisible(False)
+            self.editObjectTrackSettingsAction.setVisible(False)
         else:
             self.imgGrad.rescaleAcrossTimeAction.setDisabled(False)
             self.annotateToolbar.setVisible(False)
@@ -22186,8 +22394,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.manualBackgroundButton.setVisible(False)
             self.manualBackgroundButton.setDisabled(True)
             self.manualBackgroundButton.setCheckable(False)
+            self.showFrameIndexAction.setVisible(True)
+            self.editObjectTrackSettingsAction.setVisible(True)
             
-        
         for ch, overlayItems in self.overlayLayersItems.items():
             lutItem = overlayItems[1]
             lutItem.rescaleAcrossTimeAction.setDisabled(self.isSnapshot)      
@@ -22256,7 +22465,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.enableZstackWidgets(True)
             self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
             self.zSliceSpinbox.setMaximum(self.data[0].SizeZ)
-            self.SizeZlabel.setText(f'/{self.data[0].SizeZ}')
+            start_value = self.zSliceSpinbox.startValue()
+            if start_value is None:
+                start_value = 1
+            correction = start_value - self.zSliceSpinbox.minimum()
+            maximum = self.zSliceSpinbox.maximum()
+            self.SizeZlabel.setText(f'/{maximum + correction}')
             qutils.tryDisconnectSignal(self.zSliceScrollBar, 'actionTriggered')
             qutils.tryDisconnectSignal(self.zSliceScrollBar, 'sliderReleased' )
             qutils.tryDisconnectSignal(self.zProjComboBox, 'currentTextChanged')
@@ -22302,7 +22516,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if posData.last_tracked_i is not None:
                 self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
                 self.navSpinBox.setMaximum(posData.last_tracked_i+1)
-            self.t_label.setText('Frame n.')
+            self.t_label.setText('Frame n. ')
             self.navigateScrollBar.connectEvents({
                 'sliderMoved': self.framesScrollBarMoved,
                 'sliderReleased': self.framesScrollBarReleased,
@@ -22605,7 +22819,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if button in self.toolsActiveInProj3Dsegm:
                 continue
 
-            if action in self.functionsNotTested3D or button in self.functionsNotTested3D:
+            if action in self.functionsNotTested3D:
+                continue
+            
+            if button in self.functionsNotTested3D:
                 continue
             
             try:
@@ -22619,11 +22836,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         button.setToolTip(tooltip[len(prefix):])
             except:
                 pass
+
             action.setDisabled(disabled)
-            try:
-                button.setChecked(False)
-            except Exception as err:
-                pass
+
+            if disabled:
+                try:
+                    button.setChecked(False)
+                except Exception as err:
+                    pass
         
     def clearAx2Items(self, onlyHideText=False):
         self.ax2_binnedIDs_ScatterPlot.clear()
@@ -28018,7 +28238,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 self.zSliceOverlay_SB.setDisabled(True)
             else:
                 z = self.zSliceOverlay_SB.sliderPosition()
-                self.overlay_z_label.setText(f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                start_value = self.zSliceSpinbox.getStartValue()
+                correction = start_value - self.zSliceSpinbox.minimum()
+                self.overlay_z_label.setText(
+                    f'Overlay z-slice {z+start_value:02}'
+                    f'/{posData.SizeZ+correction}'
+                )
                 self.zSliceOverlay_SB.setDisabled(False)
                 self.overlay_z_label.setDisabled(False)
             self.zSliceOverlay_SB.show()
@@ -28178,8 +28403,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                         self.updateOverlayZslice
                     )
             if zProjHow == 'single z-slice':
+                start_value =  self.zSliceSpinbox.getStartValue()
+                if start_value is None:
+                    start_value = self.zSliceSpinbox.minimum()
+                correction = start_value - self.zSliceSpinbox.minimum()
                 self.overlay_z_label.setText(
-                    f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                    f'Overlay z-slice {z-correction:02}'
+                    f'/{posData.SizeZ+correction}'
+                )
                 ol_img = img[z].copy()
             elif zProjHow == 'max z-projection':
                 ol_img = img.max(axis=0)
@@ -31092,8 +31323,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         if single_slice_del_in_3D:
             lab2D = self.get_2Dlab(lab)
-            rp = rp.get_slice_rp(self.zSliceScrollBar.sliderPosition(), 
-                                         self.switchPlaneCombobox.depthAxes())
+            rp = rp.get_slice_rp(
+                self.zSliceScrollBar.sliderPosition(), 
+                self.switchPlaneCombobox.depthAxes()
+            )
 
         if isinstance(delID, int):
             delID = [delID]
@@ -33510,6 +33743,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.scaleBar.removeFromAxis(self.ax1)
         except Exception as e:
             pass
+
+        self.showFrameIndexAction.setVisible(False)
+        self.showZsliceIndexAction.setVisible(False)
+        self.editObjectTrackSettingsAction.setVisible(False)
         
         if self.isDataLoaded:
             self.saveAnnotationOptions()
@@ -37037,6 +37274,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         if blinking:
             blinker = qutils.QControlBlink(self.searchWidget, qparent=self)
             blinker.start()
+
+    def exportCurrentViewDataToggled(self, checked: bool):
+        self.exportCurrentViewToolbar.setVisible(checked)
 
     def isObjVisibleViewRange(self, bbox, viewRange=None):
         if self.isSegm3D and len(bbox) == 6:

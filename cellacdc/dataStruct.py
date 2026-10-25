@@ -1483,7 +1483,9 @@ class createDataStructWin(QMainWindow):
     @exception_handler
     def main(self):
         self.log('Asking to setup conversion process...')
-        win = apps.DataStructureSetupDialogue(logger_func=self.log)
+        win = apps.DataStructureSetupDialogue(
+            logger_func=self.log, parent=self
+        )
         win.exec_()
         if win.cancel:
             self.close()
