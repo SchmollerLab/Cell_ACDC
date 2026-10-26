@@ -23067,32 +23067,44 @@ class askZPlaneView(QDialog):
         focusSpinbox = self.spinBoxes[self.tab_idx]
         focusSpinbox.setFocus()
 
-    def saveStopFrameNumbers(self):
-        for spinBox, posData in self.dataDict.values():
-            posData.metadata_df.at['stop_frame_num', 'values'] = spinBox.value()
-            posData.metadataToCsv()
-
     def ok_cb(self, event):
         self.cancel = False
-        try:
-            self.saveStopFrameNumbers()
-        except Exception as err:
-            printl(traceback.format_exc())
-        self.stopFrames = [
-            spinBox.value() for spinBox, posData in self.dataDict.values()
-        ]
+        for spinBox, zProjComboBox, posData in self.dataDict.values():
+            if not spinBox.isEnabled():
+                continue
+            
+            filename = posData.filename
+            if posData.segmInfo_df is None:
+                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                posData.segmInfo_df = df
+            
+            if filename not in posData.segmInfo_df.index:
+                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                posData.segmInfo_df = pd.concat([df, posData.segmInfo_df])
+            
+            posData.segmInfo_df.loc[filename, 'z_slice_used_dataPrep'] = (
+                spinBox.value()
+            )
+            posData.segmInfo_df.loc[filename, 'which_z_proj'] = (
+                zProjComboBox.currentText()
+            )
+            posData.segmInfo_df.loc[filename, 'is_from_dataPrep'] = (
+                False
+            )
+            posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+
         self.close()
     
     def closeEvent(self, event):
         for window in self.visualizeWindows:
             window.close()
 
+    @disableWindow
     def visualize_cb(self, checked=True, images_path=None):
         if images_path is None:
             return
 
-        self.setDisabled(True)
-        spinBox, posData = self.dataDict[images_path]
+        spinBox, zProjComboBox, posData = self.dataDict[images_path]
         print('Loading image data...')
         posData.loadImgData()
         posData.frame_i = spinBox.value()-1
@@ -23103,7 +23115,6 @@ class askZPlaneView(QDialog):
             block=False
         )
         self.visualizeWindows.append(win)
-        self.setDisabled(False)
 
     def launch_dataprep(self, checked=True, images_path=None):
         if images_path is not None:

@@ -31,7 +31,10 @@ MODEL_NAMES = sorted(
     path.parent.name for path in MODEL_ROOT.glob("*/acdcSegment.py")
     if not path.parent.name.startswith("_")
 )
-IMAGE_PATH = os.environ.get('ACDC_MODEL_TEST_IMAGE')
+IMAGE_PATH = (
+    # '/home/frank/Downloads/JA E#15.10 B7_001_001_s01_DAPI.tif' 
+    os.environ.get('ACDC_MODEL_TEST_IMAGE')
+)
 pytestmark = pytest.mark.skipif(
     not IMAGE_PATH,
     reason="Set ACDC_MODEL_TEST_IMAGE to enable dependency/weight downloads and inference.",

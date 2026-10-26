@@ -689,6 +689,7 @@ class segmWin(QMainWindow):
             if win.cancel:
                 self.processStopped()
                 return
+
         elif selectROI:
             if self.posData.SizeT > 1:
                 for img_path in user_ch_file_paths: 
@@ -740,16 +741,11 @@ class segmWin(QMainWindow):
             )
             self.posData.isSegm3D = self.isSegm3D
 
-        if (
-                self.posData.SizeZ > 1 
-                and not self.isSegm3D 
-                and not self.use3DdataFor2Dsegm
-            ):
-            df = self.posData.segmInfo_df.loc[self.posData.filename]
-            zz = df['z_slice_used_dataPrep'].to_list()
-
         isROIactive = False
-        if self.posData.dataPrep_ROIcoords is not None and not self.ROIdeactivatedByUser:
+        if (
+                self.posData.dataPrep_ROIcoords is not None 
+                and not self.ROIdeactivatedByUser
+            ):
             df_roi = self.posData.dataPrep_ROIcoords.loc[0]
             isROIactive = df_roi.at['cropped', 'value'] == 0
             x0, x1, y0, y1 = df_roi['value'][:4]
