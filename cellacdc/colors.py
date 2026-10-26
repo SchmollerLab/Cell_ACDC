@@ -107,6 +107,8 @@ if GUI_INSTALLED:
 # See pg.HistogramLUTItem.saveState() and pg.HistogramLUTItem.restoreState()
 LutItemState = dict[str, object]
 
+rng = np.random.default_rng(42)
+
 _mapCache = {}
 def getFromMatplotlib(name):
     """
@@ -564,7 +566,9 @@ def get_complementary_color(rgba_str: str) -> str:
     r, g, b, a = rgba_str_to_values(rgba_str)
     return f'rgba({255 - r}, {255 - g}, {255 - b}, {a})'
 
-def pg_to_vispy_cmap(pg_cmap, n=256, debug=False, transparent_zero=False):
+def pg_to_vispy_cmap(
+        pg_cmap, n=256, debug=False, transparent_zero=False, shuffle=False
+    ):
     """Convert PyQtGraph colormap to vispy
 
     Parameters
@@ -587,9 +591,11 @@ def pg_to_vispy_cmap(pg_cmap, n=256, debug=False, transparent_zero=False):
     
     # Sample the colormap
     colors = pg_cmap.getLookupTable(0.0, 1.0, n)
-
+    
     # Normalize to 0–1 (VisPy expects floats)
     colors = np.array(colors) / 255.0
+    if shuffle:
+        rng.shuffle(colors)
     
     if transparent_zero:
         colors = replace_background_rgba_lut(colors)

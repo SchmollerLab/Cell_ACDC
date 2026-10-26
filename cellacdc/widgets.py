@@ -369,8 +369,6 @@ class okPushButton(PushButton):
         self.setIcon(QIcon(':yesGray.svg'))
         if isDefault:
             self.setDefault(True)
-        # QShortcut(Qt.Key_Return, self, self.click)
-        # QShortcut(Qt.Key_Enter, self, self.click)
 
 class MagnifyingGlassPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -4759,10 +4757,10 @@ class DoubleSpinBox(QDoubleSpinBox):
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
-    sigValueChanged = Signal(int)
     sigUpClicked = Signal()
     sigDownClicked = Signal()
     sigTabEvent = Signal(object, object)
+    sigValueChanged = Signal(int)
 
     def __init__(
         self,
@@ -4785,6 +4783,7 @@ class SpinBox(QSpinBox):
         self._linkedWidget = None
         self._start_value = None
         self._display_correction = 0
+        self.valueChanged.connect(self.sigValueChanged.emit)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -7089,11 +7088,13 @@ class myColorButton(pg.ColorButton):
         p.end()
     
     def enterEvent(self, event):
+        QApplication.instance().setOverrideCursor(Qt.PointingHandCursor)
         c = self._c + self._hoverDeltaC
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
     
     def leaveEvent(self, event):
+        QApplication.instance().restoreOverrideCursor()
         c = self._c
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
@@ -13188,7 +13189,7 @@ class AutoSaveIntervalWidget(QWidget):
         layout.setStretch(0, 1)
         layout.setStretch(1, 0)
         layout.setContentsMargins(5, 0, 5, 0)
-        
+    
         self.setLayout(layout)
         
         self.spinbox.sigValueChanged.connect(self.emitSigValueChanged)
