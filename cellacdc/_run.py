@@ -41,26 +41,26 @@ def _install_tables(parent_software='Cell-ACDC'):
 
             conda_list = conda_list + ['pytables']
             pip_list = pip_list + ['--upgrade', 'tables']
-            if is_conda_env():
-                command_txt = conda_txt
-                alt_command_txt = pip_text
-                cmd_args = [command_txt]
-                alt_cmd_args1 = conda_list
-                alt_cmd_args2 = pip_list
-                pkg_mng = 'conda'
-                alt_pkg_mng = 'pip'
-                shell = True
-                alt_shell = False
-            else:
-                alt_command_txt = conda_txt
-                command_txt = pip_text
-                cmd_args = pip_list
-                alt_cmd_args1 = conda_list
-                alt_cmd_args2 = [alt_command_txt]
-                pkg_mng = 'pip'
-                alt_pkg_mng = 'conda'
-                shell = False
-                alt_shell = True
+            # if is_conda_env():
+            #     command_txt = conda_txt
+            #     alt_command_txt = pip_text
+            #     cmd_args = [command_txt]
+            #     alt_cmd_args1 = conda_list
+            #     alt_cmd_args2 = pip_list
+            #     pkg_mng = 'conda'
+            #     alt_pkg_mng = 'pip'
+            #     shell = True
+            #     alt_shell = False
+            # else:
+            alt_command_txt = conda_txt
+            command_txt = pip_text
+            cmd_args = pip_list
+            alt_cmd_args1 = conda_list
+            alt_cmd_args2 = [alt_command_txt]
+            pkg_mng = 'pip'
+            alt_pkg_mng = 'conda'
+            shell = False
+            alt_shell = True
                 
             answer = try_input_install_package('tables', command_txt)
             
