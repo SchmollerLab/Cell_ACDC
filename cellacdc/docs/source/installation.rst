@@ -135,7 +135,7 @@ Install stable version
    
     .. code-block:: 
    
-        conda create -n acdc python=3.10
+        conda create -n acdc python=3.12
 
     This will create a virtual environment, which is an **isolated folder** 
     where the required libraries will be installed. 
@@ -254,7 +254,7 @@ Install latest version
    
     .. code-block:: 
    
-        conda create -n acdc python=3.10
+        conda create -n acdc python=3.12
 
     This will create a virtual environment, which is an **isolated folder** 
     where the required libraries will be installed. 
@@ -415,7 +415,7 @@ If you want to try out experimental features (and, if you have time, maybe repor
    
     .. code-block:: 
     
-        conda create -n acdc python=3.10
+        conda create -n acdc python=3.12
 
     This will create a virtual environment, which is an **isolated folder** 
     where the required libraries will be installed. 
