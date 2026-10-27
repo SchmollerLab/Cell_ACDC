@@ -155,7 +155,7 @@ def set_exclusive_valueSetter(widget, valueSetter, value):
 def hardDelete(item, setPosData=True):
     try:
         item.setParent(None)
-    except AttributeError:
+    except (AttributeError, RuntimeError):
         pass
     if setPosData:
         try:
@@ -164,7 +164,7 @@ def hardDelete(item, setPosData=True):
             pass
     try:
         item.deleteLater()
-    except AttributeError:
+    except (AttributeError, RuntimeError):
         pass
     item = None
     
