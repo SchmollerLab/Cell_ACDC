@@ -3269,7 +3269,16 @@ def check_install_baby():
         'TensorFlow', 
         pypi_name='tensorflow', 
         import_pkg_name='tensorflow', 
-        max_version='2.14'
+        min_version='2.12',
+        include_lower_version=True,
+        max_version='2.13'
+    )
+    # TF 2.13 pins typing-extensions<4.6, incompatible with pydantic/fastapi
+    check_install_package(
+        'typing-extensions', 
+        import_pkg_name='typing_extensions', 
+        min_version='4.16',
+        include_lower_version=True
     )
     check_install_package('baby', pypi_name='baby-seg', import_pkg_name='baby')
 
@@ -3949,6 +3958,31 @@ def check_install_package(
                     batch_commands,
                     env_name=conda_env_name,
                     env_prefix=conda_env_prefix
+                )
+
+        if (installer == 'pip' and len(specs) > 1
+                and python_exec not in (None, sys.executable)):
+            # A package installed above can pin a dependency of another
+            # requested package below its minimum (e.g. TF -> typing-extensions).
+            # Pip cannot resolve such conflicts, so force the requested
+            # version without touching dependencies.
+            for spec in specs:
+                satisfied, _ = _check_single_package(spec, False, python_exec)
+                if satisfied:
+                    continue
+                command = _get_pkg_command_pip_install(
+                    spec['pypi_name'] or spec['pkg_name'],
+                    exact_version=spec['exact_version'],
+                    max_version=spec['max_version'],
+                    min_version=spec['min_version'],
+                    including_higher_version=spec['include_higher_version'],
+                    including_lower_version=spec['include_lower_version'],
+                )
+                _install_pip_package(
+                    command,
+                    install_dependencies=False,
+                    logger=logger_func,
+                    python_exec=python_exec
                 )
     except Exception:
         printl(traceback.format_exc())

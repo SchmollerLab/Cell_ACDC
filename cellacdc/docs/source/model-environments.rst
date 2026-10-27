@@ -448,11 +448,14 @@ Run it like the GUI does:
 ``with LocalBackend(...) as model:`` also works; it starts the worker,
 returns the ``ModelClient`` and stops the worker at the end.
 
-The integration test installs and runs **every** model on a sample image. It is
-opt-in because it downloads a lot of data::
+The integration test installs and runs models on a sample image. Specify 
+``"MyModel"`` to test only that model, or remove ``-k "MyModel"`` to test all 
+models. Specify the sample image with the ``IMAGE_PATH`` variable inside
+``tests\test_all_model_environments.py`` file to set target image. Do not forget
+to activate your ``acdc`` environment.
+It is opt-in because it downloads a lot of data::
 
-    $env:ACDC_MODEL_TEST_IMAGE = 'C:\path\to\single_frame.tif'
-    python -X faulthandler -m pytest .\tests\test_all_model_environments.py -v -s -k "MyModel" -rs
+    python -X faulthandler -m pytest .\tests\test_all_model_environments.py -v -s  -rs --full-trace -k "MyModel"
 
 If your model needs special test arguments (for example a model file that
 matches 2D data), add them in ``test_model_segments_sample_tiff`` in
