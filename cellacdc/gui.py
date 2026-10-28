@@ -91,6 +91,7 @@ from . import whitelist
 from . import cli
 from . import is_mac
 from . import urls
+from . import path as acdc_path
 from .cca_functions import _calc_rot_vol
 from .myutils import setupLogger, ArgSpec
 from .help import welcome, about
@@ -703,12 +704,13 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()        
-        recentPaths, dates = myutils.get_recent_paths(self)
+        recentPaths, dates = myutils.get_recent_paths()
         
         # Step 2. Dynamically create 20 actions
         actions = []
         for path in recentPaths[:20]:
-            action = QAction(path, self)
+            path_text = acdc_path.unexpanduser(path)
+            action = QAction(path_text, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
 
@@ -732,11 +734,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.openRecentMenu.addAction(self.openRecentMoreAction)
     
     def addPathToOpenRecentMenu(self, path):
+        path = os.path.normpath(path)
         for action in self.openRecentMenu.actions():
-            if path == action.text():
+            action_path = os.path.expanduser(os.path.normpath(action.text()))
+            if path == action_path:
                 return
         else:
-            action = QAction(path, self)
+            path_text = acdc_path.unexpanduser(path)
+            action = QAction(path_text, self)
             action.triggered.connect(partial(self.openRecentFile, path))
         
         try:
@@ -2921,12 +2926,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.delObjToolAction.setIcon(QIcon(":del_obj_click.svg"))
         self.delObjToolAction.setCheckable(True)
         self.delObjToolAction.setToolTip(
-            'Customisable delete object action\n\n'
-            'Go to the `Settings --> Customise keyboard shortcuts...` menu '
-            'on the top menubar\n'
-            'to customise the action required to delete '
-            'an object with a click.\n\n'
-            'When working with 3D segmentations, to delete only the z-slice mask, hold "Shift" while clicking.'
+"""
+Customisable delete object action
+
+Go to the `Settings --> Customise keyboard shortcuts...` menu on the top menubar
+to customise the action required to delete an object with a click.
+
+When working with 3D segmentation masks:
+
+- Shift+right-click to delete only the viewed z-slice.
+- Ctrl+Shift to delete from the current Z-slice to the last Z-slice of the object's bounding box.
+- Alt+Shift to delete from the current Z-slice to the first Z-slice of the object's bounding box.
+"""
         )
         secondLevelToolbar.addAction(self.delObjToolAction)
         secondLevelToolbar.setMovable(False)
@@ -2947,6 +2958,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.exportCurrentView
         )
         self.controlToolBars.append(self.exportCurrentViewToolbar)
+
+        self.editIDToolbar = widgets.EditIDToolbar(self)
+        self.addToolBar(Qt.TopToolBarArea, self.editIDToolbar)
+        self.editIDToolbar.setVisible(False)
+        self.editIDToolbar.keepVisibleWhenActive = True
+        self.controlToolBars.append(self.editIDToolbar)
 
         toolbar_targets = (
             (self.overlayToolbar, self.overlayButton),
@@ -4138,6 +4155,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.clearFreehandRoiButton.toggled.connect(self.clearFreehandRoi_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
+        self.editIDbutton.toggled.connect(self.editID_cb)
         self.editCcaToolAction.triggered.connect(
             self.manualEditCcaToolbarActionTriggered
         )
@@ -5937,10 +5955,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
-            del_shift = shift_regardless and isZslice 
             
             delID_mask = self.deleteIDmiddleClick(
-                delIDs, applyFutFrames, includeUnvisited, shift=del_shift
+                delIDs, applyFutFrames, includeUnvisited, 
+                modifiers=modifiers
             )
             if delID_mask.ndim == 3:
                 delID_mask = delID_mask[self.z_lab()]
@@ -5997,18 +6015,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             max_ID = max(posData.IDs, default=1)
 
             separation_mode = self.separateBudToolbar.separationMode()
-            if (
-                self.isSegm3D and not ctrl and not (shift and isZslice)
-                and separation_mode == '3D Convexity defects'
-            ):
-                posData.lab, success, splittedIDs = core_split_IDs.split_along_convexity_defects_3D(
-                    ID, posData.lab, max_ID, rp=posData.rp,
-                    voxel_size=(
-                        posData.PhysicalSizeZ,
-                        posData.PhysicalSizeY,
-                        posData.PhysicalSizeX,
-                    ),
-                    **self.separateBudToolbar.splitConv3DKwargs(),
+            if self.splitIDwith3DActionModifiers(modifiers, ID):
+                splittedIDs = [ID, posData.brushID]
+                printl(splittedIDs)
+                success = True
+            elif (
+                    self.isSegm3D and not ctrl and not (shift and isZslice)
+                    and separation_mode == '3D Convexity defects'
+                ):
+                posData.lab, success, splittedIDs = (
+                    core_split_IDs.split_along_convexity_defects_3D(
+                        ID, posData.lab, max_ID, rp=posData.rp,
+                        voxel_size=(
+                            posData.PhysicalSizeZ,
+                            posData.PhysicalSizeY,
+                            posData.PhysicalSizeX,
+                        ),
+                        **self.separateBudToolbar.splitConv3DKwargs(),
+                    )
                 )
             elif (
                 self.isSegm3D and not ctrl and not (shift and isZslice)
@@ -6298,7 +6322,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                         'Enter here ID that you want to replace with a new one',
-                    parent=self, allowedValues=posData.IDs,
+                    parent=self, 
+                    allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID),
                     isInteger=True
                 )
@@ -6328,8 +6353,17 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 entryID=self.getNearestLostObjID(y, x), 
                 nextUniqueID=self.setBrushID(return_val=True), 
                 allIDs=posData.allIDs,
-                addPropagateCheckbox=addPropagateCheckbox
+                addPropagateCheckbox=addPropagateCheckbox,
+                isSegm3D=self.isSegm3D,
+                SizeZ=posData.SizeZ,
+                currentZslice=self.zSliceScrollBar.sliderPosition(),
+                zSliceStartValue=self.editIDToolbar.getStartValue()
             )
+            if self.isSegm3D:
+                editID.setHowToPropagateZslices(
+                    *self.editIDToolbar.getHowToPropagateZslices()
+                )
+
             editID.show(block=True)
             if editID.cancel:
                 posData.disableAutoActivateViewerWindow = False
@@ -6338,7 +6372,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return
 
             if editID.assignNewID:
-                self.assignNewIDfromClickedID(ID, event, shift=shift)
+                self.assignNewIDfromClickedID(
+                    ID, event,
+                    howToPropagateZslices=editID.howToPropagateZslices
+                )
                 return
             
             merging_IDs = editID.mergeWithExistingID
@@ -6348,9 +6385,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             self.applyEditID(
                 ID, currentIDs, editID.how, x, y, 
-                shift=shift,
                 doPropagateUnvisited=editID.doPropagateFutureFrames,
-                merging_IDs=merging_IDs
+                merging_IDs=merging_IDs,
+                howToPropagateZslices=editID.howToPropagateZslices
             )
         
         elif (right_click or left_click) and self.keepIDsButton.isChecked():
@@ -11130,12 +11167,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     # @exec_time
     def applyEditID(
             self, clickedID, currentIDs, oldIDnewIDMapper, clicked_x, clicked_y, 
-            shift=False, doPropagateUnvisited=False,
-            merging_IDs=False
+            doPropagateUnvisited=False,
+            merging_IDs=False,
+            howToPropagateZslices=None
         ):  
         posData = self.data[self.pos_i]
-        rp = self.rpCurr2D() if (shift and self.isSegm3D) else posData.rp
-        use_3D_obj_centroid = not (shift and self.isSegm3D)
+        is_2d_edit_on_3d = (
+            howToPropagateZslices is not None 
+            and howToPropagateZslices[0] == 'Current z-slice'
+        )
+        is_entire_obj = (
+            howToPropagateZslices is None
+            or howToPropagateZslices[0] == 'Entire object'
+        )
+        is_to_last_z = (
+            howToPropagateZslices is not None 
+            and howToPropagateZslices[0] == 'From current to last z-slice'
+        )
+        is_to_first_z = (
+            howToPropagateZslices is not None 
+            and howToPropagateZslices[0] == 'From current to first z-slice'
+        )
+        is_custom_z_range = (
+            howToPropagateZslices is not None 
+            and howToPropagateZslices[0] == 'Custom range'
+        )
+        z_start, z_end = None, None
+        if is_to_last_z:
+            z_start = self.zSliceScrollBar.sliderPosition()
+        elif is_to_first_z:
+            z_end = self.zSliceScrollBar.sliderPosition()
+        elif is_custom_z_range:
+            z_start, z_end = howToPropagateZslices[1]
+
+        rp = self.rpCurr2D() if is_2d_edit_on_3d else posData.rp
+        use_3D_obj_centroid = is_entire_obj and self.isSegm3D
         # Ask to propagate change to all future visited frames
         key = 'Edit ID'
         askAction = self.askHowFutureFramesActions[key]
@@ -11152,7 +11218,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.annotateAssignedObjsAcdcTrackerSecondStep()
             return
 
-        if shift and self.isSegm3D:
+        if is_2d_edit_on_3d:
             lab = self.get_2Dlab(posData.lab)
         else:
             lab = posData.lab
@@ -11168,14 +11234,29 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 objo = rp.get_obj_from_ID(old_ID)
                 objn = rp.get_obj_from_ID(new_ID)
 
-                # Relabel old_ID to new ID, save since rp is "stale"
+                slc_n = objn.slice
+                mask_n = objn.image
+
                 slc_o = objo.slice
                 mask_o = objo.image
+
+                if z_start is not None:
+                    local_z_o = z_start - objo.bbox[0]
+                    local_z_n = z_start - objo.bbox[0]
+                    mask_o[:local_z_o] = False
+                    mask_n[:local_z_n] = False
+
+                if z_end is not None:
+                    local_z_o = z_end - objo.bbox[0]
+                    local_z_n = z_end - objo.bbox[0]
+                    mask_o[local_z_o+1:] = False
+                    mask_n[local_z_n+1:] = False
+
+                # Relabel old_ID to new ID, save since rp is "stale"
                 lab[slc_o][mask_o] = new_ID
 
                 # Relabel new_ID to old_ID
-                slc_n = objn.slice
-                mask_n = objn.image
+                
                 lab[slc_n][mask_n] = old_ID
 
                 # ¯\_(ツ)_/¯
@@ -11194,6 +11275,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 obj = rp.get_obj_from_ID(old_ID)
                 slc = obj.slice
                 mask = obj.image
+                if z_start is not None:
+                    local_z = z_start - obj.bbox[0]
+                    mask[:local_z] = False
+
+                if z_end is not None:
+                    local_z = z_end - obj.bbox[0]
+                    mask[local_z+1:] = False
+
                 lab[slc][mask] = new_ID
                 if use_3D_obj_centroid:
                     centroid = rp.get_centroid(old_ID, exact=True)
@@ -11205,17 +11294,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             
             self.updateAssignedObjsAcdcTrackerSecondStep(new_ID)
         
-        if shift and self.isSegm3D:
+        if is_2d_edit_on_3d:
             self.set_2Dlab(lab)
         
         # Update rps
         # When shift is active we edited the 2D slice of a 3D lab; the cached 
         # slice/image data in the old RP objects is stale so we must do a full 
-        # recompute rather than the fast assignments-only path.
+        # recompute rather than the fast assignments-only path. 
+        # The fast assignments can be used only if `is_entire_obj` is True, 
+        # which means 2D segmentation or "Entire object" option is selected 
         
         # check for merger
         assignments = assignments if not merging_IDs else None
-        self.update_rp(assignments=None if (shift and self.isSegm3D) else assignments)
+        assignments = assignments if is_entire_obj else None
+        self.update_rp(assignments=assignments)
 
         # Since we manually changed an ID we don't want to repeat tracking
         self.setAllTextAnnotations()        
@@ -11252,7 +11344,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.changeIDfutureFrames(
             endFrame_i, oldIDnewIDMapper, includeUnvisited,
-            shift=shift, merging_IDs=merging_IDs
+            merging_IDs=merging_IDs,
+            is_2d_edit_on_3d=is_2d_edit_on_3d,
+            is_entire_obj=is_entire_obj,
+            is_to_last_z=is_to_last_z,
+            is_to_first_z=is_to_first_z,
+            is_custom_z_range=is_custom_z_range,
+            z_start=z_start,
+            z_end=z_end,
         )
         
         self.annotateAllObjectTracks()
@@ -16417,6 +16516,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.ax1_viewRange = self.ax1.viewRange()
         self.isRangeReset = False
     
+    def editID_cb(self, checked):
+        self.editIDToolbar.setVisible(checked and self.isSegm3D)
+
     def Brush_cb(self, checked):
         if checked:
             self.typingEditID = False
@@ -16856,6 +16958,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
     def showZsliceIndexToggled(self, checked):
         start_value = 0 if checked else 1
         self.zSliceSpinbox.setStartValue(start_value)
+        self.editIDToolbar.setStartValue(start_value)
 
         correction = start_value - self.zSliceSpinbox.minimum()
         maximum = self.zSliceSpinbox.maximum()
@@ -16923,36 +17026,34 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         height = geometry.height()
         self.setGeometry(left, top+10, width, height-200)
     
-    def checkSetDelObjActionActive(self, event):
+    def checkSetDelObjActionActive(self, event, checked=True):
         if self.delObjAction is None and self.is_win:
             return
         
         if self.delObjAction is None:
             # On mac we check for Key_Control
             if event.key() == Qt.Key_Control:
-                self.delObjToolAction.setChecked(True)
-            return
+                self.delObjToolAction.setChecked(checked)
+                return True
+
+            return False
 
         delObjKeySequence, delObjQtButton = self.delObjAction
         keySequenceText = widgets.QKeyEventToString(event).rstrip('+')
 
         if delObjKeySequence is None:
-            # self.delObjToolAction.setChecked(True)
-            return
+            return False
 
         delObjKeySequenceText = widgets.macShortcutToWindows(
             delObjKeySequence.toString()
         )
         keySequenceText = widgets.macShortcutToWindows(keySequenceText)
 
-        # printl(
-        #     delObjKeySequence.toString(), 
-        #     keySequenceText, 
-        #     delObjKeySequenceText
-        # )
+        if keySequenceText.endswith(delObjKeySequenceText):
+            self.delObjToolAction.setChecked(checked)
+            return True
         
-        if keySequenceText == delObjKeySequenceText:
-            self.delObjToolAction.setChecked(True)
+        return False
     
     def changeRightClickToLeftOnMac(self, mouseEvent):
         button = mouseEvent.button()
@@ -17093,7 +17194,98 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 return True
 
         return super().eventFilter(obj, ev)
+    
+    def get3DActionKeyboardModifier(self, modifiers):
+        if not self.isSegm3D:
+            return
         
+        is_shift = modifiers == Qt.KeyboardModifier.ShiftModifier
+        is_control_shift = modifiers == (
+            Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.ShiftModifier
+        )
+        is_alt_shift = modifiers == (
+            Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.ShiftModifier
+        )
+
+        return is_shift, is_control_shift, is_alt_shift
+
+    def get3DZrangeFromKeyModifiers(self, modifiers):
+        z_start, z_end = None, None
+
+        if not self.isSegm3D:
+            return z_start, z_end
+
+        is_shift, is_control_shift, is_alt_shift = (
+            self.get3DActionKeyboardModifier(modifiers)
+        )
+        if is_control_shift:
+            z_start = self.zSliceScrollBar.sliderPosition()
+        elif is_alt_shift:
+            z_end = self.zSliceScrollBar.sliderPosition()
+        elif is_shift:
+            z_start = self.zSliceScrollBar.sliderPosition()
+            z_end = self.zSliceScrollBar.sliderPosition()
+        
+        return z_start, z_end
+
+    def applyEditIDKeyModifiers(self, modifiers):
+        if not self.editIDbutton.isChecked():
+            return False
+        
+        self._applyKeymodifiersToolbarSegm3D(
+            modifiers, self.editIDToolbar
+        )
+    
+    def applySplitIDsKeyModifiers(self, modifiers):
+        if not self.separateBudButton.isChecked():
+            return False
+        
+        self._applyKeymodifiersToolbarSegm3D(
+            modifiers, self.separateBudToolbar
+        )
+
+    def _applyKeymodifiersToolbarSegm3D(self, modifiers, toolbar):    
+        if not self.isSegm3D:
+            return False
+
+        is_shift, is_control_shift, is_alt_shift = (
+            self.get3DActionKeyboardModifier(modifiers)
+        )
+
+        if is_shift:
+            toolbar.howToPropagateRadioCurrent.setChecked(True)
+            return True
+        
+        elif is_control_shift:
+            toolbar.howToPropagateRadioToEnd.setChecked(True)
+            return True
+        
+        elif is_alt_shift:
+            toolbar.howToPropagateRadioToStart.setChecked(True)
+            return True
+        
+        return False
+    
+    def resetSplitIDsOptions(self):
+        if not self.separateBudButton.isChecked():
+            return
+        
+        if not self.isSegm3D:
+            return
+        
+        self.separateBudToolbar.howToPropagateRadioEntireObj.setChecked(True)
+    
+    def resetEditIDOptions(self):
+        if not self.editIDbutton.isChecked():
+            return
+        
+        if not self.isSegm3D:
+            return
+        
+        self.editIDToolbar.howToPropagateRadioEntireObj.setChecked(True)
+
     @exception_handler
     def keyPressEvent(self, ev):
         ctrl = ev.modifiers() == Qt.ControlModifier
@@ -17128,6 +17320,14 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     'Data not loaded yet. Key pressing events are not connected.'
                 )
                 return
+
+        applied = self.applyEditIDKeyModifiers(modifiers)
+        if applied:
+            return
+
+        applied = self.applySplitIDsKeyModifiers(modifiers)
+        if applied:
+            return
 
         if ev.key() == Qt.Key_Control:
             if not ctrl:
@@ -17394,12 +17594,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.updateBrushCursorOnShiftRelease()
     
     def keyReleaseEvent(self, ev):
+        is_modifier = False
         if self.app.overrideCursor() == Qt.SizeAllCursor:
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
             self.onCtrlReleased()
+            is_modifier = True
         elif ev.key() == Qt.Key_Shift:
             self.onShiftReleased()
+            is_modifier = True
+        elif ev.key() == Qt.Key_Alt:
+            is_modifier = True
+        
+        self.resetEditIDOptions()
+        self.resetSplitIDsOptions()
             
         canRepeat = (
             ev.key() == Qt.Key_Left
@@ -17408,6 +17616,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             or ev.key() == Qt.Key_Down
             or ev.key() == Qt.Key_Control
             or ev.key() == Qt.Key_Backspace
+            or self.checkSetDelObjActionActive(ev, checked=False)
+            or is_modifier
             or self.delObjToolAction.isChecked()
         )
 
@@ -17441,8 +17651,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         if canRepeat and ev.isAutoRepeat():
             return
-        
-        self.delObjToolAction.setChecked(False)
         
         if ev.isAutoRepeat() and not ev.key() == Qt.Key_Z:
             if self.warnKeyPressedMsg is not None:
@@ -21952,8 +22160,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.initManualBackgroundImage()
         self.initPixelSizePropsDockWidget()
 
+        title_path = acdc_path.unexpanduser(posData.exp_path)
         self.setWindowTitle(
-            f'Cell-ACDC v{self._acdc_version} - GUI - "{posData.exp_path}"'
+            f'Cell-ACDC v{self._acdc_version} - GUI - "{title_path}"'
         )
         
         self.setupPreprocessing()
@@ -22221,6 +22430,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.interpZConfirmAction.setVisible(self.isSegm3D)
         self.interpZButton.action.setDisabled(not self.isSegm3D)
         self.interpZButton.setDisabled(not self.isSegm3D)
+
+        self.separateBudToolbar.setHowToPropagateZslicesVisible(self.isSegm3D)
 
     def resizeGuiAndAutoRange(self):
         self.resizeGui()
@@ -22767,6 +22978,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.updateItemsMousePos()
         if self.isSegm3D:
             self.updateObjectCounts()
+            self.editIDToolbar.setCurrentZslice(z, posData.SizeZ)
 
     def updateOverlayZslice(self, z):
         self.setOverlayImages()
@@ -24383,13 +24595,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 posData.lab[mask] = ID
 
     def assignNewIDfromClickedID(
-            self, clickedID: int, event: QGraphicsSceneMouseEvent, shift: bool = False
+            self, clickedID: int, 
+            event: QGraphicsSceneMouseEvent,
+            howToPropagateZslices=None
         ):
         posData = self.data[self.pos_i]
         x, y = event.pos().x(), event.pos().y()
         newID = self.setBrushID(return_val=True)
         mapper = [(clickedID, newID)]
-        self.applyEditID(clickedID, posData.IDs.copy(), mapper, x, y, shift=shift)
+        self.applyEditID(
+            clickedID, posData.IDs.copy(), mapper, x, y,
+            howToPropagateZslices=howToPropagateZslices
+        )
 
     def set_2Dlab(self, lab2D, lab3D=None):
         posData = self.data[self.pos_i]
@@ -25386,21 +25603,44 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         else:
             posData.cca_df = cca_df
             
-    def _changeIDhelper(self, lab, oldID, newID, rp, assignments):
+    def _changeIDhelper(
+            self, lab, oldID, newID, rp, assignments,
+            z_start=None,
+            z_end=None,
+        ):
         did_find_newID = False
-        if newID in rp.IDs: # should here also self.editIDmergeIDs?
+        if newID in rp.IDs:
             # Relabel old_ID to tempID, safe as RP is safe so no merging
             objo = rp.get_obj_from_ID(oldID, warn=False)
+            objn = rp.get_obj_from_ID(newID) 
+
             if objo is not None:
                 slc_o = objo.slice
                 mask_o = objo.image
+
+                if z_start is not None:
+                    local_z_o = z_start - objo.bbox[0]
+                    mask_o[:local_z_o] = False
+
+                if z_end is not None:
+                    local_z_o = z_end - objo.bbox[0]
+                    mask_o[local_z_o+1:] = False
+
                 lab[slc_o][mask_o] = newID
                 assignments[oldID] = newID
-            # Relabel new_ID to old_ID
-            objn = rp.get_obj_from_ID(newID) # here warn, we check in the if if it should be there
+            
             objn_slice = objn.slice
-            objn_mask = objn.image
-            lab[objn_slice][objn_mask] = oldID
+            mask_n = objn.image
+            if z_start is not None:
+                local_z_n = z_start - objo.bbox[0]
+                mask_n[:local_z_n] = False
+
+            if z_end is not None:
+                local_z_n = z_end - objo.bbox[0]
+                mask_n[local_z_n+1:] = False
+
+            # Relabel new_ID to old_ID
+            lab[objn_slice][mask_n] = oldID
             assignments[newID] = oldID
             did_find_newID = True
         else:
@@ -25408,13 +25648,28 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if obj is not None:
                 slc = obj.slice
                 mask = obj.image
+                if z_start is not None:
+                    local_z = z_start - obj.bbox[0]
+                    mask[:local_z] = False
+
+                if z_end is not None:
+                    local_z = z_end - obj.bbox[0]
+                    mask[local_z+1:] = False
+
                 lab[slc][mask] = newID
                 assignments[oldID] = newID
         return did_find_newID
 
     def changeIDfutureFrames(
             self, endFrame_i, oldIDnewIDMapper, includeUnvisited,
-            shift=False, merging_IDs=False
+            merging_IDs=False,
+            is_2d_edit_on_3d=False,
+            is_entire_obj=True,
+            is_to_last_z=False,
+            is_to_first_z=False,
+            is_custom_z_range=False,
+            z_start=None,
+            z_end=None,
         ):
         posData = self.data[self.pos_i]
         self.current_frame_i = posData.frame_i
@@ -25437,7 +25692,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 # Visited frame
                 posData.frame_i = i
                 self.get_data(lin_tree_init=False)
-                if shift and self.isSegm3D:
+                if is_2d_edit_on_3d:
                     lab = self.get_2Dlab(posData.lab)
                     rp = self.rpCurr2D()
                 else:
@@ -25451,19 +25706,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 else:
                     for old_ID, new_ID in oldIDnewIDMapper:
                         self._changeIDhelper(
-                            lab, old_ID, new_ID, rp, assignments)  
+                            lab, old_ID, new_ID, rp, assignments,
+                            z_start=z_start, z_end=z_end,
+                        )  
 
-                    if shift and self.isSegm3D:
+                    if is_2d_edit_on_3d:
                         self.set_2Dlab(lab)
 
+                    assignments = assignments if not merging_IDs else None
+                    assignments = assignments if is_entire_obj else None
                     self.update_rp(
                         draw=False,
-                        assignments=assignments if not ((shift and self.isSegm3D) or merging_IDs) else None)
+                        assignments=assignments
+                    )
                 self.store_data(autosave=i==endFrame_i)
             elif includeUnvisited:
                 # Unvisited frame (includeUnvisited = True)
                 lab = posData.segm_data[i]
-                if shift and self.isSegm3D:
+                if is_2d_edit_on_3d:
                     lab = self.get_2Dlab(lab)
                     rp = self.rpCurr2D(frame_i=i)
                 else:
@@ -25473,13 +25733,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 assignments = {}
                 for old_ID, new_ID in oldIDnewIDMapper:
                     self._changeIDhelper(
-                        lab, old_ID, new_ID, rp, assignments) 
+                        lab, old_ID, new_ID, rp, assignments,
+                        z_start=z_start, z_end=z_end,
+                    ) 
 
-                if (shift and self.isSegm3D) or merging_IDs:
+                use_assignments = (
+                    is_entire_obj and not merging_IDs
+                )
+
+                if use_assignments:
+                    rp.update_regionprops_via_assignments(assignments, lab)
+                else:
                     posData.segm_data[i][self.z_lab()] = lab
                     rp.update_regionprops(lab)
-                else:
-                    rp.update_regionprops_via_assignments(assignments, lab)
         
         # Back to current frame
         posData.frame_i = self.current_frame_i
@@ -31312,7 +31578,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.timestamp.setText(posData.frame_i)
     
     def deleteIDFromLab(
-            self, lab, delID, frame_i=None, delMask=None, shift=False
+            self, lab, delID, 
+            frame_i=None, 
+            delMask=None, 
+            z_start=None, 
+            z_end=None,
         ):
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i if frame_i is None else frame_i
@@ -31323,7 +31593,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             rp = posData.allData_li[frame_i]['regionprops']
         if rp is None:
             rp = self._acdcRegionProps(lab, precache_centroids=False)
-        single_slice_del_in_3D = shift and self.isSegm3D
+
+        single_slice_del_in_3D = (
+            z_start == z_end and z_start is not None
+        )
 
         if single_slice_del_in_3D:
             lab2D = self.get_2Dlab(lab)
@@ -31356,10 +31629,19 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             if _delID not in rp.IDs_set:
                 continue
             obj = rp.get_obj_from_ID(_delID)
+            obj_mask = obj.image
             if single_slice_del_in_3D:
-                delMask2D[obj.slice][obj.image] = True
+                delMask2D[obj.slice][obj_mask] = True
             else:
-                delMask[obj.slice][obj.image] = True
+                if z_start is not None:
+                    local_z = z_start - obj.bbox[0]
+                    obj_mask[:local_z] = False
+
+                if z_end is not None:
+                    local_z = z_end - obj.bbox[0]
+                    obj_mask[local_z+1:] = False
+                
+                delMask[obj.slice][obj_mask] = True
 
         if single_slice_del_in_3D:
             lab2D[delMask2D] = 0
@@ -31373,18 +31655,55 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         return lab, delMask
     
+    def splitIDwith3DActionModifiers(
+            self, 
+            modifiers,
+            clickedID: int
+        ):
+        if not self.isSegm3D:
+            return False
+        
+        z_start, z_end = self.separateBudToolbar.getHowToPropagateZslices(
+            self.zSliceScrollBar.sliderPosition()
+        )
+        if z_start is None and z_end is None:
+            return False
+
+        posData = self.data[self.pos_i]
+        newID = self.setBrushID(return_val=True)
+        lab = posData.lab
+        obj = posData.rp.get_obj_from_ID(clickedID)
+        slc = obj.slice
+        mask = obj.image
+        if z_start is not None:
+            local_z = z_start - obj.bbox[0]
+            mask[:local_z] = False
+
+        if z_end is not None:
+            local_z = z_end - obj.bbox[0]
+            mask[local_z+1:] = False
+
+        lab[slc][mask] = newID
+        return True
+
+        
     @disableWindow
     def deleteIDmiddleClick(
             self, 
             delIDs: Iterable, 
             applyFutFrames, 
             includeUnvisited,
-            shift=False
+            modifiers=None
         ):
         self.clearHighlightedID()
 
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
+
+        z_start, z_end = (
+            self.get3DZrangeFromKeyModifiers(modifiers)
+        )
+        is_entire_obj = z_start is None and z_end is None
         
         # Apply Delete ID to future frames if requested
         if applyFutFrames:
@@ -31393,8 +31712,6 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             self.store_data()
             segmSizeT = len(posData.segm_data)
 
-            local_rp_update = shift and self.isSegm3D
-
             for i in range(posData.frame_i+1, segmSizeT):
                 lab = posData.allData_li[i]['labels']
                 if lab is None and not includeUnvisited:
@@ -31402,50 +31719,60 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                     break
                 
                 if lab is not None:
-                    # Visited frame
-
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
                     lab, _ = self.deleteIDFromLab(
-                        lab, delIDs, frame_i=i, delMask=delMask, shift=shift
+                        lab, delIDs, 
+                        frame_i=i, 
+                        delMask=delMask,
+                        z_start=z_start,
+                        z_end=z_end,
                     )
+            
                     # Store change
                     posData.lab = lab
-                    self.update_rp(deletionIDs=delIDs if not local_rp_update else None)
+                    self.update_rp(
+                        deletionIDs=delIDs if is_entire_obj else None
+                    )
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
                     posData.segm_data[i], _ = self.deleteIDFromLab(
-                        posData.segm_data[i], delIDs, frame_i=i, delMask=delMask, shift=shift
+                        posData.segm_data[i], delIDs, 
+                        frame_i=i, 
+                        delMask=delMask, 
+                        z_start=z_start,
+                        z_end=z_end,
                     )
-                    self.update_rp(frame_i=i, deletionIDs=delIDs if not local_rp_update else None)
+                    self.update_rp(
+                        frame_i=i, 
+                        deletionIDs=delIDs if is_entire_obj else None
+                    )
 
         # Back to current frame
         if applyFutFrames:
             posData.frame_i = current_frame_i
             self.get_data()   
-
-        z_slice = None
-        if shift and self.isSegm3D:
-            z_slice = self.z_lab()
             
         posData.lab, delID_mask = self.deleteIDFromLab(
-            posData.lab, delIDs, shift=shift
+            posData.lab, delIDs, z_start=z_start, z_end=z_end,
         )
         for _delID in delIDs:
             self.clearObjContour(ID=_delID, ax=0)     
             self.clearObjContour(ID=_delID, ax=1)  
-        if z_slice is None:
+
+        if is_entire_obj:
             self.removeObjectFromRp(delIDs,posData.lab)
-        
-        if shift and self.isSegm3D:
+        else:
             self.update_rp()
 
         self.annotateAllObjectTracks()
         self.annotateAssignedObjsAcdcTrackerSecondStep()
         self.store_data(autosave=False)
-        self.whitelistPropagateIDs(IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames))
+        self.whitelistPropagateIDs(
+            IDs_to_remove=delIDs, curr_frame_only=(not applyFutFrames)
+        )
         return delID_mask
     
     def hideOverlayLabelsItems(self, specific=None):

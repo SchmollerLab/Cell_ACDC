@@ -86,6 +86,7 @@ from . import _base_widgets
 from . import debugutils
 from . import rst_utils
 from . import tooltips_rst_filepath
+from . import path as acdc_path
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -3453,16 +3454,20 @@ class ToolBar(QToolBar):
     def removeSeparator(self, separator):
         separator.removeFromToolbar()
     
-    def addSpinBox(self, label=''):
+    def addSpinBox(self, label='', fixedWidth=False):
         spinbox = SpinBox(disableKeyPress=True)
         if label:
             spinbox.label = QLabel(label)
             spinbox.labelAction = self.addWidget(spinbox.label)
         
+        if fixedWidth:
+            spinbox.setFixedWidth(spinbox.sizeHint().width())
         spinbox.action = self.addWidget(spinbox)
         return spinbox
     
-    def addButton(self, icon_str: str, text='', checkable=False, ret_widget=False):
+    def addButton(
+            self, icon_str: str, text='', checkable=False, ret_widget=False
+        ):
         action = QAction(QIcon(icon_str), text, self)
         action.setCheckable(checkable)
         widget = self.addAction(action)
@@ -3509,6 +3514,16 @@ class ToolBar(QToolBar):
         stretchItem.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
         action = self.addWidget(stretchItem)
         return action
+    
+    def addRadioButton(self, text: str, checked=False, buttonsGroup=None):
+        if buttonsGroup is None:
+            buttonsGroup = QButtonGroup()
+            buttonsGroup.setExclusive(True)
+        radioButton = QRadioButton(text)
+        radioButton.setChecked(checked)
+        radioButton.action = self.addWidget(radioButton)
+        buttonsGroup.addButton(radioButton)
+        return radioButton, buttonsGroup
     
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
@@ -14772,6 +14787,53 @@ class SeparateBudToolbar(ToolBar):
         super().__init__(parent)
         self.seg_3D = False
         self.parent = parent
+
+        self.howToPropagateRadioEntireObj, self.howToPropagateButtonsGroup = (
+            self.addRadioButton(
+                'Entire object'
+            )
+        )
+        self.howToPropagateRadioEntireObj.setChecked(True)
+        self.howToPropagateRadioEntireObj.setToolTip(
+            'Change the object ID in the entire object.'
+        )
+
+        self.howToPropagateRadioCurrent, _ = (
+            self.addRadioButton(
+                'Current z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioCurrent.setToolTip(
+            'Change the object ID only in the current z-slice.\n\n'
+            'Shortcut: Shift'
+        )
+
+        self.howToPropagateRadioToEnd, _ = (
+            self.addRadioButton(
+                'From current to last z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToEnd.setToolTip(
+            'Change the object ID from the current Z-slice to the last '
+            "Z-slice of the object's bounding box (inclusive).\n\n"
+            'Shortcut: Shift + Ctrl'
+        )
+
+        self.howToPropagateRadioToStart, _ = (
+            self.addRadioButton(
+                'From current to first z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToStart.setToolTip(
+            'Change the object ID from the first Z-slice of the '
+            "object's bounding box to the current Z-slice (inclusive).\n\n"
+            'Shortcut: Alt + Ctrl'
+        )
+
+        self.addSeparator()
         
         sepModeSelector = QComboBox(self)
         sepModeSelector.addItems(['Slice by slice', '3D Convexity defects'])
@@ -15005,6 +15067,30 @@ class SeparateBudToolbar(ToolBar):
                 widget.isChecked() if value_type is bool else widget.value()
             )
         return kwargs
+    
+    def getHowToPropagateZslices(self, current_z: int):
+        how = self.howToPropagateButtonsGroup.checkedButton().text()
+        if how == 'Entire object':
+            return None, None
+        
+        if how == 'Current z-slice':
+            return None, None
+        
+        if how == 'From current to last z-slice':
+            return current_z, None
+        
+        return None, current_z
+
+    def setHowToPropagateZslicesVisible(self, isSegm3D: bool):
+        self.howToPropagateRadioEntireObj.setVisible(isSegm3D)
+        self.howToPropagateRadioCurrent.setVisible(isSegm3D)
+        self.howToPropagateRadioToEnd.setVisible(isSegm3D)
+        self.howToPropagateRadioToStart.setVisible(isSegm3D)
+
+        self.howToPropagateRadioEntireObj.action.setVisible(isSegm3D)
+        self.howToPropagateRadioCurrent.action.setVisible(isSegm3D)
+        self.howToPropagateRadioToEnd.action.setVisible(isSegm3D)
+        self.howToPropagateRadioToStart.action.setVisible(isSegm3D)
 
 class PrefixFilenameLineEdit(QWidget):
     def __init__(self, endNameLabel, *args):      
@@ -15213,3 +15299,143 @@ class ExportCurrentViewToolbar(ToolBar):
     def setInfoText(self, text):
         self.infoTextLabel.setText(text)
         
+class EditIDToolbar(ToolBar):    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.howToPropagateRadioEntireObj, self.howToPropagateButtonsGroup = (
+            self.addRadioButton(
+                'Entire object'
+            )
+        )
+        self.howToPropagateRadioEntireObj.setChecked(True)
+        self.howToPropagateRadioEntireObj.setToolTip(
+            'Change the object ID in the entire object.'
+        )
+
+        self.howToPropagateRadioCurrent, _ = (
+            self.addRadioButton(
+                'Current z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioCurrent.setToolTip(
+            'Change the object ID only in the current z-slice.\n\n'
+            'Shortcut: Shift'
+        )
+
+        self.howToPropagateRadioToEnd, _ = (
+            self.addRadioButton(
+                'From current to last z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToEnd.setToolTip(
+            'Change the object ID from the current Z-slice to the last '
+            "Z-slice of the object's bounding box (inclusive).\n\n"
+            'Shortcut: Shift + Ctrl'
+        )
+
+        self.howToPropagateRadioToStart, _ = (
+            self.addRadioButton(
+                'From current to first z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToStart.setToolTip(
+            'Change the object ID from the first Z-slice of the '
+            "object's bounding box to the current Z-slice (inclusive).\n\n"
+            'Shortcut: Alt + Ctrl'
+        )
+
+        self.addSeparator()
+
+        self.howToPropagateRadioRange, _ = (
+            self.addRadioButton(
+                'Custom range', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioRange.setToolTip(
+            'Change the object ID within a defined range of Z-slices (last included).'
+        )
+
+        self.addSpacing(5)
+
+        self.howToPropagateRangeStartZSpinbox = self.addSpinBox(
+            'Start z', fixedWidth=True
+        )
+        self.howToPropagateRangeStartZSpinbox.setMinimum(0)
+        self.howToPropagateRangeStartZSpinbox.setStartValue(1)
+        self.howToPropagateRangeStartZSpinbox.setDisabled(True)
+
+        self.addSpacing(5)
+            
+        self.howToPropagateRangeEndZSpinbox = self.addSpinBox(
+            'End z', fixedWidth=True
+        )
+        self.howToPropagateRangeEndZSpinbox.setMinimum(0)
+        self.howToPropagateRangeEndZSpinbox.setStartValue(1)
+        self.howToPropagateRangeEndZSpinbox.setDisabled(True)
+
+        self.howToPropagateRadioRange.toggled.connect(
+            self.howToPropagateRadioRangeToggled
+        )
+        self.howToPropagateRangeStartZSpinbox.sigValueChanged.connect(
+            self.howToPropagateRangeStartZSpinboxValueChanged
+        )
+    
+    def setStartValue(self, start_value):
+        self.howToPropagateRangeStartZSpinbox.setStartValue(start_value)
+        self.howToPropagateRangeEndZSpinbox.setStartValue(start_value)
+    
+    def getStartValue(self):
+        return self.howToPropagateRangeStartZSpinbox.getStartValue()
+    
+    def getHowToPropagateZslices(self):
+        how = self.howToPropagateButtonsGroup.checkedButton().text()
+        z_range = (
+            self.howToPropagateRangeStartZSpinbox.value(), 
+            self.howToPropagateRangeEndZSpinbox.value()
+        )
+        return how, z_range 
+    
+    def setCurrentZslice(self, currentZslice, SizeZ):
+        self.howToPropagateRangeStartZSpinbox.setValue(currentZslice)
+        self.howToPropagateRangeStartZSpinbox.setMaximum(SizeZ)
+        self.howToPropagateRangeEndZSpinbox.setValue(currentZslice)
+        self.howToPropagateRangeEndZSpinbox.setMaximum(SizeZ)
+    
+    def howToPropagateRangeStartZSpinboxValueChanged(self, value):
+        self.howToPropagateRangeEndZSpinbox.setMinimum(value)
+        if value > self.howToPropagateRangeEndZSpinbox.value():
+            self.howToPropagateRangeEndZSpinbox.setValue(value)
+
+    def howToPropagateRadioRangeToggled(self, checked: bool):
+        self.howToPropagateRangeStartZSpinbox.setDisabled(not checked)
+        self.howToPropagateRangeEndZSpinbox.setDisabled(not checked)
+        start_z = self.howToPropagateRangeStartZSpinbox.value()
+        end_z = self.howToPropagateRangeEndZSpinbox.value()
+        if start_z > end_z:
+            self.howToPropagateRangeEndZSpinbox.setValue(start_z)
+
+class StandardItem(QStandardItem):
+    def __init__(self, other):
+        super().__init__(other)
+    
+    def setData(self, value, role = ...):
+        return super().setData(value, role)
+
+class PathTreeWidgetItem(QTreeWidgetItem):
+    def __init__(self, path, strings):
+        path = acdc_path.unexpanduser(path)
+        strings = [path, *strings]
+        super().__init__(strings)
+    
+    def text(self, column):
+        if column == 0:
+            path = super().text(column)
+            path = os.path.expanduser(path)
+            return path
+            
+        return super().text(column)

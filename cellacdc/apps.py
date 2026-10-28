@@ -10419,7 +10419,11 @@ class EditIDDialog(QDialog):
             parent=None, 
             nextUniqueID=1, 
             allIDs=None,
-            addPropagateCheckbox=False
+            addPropagateCheckbox=False,
+            isSegm3D=False,
+            currentZslice=1,
+            SizeZ=None,
+            zSliceStartValue=None
         ):
         self.assignNewID = False
         self.IDs = IDs
@@ -10429,6 +10433,7 @@ class EditIDDialog(QDialog):
         self.mergeWithExistingID = False
         self.doNotAskAgainExistingID = doNotShowAgain
         self.allIDs = allIDs
+        self.isSegm3D = isSegm3D
         if allIDs is None:
             self.allIDs = set(self.IDs)
         self.nextUniqueID = nextUniqueID
@@ -10477,6 +10482,14 @@ class EditIDDialog(QDialog):
         note.setStyleSheet("padding:12px 0px 0px 0px;")
         VBoxLayout.addWidget(note, alignment=Qt.AlignCenter)
         mainLayout.addLayout(VBoxLayout)
+
+        if isSegm3D:
+            howToPropagateGroupbox = self.addHowToPropagateZslicesOptions(
+                currentZslice, SizeZ, zSliceStartValue
+            )
+            mainLayout.addWidget(widgets.QHLine())
+            mainLayout.addSpacing(10)
+            mainLayout.addWidget(howToPropagateGroupbox)
         
         self.propagateCheckbox = None
         if addPropagateCheckbox:
@@ -10508,6 +10521,118 @@ class EditIDDialog(QDialog):
         applyNewIDButton.clicked.connect(self.assignNewIDclicked)
         
         # self.setModal(True)
+    
+    def addHowToPropagateZslicesOptions(
+            self, currentZslice, SizeZ, zSliceStartValue
+        ):
+        howToPropagateGroupbox = QGroupBox('Apply ID change to')
+        howToPropagateLayout = QGridLayout()
+        self.howToPropagateButtonsGroup = QButtonGroup()
+        howToPropagateGroupbox.setLayout(howToPropagateLayout)
+        self.howToPropagateRadioCurrent = QRadioButton(
+            'Current z-slice'
+        )
+        self.howToPropagateRadioCurrent.setChecked(True)
+        self.howToPropagateRadioCurrent.setToolTip(
+            'Change the object ID only in the current z-slice'
+        )
+        self.howToPropagateRadioEntireObj = QRadioButton(
+            'Entire object'
+        )
+        self.howToPropagateRadioEntireObj.setToolTip(
+            'Change the object ID in the entire object'
+        )
+        self.howToPropagateRadioToEnd = QRadioButton(
+            'From current to last z-slice')
+        self.howToPropagateRadioToEnd.setToolTip(
+            'Change the object ID from the current Z-slice to the last '
+            "Z-slice of the object's bounding box (inclusive)."
+        )
+        self.howToPropagateRadioToStart = QRadioButton(
+            'From current to first z-slice'
+        )
+        self.howToPropagateRadioToStart.setToolTip(
+            'Change the object ID from the first Z-slice of the '
+            "object's bounding box to the current Z-slice (inclusive)."
+        )
+
+        self.howToPropagateRadioRange = QRadioButton('Custom range')
+        self.howToPropagateRadioRange.setToolTip(
+            'Change the object ID within a defined range of Z-slices (last included).'
+        )
+
+        self.howToPropagateRangeStartZSpinbox = widgets.SpinBox()
+        self.howToPropagateRangeStartZSpinbox.setMinimum(0)
+        self.howToPropagateRangeStartZSpinbox.setStartValue(1)
+        self.howToPropagateRangeStartZSpinbox.setValue(currentZslice)
+        self.howToPropagateRangeStartZSpinbox.setDisabled(True)
+        if SizeZ is not None:
+            self.howToPropagateRangeStartZSpinbox.setMaximum(SizeZ)
+
+        self.howToPropagateRangeEndZSpinbox = widgets.SpinBox()
+        self.howToPropagateRangeEndZSpinbox.setMinimum(0)
+        self.howToPropagateRangeEndZSpinbox.setStartValue(1)
+        self.howToPropagateRangeEndZSpinbox.setValue(currentZslice)
+        if SizeZ is not None:
+            self.howToPropagateRangeEndZSpinbox.setMaximum(SizeZ-1)
+        self.howToPropagateRangeEndZSpinbox.setDisabled(True)
+
+        howToPropagateLayout.addWidget(self.howToPropagateRadioEntireObj, 0, 0)
+        howToPropagateLayout.addWidget(self.howToPropagateRadioCurrent, 1, 0)
+        howToPropagateLayout.addWidget(self.howToPropagateRadioToEnd, 2, 0)
+        howToPropagateLayout.addWidget(self.howToPropagateRadioToStart, 3, 0)
+        howToPropagateLayout.addWidget(self.howToPropagateRadioRange, 4, 0)
+
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioCurrent
+        )
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioEntireObj
+        )
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioToEnd
+        )
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioToStart
+        )
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioRange
+        )
+
+        self.howToPropagateRangeStartZSpinbox.setStartValue(zSliceStartValue)
+        self.howToPropagateRangeEndZSpinbox.setStartValue(zSliceStartValue)
+
+        howToPropagateLayout.addWidget(QLabel('From z-slice'), 4, 1)
+        howToPropagateLayout.addWidget(QLabel('To z-slice'), 4, 2)
+        howToPropagateLayout.addWidget(
+            self.howToPropagateRangeStartZSpinbox, 5, 1
+        )
+        howToPropagateLayout.addWidget(
+            self.howToPropagateRangeEndZSpinbox, 5, 2
+        )
+        howToPropagateLayout.addWidget(self.howToPropagateRadioRange, 5, 0)
+
+        self.howToPropagateRadioRange.toggled.connect(
+            self.howToPropagateRadioRangeToggled
+        )
+        self.howToPropagateRangeStartZSpinbox.sigValueChanged.connect(
+            self.howToPropagateRangeStartZSpinboxValueChanged
+        )
+
+        return howToPropagateGroupbox
+
+    def howToPropagateRangeStartZSpinboxValueChanged(self, value):
+        self.howToPropagateRangeEndZSpinbox.setMinimum(value)
+        if value > self.howToPropagateRangeEndZSpinbox.value():
+            self.howToPropagateRangeEndZSpinbox.setValue(value)
+
+    def howToPropagateRadioRangeToggled(self, checked: bool):
+        self.howToPropagateRangeStartZSpinbox.setDisabled(not checked)
+        self.howToPropagateRangeEndZSpinbox.setDisabled(not checked)
+        start_z = self.howToPropagateRangeStartZSpinbox.value()
+        end_z = self.howToPropagateRangeEndZSpinbox.value()
+        if start_z > end_z:
+            self.howToPropagateRangeEndZSpinbox.setValue(start_z)
 
     def onTextChanged(self, text):
         self.warnExistingIDLabel.setText('')
@@ -10629,8 +10754,31 @@ class EditIDDialog(QDialog):
         self.doPropagateFutureFrames = False
         if self.propagateCheckbox is not None:
             self.doPropagateFutureFrames = self.propagateCheckbox.isChecked()
-        self.close()
         
+        self.howToPropagateZslices = self.getHowToPropagateZslices()
+        self.close()
+    
+    def setHowToPropagateZslices(self, how: str, z_range):
+        z_start, z_end = z_range
+        self.howToPropagateRangeStartZSpinbox.setValue(z_start)
+        self.howToPropagateRangeEndZSpinbox.setValue(z_end)
+        for button in self.howToPropagateButtonsGroup.buttons():
+            if button.text() != how:
+                continue
+            
+            button.setChecked(True)
+            break
+
+    def getHowToPropagateZslices(self):
+        if not self.isSegm3D:
+            return
+        
+        how = self.howToPropagateButtonsGroup.checkedButton().text()
+        z_range = (
+            self.howToPropagateRangeStartZSpinbox.value(), 
+            self.howToPropagateRangeEndZSpinbox.value()
+        )
+        return how, z_range
 
     def cancel_cb(self, event):
         self.cancel = True
@@ -20848,7 +20996,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
 
     def addFromRecentPaths(self):
         """Open a multi-select dialog containing existing recent folders."""
-        recent_paths, dates = myutils.get_recent_paths(self)
+        recent_paths, dates = myutils.get_recent_paths()
         if not recent_paths:
             return
         
@@ -22256,7 +22404,7 @@ class SearchableListboxDialog(QBaseDialog):
 
         # add all items to the search model
         for item_text in self.allItems:
-            model_item = widgets.QStandardItem(item_text)
+            model_item = widgets.StandardItem(item_text)
             model_item.setData(
                 self._normalizeSearchText(item_text),
                 widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
@@ -22406,7 +22554,10 @@ class SearchableListboxDialog(QBaseDialog):
             last_edited = self.searchModel.item(
                 source_index.row(), 1
             ).text()
-            tree_item = QTreeWidgetItem([item_text, last_edited])
+            if os.path.exists(item_text):
+                tree_item = widgets.PathTreeWidgetItem(item_text, [last_edited])
+            else:
+                tree_item = QTreeWidgetItem([item_text, last_edited])
             tree_item.setToolTip(
                 1,
                 self.searchModel.item(
