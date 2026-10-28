@@ -47,24 +47,25 @@ class Model:
 
         for attempt in range(2):
             try:
-                # Loads Presets for '2D' or 'mothermachine' images
                 cfg.load_config(presets=model_type)
                 self.target_size = cfg.target_size_seg
 
-                # Initialize Model and Load Weights with 2D presets
                 self.model = unet_seg(input_size=self.target_size + (1,))
                 self.model.load_weights(cfg.model_file_seg)
 
                 break
 
-            except ValueError:
+            except (ValueError, FileNotFoundError):
                 if attempt == 1:
                     raise
-                # Downloads model weights and configuration files for 2D and mothermachine
-                download_assets(load_models=True,
-                                load_sets=False,
-                                load_evals=False,
-                                config_level='local')
+
+                # Download model weights and configuration files
+                download_assets(
+                    load_models=True,
+                    load_sets=False,
+                    load_evals=False,
+                    config_level='local'
+                )
 
     def delta_preprocess(self,
                          image,

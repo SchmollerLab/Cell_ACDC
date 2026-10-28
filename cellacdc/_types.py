@@ -6,7 +6,12 @@ import numpy as np
 class NotGUIParam:
     not_a_param = True
 
-ChannelsDict = dict[str, List[np.ndarray]]
+import sys
+if sys.version_info < (3, 9):
+    from typing import Optional, Union, List, Dict
+    ChannelsDict = Dict[str, List[np.ndarray]]
+else:
+    ChannelsDict = dict[str, List[np.ndarray]]
 
 class RescaleIntensitiesInRangeHow:
     values = ['percentage', 'image', 'absolute']

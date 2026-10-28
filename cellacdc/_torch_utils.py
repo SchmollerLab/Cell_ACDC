@@ -1,6 +1,7 @@
 """PyTorch installation, wheel discovery, version checks and device helpers.
 
-PyTorch and GUI modules are imported only inside the helpers that need them.
+from collections.abc import Callable, Generator
+from typing import Optional, Union, Tuple, Literal
 """
 
 import ctypes
@@ -13,8 +14,7 @@ import shlex
 import subprocess
 import sys
 import traceback
-from typing import Callable, Literal, Optional, Union
-
+from typing import Callable, List, Literal, Optional, Tuple, Union
 import requests
 from packaging.specifiers import SpecifierSet
 
@@ -471,8 +471,8 @@ def ensure_torch(
     logger_func: Callable = print,
     prompt_func: Optional[Callable] = None,
     platform: str = sys.platform,
-    found_cuda_version: Optional[Union[tuple[int, int], Literal[False]]] = None,
-    possible_links: Optional[tuple[list[tuple[str, Optional[str]]], int]] = None,
+    found_cuda_version: Optional[Union[Tuple[int, int], Literal[False]]] = None,
+    possible_links: Optional[Tuple[List[Tuple[str, Optional[str]]], int]] = None,
     torch_version: Optional[str] = None,
 ) -> bool:
     """Install PyTorch into the model environment.

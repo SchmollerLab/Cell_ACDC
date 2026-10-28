@@ -8,7 +8,7 @@ import requests
 
 from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
 from cellacdc.service.client import LocalBackend, ModelClient
-from cellacdc import cli
+from cellacdc import cli, myutils_models
 
 
 def test_local_backend_forwards_worker_output(capsys):
@@ -1078,7 +1078,7 @@ def test_model_param_types_roundtrip():
             _types.FolderPath, _types.SecondChannelImage, _types.NotGUIParam,
             _types.YeazV2ModelType, _types.CsvFilePath,
         ):
-        encoded = myutils._serialize_model_param_type(original)
+        encoded = myutils_models._serialize_model_param_type(original)
         restored = myutils._deserialize_model_param_type(json.loads(json.dumps(encoded)))
         assert restored is original
 
@@ -1087,15 +1087,15 @@ def test_model_param_types_roundtrip():
         is_exclusive_with = ['model_path']
         default_exclusive = 'Using custom model'
 
-    encoded = myutils._serialize_model_param_type(Choices)
+    encoded = myutils_models._serialize_model_param_type(Choices)
     restored = myutils._deserialize_model_param_type(json.loads(json.dumps(encoded)))
     assert restored().values == Choices.values
     assert restored().is_exclusive_with == Choices.is_exclusive_with
     assert restored().default_exclusive == Choices.default_exclusive
     assert restored.cast_dtype('cyto3') == 'cyto3'
-    optional = myutils._serialize_model_param_type(typing.Optional[_types.SecondChannelImage])
+    optional = myutils_models._serialize_model_param_type(typing.Optional[_types.SecondChannelImage])
     assert _types.is_second_channel_type(myutils._deserialize_model_param_type(optional))
-    literal = myutils._serialize_model_param_type(typing.Literal['cpu', 'gpu'])
+    literal = myutils_models._serialize_model_param_type(typing.Literal['cpu', 'gpu'])
     assert myutils._deserialize_model_param_type(literal)().values == ['cpu', 'gpu']
 
 
@@ -1118,7 +1118,7 @@ def test_model_param_metadata_creates_typed_gui_widgets():
     ]
     params = [
         myutils.ArgSpec(name, default, myutils._deserialize_model_param_type(
-            myutils._serialize_model_param_type(param_type)
+            myutils_models._serialize_model_param_type(param_type)
         ), None, None)
         for name, default, param_type, _ in definitions
     ]

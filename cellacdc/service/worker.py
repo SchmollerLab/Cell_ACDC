@@ -200,13 +200,13 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
     import inspect
     import tempfile
     import weakref
-    from cellacdc import myutils
+    from cellacdc import myutils_models
     from cellacdc.service.payload import ModelFile
 
     init_kwargs = dict(init_kwargs)
-    init_params, _ = myutils.getModelArgSpec(acdcSegment)
+    init_params, _ = myutils_models.getModelArgSpec(acdcSegment)
     path_params = {
-        param.name: myutils._serialize_model_param_type(param.type)['kind']
+        param.name: myutils_models._serialize_model_param_type(param.type)['kind']
         for param in init_params
     }
     uploaded = {
@@ -262,7 +262,7 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
             with open(path, 'wb') as stream:
                 stream.write(upload.data)
             init_kwargs[key] = path
-        if myutils.model_init_requires_segm_data(acdcSegment):
+        if myutils_models.model_init_requires_segm_data(acdcSegment):
             if segm_data is None:
                 raise ValueError(
                     'This model requires an auxiliary segmentation (segm_data), '
@@ -301,12 +301,12 @@ def create_app(
         kwargs (possibly including arrays or model files) with `POST /init`.
     """
     with startup_timer(f"{model_name}: worker runtime imports"):
-        from cellacdc import myutils
+        from cellacdc import myutils_models
         from cellacdc.service import payload
 
     importer = (
-        myutils.import_promptable_segment_module
-        if model_kind == 'promptable' else myutils.import_segment_module
+        myutils_models.import_promptable_segment_module
+        if model_kind == 'promptable' else myutils_models.import_segment_module
     )
     with startup_timer(f"{model_name}: worker model module import"):
         acdcSegment = importer(model_name)
@@ -323,14 +323,14 @@ def create_app(
         initialize_model(init_kwargs or {})
 
     with startup_timer(f"{model_name}: worker model argument inspection"):
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+        init_params, segment_params = myutils_models.getModelArgSpec(acdcSegment)
 
     def serialize_params(params):
         return [
             [
                 param.name,
                 json.loads(json.dumps(param.default, default=str)),
-                myutils._serialize_model_param_type(param.type),
+                myutils_models._serialize_model_param_type(param.type),
                 param.desc,
                 param.docstring,
             ]
@@ -784,9 +784,18 @@ def main():
     import uvicorn
 
     parser = argparse.ArgumentParser(description="Cell-ACDC Model Worker Service")
-    parser.add_argument(
-        "-d", "--debug", action=argparse.BooleanOptionalAction, default=None
-    )
+    try:
+        parser.add_argument(
+            "-d", "--debug", action=argparse.BooleanOptionalAction, default=None
+        )
+    except AttributeError:
+        # BooleanOptionalAction is not available in Python < 3.9
+        parser.add_argument(
+            "-d", "--debug", action="store_true", default=None
+        )
+        parser.add_argument(
+            "-nd", "--no-debug", action="store_false", dest="debug"
+        )
     parser.add_argument("--model", required=True, help="Segmentation model name")
     parser.add_argument(
         '--model-kind', choices=('segmentation', 'promptable'),

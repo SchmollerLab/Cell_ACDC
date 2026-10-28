@@ -12,7 +12,7 @@ import skimage.measure
 
 from yeastmatedetector.inference import YeastMatePredictor
 
-from cellacdc.core import getBaseCca_df
+from cellacdc.myutils_models import getBaseCca_df
 from cellacdc import user_profile_path
 
 class Model:

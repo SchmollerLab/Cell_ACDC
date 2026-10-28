@@ -124,6 +124,9 @@ MODEL_ENVS = {
         'torch': True,
         'torch_version': '<2',
         'python': '3.8',
+        'packages': [
+            {'pkg_name': 'Pillow', 'max_version': '10.0.0', 'import_pkg_name': 'PIL'},
+        ],
         'main_env_packages': ['detectron2', 'yeastmatedetector'],
         'setup_steps': [
             {

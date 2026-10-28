@@ -14,6 +14,7 @@ import requests
 
 from cellacdc.service.schema import InfoResponse, parse_response
 from cellacdc._model_startup import startup_timer
+from cellacdc import myutils_models
 
 _LOCAL_ONLY_KWARGS = ("posData", "signals", "logger_func", "signals_tqdm")
 
@@ -83,7 +84,7 @@ def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
         init_params, _ = get_model_arg_spec(base_url, timeout=timeout)
     file_params = {
         param.name for param in init_params
-        if myutils._serialize_model_param_type(param.type)['kind']
+        if myutils_models._serialize_model_param_type(param.type)['kind']
         in ('path', 'csv_path')
     }
     with startup_timer("model initialization payload encoding"):

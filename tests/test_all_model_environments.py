@@ -31,8 +31,7 @@ MODEL_NAMES = sorted(
     if not path.parent.name.startswith("_")
 )
 IMAGE_PATH = (
-    # r'C:\Users\timon\OneDrive\Helmholtz\Microscopy_Data\sample_data\single_frame.tif'
-    r'path\to\your\sample_data\single_frame.tif'
+    r'/home/stegosaurus/Downloads/JA E#15.10 B7_001_001_s01_DAPI.tif'
 )
 pytestmark = pytest.mark.skipif(
     not IMAGE_PATH,

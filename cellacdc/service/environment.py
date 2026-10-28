@@ -1,12 +1,13 @@
 import os
 import re
-import sys
+from typing import Optional, Union, Tuple, Literal, List
 import shutil
 import subprocess
 import json
 import hashlib
 from importlib.metadata import distribution, PackageNotFoundError
 from typing import Optional, Callable, Any, List, Literal, Union
+import sys
 
 from cellacdc import is_conda_env, user_profile_path
 from cellacdc._model_startup import startup_timer
@@ -464,7 +465,7 @@ for spec in specs:
     with startup_timer("dependency check (shared process): " + spec["import_pkg_name"]):
         module = import_module(spec["import_pkg_name"])
         installed = getattr(module, "__version__", None)
-        if not installed:
+        if not installed or installed == 'not-installed':
             try:
                 installed = version(spec["pkg_name"])
             except PackageNotFoundError:
@@ -498,8 +499,8 @@ def ensure_model_dependencies(
     parent: Any = None,
     auto_install: bool = True,
     prompt_func: Optional[Callable] = None,
-    found_cuda_version: Optional[Union[tuple[int, int], Literal[False]]] = None,
-    possible_links: Optional[tuple[list[tuple[str, Optional[str]]], int]] = None,
+    found_cuda_version: Optional[Union[Tuple[int, int], Literal[False]]] = None,
+    possible_links: Optional[Tuple[List[Tuple[str, Optional[str]]], int]] = None,
     platform: Optional[str] = None,
 ):
     """Ensure specific dependencies for a model are installed in its environment."""
@@ -525,6 +526,7 @@ def ensure_model_dependencies(
     if specs:
         method = install_method or get_install_method()
         installer = "conda" if method == "conda" else "pip"
+        print(specs)
         myutils.check_install_package(
             specs,
             installer=installer,
