@@ -58,8 +58,8 @@ yticks_max = int(yticks_max)
 font = {'size': 13}
 matplotlib.rc('font', **font)
 
-fig, ax = plt.subplots(figsize=(4, 3))
-ax.bar(df['year'], df['citations'], color='#156082ff')
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.bar(df['year'], df['citations'], color='forestgreen')
 ax.set_xlabel('Year')
 ax.set_ylabel('Citations')
 ax.set_title('Publications using Cell-ACDC')
