@@ -13751,7 +13751,15 @@ When working with 3D segmentation masks:
     def delROImovingFinished(self, roi: pg.ROI):
         posData = self.data[self.pos_i]
         curr_delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        curr_idx = curr_delROIs_info['rois'].index(roi)
+        try:
+            curr_idx = curr_delROIs_info['rois'].index(roi)
+        except Exception as err:
+            for ax in (self.ax1, self.ax2):
+                try:
+                    ax.removeDelRoiItem(roi)
+                    return
+                except Exception as err:
+                    pass
 
         update_key = False
         if posData.frame_i > 0:
@@ -16938,13 +16946,13 @@ When working with 3D segmentation masks:
         QTimer.singleShot(150, self.resizeGui)
     
     def showFrameIndexToggled(self, checked):
+        posData = self.data[self.pos_i]
         start_value = 0 if checked else 1
         self.navSpinBox.setStartValue(start_value)
         self.rightImageFramesScrollbar.setStartValue(start_value)
 
         correction = start_value - self.navSpinBox.minimum()
-        maximum = self.navSpinBox.maximum()
-        self.navSizeLabel.setText(f'/{maximum + correction}')
+        self.navSizeLabel.setText(f'/{posData.SizeT + correction}')
 
         value = 'Yes' if checked else 'No'
         self.df_settings.at['showFrameIndex', 'value'] = value
