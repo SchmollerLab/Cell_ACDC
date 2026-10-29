@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from cellacdc import _types, myutils, sam_embeddings
+from cellacdc import _types, myutils, myutils_models, sam_embeddings
 
 
 @pytest.fixture
@@ -255,7 +255,8 @@ def test_sam2_worker_client_roundtrip(sam2_wrapper, monkeypatch, tmp_path, singl
             models.append(self)
 
     monkeypatch.setattr(
-        myutils, 'import_segment_module', lambda name: SimpleNamespace(Model=Model),
+        myutils_models, 'import_segment_module',
+        lambda name: SimpleNamespace(Model=Model),
     )
     app = worker.create_app('sam2')
     endpoint = next(
