@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import ast
 from typing import Literal, Callable, Dict, Generator, Iterable, List, Tuple
 import datetime
 import pathlib
@@ -43,6 +44,7 @@ import time
 import sympy as sp
 import json
 import html
+import tifffile
 
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
@@ -22932,3 +22934,580 @@ class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
         ))
 
         self.setWindowTitle('Generate Trackastra training data setup')
+
+
+class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
+    DIMENSIONS = (
+        ('channels', 'Channels', 'One file per channel', 'e.g. C or S'),
+        ('timepoints', 'Timepoints', 'One file per timepoint', 'e.g. T'),
+        ('z_slices', 'Z-slices', 'One file per z-slice', 'e.g. Z'),
+    )
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Loose TIFF data structure setup')
+        self.cancel = True
+        self.selectedOptions = {}
+        self.dimensionControls = {}
+        self.channelEntries = []
+
+        mainLayout = QVBoxLayout()
+
+        infoText = html_utils.paragraph("""
+            Select the source and destination folders, then specify how each
+            dimension is represented in your TIFF files.<br><br>
+            
+            Choose <b>One file per ...</b> when that dimension is encoded in
+            filenames, and enter the filename marker that comes before its
+            index
+            <br>(for example, <code>_z</code> in 
+            <code>tile_x001_y001_z001.tif</code>).<br><br>
+            
+            Choose <b>In file</b> when
+            the dimension is stored in the TIFF and enter its axis index<br>
+            (for example, if the shape of the image is 
+            <code>(T, Z, Y, X)</code>, the 
+            axis index for <code>T</code> is 0, and for <code>Z</code> 
+            it's 1).
+            <br>
+        """)
+        mainLayout.addWidget(QLabel(infoText))
+
+        pathsForm = QFormLayout()
+
+        self.sourceFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
+        pathsForm.addRow('Source folder:', self.sourceFolderPathControl)
+
+        self.dstFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
+        pathsForm.addRow('Destination folder:', self.dstFolderPathControl)
+
+        self.segmFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
+        pathsForm.addRow('Segmentation mask folder (optional):',
+                         self.segmFolderPathControl)
+
+        self.baseNameLE = widgets.alphaNumericLineEdit()
+        self.baseNameLE.setPlaceholderText('Optional')
+        pathsForm.addRow('Basename (optional):', self.baseNameLE)
+
+        pathsForm.addItem(QSpacerItem(20, 20))
+
+        self.positionNameLE = widgets.ReadOnlyLineEdit()
+        self.positionNameLE.setPlaceholderText(
+            'Select a source folder to preview its first position identifier'
+        )
+        pathsForm.addRow('Position identifier preview:', self.positionNameLE)
+
+        self.shapeLE = widgets.ReadOnlyLineEdit()
+        self.shapeLE.setPlaceholderText(
+            'Select a source folder to preview shape of first TIFF file'
+        )
+        pathsForm.addRow('Shape of first TIFF file:', self.shapeLE)
+
+        mainLayout.addLayout(pathsForm)
+        mainLayout.addSpacing(20)
+
+        self.numberChannelsSpinBox = QSpinBox()
+        self.numberChannelsSpinBox.setRange(1, 64)
+        self.numberChannelsSpinBox.setValue(1)
+        self.numberChannelsSpinBox.valueChanged.connect(
+            self._rebuild_channel_rows
+        )
+        self.channelRowsLayout = QVBoxLayout()
+
+        for key, title, perFileText, axisPlaceholder in self.DIMENSIONS:
+            group = self._make_dimension_group(
+                key, title, perFileText, axisPlaceholder
+            )
+            mainLayout.addWidget(group)
+
+        mainLayout.addStretch()
+
+        self.sourceFolderPathControl.sigValueChanged.connect(
+            self.srcFolderPathSelected
+        )
+        self.dstFolderPathControl.sigValueChanged.connect(
+            self.dstFolderPathSelected
+        )
+
+        viewFirstImageButton = widgets.viewPushButton('View first image...')
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.insertWidget(3, viewFirstImageButton)
+        viewFirstImageButton.clicked.connect(self.viewFirstImage)
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+    def _make_dimension_group(
+            self, key, title, perFileText, axisPlaceholder
+        ):
+        groupBox = QGroupBox(title)
+        groupLayout = QVBoxLayout(groupBox)
+
+        radioLayout = QHBoxLayout()
+        buttonGroup = QButtonGroup(groupBox)
+        buttons = {}
+
+        options = (
+            ('not_present', 'Not present'),
+            ('per_file', perFileText),
+            ('in_file', 'In file'),
+        )
+
+        for mode, text in options:
+            button = QRadioButton(text)
+            buttonGroup.addButton(button)
+            radioLayout.addWidget(button)
+            buttons[mode] = button
+            button.setChecked(mode == 'not_present')
+
+        groupLayout.addLayout(radioLayout)
+
+        detailRow = QWidget(groupBox)
+        detailLayout = QHBoxLayout(detailRow)
+        detailLayout.setContentsMargins(0, 0, 0, 0)
+
+        detailLabel = QLabel()
+        detailLE = QLineEdit()
+        detailLayout.addWidget(detailLabel)
+        detailLayout.addWidget(detailLE, stretch=1)
+        groupLayout.addWidget(detailRow)
+
+        controls = {
+            'buttons': buttons,
+            'detailRow': detailRow,
+            'detailLabel': detailLabel,
+            'detailLE': detailLE,
+        }
+        self.dimensionControls[key] = controls
+
+        if key == 'channels':
+            countLayout = QHBoxLayout()
+            countLayout.addWidget(QLabel('Number of channels:'))
+            countLayout.addWidget(self.numberChannelsSpinBox)
+            countLayout.addStretch()
+            groupLayout.addSpacing(10)
+            groupLayout.addLayout(countLayout)
+            groupLayout.addSpacing(10)
+
+            groupLayout.addWidget(
+                QLabel('Channel names (and filename identifiers, if split):')
+            )
+            groupLayout.addLayout(self.channelRowsLayout)
+
+        for mode, button in buttons.items():
+            button.toggled.connect(
+                lambda checked, k=key, m=mode:
+                    self._update_dimension_control(k, m) if checked else None
+            )
+
+        detailLE.textChanged.connect(self.updatePositionNamePreview)
+        self._update_dimension_control(key, 'not_present')
+        return groupBox
+
+    def _get_dimension_mode(self, key):
+        controls = self.dimensionControls[key]
+        for mode, button in controls['buttons'].items():
+            if button.isChecked():
+                return mode
+        return 'not_present'
+
+    def _update_dimension_control(self, key, mode):
+        controls = self.dimensionControls[key]
+        detailRow = controls['detailRow']
+        detailLabel = controls['detailLabel']
+        detailLE = controls['detailLE']
+
+        showDetail = (
+            mode != 'not_present'
+            and not (key == 'channels' and mode == 'per_file')
+        )
+        detailRow.setVisible(showDetail)
+        detailLE.setEnabled(showDetail)
+        detailLabel.setEnabled(showDetail)
+
+        if mode == 'per_file':
+            detailLabel.setText('Filename marker:')
+            detailLE.setPlaceholderText(
+                'e.g. _z; the slice/frame index follows the marker'
+            )
+            detailLE.setValidator(None)
+        elif mode == 'in_file':
+            detailLabel.setText('Axis index in TIFF:')
+            validPattern = '[0-4]'
+            regExpr = QRegularExpression(validPattern)
+            detailLE.setValidator(QRegularExpressionValidator(regExpr))
+            detailLE.setPlaceholderText('0, 1, 2, 3, or 4')
+            if key == 'channels':
+                detailLE.textChanged.connect(self.updateNumberOfChannels)
+                self.numberChannelsSpinBox.setReadOnly(True)
+            else:
+                self.numberChannelsSpinBox.setReadOnly(False)
+
+        if key == 'channels':
+            channelsPresent = mode != 'not_present'
+            self.numberChannelsSpinBox.setEnabled(channelsPresent)
+            if not channelsPresent:
+                self.numberChannelsSpinBox.setValue(1)
+            self._rebuild_channel_rows()
+        
+        self.updatePositionNamePreview()
+
+    def _rebuild_channel_rows(self, *args):
+        previousValues = [
+            (nameLE.text(), tokenLE.text())
+            for nameLE, tokenLE in self.channelEntries
+        ]
+
+        while self.channelRowsLayout.count():
+            item = self.channelRowsLayout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        self.channelEntries = []
+        mode = self._get_dimension_mode('channels')
+        count = self.numberChannelsSpinBox.value()
+
+        for index in range(count):
+            rowWidget = QWidget()
+            rowLayout = QHBoxLayout(rowWidget)
+            rowLayout.setContentsMargins(0, 0, 0, 0)
+
+            rowLayout.addWidget(QLabel(f'{index + 1}.'))
+
+            nameLE = widgets.alphaNumericLineEdit()
+            nameLE.setPlaceholderText(f'Channel {index + 1} name')
+            if index < len(previousValues) and previousValues[index][0]:
+                nameLE.setText(previousValues[index][0])
+            else:
+                nameLE.setText(f'Channel_{index + 1}')
+            rowLayout.addWidget(nameLE, stretch=2)
+
+            tokenLE = QLineEdit()
+            tokenLE.setPlaceholderText(
+                'Filename identifier, e.g. GFP'
+            )
+            if index < len(previousValues):
+                tokenLE.setText(previousValues[index][1])
+            tokenLE.setVisible(mode == 'per_file')
+            rowLayout.addWidget(tokenLE, stretch=1)
+
+            self.channelRowsLayout.addWidget(rowWidget)
+            self.channelEntries.append((nameLE, tokenLE))
+
+            tokenLE.textChanged.connect(self.updatePositionNamePreview)
+
+    def updatePositionNamePreview(self, *args):
+        folder = self.sourceFolderPathControl.path()
+        if not folder or not os.path.isdir(folder):
+            self.positionNameLE.clear()
+            return
+
+        tiffFiles = [
+            name for name in myutils.listdir(folder)
+            if os.path.isfile(os.path.join(folder, name))
+            and name.lower().endswith(('.tif', '.tiff'))
+        ]
+        if not tiffFiles:
+            self.positionNameLE.clear()
+            return
+
+        # Use the first TIFF in natural filename order as the preview example.
+        filename = natsorted(tiffFiles)[0]
+        stem = filename
+        for suffix in ('.ome.tiff', '.ome.tif', '.tiff', '.tif'):
+            if stem.lower().endswith(suffix):
+                stem = stem[:-len(suffix)]
+                break
+
+        def removeMarker(text, marker):
+            if not marker:
+                return None
+
+            matches = list(re.finditer(
+                re.escape(marker) + r'\d+',
+                text,
+                flags=re.IGNORECASE,
+            ))
+            if len(matches) != 1:
+                return None
+
+            match = matches[0]
+            return text[:match.start()] + text[match.end():]
+
+        # Remove timepoint and z identifiers when those dimensions are per-file.
+        for key in ('timepoints', 'z_slices'):
+            if self._get_dimension_mode(key) != 'per_file':
+                continue
+
+            marker = self.dimensionControls[key]['detailLE'].text().strip()
+            stem = removeMarker(stem, marker)
+            if stem is None:
+                self.positionNameLE.clear()
+                self.positionNameLE.setToolTip(
+                    f'Could not find exactly one numeric {key} marker '
+                    f'in {filename!r}.'
+                )
+                return
+
+        # For per-file channels, remove the matching channel filename identifier.
+        if self._get_dimension_mode('channels') == 'per_file':
+            matches = []
+            for _, tokenLE in self.channelEntries:
+                token = tokenLE.text().strip()
+                if not token:
+                    continue
+                found = list(re.finditer(
+                    re.escape(token), stem, flags=re.IGNORECASE
+                ))
+                if len(found) == 1:
+                    matches.append(found[0])
+
+            if len(matches) != 1:
+                self.positionNameLE.clear()
+                self.positionNameLE.setToolTip(
+                    f'Could not identify exactly one channel token in '
+                    f'{filename!r}.'
+                )
+                return
+
+            match = matches[0]
+            stem = stem[:match.start()] + stem[match.end():]
+
+        positionName = re.sub(r'[_\-. ]{2,}', '_', stem).strip('_-. ')
+        self.positionNameLE.setText(positionName or 'Position')
+        self.positionNameLE.setToolTip(f'Preview from {filename}')
+
+    def _warn(self, message):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self,
+            'Incomplete setup',
+            html_utils.paragraph(message),
+        )
+    
+    def warnSourceFolderNotSetupCorrectly(self):
+        txt = html_utils.paragraph(f"""
+            The source folder path is not valid.<br><br>
+            Please select a source folder to go through the setup process.<br><br>
+            Thank you for your patience!
+        """)
+
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Invalid source folder', txt)
+
+    def ok_cb(self):
+        sourceFolder = self.sourceFolderPathControl.path()
+        destinationFolder = self.dstFolderPathControl.path()
+
+        if not sourceFolder:
+            self._warn('Select a source folder.')
+            return
+        if not destinationFolder:
+            self._warn('Select a destination folder.')
+            return
+        
+        if self.selectedOptions.get('files') is None:
+            self.warnSourceFolderNotSetupCorrectly()
+            return
+
+        dimensionOptions = {}
+        for key, _, _, _ in self.DIMENSIONS:
+            mode = self._get_dimension_mode(key)
+            controls = self.dimensionControls[key]
+            detail = controls['detailLE'].text().strip()
+
+            if mode == 'in_file' and not detail:
+                self._warn(f'Enter the TIFF axis label for {key}.')
+                return
+            if mode == 'per_file' and key != 'channels' and not detail:
+                self._warn(f'Enter the filename marker for {key}.')
+                return
+
+            dimensionOptions[key] = {'mode': mode}
+            if mode == 'in_file':
+                dimensionOptions[key]['axis'] = detail
+            elif mode == 'per_file' and key != 'channels':
+                dimensionOptions[key]['filename_marker'] = detail
+
+        channelNames = [
+            nameLE.text().strip()
+            for nameLE, _ in self.channelEntries
+        ]
+        if any(not name for name in channelNames):
+            self._warn('Enter a name for every channel.')
+            return
+        if len({name.casefold() for name in channelNames}) != len(channelNames):
+            self._warn('Channel names must be unique.')
+            return
+
+        channelsMode = dimensionOptions['channels']['mode']
+        channelOptions = []
+        for nameLE, tokenLE in self.channelEntries:
+            channel = {'name': nameLE.text().strip()}
+            if channelsMode == 'per_file':
+                token = tokenLE.text().strip()
+                if not token:
+                    self._warn(
+                        'Enter a filename identifier for every channel.'
+                    )
+                    return
+                channel['filename_identifier'] = token
+            channelOptions.append(channel)
+
+        dimensionOptions['channels']['count'] = len(channelOptions)
+        dimensionOptions['channels']['names'] = channelOptions
+
+        self.selectedOptions['source_folder'] = sourceFolder
+        self.selectedOptions['destination_folder'] = destinationFolder
+        self.selectedOptions['segmentation_mask_folder'] = (
+            self.segmFolderPathControl.path()
+        )
+        self.selectedOptions['basename'] = (
+            self.baseNameLE.text().strip() or None
+        )
+        self.selectedOptions['dimensions'] = dimensionOptions
+
+        self.cancel = False
+        self.close()
+    
+    @exception_handler
+    def srcFolderPathSelected(self, srcFolderPath):
+        self.selectedOptions['files'] = None
+        self.shapeLE.setText('')
+
+        ls = natsorted(myutils.listdir(srcFolderPath))
+        files = [
+            filename for filename in ls
+            if os.path.isfile(os.path.join(srcFolderPath, filename))
+        ]
+        if not files:
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'The following folder<br><br>'
+                f'<code>{srcFolderPath}</code><br><br>'
+                '<b>does not contain any file!</b><br>'
+            )
+            msg.addShowInFileManagerButton(srcFolderPath)
+            msg.critical(
+                self, 'Multiple extensions detected', txt
+            )
+            return []
+        all_ext = [
+            os.path.splitext(filename)[1] for filename in ls
+            if os.path.isfile(os.path.join(srcFolderPath, filename))
+        ]
+        counter = Counter(all_ext)
+        unique_ext = list(counter.keys())
+        is_ext_unique = len(unique_ext) == 1
+        most_common_ext, _ = counter.most_common(1)[0]
+        if not is_ext_unique:
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                'The following folder<br><br>'
+                f'<code>{srcFolderPath}</code><br><br>'
+                'contains <b>files with different file extensions</b> '
+                f'(extensions detected: {unique_ext})<br><br>'
+                f'However, the most common extension is <b>{most_common_ext}</b>, '
+                'do you want to proceed with<br>'
+                f'loading only files with extension <b>{most_common_ext}</b>?'
+            )
+            _, proceedWithMostCommon = msg.warning(
+                self, 'Multiple extensions detected', txt,
+                buttonsTexts=('Cancel', 'Yes')
+            )
+            if proceedWithMostCommon == msg.clickedButton:
+                files = [
+                    filename for filename in files
+                    if os.path.splitext(filename)[1] == most_common_ext
+                ]
+                otherExt = [ext for ext in unique_ext if ext != most_common_ext]
+            else:
+                return []
+
+        self.selectedOptions['files'] = files
+
+        myutils.addToRecentPaths(srcFolderPath)
+
+        self.updatePositionNamePreview()
+        self.updateShapePreview()
+    
+    def updateShapePreview(self):
+        first_file = self.selectedOptions['files'][0]
+        first_tiff_filepath = os.path.join(
+            self.sourceFolderPathControl.path(), first_file
+        )
+
+        with tifffile.TiffFile(first_tiff_filepath) as tif:
+            if not tif.series:
+                raise ValueError(f'No image series found in {path.name}.')
+            series = tif.series[0]
+            shape = tuple(series.shape)
+        
+        self.shapeLE.setText(str(shape))
+    
+    def dstFolderPathSelected(self, dstFolderPath):
+        self.selectedOptions['overwrite_destination'] = False
+        self.selectedOptions['create_new_position_destination'] = False
+
+        pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
+
+        printl(pos_foldernames)
+        if not pos_foldernames:
+            return
+        
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'The selected destination folder <b>already contains Position folders</b>.<br><br>'
+            'Do you want to <b>overwrite</b> all of its content, '
+            'or <b>create new</b> Position folders?'
+        )
+        _, overwriteButton, createNewButton = msg.warning(
+           self, 'Warning: existing Position folders detected!', txt,
+           buttonsTexts=(
+               'Cancel', 
+               'Overwrite', 
+               widgets.newFilePushButton('Create new Position folders'),
+            ),
+           path_to_browse=dstFolderPath
+        )
+
+        overwrite = overwriteButton == msg.clickedButton
+        create_new = createNewButton == msg.clickedButton
+
+        self.selectedOptions['overwrite_destination'] = overwrite
+        self.selectedOptions['create_new_position_destination'] = create_new
+    
+    def viewFirstImage(self):
+        if self.selectedOptions.get('files') is None:
+            self.warnSourceFolderNotSetupCorrectly()
+            return
+        
+        first_file = self.selectedOptions['files'][0]
+        first_tiff_filepath = os.path.join(
+            self.sourceFolderPathControl.path(), first_file
+        )
+
+        with tifffile.TiffFile(first_tiff_filepath) as tif:
+            image = tif.series[0].asarray()
+        
+        from cellacdc import plot
+        plot.imshow(image, axis_titles=[first_file])
+    
+    def updateNumberOfChannels(self, axis_index_str):
+        axis_index = int(axis_index_str)
+        shape_str = self.shapeLE.text()
+        shape = ast.literal_eval(shape_str)
+        num_channels = shape[axis_index]
+        self.numberChannelsSpinBox.setValue(num_channels)
