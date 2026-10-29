@@ -489,7 +489,7 @@ def _patch_model_execution(monkeypatch, use_model_env=True, **overrides):
             "getModelArgSpecFromEnv", "import_segment_module",
             "getModelArgSpec", "init_segm_model",
         ):
-        monkeypatch.setattr(model_execution.myutils, name, mocks[name])
+            monkeypatch.setattr(model_execution.myutils, name, mocks[name])
     monkeypatch.setattr(
         model_execution.myutils, "resolve_segm_model_init_data",
         lambda posData, init_kwargs: None,
@@ -1687,7 +1687,7 @@ def test_uploaded_model_files_live_until_model_is_released(monkeypatch):
     import gc
     import types
     from pathlib import Path
-    from cellacdc import myutils
+    from cellacdc import myutils_models
     from cellacdc.service import payload, worker
 
     class Model:
@@ -1704,7 +1704,9 @@ def test_uploaded_model_files_live_until_model_is_released(monkeypatch):
             return Path(self.model_path).read_bytes()
 
     module = types.SimpleNamespace(Model=Model)
-    monkeypatch.setattr(myutils, 'model_init_requires_segm_data', lambda _: False)
+    monkeypatch.setattr(
+        myutils_models, 'model_init_requires_segm_data', lambda _: False
+    )
     model = worker.instantiate_model(module, {
         'model_path': payload.ModelFile('weights.pt', b'model'),
         'denoise_model_path': payload.ModelFile('weights.pt', b'denoiser'),
@@ -1736,7 +1738,7 @@ def test_remote_backend_uploads_and_reinitializes_model_files(
     import types
     from pathlib import Path
     from fastapi import BackgroundTasks, HTTPException
-    from cellacdc import _types, myutils
+    from cellacdc import _types, myutils_models
     from cellacdc.service import client as client_module, worker
 
     worker_paths = []
@@ -1755,9 +1757,12 @@ def test_remote_backend_uploads_and_reinitializes_model_files(
             return np.full(image.shape, self.model_path.read_bytes()[0])
 
     monkeypatch.setattr(
-        myutils, 'import_segment_module', lambda _: types.SimpleNamespace(Model=Model)
+        myutils_models, 'import_segment_module',
+        lambda _: types.SimpleNamespace(Model=Model)
     )
-    monkeypatch.setattr(myutils, 'model_init_requires_segm_data', lambda _: False)
+    monkeypatch.setattr(
+        myutils_models, 'model_init_requires_segm_data', lambda _: False
+    )
     app = worker.create_app('fake', defer_init=True)
     endpoints = {
         route.path: route.endpoint for route in app.routes
@@ -1926,7 +1931,7 @@ class _FakeUploadBytes:
 
 def _jobs_app(monkeypatch, segment, **extra_methods):
     import types
-    from cellacdc import myutils
+    from cellacdc import myutils_models
     from cellacdc.service import worker
 
     class Model:
@@ -1940,7 +1945,9 @@ def _jobs_app(monkeypatch, segment, **extra_methods):
         setattr(Model, name, lambda self, *args, _f=func: _f(*args))
 
     module = types.SimpleNamespace(Model=Model)
-    monkeypatch.setattr(myutils, 'import_segment_module', lambda name: module)
+    monkeypatch.setattr(
+        myutils_models, 'import_segment_module', lambda name: module
+    )
     executor = _CapturingExecutor()
     monkeypatch.setattr(worker, '_executor', executor)
     monkeypatch.setattr(worker, '_jobs', {})
@@ -1954,7 +1961,7 @@ def _jobs_app(monkeypatch, segment, **extra_methods):
 
 def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch):
     import types
-    from cellacdc import myutils
+    from cellacdc import myutils_models
     from cellacdc.service import worker
 
     class Model:
@@ -1965,7 +1972,9 @@ def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch):
             return image
 
     module = types.SimpleNamespace(Model=Model)
-    monkeypatch.setattr(myutils, 'model_init_requires_segm_data', lambda _: False)
+    monkeypatch.setattr(
+        myutils_models, 'model_init_requires_segm_data', lambda _: False
+    )
 
     with pytest.raises(ValueError, match='model_path'):
         worker.instantiate_model(module, {'model_path': '/client/model.pth'})
@@ -2122,7 +2131,7 @@ def test_worker_runs_model_specific_methods(monkeypatch):
 def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
     import asyncio
     import types
-    from cellacdc import myutils
+    from cellacdc import myutils, myutils_models
     from cellacdc.service import worker
 
     image = np.zeros((1024, 1024), dtype=np.uint8)
@@ -2142,7 +2151,7 @@ def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
 
     expected_lab = lab.copy()
     monkeypatch.setattr(
-        myutils, 'import_segment_module',
+        myutils_models, 'import_segment_module',
         lambda name: types.SimpleNamespace(Model=Model),
     )
     executor = _CapturingExecutor()
@@ -2219,7 +2228,7 @@ def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
 def test_worker_runs_promptable_model_protocol(monkeypatch):
     import asyncio
     import types
-    from cellacdc import myutils
+    from cellacdc import myutils_models
     from cellacdc.service import payload, worker
 
     class Model:
@@ -2235,7 +2244,7 @@ def test_worker_runs_promptable_model_protocol(monkeypatch):
 
     module = types.SimpleNamespace(Model=Model)
     monkeypatch.setattr(
-        myutils, 'import_promptable_segment_module', lambda name: module
+        myutils_models, 'import_promptable_segment_module', lambda name: module
     )
     app = worker.create_app('fake', model_kind='promptable')
     endpoints = {
@@ -2273,7 +2282,7 @@ def test_worker_roundtrips_sam_embeddings(
     import asyncio
     import http.client
     import types
-    from cellacdc import myutils
+    from cellacdc import myutils_models
     from cellacdc.service import payload, worker
 
     class Predictor:
@@ -2311,7 +2320,7 @@ def test_worker_roundtrips_sam_embeddings(
             return np.ones_like(image, dtype=np.uint32)
 
     module = types.SimpleNamespace(Model=Model)
-    monkeypatch.setattr(myutils, 'import_segment_module', lambda name: module)
+    monkeypatch.setattr(myutils_models, 'import_segment_module', lambda name: module)
     monkeypatch.setitem(
         sys.modules, 'torch',
         types.SimpleNamespace(as_tensor=lambda value, device=None: value),
@@ -2575,7 +2584,7 @@ def test_worker_serializes_inference_calls(monkeypatch):
 
 def test_worker_exposes_argument_specs_to_client(monkeypatch):
     import types
-    from cellacdc import myutils
+    from cellacdc import myutils_models
     from cellacdc.service import client as client_module
     from cellacdc.service import worker
 
@@ -2587,7 +2596,9 @@ def test_worker_exposes_argument_specs_to_client(monkeypatch):
             return image
 
     module = types.SimpleNamespace(Model=Model, url_help=lambda: "https://model-help")
-    monkeypatch.setattr(myutils, 'import_segment_module', lambda _: module)
+    monkeypatch.setattr(
+        myutils_models, 'import_segment_module', lambda _: module
+    )
     app = worker.create_app('fake')
     endpoints = {
         route.path: route.endpoint for route in app.routes

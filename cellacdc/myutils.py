@@ -3772,12 +3772,14 @@ def check_install_package(
     # 3) Install: special packages individually, everything else in one go
     try:
         batch_commands = []
+        tensorflow_batched = False
         for spec, command in zip(missing_specs, pkg_commands):
             name = spec['pypi_name'] or spec['pkg_name']
             special_installer = _SPECIAL_INSTALLERS.get(name)
             if name == 'tensorflow' and python_exec not in (None, sys.executable):
                 # Resolve model and runtime constraints together in isolated envs.
                 special_installer = None
+                tensorflow_batched = installer == 'pip'
             if special_installer is None:
                 batch_commands.append(command)
             elif name == 'tensorflow':
@@ -3806,7 +3808,7 @@ def check_install_package(
                     env_prefix=conda_env_prefix
                 )
 
-        if (installer == 'pip' and len(specs) > 1
+        if (installer == 'pip' and len(specs) > 1 and not tensorflow_batched
                 and python_exec not in (None, sys.executable)):
             # A package installed above can pin a dependency of another
             # requested package below its minimum (e.g. TF -> typing-extensions).

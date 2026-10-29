@@ -29,6 +29,7 @@ import itertools
 import json
 
 from cellacdc import myutils
+from cellacdc import myutils_models
 from cellacdc.service import prompts
 from cellacdc._model_startup import startup_timer
 from cellacdc.service.client import LocalBackend
