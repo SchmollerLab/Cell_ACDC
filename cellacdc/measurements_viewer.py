@@ -47,8 +47,33 @@ categorical inputs, and add columns without overwriting existing measurements.
 Combined columns stay in memory and are not saved to the global equation
 configuration. Numerical and boolean results are available for plotting;
 string/category results are retained in the exported table.
+Combine-measurement equations can use each time point identifier as a
+``timepoint_<name>`` boolean input. ``any(condition)`` and ``all(condition)``
+reduce the condition across the cell's frames and repeat the result on each
+of its rows.
 ``Export measurements...`` saves the table, including processed columns, to a
 separate CSV. Processing is applied to raw measurements before plot normalization.
+
+The ``Time points`` toolbar has ``Add time point identifier...`` to define a
+named time point (e.g., "Bud emergence") with a color, a keyboard shortcut
+(defaults Q, W, E, R, ...) and an optional per-cell predictor (an equation of
+the table columns or ``predictor(df)`` from a Python file, see
+``timepoint_predictors``). Each identifier gets its own toolbar action: hover
+over the time-course plot and press its shortcut to add a time point for the
+selected cell at the hovered frame (clicking the action adds it at the
+current frame). Time point lines can be dragged like the current frame line;
+right-click a line to remove it, or right-click an identifier action to edit,
+re-evaluate its predictor, clear or remove it. Automatic predictions require
+the identifier's ``autoApply`` flag and run only when a cell is first viewed.
+Viewed Cell_IDs are tracked per position and saved in configurations. Revisiting
+a cell does not retry failed predictions; use explicit re-evaluation to retry.
+The toolbar's ``Re-evaluate predictors on all cells`` and ``... on displayed
+cell`` re-run all predictors; cells with manual edits (added, moved or removed
+time points) trigger a warning to overwrite or skip them. Identifier and constant 
+definitions are stored in configurations. The time points themselves live in 
+the position's acdc_df as ``timepoint_<name>`` boolean columns (True at the 
+frames where the cell is marked), so they are part of any exported or processed 
+table.
 """
 import os
 import sys
@@ -69,13 +94,17 @@ from qtpy.QtCore import (
     Qt, Signal, QTimer, QPoint, QEvent, QRect, QSaveFile, QIODevice,
     QThread, QMutex, QWaitCondition
 )
-from qtpy.QtGui import QFont, QIcon, QGuiApplication, QPixmap, QPainter
+from qtpy.QtGui import (
+    QFont, QIcon, QGuiApplication, QPixmap, QPainter, QCursor, QKeySequence,
+    QColor
+)
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QHBoxLayout,
     QGroupBox, QSplitter, QListView, QLineEdit,
     QCheckBox, QComboBox, QAbstractItemView, QFileDialog, QAction,
     QApplication, QToolButton, QPushButton, QActionGroup, QAbstractSlider,
-    QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem, QTreeView
+    QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem, QTreeView,
+    QAbstractButton
 )
 
 import pyqtgraph as pg
@@ -93,6 +122,8 @@ from . import apps
 from . import html_utils
 from . import printl
 from . import workers
+from . import timepoint_predictors
+from .timepoint_predictors import TimepointIdentifier
 
 RESCALE_INTENS_HOW_TEXTS = (
     'Rescale each 2D image',
@@ -108,12 +139,44 @@ _font.setPixelSize(11)
 
 DEFAULT_MEASUREMENTS_COLUMNS = ('cell_area_pxl', 'cell_vol_vox', 'cell_area_um2')
 INDEX_COLUMNS = ('frame_i', 'Cell_ID', 'time_seconds')
+TIMEPOINT_PREFIX = 'timepoint_'
 CCA_DF_INT_COLS = [
     col for col in cca_df_colnames if type(base_cca_dict[col]) == int
 ]
 MEASUREMENTS_CONFIGURATIONS_PATH = os.path.join(
     settings_folderpath, 'measurements_viewer_configurations'
 )
+
+class _TimepointLine(pg.InfiniteLine):
+    """Draggable line of a time point of the selected cell."""
+    sigRemoveRequested = Signal(object)
+
+    def __init__(self, identifier, ID, frame_i):
+        color = identifier.color
+        super().__init__(
+            pos=frame_i+1, angle=90, movable=True,
+            pen=pg.mkPen(color=color, width=2, style=Qt.DashLine),
+            hoverPen=pg.mkPen(color=color, width=4),
+            labelOpts={
+                'position': 0.95, 'color': color, 'movable': True,
+                'fill': (0, 0, 0, 120)
+            }
+        )
+        self.uid = identifier.uid
+        self.ID = ID
+        self.frame_i = frame_i
+        self.setToolTip(
+            f'{identifier.name} (Cell ID {ID}, frame n. {frame_i+1})\n\n'
+            'Drag to move. Right-click to remove.'
+        )
+        self.setZValue(9)
+
+    def mouseClickEvent(self, ev):
+        if ev.button() == Qt.MouseButton.RightButton and not self.moving:
+            ev.accept()
+            self.sigRemoveRequested.emit(self)
+            return
+        super().mouseClickEvent(ev)
 
 class _MeasurementColumnDelegate(widgets._ButtonSearchHighlightDelegate):
     indicatorWidth = 28
@@ -368,6 +431,14 @@ class MeasurementsViewerWin(
         self.measurementProcessingThread = None
         self.measurementProcessingWorker = None
         self.rescaleIntensChannelHowMapper = {}
+        self.timepointIdentifiers = []
+        self.timepointActions = {}
+        self.timepointAutoActions = {}
+        self.timepointLines = []
+        self.timepointAutoPredictions = defaultdict(set)
+        self.viewedCells = defaultdict(set)
+        # Per-cell constants [{'name': str, 'equation': str}]
+        # self.cellConstants = []
         self.logger = logging.getLogger('cellacdc-measurements-viewer')
         self.loadSettings()
         self.initAnnotationsAttributes()
@@ -438,13 +509,12 @@ class MeasurementsViewerWin(
         dialog.treeWidget.setCurrentItem(dialog.treeWidget.topLevelItem(0))
         browsed = []
 
-        def browseSelected():
-            filepath = browse()
-            if filepath:
-                browsed.append(filepath)
+        def selected(path):
+            if path:
+                browsed.append(path)
                 dialog.close()
 
-        browseButton.clicked.connect(browseSelected)
+        browseButton.clicked.connect(selected)
         skipButton.clicked.connect(lambda: setattr(dialog, 'cancel', True) or dialog.close())
         dialog.exec_()
         if browsed:
@@ -484,6 +554,13 @@ class MeasurementsViewerWin(
             ),
             'measurements_axes': self.measurementsAxes.copy(),
             'normalize_measurements': self.normalizeCheckbox.isChecked(),
+            'timepoint_identifiers': [
+                identifier.to_dict() for identifier in self.timepointIdentifiers
+            ],
+            'viewed_cells': {
+                path: sorted(IDs) for path, IDs in self.viewedCells.items()
+            },
+            # 'cell_constants': [dict(constant) for constant in self.cellConstants],
         }
 
     @staticmethod
@@ -517,6 +594,25 @@ class MeasurementsViewerWin(
         if (not configuration['visible_channels']
                 or not set(configuration['visible_channels']) <= available):
             raise ValueError('Invalid visible image channels in configuration.')
+        # Optional for configurations saved before time point identifiers
+        identifiers = configuration.get('timepoint_identifiers', [])
+        if not isinstance(identifiers, list):
+            raise ValueError('Invalid time point identifiers in configuration.')
+        for identifier in identifiers:
+            timepoint_predictors.validate_identifier_dict(identifier)
+        names = [identifier['name'] for identifier in identifiers]
+        if len(set(names)) != len(names):
+            raise ValueError('Duplicated time point identifier names.')
+        viewed = configuration.get('viewed_cells', {})
+        if not isinstance(viewed, dict) or any(
+                not isinstance(path, str) or not path
+                or not isinstance(IDs, list)
+                or any(type(ID) is not int or ID <= 0 for ID in IDs)
+                for path, IDs in viewed.items()):
+            raise ValueError('Invalid viewed cells in configuration.')
+        # timepoint_predictors.validate_constants(
+        #     configuration.get('cell_constants', [])
+        # )
 
     def configurationError(self, operation, error):
         self.logger.error('Could not %s configuration: %s', operation, error)
@@ -627,6 +723,14 @@ class MeasurementsViewerWin(
             return False
 
         self.isSegm3D = None
+        # self.setCellConstants(configuration.get('cell_constants', []))
+        self.setTimepointIdentifiers([
+            TimepointIdentifier.from_dict(identifier)
+            for identifier in configuration.get('timepoint_identifiers', [])
+        ])
+        self.viewedCells = defaultdict(set)
+        for path, IDs in configuration.get('viewed_cells', {}).items():
+            self.viewedCells[os.path.normcase(os.path.abspath(path))].update(IDs)
         self.setData(data)
         self.configurationFilepath = None
         overlays = configuration['overlay_channels']
@@ -669,6 +773,9 @@ class MeasurementsViewerWin(
         
         restrictFrames = self._get_setting_value('restrictFrames', default=True, cast=bool)
         self.restrictFramesCheckbox.setChecked(restrictFrames)
+        
+        rescalePlot = self._get_setting_value('rescalePlot', default=True, cast=bool)
+        self.rescalePlotCheckbox.setChecked(rescalePlot)
 
 
     def annotatedAxesIndices(self):
@@ -836,6 +943,44 @@ class MeasurementsViewerWin(
         self.saveConfigurationAction.setShortcut('Ctrl+S')
         self.saveConfigurationAsAction = QAction('Save configuration as...', self)
         self.saveConfigurationAsAction.setShortcut('Ctrl+Shift+S')
+        self.addTimepointIdentifierAction = QAction(
+            QIcon(":add.svg"), 'Add time point identifier...', self
+        )
+        self.addTimepointIdentifierAction.setToolTip(
+            'Add time point identifier\n\n'
+            'Define a named time point (e.g., "Bud emergence") with a color, '
+            'a keyboard shortcut and an optional per-cell predictor.\n'
+            'Hover over the measurements plot and press the shortcut to add '
+            'a time point at the hovered frame.'
+        )
+        self.reevaluateAllTimepointsAction = QAction(
+            QIcon(":reload.svg"), 'Re-evaluate predictors on all cells', self
+        )
+        self.reevaluateAllTimepointsAction.setToolTip(
+            'Re-evaluate predictors on all cells\n\n'
+            'Run the predictors of all time point identifiers on every cell '
+            'of the current position, replacing their time points.\n'
+            'You will be warned if manual edits would be overwritten.'
+        )
+        self.reevaluateCellTimepointsAction = QAction(
+            QIcon(":magic_wand.svg"), 
+            'Re-evaluate predictors on displayed cell', self
+        )
+        self.reevaluateCellTimepointsAction.setToolTip(
+            'Re-evaluate predictors on displayed cell\n\n'
+            'Run the predictors of all time point identifiers only on the '
+            'displayed cell, replacing its time points.\n'
+            'You will be warned if manual edits would be overwritten.'
+        )
+        # self.editCellConstantsAction = QAction(
+        #     QIcon(":calc.svg"), 'Per-cell constants...', self
+        # )
+        # self.editCellConstantsAction.setToolTip(
+        #     'Per-cell constants\n\n'
+        #     'Define constants computed once per cell (e.g., "Maximum value" '
+        #     'or "Was at beginning")\n'
+        #     'that can be used like columns in the time point predictors.'
+        # )
         
         # Annotations actions (same as in the main GUI)
         self.scalingLabelsAction = widgets.CheckableAction(
@@ -1086,6 +1231,16 @@ class MeasurementsViewerWin(
         self.addToolBar(navigateToolBar)
         self.navigateToolBar = navigateToolBar
         
+        self.timepointsToolBar = widgets.ToolBar("Time points", self)
+        self.timepointsToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
+        self.timepointsToolBar.addAction(self.addTimepointIdentifierAction)
+        self.timepointsToolBar.addAction(self.reevaluateAllTimepointsAction)
+        self.timepointsToolBar.addAction(self.reevaluateCellTimepointsAction)
+        # self.timepointsToolBar.addAction(self.editCellConstantsAction)
+        self.timepointsToolBar.addSeparator()
+        self.updateReevaluateTimepointsActions()
+        self.addToolBar(self.timepointsToolBar)
+        
         navigateToolBar.addAction(self.searchAction)
         
         self.zoomRectButton = QToolButton(self)
@@ -1180,6 +1335,16 @@ class MeasurementsViewerWin(
         self.loadConfigurationAction.triggered.connect(self.loadConfiguration)
         self.saveConfigurationAction.triggered.connect(self.saveConfiguration)
         self.saveConfigurationAsAction.triggered.connect(self.saveConfigurationAs)
+        self.addTimepointIdentifierAction.triggered.connect(
+            self.addTimepointIdentifier
+        )
+        self.reevaluateAllTimepointsAction.triggered.connect(
+            self.reevaluateAllTimepoints
+        )
+        self.reevaluateCellTimepointsAction.triggered.connect(
+            self.reevaluateDisplayedCellTimepoints
+        )
+        # self.editCellConstantsAction.triggered.connect(self.editCellConstants)
         
         self.scalingLabelsAction.toggled.connect(self.scalingLabelsToggled)
         self.highLowResAction.toggled.connect(self.highLowResToggled)
@@ -1275,6 +1440,7 @@ class MeasurementsViewerWin(
             ):
             if widget is not None:
                 widget.setDisabled(not isZstack)
+                widget.setVisible(isZstack)
         self.updateFunctionalitySearchRecords()
 
     def updateFunctionalitySearchRecords(self):
@@ -2064,6 +2230,9 @@ class MeasurementsViewerWin(
         self.idLabel.setFont(_font)
         self.idSpinBox = widgets.SpinBox(disableKeyPress=True)
         self.idSpinBox.setMinimum(0)
+        
+        idSpinBoxHight = int(self.idSpinBox.sizeHint().height() * 0.8)
+        self.idScrollBar.setFixedHeight(idSpinBoxHight)
         self.numIDsLabel = QLabel('')
         self.idNotPresentLabel = QLabel('')
         self.idNotPresentLabel.setFont(_font)
@@ -2078,6 +2247,10 @@ class MeasurementsViewerWin(
         self.restrictFramesCheckbox.setToolTip(
             'If active, the frames slider is restricted to the range of '
             'frames where the selected cell ID is present'
+        )
+        self.rescalePlotCheckbox = QCheckBox('Rescale plot')
+        self.rescalePlotCheckbox.setToolTip(
+            'If active, the plot is rescaled when changing Cell ID'
         )
         
         self.posLabel = QLabel('Position')
@@ -2128,8 +2301,9 @@ class MeasurementsViewerWin(
         idOptionsLayout.addWidget(self.followIDcheckbox)
         idOptionsLayout.addWidget(self.restrictFramesCheckbox)
         idOptionsLayout.addWidget(self.idNotPresentLabel)
+        idOptionsLayout.addWidget(self.rescalePlotCheckbox)
         idOptionsLayout.addStretch(1)
-        navLayout.addLayout(idOptionsLayout, row, 1, 1, 4)
+        navLayout.addLayout(idOptionsLayout, row, 0, 1, 6)
         
         for scrollbar in self.navigationScrollbars():
             scrollbar.setMinimumWidth(200)
@@ -2363,8 +2537,8 @@ class MeasurementsViewerWin(
         self.img1BottomGroupbox = QWidget()
         bottomLayout = QVBoxLayout()
         bottomLayout.setContentsMargins(0, 0, 0, 0)
-        bottomLayout.addWidget(self.navigationGroupbox)
         bottomLayout.addWidget(self.annotationsGroupbox)
+        bottomLayout.addWidget(self.navigationGroupbox)
         bottomLayout.addStretch(1)
         self.img1BottomGroupbox.setLayout(bottomLayout)
         
@@ -2443,6 +2617,7 @@ class MeasurementsViewerWin(
         self.idSpinBox.sigDownClicked.connect(self.idSpinBoxEditingFinished)
         self.followIDcheckbox.toggled.connect(self.followIDtoggled)
         self.restrictFramesCheckbox.toggled.connect(self.restrictFramesToggled)
+        self.rescalePlotCheckbox.toggled.connect(self.rescalePlotToggled)
         
         self.currentFrameLine.sigPositionChangeFinished.connect(
             self.currentFrameLineMoved
@@ -2507,7 +2682,10 @@ class MeasurementsViewerWin(
         self.ax1.autoRange()
         self.zoomToSelectedID()
         self.plotMeasurements()
-    
+        
+        if self.rescalePlotCheckbox.isChecked():
+            self.measurementsPlot.autoRange()
+                
     def initPosAnnotData(self, posData):
         """Initialize the per-frame stored data (`allData_li`) and the 
         attributes of `posData` required by the annotations as in 
@@ -2667,7 +2845,121 @@ class MeasurementsViewerWin(
         if acdc_df is None or acdc_df.empty:
             return
         
-        return self._standardizeAcdcDf(acdc_df).sort_index()
+        acdc_df = self._standardizeAcdcDf(acdc_df).sort_index()
+        self.ensureTimepointColumns(acdc_df)
+        # The acdc_df of the position is the only store of the time points
+        posData.acdc_df = acdc_df
+        return acdc_df
+    
+    def allAcdcDfs(self):
+        """Unique tables of the loaded positions including the displayed one."""
+        dfs = [getattr(posData, 'acdc_df', None) for posData in self.data or []]
+        dfs.append(self.acdc_df)
+        unique = {id(df): df for df in dfs if df is not None}
+        return list(unique.values())
+    
+    def timepointColumn(self, identifier):
+        return f'{TIMEPOINT_PREFIX}{identifier.name}'
+    
+    def ensureTimepointColumns(self, acdc_df):
+        """Add the missing boolean column of each time point identifier."""
+        for identifier in self.timepointIdentifiers:
+            column = self.timepointColumn(identifier)
+            if column not in acdc_df.columns:
+                acdc_df[column] = False
+            elif acdc_df[column].dtype != bool:
+                acdc_df[column] = acdc_df[column].fillna(False).astype(bool)
+    
+    def timepointsDf(self, posData=None):
+        """The acdc_df holding the time points of a position (or None)."""
+        if posData is None:
+            posData = self.posData()
+        if posData is self.posData():
+            return self.acdc_df
+        return self.getAcdcDf(posData)
+    
+    def cellTimepoints(self, uid, ID, posData=None):
+        """Sorted frame indices of the time points `uid` of cell `ID`."""
+        acdc_df = self.timepointsDf(posData)
+        column = self.timepointColumn(self.timepointIdentifier(uid))
+        if acdc_df is None or column not in acdc_df.columns:
+            return []
+        try:
+            values = acdc_df[column].xs(ID, level='Cell_ID')
+        except KeyError:
+            return []
+        return sorted(int(frame_i) for frame_i in values.index[values.to_numpy()])
+    
+    def timepointCellIDs(self, uid, posData=None):
+        """Cell IDs with at least one time point `uid`."""
+        acdc_df = self.timepointsDf(posData)
+        column = self.timepointColumn(self.timepointIdentifier(uid))
+        if acdc_df is None or column not in acdc_df.columns:
+            return set()
+        IDs = acdc_df.index.get_level_values('Cell_ID')
+        return set(IDs[acdc_df[column].to_numpy()])
+    
+    def replaceTimepoints(self, uid, timepoints, IDs, posData=None):
+        """Update one identifier's boolean column in the in-memory acdc_df.
+
+        First clear all marks for cells in `IDs`, then mark every
+        (frame_i, Cell_ID) pair supplied in `timepoints`. Other marks are
+        preserved. Missing columns are initialized to False; pairs without
+        an existing table row are ignored (no rows are added). This is the central
+        function to update the time points inside acdc_df. 
+
+        Parameters
+        ----------
+        uid : int
+            UID of an existing time point identifier. Its name determines
+            the column to update: ``timepoint_<name>``.
+        timepoints : dict
+            Mapping of Cell_ID to an iterable of zero-based frame indices.
+            Normally its keys are a subset of `IDs`. Keys outside `IDs`
+            also get marked, but their previous marks are not cleared.
+        IDs : iterable of int
+            Cells whose previous marks should be cleared. A cell omitted
+            from `timepoints` has all its marks removed.
+        posData : optional
+            Target position; defaults to the currently displayed position.
+
+        Returns
+        -------
+        bool
+            False if the position has no table, otherwise True, even when
+            none of the supplied pairs match a row.
+
+        Notes
+        -----
+        This only changes the table in memory. It does not write a CSV,
+        record manual edits, update prediction/viewed-cell tracking, or
+        redraw plot lines; callers handle those steps separately.
+
+        For example, ``replaceTimepoints(uid, {7: [2, 5]}, [7, 9])`` replaces
+        cell 7's marks with frames 2 and 5 and clears all marks for cell 9,
+        leaving other cells and other identifiers unchanged.
+        """
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None:
+            return False
+        column = self.timepointColumn(self.timepointIdentifier(uid))
+        values = (
+            acdc_df[column].to_numpy().copy() if column in acdc_df.columns 
+            else np.zeros(len(acdc_df), dtype=bool)
+        )
+        values[acdc_df.index.get_level_values('Cell_ID').isin(list(IDs))] = False
+        pairs = [
+            (frame_i, ID) for ID, frames in timepoints.items() 
+            for frame_i in frames
+        ]
+        if pairs:
+            values |= acdc_df.index.isin(pairs)
+        acdc_df[column] = values
+        return True
+    
+    def cellHasRow(self, ID, frame_i, posData=None):
+        acdc_df = self.timepointsDf(posData)
+        return acdc_df is not None and (frame_i, ID) in acdc_df.index
     
     def _standardizeAcdcDf(self, acdc_df):
         if list(acdc_df.index.names) == ['frame_i', 'Cell_ID']:
@@ -2684,7 +2976,25 @@ class MeasurementsViewerWin(
         if not acdc_df_path or not os.path.exists(acdc_df_path):
             return
         
+        previous = getattr(posData, 'acdc_df', None)
         posData.loadAcdcDf(acdc_df_path)
+        self.restoreTimepointColumns(posData, previous)
+    
+    def restoreTimepointColumns(self, posData, previous):
+        """Keep the time points (which are not in the file on disk) after 
+        the acdc_df of the position was reloaded."""
+        acdc_df = getattr(posData, 'acdc_df', None)
+        if previous is None or acdc_df is None or acdc_df.empty:
+            return
+        previous = self._standardizeAcdcDf(previous)
+        acdc_df = self._standardizeAcdcDf(acdc_df)
+        for identifier in self.timepointIdentifiers:
+            column = self.timepointColumn(identifier)
+            if column not in previous.columns:
+                continue
+            marked = previous.index[previous[column].fillna(False).to_numpy(bool)]
+            acdc_df[column] = acdc_df.index.isin(marked)
+        posData.acdc_df = acdc_df
     
     def reloadButtonClicked(self, checked=False):
         self.reloadAcdcDfFile()
@@ -2707,21 +3017,28 @@ class MeasurementsViewerWin(
             return
         posData = self.posData()
         source = self.acdc_df
+        equationSource = source.copy()
         dialog = apps.CombineMetricsEquationDialog(
             posData.chNames, posData.SizeZ > 1, self.isSegm3D,
-            parent=self, closeOnOk=False, acdc_df=source, saveToConfig=False
+            parent=self, closeOnOk=False, acdc_df=equationSource,
+            saveToConfig=False, allowCellAggregations=True
         )
         dialog.setToolTip(
             'Results are added to the current position in memory. '
             'Use Export measurements to save them.'
         )
         dialog.sigOk.connect(
-            partial(self.applyCombinedMeasurements, posData=posData, source=source)
+            partial(
+                self.applyCombinedMeasurements, posData=posData,
+                source=source, equationSource=equationSource
+            )
         )
         dialog.exec_()
         dialog.deleteLater()
 
-    def applyCombinedMeasurements(self, dialog, *, posData, source):
+    def applyCombinedMeasurements(
+            self, dialog, *, posData, source, equationSource
+        ):
         dialog.cancel = True
         if (
             self.measurementProcessingThread is not None
@@ -2735,7 +3052,7 @@ class MeasurementsViewerWin(
             )
             return
         equations, _ = dialog.getEquationsDict()
-        collisions = set(equations).intersection(source.columns)
+        collisions = set(equations).intersection(equationSource.columns)
         if collisions:
             self.measurementProcessingWarning(
                 'Invalid measurement name',
@@ -2746,7 +3063,7 @@ class MeasurementsViewerWin(
         try:
             result = source.copy()
             for name, expression in equations.items():
-                values = source.eval(expression)
+                values = dialog.evaluateEquation(equationSource, expression)
                 if not isinstance(values, pd.Series):
                     raise ValueError('The equation must return one value per row.')
                 result[name] = values
@@ -3043,6 +3360,7 @@ class MeasurementsViewerWin(
         self.idScrollBar.blockSignals(False)
         self.idSpinBox.setMaximum(max(self.IDs))
         self.idSpinBox.setValueNoEmit(ID)
+        self.ensureTimepointPredictions()
     
     def getLabels(self, frame_i=None):
         """Get labels of `frame_i` (default current frame)."""
@@ -3275,6 +3593,13 @@ class MeasurementsViewerWin(
         ID = self.IDs[idx]
         self.idSpinBox.setValueNoEmit(ID)
         self.setSelectedID(ID)
+        
+        if self.rescalePlotCheckbox.isChecked():
+            self.measurementsPlot.autoRange()
+            
+    def rescalePlotToggled(self, checked):
+        if checked:
+            self.measurementsPlot.autoRange()
     
     def idSpinBoxEditingFinished(self):
         ID = self.idSpinBox.value()
@@ -3290,6 +3615,7 @@ class MeasurementsViewerWin(
     
     def setSelectedID(self, ID):
         self.selectedID = ID
+        self.ensureTimepointPredictions()
         self.updateFramesRange()
         self.zoomToSelectedID(goToZslice=True)
         self.updateImages()
@@ -3460,6 +3786,734 @@ class MeasurementsViewerWin(
         self.setFrame(frame_n-1)
         self.updateCurrentFrameLine()
     
+    def timepointIdentifier(self, uid):
+        for identifier in self.timepointIdentifiers:
+            if identifier.uid == uid:
+                return identifier
+    
+    def initPositionTimepointState(self, posData=None):
+        """Session state of the time points of a position. The time points 
+        themselves are stored in the acdc_df."""
+        if posData is None:
+            posData = self.posData()
+        if getattr(posData, 'timepointsPredicted', None) is None:
+            posData.timepointsPredicted = set()
+            # Cells with manual edits {uid: set of Cell_IDs}
+            posData.timepointsEdited = defaultdict(set)
+            # Per-cell constants values {name: {Cell_ID: value}}
+    #         posData.cellConstants = {}
+    #         posData.cellConstantsSource = None
+    
+    # def positionCellConstants(self, posData=None, acdc_df=None):
+    #     """Values of the per-cell constants of a position 
+    #     {name: {Cell_ID: value}} (or a Series indexed by (frame_i, Cell_ID) 
+    #     for per-frame constants), recomputed if the constants or the 
+    #     measurements table changed."""
+    #     if posData is None:
+    #         posData = self.posData()
+    #     self.initPositionTimepointState(posData)
+    #     if not self.cellConstants:
+    #         posData.cellConstants = {}
+    #         posData.cellConstantsSource = None
+    #         return posData.cellConstants
+    #     if acdc_df is None:
+    #         acdc_df = (
+    #             self.acdc_df if posData is self.posData() 
+    #             else self.getAcdcDf(posData)
+    #         )
+    #     constants = tuple(
+    #         tuple(timepoint_predictors.normalize_constant(constant).items())
+    #         for constant in self.cellConstants
+    #     )
+    #     source = posData.cellConstantsSource
+    #     if source is not None and source[0] is acdc_df and source[1] == constants:
+    #         return posData.cellConstants
+    #     try:
+    #         values = timepoint_predictors.compute_cell_constants(
+    #             acdc_df, self.cellConstants, SizeT=posData.SizeT
+    #         )
+    #     except Exception as err:
+    #         self.logger.exception('Computing per-cell constants failed')
+    #         self.measurementProcessingWarning(
+    #             'Per-cell constants failed', 
+    #             f'Computing the per-cell constants failed:\n\n{err}'
+    #         )
+    #         values = {}
+    #     posData.cellConstants = values
+    #     # Keep a reference to the table to detect changes by identity
+    #     posData.cellConstantsSource = (acdc_df, constants)
+    #     return values
+    
+    # def acdcDfWithConstants(self, acdc_df=None, posData=None):
+    #     """Copy of `acdc_df` (default current table) with the per-cell 
+    #     constants added as columns."""
+    #     if not self.data:
+    #         return acdc_df if acdc_df is not None else self.acdc_df
+    #     if posData is None:
+    #         posData = self.posData()
+    #     if acdc_df is None and posData is self.posData():
+    #         acdc_df = self.acdc_df
+    #     if acdc_df is None:
+    #         return None
+    #     values = self.positionCellConstants(posData, acdc_df=acdc_df)
+    #     return timepoint_predictors.add_constants_columns(acdc_df, values)
+    
+    # def setCellConstants(self, constants):
+    #     timepoint_predictors.validate_constants(constants)
+    #     self.cellConstants = [
+    #         timepoint_predictors.normalize_constant(constant)
+    #         for constant in constants
+    #     ]
+    #     for posData in self.data or []:
+    #         if getattr(posData, 'timepointsPredicted', None) is not None:
+    #             posData.cellConstants = {}
+    #             posData.cellConstantsSource = None
+    
+    # def askReevaluateAfterConstantsChanged(self):
+    #     txt = html_utils.paragraph(
+    #         'The per-cell constants changed.<br><br>'
+    #         'Do you want to <b>re-evaluate the time point predictors</b> on '
+    #         'all cells now?'
+    #     )
+    #     msg = widgets.myMessageBox(wrapText=False)
+    #     _, yesButton = msg.question(
+    #         self, 'Re-evaluate predictors?', txt, 
+    #         buttonsTexts=('No', 'Yes, re-evaluate')
+    #     )
+    #     return msg.clickedButton == yesButton
+    
+    # def editCellConstants(self, checked=False):
+    #     posData = self.posData() if self.data else None
+    #     dialog = apps.CellConstantsDialog(
+    #         constants=self.cellConstants, acdc_df=self.acdc_df,
+    #         SizeT=getattr(posData, 'SizeT', None), parent=self
+    #     )
+    #     dialog.exec_()
+    #     if dialog.cancel or dialog.constants is None:
+    #         return False
+    #     newConstants = [
+    #         timepoint_predictors.normalize_constant(constant) 
+    #         for constant in dialog.constants
+    #     ]
+    #     if newConstants == self.cellConstants:
+    #         return True
+    #     self.setCellConstants(newConstants)
+    #     if posData is not None:
+    #         values = self.positionCellConstants(posData)
+    #         self.statusBar().showMessage(
+    #             f'Computed {len(values)} per-cell constant(s).', 5000
+    #         )
+    #     if posData is not None and self.predictorTimepointUids():
+    #         # Other positions are re-predicted when they are loaded
+    #         for otherPosData in self.data:
+    #             if otherPosData is posData:
+    #                 continue
+    #             if getattr(otherPosData, 'timepointsPredicted', None) is not None:
+    #                 otherPosData.timepointsPredicted.difference_update(
+    #                     self.predictorTimepointUids()
+    #                 )
+    #                 positionPath = os.path.normcase(
+    #                     os.path.abspath(otherPosData.pos_path)
+    #                 )
+    #                 for uid in self.predictorTimepointUids():
+    #                     self.timepointAutoPredictions.pop((positionPath, uid), None)
+    #         if self.askReevaluateAfterConstantsChanged():
+    #             self.reevaluateAllTimepoints()
+    #     return True
+    
+    def editedTimepointCells(self, posData=None):
+        self.initPositionTimepointState(posData)
+        if posData is None:
+            posData = self.posData()
+        return posData.timepointsEdited
+    
+    def markTimepointEdited(self, uid, ID):
+        self.editedTimepointCells()[uid].add(ID)
+    
+    def reservedShortcuts(self, excludeUid=None):
+        """Key sequences already used in the viewer {sequence: used by}"""
+        reserved = {}
+        for name in ('Left', 'Right', 'Up', 'Down', 'Space', 'Z', 'Esc'):
+            reserved[name] = 'Viewer navigation'
+        for n in range(1, 10):
+            reserved[str(n)] = 'Overlay channels toggle'
+        zoomOutKey = QKeySequence(self.zoomOutKeyValue).toString()
+        reserved[zoomOutKey] = 'Zoom out'
+        timepointActions = {
+            action: uid for uid, action in self.timepointActions.items()
+        }
+        widgets_ = self.findChildren(QAction) + self.findChildren(QAbstractButton)
+        for widget in widgets_:
+            if timepointActions.get(widget, -1) == excludeUid:
+                continue
+            shortcut = widget.shortcut().toString()
+            if not shortcut:
+                continue
+            text = widget.text() or widget.toolTip().split('\n')[0]
+            reserved[shortcut] = text.replace('&', '') or shortcut
+        for name, widget in self.widgetsWithShortcut.items():
+            shortcut = getattr(widget, 'keyPressShortcut', None)
+            if isinstance(shortcut, QKeySequence) and not shortcut.isEmpty():
+                reserved[shortcut.toString()] = name
+        return reserved
+    
+    def defaultTimepointIdentifier(self):
+        names = {identifier.name for identifier in self.timepointIdentifiers}
+        n = len(self.timepointIdentifiers) + 1
+        while f'Time point {n}' in names:
+            n += 1
+        palette = timepoint_predictors.DEFAULT_COLORS
+        usedColors = {
+            tuple(identifier.color) for identifier in self.timepointIdentifiers
+        }
+        color = next(
+            (c for c in palette if c not in usedColors), 
+            palette[len(self.timepointIdentifiers) % len(palette)]
+        )
+        reserved = self.reservedShortcuts()
+        shortcut = next(
+            (key for key in timepoint_predictors.DEFAULT_SHORTCUTS 
+             if key not in reserved), ''
+        )
+        return TimepointIdentifier(
+            name=f'Time point {n}', color=color, shortcut=shortcut
+        )
+    
+    def execTimepointIdentifierDialog(self, identifier, title):
+        posData = self.posData() if self.data else None
+        names = {
+            other.name for other in self.timepointIdentifiers
+            if other.uid != identifier.uid
+        }
+        dialog = apps.TimepointIdentifierDialog(
+            identifier.name, identifier.color, identifier.shortcut,
+            predictor=identifier.predictor, existingNames=names,
+            reservedShortcuts=self.reservedShortcuts(excludeUid=identifier.uid),
+            acdc_df=self.getAcdcDf(posData), 
+            SizeT=getattr(posData, 'SizeT', None),
+            allChNames=getattr(posData, 'chNames', []),
+            isZstack=getattr(posData, 'SizeZ', 1) > 1,
+            isSegm3D=bool(self.isSegm3D), title=title, parent=self
+        )
+        dialog.autoApplyCheckBox.setChecked(identifier.autoApply)
+        dialog.exec_()
+        if dialog.cancel:
+            return
+        return dialog.identifier
+    
+    def addTimepointIdentifier(self, checked=False):
+        identifier = self.defaultTimepointIdentifier()
+        values = self.execTimepointIdentifierDialog(
+            identifier, 'Add time point identifier'
+        )
+        if values is None:
+            return
+        identifier = TimepointIdentifier(**values)
+        self.addTimepointIdentifierItem(identifier)
+        self.ensureTimepointPredictions()
+        self.updateTimepointLines()
+        return identifier
+    
+    def addTimepointIdentifierItem(self, identifier):
+        self.timepointIdentifiers.append(identifier)
+        for acdc_df in self.allAcdcDfs():
+            self.ensureTimepointColumns(acdc_df)
+        action = QAction(self)
+        action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        action.triggered.connect(
+            partial(self.timepointActionTriggered, identifier.uid)
+        )
+        self.timepointActions[identifier.uid] = action
+        self.timepointsToolBar.addAction(action)
+        
+        # Shift+shortcut re-evaluates the predictor for the selected cell.
+        autoAction = QAction(self)
+        autoAction.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        autoAction.triggered.connect(
+            lambda checked=False: self.reevaluateDisplayedCellTimepoints(
+                uids=[identifier.uid]
+            )
+        )
+        self.addAction(autoAction)
+        self.timepointAutoActions[identifier.uid] = autoAction
+        
+        self.updateTimepointAction(identifier)
+        self.updateReevaluateTimepointsActions()
+        button = self.timepointsToolBar.widgetForAction(action)
+        if button is not None:
+            button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            button.customContextMenuRequested.connect(
+                partial(self.showTimepointActionContextMenu, identifier.uid)
+            )
+        return action
+    
+    def updateTimepointAction(self, identifier):
+        action = self.timepointActions[identifier.uid]
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(pg.mkPen(color=identifier.color, width=4))
+        painter.drawLine(16, 2, 16, 30)
+        painter.setBrush(pg.mkBrush(identifier.color))
+        painter.drawEllipse(9, 9, 14, 14)
+        painter.end()
+        action.setIcon(QIcon(pixmap))
+        action.setText(identifier.name)
+        action.setShortcut(QKeySequence(identifier.shortcut))
+        shortcutText = (
+            f'Shortcut: "{identifier.shortcut}", Auto: "Shift+{identifier.shortcut}"' 
+            if identifier.shortcut else 'No shortcut'
+        )
+        predictorText = timepoint_predictors.predictor_description(
+            identifier.predictor
+        )
+        action.setToolTip(
+            f'Time point: {identifier.name}\n\n'
+            'Hover over the measurements plot and press the shortcut to add '
+            'it at the hovered frame for the selected cell.\n'
+            'Click to add it at the current frame.\n'
+            'Right-click for more options.\n\n'
+            f'{shortcutText}\nPredictor: {predictorText}'
+        )
+        
+        # update AutoAction
+        autoAction = self.timepointAutoActions[identifier.uid]
+        autoAction.setShortcut(QKeySequence(f'Shift+{identifier.shortcut}'))
+
+    
+    def showTimepointActionContextMenu(self, uid, pos):
+        identifier = self.timepointIdentifier(uid)
+        button = self.timepointsToolBar.widgetForAction(
+            self.timepointActions[uid]
+        )
+        menu = QMenu(button)
+        menu.addAction('Edit...', partial(self.editTimepointIdentifier, uid))
+        hasPredictor = (
+            identifier.predictor['type'] != timepoint_predictors.PREDICTOR_NONE
+        )
+        predictAllAction = menu.addAction(
+            'Re-evaluate predictor on all cells', 
+            partial(self.reevaluateTimepoints, [uid])
+        )
+        predictCellAction = menu.addAction(
+            'Re-evaluate predictor on displayed cell', 
+            partial(self.reevaluateDisplayedCellTimepoints, uids=[uid])
+        )
+        predictAllAction.setEnabled(hasPredictor and bool(self.data))
+        predictCellAction.setEnabled(
+            hasPredictor and bool(self.data) and self.selectedID is not None
+        )
+        menu.addAction(
+            'Clear time points of current position', 
+            partial(self.clearTimepoints, uid)
+        )
+        menu.addSeparator()
+        menu.addAction('Remove', partial(self.removeTimepointIdentifier, uid))
+        menu.exec_(button.mapToGlobal(pos))
+    
+    def editTimepointIdentifier(self, uid):
+        identifier = self.timepointIdentifier(uid)
+        values = self.execTimepointIdentifierDialog(
+            identifier, f'Edit time point identifier "{identifier.name}"'
+        )
+        if values is None:
+            return
+        predictorChanged = values['predictor'] != identifier.predictor
+        oldColumn = self.timepointColumn(identifier)
+        identifier.name = values['name']
+        newColumn = self.timepointColumn(identifier)
+        if newColumn != oldColumn:
+            for acdc_df in self.allAcdcDfs():
+                if oldColumn not in acdc_df.columns:
+                    continue
+                acdc_df.drop(columns=newColumn, inplace=True, errors='ignore')
+                acdc_df.rename(columns={oldColumn: newColumn}, inplace=True)
+        identifier.color = values['color']
+        identifier.shortcut = values['shortcut']
+        identifier.predictor = values['predictor']
+        identifier.autoApply = values['autoApply']
+        self.updateTimepointAction(identifier)
+        self.updateReevaluateTimepointsActions()
+        if predictorChanged:
+            for key in list(self.timepointAutoPredictions):
+                if key[1] == uid:
+                    del self.timepointAutoPredictions[key]
+            for posData in self.data:
+                if posData is not self.posData():
+                    getattr(posData, 'timepointsPredicted', set()).discard(uid)
+        self.updateTimepointLines()
+    
+    def removeTimepointIdentifier(self, uid, ask=True):
+        identifier = self.timepointIdentifier(uid)
+        if ask:
+            msg = widgets.myMessageBox(wrapText=False)
+            _, yes = msg.question(
+                self, 'Remove time point identifier?',
+                f'Remove "{identifier.name}" and its time points of all '
+                'positions?', buttonsTexts=('Cancel', 'Remove')
+            )
+            if msg.clickedButton != yes:
+                return
+        action = self.timepointActions.pop(uid)
+        self.timepointsToolBar.removeAction(action)
+        action.deleteLater()
+        self.timepointIdentifiers.remove(identifier)
+        for key in list(self.timepointAutoPredictions):
+            if key[1] == uid:
+                del self.timepointAutoPredictions[key]
+        column = self.timepointColumn(identifier)
+        for acdc_df in self.allAcdcDfs():
+            acdc_df.drop(columns=column, inplace=True, errors='ignore')
+        for posData in self.data:
+            getattr(posData, 'timepointsPredicted', set()).discard(uid)
+            getattr(posData, 'timepointsEdited', {}).pop(uid, None)
+            
+        autoAction = self.timepointAutoActions.pop(uid)
+        self.removeAction(autoAction)
+        autoAction.deleteLater()
+        
+        self.updateReevaluateTimepointsActions()
+        self.updateTimepointLines()
+    
+    def clearTimepoints(self, uid):
+        if not self.data:
+            return
+        self.replaceTimepoints(uid, {}, self.timepointCellIDs(uid))
+        self.editedTimepointCells()[uid] = set()
+        self.updateTimepointLines()
+    
+    def setTimepointIdentifiers(self, identifiers):
+        for identifier in list(self.timepointIdentifiers):
+            self.removeTimepointIdentifier(identifier.uid, ask=False)
+        for identifier in identifiers:
+            self.addTimepointIdentifierItem(identifier)
+    
+    def runTimepointPredictor(
+            self, uid, posData=None, replot=False, IDs=None, skipIDs=(),
+            force=False, autoAction_cb=False, checked=False
+        ):
+        """Predict the time points of `uid` for the cells of `posData` 
+        (default current position), replacing the existing ones.
+        
+        If `IDs` is not None, only these cells are predicted. Cells in 
+        `skipIDs` keep their current time points. Unless `force` is True,
+        require `autoApply` and skip cells already predicted in this session
+        for the same position path and identifier. Returns False if the
+        prediction failed."""
+        identifier = self.timepointIdentifier(uid)
+        if not self.data or identifier is None:
+            return False
+        if not force and not identifier.autoApply:
+            return True
+        
+        if posData is None:
+            posData = self.posData()
+        self.initPositionTimepointState(posData)
+        if identifier.predictor['type'] == timepoint_predictors.PREDICTOR_NONE:
+            return True
+        acdc_df = (
+            self.acdc_df if posData is self.posData() 
+            else self.getAcdcDf(posData)
+        )
+        predictionKey = (os.path.normcase(os.path.abspath(posData.pos_path)), uid)
+        alreadyPredicted = self.timepointAutoPredictions[predictionKey]
+        skipIDs = set(skipIDs)
+        if autoAction_cb:
+            IDs = [self.currID()]
+        if IDs is not None:
+            IDs = set(IDs) - skipIDs
+        if not force:
+            if IDs is None:
+                IDs = (
+                    set(acdc_df.index.get_level_values('Cell_ID'))
+                    if acdc_df is not None else set()
+                )
+            IDs -= alreadyPredicted | skipIDs
+        if IDs is not None and not IDs:
+            return True
+        acdc_df = self.acdc_df if posData is self.posData() else self.getAcdcDf(posData)
+        try:
+            # All cells are passed since predictors can use other cells
+            predicted = timepoint_predictors.predict_timepoints(
+                acdc_df, identifier.predictor, SizeT=posData.SizeT, IDs=IDs
+            )
+        except Exception as err:
+            self.logger.exception('Time point prediction failed')
+            self.measurementProcessingWarning(
+                'Time point prediction failed', 
+                f'Predicting "{identifier.name}" failed:\n\n{err}'
+            )
+            return False
+        
+        if IDs is None:
+            replacedIDs = (
+                self.timepointCellIDs(uid, posData).union(predicted) - skipIDs
+            )
+        else:
+            replacedIDs = set(IDs) - skipIDs
+        self.replaceTimepoints(
+            uid, {ID: predicted[ID] for ID in replacedIDs if ID in predicted},
+            replacedIDs, posData
+        )
+        posData.timepointsEdited[uid].difference_update(replacedIDs)
+
+        completedIDs = (
+            set(acdc_df.index.get_level_values('Cell_ID'))
+            if acdc_df is not None else set()
+        )
+        if IDs is not None:
+            completedIDs.intersection_update(IDs)
+        alreadyPredicted.update(completedIDs - skipIDs)
+        posData.timepointsPredicted.add(uid)
+        
+        numCells = sum(1 for ID in replacedIDs if ID in predicted)
+        numTimepoints = sum(len(predicted[ID]) for ID in replacedIDs if ID in predicted)
+        self.statusBar().showMessage(
+            f'Predicted {numTimepoints} "{identifier.name}" time point(s) '
+            f'for {numCells} cell(s).', 5000
+        )
+        if replot:
+            self.updateTimepointLines()
+        return True
+    
+    def predictorTimepointUids(self, uids=None):
+        if uids is None:
+            uids = [identifier.uid for identifier in self.timepointIdentifiers]
+        return [
+            uid for uid in uids 
+            if self.timepointIdentifier(uid).predictor['type'] 
+            != timepoint_predictors.PREDICTOR_NONE
+        ]
+    
+    def updateReevaluateTimepointsActions(self):
+        hasPredictors = bool(self.predictorTimepointUids())
+        self.reevaluateAllTimepointsAction.setEnabled(hasPredictors)
+        self.reevaluateCellTimepointsAction.setEnabled(hasPredictors)
+    
+    def askOverwriteManualTimepoints(self, editedCells, scope):
+        """Warn that re-evaluating overwrites manual edits.
+        
+        Parameters
+        ----------
+        editedCells : dict
+            {identifier name: sorted list of edited Cell_IDs}
+        scope : str
+            Description of the re-evaluated cells.
+
+        Returns
+        -------
+        str
+            'overwrite', 'skip' (keep the manually edited cells) or 'cancel'.
+        """
+        details = '\n'.join(
+            f'{name}: Cell ID {", ".join(str(ID) for ID in IDs)}'
+            for name, IDs in editedCells.items()
+        )
+        txt = html_utils.paragraph(
+            f'Time points of {scope} have been <b>edited manually</b>.<br><br>'
+            'Re-evaluating the predictors will <b>overwrite</b> these edits.'
+            '<br><br>Do you want to overwrite the manual edits or skip the '
+            'edited cells?'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        _, skipButton, overwriteButton = msg.warning(
+            self, 'Overwrite manual edits?', txt, detailsText=details,
+            buttonsTexts=('Cancel', 'Skip edited cells', 'Overwrite')
+        )
+        if msg.clickedButton == overwriteButton:
+            return 'overwrite'
+        if msg.clickedButton == skipButton:
+            return 'skip'
+        return 'cancel'
+    
+    def reevaluateTimepoints(self, uids=None, IDs=None, posData=None):
+        """Re-run the predictors of `uids` (default all identifiers with 
+        a predictor) on cells `IDs` (default all cells) of `posData`, 
+        warning if manual edits would be overwritten. Returns False if 
+        cancelled."""
+        if not self.data:
+            return False
+        if posData is None:
+            posData = self.posData()
+        uids = self.predictorTimepointUids(uids)
+        if not uids:
+            self.statusBar().showMessage(
+                'No time point identifier with a predictor.', 5000
+            )
+            return False
+        edited = self.editedTimepointCells(posData)
+        editedCells = {}
+        for uid in uids:
+            IDs_edited = edited[uid] if IDs is None else edited[uid] & set(IDs)
+            if IDs_edited:
+                name = self.timepointIdentifier(uid).name
+                editedCells[name] = sorted(IDs_edited)
+        skip = False
+        if editedCells:
+            if IDs is not None and len(IDs) == 1:
+                scope = f'the displayed cell (ID {next(iter(IDs))})'
+            else:
+                numCells = len(set().union(*editedCells.values()))
+                scope = f'{numCells} cell(s)'
+            if posData is not self.posData():
+                posName = getattr(posData, 'pos_foldername', 'another position')
+                scope = f'{scope} of position "{posName}"'
+            answer = self.askOverwriteManualTimepoints(editedCells, scope)
+            if answer == 'cancel':
+                return False
+            skip = answer == 'skip'
+        for uid in uids:
+            skipIDs = edited[uid] if skip else ()
+            self.runTimepointPredictor(
+                uid, posData=posData, IDs=IDs, skipIDs=set(skipIDs), force=True
+            )
+        self.updateTimepointLines()
+        return True
+    
+    def reevaluateAllTimepoints(self, checked=False):
+        return self.reevaluateTimepoints()
+    
+    def reevaluateDisplayedCellTimepoints(self, checked=False, uids=None):
+        if self.selectedID is None:
+            self.statusBar().showMessage('Select a cell first.', 5000)
+            return False
+        return self.reevaluateTimepoints(uids=uids, IDs=[self.selectedID])
+    
+    def ensureTimepointPredictions(self, posData=None):
+        """Evaluate automatic predictors only on the newly displayed cell."""
+        if not self.data or self.selectedID is None:
+            return
+        if posData is None:
+            posData = self.posData()
+        if posData is not self.posData():
+            return
+        path = os.path.normcase(os.path.abspath(posData.pos_path))
+        ID = int(self.selectedID)
+        if ID in self.viewedCells[path]:
+            return
+        self.viewedCells[path].add(ID)
+        self.initPositionTimepointState(posData)
+        # self.positionCellConstants(posData)
+        uids = [
+            identifier.uid for identifier in self.timepointIdentifiers
+            if identifier.autoApply
+        ]
+        for uid in self.predictorTimepointUids(uids):
+            if ID in posData.timepointsEdited[uid]:
+                self.reevaluateTimepoints([uid], IDs=[ID], posData=posData)
+            else:
+                self.runTimepointPredictor(uid, posData=posData, IDs=[ID])
+    
+    def clipFrame(self, frame_i):
+        return int(min(max(frame_i, 0), self.posData().SizeT-1))
+    
+    def hoveredMeasurementsPlotFrame(self):
+        """Frame index under the mouse cursor in the measurements plot or 
+        None if the cursor is not over the plot."""
+        plot = self.measurementsPlot
+        if not plot.isVisible():
+            return
+        pos = plot.mapFromGlobal(QCursor.pos())
+        if not plot.rect().contains(pos):
+            return
+        viewPos = plot.getViewBox().mapSceneToView(plot.mapToScene(pos))
+        return self.clipFrame(int(round(viewPos.x())) - 1)
+    
+    def timepointActionTriggered(self, uid, checked=False):
+        identifier = self.timepointIdentifier(uid)
+        frame_i = self.hoveredMeasurementsPlotFrame()
+        if frame_i is None:
+            toolbar = self.timepointsToolBar
+            toolbarPos = toolbar.mapFromGlobal(QCursor.pos())
+            if not toolbar.isVisible() or not toolbar.rect().contains(toolbarPos):
+                self.statusBar().showMessage(
+                    f'Hover over the measurements plot to add a '
+                    f'"{identifier.name}" time point with its shortcut.', 5000
+                )
+                return
+            frame_i = self.frame_i if self.data else None
+        self.addTimepoint(uid, frame_i)
+    
+    def addTimepoint(self, uid, frame_i, ID=None):
+        identifier = self.timepointIdentifier(uid)
+        if not self.data or frame_i is None:
+            self.statusBar().showMessage('Load data to add time points.', 5000)
+            return False
+        if self.measurementsModeCombobox.currentIndex() == 1:
+            self.statusBar().showMessage(
+                'Switch to "Time course" mode to add time points.', 5000
+            )
+            return False
+        if ID is None:
+            ID = self.selectedID
+        if ID is None:
+            self.statusBar().showMessage('Select a cell to add time points.', 5000)
+            return False
+        frame_i = self.clipFrame(frame_i)
+        cellTimepoints = self.cellTimepoints(uid, ID)
+        if frame_i in cellTimepoints:
+            self.statusBar().showMessage(
+                f'"{identifier.name}" is already at frame n. {frame_i+1} '
+                f'for Cell ID {ID}.', 5000
+            )
+            return False
+        if not self.cellHasRow(ID, frame_i):
+            self.statusBar().showMessage(
+                f'Cell ID {ID} is not in the measurements table at frame n. '
+                f'{frame_i+1}.', 5000
+            )
+            return False
+        self.replaceTimepoints(uid, {ID: cellTimepoints + [frame_i]}, [ID])
+        self.markTimepointEdited(uid, ID)
+        self.updateTimepointLines()
+        self.statusBar().showMessage(
+            f'Added "{identifier.name}" at frame n. {frame_i+1} for '
+            f'Cell ID {ID}.', 5000
+        )
+        return True
+    
+    def removeTimepoint(self, uid, ID, frame_i):
+        frames = [f for f in self.cellTimepoints(uid, ID) if f != frame_i]
+        self.replaceTimepoints(uid, {ID: frames}, [ID])
+    
+    def timepointLineRemoveRequested(self, line):
+        self.removeTimepoint(line.uid, line.ID, line.frame_i)
+        self.markTimepointEdited(line.uid, line.ID)
+        self.updateTimepointLines()
+    
+    def timepointLineMoved(self, line):
+        new_frame_i = self.clipFrame(int(round(line.value())) - 1)
+        # A time point can only sit on a frame where the cell has a row
+        if (new_frame_i != line.frame_i 
+                and self.cellHasRow(line.ID, new_frame_i)):
+            self.removeTimepoint(line.uid, line.ID, line.frame_i)
+            frames = self.cellTimepoints(line.uid, line.ID)
+            self.replaceTimepoints(
+                line.uid, {line.ID: frames + [new_frame_i]}, [line.ID]
+            )
+            self.markTimepointEdited(line.uid, line.ID)
+        # Rebuild the lines after the drag event has been fully handled
+        QTimer.singleShot(0, self.updateTimepointLines)
+    
+    def updateTimepointLines(self):
+        for line in self.timepointLines:
+            self.measurementsPlot.removeItem(line)
+        self.timepointLines = []
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        if not self.data or isComparison or self.selectedID is None:
+            return
+        for identifier in self.timepointIdentifiers:
+            frames = self.cellTimepoints(identifier.uid, self.selectedID)
+            for frame_i in frames:
+                line = _TimepointLine(identifier, self.selectedID, frame_i)
+                line.sigPositionChangeFinished.connect(self.timepointLineMoved)
+                line.sigRemoveRequested.connect(
+                    self.timepointLineRemoveRequested
+                )
+                self.measurementsPlot.addItem(line, ignoreBounds=True)
+                self.timepointLines.append(line)
+    
     def getMeasurementsDf(self):
         """Get the subset of acdc_df for the selected ID (index is frame_i)"""
         if self.acdc_df is None or self.selectedID is None:
@@ -3481,6 +4535,7 @@ class MeasurementsViewerWin(
 
         isComparison = self.measurementsModeCombobox.currentIndex() == 1
         self.currentFrameLine.setVisible(not isComparison)
+        self.updateTimepointLines()
         if not self.data:
             self.measurementsPlot.setTitle('No data loaded')
             return
@@ -3773,7 +4828,8 @@ class MeasurementsViewerWin(
     def changeSignalColor(self, col):
         initialColor = pg.mkColor(self.getSignalColor(col))
         color = QColorDialog.getColor(
-            initialColor, self, f'Select color of "{col}"'
+            initialColor, self, f'Select color of "{col}"',
+            parent=self
         )
         if not color.isValid():
             return
@@ -3805,6 +4861,12 @@ class MeasurementsViewerWin(
             self.idScrollBar.value() + step, 0, len(self.IDs)-1
         ))
         self.idScrollBar.setValue(idx)
+        
+    def currID(self):
+        if not self.IDs:
+            return None
+        idx = self.idScrollBar.value()
+        return self.IDs[idx]
     
     def updateScrollbars(self):
         """Sync the navigation widgets after `posData.frame_i` was changed 
@@ -4165,21 +5227,33 @@ class MeasurementsViewerWin(
                 return
         
         if key == self.zoomOutKeyValue and isNoModifier:
-            if self.measurementsPlot.underMouse():
-                self.measurementsPlot.autoRange()
-                return
-            if not self.img1.isUnderMouse():
-                return
-            # Over the image: press --> zoom to objects,
-            # double press --> zoom out
-            self.zoomToCells(enforce=True)
+            doubleKeyPress = False
             if self.countKeyPress == 0:
                 self.countKeyPress = 1
                 self.doubleKeyTimeElapsed = False
                 QTimer.singleShot(400, self.resetCountKeyPress)
             elif self.countKeyPress == 1 and not self.doubleKeyTimeElapsed:
-                self.ax1.autoRange()
+                doubleKeyPress = True
                 self.countKeyPress = 0
+                
+            if self.measurementsPlot.underMouse():
+                if not doubleKeyPress:
+                    self.measurementsPlot.autoRange()
+                else:
+                    posData = self.posData()
+                    max_frame_index = posData.SizeT
+                    self.measurementsPlot.setXRange(0, max_frame_index)
+                return
+            
+            if not self.img1.isUnderMouse():
+                return
+            # Over the image: press --> zoom to objects,
+            # double press --> zoom out
+            if not doubleKeyPress:
+                self.zoomToCells(enforce=True)
+            else:
+                self.ax1.autoRange()
+                
         elif key == Qt.Key_Space and isNoModifier:
             # Same as guiWin: double press --> toggle "Do not annotate"
             if self.countKeyPress == 0:

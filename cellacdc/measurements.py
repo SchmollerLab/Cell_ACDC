@@ -1596,6 +1596,12 @@ def get_combine_metrics_help_txt():
         Combine conditions with parentheses and <code>&amp;</code> (and)
         or <code>|</code> (or), for example
         <code>(cell_cycle_stage == "G1") &amp; (GFP_mean > 10)</code>.<br>
+        In the Measurements viewer, the <code>any(...)</code> and
+        <code>all(...)</code> functions reduce a condition across all rows for
+        each cell and repeat the result on that cell's rows. Time point
+        identifiers are available there as boolean
+        <code>timepoint_&lt;name&gt;</code> inputs, true only on rows where
+        that time point is marked and false elsewhere.<br>
         In the multi-table dialog, append the table suffix to input names,
         for example <code>cell_cycle_stage_table1 == "G1"</code>.<br>
         Names containing spaces or punctuation must be enclosed in backticks;

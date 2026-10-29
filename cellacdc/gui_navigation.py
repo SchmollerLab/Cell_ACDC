@@ -46,6 +46,9 @@ class FramesNavigationGuiElements:
         self.navSpinBox.setMinimum(1)
         self.navSpinBox.setMaximum(100)
         self.navSizeLabel = QLabel('/ND')
+        
+        hight_spin_box = int(self.navSpinBox.sizeHint().height() * 0.8)
+        self.navigateScrollBar.setFixedHeight(hight_spin_box)
     
     def gui_createFramesNavigationLabelLayout(self):
         layout = QHBoxLayout()
@@ -96,6 +99,9 @@ class ZsliceNavigationGuiElements:
         self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
         self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
+        
+        hight_spin_box = int(self.zSliceSpinbox.sizeHint().height() * 0.8)
+        self.zSliceScrollBar.setFixedHeight(hight_spin_box)
     
     def gui_createZsliceCheckboxLayout(self):
         layout = QHBoxLayout()
