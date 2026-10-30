@@ -1970,10 +1970,16 @@ class mainWin(QMainWindow):
         self.restoreDefaultButtons()
     
     @exception_handler
-    def workerCritical(self, error):
+    def workerCritical(self, out):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+
+        try:
+            worker, error = out
+        except TypeError as err:
+            error = out
+
         raise error        
     
     def workerUpdateProgressbar(self, step):

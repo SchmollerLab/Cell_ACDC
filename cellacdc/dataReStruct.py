@@ -177,7 +177,9 @@ def normalize_array(array, axes):
 
     return array
 
-def create_cellacdc_structure(selectedOptions, *, signals=None):
+def create_datastruct_from_restruct_tiff_dialogue_options(
+        selectedOptions, *, signals=None
+    ):
     sourceFolder = Path(selectedOptions['source_folder'])
     destinationFolder = Path(selectedOptions['destination_folder'])
     dimensions = selectedOptions['dimensions']
@@ -226,7 +228,8 @@ def create_cellacdc_structure(selectedOptions, *, signals=None):
         raise ValueError(f'No TIFF files found in {sourceFolder}.')
 
     if signals is not None:
-        signals.initProgressBar.emit(len(tiffFiles))
+        signals.initProgressBar.emit(0)
+        signals.progress.emit('Processing TIFF files...', 'INFO')
 
     recordsByPosition = defaultdict(list)
     for path in tiffFiles:
@@ -295,24 +298,8 @@ def create_cellacdc_structure(selectedOptions, *, signals=None):
             'z_index': zIndex,
         })
 
-        if signals is not None:
-            signals.progressBar.emit(1)
-
     positionKeys = sorted(recordsByPosition, key=natural_key)
     destinationFolder.mkdir(parents=True, exist_ok=True)
-
-    if not overwrite:
-        existingFolders = [
-            destinationFolder / f'Position_{index}'
-            for index in range(1, len(positionKeys) + 1)
-            if (destinationFolder / f'Position_{index}').exists()
-        ]
-        if existingFolders:
-            raise FileExistsError(
-                'Output Position folders already exist: '
-                + ', '.join(str(path) for path in existingFolders)
-                + '. Pass overwrite=True to replace matching image files.'
-            )
 
     basename = (selectedOptions.get('basename') or '').strip().rstrip('_')
     filenamePrefix = f'{basename}_' if basename else ''
@@ -331,9 +318,19 @@ def create_cellacdc_structure(selectedOptions, *, signals=None):
     for positionNumber, positionIdentifier in enumerate(positionKeys, start=1):
         records = recordsByPosition[positionIdentifier]
 
-        positionFolder = (
-            destinationFolder / f'Position_{positionNumber+posNumberShift}'
-        )
+        posFoldername = f'Position_{positionNumber+posNumberShift}'
+        positionFolder = destinationFolder / posFoldername
+
+        if positionFolder.exists() and not overwrite:
+            raise FileExistsError(
+                f'Output Position folder already exist: {positionFolder}. '
+            )
+
+        if signals is not None:
+            signals.progress.emit(
+                f'Creating Position folder {posFoldername}...', 'INFO'
+            )
+
         imagesFolder = positionFolder / 'Images'
         positionFolder.mkdir(parents=True, exist_ok=overwrite)
         imagesFolder.mkdir(parents=True, exist_ok=overwrite)
@@ -506,7 +503,7 @@ def run(mainWin: '_main.mainWin'):
 
     mainWin._restructure_thread = QThread()
     mainWin._restructure_worker = workers.SimpleWorker(
-        None, create_cellacdc_structure,
+        None, create_datastruct_from_restruct_tiff_dialogue_options,
         func_args=(setupWindow.selectedOptions,),
     )
     mainWin._restructure_worker.set_func_kwargs(

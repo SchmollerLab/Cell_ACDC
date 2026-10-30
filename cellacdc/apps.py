@@ -4833,239 +4833,6 @@ class QDialogCombobox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class MultiTimePointFilePattern(QBaseDialog):
-    def __init__(self, fileName, folderPath, readPatternFunc=None, parent=None):
-        super().__init__(parent)
-
-        self.setWindowTitle('File name pattern')
-        self.cancel = True
-        self.additionalChannelWidgets = {}
-
-        mainLayout = QVBoxLayout()
-        self.readPatternFunc = readPatternFunc
-
-        infoText = html_utils.paragraph("""
-            The image files for each time-point <b>must be named with the following pattern:</b><br><br>
-            <code>position_channel_timepoint</code>
-            <br><br>
-            For example a file with name "<code>pos1_GFP_1.tif</code>" would be the first time-point of the channell GFP<br>
-            and position called <code>pos1</code>.<br><br>
-            The Position number will be determined by <b>alphabetically sorting</b>
-            all the image files.<br><br>
-            Please, <b>provide the channel names</b> below. 
-            Optionally, you can provide a basename<br>
-            that will be pre-pended to the name of all created files.<br><br>
-            You can also provide a folder path containing the segmentation masks file.<br>
-            These files <b>MUST be named exactly as the raw files</b>.
-            <br>
-        """)
-        
-        noteLayout = QHBoxLayout()
-        noteText = html_utils.paragraph("""
-            Channels <em>do not need to have the same number of frames</em>, 
-            however, Cell-ACDC will place<br>
-            the frames at the right frame number 
-            (given by <code>timepoint</code> number at the end<br>
-            of the filename) and it will fill missing frames with zeros.
-        """)
-        noteLayout.addWidget(
-            QLabel(html_utils.to_admonition(noteText)), 
-            # alignment=(Qt.AlignTop | Qt.AlignRight)
-        )
-
-        mainLayout.addWidget(QLabel(infoText))
-        mainLayout.addLayout(noteLayout)
-        noteLayout.setStretch(0,0)
-        noteLayout.setStretch(1,1)
-
-        label = QLabel(html_utils.paragraph(
-            f'Sample file name: <code>{fileName}</code>'
-        ))
-        mainLayout.addWidget(label, alignment=Qt.AlignCenter)
-        mainLayout.addSpacing(5)
-
-        channelName = ''
-        posName = ''
-        frameNumber = None
-        if readPatternFunc is not None:
-            posName, frameNumber, channelName = readPatternFunc(fileName)
-
-        formLayout = QGridLayout()
-
-        ncols = 3
-        self.vLayouts = [QVBoxLayout() for _ in range(ncols)]
-        for j, l in enumerate(self.vLayouts):
-            formLayout.addLayout(l, 0, j)
-
-        row = 0
-        items = QLabel('Position name: '), widgets.ReadOnlyLineEdit(), QLabel()
-        label, self.posNameEntry, button = items
-        self.posNameEntry.setAlignment(Qt.AlignCenter)
-        self.posNameEntry.setText(str(posName))
-        for j, w in enumerate(items):
-            self.vLayouts[j].addWidget(w)
-        
-        row += 1
-        items = (
-            QLabel('Frame number name: '), widgets.ReadOnlyLineEdit(), QLabel()
-        )
-        self.frameNumberEntry = items[1]
-        self.frameNumberEntry.setText(str(frameNumber))
-        self.frameNumberEntry.setAlignment(Qt.AlignCenter)
-        for j, w in enumerate(items):
-            self.vLayouts[j].addWidget(w)
-        
-        row += 1
-        self.channelNameLE = widgets.alphaNumericLineEdit()
-        items = (
-            QLabel('Channel_1 name: '), self.channelNameLE, 
-            widgets.addPushButton(' Add channel')
-        )
-        self.addChannelButton = items[2]
-        self.addChannelButton._row = row
-        self.channelNameLE.setAlignment(Qt.AlignCenter)
-        self.channelNameLE.setText(channelName)
-        for j, w in enumerate(items):
-            self.vLayouts[j].addWidget(w)
-
-        row += 1
-        items = (
-            QLabel('Basename (optional): '), widgets.alphaNumericLineEdit(), 
-            QLabel()
-        )
-        label, self.baseNameLE, button = items
-        self.baseNameLE.setAlignment(Qt.AlignCenter)
-        for j, w in enumerate(items):
-            self.vLayouts[j].addWidget(w)
-        
-        row += 1
-        items = QLabel('File will be saved as: '), QLineEdit(), QLabel()
-        label, self.relPathEntry, button = items
-        self.relPathEntry.setAlignment(Qt.AlignCenter)
-        for j, w in enumerate(items):
-            self.vLayouts[j].addWidget(w)
-        
-        row += 1
-        items = (
-            QLabel('Segmentation masks folder path: '), 
-            widgets.ElidingLineEdit(), 
-            widgets.browseFileButton(
-                'Browse...',
-                title='Select folder containing segmentation masks',
-                start_dir=folderPath, openFolder=True
-            )
-        )
-        label, self.segmFolderPathEntry, button = items
-        button.sigPathSelected.connect(self.segmFolderpathSelected)
-        self.segmFolderPathEntry.setAlignment(Qt.AlignCenter)
-        for j, w in enumerate(items):
-            self.vLayouts[j].addWidget(w)
-
-        self.formLayout = formLayout
-
-        self.updateRelativePath()
-
-        self.channelNameLE.textChanged.connect(self.updateRelativePath)
-        self.baseNameLE.textChanged.connect(self.updateRelativePath)
-        self.addChannelButton.clicked.connect(self.addChannel)
-        
-        mainLayout.addLayout(formLayout)
-
-        buttonsLayout = widgets.CancelOkButtonsLayout()
-        showInFileManagerButton = widgets.showInFileManagerButton(
-            myutils.get_open_filemaneger_os_string()
-        )
-        buttonsLayout.insertWidget(3, showInFileManagerButton)
-        func = partial(myutils.showInExplorer, folderPath)
-        showInFileManagerButton.clicked.connect(func)
-        buttonsLayout.okButton.clicked.connect(self.ok_cb)
-        buttonsLayout.cancelButton.clicked.connect(self.close)
-
-        mainLayout.addSpacing(20)
-        mainLayout.addLayout(buttonsLayout)
-        mainLayout.addStretch()
-
-        self.setLayout(mainLayout)
-
-        self.setFont(fonts.font)
-    
-    def segmFolderpathSelected(self, path):
-        self.segmFolderPathEntry.setText(path)
-    
-    def addChannel(self):
-        self.addChannelButton._row += 1 
-        row = self.addChannelButton._row
-
-        channel_idx = len(self.additionalChannelWidgets)
-        items = (
-            QLabel(f'Channel_{channel_idx+1} name: '), 
-            widgets.alphaNumericLineEdit(), 
-            widgets.subtractPushButton('Remove channel')
-        )
-        label, lineEdit, button = items
-        lineEdit.setAlignment(Qt.AlignCenter)
-        button.clicked.connect(self.removeChannel)
-        button._row = row
-        for j, w in enumerate(items):
-            self.vLayouts[j].insertWidget(row, w)
-
-        self.additionalChannelWidgets[row] = items
-        lineEdit.setFocus()
-
-    def removeChannel(self):
-        row = self.sender()._row
-        for j, w in enumerate(self.additionalChannelWidgets[row]):
-            self.vLayouts[j].removeWidget(w)
-        
-        self.additionalChannelWidgets.pop(row)
-        self.addChannelButton._row -= 1 
-    
-    def checkChannelNames(self):
-        allChannels = [self.channelNameLE.text()]
-        allChannels.extend(
-            [w[1].text() for w in self.additionalChannelWidgets.values()]
-        )
-        for ch1, ch2 in combinations(allChannels, 2):
-            if ch1 == ch2:
-                break
-            if not ch1 or not ch2:
-                break
-        else:
-            # Channel names are fine
-            return allChannels
-        
-        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-        txt = html_utils.paragraph("""
-            Some channel names are empty or not different from each other.
-        """)
-        msg.critical(self, 'Select two or more items', txt)
-        return None
-    
-    def updateRelativePath(self, text=''):
-        posName = self.posNameEntry.text()
-        frameNumber = self.frameNumberEntry.text()
-        channelName = self.channelNameLE.text()
-        basename = self.baseNameLE.text()
-        if basename:
-            filename = f'{basename}_{posName}_{channelName}.tif'
-        else:
-            filename = f'{posName}_{channelName}.tif'
-        relPath = f'...{os.sep}Position_1{os.sep}Images{os.sep}{filename}'
-        self.relPathEntry.setText(relPath)
-
-    def ok_cb(self):
-        allChannels = self.checkChannelNames()
-        if allChannels is None:
-            return
-        self.allChannels = allChannels
-        self.basename = self.baseNameLE.text()
-        self.segmFolderPath = self.segmFolderPathEntry.text()
-        self.cancel = False
-        self.close()
-    
-    def showEvent(self, event) -> None:
-        self.channelNameLE.setFocus()
-
 class OrderableListWidgetDialog(QBaseDialog):
     def __init__(
             self, items, title='Select items', infoTxt='', helpText='', 
@@ -23378,17 +23145,20 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         pathsForm = QFormLayout()
 
         self.sourceFolderPathControl = widgets.FolderPathControl(
-            add_browse_recent=True
+            add_browse_recent=True,
+            add_open_in_file_manager=True
         )
         pathsForm.addRow('Source folder:', self.sourceFolderPathControl)
 
         self.dstFolderPathControl = widgets.FolderPathControl(
-            add_browse_recent=True
+            add_browse_recent=True,
+            add_open_in_file_manager=True
         )
         pathsForm.addRow('Destination folder:', self.dstFolderPathControl)
 
         self.segmFolderPathControl = widgets.FolderPathControl(
-            add_browse_recent=True
+            add_browse_recent=True,
+            add_open_in_file_manager=True
         )
         pathsForm.addRow('Segmentation mask folder (optional):',
                          self.segmFolderPathControl)
