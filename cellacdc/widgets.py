@@ -1732,7 +1732,8 @@ class filePathControl(QFrame):
             validExtensions=None, 
             startFolder='', 
             elide=False,
-            add_browse_recent=False
+            add_browse_recent=False,
+            add_open_in_file_manager=False
         ):
         super().__init__(parent)
 
@@ -1763,12 +1764,37 @@ class filePathControl(QFrame):
             self.recentPathsButton = recentPathsButton
             self.recentPathsButton.clicked.connect(self.browseRecentPaths)
 
+        if add_open_in_file_manager:
+            openInFileManagerButton = showInFileManagerButton()
+            openInFileManagerButton.setToolTip(
+                'Open the current path in file manager...'
+            )
+            layout.addWidget(openInFileManagerButton)
+            self.openInFileManagerButton = openInFileManagerButton
+            self.openInFileManagerButton.clicked.connect(self.showInFileManager)
+
         self.setLayout(layout)
 
         self.le.editingFinished.connect(self.setTextTooltip)
         self.browseButton.sigPathSelected.connect(self.setText)
     
         self.setFrameStyle(QFrame.Shape.StyledPanel)
+    
+    def showInFileManager(self):
+        path = self.path()
+        if not path or not os.path.exists(path):
+            print(f'WARNING: {path} is not a valid path')
+            msg = myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                f'{path} is not a valid path :(.'
+            )
+            msg.warning(self, 'Not a valid path', txt)
+            return
+
+        if not os.path.isdir(path):
+            path = os.path.dirname(path)
+        
+        myutils.showInExplorer(path)      
 
     def browseRecentPaths(self):
         recent_paths, dates = myutils.get_recent_paths(self)

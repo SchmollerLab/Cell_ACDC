@@ -130,6 +130,7 @@ Contents
    getting-started
    video-tutorials
    data-structure
+   restructure-loose-tiff-files
    data-structure-fiji
    contributing
    tooltips
