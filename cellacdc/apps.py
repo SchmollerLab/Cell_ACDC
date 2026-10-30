@@ -14,7 +14,6 @@ from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 import numpy as np
 import scipy.interpolate
 
-from cellacdc import core_split_IDs
 try:
     import tkinter as tk
 except Exception as err:
@@ -102,6 +101,8 @@ from . import fonts
 from . import QtScoped
 from . import debugutils
 from . import disableWindow
+from . import core_split_IDs
+from . import restruct_files_recipes_path
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -17896,11 +17897,11 @@ class PreProcessParamsWidget(QWidget):
         default_text = default_text.lstrip('-')
         
         proceed, ini_filepath = self.saveRecipeUI(preproc_recipes_path, '.ini', 
-                          'Filename for pre-processing recipe',
-                          'preprocessing_recipe', 
-                          'Insert a <b>filename</b> for the pre-processing recipe:',
-                          default_text
-                          )
+            'Filename for pre-processing recipe',
+            'preprocessing_recipe', 
+            'Insert a <b>filename</b> for the pre-processing recipe:',
+            default_text
+        )
         if not proceed:
             return
         
@@ -17933,30 +17934,6 @@ class PreProcessParamsWidget(QWidget):
         )
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, 'No recipes saved', text)
-    
-    # def selectIniFileToLoadRecipe(self):
-    #     import qtpy.compat
-    #     ini_filepath = qtpy.compat.getopenfilename(
-    #         parent=self, 
-    #         caption='Select INI file to load pre-processing recipe', 
-    #         filters='INI (*.ini);;All Files (*)'
-    #     )[0]
-    #     if not ini_filepath:
-    #         return
-        
-    #     cp = config.ConfigParser()
-    #     cp.read(ini_filepath)
-    #     preprocConfigPars = {}
-    #     for section in cp.sections():
-    #         if not section.startswith('acdc.preprocess'):
-    #             continue      
-            
-    #         preprocConfigPars[section] = cp[section]
-        
-    #     if not preprocConfigPars:
-    #         return
-        
-    #     self.loadRecipe(preprocConfigPars)
 
     def selectRecipeFilepath(self, recipes_path, recipe_prefix, ext_label, ext):
         availableRecipes = []
@@ -20102,8 +20079,10 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
             num_recipes = len(folder_content)
             default_text = f'{num_recipes + 1}'
             proceed, filepath = self.saveRecipeUI(
-                combine_channels_recipes_path, '.json', 
-                'Save recipe', 'combine_channels_recipe',
+                combine_channels_recipes_path, 
+                '.json', 
+                'Save recipe', 
+                'combine_channels_recipe',
                 'Insert a <b>filename</b> for the recipe:',
                 default_text
             )
@@ -23171,13 +23150,13 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
 
         self.positionNameLE = widgets.ReadOnlyLineEdit()
         self.positionNameLE.setPlaceholderText(
-            'Select a source folder to preview its first position identifier'
+            'After set up, here you can preview first position identifier'
         )
         pathsForm.addRow('Position identifier preview:', self.positionNameLE)
 
         self.shapeLE = widgets.ReadOnlyLineEdit()
         self.shapeLE.setPlaceholderText(
-            'Select a source folder to preview shape of first TIFF file'
+            'After set up, here you can see the shape of the first TIFF file'
         )
         pathsForm.addRow('Shape of first TIFF file:', self.shapeLE)
 
@@ -23207,9 +23186,28 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             self.dstFolderPathSelected
         )
 
-        viewFirstImageButton = widgets.viewPushButton('View first image...')
         buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        loadRecipeButton = widgets.OpenFilePushButton('Load saved recipe...')
+        self.loadRecipeButton = loadRecipeButton
+        buttonsLayout.insertWidget(3, loadRecipeButton)
+        
+        saveRecipeButton = widgets.savePushButton('Save current recipe...')
+        self.saveRecipeButton = saveRecipeButton
+        buttonsLayout.insertWidget(3, saveRecipeButton)
+        
+        loadLastParametersButton = widgets.reloadPushButton(
+            'Load last parameters'
+        )
+        self.loadLastParametersButton = loadLastParametersButton
+        buttonsLayout.insertWidget(3, loadLastParametersButton)
+
+        viewFirstImageButton = widgets.viewPushButton('View first image...')
         buttonsLayout.insertWidget(3, viewFirstImageButton)
+
+        loadLastParametersButton.clicked.connect(self.loadLastParameters)
+        loadRecipeButton.clicked.connect(self.loadRecipe)
+        saveRecipeButton.clicked.connect(self.saveRecipe)
         viewFirstImageButton.clicked.connect(self.viewFirstImage)
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
@@ -23318,7 +23316,19 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             validPattern = '[0-4]'
             regExpr = QRegularExpression(validPattern)
             detailLE.setValidator(QRegularExpressionValidator(regExpr))
-            detailLE.setPlaceholderText('0, 1, 2, 3, or 4')
+            if key == 'channels':
+                shape_eg = '(C, T, Y, X)'
+                eg_text = 'C is 0, and for T it is 1'
+            elif key == 'timepoints':
+                shape_eg = '(C, T, Y, X)'
+                eg_text = 'T is 1, and for C it is 0'
+            else:
+                shape_eg = '(T, Z, Y, X)'
+                eg_text = 'T is 0, and for Z it is 1'
+            detailLE.setPlaceholderText(
+                f'e.g., if the shape is {shape_eg}, the axis index for '
+                f'{eg_text}'
+            )
             if key == 'channels':
                 detailLE.textChanged.connect(self.updateNumberOfChannels)
                 self.numberChannelsSpinBox.setReadOnly(True)
@@ -23493,52 +23503,8 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             self.warnSourceFolderNotSetupCorrectly()
             return
 
-        dimensionOptions = {}
-        for key, _, _, _ in self.DIMENSIONS:
-            mode = self._get_dimension_mode(key)
-            controls = self.dimensionControls[key]
-            detail = controls['detailLE'].text().strip()
-
-            if mode == 'in_file' and not detail:
-                self._warn(f'Enter the TIFF axis label for {key}.')
-                return
-            if mode == 'per_file' and key != 'channels' and not detail:
-                self._warn(f'Enter the filename marker for {key}.')
-                return
-
-            dimensionOptions[key] = {'mode': mode}
-            if mode == 'in_file':
-                dimensionOptions[key]['axis'] = detail
-            elif mode == 'per_file' and key != 'channels':
-                dimensionOptions[key]['filename_marker'] = detail
-
-        channelNames = [
-            nameLE.text().strip()
-            for nameLE, _ in self.channelEntries
-        ]
-        if any(not name for name in channelNames):
-            self._warn('Enter a name for every channel.')
-            return
-        if len({name.casefold() for name in channelNames}) != len(channelNames):
-            self._warn('Channel names must be unique.')
-            return
-
-        channelsMode = dimensionOptions['channels']['mode']
-        channelOptions = []
-        for nameLE, tokenLE in self.channelEntries:
-            channel = {'name': nameLE.text().strip()}
-            if channelsMode == 'per_file':
-                token = tokenLE.text().strip()
-                if not token:
-                    self._warn(
-                        'Enter a filename identifier for every channel.'
-                    )
-                    return
-                channel['filename_identifier'] = token
-            channelOptions.append(channel)
-
-        dimensionOptions['channels']['count'] = len(channelOptions)
-        dimensionOptions['channels']['names'] = channelOptions
+        dimensionOptions = self.dimensionOptions()
+        self.saveLastParameters(dimensionOptions)
 
         self.selectedOptions['source_folder'] = sourceFolder
         self.selectedOptions['destination_folder'] = destinationFolder
@@ -23634,7 +23600,6 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
 
         pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
 
-        printl(pos_foldernames)
         if not pos_foldernames:
             return
         
@@ -23677,8 +23642,243 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         plot.imshow(image, axis_titles=[first_file])
     
     def updateNumberOfChannels(self, axis_index_str):
+        if not axis_index_str:
+            return
+            
         axis_index = int(axis_index_str)
         shape_str = self.shapeLE.text()
-        shape = ast.literal_eval(shape_str)
+        try:
+            shape = ast.literal_eval(shape_str)
+        except Exception as err:
+            return 
+
         num_channels = shape[axis_index]
         self.numberChannelsSpinBox.setValue(num_channels)
+    
+    def saveRecipe(self):
+        os.makedirs(restruct_files_recipes_path, exist_ok=True)
+        folder_content = myutils.listdir(restruct_files_recipes_path)
+        num_recipes = len(folder_content)
+        default_text = f'{num_recipes + 1}'
+
+        win = filenameDialog(
+            title='Save recipe',
+            basename='datastruct_restructure_recipe',
+            ext='.json',
+            allowEmpty=False,
+            defaultEntry=default_text,
+            hintText='Insert a <b>filename</b> for the current recipe:',
+            parent=self,
+        )
+        win.exec_()
+        if win.cancel:
+            return 
+
+        json_filepath = os.path.join(restruct_files_recipes_path, win.filename)
+        dimensionOptions = self.dimensionOptions()
+        with open(json_filepath, 'w') as f:
+            json.dump(dimensionOptions, f, indent=2)
+        
+        self.saveRecipeButton.confirmAction()
+    
+    def warnNoRecipesAvailable(self):
+        message = (
+            'There are no recipes available.<br><br>'
+            'You can save recipes by clicking on the '
+            '<code>Save current recipe...</code> button.'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self,
+            'No recipes available',
+            html_utils.paragraph(message),
+        )
+
+    def selectRecipeFilepath(self):
+        if not os.path.exists(restruct_files_recipes_path):
+            self.warnNoRecipesAvailable()
+            return
+
+        availableRecipes = []
+        displayNameToFilenameMapper = {}
+        for file in myutils.listdir(restruct_files_recipes_path):
+            if not file.startswith('datastruct_restructure_recipe'):
+                continue
+
+            if not file.lower().endswith('.json'):
+                continue
+
+            parts = file.split(f'datastruct_restructure_recipe_', 1)
+            if len(parts) != 2:
+                continue
+
+            endname = parts[1]
+            filepath = os.path.join(restruct_files_recipes_path, file)
+            modified_on = datetime.datetime.fromtimestamp(
+                os.path.getmtime(filepath)
+            ).strftime(r'%Y/%m/%d %H:%M')
+            availableRecipes.append((endname, modified_on))
+            displayNameToFilenameMapper[endname] = file
+        
+        if not availableRecipes:
+            self.warnNoRecipesAvailable()
+            return
+
+        selectRecipeWin = QTreeDialog(
+            availableRecipes,
+            headerLabels=['Name', 'Date Modified'],
+            title='Select recipe',
+            infoText='Select recipe to load:<br>',
+            parent=self,
+            path_to_browse=restruct_files_recipes_path,
+        )
+        selectRecipeWin.exec_()
+        if selectRecipeWin.cancel:
+            return
+        
+        selected_endname = selectRecipeWin.selectedText
+        filename = displayNameToFilenameMapper.get(selected_endname)
+
+        return os.path.join(restruct_files_recipes_path, filename)
+
+    def loadRecipe(self):
+        filepath = self.selectRecipeFilepath()
+        if filepath is None:
+            return
+
+        with open(filepath, 'r') as f:
+            savedOptions  = json.load(f)
+        
+        self.setDimensionOptions(savedOptions)
+
+        self.loadRecipeButton.confirmAction()
+    
+    def loadLastParameters(self):
+        if not os.path.exists(restruct_files_recipes_path):
+            self.warnNoRecipesAvailable()
+            return
+
+        if not myutils.listdir(restruct_files_recipes_path):
+            self.warnNoRecipesAvailable()
+            return
+        
+        for file in myutils.listdir(restruct_files_recipes_path):
+            if file.startswith('_last_setup'):
+                break
+        else:
+            self.warnNoRecipesAvailable()
+            return
+        
+        filepath = os.path.join(restruct_files_recipes_path, file)
+        with open(filepath, 'r') as f:
+            savedOptions  = json.load(f)
+        
+        self.setDimensionOptions(savedOptions)
+
+        self.loadLastParametersButton.confirmAction()
+    
+    def saveLastParameters(self, dimensionOptions):
+        filepath = os.path.join(restruct_files_recipes_path, '_last_setup.json')
+        with open(filepath, 'w') as f:
+            json.dump(dimensionOptions, f, indent=2)
+
+    def dimensionOptions(self):
+        dimensionOptions = {}
+        for key, _, _, _ in self.DIMENSIONS:
+            mode = self._get_dimension_mode(key)
+            controls = self.dimensionControls[key]
+            detail = controls['detailLE'].text().strip()
+
+            if mode == 'in_file' and not detail:
+                self._warn(f'Enter the TIFF axis label for {key}.')
+                return
+            if mode == 'per_file' and key != 'channels' and not detail:
+                self._warn(f'Enter the filename marker for {key}.')
+                return
+
+            dimensionOptions[key] = {'mode': mode}
+            if mode == 'in_file':
+                dimensionOptions[key]['axis'] = detail
+            elif mode == 'per_file' and key != 'channels':
+                dimensionOptions[key]['filename_marker'] = detail
+
+        channelNames = [
+            nameLE.text().strip()
+            for nameLE, _ in self.channelEntries
+        ]
+        if any(not name for name in channelNames):
+            self._warn('Enter a name for every channel.')
+            return
+        if len({name.casefold() for name in channelNames}) != len(channelNames):
+            self._warn('Channel names must be unique.')
+            return
+
+        channelsMode = dimensionOptions['channels']['mode']
+        channelOptions = []
+        for nameLE, tokenLE in self.channelEntries:
+            channel = {'name': nameLE.text().strip()}
+            if channelsMode == 'per_file':
+                token = tokenLE.text().strip()
+                if not token:
+                    self._warn(
+                        'Enter a filename identifier for every channel.'
+                    )
+                    return
+                channel['filename_identifier'] = token
+            channelOptions.append(channel)
+
+        dimensionOptions['channels']['count'] = len(channelOptions)
+        dimensionOptions['channels']['names'] = channelOptions
+
+        return dimensionOptions
+    
+    def setDimensionOptions(self, options):
+        for key, _, _, _ in self.DIMENSIONS:
+            dimension = options.get(key, {'mode': 'not_present'})
+            mode = dimension.get('mode', 'not_present')
+
+            controls = self.dimensionControls[key]
+            button = controls['buttons'].get(mode)
+            if button is None:
+                raise ValueError(f'Unknown mode {mode!r} for {key}')
+
+            button.setChecked(True)
+            self._update_dimension_control(key, mode)
+
+            if mode == 'in_file':
+                value = dimension.get(
+                    'axis_index',
+                    dimension.get('axis', ''),
+                )
+            elif mode == 'per_file' and key != 'channels':
+                value = dimension.get('filename_marker', '')
+            else:
+                value = ''
+
+            controls['detailLE'].setText(
+                '' if value is None else str(value)
+            )
+
+        channels = options.get('channels', {})
+        channelOptions = channels.get('names', [])
+        channelCount = channels.get('count', len(channelOptions) or 1)
+
+        if (
+            self._get_dimension_mode('channels') == 'not_present'
+            and channelCount != 1
+        ):
+            raise ValueError(
+                'A channel configuration marked "Not present" must have '
+                'exactly one channel.'
+            )
+
+        self.numberChannelsSpinBox.setValue(channelCount)
+        self._rebuild_channel_rows()
+
+        for (nameLE, tokenLE), channel in zip(
+                self.channelEntries, channelOptions
+            ):
+            nameLE.setText(channel.get('name', ''))
+            tokenLE.setText(channel.get('filename_identifier', ''))
+
+        self.updatePositionNamePreview()
