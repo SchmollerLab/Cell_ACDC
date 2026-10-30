@@ -38,7 +38,7 @@ from qtpy.QtCore import (
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
     QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel,
-    QAbstractAnimation
+    QAbstractAnimation, Slot
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -47,7 +47,7 @@ from qtpy.QtGui import (
     QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument
 )
 from qtpy.QtWidgets import (
-    QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
+    QColorDialog, QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
     QApplication, QWidget, QVBoxLayout, QMainWindow, QTreeWidgetItemIterator,
     QLineEdit, QSlider, QSpinBox, QGridLayout, QRadioButton,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
@@ -6972,7 +6972,33 @@ class myColorButton(pg.ColorButton):
         c = self._c
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
+        
+    def _make_dialog(self):
+        dlg = QColorDialog(self.window())  # parent = enclosing dialog
+        dlg.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+        dlg.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        dlg.currentColorChanged.connect(self.dialogColorChanged)
+        dlg.rejected.connect(self.colorRejected)
+        return dlg
+        
+    # edit show color dialog on click
+    @Slot()
+    def selectColor(self):
+        # Re-parent every time, in case the button moved to another window
+        if self.colorDialog is None or self.colorDialog.parent() is not self.window():
+            if self.colorDialog is not None:
+                self.colorDialog.deleteLater()
+            self.colorDialog = self._make_dialog()
 
+        self.origColor = self.color()
+        self.colorDialog.setCurrentColor(self.color())
+        self.colorDialog.open()
+        self.colorDialog.raise_()
+        self.colorDialog.activateWindow()
+        
+        
 class highlightableQWidgetAction(QWidgetAction):
     def __init__(self, parent) -> None:
         super().__init__(parent)

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from qtpy.QtCore import QPoint, Qt
 from qtpy.QtWidgets import QApplication, QWidget
 
-from cellacdc import apps, cli, config, measurements, widgets
+from cellacdc import apps, cli, config, measurements, timepoint_predictors, widgets
 
 
 @pytest.fixture(scope='module')
@@ -191,6 +191,83 @@ def test_categorical_and_numerical_groups_follow_dtype(dialog):
     }
 
 
+@pytest.mark.parametrize('loaded', [False, True])
+def test_catalog_uses_loaded_columns_and_preserves_groups(app, monkeypatch, loaded):
+    monkeypatch.setattr(
+        measurements, 'standard_metrics_desc',
+        lambda isZstack, channel, **kwargs: (
+            {f'{channel}_mean': '', f'{channel}_missing': ''},
+            {f'{channel}_background': ''}
+        )
+    )
+    monkeypatch.setattr(
+        measurements, 'custom_metrics_desc',
+        lambda isZstack, channel, **kwargs: {f'{channel}_custom': ''}
+    )
+    monkeypatch.setattr(
+        measurements, 'get_size_metrics_desc',
+        lambda *args: {'cell_area_pxl': '', 'missing_size': ''}
+    )
+    monkeypatch.setattr(
+        measurements, 'get_props_names', lambda: ['solidity', 'missing_prop']
+    )
+    df = pd.DataFrame({
+        'GFP_mean': [2.],
+        'GFP_background': [1.],
+        'GFP_custom': [3.],
+        '_mean': [4.],
+        'cell_area_pxl': [10.],
+        'solidity': [0.9],
+        'unlisted measurement': [7.],
+        'stage': ['G1'],
+        'known': [True],
+    })
+    dialog = apps.CombineMetricsEquationDialog(
+        ['GFP'], False, False, acdc_df=df if loaded else None
+    )
+    items = list(tree_items(dialog.metricsTreeWidgets[0].invisibleRootItem()))
+    leaves = {
+        item.variableName: item for item in items
+        if getattr(item, 'isCol', False)
+    }
+    if loaded:
+        assert set(leaves) == set(df.columns)
+        assert set(dialog.variableNames) == set(df.columns)
+        assert len(dialog.variableNames) == len(df.columns)
+        for name in ('unlisted measurement', 'stage', 'known'):
+            assert leaves[name].parent().text(0) == 'Other'
+        assert leaves['unlisted measurement'].parent().parent().text(0) == (
+            'Numerical inputs'
+        )
+        for name in ('stage', 'known'):
+            assert leaves[name].parent().parent().text(0) == 'Categorical inputs'
+    else:
+        assert {'GFP_missing', 'missing_size', 'missing_prop'} <= set(leaves)
+        assert 'unlisted measurement' not in leaves
+    for name, group in (
+            ('GFP_mean', 'Cell measurements'),
+            ('GFP_background', 'Background values'),
+            ('GFP_custom', 'Custom measurements'),
+            ('_mean', 'Cell signal measurements'),
+            ('cell_area_pxl', 'Size measurements'),
+            ('solidity', 'Region properties')
+        ):
+        assert leaves[name].parent().text(0) == group
+    dialog.deleteLater()
+
+
+def test_catalog_with_empty_dataframe_has_no_measurements(app):
+    dialog = apps.CombineMetricsEquationDialog(
+        ['GFP'], False, False, acdc_df=pd.DataFrame()
+    )
+    assert dialog.variableNames == []
+    assert not any(
+        getattr(item, 'isCol', False)
+        for item in tree_items(dialog.metricsTreeWidgets[0].invisibleRootItem())
+    )
+    dialog.deleteLater()
+
+
 @pytest.mark.parametrize('multi_table', [False, True])
 @pytest.mark.parametrize('label, before, after, expected', [
     ('==', 'cell_cycle_stage{suffix}', '"G1"', [True, False, True]),
@@ -259,6 +336,117 @@ def test_pandas_formulas_validate_and_evaluate(dialog, formula, expected):
     actual = dialog.getCombinedDf().eval(formula)
     assert actual.tolist() == pytest.approx(expected, abs=1e-5)
     assert 'successful' in dialog.statusLabel.text()
+
+
+@pytest.mark.parametrize('function, expected', [
+    ('any', [True, True, True, False, False, True, True]),
+    ('all', [False, False, False, False, False, True, True]),
+])
+def test_any_all_reduce_per_cell_and_repeat_on_each_frame(
+        app, function, expected
+    ):
+    df = pd.DataFrame(
+        {'cell area': [1, 4, 2, 1, 2, 4, 5]},
+        index=pd.MultiIndex.from_tuples(
+            [(0, 1), (1, 1), (2, 1), (0, 2), (1, 2), (0, 3), (1, 3)],
+            names=['frame_i', 'Cell_ID']
+        )
+    )
+    dialog = apps.CombineMetricsEquationDialog(
+        ['GFP'], False, False, acdc_df=df, saveToConfig=False,
+        allowCellAggregations=True
+    )
+    formula = f'{function}(`cell area` > 3)'
+    dialog.formulaEditWidget.setText(formula)
+    assert dialog.formulaEditWidget.checkValidity()[0]
+    assert dialog.evaluateEquation(df, formula).tolist() == expected
+    labels = {
+        button.text() for button in dialog.categoricalOperatorButtons
+    }
+    assert {'ANY', 'ALL'} <= labels
+    dialog.clearEquation()
+    next(
+        button for button in dialog.categoricalOperatorButtons
+        if button.text() == function.upper()
+    ).click()
+    assert dialog.formulaEditWidget.text() == f'{function}('
+    dialog.deleteLater()
+
+
+def test_any_all_are_unavailable_outside_measurements_viewer(dialog):
+    dialog.formulaEditWidget.setText('any(GFP_mean_table1 > 2)')
+    valid, message = dialog.formulaEditWidget.checkValidity()
+    assert not valid
+    assert 'Measurements viewer' in message
+
+
+@pytest.mark.parametrize('formula', [
+    'any(`cell area` > MEAN(`cell area`))',
+    'ALL(`cell area` > 0)',
+    'DIFF(`cell area`)',
+    '`cell area` / MAX(`cell area`)',
+])
+@pytest.mark.parametrize('indexed', [True, False])
+def test_evaluate_equation_matches_per_cell_runtime(app, formula, indexed):
+    df = pd.DataFrame({
+        'frame_i': [2, 0, 1, 0, 1],
+        'Cell_ID': [1, 2, 1, 1, 2],
+        'cell area': [6., 10., 4., 2., 20.],
+    })
+    if indexed:
+        df = df.set_index(['frame_i', 'Cell_ID'])
+    dialog = apps.CombineMetricsEquationDialog(
+        [], False, False, acdc_df=df, saveToConfig=False,
+        allowCellAggregations=True
+    )
+    actual = dialog.evaluateEquation(df, formula)
+    expected = []
+    flat = timepoint_predictors._flat_df(df)
+    for _, cell in flat.groupby('Cell_ID', sort=False):
+        cell = cell.sort_values('frame_i')
+        values = timepoint_predictors.eval_cell_equation(
+            cell.reset_index(drop=True), formula
+        )
+        expected.append(pd.Series(
+            values if not isinstance(values, pd.Series) else values.to_numpy(),
+            index=cell.index
+        ))
+    expected = pd.concat(expected).reindex(flat.index)
+    expected.index = df.index
+    pd.testing.assert_series_equal(actual, expected)
+    dialog.formulaEditWidget.setText(formula)
+    dialog.test_cb()
+    assert dialog.okButton.isEnabled()
+    dialog.deleteLater()
+
+
+@pytest.mark.parametrize('cell_functions', [False, True])
+@pytest.mark.parametrize('formula,dtype,valid', [
+    ('value > 0', bool, True),
+    ('value * 0', bool, True),
+    ('value', bool, False),
+    ('value / 0', bool, False),
+    ('value', 'float64', True),
+    ('value', 'int64', False),
+    ('value > 0', 'float64', False),
+])
+def test_evaluate_equation_enforces_dtype(
+        app, cell_functions, formula, dtype, valid
+    ):
+    df = pd.DataFrame({'value': [1., 2., 3.]})
+    dialog = apps.CombineMetricsEquationDialog(
+        [], False, False, acdc_df=df, saveToConfig=False,
+        allowCellAggregations=cell_functions
+    )
+    if valid:
+        result = dialog.evaluateEquation(
+            df, formula, enforce_dtype_output=dtype
+        )
+        assert pd.api.types.is_dtype_equal(result.dtype, dtype)
+    else:
+        with pytest.raises(ValueError, match='dtype|bool|0/1'):
+            dialog.evaluateEquation(df, formula, enforce_dtype_output=dtype)
+    dialog.deleteLater()
 
 
 @pytest.mark.parametrize('formula', [

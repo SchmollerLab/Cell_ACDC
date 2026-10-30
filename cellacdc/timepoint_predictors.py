@@ -9,7 +9,9 @@ with either:
   frames (e.g., first frame where the equation is true). Equations can use 
   the per-cell functions of ``CELL_FUNCTIONS`` (e.g., 
   ``cell_area_pxl > 0.5 * MAX(cell_area_pxl)`` or ``DIFF(cell_area_pxl) > 50``), 
-  computed over the frames of each cell, or
+  computed over the frames of each cell, ``any``/``all`` to reduce conditions
+  across those frames, and suffixed ``_other`` inputs to aggregate selected
+  cells within a frame window, or
 - a Python file defining ``predictor(df)``. ``df`` is the acdc_df of a 
   single cell (one row per frame, with ``frame_i`` and ``Cell_ID`` columns, 
   sorted by ``frame_i``). It returns a frame index (``frame_i``, 0-based), a 
@@ -34,6 +36,8 @@ row). ``condition_mode`` selects candidate cells matching ``any``/``all``
 overlapping frames, or just matching rows (``where_true``). Per-frame values
 are indexed at t; Entire video reduces all selected rows to one value.
 Equations expose enquiring-cell columns as ``this_<column>``.
+Time point predictor equations can also restrict target cells with a
+main-cell filter evaluated across each cell's frames (``any`` or ``all``).
 Custom time scopes evaluate an inclusive window (e.g. ``t - 5`` to ``t + 2``)
 for each enquiring-cell frame t, applying filters within that window and
 storing the aggregate at t. Missing frames are excluded, not padded.
@@ -121,9 +125,55 @@ def validate_predictor(predictor):
             raise ValueError('The predictor equation cannot be empty.')
         if predictor.get('mode') not in EQUATION_MODES:
             raise ValueError('Invalid predictor equation mode.')
+        if predictor.get('other_cells') is not None:
+            validate_other_cells(predictor['other_cells'])
+        if predictor.get('main_cell_filter') is not None:
+            validate_main_cell_filter(predictor['main_cell_filter'])
     elif kind == PREDICTOR_FILE:
         if not isinstance(predictor.get('filepath'), str) or not predictor['filepath']:
             raise ValueError('The predictor file path cannot be empty.')
+
+def default_other_cells():
+    return {
+        'source': SOURCE_SAME_FRAME,
+        'condition': '',
+        'condition_mode': 'where_true',
+        'range_start': 't',
+        'range_end': 't',
+    }
+
+def validate_other_cells(other_cells):
+    if not isinstance(other_cells, dict):
+        raise ValueError('Invalid other-cell settings.')
+    settings = default_other_cells()
+    settings.update(other_cells)
+    if settings['source'] not in (
+            SOURCE_SAME_FRAME, 'mother', 'sister', 'daughter'
+        ):
+        raise ValueError('Invalid other-cell source.')
+    if not isinstance(settings['condition'], str):
+        raise ValueError('Invalid other-cell filter condition.')
+    if settings['condition_mode'] not in FILTER_FRAME_MODES:
+        raise ValueError('Invalid other-cell filter mode.')
+    for field in ('range_start', 'range_end'):
+        if not isinstance(settings[field], str) or not settings[field].strip():
+            raise ValueError(f'Other-cell {field.replace("_", " ")} cannot be empty.')
+    frame_range_bounds(settings['range_start'], settings['range_end'], 0)
+    return settings
+
+def default_main_cell_filter():
+    return {'condition': '', 'condition_mode': 'any'}
+
+def validate_main_cell_filter(main_cell_filter):
+    if not isinstance(main_cell_filter, dict):
+        raise ValueError('Invalid main-cell filter settings.')
+    settings = default_main_cell_filter()
+    settings.update(main_cell_filter)
+    if not isinstance(settings['condition'], str):
+        raise ValueError('Invalid main-cell filter condition.')
+    if settings['condition_mode'] not in ('any', 'all'):
+        raise ValueError('Invalid main-cell filter mode.')
+    return settings
 
 def validate_identifier_dict(data):
     if not isinstance(data, dict):
@@ -141,9 +191,21 @@ def validate_identifier_dict(data):
 def predictor_description(predictor):
     kind = predictor.get('type', PREDICTOR_NONE)
     if kind == PREDICTOR_EQUATION:
-        return (
+        description = (
             f'{EQUATION_MODES[predictor["mode"]]}: {predictor["equation"]}'
         )
+        otherCells = predictor.get('other_cells')
+        if otherCells is not None:
+            settings = validate_other_cells(otherCells)
+            description += (
+                f' (uses {SOURCE_CELLS[settings["source"]]}, '
+                f'frames {settings["range_start"]} to '
+                f'{settings["range_end"]}'
+            )
+            if settings['condition']:
+                description += f', filter: {settings["condition"]}'
+            description += ')'
+        return description
     if kind == PREDICTOR_FILE:
         return f'predictor(df) from "{predictor["filepath"]}"'
     return 'None (manual annotation)'
@@ -271,6 +333,12 @@ def _diff(x):
 def _count(x):
     return int(np.isfinite(_numeric(x)).sum())
 
+def _any(x):
+    return bool(pd.Series(np.asarray(x).ravel()).fillna(False).astype(bool).any())
+
+def _all(x):
+    return bool(pd.Series(np.asarray(x).ravel()).fillna(False).astype(bool).all())
+
 def _nunique(x):
     return int(pd.Series(np.atleast_1d(np.asarray(x)).ravel()).nunique())
 
@@ -296,19 +364,49 @@ CELL_FUNCTIONS = {
         _shift, 
         'SHIFT(x, n): value n frames earlier (negative n: later). Default n=1'
     ),
+    'any': (_any, 'True if the condition is true in at least one frame of the cell'),
+    'all': (_all, 'True only if the condition is true in every frame of the cell'),
+    'ANY': (_any, 'True if the condition is true in at least one frame of the cell'),
+    'ALL': (_all, 'True only if the condition is true in every frame of the cell'),
 }
 
 def cell_functions_resolver():
     return {name: func for name, (func, _) in CELL_FUNCTIONS.items()}
 
-def eval_cell_equation(df, equation, variables=None):
+def enforce_equation_output_dtype(values, dtype, length):
+    """Validate output without lossy casts; bool also accepts numeric 0/1."""
+    expected = pd.api.types.pandas_dtype(dtype)
+    if pd.api.types.is_bool_dtype(expected):
+        mask = boolean_filter_values(values, length)
+        if isinstance(values, pd.Series):
+            return pd.Series(mask, index=values.index, name=values.name)
+        return mask if np.ndim(values) else bool(np.asarray(values).item())
+    actual = values.dtype if hasattr(values, 'dtype') else np.asarray(values).dtype
+    if not pd.api.types.is_dtype_equal(actual, expected):
+        raise ValueError(
+            f'The equation must return dtype {expected}; got {actual}.'
+        )
+    return values
+
+def eval_cell_equation(
+        df, equation, variables=None, *, enforce_dtype_output=None
+    ):
     """Evaluate ``equation`` on the rows of ``df`` with the functions of 
     ``CELL_FUNCTIONS`` (e.g., ``area > 0.5 * MAX(area)``) and the 
-    additional ``variables`` (e.g., ``{'SizeT': 10}``) available."""
+    additional ``variables`` (e.g., ``{'SizeT': 10}``) available.
+
+    ``enforce_dtype_output`` validates the result's dtype without silently
+    casting it. Bool accepts bool or numeric 0/1, as required by cell filters.
+    """
     resolvers = [cell_functions_resolver()]
     if variables:
         resolvers.append(dict(variables))
-    return df.eval(equation, resolvers=resolvers)
+    values = df.eval(equation, resolvers=resolvers)
+    if enforce_dtype_output is not None:
+        values = enforce_equation_output_dtype(
+            values, enforce_dtype_output, len(df)
+        )
+    return values
 
 # For each cell, ``equation`` is evaluated on the rows of its
 # source cells (see ``SOURCE_CELLS``, e.g. the cell itself or its mother) 
@@ -339,6 +437,7 @@ def filter_cells(df, enquiring_df):
 
     Return a bool (or 0/1), or one bool/0/1 per row.
     """
+    # example: exclude the enquiring cell itself
     return df["Cell_ID"].to_numpy() != enquiring_df["Cell_ID"].to_numpy()
 '''
 # Relatives determined from parent_ID_tree/sister_ID_tree or relative_ID
@@ -362,137 +461,137 @@ SOURCE_SUFFIXES = {
 THIS_PREFIX = 'this_'
 
 # {label: (name template, equation template)}, `{col}` is a selected column
-CONSTANT_PRESETS = {
-    'Maximum value': ('max_{col}', 'MAX({col})'),
-    'Minimum value': ('min_{col}', 'MIN({col})'),
-    'Mean value': ('mean_{col}', 'MEAN({col})'),
-    'Median value': ('median_{col}', 'MEDIAN({col})'),
-    'Value at first frame': ('first_{col}', 'FIRST({col})'),
-    'Value at last frame': ('last_{col}', 'LAST({col})'),
-    'Was at beginning': ('was_at_beginning', 'FIRST(frame_i) == 0'),
-    'Was at end': ('was_at_end', 'LAST(frame_i) == SizeT - 1'),
-    'Number of frames': ('num_frames', 'NUNIQUE(frame_i)'),
-    'First frame': ('first_frame_i', 'FIRST(frame_i)'),
-    'Last frame': ('last_frame_i', 'LAST(frame_i)'),
-    'Number of source cells': ('num_cells', 'NUNIQUE(Cell_ID)'),
-}
+# CONSTANT_PRESETS = {
+#     'Maximum value': ('max_{col}', 'MAX({col})'),
+#     'Minimum value': ('min_{col}', 'MIN({col})'),
+#     'Mean value': ('mean_{col}', 'MEAN({col})'),
+#     'Median value': ('median_{col}', 'MEDIAN({col})'),
+#     'Value at first frame': ('first_{col}', 'FIRST({col})'),
+#     'Value at last frame': ('last_{col}', 'LAST({col})'),
+#     'Was at beginning': ('was_at_beginning', 'FIRST(frame_i) == 0'),
+#     'Was at end': ('was_at_end', 'LAST(frame_i) == SizeT - 1'),
+#     'Number of frames': ('num_frames', 'NUNIQUE(frame_i)'),
+#     'First frame': ('first_frame_i', 'FIRST(frame_i)'),
+#     'Last frame': ('last_frame_i', 'LAST(frame_i)'),
+#     'Number of source cells': ('num_cells', 'NUNIQUE(Cell_ID)'),
+# }
 
-def preset_needs_column(label):
-    return '{col}' in CONSTANT_PRESETS[label][1]
+# def preset_needs_column(label):
+#     return '{col}' in CONSTANT_PRESETS[label][1]
 
-def default_constant(name='constant', equation='', source=SOURCE_THIS):
-    return {
-        'name': name, 'equation': equation, 'source': source, 
-        'condition': '', 'per_frame': False, 'condition_mode': 'where_true',
-        'condition_type': 'equation', 'condition_filepath': '',
-        'time_scope': 'video', 'range_start': 't - 5', 'range_end': 't',
-    }
+# def default_constant(name='constant', equation='', source=SOURCE_THIS):
+#     return {
+#         'name': name, 'equation': equation, 'source': source, 
+#         'condition': '', 'per_frame': False, 'condition_mode': 'where_true',
+#         'condition_type': 'equation', 'condition_filepath': '',
+#         'time_scope': 'video', 'range_start': 't - 5', 'range_end': 't',
+#     }
 
-def normalize_constant(constant):
-    """Constant dict with all keys (older constants only have 'name' and 
-    'equation')."""
-    normalized = default_constant()
-    normalized.update({
-        key: constant[key] for key in normalized if key in constant
-    })
-    if ('time_scope' not in constant
-            or (constant['time_scope'] == 'video' and normalized['per_frame'])):
-        normalized['time_scope'] = 'frame' if normalized['per_frame'] else 'video'
-    normalized['per_frame'] = normalized['time_scope'] != 'video'
-    return normalized
+# def normalize_constant(constant):
+#     """Constant dict with all keys (older constants only have 'name' and 
+#     'equation')."""
+#     normalized = default_constant()
+#     normalized.update({
+#         key: constant[key] for key in normalized if key in constant
+#     })
+#     if ('time_scope' not in constant
+#             or (constant['time_scope'] == 'video' and normalized['per_frame'])):
+#         normalized['time_scope'] = 'frame' if normalized['per_frame'] else 'video'
+#     normalized['per_frame'] = normalized['time_scope'] != 'video'
+#     return normalized
 
-def constant_from_preset(label, col=None, source=SOURCE_THIS):
-    nameTemplate, equationTemplate = CONSTANT_PRESETS[label]
-    if '{col}' in equationTemplate and not col:
-        raise ValueError(f'The preset "{label}" requires a column.')
-    if source not in SOURCE_CELLS:
-        raise ValueError(f'Invalid source cells: {source}.')
-    name = f'{nameTemplate.format(col=col)}{SOURCE_SUFFIXES[source]}'
-    return default_constant(name, equationTemplate.format(col=col), source)
+# def constant_from_preset(label, col=None, source=SOURCE_THIS):
+#     nameTemplate, equationTemplate = CONSTANT_PRESETS[label]
+#     if '{col}' in equationTemplate and not col:
+#         raise ValueError(f'The preset "{label}" requires a column.')
+#     if source not in SOURCE_CELLS:
+#         raise ValueError(f'Invalid source cells: {source}.')
+#     name = f'{nameTemplate.format(col=col)}{SOURCE_SUFFIXES[source]}'
+#     return default_constant(name, equationTemplate.format(col=col), source)
 
-def constant_description(constant):
-    constant = normalize_constant(constant)
-    description = f'{constant["equation"]} of {SOURCE_CELLS[constant["source"]]}'
-    if constant['condition']:
-        description = f'{description} where {constant["condition"]}'
-    if constant['time_scope'] == 'custom':
-        description = (
-            f'{description} (range {constant["range_start"]} to '
-            f'{constant["range_end"]}, inclusive)'
-        )
-    elif constant['per_frame']:
-        description = f'{description} (per frame)'
-    return description
+# def constant_description(constant):
+#     constant = normalize_constant(constant)
+#     description = f'{constant["equation"]} of {SOURCE_CELLS[constant["source"]]}'
+#     if constant['condition']:
+#         description = f'{description} where {constant["condition"]}'
+#     if constant['time_scope'] == 'custom':
+#         description = (
+#             f'{description} (range {constant["range_start"]} to '
+#             f'{constant["range_end"]}, inclusive)'
+#         )
+#     elif constant['per_frame']:
+#         description = f'{description} (per frame)'
+#     return description
 
-def validate_constant_name(name, existingNames=(), columns=()):
-    if not isinstance(name, str) or not name.isidentifier():
-        raise ValueError(
-            f'Invalid constant name "{name}". Use only letters, numbers and '
-            'underscores, not starting with a number.'
-        )
-    if keyword.iskeyword(name) or name in ('True', 'False', 'None'):
-        raise ValueError(f'"{name}" is a reserved Python keyword.')
-    if name in CELL_FUNCTIONS or name in CONSTANT_VARIABLES:
-        raise ValueError(f'"{name}" is the name of a built-in function/variable.')
-    if name.startswith(THIS_PREFIX):
-        raise ValueError(
-            f'Constant names cannot start with "{THIS_PREFIX}" (reserved for '
-            'the columns of the cell itself).'
-        )
-    if name in existingNames:
-        raise ValueError(f'The constant name "{name}" is used more than once.')
-    if name in columns:
-        raise ValueError(
-            f'"{name}" is already a column of the measurements table.'
-        )
+# def validate_constant_name(name, existingNames=(), columns=()):
+#     if not isinstance(name, str) or not name.isidentifier():
+#         raise ValueError(
+#             f'Invalid constant name "{name}". Use only letters, numbers and '
+#             'underscores, not starting with a number.'
+#         )
+#     if keyword.iskeyword(name) or name in ('True', 'False', 'None'):
+#         raise ValueError(f'"{name}" is a reserved Python keyword.')
+#     if name in CELL_FUNCTIONS or name in CONSTANT_VARIABLES:
+#         raise ValueError(f'"{name}" is the name of a built-in function/variable.')
+#     if name.startswith(THIS_PREFIX):
+#         raise ValueError(
+#             f'Constant names cannot start with "{THIS_PREFIX}" (reserved for '
+#             'the columns of the cell itself).'
+#         )
+#     if name in existingNames:
+#         raise ValueError(f'The constant name "{name}" is used more than once.')
+#     if name in columns:
+#         raise ValueError(
+#             f'"{name}" is already a column of the measurements table.'
+#         )
 
-def validate_constants(constants, columns=()):
-    if not isinstance(constants, (list, tuple)):
-        raise ValueError('Invalid per-cell constants.')
-    names = []
-    for constant in constants:
-        if not isinstance(constant, dict):
-            raise ValueError('Invalid per-cell constant.')
-        name = constant.get('name')
-        validate_constant_name(name, names, columns)
-        equation = constant.get('equation')
-        if not isinstance(equation, str) or not equation.strip():
-            raise ValueError(
-                f'The equation of the constant "{name}" cannot be empty.'
-            )
-        source = constant.get('source', SOURCE_THIS)
-        if source not in SOURCE_CELLS:
-            raise ValueError(f'Invalid source cells of the constant "{name}".')
-        condition = constant.get('condition', '')
-        if not isinstance(condition, str):
-            raise ValueError(f'Invalid condition of the constant "{name}".')
-        conditionType = constant.get('condition_type', 'equation')
-        if conditionType not in ('equation', 'file'):
-            raise ValueError(f'Invalid filter type of the constant "{name}".')
-        filepath = constant.get('condition_filepath', '')
-        if not isinstance(filepath, str):
-            raise ValueError(f'Invalid filter file of the constant "{name}".')
-        if conditionType == 'file' and not filepath.strip():
-            raise ValueError(f'The constant "{name}" requires a filter file.')
-        if (source == SOURCE_CUSTOM and conditionType == 'equation'
-                and not condition.strip()):
-            raise ValueError(
-                f'The constant "{name}" requires a condition to select the '
-                f'other cells (e.g., Cell_ID == {THIS_PREFIX}relative_ID).'
-            )
-        if type(constant.get('per_frame', False)) is not bool:
-            raise ValueError(f'Invalid "per frame" option of the constant "{name}".')
-        if constant.get('condition_mode', 'where_true') not in FILTER_FRAME_MODES:
-            raise ValueError(f'Invalid filter frame rule of the constant "{name}".')
-        scope = constant.get('time_scope')
-        if scope is not None and scope not in CONSTANT_TIME_SCOPES:
-            raise ValueError(f'Invalid time scope of the constant "{name}".')
-        if scope == 'custom':
-            frame_range_bounds(
-                constant.get('range_start', 't - 5'),
-                constant.get('range_end', 't'), t=0
-            )
-        names.append(name)
+# def validate_constants(constants, columns=()):
+#     if not isinstance(constants, (list, tuple)):
+#         raise ValueError('Invalid per-cell constants.')
+#     names = []
+#     for constant in constants:
+#         if not isinstance(constant, dict):
+#             raise ValueError('Invalid per-cell constant.')
+#         name = constant.get('name')
+#         validate_constant_name(name, names, columns)
+#         equation = constant.get('equation')
+#         if not isinstance(equation, str) or not equation.strip():
+#             raise ValueError(
+#                 f'The equation of the constant "{name}" cannot be empty.'
+#             )
+#         source = constant.get('source', SOURCE_THIS)
+#         if source not in SOURCE_CELLS:
+#             raise ValueError(f'Invalid source cells of the constant "{name}".')
+#         condition = constant.get('condition', '')
+#         if not isinstance(condition, str):
+#             raise ValueError(f'Invalid condition of the constant "{name}".')
+#         conditionType = constant.get('condition_type', 'equation')
+#         if conditionType not in ('equation', 'file'):
+#             raise ValueError(f'Invalid filter type of the constant "{name}".')
+#         filepath = constant.get('condition_filepath', '')
+#         if not isinstance(filepath, str):
+#             raise ValueError(f'Invalid filter file of the constant "{name}".')
+#         if conditionType == 'file' and not filepath.strip():
+#             raise ValueError(f'The constant "{name}" requires a filter file.')
+#         if (source == SOURCE_CUSTOM and conditionType == 'equation'
+#                 and not condition.strip()):
+#             raise ValueError(
+#                 f'The constant "{name}" requires a condition to select the '
+#                 f'other cells (e.g., Cell_ID == {THIS_PREFIX}relative_ID).'
+#             )
+#         if type(constant.get('per_frame', False)) is not bool:
+#             raise ValueError(f'Invalid "per frame" option of the constant "{name}".')
+#         if constant.get('condition_mode', 'where_true') not in FILTER_FRAME_MODES:
+#             raise ValueError(f'Invalid filter frame rule of the constant "{name}".')
+#         scope = constant.get('time_scope')
+#         if scope is not None and scope not in CONSTANT_TIME_SCOPES:
+#             raise ValueError(f'Invalid time scope of the constant "{name}".')
+#         if scope == 'custom':
+#             frame_range_bounds(
+#                 constant.get('range_start', 't - 5'),
+#                 constant.get('range_end', 't'), t=0
+#             )
+#         names.append(name)
 
 def frame_range_value(expression, t):
     """Evaluate integer arithmetic in a frame bound; never execute user code."""
@@ -567,6 +666,8 @@ def lineage_source(acdc_df):
         return 'tree'
     return None
 
+
+# stopped review here for now
 def cell_lineage(acdc_df):
     """Relationships between the cells of ``acdc_df``.
 
@@ -667,7 +768,8 @@ def evaluate_cells_condition(acdc_df, condition, variables=None):
         df_ID = df_ID.sort_values('frame_i')
         try:
             values = eval_cell_equation(
-                df_ID.reset_index(drop=True), condition, variables=variables
+                df_ID.reset_index(drop=True), condition, variables=variables,
+                enforce_dtype_output=bool
             )
         except Exception as err:
             raise ValueError(
@@ -743,7 +845,9 @@ def _source_rows(df, constant, lineage, variables):
         evaluation = rows.reset_index(drop=True).copy()
         try:
             if func is None:
-                result = eval_cell_equation(evaluation, condition, variables)
+                result = eval_cell_equation(
+                    evaluation, condition, variables, enforce_dtype_output=bool
+                )
             else:
                 candidateDf = evaluation[list(df.columns)].copy()
                 enquirerDf = evaluation[
@@ -877,13 +981,145 @@ def add_constants_columns(acdc_df, constantValues):
         acdc_df[name] = _constant_column(df, values)
     return acdc_df
 
-def predict_from_equation(acdc_df, equation, mode, SizeT=None, IDs=None):
+_OTHER_FUNCTION_PATTERN = re.compile(
+    r'\b(?P<function>MAX|MIN|MEAN|MEDIAN|SUM|STD|COUNT)_OTHER\s*'
+    r'\(\s*(?P<column>`[^`]+`|[A-Za-z_]\w*)\s*\)',
+    re.IGNORECASE
+)
+_OTHER_MEASUREMENT_PATTERN = re.compile(
+    r'\b(?P<function>MAX|MIN|MEAN|AVERAGE|MEDIAN|SUM|STD|COUNT|NUNIQUE|'
+    r'FIRST|LAST)\s*\(\s*(?P<column>`[^`]+_other`|[A-Za-z_]\w*_other)\s*\)',
+    re.IGNORECASE
+)
+_OTHER_AGGREGATIONS = {
+    'MAX': 'MAX',
+    'MIN': 'MIN',
+    'MEAN': 'MEAN',
+    'AVERAGE': 'AVERAGE',
+    'MEDIAN': 'MEDIAN',
+    'SUM': 'SUM',
+    'STD': 'STD',
+    'COUNT': 'COUNT',
+    'NUNIQUE': 'NUNIQUE',
+    'FIRST': 'FIRST',
+    'LAST': 'LAST',
+}
+
+def _prepare_other_cell_inputs(acdc_df, equation, other_cells, SizeT):
+    legacyCalls = list(_OTHER_FUNCTION_PATTERN.finditer(equation))
+    measurementCalls = list(_OTHER_MEASUREMENT_PATTERN.finditer(equation))
+    if not legacyCalls and not measurementCalls:
+        return acdc_df, equation
+    if other_cells is None:
+        raise ValueError(
+            'Configure Other-cell measurements before using *_OTHER(...) '
+            'or suffixed _other inputs.'
+        )
+    settings = validate_other_cells(other_cells)
+    flatDf = _flat_df(acdc_df)
+    columns = flatDf.columns
+    constants = []
+    replacements = {}
+
+    def addConstant(match, *, suffixed):
+        function = match.group('function').upper()
+        column = match.group('column').strip('`')
+        if suffixed:
+            if not column.endswith('_other'):
+                return
+            column = column[:-len('_other')]
+        if column not in columns:
+            raise ValueError(
+                f'Unknown other-cell input column "{column}".'
+            )
+        if (function in ('MEAN', 'AVERAGE', 'SUM', 'STD')
+                and not pd.api.types.is_numeric_dtype(flatDf[column])):
+            raise ValueError(
+                f'{function}({column}_other) requires a numerical input; '
+                f'"{column}" is not numerical.'
+            )
+        key = (function, column)
+        if key not in replacements:
+            name = f'_acdc_other_{function.lower()}_{len(replacements)}'
+            while name in columns:
+                name += '_'
+            equationColumn = (
+                column if column.isidentifier() else f'`{column}`'
+            )
+            constant = default_constant(
+                name, f'{_OTHER_AGGREGATIONS[function]}({equationColumn})',
+                settings['source']
+            )
+            constant.update(
+                condition=settings['condition'],
+                condition_mode=settings['condition_mode'],
+                time_scope='custom',
+                range_start=settings['range_start'],
+                range_end=settings['range_end'],
+                per_frame=True,
+            )
+            constants.append(constant)
+            replacements[key] = name
+
+    for match in legacyCalls:
+        addConstant(match, suffixed=False)
+    for match in measurementCalls:
+        addConstant(match, suffixed=True)
+
+    values = compute_cell_constants(acdc_df, constants, SizeT=SizeT)
+    acdc_df = add_constants_columns(acdc_df, values)
+
+    def replacement(match, *, suffixed):
+        column = match.group('column').strip('`')
+        if suffixed:
+            column = column[:-len('_other')]
+        key = (
+            match.group('function').upper(),
+            column
+        )
+        return replacements[key]
+
+    equation = _OTHER_FUNCTION_PATTERN.sub(
+        lambda match: replacement(match, suffixed=False), equation
+    )
+    equation = _OTHER_MEASUREMENT_PATTERN.sub(
+        lambda match: replacement(match, suffixed=True), equation
+    )
+    return acdc_df, equation
+
+def predict_from_equation(
+        acdc_df, equation, mode, SizeT=None, IDs=None, other_cells=None,
+        main_cell_filter=None
+    ):
     """Evaluate ``equation`` with ``DataFrame.eval`` on each cell's rows and 
     convert the per-frame results into frames according to ``mode``.
     
     If ``IDs`` is not None, only these cells are predicted."""
     if mode not in EQUATION_MODES:
         raise ValueError(f'Invalid predictor equation mode: {mode}.')
+    if main_cell_filter is not None:
+        settings = validate_main_cell_filter(main_cell_filter)
+        if settings['condition'].strip():
+            eligibleIDs = []
+            variables = {'SizeT': SizeT} if SizeT is not None else None
+            for ID, df_ID in _iter_cells(_subset_cells(acdc_df, IDs)):
+                try:
+                    values = eval_cell_equation(
+                        df_ID, settings['condition'], variables=variables,
+                        enforce_dtype_output=bool
+                    )
+                    mask = boolean_filter_values(values, len(df_ID))
+                except Exception as err:
+                    raise ValueError(
+                        f'Main-cell filter failed for Cell_ID {ID}: {err}'
+                    ) from err
+                matches = mask.any() if settings['condition_mode'] == 'any' else mask.all()
+                if matches:
+                    eligibleIDs.append(ID)
+            IDs = eligibleIDs
+    acdc_df, equation = _prepare_other_cell_inputs(
+        acdc_df, equation, other_cells, SizeT
+    )
     acdc_df = _subset_cells(acdc_df, IDs)
     variables = {'SizeT': SizeT} if SizeT is not None else None
     timepoints = {}
@@ -958,7 +1194,9 @@ def predict_timepoints(acdc_df, predictor, SizeT=None, IDs=None):
     if kind == PREDICTOR_EQUATION:
         timepoints = predict_from_equation(
             acdc_df, predictor['equation'], predictor['mode'],
-            SizeT=SizeT, IDs=IDs
+            SizeT=SizeT, IDs=IDs,
+            other_cells=predictor.get('other_cells'),
+            main_cell_filter=predictor.get('main_cell_filter')
         )
     else:
         func = load_predictor_function(predictor['filepath'])
