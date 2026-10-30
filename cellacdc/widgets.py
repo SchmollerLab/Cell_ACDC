@@ -386,6 +386,11 @@ class AssignNewIDButton(PushButton):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':assign_new_id.svg'))
 
+class dataPrepButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':prep.svg'))
+
 class LockPushButton(PushButton):
     sigToggled = Signal(bool)
     
@@ -1838,6 +1843,18 @@ class CsvFilePathControl(filePathControl):
             **kwargs
         )
 
+    # Custom-widget protocol used by the automatic model parameters GUI,
+    # where getter/setter may be called with the widget as first argument.
+    def setValue(self, *args):
+        self.setText(str(args[-1]))
+
+    def value(self, *args):
+        return self.path()
+
+    @staticmethod
+    def cast_dtype(value) -> str:
+        return str(value)
+
 class QHWidgetSpacer(QWidget):
     def __init__(self, width=10, parent=None) -> None:
         super().__init__(parent)
@@ -2636,19 +2653,6 @@ class NumericCommaLineEdit(QLineEdit):
         except Exception as e:
             vals = []
         return vals
-
-class mySpinBox(QSpinBox):
-    sigTabEvent = Signal(object, object)
-
-    def __init__(self, *args) -> None:
-        super().__init__(*args)
-    
-    def event(self, event):
-        if event.type()==QtScoped.QEventTypeAttribute('KeyPress') and event.key() == Qt.Key_Tab:
-            self.sigTabEvent.emit(event, self)
-            return True
-
-        return super().event(event)
 
 class KeptObjectIDsList(list):
     def __init__(self, lineEdit, confirmSelectionAction, *args):
@@ -4770,6 +4774,7 @@ class DoubleSpinBox(QDoubleSpinBox):
 class SpinBox(QSpinBox):
     sigUpClicked = Signal()
     sigDownClicked = Signal()
+    sigTabEvent = Signal(object, object)
     sigValueChanged = Signal(int)
 
     def __init__(
@@ -4871,6 +4876,10 @@ class SpinBox(QSpinBox):
     def keyPressEvent(self, event):
         isBackSpaceKey = event.key() == Qt.Key.Key_Backspace
         isDeleteKey = event.key() == Qt.Key.Key_Delete
+        isTabKeyPress = event.key() == Qt.Key.Key_Tab
+
+        if isTabKeyPress:
+            self.sigTabEvent.emit(event, self)
 
         try:
             int(event.text())
@@ -8718,11 +8727,13 @@ class CopiableCommandWidget(QGroupBox):
         cb.setText(plain_command, mode=cb.Clipboard)
         print('Command copied!')
     
-    def setCommand(self, command, font_size=None):
+    def setCommand(self, command, font_size=None, escape_html=True):
         if font_size is None:
             font_size = self._font_size
         
         self._command = command
+        
+        command = html.escape(command)
         txt = html_utils.paragraph(
             f'<code>{command}</code>', font_size=font_size
         )
@@ -12421,9 +12432,7 @@ class MagicPromptsToolbar(ToolBar):
     sigComputeOnImage = Signal(object)
     sigClearPoints = Signal(object)
     sigClearPointsOnZmom = Signal(object)
-    sigInitSelectedModel = Signal(
-        str, object, list, list, str, object
-    )
+    sigInitSelectedModel = Signal(str)
     sigViewModelParams = Signal(
         str, object, list, list, str, object, object, object
     )
@@ -12595,36 +12604,11 @@ class MagicPromptsToolbar(ToolBar):
             return
         
         model_name = win.model_name
-        print(f'Importing promptable model {model_name}...')
+        print(f'Preparing promptable model {model_name}...')
 
-        # Download model weights, consistent with gui.py
-        downloadWin = apps.downloadModel(model_name, parent=self._parent)
-        downloadWin.download()
-
-        acdcPromptSegment = myutils.import_promptable_segment_module(model_name)
-        init_argspecs, segment_argspecs = myutils.getModelArgSpec(
-            acdcPromptSegment
-        )
-        
-        try:
-            help_url = acdcPromptSegment.url_help()
-        except AttributeError:
-            help_url = None
-        
         self._model_name = model_name
-        self._acdcPromptSegment = acdcPromptSegment
-        self._init_argspecs = init_argspecs
-        self._segment_argspecs = segment_argspecs
-        self._help_url = help_url
-        
-        self.sigInitSelectedModel.emit(
-            model_name, 
-            acdcPromptSegment,
-            init_argspecs, 
-            segment_argspecs,
-            help_url,
-            self
-        )
+
+        self.sigInitSelectedModel.emit(model_name)
     
     def setInitializedModel(self, init_kwargs, segment_kwargs):
         self._init_kwargs = init_kwargs
@@ -13102,7 +13086,7 @@ class YeazV2SelectModelNameCombobox(ComboBox):
         self.initItems()
     
     def initItems(self):
-        from cellacdc.models.YeaZ_v2 import load_models_filepath
+        from cellacdc.models._yeaz_v2_weights import load_models_filepath
         models_name, models_name_filepath_mapper = load_models_filepath()
         self.addItems(models_name)
     
@@ -13138,7 +13122,7 @@ class YeazV2SelectModelNameCombobox(ComboBox):
 
         model_name = modelNameWindow.enteredValue
         
-        from cellacdc.models.YeaZ_v2 import add_model_filepath
+        from cellacdc.models._yeaz_v2_weights import add_model_filepath
         add_model_filepath(model_name, model_filepath)
         
         self.addItem(model_name)

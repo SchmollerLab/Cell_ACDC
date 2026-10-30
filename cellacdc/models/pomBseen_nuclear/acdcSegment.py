@@ -1,12 +1,46 @@
-from pombseen.main import pomBsegNuc
+import numpy as np
+from skimage.measure import regionprops
+from pombseen.main import pomBsegNuc, norm_img
 
 class Model:
     def __init__(self, segm_data):
         self.segm_data = segm_data
 
+    def _thresholdable_segm(self, image, frame_i=None):
+        """Drop objects that pomBsegNuc cannot threshold.
+
+        pomBsegNuc builds a per-object histogram (including the 0 background 
+        of the mask) and drops its first bin, so objects need at least 3 
+        distinct values, otherwise Otsu fails on an empty histogram.
+        """
+        segm = np.asarray(self.segm_data)
+        if segm.ndim == image.ndim + 1:
+            # Time-lapse auxiliary segmentation
+            segm = segm[0 if frame_i is None else frame_i]
+        segm = segm.copy()
+        if segm.shape != image.shape:
+            raise ValueError(
+                f'pomBseen_nuclear: auxiliary segmentation shape {segm.shape} '
+                f'does not match the image shape {image.shape}.'
+            )
+        norm = norm_img(image)
+        skipped = []
+        for obj in regionprops(segm):
+            values = np.union1d(norm[obj.slice][obj.image], [0])
+            if values.size < 3:
+                segm[obj.slice][obj.image] = 0
+                skipped.append(obj.label)
+        if skipped:
+            print(
+                'pomBseen_nuclear: skipped objects with too few intensity '
+                f'values to threshold: {skipped}'
+            )
+        return segm
+
     def segment(
             self,
             image,
+            frame_i,
             connectivity = 1,
             offset = 0,
             min_size=5,
@@ -39,7 +73,7 @@ class Model:
         """       
 
         segmented_img = pomBsegNuc(
-            image, self.segm_data, connectivity, offset, min_size, max_size, 
+            image, self._thresholdable_segm(image, frame_i), connectivity, offset, min_size, max_size, 
             max_nuclei, rel_size_max
         )
 

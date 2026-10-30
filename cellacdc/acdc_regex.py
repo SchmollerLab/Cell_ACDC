@@ -23,33 +23,61 @@ def get_function_names(text, include_class_methods=True):
         pattern = r'\ndef\s+([a-zA-Z_]\w*)\s*\('
     return re.findall(pattern, text)
 
-def is_alphanumeric_filename(
+try:
+    def is_alphanumeric_filename(
+            text, 
+            allow_space=True, 
+            allowed: str | list[str] | None=None
+        ):
+        if allow_space:
+            pattern = r'^[\w\-_. ]+$'
+        else:
+            pattern = r'^[\w\-_.]+$'
+        
+        if allowed is None:
+            allowed = []
+        
+        if isinstance(allowed, str):
+            allowed = (allowed,)
+        
+        max_num_dots = 1
+        if allowed is not None:
+            max_num_dots += sum([txt.count('.') for txt in allowed])
+        
+        for allowed_text in allowed:
+            allowed_text = re.escape(allowed_text)
+            pattern = pattern.replace(r'+$', fr'+({allowed_text})?$')
+        
+        is_less_max_num_dots = len(re.findall(r'\.', text)) <= max_num_dots
+        return bool(re.match(pattern, text)) and is_less_max_num_dots
+except:
+    def is_alphanumeric_filename(
         text, 
         allow_space=True, 
-        allowed: str | list[str] | None=None
+        allowed = None
     ):
-    if allow_space:
-        pattern = r'^[\w\-_. ]+$'
-    else:
-        pattern = r'^[\w\-_.]+$'
+        if allow_space:
+            pattern = r'^[\w\-_. ]+$'
+        else:
+            pattern = r'^[\w\-_.]+$'
+        
+        if allowed is None:
+            allowed = []
+        
+        if isinstance(allowed, str):
+            allowed = (allowed,)
+        
+        max_num_dots = 1
+        if allowed is not None:
+            max_num_dots += sum([txt.count('.') for txt in allowed])
+        
+        for allowed_text in allowed:
+            allowed_text = re.escape(allowed_text)
+            pattern = pattern.replace(r'+$', fr'+({allowed_text})?$')
+        
+        is_less_max_num_dots = len(re.findall(r'\.', text)) <= max_num_dots
+        return bool(re.match(pattern, text)) and is_less_max_num_dots
     
-    if allowed is None:
-        allowed = []
-    
-    if isinstance(allowed, str):
-        allowed = (allowed,)
-    
-    max_num_dots = 1
-    if allowed is not None:
-        max_num_dots += sum([txt.count('.') for txt in allowed])
-    
-    for allowed_text in allowed:
-        allowed_text = re.escape(allowed_text)
-        pattern = pattern.replace(r'+$', fr'+({allowed_text})?$')
-    
-    is_less_max_num_dots = len(re.findall(r'\.', text)) <= max_num_dots
-    return bool(re.match(pattern, text)) and is_less_max_num_dots
-
 def get_non_alphanumeric_characters(text):
     return re.findall(r'[^\w\-.]', text)
 

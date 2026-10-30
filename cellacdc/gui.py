@@ -5,6 +5,7 @@ import shutil
 import re
 import textwrap
 import traceback
+from contextlib import contextmanager
 import time
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -336,6 +337,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.original_df_lin_tree = None
         self.original_df_lin_tree_i = None
 
+        self._waitOverrideActive = False
+        self._busyTimer = QTimer(self)
+        self._busyTimer.setInterval(100)
+        self._busyTimer.timeout.connect(self.gui_refreshToolCursor)
+
     def setTooltips(self):
         tooltips = rst_utils.get_tooltips_from_docs()
 
@@ -596,6 +602,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.model_kwargs = None
         self.segmModelName = None
         self.labelRoiModel = None
+        # model_name -> ModelExecution (environment chosen once per session)
+        self.modelExecutions = {}
+        self.promptModelExecutions = {}
+        # model_idx -> (settings key, model_name, model) for lost IDs
+        self.segForLostIDsModels = {}
         self.autoSegmDoNotAskAgain = False
         self.labelRoiGarbageWorkers = []
         self.labelRoiActiveWorkers = []
@@ -679,27 +690,26 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self.splineToObjModel.fit()
     
-    def setDisabled(self, disabled:bool, keepDisabled:bool=None, force:bool=False):
+    def setDisabled(self,
+                    disabled: bool,
+                    keepDisabled: bool = None,
+                    force: bool = False):
         if force:
-            if disabled:
-                super().setDisabled(disabled)
-                return
-            else:
+            if not disabled:
                 self.keepDisabled = False
-                super().setDisabled(disabled)
-                return
-
-        if keepDisabled is not None:
-            self.keepDisabled = keepDisabled
-
-        if self.keepDisabled:
-            if disabled:
-                super().setDisabled(disabled)
-                return
-            else:
-                return
+            apply = True
         else:
+            if keepDisabled is not None:
+                self.keepDisabled = keepDisabled
+            # while keepDisabled is set, only disabling is allowed
+            apply = disabled or not self.keepDisabled
+
+        if apply:
             super().setDisabled(disabled)
+
+        # starts/stops the busy timer and sets/restores the cursor
+        self.gui_refreshToolCursor()
+
     
     def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
@@ -1150,7 +1160,37 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         
         self.app.setOverrideCursor(Qt.SizeAllCursor)
 
+
+    def _isOnlyMainWinUnderPointer(self):
+        # widgetAt only sees this app's widgets: None for other apps' windows.
+        # .window() differs for dialogs, floating docks, popups, etc.
+        w = QApplication.widgetAt(QCursor.pos())
+        return w is not None and w.window() is self
+
+    def _releaseWaitOverride(self):
+        if getattr(self, '_waitOverrideActive', False):
+            self.app.restoreOverrideCursor()
+            self._waitOverrideActive = False
+
     def gui_refreshToolCursor(self, *args):
+        if not self.isEnabled():
+            if not self._busyTimer.isActive():
+                self._busyTimer.start()   # re-check obstruction while disabled
+            if self._isOnlyMainWinUnderPointer():
+                if not self._waitOverrideActive:
+                    if self.app.overrideCursor() is None:
+                        self.app.setOverrideCursor(Qt.WaitCursor)
+                    else:
+                        self.app.changeOverrideCursor(Qt.WaitCursor)
+                    self._waitOverrideActive = True
+            else:
+                self._releaseWaitOverride()
+            return
+
+        self._busyTimer.stop()
+        self._releaseWaitOverride()
+        self.unsetCursor()
+
         isHoverImg1 = self._cursorHoverImage
         if isHoverImg1 is None:
             return
@@ -5971,16 +6011,7 @@ When working with 3D segmentation masks:
             self.setImageImg2()
             self.setAllTextAnnotations()
             self.setAllContoursImages(compute=False)
-
-            if self.isOverlaySegmMaskChecked(0):
-                self.labelsLayerImg1.image[delID_mask] = 0
-                self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
-            
-            ax1_segm_overlay = self.annotOverlaySegmMaskCheckbox(ax=1)
-            if ax1_segm_overlay and self.labelsLayerRightImg.image is not None:
-                self.labelsLayerRightImg.image[delID_mask] = 0
-                self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
-            
+            self.setOverlaySegmMasks()            
             self.highlightLostNew()
             
         # Separate bud or objects with same ID
@@ -8320,8 +8351,14 @@ When working with 3D segmentation masks:
             self.copyLostObjButton.isChecked()
             and self.ax1_lostObjScatterItem.hoverLostID>0
         )
-        findNextMotherButtonON = self.findNextMotherButton.isChecked()
-        unknownLineageButtonON = self.unknownLineageButton.isChecked()
+        findNextMotherButtonON = (
+            self.findNextMotherButton.isChecked()
+            and mode == 'Normal division: Lineage tree'
+        )
+        unknownLineageButtonON = (
+            self.unknownLineageButton.isChecked()
+            and mode == 'Normal division: Lineage tree'
+        )
         drawClearRegionON = self.clearFreehandRoiButton.isChecked()
         zoomRectON = self.zoomRectButton.isChecked()
         drawMergeRegionON = self.mergeIDsButton.isChecked()
@@ -9120,7 +9157,14 @@ When working with 3D segmentation masks:
         elif (left_click or right_click) and canLabelRoi:
             if right_click:
                 # Force model initialization on mouse release
+                previousLabelRoiModel = self.labelRoiModel
                 self.labelRoiModel = None
+                # Otherwise released when replaced in `self.models`
+                if not any(previousLabelRoiModel is m for m in self.models):
+                    self.releaseSegmModel(
+                        getattr(previousLabelRoiModel, 'model_name', None), 
+                        previousLabelRoiModel
+                    )
             
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -9424,8 +9468,19 @@ When working with 3D segmentation masks:
 
         if point is None:
             return
+        
         posData = self.data[self.pos_i]
         acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
+
+        if 'parent_ID_tree' not in acdc_df_frame.columns:
+            self.logger.info('No parent_ID_tree column found in the current frame.')
+            return
+
+        # check that the clicked cell is a new ID
+        if ID not in posData.new_IDs:
+            self.logger.info('Clicked cell is not a new ID.')
+            return
+
         filtered_IDs = self.getDistanceListMissingIDs(point, ID)
         if len(filtered_IDs) == 0:
             self.logger.info('No mother candidates found.')
@@ -9435,7 +9490,8 @@ When working with 3D segmentation masks:
         i = abs(i)  # Ensure i is non-negative
         new_mother = filtered_IDs[i]
 
-        if acdc_df_frame.loc[ID]['parent_ID_tree'] == new_mother and self.original_mother_skipped == False: # if a mother is already present, skip it 
+        if (acdc_df_frame.loc[ID]['parent_ID_tree'] == new_mother 
+            and self.original_mother_skipped == False): # if a mother is already present, skip it 
             self.right_click_i += 1
             self.original_mother_skipped = True
 
@@ -9444,6 +9500,11 @@ When working with 3D segmentation masks:
             new_mother = filtered_IDs[i]
 
         acdc_df_frame.at[ID, 'parent_ID_tree'] = new_mother # update mother in the df, no need to propagate or stuff lile this
+        
+        acdc_df_frame_prev = posData.allData_li[posData.frame_i - 1]['acdc_df']
+        acdc_df_frame.at[ID, 'generation_num_tree'] = (
+            acdc_df_frame_prev.loc[new_mother]['generation_num_tree'] + 1
+            ) # update generation number in the df
         # dont need to update alldata_li as acdc_df_frame is just a view
         self.drawAllLineageTreeLines()
         self.setAllTextAnnotations()
@@ -9469,9 +9530,15 @@ When working with 3D segmentation masks:
 
         if point is None:
             return
+        
+        if ID not in posData.new_IDs:
+            self.logger.info('Clicked cell is not a new ID.')
+            return
+            
         posData = self.data[self.pos_i]
         acdc_df_frame = posData.allData_li[posData.frame_i]['acdc_df']
         acdc_df_frame.at[ID, 'parent_ID_tree'] = -1
+        acdc_df_frame.at[ID, 'generation_num_tree'] = 1
         self.drawAllLineageTreeLines()
         self.setAllTextAnnotations()
 
@@ -9606,7 +9673,16 @@ When working with 3D segmentation masks:
                         'customPostProcessFeatures': entry.get('customPostProcessFeatures', None),
                         'customPostProcessGroupedFeatures': entry.get('customPostProcessGroupedFeatures', None),
                     })
+                for model_name in dict.fromkeys(
+                    settings['base_model_name'] for settings in model_settings
+                ):
+                    if self.prepareModelExecution(model_name) is None:
+                        self.logger.info(
+                            'Loading segmentation recipe cancelled.'
+                        )
+                        return
                 self.SegForLostIDsSettings = {'models_settings': model_settings}
+                self.releaseSegForLostIDsModels()
                 # Restore model names in settings
                 restored_models = [
                     'Automatic thresholding'
@@ -9706,23 +9782,12 @@ When working with 3D segmentation masks:
             model_name = selected_model_name
             if model_name == 'Automatic thresholding':
                 model_name = 'thresholding'
-            try:
-                if selected_model_name in self.modelNames:
-                    idx = self.modelNames.index(selected_model_name)
-                    acdcSegment = self.acdcSegment_li[idx]
-                    if acdcSegment is None:
-                        self.logger.info(f'Importing {model_name}...')
-                        acdcSegment = myutils.import_segment_module(model_name,parent=self)
-                        self.acdcSegment_li[idx] = acdcSegment
-                else:
-                    self.logger.info(f'Importing {model_name}...')
-                    acdcSegment = myutils.import_segment_module(model_name)
-            except (ImportError, KeyError) as e:
-                self.logger.error(f'Error importing {model_name}: {e}')
-                # start worker cleanup
-                worker = self.SegForLostIDsWorker
-                self.SegForLostIDsWorker.signals.finished.emit(worker)
+            # Read the parameters (from the model's isolated env if used)
+            model_spec = self.prepareModelExecution(model_name)
+            if model_spec is None:
+                self.logger.info('Segmentation for lost IDs cancelled.')
                 return
+            init_params, segment_params, url = model_spec
 
             extra_params = all_extra_params
 
@@ -9747,7 +9812,6 @@ When working with 3D segmentation masks:
                 )
                 extra_ArgSpec.append(param_arg)
 
-            init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
             segment_params = [
                 arg for arg in segment_params
             ] 
@@ -9759,6 +9823,9 @@ When working with 3D segmentation masks:
                 )
                 win_thresh.exec_()
                 if win_thresh.cancel:
+                    for selected in selected_models:
+                        name = 'thresholding' if selected == 'Automatic thresholding' else selected
+                        self.getModelExecution(name).cancel_preparation()
                     self.logger.info('Segmentation for lost IDs cancelled.')
                     return
                 self.model_kwargs = win_thresh.segment_kwargs
@@ -9777,7 +9844,7 @@ When working with 3D segmentation masks:
                 f'({model_idx + 1}/{len(selected_models)})'
             )
             win = self.initSegmModelParams(
-                model_name, acdcSegment, init_params, segment_params,
+                model_name, url, init_params, segment_params,
                 extraParams=extra_ArgSpec,
                 extraParamsTitle=extraParamsTitle,
                 initLastParams=initLastParams,
@@ -9785,6 +9852,9 @@ When working with 3D segmentation masks:
             )
 
             if win is None:
+                for selected in selected_models:
+                    name = 'thresholding' if selected == 'Automatic thresholding' else selected
+                    self.getModelExecution(name).cancel_preparation()
                 self.logger.info('Segmentation for lost IDs cancelled.')
                 return
 
@@ -9832,6 +9902,7 @@ When working with 3D segmentation masks:
         self.SegForLostIDsSettings = {
             'models_settings': model_settings,
         }
+        self.releaseSegForLostIDsModels()
 
         # Persist recipe to disk so it survives across sessions
         try:
@@ -9931,8 +10002,8 @@ When working with 3D segmentation masks:
 
         # Connect the worker's signal to the main thread's slot
         self.SegForLostIDsWorker.sigAskInit.connect(self.onSegForLostInit)
-        self.SegForLostIDsWorker.sigSegForLostIDsImportModel.connect(
-            self.onSegForLostIDsImportModel
+        self.SegForLostIDsWorker.sigInitModel.connect(
+            self.onSegForLostIDsInitModel
         )
         self.SegForLostIDsWorker.sigShowImageDebug.connect(
             self.showImageDebug
@@ -9971,54 +10042,77 @@ When working with 3D segmentation masks:
         self._thread.started.connect(self.SegForLostIDsWorker.run)
         self._thread.start()
 
-    def onSegForLostIDsImportModel(self, model_name):
-        # Import on the GUI thread because model packages may open dialogs 
-        # (install prompts, DLL warnings) at import time. The worker must 
-        # NOT re-import, otherwise those dialogs are created from the 
-        # worker thread and the GUI freezes.
+    def onSegForLostIDsInitModel(self, model_idx, model_name, init_kwargs):
+        """Provide the SegForLostIDsWorker with an initialized model.
+
+        Models are cached per model slot and reused as long as the model,
+        its init parameters and the position stay the same, so isolated
+        workers are not restarted at every frame.
+        """
         worker = self.SegForLostIDsWorker
-        worker.importedSegmModule = None
-        worker.importSegmModuleError = None
         try:
-            worker.importedSegmModule = myutils.import_segment_module(
-                model_name
+            posData = self.data[self.pos_i]
+            key = (
+                model_name,
+                json.dumps(init_kwargs, sort_keys=True, default=str),
+                id(posData),
             )
-        except Exception as e:
-            traceback_str = traceback.format_exc()
-            self.logger.error(
-                f"Error importing model '{model_name}': {e}\n{traceback_str}"
+            cached = self.segForLostIDsModels.get(model_idx)
+
+            self.logger.info(f'Initializing {model_name} model...')
+            replace = None
+            if cached is not None and cached[1] == model_name:
+                replace = cached[2]
+            model = self.initSegmModel(
+                model_name, init_kwargs, posData, replace=replace
             )
-            worker.importSegmModuleError = e
+            if model is None:
+                return
+            self.segForLostIDsModels[model_idx] = (key, model_name, model)
+            if cached is not None and replace is None:
+                self.releaseSegmModel(cached[1], cached[2])
+            worker.initModelResult = model
+        except Exception as error:
+            self.logger.exception(traceback.format_exc())
+            worker.initModelError = error
         finally:
-            self._ackSegForLostIDsWorker('import_model')
+            self._ackSegForLostIDsWorker('init_model')
 
     def SegForLostIDsWorkerAskInstallGPU(self, model_name, use_gpu):
-        if hasattr(self, 'segForLostIDsGPUSettings'):
+        worker = self.SegForLostIDsWorker
+        worker.gpu_go = False
+        worker.dont_force_cpu = False
+        try:
+            python_exec = self.getModelExecution(model_name).env_python
+            cached = getattr(self, 'segForLostIDsGPUSettings', {})
             if (
-                self.segForLostIDsGPUSettings.get('model_name') == model_name
-                and self.segForLostIDsGPUSettings.get('use_gpu') == use_gpu
+                cached.get('model_name') == model_name
+                and cached.get('use_gpu') == use_gpu
+                and cached.get('python_exec') == python_exec
             ):
-                self.SegForLostIDsWorker.gpu_go = (
-                    self.segForLostIDsGPUSettings['gpu_go']
-                    )
-                self.SegForLostIDsWorker.dont_force_cpu = (
-                    self.segForLostIDsGPUSettings['dont_force_cpu']
-                    )
-                self._ackSegForLostIDsWorker('ask_install_gpu')
+                worker.gpu_go = cached['gpu_go']
+                worker.dont_force_cpu = cached['dont_force_cpu']
                 return
-        
-        result = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
-        self.SegForLostIDsWorker.gpu_go = result
-        dont_force_cpu = myutils.check_gpu_available(
-            model_name, use_gpu, do_not_warn=True)
-        self.SegForLostIDsWorker.dont_force_cpu = dont_force_cpu
-        self.segForLostIDsGPUSettings = {
-            'gpu_go': result,
-            'dont_force_cpu': dont_force_cpu,
-            'model_name': model_name,
-            'use_gpu': use_gpu,
-        }
-        self._ackSegForLostIDsWorker('ask_install_gpu')
+
+            result = myutils.check_gpu_available(
+                model_name, use_gpu, qparent=self, python_exec=python_exec
+            )
+            dont_force_cpu = myutils.check_gpu_available(
+                model_name, use_gpu, do_not_warn=True, python_exec=python_exec
+            )
+            worker.gpu_go = result
+            worker.dont_force_cpu = dont_force_cpu
+            self.segForLostIDsGPUSettings = {
+                'gpu_go': result,
+                'dont_force_cpu': dont_force_cpu,
+                'model_name': model_name,
+                'use_gpu': use_gpu,
+                'python_exec': python_exec,
+            }
+        except Exception:
+            self.logger.exception('Could not check GPU availability for %s', model_name)
+        finally:
+            self._ackSegForLostIDsWorker('ask_install_gpu')
 
     def onSigStoreDataSegForLostIDsWorker(self, autosave):
         self.onSigStoreData(
@@ -18515,10 +18609,20 @@ When working with 3D segmentation masks:
             self, model_name, posData, win, acdcPromptSegment, toolbar
         ):
         self.logger.info(f'Initializing promptable model {model_name}...')
+        apps.downloadModel(model_name, parent=self).download()
         init_kwargs = win.init_kwargs
-        model = myutils.init_prompt_segm_model(
-            acdcPromptSegment, posData, win.init_kwargs
+        execution = self.getPromptModelExecution(model_name)
+        previous_model = getattr(toolbar, 'model', None)
+        model = execution.init_model(
+            init_kwargs, posData, replace=previous_model
         )
+        if model is None:
+            return
+        previous_execution = self.promptModelExecutions.get(
+             getattr(toolbar, 'model_name', None)
+         )
+        if previous_execution is not None and previous_execution is not execution:
+             previous_execution.release(previous_model)
         toolbar.model = model
         toolbar.model_segment_kwargs = win.model_kwargs
         toolbar.model_name = model_name
@@ -18531,18 +18635,28 @@ When working with 3D segmentation masks:
         self.logger.info(
             f'Promptable model {model_name} successfully initialised!'
         )
+        
+        # update title
+        self.setTitleText()
     
     @exception_handler
-    def magicPromptsInitModel(
-            self, 
-            model_name, 
-            acdcPromptSegment,
-            init_argspecs, 
-            segment_argspecs,
-            help_url,
-            toolbar,
-        ):
+    @disableWindow
+    def magicPromptsInitModel(self, model_name):
         posData = self.data[self.pos_i]
+        toolbar = self.magicPromptsToolbar
+        execution = self.getPromptModelExecution(model_name)
+        model_spec = execution.prepare()
+        if model_spec is None:
+            self.logger.info(
+                f'Initialization of {model_name} promptable model cancelled.'
+            )
+            return
+        init_argspecs, segment_argspecs, help_url = model_spec
+        acdcPromptSegment = None
+        toolbar._acdcPromptSegment = None
+        toolbar._init_argspecs = init_argspecs
+        toolbar._segment_argspecs = segment_argspecs
+        toolbar._help_url = help_url
         
         out = prompts.init_prompt_model_params(
             posData, model_name, init_argspecs, segment_argspecs, 
@@ -18550,6 +18664,7 @@ When working with 3D segmentation masks:
         )
         win = out.get('win')
         if win.cancel:
+            execution.cancel_preparation()
             self.logger.info(
                 f'Initialization of {model_name} promptable model cancelled.'
             )
@@ -19676,18 +19791,154 @@ When working with 3D segmentation masks:
         else:
             self.repeatSegm(model_name=self.segmModelName)        
     
+    def getModelExecution(self, model_name):
+        """Return the `ModelExecution` of `model_name` (cached per session).
+
+        It decides whether the model runs in its isolated environment (as a
+        worker process) or in-process; see `service/model_execution.py`.
+        Progress messages of `ModelExecution` are shown in the title, while 
+        output of background steps (e.g., installations) goes to the log.
+        """
+        execution = self.modelExecutions.get(model_name)
+        if execution is None:
+            from .service import model_execution, prompts as service_prompts
+            
+            def run_in_background(func, *args, **kwargs):
+                return model_execution.run_in_background(
+                    self, func, *args, log_func=self.logger.info, **kwargs
+                )
+            
+            def ask(prompt):
+                return service_prompts.QtHandler(parent=self).ask(prompt)
+
+            execution = model_execution.ModelExecution(
+                model_name, 
+                run_in_background=run_in_background,
+                prompt_func=ask, 
+                log_func=self.setModelExecutionStatus,
+            )
+            self.modelExecutions[model_name] = execution
+        return execution
+
+    def getPromptModelExecution(self, model_name):
+        execution = self.promptModelExecutions.get(model_name)
+        if execution is None:
+            from .service import model_execution, prompts as service_prompts
+
+            def run_in_background(func, *args, **kwargs):
+                return model_execution.run_in_background(
+                    self, func, *args, log_func=self.logger.info, **kwargs
+                )
+
+            execution = model_execution.ModelExecution(
+                model_name,
+                run_in_background=run_in_background,
+                prompt_func=lambda prompt: service_prompts.QtHandler(
+                    parent=self
+                ).ask(prompt),
+                log_func=self.setModelExecutionStatus,
+                model_kind='promptable',
+            )
+            self.promptModelExecutions[model_name] = execution
+        return execution
+
+    def setModelExecutionStatus(self, text):
+        self.logger.info(text)
+        self.titleLabel.setText(text, color=self.titleColor)
+        # Repaint now, the next step may block the event loop (e.g., import)
+        # self.titleLabel.repaint()
+
+    @contextmanager
+    def modelExecutionBusy(self, text):
+        """Disable the GUI and show `text` in the title while busy.
+
+        The previous enabled state and cursor are restored afterwards, so 
+        callers that already disabled the GUI (e.g., lost IDs) are not 
+        re-enabled.
+        """
+        was_enabled = self.isEnabled()
+        self.setDisabled(True)
+        self.setModelExecutionStatus(text)
+        try:
+            yield
+        except Exception:
+            self.titleLabel.setText(f'{text} failed.', color='r')
+            raise
+        finally:
+            if was_enabled:
+                self.setDisabled(False)
+
+    def prepareModelExecution(self, model_name):
+        """Returns `(init_params, segment_params, url)` or None if cancelled."""
+        execution = self.getModelExecution(model_name)
+        if execution.spec is not None:
+            return execution.spec
+        with self.modelExecutionBusy(f'Preparing {model_name}...'):
+            spec = execution.prepare()
+        if spec is None:
+            self.logger.info('Segmentation process cancelled.')
+            self.titleLabel.setText('Segmentation process cancelled.')
+        return spec
+
+    def initSegmModel(
+            self, model_name, init_kwargs, posData=None, replace=None,
+            *, is_rgb=False,
+        ):
+        """Return a model instance (a worker in isolated mode) or None.
+
+        Running workers are reused (see `ModelExecution.init_model`). Pass 
+        the instance that the new one replaces as `replace`, so that its 
+        worker can be re-initialized instead of starting a new one.
+        Pass `is_rgb=True` when preparing a second-channel RGB stack.
+        """
+        if posData is None:
+            posData = self.data[self.pos_i]
+        if replace is self.labelRoiModel:
+            # Still used by the magic labeller
+            replace = None
+        execution = self.getModelExecution(model_name)
+        with self.modelExecutionBusy(f'Initializing {model_name}...'):
+            if execution.prepare() is None:
+                return None
+            return execution.init_model(
+                init_kwargs, posData, replace=replace, is_rgb=is_rgb
+            )
+
+    def releaseSegmModel(self, model_name, model):
+        """Give back a model from `initSegmModel` that is not used anymore.
+
+        The worker keeps running for reuse; all workers stop on close.
+        """
+        if model is None or model is self.labelRoiModel:
+            return
+        execution = self.modelExecutions.get(model_name)
+        if execution is not None:
+            execution.release(model)
+
+    def releaseSegForLostIDsModels(self):
+        if hasattr(self, 'segForLostIDsModels'):
+            models, self.segForLostIDsModels = self.segForLostIDsModels, {}
+            for _, model_name, model in models.values():
+                self.releaseSegmModel(model_name, model)
+
+    def stopModelExecutions(self):
+        if not hasattr(self, 'modelExecutions'):
+            return
+        for execution in self.modelExecutions.values():
+            execution.stop()
+        for execution in self.promptModelExecutions.values():
+            execution.stop()
+        self.segForLostIDsModels = {}
+        self.modelExecutions = {}
+        self.promptModelExecutions = {}
+
     def initSegmModelParams(
-            self, model_name, acdcSegment, init_params, segment_params, 
+            self, model_name, url, init_params, segment_params, 
             is_label_roi=False, initLastParams=False,
             extraParams=None, extraParamsTitle=None,ini_filename=None
 
         ):
         posData = self.data[self.pos_i]        
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
-        
         text_if_cancelled = 'Segmentation process cancelled.'
         out = prompts.init_segm_model_params(
             posData, model_name, init_params, segment_params, 
@@ -19704,11 +19955,13 @@ When working with 3D segmentation masks:
             
         win = out.get('win')
         if win is None:
+            self.getModelExecution(model_name).cancel_preparation()
             self.logger.info(text_if_cancelled)
             self.titleLabel.setText(text_if_cancelled)
             return
         
         if win.cancel:
+            self.getModelExecution(model_name).cancel_preparation()
             self.logger.info(text_if_cancelled)
             self.titleLabel.setText(text_if_cancelled)
             return
@@ -19746,27 +19999,17 @@ When working with 3D segmentation masks:
             model_name = 'thresholding'
 
         posData = self.data[self.pos_i]
-        # Check if model needs to be imported
-        acdcSegment = self.acdcSegment_li[idx]
-        if acdcSegment is None:
-            self.logger.info(f'Importing {model_name}...')
-            acdcSegment = myutils.import_segment_module(model_name)
-            self.acdcSegment_li[idx] = acdcSegment
 
         # Ask parameters if the user clicked on the action
         # Otherwise this function is called by "computeSegm" function and
         # we use loaded parameters
         if askSegmParams:
-            if self.app.overrideCursor() == Qt.WaitCursor:
-                self.app.restoreOverrideCursor()
             self.segmModelName = model_name
-            # Read all models parameters
-            init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
-            # Prompt user to enter the model parameters
-            try:
-                url = acdcSegment.url_help()
-            except AttributeError:
-                url = None
+            # Read all models parameters (from its isolated env if used)
+            model_spec = self.prepareModelExecution(model_name)
+            if model_spec is None:
+                return
+            init_params, segment_params, url = model_spec
             
             self.preproc_recipe = None
             initLastParams = True
@@ -19776,6 +20019,7 @@ When working with 3D segmentation masks:
                 )
                 win.exec_()
                 if win.cancel:
+                    self.getModelExecution(model_name).cancel_preparation()
                     return
                 self.model_kwargs = win.segment_kwargs
                 thresh_method = self.model_kwargs['threshold_method']
@@ -19789,7 +20033,7 @@ When working with 3D segmentation masks:
                 initLastParams = False
             
             win = self.initSegmModelParams(
-                model_name, acdcSegment, init_params, segment_params, 
+                model_name, url, init_params, segment_params, 
                 is_label_roi=is_label_roi, 
                 initLastParams=initLastParams
             )
@@ -19814,15 +20058,21 @@ When working with 3D segmentation masks:
                 custom_postprocess_features=self.customPostProcessFeatures
             )
 
-            use_gpu = win.init_kwargs.get('gpu', False)
-            proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+            use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
+            proceed = myutils.check_gpu_available(
+                model_name, use_gpu, qparent=self,
+                python_exec=self.getModelExecution(model_name).env_python,
+            )
             if not proceed:
+                self.getModelExecution(model_name).cancel_preparation()
                 self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
             
-            model = myutils.init_segm_model(
-                acdcSegment, posData, win.init_kwargs
+            previous_model = self.models[idx]
+            model = self.initSegmModel(
+                model_name, win.init_kwargs, posData, replace=previous_model,
+                is_rgb=self.secondChannelName is not None,
             )
             if model is None:
                 self.logger.info('Segmentation process cancelled.')
@@ -19919,6 +20169,8 @@ When working with 3D segmentation masks:
         )
 
         self.model = model
+        # Re-enabled in segmWorkerFinished or workerCritical
+        self.setDisabled(True)
         
         self.segmWorkerMutex = QMutex()
         self.segmWorkerWaitCond = QWaitCondition()
@@ -19972,20 +20224,11 @@ When working with 3D segmentation masks:
             model_name = 'thresholding'
 
         posData = self.data[self.pos_i]
-        # Check if model needs to be imported
-        acdcSegment = self.acdcSegment_li[idx]
-        if acdcSegment is None:
-            self.logger.info(f'Importing {model_name}...')
-            acdcSegment = myutils.import_segment_module(model_name)
-            self.acdcSegment_li[idx] = acdcSegment
-
-        # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
-        # Prompt user to enter the model parameters
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
+        # Read all models parameters (from its isolated env if used)
+        model_spec = self.prepareModelExecution(model_name)
+        if model_spec is None:
+            return
+        init_params, segment_params, url = model_spec
         
         if model_name == 'thresholding':
             autoThreshWin = apps.QDialogAutomaticThresholding(
@@ -19993,10 +20236,11 @@ When working with 3D segmentation masks:
             )
             autoThreshWin.exec_()
             if autoThreshWin.cancel:
+                self.getModelExecution(model_name).cancel_preparation()
                 return
         
         win = self.initSegmModelParams(
-            model_name, acdcSegment, init_params, segment_params
+            model_name, url, init_params, segment_params
         )
         if win is None:
             return
@@ -20022,14 +20266,21 @@ When working with 3D segmentation masks:
         if win.secondChannelName is not None:
             secondChannelData = self.getSecondChannelData()
 
-        use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+        use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
+        proceed = myutils.check_gpu_available(
+            model_name, use_gpu, qparent=self,
+            python_exec=self.getModelExecution(model_name).env_python,
+        )
         if not proceed:
+            self.getModelExecution(model_name).cancel_preparation()
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
             return
 
-        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+        model = self.initSegmModel(
+            model_name, win.init_kwargs, posData,
+            is_rgb=win.secondChannelName is not None,
+        )
         if model is None:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -20038,6 +20289,11 @@ When working with 3D segmentation masks:
             model.setupLogger(self.logger)
         except Exception as e:
             pass
+        # The video model is used only by this worker: stop it when done
+        previous = getattr(self, 'segmVideoModel', None)
+        if previous is not None:
+            self.releaseSegmModel(*previous)
+        self.segmVideoModel = (model_name, model)
         
         self.extendSegmDataIfNeeded(stopFrameNum)
         self.reInitLastSegmFrame(
@@ -20076,6 +20332,10 @@ When working with 3D segmentation masks:
         self.thread.start()
 
     def segmVideoWorkerFinished(self, exec_time, startFrameNum, stopFrameNum):
+        segmVideoModel = getattr(self, 'segmVideoModel', None)
+        if segmVideoModel is not None:
+            self.segmVideoModel = None
+            self.releaseSegmModel(*segmVideoModel)
         self.progressWin.workerFinished = True
         self.progressWin.close()
         self.progressWin = None
@@ -20183,6 +20443,7 @@ When working with 3D segmentation masks:
         self.lazyLoader = None
 
     def segmWorkerFinished(self, lab, exec_time):
+        self.setDisabled(False)
         posData = self.data[self.pos_i]
 
         if posData.segmInfo_df is not None and posData.SizeZ>1:
@@ -20240,6 +20501,7 @@ When working with 3D segmentation masks:
         posData = self.data[self.pos_i]
         return posData.img_data[posData.frame_i]
 
+    @exception_handler
     def autoAssignBud_YeastMate(self):
         if not self.is_win:
             txt = (
@@ -20266,19 +20528,11 @@ When working with 3D segmentation masks:
         self.storeUndoRedoStates(False)
 
         posData = self.data[self.pos_i]
-        # Check if model needs to be imported
-        acdcSegment = self.acdcSegment_li[idx]
-        if acdcSegment is None:
-            acdcSegment = myutils.import_segment_module(model_name)
-            self.acdcSegment_li[idx] = acdcSegment
-
-        # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
-        # Prompt user to enter the model parameters
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
+        # Read the model parameters (from its isolated env if used)
+        model_spec = self.prepareModelExecution(model_name)
+        if model_spec is None:
+            return
+        init_params, segment_params, url = model_spec
 
         _SizeZ = None
         if self.isSegm3D:
@@ -20293,18 +20547,25 @@ When working with 3D segmentation masks:
         )
         win.exec_()
         if win.cancel:
+            self.getModelExecution(model_name).cancel_preparation()
             self.titleLabel.setText('Segmentation aborted.')
             return
 
-        use_gpu = win.init_kwargs.get('gpu', False)
-        proceed = myutils.check_gpu_available(model_name, use_gpu, qparent=self)
+        use_gpu = myutils.check_gpu_requested_segm_model(win.init_kwargs)
+        proceed = myutils.check_gpu_available(
+            model_name, use_gpu, qparent=self,
+            python_exec=self.getModelExecution(model_name).env_python,
+        )
         if not proceed:
+            self.getModelExecution(model_name).cancel_preparation()
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
             return
             
         self.model_kwargs = win.model_kwargs
-        model = myutils.init_segm_model(acdcSegment, posData, win.init_kwargs)
+        model = self.initSegmModel(
+            model_name, win.init_kwargs, posData, replace=self.models[idx]
+        )
         if model is None:
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
@@ -20315,10 +20576,12 @@ When working with 3D segmentation masks:
             pass
 
         self.models[idx] = model
+        model.model_name = model_name
 
         img = self.getDisplayedImg1()
 
-        posData.cca_df = model.predictCcaState(img, posData.lab)
+        with self.modelExecutionBusy(f'{model_name} is predicting budding events...'):
+            posData.cca_df = model.predictCcaState(img, posData.lab)
         self.store_data()
         self.updateAllImages()
 
@@ -28433,13 +28696,24 @@ When working with 3D segmentation masks:
             return True
         self.app.setOverrideCursor(Qt.WaitCursor)
         model_name = self.initLabelRoiModelDialog.selectedModel
-        self.labelRoiModel = self.repeatSegm(
+        previous_model = self.labelRoiModel
+        model = self.repeatSegm(
             model_name=model_name, askSegmParams=True,
             is_label_roi=True
         )
-        if self.labelRoiModel is None:
+        if model is None:
             self.initLabelRoiModelDialog = None
             return True
+        self.labelRoiModel = model
+        if previous_model is model:
+            # repeatSegm acquired another reference to the existing slot.
+            execution = self.modelExecutions.get(model.model_name)
+            if execution is not None:
+                execution.release(model)
+        elif not any(previous_model is stored for stored in self.models):
+            self.releaseSegmModel(
+                getattr(previous_model, 'model_name', None), previous_model
+            )
         self.labelRoiViewCurrentModelAction.setDisabled(False)
         self.initLabelRoiModelDialog = None
         return False
@@ -32345,14 +32619,14 @@ When working with 3D segmentation masks:
                     parent_cell_txt_raw.append(f'({parent}>{cells_str})')
 
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'New w/out mother', 'red', 
+                htmlTxt_li, htmlTxtFull_li, 'New w/out P', 'red', 
                 orphan_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
                 htmlTxt_li, htmlTxtFull_li, 'Lost', 'yellow', lost_cells
             )
             htmlTxt_li, htmlTxtFull_li = self.setTitleFormatter(
-                htmlTxt_li, htmlTxtFull_li, 'Parent > Cell', 'green', 
+                htmlTxt_li, htmlTxtFull_li, 'P > D', 'green', 
                 parent_cell_txt_raw
             )
 
@@ -33985,7 +34259,14 @@ When working with 3D segmentation masks:
         msg.critical(self, err_title, err_msg)
 
     def reinitStoredSegmModels(self):
+        old_models = [
+            (getattr(model, 'model_name', None), model) 
+            for model in self.models if model is not None
+        ]
         self.models = [None]*len(self.models)
+        for model_name, model in old_models:
+            self.releaseSegmModel(model_name, model)
+        self.releaseSegForLostIDsModels()
     
     def checkAskSavePointsLayers(self):
         for toolbar in self.pointsLayersToolbars:
@@ -37274,6 +37555,7 @@ When working with 3D segmentation masks:
         self.stopPreprocWorker()
         self.stopCombineWorker()
         self.stopCcaIntegrityCheckerWorker()
+        self.stopModelExecutions()
         
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:

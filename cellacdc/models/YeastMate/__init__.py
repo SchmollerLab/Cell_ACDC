@@ -5,6 +5,9 @@ import subprocess
 try:
     import detectron2
 except ModuleNotFoundError:
+    from cellacdc import myutils
+    if myutils.is_server_mode():
+        myutils._raise_server_missing('detectron2 (YeastMate setup_steps)')
     if sys.platform.startswith("win"):
         from qtpy.QtWidgets import QMessageBox, QApplication
         from qtpy.QtCore import QCoreApplication
@@ -35,6 +38,9 @@ except ModuleNotFoundError:
 try:
     import yeastmatedetector
 except ModuleNotFoundError:
+    from cellacdc import myutils
+    if myutils.is_server_mode():
+        myutils._raise_server_missing('yeastmatedetector (YeastMate setup_steps)')
     from qtpy.QtWidgets import QMessageBox, QApplication
     from qtpy.QtCore import QCoreApplication
 

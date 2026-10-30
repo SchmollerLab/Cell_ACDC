@@ -166,9 +166,7 @@ def test_seg_for_lost_ids_worker_thresholding_relabels_recovered_object(monkeypa
     monkeypatch.setattr(worker, 'emitSigUpdateRP', lambda wl_update=True, wl_track_og_curr=False: None)
     monkeypatch.setattr(worker, 'emitSigStoreData', lambda autosave=True: None)
     monkeypatch.setattr(worker, 'emitTrackManuallyAddedObject', lambda *args, **kwargs: None)
-    monkeypatch.setattr(worker, 'emitSigSegForLostIDsImportModel', lambda base_model_name: SimpleNamespace(Model=ThresholdingModel))
-    monkeypatch.setattr(myutils, 'import_segment_module', lambda base_model_name: SimpleNamespace(Model=ThresholdingModel))
-    monkeypatch.setattr(myutils, 'init_segm_model', lambda acdcSegment, posData, init_kwargs_new: ThresholdingModel())
+    monkeypatch.setattr(worker, 'emitSigInitModel', lambda model_idx, base_model_name, init_kwargs: (ThresholdingModel(), None))
 
     monkeypatch.setattr(worker, 'emitGetSegForLostIDsInputImg', lambda image_channel_name: curr_img)
     worker.run()
@@ -266,10 +264,8 @@ def test_seg_for_lost_ids_worker_does_not_replay_inherited_labels_from_later_mod
     monkeypatch.setattr(worker, 'emitSigUpdateRP', lambda wl_update=True, wl_track_og_curr=False: None)
     monkeypatch.setattr(worker, 'emitSigStoreData', lambda autosave=True: None)
     monkeypatch.setattr(worker, 'emitTrackManuallyAddedObject', lambda *args, **kwargs: None)
-    monkeypatch.setattr(myutils, 'import_segment_module', lambda base_model_name: SimpleNamespace(Model=ThresholdingModel))
-    monkeypatch.setattr(myutils, 'init_segm_model', lambda acdcSegment, posData, init_kwargs_new: ThresholdingModel())
     monkeypatch.setattr(worker, 'emitGetSegForLostIDsInputImg', lambda image_channel_name: curr_img)
-    monkeypatch.setattr(worker, 'emitSigSegForLostIDsImportModel', lambda base_model_name: SimpleNamespace(Model=ThresholdingModel))
+    monkeypatch.setattr(worker, 'emitSigInitModel', lambda model_idx, base_model_name, init_kwargs: (ThresholdingModel(), None))
 
 
     call_counter = {'n': 0}

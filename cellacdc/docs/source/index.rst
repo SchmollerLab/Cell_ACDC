@@ -135,6 +135,7 @@ Contents
    contributing
    tooltips
    models
+   model-environments
    bdir_corr
    datastruc
    troubleshooting/index
