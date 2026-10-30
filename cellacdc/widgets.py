@@ -1784,7 +1784,7 @@ class filePathControl(QFrame):
         path = self.path()
         if not path or not os.path.exists(path):
             print(f'WARNING: {path} is not a valid path')
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg = myMessageBox(wrapText=False, showCentered=False)
             txt = html_utils.paragraph(
                 f'{path} is not a valid path :(.'
             )
