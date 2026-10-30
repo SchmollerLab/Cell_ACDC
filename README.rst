@@ -55,7 +55,7 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
    :target: https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6
    :alt: DOI
 
-.. |docs| image:: https://readthedocs.org/projects/cell-acdc/badge/?version=latest
+.. |docs| image:: https://app.readthedocs.org/projects/cell-acdc/badge/?version=latest
     :target: https://cell-acdc.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 
