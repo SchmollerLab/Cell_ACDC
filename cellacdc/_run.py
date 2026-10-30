@@ -567,15 +567,18 @@ def run_segm_workflow(workflow_params, logger, log_path):
     logger.info('Initializing segmentation and tracking kernel...')
     from cellacdc import cli
     kernel = cli.SegmKernel(logger, log_path, is_cli=True)
-    kernel.init_args_from_params(workflow_params, logger.info)
-    ch_filepaths = kernel.parse_paths(workflow_params)
-    stop_frame_nums = kernel.parse_stop_frame_numbers(workflow_params)
-    pbar = tqdm(total=len(ch_filepaths), ncols=100)
-    for ch_filepath, stop_frame_n in zip(ch_filepaths, stop_frame_nums):
-        logger.info(f'\nProcessing "{ch_filepath}"...')
-        kernel.run(ch_filepath, stop_frame_n)
-        pbar.update()
-    pbar.close()
+    try:
+        kernel.init_args_from_params(workflow_params, logger.info)
+        ch_filepaths = kernel.parse_paths(workflow_params)
+        stop_frame_nums = kernel.parse_stop_frame_numbers(workflow_params)
+        pbar = tqdm(total=len(ch_filepaths), ncols=100)
+        for ch_filepath, stop_frame_n in zip(ch_filepaths, stop_frame_nums):
+            logger.info(f'\nProcessing "{ch_filepath}"...')
+            kernel.run(ch_filepath, stop_frame_n)
+            pbar.update()
+        pbar.close()
+    finally:
+        kernel.close()
 
 def run_measurements_workflow(workflow_params, logger, log_path):
     logger.info('Initializing measurements kernel...')

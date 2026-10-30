@@ -1,12 +1,17 @@
 import os
-from cellacdc import myutils, printl
+
 import torch
-from cellacdc.models._cellpose_base.acdcSegment import (Model as CellposeBaseModel, 
-                                                        GPUDirectMLGPUCPU, 
-                                                        cpu_gpu_directml_gpu, 
-                                                        check_directml_gpu_gpu,
-                                                        setup_gpu_direct_ml, 
-                                                        _get_normalize_params)
+
+from cellacdc import myutils, printl
+from cellacdc.models._cellpose_base.acdcSegment import (
+    Model as CellposeBaseModel, 
+    GPUDirectMLGPUCPU, 
+    cpu_gpu_directml_gpu, 
+    check_directml_gpu_gpu,
+    setup_gpu_direct_ml, 
+    _get_normalize_params
+)
+
 from . import AvailableModelsv4
 
 class Model(CellposeBaseModel):

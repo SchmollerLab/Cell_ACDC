@@ -1,5 +1,13 @@
 import os
+import shutil
 import sys
+from importlib.metadata import version
+
+# Server mode is selected with the `--server` command-line flag, e.g.
+# `python -m cellacdc.service.worker --server ...`. It must be read here, at
+# import time, because it decides which (GUI/config) modules are loaded.
+SERVER_FLAG = '--server'
+RUNNING_AS_SERVER = SERVER_FLAG in getattr(sys, 'argv', [])[1:]
 
 import subprocess
 
@@ -14,8 +22,9 @@ def is_conda_env():
         return False
     
     stdout = subprocess.DEVNULL
+    conda = os.environ.get("CONDA_EXE") or shutil.which("conda")
     try:
-        args = ['conda', '-V']
+        args = [conda, '-V']
         is_conda_present = subprocess.check_call(
             args, shell=True, stdout=stdout) == 0
         return True
@@ -23,7 +32,7 @@ def is_conda_env():
         pass
     
     try:
-        args = ['conda -V']
+        args = [f'"{conda}" -V']
         is_conda_present = subprocess.check_call(
             args, shell=True, stdout=stdout) == 0
         return True
@@ -157,6 +166,70 @@ except Exception as err:
     _warn_ask_install_package(
         commands, 
         note_txt=' (installing sympy)',
+        caller='Cell-ACDC'
+    )
+    _run_pip_commands(commands)
+    
+try:
+    import uvicorn
+except Exception as err:
+    import traceback
+    traceback.print_exc()
+    print('Since Cell-ACDC v1.7.2, the uvicorn library is required.')
+    commands = (
+        'pip install --upgrade uvicorn',
+    )
+    _warn_ask_install_package(
+        commands, 
+        note_txt=' (installing uvicorn)',
+        caller='Cell-ACDC'
+    )
+    _run_pip_commands(commands)
+
+try:
+    import pydantic
+except Exception as err:
+    import traceback
+    traceback.print_exc()
+    print('Since Cell-ACDC v1.7.2, the pydantic library is required.')
+    commands = (
+        'pip install --upgrade pydantic',
+    )
+    _warn_ask_install_package(
+        commands, 
+        note_txt=' (installing pydantic)',
+        caller='Cell-ACDC'
+    )
+    _run_pip_commands(commands)
+    
+try:
+    import fastapi
+except Exception as err:
+    import traceback
+    traceback.print_exc()
+    print('Since Cell-ACDC v1.7.2, the fastapi library is required.')
+    commands = (
+        'pip install --upgrade fastapi',
+    )
+    _warn_ask_install_package(
+        commands, 
+        note_txt=' (installing fastapi)',
+        caller='Cell-ACDC'
+    )
+    _run_pip_commands(commands)
+    
+try:
+    version('python-multipart')
+except Exception as err:
+    import traceback
+    traceback.print_exc()
+    print('Since Cell-ACDC v1.7.2, the python-multipart library is required.')
+    commands = (
+        'pip install --upgrade python-multipart',
+    )
+    _warn_ask_install_package(
+        commands, 
+        note_txt=' (installing python-multipart)',
         caller='Cell-ACDC'
     )
     _run_pip_commands(commands)
@@ -367,19 +440,22 @@ def try_input_install_package(pkg_name, install_command, question=None):
             f'Install it with the command `{install_command}`.'
         )
 
-try:
-    # Force PyQt6 if available
+if not RUNNING_AS_SERVER:
     try:
-        from PyQt6 import QtCore
-        os.environ["QT_API"] = "pyqt6"
+        # Force PyQt6 if available
+        try:
+            from PyQt6 import QtCore
+            os.environ["QT_API"] = "pyqt6"
+        except Exception as e:
+            pass
+        from qtpy import QtCore
+        import pyqtgraph
+        import matplotlib
+        GUI_INSTALLED = True
     except Exception as e:
-        pass
-    from qtpy import QtCore
-    import pyqtgraph
-    import matplotlib
-    GUI_INSTALLED = True
-except Exception as e:
-    GUI_INSTALLED = False        
+        GUI_INSTALLED = False        
+else:
+    GUI_INSTALLED = False
 
 import pandas as pd
 

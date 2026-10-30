@@ -715,20 +715,20 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
     except Exception as e:
         log_func(traceback.format_exc())
 
+
 def _copy_acdc_dfs_to_temp_archive(
-        zip_path, temp_zip_path, csv_names
-    ):
+    zip_path, temp_zip_path, csv_names
+):
     if not os.path.exists(zip_path):
         return
 
-    with (
-            zipfile.ZipFile(zip_path, mode='r') as src_zip,
-            zipfile.ZipFile(
-                temp_zip_path,
-                mode='w',
-                compression=zipfile.ZIP_DEFLATED,
-            ) as dst_zip,
-        ):
+    with zipfile.ZipFile(zip_path, mode='r') as src_zip, \
+         zipfile.ZipFile(
+             temp_zip_path,
+             mode='w',
+             compression=zipfile.ZIP_DEFLATED,
+         ) as dst_zip:
+
         for csv_name in csv_names:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -1964,12 +1964,8 @@ class loadData:
         else:
             predictor = samAcdcSegment.model
         
-        embedding = {
-            'original_size': predictor.original_size,
-            'input_size': predictor.input_size,
-            'features': predictor.features,
-            'is_image_set': True,
-        }
+        from cellacdc import sam_embeddings
+        embedding = sam_embeddings.from_predictor(predictor)
         self.sam_embeddings[frame_i][z] = embedding
     
     def saveSamEmbeddings(self, logger_func=print):  
@@ -1979,8 +1975,8 @@ class loadData:
         logger_func(
             f'\nSaving SAM image embeddings to "{self.sam_embeddings_path}"...'
         )
-        import torch
-        torch.save(self.sam_embeddings, self.sam_embeddings_path)
+        from cellacdc import sam_embeddings
+        sam_embeddings.save(self.sam_embeddings, self.sam_embeddings_path)
         
     def loadSamEmbeddings(self, force_reload=False, logger_func=None):
         if hasattr(self, 'sam_embeddings') and not force_reload:
@@ -1994,8 +1990,8 @@ class loadData:
                 f'\nLoading SAM image embeddings from "{self.sam_embeddings_path}"...'
             )
         
-        import torch
-        self.sam_embeddings = torch.load(self.sam_embeddings_path)
+        from cellacdc import sam_embeddings
+        self.sam_embeddings = sam_embeddings.load(self.sam_embeddings_path)
     
     def getSamEmbeddings(self, frame_i=0, z=0):
         if not hasattr(self, 'sam_embeddings'):

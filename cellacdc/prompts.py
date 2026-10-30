@@ -493,13 +493,14 @@ def init_segm_model_params(
     if win.cancel:
         return out
     
-    if load_sam_embed:
+    if load_sam_embed or (is_sam_model and sam_embeddings_loaded):
         win.model_kwargs['use_loaded_embeddings'] = True
         posData.loadSamEmbeddings()
     
     ask_sam_embeddings = (
         model_name in ('segment_anything', 'sam2')
         and not load_sam_embed
+        and not sam_embeddings_loaded
         and check_sam_embeddings
     )
     # If SAM and embeddings were not laoded, asks to save them

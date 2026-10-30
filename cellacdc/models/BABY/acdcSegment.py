@@ -15,6 +15,7 @@ class Model:
             self, 
             model_name: AvailableModels='yeast-alcatras-brightfield-sCMOS-60x-5z',
         ):
+        self.model_name = model_name
         self.tracker = BABY_tracker.tracker(model_name)
     
     def segment(
@@ -27,6 +28,15 @@ class Model:
         lab = np.zeros((Y, X), dtype=np.uint32)
         
         image = self.tracker._preprocess(image, swap_YX_axes_to_XY)
+        expected_z = self.model_name.rsplit('-', 1)[-1]
+        if expected_z.endswith('z') and expected_z[:-1].isdigit():
+            if image.shape[-1] != int(expected_z[:-1]):
+                raise ValueError(
+                    f'BABY model "{self.model_name}" requires '
+                    f'{expected_z[:-1]} z-slices, but the image has '
+                    f'{image.shape[-1]}. Select a model ending with '
+                    f'"-{image.shape[-1]}z".'
+                )
         
         result_generator = self.tracker.crawler.baby_brain.segment(
             image[None, ...], 

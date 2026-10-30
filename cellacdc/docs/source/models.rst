@@ -39,59 +39,55 @@ If none of the included models suits your purposes, adding your own model might 
 Adding a segmentation model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Adding a segmentation model in a few steps:
+Segmentation models run in their own isolated environment (``_acdc_<model>``)
+and are served to Cell-ACDC by a small HTTP worker. Adding a model takes these
+steps (see :ref:`model-environments` for the full guide with all options):
 
-1. Create a **new folder** with the models's name (e.g., YeastMate) inside the ``/cellacdc/models`` folder.
+1. Create a **new folder** with the model's name inside ``cellacdc/models``.
 
 .. tip:: 
     If you **don't know where Cell-ACDC was installed**, open the main launcher and click on the ``Help --> About Cell-ACDC`` menu on the top menu bar.
 
-2. Create a ``__init__.py`` file inside the model folder. In this file you can handle **automatic installation** of the module required by your model. For example, if your model requires the module tensorflow you can install it manually, or programmatically as follows:
+2. Declare the environment of the model (Python version, PyTorch, packages,
+   additional setup commands, required environment variables) in
+   ``cellacdc/models/_env_config.py``:
+
+    .. code-block:: python
+
+        'MyModel': {
+            'python': '3.11',
+            'torch': True,
+            'packages': ['mymodel'],
+        },
+
+3. Create ``__init__.py``. Do **not** install packages from it with
+   ``pip``. Use ``myutils.check_install_package('mymodel')``, which raises a
+   clear error inside the model environment if the configuration is
+   incomplete.
+
+4. Create ``acdcSegment.py`` with a ``Model`` class. Do not import Qt or
+   ``cellacdc.widgets`` in it:
 
     .. code-block:: python
         :linenos:
-
-        import os 
-        import sys 
-        
-        try: 
-            import tensorflow 
-            # Tries to import the module, in this case btrack
-
-        except ModuleNotFoundError:
-            subprocess.check_call( 
-                [sys.executable, '-m', 'pip', 'install', 'tensorflow'] 
-                # If the model is not found (so its not installed), 
-                # it will try installing it using btrack
-            )
-
-    Add any line of code needed to initialize correct import of the model.
-
-3. Create a new file called ``acdcSegment.py`` in the model folder with the following template code:
-
-    .. code-block:: python
-        :linenos:
-        
-        import module1 #here put the modules that the tracker needs
-        import module2
 
         class Model:
-            def __init__(self, **init_kwargs):
-                script_path = os.path.dirname(os.path.realpath(__file__))
-                weights_path = os.path.join(script_path, 'model', 'weights')
+            def __init__(self, gpu: bool = False):
+                import mymodel
+                self.model = mymodel.load(gpu=gpu)
 
-                self.model = MyModel(
-                    weights_path, **init_kwargs
-                )
+            def segment(self, image, diameter: float = 30.0):
+                return self.model.eval(image, diameter=diameter)
 
-            def segment(self, image, **segment_kwargs):
-                lab = self.model.eval(image, **segment_kwargs)
-                return lab
+   The **model parameters** are **automatically inferred from the signatures,
+   type hints and docstrings** of ``__init__`` and ``segment``, and a widget
+   with those parameters pops up. In this widget you can set the model
+   parameters (or press Ok to use the defaults).
 
-The **model parameters** will be **automatically inferred from the class you created** in the ``acdcSegment.py`` file, and a widget with those parameters will pop-up. In this widget you can set the model parameters (or press Ok without changing anything if you want to go with default parameters).
+5. Prepare and test the environment with ``acdc-setup-models MyModel``.
 
-Have a loot at the ``/cellacdc/models`` folder `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/cellacdc/models>`__ for **examples**. You can for example see the ``__init__.py`` file `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/models/YeaZ_v2/__init__.py>`__ and the ``acdcSegment.py`` file `here <https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/models/YeaZ_v2/acdcSegment.py>`__ for YeaZ2.
-
+Have a look at the ``cellacdc/models`` folder `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/cellacdc/models>`__ for **examples**.
+For more details, see :ref:`model-environments`.
 
 Adding a tracker
 ~~~~~~~~~~~~~~~~

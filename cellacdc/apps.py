@@ -79,6 +79,8 @@ from . import printl
 from . import colors
 from . import issues_url
 from . import myutils
+from . import _torch_utils
+from ._torch_utils import torch_requirement
 from . import qutils
 from . import _palettes
 from . import base_cca_dict
@@ -97,6 +99,7 @@ from . import path
 from . import fonts
 from . import QtScoped
 from . import debugutils
+from . import disableWindow
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -9951,7 +9954,7 @@ class askStopFrameSegm(QDialog):
                 img_filename = filenames[i]
                 images_path = os.path.join(exp_path, pos_foldername, 'Images')
                 img_path = os.path.join(images_path, img_filename)
-                spinBox = widgets.mySpinBox()
+                spinBox = widgets.SpinBox()
                 spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
                 posData = load.loadData(img_path, user_ch_name, QParent=parent)
                 posData.getBasenameAndChNames(qparent=self)
@@ -10124,6 +10127,11 @@ class QLineEditDialog(QDialog):
         if not msg.startswith('<p'):
             msg = html_utils.paragraph(msg, center=True)
         msg = QLabel(msg)
+        msg.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+            | Qt.TextInteractionFlag.LinksAccessibleByMouse
+        )
+        msg.setOpenExternalLinks(True)
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
         
         if isFloat:
@@ -13707,12 +13715,15 @@ class QDialogModelParams(QDialog):
             self.postProcessGroupbox.restoreFromKwargs(kwargs)
 
             applyPostProcessing = configPars.getboolean(
-                postProcessSection, 'applyPostProcessing'
+                postProcessSection, 'applyPostProcessing',
+                fallback=configPars.getboolean(
+                    postProcessSection, 'applied_postprocessing', fallback=False
+                ),
             )
             self.postProcessGroupbox.setChecked(applyPostProcessing)
 
         customPostProcessSection = f'{self.model_name}.custom_postprocess'
-        if postProcessSection not in configPars.sections():
+        if customPostProcessSection not in configPars.sections():
             return
         
         selectFeaturesWidget = (
@@ -16843,32 +16854,75 @@ class QInput(QBaseDialog):
         self.close()
 
 class InstallPyTorchDialog(QBaseDialog):
-    def __init__(self, parent=None, caller_name='Cell-ACDC'):
+    def __init__(
+            self, parent=None, caller_name='Cell-ACDC',
+            target_python=None, platform=None, found_cuda_version=None,
+            possible_links=None, torch_version=None,
+        ):
+        """Dialog to choose how to install PyTorch.
+
+        Parameters
+        ----------
+        possible_links : tuple, optional
+            Precomputed result of `_torch_utils.get_torch_options`, i.e.
+            (options, preferred_index). If None, it is fetched here
+            (needs network access).
+        torch_version : str, optional
+            PyTorch release or PEP 440 constraint (e.g. '<2') required by the
+            model. Pip resolves a compatible torchvision release.
+        """
         super().__init__(parent=parent)
-        
+
         self.cancel = True
-        
+        self.platform = None
+        self.indexUrl = None
+        self._targetPython = target_python
+        self._torchVersion = torch_version
+
         mainLayout = QVBoxLayout()
-        
+
         innerLayout = QGridLayout()
-        
+
         iconLabel = QLabel(self)
         standardIcon = getattr(QStyle, 'SP_MessageBoxInformation')
         icon = self.style().standardIcon(standardIcon)
         pixmap = icon.pixmap(60, 60)
         iconLabel.setPixmap(pixmap)
         innerLayout.addWidget(iconLabel, 0, 0, alignment=Qt.AlignTop)
-        
+
+        if found_cuda_version is None:
+            found_cuda_version = _torch_utils.get_driver_cuda_version()
+
+        if possible_links is None:
+            options_kwargs = {'driver_cuda_version': found_cuda_version}
+            if target_python is not None:
+                options_kwargs['exec_path'] = target_python
+            if torch_version:
+                options_kwargs['torch_version'] = torch_version
+            possible_links = _torch_utils.get_torch_options_safe(**options_kwargs)
+        self._options, self._preferred = possible_links
+        self._detectedOnMac = sys.platform == 'darwin'
+
         href = html_utils.href_tag('How to install PyTorch', urls.install_pytorch)
         important = html_utils.to_admonition("""
             Should you choose to install PyTorch yourself, <b>make sure to 
             activate<br>
             the correct <code>acdc</code> environment first</b>.
         """, admonition_type='important')
-        
+
         infoText = html_utils.paragraph(f"""
             {caller_name} needs to <b>install the package</b> <code>PyTorch</code>.<br><br>
-            Select your preferences and click ok to install it now. 
+            Select your preferences and click ok to install it now.<br>
+            You can check the currently running `CUDA UMD Version` by running:""")
+        if found_cuda_version is not False and found_cuda_version is not None:
+            infoText += html_utils.paragraph(
+                f'Current CUDA UMD Version: {found_cuda_version[0]}.{found_cuda_version[1]}'
+            )
+
+        self.commandWidgetSMI = widgets.CopiableCommandWidget(
+            command='nvidia-smi'
+        )
+        infoText2 = html_utils.paragraph(f"""
             You will have to <b>confirm the installation in the terminal</b>.<br><br>
             Alternatively, you can close {caller_name} and run the command 
             yourself.<br><br>
@@ -16876,42 +16930,61 @@ class InstallPyTorchDialog(QBaseDialog):
             {important}
         """)
         innerLayout.addWidget(QLabel(infoText), 0, 1)
-        innerLayout.addItem(QSpacerItem(10, 10), 1, 1)
-        
+        innerLayout.addWidget(self.commandWidgetSMI, 1, 1)
+        innerLayout.addWidget(QLabel(infoText2), 2, 1)
+        innerLayout.addItem(QSpacerItem(10, 10), 3, 1)
+
         preferencesLayout = QGridLayout()
-        
+
         row = 0
+        if torch_version:
+            preferencesLayout.addWidget(QLabel('PyTorch version'), row, 0)
+            preferencesLayout.addWidget(QLabel(torch_version), row, 1)
+            row += 1
         self.osCombobox = QComboBox()
         self.osCombobox.addItems(['Linux', 'Mac', 'Windows'])
-        preferencesLayout.addWidget(QLabel('Your OS'), row, 0)
+        osLabel = QLabel('Your OS')
+        preferencesLayout.addWidget(osLabel, row, 0)
         preferencesLayout.addWidget(self.osCombobox, row, 1)
-        
-        if is_mac:
-            self.osCombobox.setCurrentText('Mac')
-        elif is_win:
-            self.osCombobox.setCurrentText('Windows')
-        
+
+        if not platform:
+            if is_mac:
+                self.osCombobox.setCurrentText('Mac')
+            elif is_win:
+                self.osCombobox.setCurrentText('Windows')
+        else:
+            if platform.startswith('linux'):
+                platform = 'linux'
+            if platform.startswith('darwin'):
+                platform = 'mac'
+            if platform.startswith("win"):
+                platform = 'win'
+            if platform == 'mac':
+                self.osCombobox.setCurrentText('Mac')
+            elif platform == 'win':
+                self.osCombobox.setCurrentText('Windows')
+            elif platform == 'linux':
+                self.osCombobox.setCurrentText('Linux')
+
         row += 1
         self.pkgManagerCombobox = QComboBox()
         self.pkgManagerCombobox.addItems(['Pip'])
         if not is_conda_env():
             self.pkgManagerCombobox.setCurrentText('Pip')
             self.pkgManagerCombobox.setDisabled(True)
-        
-        preferencesLayout.addWidget(QLabel('Package manager'), row, 0)
+
+        pkgManagerLabel = QLabel('Package manager')
+        preferencesLayout.addWidget(pkgManagerLabel, row, 0)
         preferencesLayout.addWidget(self.pkgManagerCombobox, row, 1)
-        
+
         row += 1
+        # Items are filled in populatePlatforms() below
         self.cmptPlatformCombobox = QComboBox()
-        self.cmptPlatformCombobox.addItems(
-            ['CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)']
-        )
-        
         preferencesLayout.addWidget(QLabel('Compute Platform'), row, 0)
         preferencesLayout.addWidget(self.cmptPlatformCombobox, row, 1)
-        
+
         row += 1
-        pip_prefix, conda_prefix = myutils.get_pip_conda_prefix()
+        _, pip_prefix = myutils.get_pip_conda_prefix(exec_path=target_python)
         self.commandWidget = widgets.CopiableCommandWidget(
             command=f'{pip_prefix} torch'
         )
@@ -16920,34 +16993,65 @@ class InstallPyTorchDialog(QBaseDialog):
         preferencesLayout.setColumnStretch(0, 0)
         preferencesLayout.setColumnStretch(1, 0)
         preferencesLayout.setColumnStretch(2, 1)
-        
-        innerLayout.addLayout(preferencesLayout, 2, 1)
-        
+
+        innerLayout.addLayout(preferencesLayout, 4, 1)
+
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
-        
+
         mainLayout.addLayout(innerLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-        
+
         self.setLayout(mainLayout)
-        
-        self.osCombobox.currentTextChanged.connect(self.updateCommand)
+
+        # Changing the OS changes the available platforms -> repopulate
+        self.osCombobox.currentTextChanged.connect(self.populatePlatforms)
         self.pkgManagerCombobox.currentTextChanged.connect(self.updateCommand)
         self.cmptPlatformCombobox.currentTextChanged.connect(self.updateCommand)
-        
+
+        self.populatePlatforms()
+
+    def _platformOptions(self, osText):
+        """(options, preferred_index) for the selected OS."""
+        if osText == 'Mac':
+            return [('Default (CPU / Apple GPU)', None)], 0
+        if self._detectedOnMac:
+            # Options were detected on a Mac, so there is no CUDA info
+            return [('CPU', f'{_torch_utils.BASE_PYTORCH_LINK}cpu')], 0
+        return self._options, self._preferred
+
+    def populatePlatforms(self, *args, **kwargs):
+        options, preferred = self._platformOptions(
+            self.osCombobox.currentText()
+        )
+        self._urls = dict(options)
+
+        self.cmptPlatformCombobox.blockSignals(True)
+        self.cmptPlatformCombobox.clear()
+        self.cmptPlatformCombobox.addItems([label for label, _ in options])
+        self.cmptPlatformCombobox.setCurrentIndex(preferred)
+        self.cmptPlatformCombobox.blockSignals(False)
+
         self.updateCommand()
-    
+
     def updateCommand(self, *args, **kwargs):
-        osText = self.osCombobox.currentText()
-        pkgManager = self.pkgManagerCombobox.currentText()
-        cmptPlatform = self.cmptPlatformCombobox.currentText()
-        command = myutils.get_pytorch_command()[osText][pkgManager][cmptPlatform]
+        indexUrl = self._urls.get(self.cmptPlatformCombobox.currentText())
+        _, pip_prefix = myutils.get_pip_conda_prefix(
+            exec_path=self._targetPython
+            )
+        torch_spec = torch_requirement(self._torchVersion, quoted=True)
+        command = f'{pip_prefix} {torch_spec} torchvision'
+        if indexUrl is not None:    # None -> default PyPI install (macOS)
+            command += f' --index-url {indexUrl}'
         self.commandWidget.setCommand(command)
-    
+
     def ok_cb(self):
+        label = self.cmptPlatformCombobox.currentText()
+        self.platform = label
+        self.indexUrl = self._urls.get(label)
         self.command = self.commandWidget.command()
         self.cancel = False
         self.close()
@@ -22932,3 +23036,300 @@ class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
         ))
 
         self.setWindowTitle('Generate Trackastra training data setup')
+
+class askZPlaneView(QDialog):
+    def __init__(
+            self, user_ch_file_paths, user_ch_name, 
+            mainWin, version, parent=None, logger_func=print
+        ):
+        self._parent = parent
+        self.cancel = True
+        self._user_ch_name = user_ch_name
+        self._mainWin = mainWin
+        self._version = version
+        self._logger_func = logger_func
+
+        super().__init__(parent)
+        self.setWindowTitle('Select z-plane view')
+
+        self.visualizeWindows = []
+
+        mainLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        # Message
+        infoTxt = html_utils.paragraph("""
+            Enter a <b>z-slice</b> or <b>projection mode</b> to segment for each Position loaded.<br><br>
+            <i>NOTE: for more complex selection launch the data prep module</i>
+        """)
+        infoLabel = QLabel(infoTxt, self)
+        infoLabel.setAlignment(Qt.AlignCenter)
+        # padding: top, left, bottom, right
+        infoLabel.setStyleSheet("padding:0px 0px 8px 0px;")
+
+        self.dataDict = {}
+
+        exp_path_pos_mapper = path.get_exp_path_pos_foldernames_mapper(
+            user_ch_file_paths
+        )
+
+        columnsLayout = QHBoxLayout()
+        mainScrollArea = widgets.ScrollArea()
+        mainScrollAreaWidget = QWidget()
+        mainScrollAreaWidget.setLayout(columnsLayout)
+        mainScrollArea.setWidget(mainScrollAreaWidget)
+        self.mainScrollArea = mainScrollArea
+
+        # Form layout widget
+        self.spinBoxes = []
+        self.tab_idx = 0
+        iter_items = exp_path_pos_mapper.items()
+        self.groupboxScrollAreas = []
+        
+        for col, (exp_path, pos_folders_files) in enumerate(iter_items):
+            groupboxScrollArea = widgets.ScrollArea()
+            self.groupboxScrollAreas.append(groupboxScrollArea)
+            groupbox = QGroupBox()
+            groupbox.setCheckable(False)
+            groupbox.setToolTip(exp_path)
+            groupboxLayout = QFormLayout()
+            groupbox.setLayout(groupboxLayout)
+            groupboxScrollArea.setWidget(groupbox)
+            columnsLayout.addWidget(groupboxScrollArea)
+            pos_folders = pos_folders_files['pos_foldernames']
+            filenames = pos_folders_files['filenames']
+            for i, pos_foldername in enumerate(pos_folders):
+                img_filename = filenames[i]
+                images_path = os.path.join(exp_path, pos_foldername, 'Images')
+                img_path = os.path.join(images_path, img_filename)
+                spinBox = widgets.SpinBox()
+                spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
+                posData = load.loadData(img_path, user_ch_name, QParent=parent)
+                posData.getBasenameAndChNames(qparent=self)
+                posData.buildPaths()
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_metadata=True,
+                    loadSegmInfo=True,
+                )
+                spinBox.setMaximum(posData.SizeZ)
+                zProjComboBox = QComboBox()
+                zProjComboBox.addItems([
+                    'single z-slice',
+                    'max z-projection',
+                    'mean z-projection',
+                    'median z-proj.'
+                ])
+
+                spinBox.setValue(round(posData.SizeZ/2))
+                
+                visualizeButton = widgets.viewPushButton(' View')
+                visualizeButton.clicked.connect(
+                    partial(self.visualize_cb, images_path=images_path)
+                )
+
+                dataPrepButton = widgets.dataPrepButton('Launch data prep...')
+                dataPrepButton.clicked.connect(
+                    partial(self.launch_dataprep, images_path=images_path)
+                )
+
+                formLabel = QLabel(html_utils.paragraph(f'{pos_foldername}  '))
+                layout = QHBoxLayout()
+                layout.addWidget(formLabel, alignment=Qt.AlignRight)
+                layout.addWidget(spinBox)
+                layout.addWidget(zProjComboBox)
+                layout.addWidget(visualizeButton)
+                layout.addWidget(dataPrepButton)
+                self.dataDict[images_path] = (
+                    spinBox, zProjComboBox, posData
+                )
+                groupboxLayout.addRow(layout)
+                self.spinBoxes.append(spinBox)
+            
+            fm = QFontMetrics(self.font())
+            elidedTitle = fm.elidedText(
+                exp_path, Qt.ElideLeft, groupbox.sizeHint().width()
+            )
+            groupbox.setTitle(elidedTitle)
+
+        self.disableControlsDataPreppedPos()
+
+        mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        mainLayout.addWidget(mainScrollArea)
+
+        okButton = widgets.okPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        buttonsLayout.addStretch(1)    
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+
+        if posData.SizeT == 1:
+            launchDataPrepButton = widgets.dataPrepButton(
+                'Launch data prep with all Positions...'
+            )
+            buttonsLayout.addWidget(launchDataPrepButton)
+            launchDataPrepButton.clicked.connect(self.launch_dataprep)
+
+        buttonsLayout.addWidget(okButton)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+    def disableControlsDataPreppedPos(self):
+        for images_path, values in self.dataDict.items():
+            posData = values[-1]
+            posData.loadOtherFiles(
+                load_segm_data=False,
+                loadSegmInfo=True,
+            )
+            disabled = False
+            if posData.segmInfo_df is not None:
+                segmInfofilenames = (
+                    posData.segmInfo_df.index.get_level_values(0).unique()
+                )
+                for _filename in segmInfofilenames:
+                    if _filename.endswith(self._user_ch_name):
+                        disabled = True
+                        break
+            spinBox, zProjComboBox = values[:2]
+            if disabled:
+                tooltip = (
+                    'Disabled because already selected in data prep.\n\n'
+                    'Launch data prep if you need to modify it.'
+                )
+                spinBox.setToolTip(tooltip)
+                zProjComboBox.setToolTip(tooltip)
+            
+            spinBox.setDisabled(disabled)
+            zProjComboBox.setDisabled(disabled)
+
+    def keyTabEventSpinbox(self, event, sender):
+        self.tab_idx += 1      
+        if self.tab_idx >= len(self.spinBoxes):
+            self.tab_idx = 0
+        focusSpinbox = self.spinBoxes[self.tab_idx]
+        focusSpinbox.setFocus()
+
+    def ok_cb(self, event):
+        self.cancel = False
+        for spinBox, zProjComboBox, posData in self.dataDict.values():
+            if not spinBox.isEnabled():
+                continue
+            
+            filename = posData.filename
+            if posData.segmInfo_df is None:
+                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                posData.segmInfo_df = df
+            
+            if filename not in posData.segmInfo_df.index:
+                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                posData.segmInfo_df = pd.concat([df, posData.segmInfo_df])
+            
+            posData.segmInfo_df.loc[filename, 'z_slice_used_dataPrep'] = (
+                spinBox.value()
+            )
+            posData.segmInfo_df.loc[filename, 'which_z_proj'] = (
+                zProjComboBox.currentText()
+            )
+            posData.segmInfo_df.loc[filename, 'is_from_dataPrep'] = (
+                False
+            )
+            posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+
+        self.close()
+    
+    def closeEvent(self, event):
+        for window in self.visualizeWindows:
+            window.close()
+
+    @disableWindow
+    def visualize_cb(self, checked=True, images_path=None):
+        if images_path is None:
+            return
+
+        spinBox, zProjComboBox, posData = self.dataDict[images_path]
+        print('Loading image data...')
+        posData.loadImgData()
+        posData.frame_i = spinBox.value()-1
+        win = plot.imshow(
+            posData.img_data, 
+            lut='gray',
+            figure_title=posData.relPath,
+            block=False
+        )
+        self.visualizeWindows.append(win)
+
+    def launch_dataprep(self, checked=True, images_path=None):
+        if images_path is not None:
+            exp_path = os.path.dirname(images_path)
+            posData = self.dataDict[images_path][-1]
+            user_ch_file_paths = [posData.imgPath]
+        else:
+            user_ch_file_paths = []
+            for images_path, values in self.dataDict.items():
+                posData = values[-1]
+                user_ch_file_paths.append(posData.imgPath)
+        
+        self._launch_dataprep(exp_path, user_ch_file_paths)
+
+    @disableWindow
+    def _launch_dataprep(self, exp_path, user_ch_file_paths):
+        from cellacdc.dataPrep import launchDataPrepSelectZPlane
+
+        cancel = launchDataPrepSelectZPlane(
+            exp_path, 
+            user_ch_file_paths, 
+            self._user_ch_name, 
+            mainWin=self._mainWin, 
+            version=self._version,
+            logger_func=self._logger_func,
+            parent=self._parent
+        )
+        if not cancel:
+            self.disableControlsDataPreppedPos()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        screenSize = self.screen().size()
+        maxWidth = screenSize.width() - 50
+        maxHeight = screenSize.height() - 100
+        width, height = 0, 0
+        for scrollArea in self.groupboxScrollAreas:
+            width += scrollArea.minimumWidthNoScrollbar()
+            scrollAreaHeight = scrollArea.minimumHeightNoScrollbar()
+            if scrollAreaHeight > height:
+                height = scrollAreaHeight
+        
+        width += 70
+        height += (
+            self.sizeHint().height() 
+            - self.mainScrollArea.sizeHint().height()
+        )
+
+        if width > maxWidth:
+            width = maxWidth
+        
+        if height > maxHeight:
+            height = maxHeight
+
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        super().show()
+        self.resize(width, height)
+        self.move(25, 50)
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
