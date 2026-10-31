@@ -4297,9 +4297,10 @@ When working with 3D segmentation masks:
         self.labelsGrad.textColorButton.sigColorChanged.connect(
             self.saveTextLabelsColor
         )
-        # self.addFontSizeActions(
-        #     self.labelsGrad.fontSizeMenu, self.setFontSizeActionChecked
-        # )
+        self.labelsGrad.setFontSize(self.fontSizeSpinBox.value())
+        self.labelsGrad.sigFontSizeChanged.connect(
+            self.fontSizeChangedContextMenu
+        )
 
         self.labelsGrad.sigShuffleCmap.connect(self.shuffle_cmap)
         self.labelsGrad.sigGreeedyShuffleCmap.connect(
@@ -4321,9 +4322,11 @@ When working with 3D segmentation masks:
             self.restoreDefaultSettings
         )
 
-        # self.addFontSizeActions(
-        #     self.imgGrad.fontSizeMenu, self.setFontSizeActionChecked
-        # )
+        self.imgGrad.setFontSize(self.fontSizeSpinBox.value())
+        self.imgGrad.sigFontSizeChanged.connect(
+            self.fontSizeChangedContextMenu
+        )
+
         self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.imgGrad.textColorButton.disconnect()
         self.imgGrad.textColorButton.clicked.connect(
@@ -14439,19 +14442,15 @@ When working with 3D segmentation masks:
     def saveLabelsColormap(self):
         self.labelsGrad.saveColormap()
     
-    def addFontSizeActions(self, menu, slot):
-        fontActionGroup = QActionGroup(self)
-        fontActionGroup.setExclusive(True)
-        for fontSize in range(4,27):
-            action = QAction(self)
-            action.setText(str(fontSize))
-            action.setCheckable(True)
-            if fontSize == self.fontSize:
-                action.setChecked(True)
-            fontActionGroup.addAction(action)
-            menu.addAction(action)
-            action.triggered.connect(slot)
-        return fontActionGroup
+    def fontSizeChangedContextMenu(self, font_size: int):
+        self.labelsGrad.setFontSize(font_size, blockSignal=True)
+        self.imgGrad.setFontSize(font_size, blockSignal=True)
+
+        self.fontSizeSpinBox.blockSignals(True)
+        self.fontSizeSpinBox.setValue(font_size)
+        self.fontSizeSpinBox.blockSignals(False)
+
+        self.changeFontSize()
 
     @exception_handler
     def changeFontSize(self):
@@ -14460,6 +14459,8 @@ When working with 3D segmentation masks:
             return
         
         self.fontSize = fontSize
+        self.labelsGrad.setFontSize(fontSize, blockSignal=True)
+        self.imgGrad.setFontSize(fontSize, blockSignal=True)
 
         self.df_settings.at['fontSize', 'value'] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
