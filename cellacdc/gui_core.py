@@ -1,4 +1,5 @@
 from . import printl
+from qtpy.QtCore import QSettings
 
 class GUICoreElements():
     # settings helper
@@ -88,3 +89,14 @@ class GUICoreElements():
 
         rp_2D = rp.get_slice_rp(slice_i, depthAxes)
         return rp_2D
+    
+    def readSettings(self, setting_suffix=''):
+        settings = QSettings('schmollerlab', 'acdc_gui')
+        if settings.value(f'geometry{setting_suffix}') is not None:
+            self.restoreGeometry(settings.value(f"geometry{setting_suffix}"))
+        # self.restoreState(settings.value(f"windowState{setting_suffix}"))
+
+    def saveWindowGeometry(self, setting_suffix=''):
+        settings = QSettings('schmollerlab', 'acdc_gui')
+        settings.setValue(f"geometry{setting_suffix}", self.saveGeometry())
+        # settings.setValue(f"windowState{setting_suffix}", self.saveState())

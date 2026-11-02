@@ -31960,17 +31960,6 @@ class guiWin(
             self.sigClosed.emit(self)
         
         gc.collect()
-
-    def readSettings(self):
-        settings = QSettings('schmollerlab', 'acdc_gui')
-        if settings.value('geometry') is not None:
-            self.restoreGeometry(settings.value("geometry"))
-        # self.restoreState(settings.value("windowState"))
-
-    def saveWindowGeometry(self):
-        settings = QSettings('schmollerlab', 'acdc_gui')
-        settings.setValue("geometry", self.saveGeometry())
-        # settings.setValue("windowState", self.saveState())
     
     def storeDefaultAndCustomColors(self):
         c = self.overlayButton.palette().button().color().name()

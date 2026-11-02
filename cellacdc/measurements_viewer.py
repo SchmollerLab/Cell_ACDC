@@ -69,7 +69,7 @@ Viewed Cell_IDs are tracked per position and saved in configurations. Revisiting
 a cell does not retry failed predictions; use explicit re-evaluation to retry.
 The toolbar's ``Re-evaluate predictors on all cells`` and ``... on displayed
 cell`` re-run all predictors; cells with manual edits (added, moved or removed
-time points) trigger a warning to overwrite or skip them. Identifier and constant 
+time points) trigger a warning to overwrite or skip them. Identifier
 definitions are stored in configurations. The time points themselves live in 
 the position's acdc_df as ``timepoint_<name>`` boolean columns (True at the 
 frames where the cell is marked), so they are part of any exported or processed 
@@ -124,6 +124,8 @@ from . import printl
 from . import workers
 from . import timepoint_predictors
 from .timepoint_predictors import TimepointIdentifier
+from . import exception_handler, disableWindow
+
 
 RESCALE_INTENS_HOW_TEXTS = (
     'Rescale each 2D image',
@@ -449,6 +451,7 @@ class MeasurementsViewerWin(
             self.openFolderText = 'Reveal in Finder...'
         
         self.setWindowTitle('Cell-ACDC - Measurements viewer')
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
         
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -473,6 +476,8 @@ class MeasurementsViewerWin(
         if not self._startupConfigurationPrompted:
             self._startupConfigurationPrompted = True
             QTimer.singleShot(0, self.loadConfiguration)
+        self.readSettings(setting_suffix='_measurements_viewer')
+        
 
     def selectConfigurationFilepath(self):
         from .apps import QTreeDialog
@@ -599,7 +604,7 @@ class MeasurementsViewerWin(
         if not isinstance(identifiers, list):
             raise ValueError('Invalid time point identifiers in configuration.')
         for identifier in identifiers:
-            timepoint_predictors.validate_identifier_dict(identifier)
+            timepoint_predictors.TimepointIdentifier.validate_dict(identifier)
         names = [identifier['name'] for identifier in identifiers]
         if len(set(names)) != len(names):
             raise ValueError('Duplicated time point identifier names.')
@@ -2975,6 +2980,7 @@ class MeasurementsViewerWin(
         
         acdc_df_path = getattr(posData, 'acdc_output_csv_path', None)
         if not acdc_df_path or not os.path.exists(acdc_df_path):
+            print(f"ACDC output CSV path not found: {acdc_df_path}")
             return
         
         previous = getattr(posData, 'acdc_df', None)
@@ -2997,6 +3003,7 @@ class MeasurementsViewerWin(
             acdc_df[column] = acdc_df.index.isin(marked)
         posData.acdc_df = acdc_df
     
+    @disableWindow
     def reloadButtonClicked(self, checked=False):
         self.reloadAcdcDfFile()
         self.refreshAcdcDf()
@@ -4069,7 +4076,7 @@ class MeasurementsViewerWin(
             f'Shortcut: "{identifier.shortcut}", Auto: "Shift+{identifier.shortcut}"' 
             if identifier.shortcut else 'No shortcut'
         )
-        predictorText = timepoint_predictors.predictor_description(
+        predictorText = timepoint_predictors.TimepointPredictor.describe(
             identifier.predictor
         )
         action.setToolTip(
@@ -4239,7 +4246,7 @@ class MeasurementsViewerWin(
         acdc_df = self.acdc_df if posData is self.posData() else self.getAcdcDf(posData)
         try:
             # All cells are passed since predictors can use other cells
-            predicted = timepoint_predictors.predict_timepoints(
+            predicted = timepoint_predictors.TimepointPredictor.predict(
                 acdc_df, identifier.predictor, SizeT=posData.SizeT, IDs=IDs
             )
         except Exception as err:
@@ -5319,9 +5326,11 @@ class MeasurementsViewerWin(
         if volume_renderer is not None:
             self._volume_renderer = None
             volume_renderer.force_close()
+        self.saveWindowGeometry(setting_suffix='_measurements_viewer')
         super().closeEvent(event)
         self.sigClosed.emit(self)
-
+        
+        
 def run(folderpath=None):
     """Launch the measurements viewer as a standalone application, optionally 
     loading `folderpath` (experiment, Position or Images folder)."""

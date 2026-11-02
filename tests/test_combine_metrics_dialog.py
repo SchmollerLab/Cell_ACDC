@@ -401,10 +401,10 @@ def test_evaluate_equation_matches_per_cell_runtime(app, formula, indexed):
     )
     actual = dialog.evaluateEquation(df, formula)
     expected = []
-    flat = timepoint_predictors._flat_df(df)
+    flat = timepoint_predictors.CellTable.flatten(df)
     for _, cell in flat.groupby('Cell_ID', sort=False):
         cell = cell.sort_values('frame_i')
-        values = timepoint_predictors.eval_cell_equation(
+        values = timepoint_predictors.CellEquation.evaluate(
             cell.reset_index(drop=True), formula
         )
         expected.append(pd.Series(

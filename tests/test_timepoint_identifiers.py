@@ -79,20 +79,20 @@ def set_timepoints(viewer, uid, value):
     ('rising_true', {1: [1], 2: []}),
 ])
 def test_equation_condition_modes(acdc_df, mode, expected):
-    timepoints = timepoint_predictors.predict_from_equation(
+    timepoints = timepoint_predictors.TimepointPredictor.from_equation(
         acdc_df, 'stage == "S"', mode
     )
     assert timepoints == expected
 
 
 def test_equation_rising_and_extrema(acdc_df):
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         acdc_df, 'area > 16', 'rising_true'
     ) == {1: [1, 3], 2: []}
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         acdc_df, 'area', 'max'
     ) == {1: [3], 2: [2]}
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         acdc_df, 'area * 2', 'min'
     ) == {1: [0], 2: [3]}
 
@@ -116,7 +116,7 @@ def test_equation_rising_and_extrema(acdc_df):
     ('(area > MEAN(area)) & (stage == "S")', 'first_true', {1: [1], 2: []}),
 ])
 def test_equation_cell_functions(acdc_df, equation, mode, expected):
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         acdc_df, equation, mode
     ) == expected
 
@@ -126,7 +126,7 @@ def test_equation_cell_functions(acdc_df, equation, mode, expected):
     ('all(area > 0)', {1: [0], 2: [0]}),
 ])
 def test_equation_any_all_reduce_over_cell_frames(acdc_df, function, expected):
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         acdc_df, function, 'first_true'
     ) == expected
 
@@ -145,9 +145,43 @@ def test_other_cell_equation_uses_filtered_frame_window(acdc_df):
         'mode': 'rising_true',
         'other_cells': settings,
     }
-    assert timepoint_predictors.predict_timepoints(
+    assert timepoint_predictors.TimepointPredictor.predict(
         acdc_df, predictor
     ) == {1: [1]}
+
+
+def test_main_cell_filter_editor_supports_other_inputs(app, acdc_df):
+    dialog = apps._TimepointCellFilterEquationDialog(
+        [], False, False, acdc_df=acdc_df, SizeT=4,
+        condition='COUNT(area_other) > 0',
+        otherCells=timepoint_predictors.CellFilter.default_other()
+    )
+    try:
+        assert 'area_other' in dialog.otherMeasurementColumns
+        assert dialog.validateEquation('COUNT(area_other) > 0')[0]
+        dialog.test_cb()
+        assert dialog.okButton.isEnabled()
+        dialog.otherCells = None
+        valid, message = dialog.validateEquation('COUNT(area_other) > 0')
+        assert not valid
+        assert 'Configure Other-cell measurements' in message
+    finally:
+        dialog.deleteLater()
+
+
+def test_direct_other_dialog_validation(app, acdc_df):
+    dialog = apps.TimepointPredictorEquationDialog(
+        [], False, False, acdc_df=acdc_df, equation='area_other > 0'
+    )
+    try:
+        dialog.otherCellsGroup.setChecked(False)
+        valid, message = dialog.validateEquation('area_other > 0')
+        assert not valid
+        assert 'Enable Other-cell measurements' in message
+        dialog.otherCellsGroup.setChecked(True)
+        assert dialog.validateEquation('area_other > 0')[0]
+    finally:
+        dialog.deleteLater()
 
 
 def test_other_cell_inputs_use_equation_aggregations(acdc_df):
@@ -158,7 +192,7 @@ def test_other_cell_inputs_use_equation_aggregations(acdc_df):
         'range_start': 't',
         'range_end': 't + 1',
     }
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         acdc_df, 'area < MEAN(area_other)', 'first_true',
         other_cells=settings
     ) == {1: [], 2: [0]}
@@ -174,13 +208,13 @@ def test_main_cell_filter_selects_eligible_cells(acdc_df):
             'condition_mode': 'any',
         },
     }
-    assert timepoint_predictors.predict_timepoints(
+    assert timepoint_predictors.TimepointPredictor.predict(
         acdc_df, predictor
     ) == {1: [1]}
 
 
 def test_main_cell_filter_all_requires_every_frame(acdc_df):
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         acdc_df, 'area > 0', 'first_true',
         main_cell_filter={
             'condition': 'stage == "G1"',
@@ -191,7 +225,7 @@ def test_main_cell_filter_all_requires_every_frame(acdc_df):
 
 def test_main_cell_filter_validation():
     with pytest.raises(ValueError, match='main-cell filter mode'):
-        timepoint_predictors.validate_main_cell_filter({
+        timepoint_predictors.CellFilter.validate_main({
             'condition': 'area > 0',
             'condition_mode': 'where_true',
         })
@@ -210,7 +244,7 @@ def test_other_cell_equation_supports_relationship_presets(lineage_df):
             'range_end': 't',
         },
     }
-    assert timepoint_predictors.predict_timepoints(
+    assert timepoint_predictors.TimepointPredictor.predict(
         lineage_df, predictor
     ) == {2: [2], 3: [2]}
 
@@ -219,10 +253,10 @@ def test_cell_functions_ignore_nan():
     df = pd.DataFrame({
         'frame_i': [0, 1, 2], 'Cell_ID': [1, 1, 1], 'area': [np.nan, 4., 2.]
     }).set_index(['frame_i', 'Cell_ID'])
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         df, 'area == MAX(area)', 'first_true'
     ) == {1: [1]}
-    assert timepoint_predictors.predict_from_equation(
+    assert timepoint_predictors.TimepointPredictor.from_equation(
         df, 'area == FIRST(area)', 'first_true'
     ) == {1: [1]}
 
@@ -236,7 +270,7 @@ def test_file_predictor_receives_single_cell(tmp_path, acdc_df):
         '        return [3, 1, 9]\n'
         '    return int(df["frame_i"].iloc[-1])\n'
     )
-    predicted = timepoint_predictors.predict_timepoints(
+    predicted = timepoint_predictors.TimepointPredictor.predict(
         acdc_df, {'type': 'file', 'filepath': str(filepath)}, SizeT=4
     )
     assert predicted == {1: [1, 3], 2: [3]}
@@ -246,10 +280,10 @@ def test_file_predictor_errors(tmp_path, acdc_df):
     filepath = tmp_path / 'pred.py'
     filepath.write_text('def other(df):\n    return 1\n')
     with pytest.raises(AttributeError):
-        timepoint_predictors.load_predictor_function(str(filepath))
+        timepoint_predictors.TimepointPredictor.load_function(str(filepath))
     filepath.write_text('def predictor(df):\n    return "a"\n')
     with pytest.raises(ValueError, match='Cell_ID 1'):
-        timepoint_predictors.predict_timepoints(
+        timepoint_predictors.TimepointPredictor.predict(
             acdc_df, {'type': 'file', 'filepath': str(filepath)}
         )
 
@@ -428,8 +462,8 @@ def big_identifier(viewer):
 
 def test_automatic_predictions_only_run_on_newly_viewed_cells(viewer, monkeypatch):
     identifier = big_identifier(viewer)
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     assert set().union(*viewer.viewedCells.values()) == {1}
     viewer.setSelectedID(2)
     assert predict.call_args.kwargs['IDs'] == {2}
@@ -444,7 +478,7 @@ def test_automatic_predictions_only_run_on_newly_viewed_cells(viewer, monkeypatc
 def test_failed_automatic_prediction_is_not_retried_on_revisit(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     predict = Mock(side_effect=ValueError('Failed'))
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     viewer.setSelectedID(2)
     viewer.measurementProcessingWarning.assert_called_once()
     viewer.setSelectedID(1)
@@ -459,8 +493,8 @@ def test_failed_automatic_prediction_is_not_retried_on_revisit(viewer, monkeypat
 
 def test_viewed_cells_are_scoped_to_position_path(viewer, monkeypatch):
     big_identifier(viewer)
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     posData = viewer.posData()
     original = posData.pos_path
     posData.pos_path = r'C:\experiment\Position_2'
@@ -480,8 +514,8 @@ def test_adding_identifier_does_not_repredict_viewed_cells(viewer, monkeypatch):
         autoApply=True
     )
     viewer.addTimepointIdentifierItem(other)
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     viewer.ensureTimepointPredictions()
     predict.assert_not_called()
     viewer.setSelectedID(2)
@@ -498,8 +532,8 @@ def test_predictor_edit_does_not_repredict_viewed_cells(viewer, monkeypatch):
             'type': 'equation', 'equation': 'area > 0', 'mode': 'first_true'
         }
     }))
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     viewer.editTimepointIdentifier(identifier.uid)
     viewer.setSelectedID(1)
     predict.assert_not_called()
@@ -514,8 +548,8 @@ def test_explicit_shortcut_preserves_manual_edit_warning(viewer, monkeypatch):
     viewer.addTimepoint(identifier.uid, 0)
     ask = Mock(return_value='cancel')
     monkeypatch.setattr(viewer, 'askOverwriteManualTimepoints', ask)
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     viewer.timepointAutoActions[identifier.uid].trigger()
     ask.assert_called_once_with({'Big': [1]}, 'the displayed cell (ID 1)')
     predict.assert_not_called()
@@ -546,8 +580,8 @@ def test_viewed_cells_configuration_roundtrip(viewer, tmp_path, monkeypatch):
         Mock(return_value=(['GFP'], ['segm']))
     )
     monkeypatch.setattr(measurements_viewer, 'load_position', Mock(return_value=posData))
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
 
     def set_data(data):
         assert data == [posData]
@@ -576,8 +610,8 @@ def test_predictor_requires_auto_apply_unless_forced(viewer, monkeypatch):
         {'type': 'equation', 'equation': 'area > 16', 'mode': 'rising_true'}
     )
     viewer.addTimepointIdentifierItem(identifier)
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     assert viewer.runTimepointPredictor(identifier.uid)
     predict.assert_not_called()
     assert not viewer.timepointAutoPredictions
@@ -589,8 +623,8 @@ def test_predictor_requires_auto_apply_unless_forced(viewer, monkeypatch):
 def test_auto_predictions_track_each_cell_including_empty_results(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     viewer.timepointAutoPredictions.clear()
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     assert viewer.runTimepointPredictor(identifier.uid, IDs=[1], skipIDs=[1])
     predict.assert_not_called()
     assert viewer.runTimepointPredictor(identifier.uid, IDs=[1])
@@ -607,8 +641,8 @@ def test_auto_predictions_track_each_cell_including_empty_results(viewer, monkey
 
 def test_auto_predictions_are_scoped_to_position_path_and_identifier(viewer, monkeypatch):
     identifier = big_identifier(viewer)
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     original = viewer.posData()
     other = SimpleNamespace(SizeT=4, pos_path=r'C:\experiment\Position_2')
     monkeypatch.setattr(viewer, 'getAcdcDf', lambda pos: viewer.acdc_df)
@@ -629,7 +663,7 @@ def test_auto_predictions_retry_failures(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     viewer.timepointAutoPredictions.clear()
     predict = Mock(side_effect=[ValueError('Failed'), {1: [2]}])
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     assert not viewer.runTimepointPredictor(identifier.uid, IDs=[1])
     assert not any(viewer.timepointAutoPredictions.values())
     assert viewer.runTimepointPredictor(identifier.uid, IDs=[1])
@@ -640,8 +674,8 @@ def test_auto_predictions_retry_failures(viewer, monkeypatch):
 def test_auto_predictions_skip_cells_without_marking_them_completed(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     viewer.timepointAutoPredictions.clear()
-    predict = Mock(wraps=timepoint_predictors.predict_timepoints)
-    monkeypatch.setattr(timepoint_predictors, 'predict_timepoints', predict)
+    predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
+    monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     assert viewer.runTimepointPredictor(identifier.uid, skipIDs=[1])
     assert predict.call_args.kwargs['IDs'] == {2}
     viewer.viewedCells.clear()
@@ -956,38 +990,50 @@ def test_unified_cell_filter_selectors(app, acdc_df):
     dialog = apps.TimepointPredictorEquationDialog(
         [], False, False, acdc_df=acdc_df, SizeT=4
     )
-    for group, selector, edit, button in (
+    for group, selector, edit, button, controls in (
             (dialog.mainCellGroup, dialog.mainCellFilterCombobox,
-             dialog.mainCellConditionEdit, dialog.mainCellConditionButton),
+             dialog.mainCellConditionEdit, dialog.mainCellConditionButton,
+             (dialog.mainCellMatchCombobox,)),
             (dialog.otherCellsGroup, dialog.otherCellsSourceCombobox,
-             dialog.otherCellsConditionEdit, dialog.otherCellsConditionButton)
+             dialog.otherCellsConditionEdit, dialog.otherCellsConditionButton,
+             (dialog.otherCellsMatchCombobox,
+              dialog.otherCellsRangeStartEdit, dialog.otherCellsRangeEndEdit))
         ):
         assert not selector.isEnabled()
+        assert all(not control.isEnabled() for control in controls)
         group.setChecked(True)
         assert selector.isEnabled()
         assert not edit.isEnabled()
         assert not button.isEnabled()
+        assert all(not control.isEnabled() for control in controls)
         selector.setCurrentIndex(selector.findData('custom'))
         assert edit.isEnabled()
         assert not edit.isReadOnly()
         assert button.isEnabled()
+        assert all(control.isEnabled() for control in controls)
         edit.setText('area > 5')
         selector.setCurrentIndex(0)
         assert not edit.isEnabled()
         assert edit.text() == ''
+        assert all(not control.isEnabled() for control in controls)
         selector.setCurrentIndex(selector.findData('custom'))
         assert edit.text() == 'area > 5'
+        assert all(control.isEnabled() for control in controls)
         group.setChecked(False)
         assert not edit.isEnabled()
+        assert all(not control.isEnabled() for control in controls)
         group.setChecked(True)
         assert edit.isEnabled()
+        assert all(control.isEnabled() for control in controls)
     dialog.deleteLater()
 
 
 @pytest.mark.parametrize('preset,expected', [
     ('All cells', {1: [0], 2: [1]}),
     ('Present at the first frame', {1: [0]}),
+    ('Not present at the first frame', {2: [1]}),
     ('Present at the last frame', {1: [0], 2: [1]}),
+    ('Not present at the last frame', {}),
     ('Present throughout the video', {1: [0]}),
 ])
 def test_main_cell_filter_presets(app, acdc_df, preset, expected):
@@ -1001,7 +1047,9 @@ def test_main_cell_filter_presets(app, acdc_df, preset, expected):
     )
     settings = dialog.currentMainCellFilter()
     assert not dialog.mainCellConditionEdit.isEnabled()
-    assert timepoint_predictors.predict_timepoints(df, {
+    assert not dialog.mainCellMatchCombobox.isEnabled()
+    assert dialog.mainCellConditionEdit.text() == settings['condition']
+    assert timepoint_predictors.TimepointPredictor.predict(df, {
         'type': 'equation',
         'equation': 'area > 0',
         'mode': 'first_true',
@@ -1028,13 +1076,15 @@ def test_main_cell_annotation_presets(app, acdc_df):
     dialog.mainCellGroup.setChecked(True)
     assert 'Present at the last frame' not in dialog.mainCellFilterPresets
     for preset, expected in (
-            ('Mother cells', {1: [0]}), ('Bud cells', {2: [0]}),
-            ('Cells in S', {1: [0]}), ('Cells in G1', {1: [0], 2: [0]})
+            ('Mother cells (budding)', {1: [0]}),
+            ('Bud cells (budding)', {2: [0]}),
+            ('Cells in S (budding)', {1: [0]}),
+            ('Cells in G1 (budding)', {1: [0], 2: [0]})
         ):
         dialog.mainCellFilterCombobox.setCurrentIndex(
             dialog.mainCellFilterCombobox.findData(preset)
         )
-        assert timepoint_predictors.predict_timepoints(df, {
+        assert timepoint_predictors.TimepointPredictor.predict(df, {
             'type': 'equation', 'equation': 'area > 0',
             'mode': 'first_true',
             'main_cell_filter': dialog.currentMainCellFilter(),
@@ -1042,26 +1092,32 @@ def test_main_cell_annotation_presets(app, acdc_df):
     dialog.deleteLater()
 
 
-def test_unified_other_cell_filter_preserves_legacy_source(app, acdc_df):
+def test_unified_other_cell_filter_materializes_legacy_source(app, lineage_df):
     settings = dict(
-        timepoint_predictors.default_other_cells(),
+        timepoint_predictors.CellFilter.default_other(),
         source='mother', condition='area > 5', condition_mode='all'
     )
     dialog = apps.TimepointPredictorEquationDialog(
-        [], False, False, acdc_df=acdc_df, otherCells=settings
+        [], False, False, acdc_df=lineage_df, otherCells=settings
+    )
+    expected = dict(
+        settings, source='same_frame',
+        condition='(Cell_ID == this_parent_ID_tree) & (area > 5)'
     )
     assert dialog.otherCellsSourceCombobox.currentData() == 'custom'
     assert dialog.otherCellsConditionEdit.isEnabled()
-    assert dialog.currentOtherCells() == settings
+    assert dialog.currentOtherCells() == expected
     dialog.otherCellsSourceCombobox.setCurrentIndex(
         dialog.otherCellsSourceCombobox.findData('sister')
     )
-    assert dialog.currentOtherCells()['source'] == 'sister'
-    assert dialog.currentOtherCells()['condition'] == ''
+    assert dialog.currentOtherCells()['source'] == 'same_frame'
+    assert dialog.currentOtherCells()['condition'] == (
+        '(parent_ID_tree > 0) & (parent_ID_tree == this_parent_ID_tree)'
+    )
     dialog.otherCellsSourceCombobox.setCurrentIndex(
         dialog.otherCellsSourceCombobox.findData('custom')
     )
-    assert dialog.currentOtherCells() == settings
+    assert dialog.currentOtherCells() == expected
     dialog.deleteLater()
 
 
@@ -1125,7 +1181,7 @@ def test_filter_editor_checks_all_rows_and_matches_runtime(app):
     assert not dialog.okButton.isEnabled()
     assert '0/1' in dialog.statusLabel.text()
     with pytest.raises(ValueError, match='0/1'):
-        timepoint_predictors.predict_from_equation(
+        timepoint_predictors.TimepointPredictor.from_equation(
             df, 'value > 0', 'first_true',
             main_cell_filter={'condition': 'value', 'condition_mode': 'any'}
         )
@@ -1622,22 +1678,187 @@ def lineage_df():
     ]).set_index(['frame_i', 'Cell_ID'])
 
 
-def test_cell_lineage_tree_and_relative_ID(lineage_df):
-    assert timepoint_predictors.lineage_source(lineage_df) == 'tree'
-    mothers, sisters, daughters = timepoint_predictors.cell_lineage(lineage_df)
-    assert mothers == {2: 1, 3: 1}
-    assert {k: set(v) for k, v in sisters.items()} == {2: {3}, 3: {2}}
-    assert {k: set(v) for k, v in daughters.items()} == {1: {2, 3}}
-    
-    budding = pd.DataFrame({
+@pytest.mark.parametrize('source,start,end,expected', [
+    ('mother', 't - 1', 't - 1', {2: [2], 3: [2]}),
+    ('sister', 't', 't', {2: [2], 3: [2]}),
+    ('daughter', 't + 1', 't + 1', {1: [1]}),
+])
+def test_symmetric_presets_show_and_save_equations(
+        app, lineage_df, source, start, end, expected
+    ):
+    dialog = apps.TimepointPredictorEquationDialog(
+        [], False, False, acdc_df=lineage_df,
+        equation='MEAN(area_other) > 0'
+    )
+    dialog.otherCellsGroup.setChecked(True)
+    dialog.otherCellsSourceCombobox.setCurrentIndex(
+        dialog.otherCellsSourceCombobox.findData(source)
+    )
+    settings = dialog.currentOtherCells()
+    assert settings['source'] == 'same_frame'
+    assert not dialog.otherCellsMatchCombobox.isEnabled()
+    assert not dialog.otherCellsRangeStartEdit.isEnabled()
+    assert not dialog.otherCellsRangeEndEdit.isEnabled()
+    assert settings['condition'] == dialog.otherCellsConditionEdit.text()
+    assert settings['condition']
+    assert (settings['range_start'], settings['range_end']) == (start, end)
+    assert timepoint_predictors.TimepointPredictor.predict(lineage_df, {
+        'type': 'equation', 'equation': 'MEAN(area_other) > 0',
+        'mode': 'first_true', 'other_cells': settings
+    }) == expected
+    dialog.test_cb()
+    assert dialog.okButton.isEnabled()
+    reopened = apps.TimepointPredictorEquationDialog(
+        [], False, False, acdc_df=lineage_df, otherCells=settings
+    )
+    assert reopened.currentOtherCells() == settings
+    assert reopened.otherCellsSourceCombobox.currentData() == source
+    reopened.deleteLater()
+    dialog.deleteLater()
+
+
+@pytest.mark.parametrize('source,expected', [
+    ('mother', {2: [0]}), ('daughter', {1: [0]})
+])
+def test_budding_presets_use_same_frame(app, source, expected):
+    df = pd.DataFrame({
         'frame_i': [0, 0, 1, 1], 'Cell_ID': [1, 2, 1, 2],
         'relationship': ['mother', 'bud', 'mother', 'mother'],
         'relative_ID': [2, 1, -1, -1], 'area': [10., 2., 10., 5.],
+        'parent_ID_tree': [-1, -1, -1, 1],
     }).set_index(['frame_i', 'Cell_ID'])
-    assert timepoint_predictors.lineage_source(budding) == 'relative_ID'
-    mothers, sisters, daughters = timepoint_predictors.cell_lineage(budding)
-    assert mothers == {2: 1}
-    assert {k: set(v) for k, v in daughters.items()} == {1: {2}}
+    dialog = apps.TimepointPredictorEquationDialog(
+        [], False, False, acdc_df=df
+    )
+    dialog.otherCellsGroup.setChecked(True)
+    dialog.otherCellsSourceCombobox.setCurrentIndex(
+        dialog.otherCellsSourceCombobox.findData(source)
+    )
+    settings = dialog.currentOtherCells()
+    assert (settings['range_start'], settings['range_end']) == ('t', 't')
+    assert 'relative_ID' in dialog.otherCellsConditionEdit.text()
+    assert timepoint_predictors.TimepointPredictor.predict(df, {
+        'type': 'equation', 'equation': 'MEAN(area_other) > 0',
+        'mode': 'first_true', 'other_cells': settings
+    }) == expected
+    assert dialog.otherCellsSourceCombobox.findData('sister') == -1
+    dialog.deleteLater()
+
+
+@pytest.mark.parametrize('with_tree_IDs', [False, True])
+@pytest.mark.parametrize('source,equation,expected', [
+    ('mother', 'MEAN(area_other) == 20', {1: [], 2: [1], 3: [1]}),
+    ('sister', 'MEAN(area_other) > 0', {1: [], 2: [1], 3: [1]}),
+    ('daughter', 'MEAN(area_other) == 8.5', {1: [0], 2: [], 3: []}),
+])
+def test_symmetric_presets_use_segmentation_ID(
+        source, equation, expected, with_tree_IDs
+    ):
+    df = pd.DataFrame({
+        'frame_i': [0, 1, 1], 'Cell_ID': [1, 2, 3],
+        'parent_ID_tree': [-1, 1, 1],
+        'area': [20., 8., 9.],
+    }).set_index(['frame_i', 'Cell_ID'])
+    if with_tree_IDs:
+        df['Cell_ID_tree'] = 10
+    presets = timepoint_predictors.CellFilter.other_presets(df)
+    assert presets['mother'][0] == 'Cell_ID == this_parent_ID_tree'
+    assert presets['daughter'][0] == 'parent_ID_tree == this_Cell_ID'
+    condition, start, end = presets[source]
+    assert timepoint_predictors.TimepointPredictor.from_equation(
+        df, equation, 'first_true',
+        other_cells=dict(
+            timepoint_predictors.CellFilter.default_other(),
+            condition=condition, range_start=start, range_end=end
+        )
+    ) == expected
+
+
+def test_if_condition_and_shift_tooltips(app, acdc_df):
+    dialog = apps.TimepointPredictorEquationDialog(
+        [], False, False, acdc_df=acdc_df
+    )
+    for edit in (
+            dialog.mainCellConditionEdit, dialog.otherCellsConditionEdit,
+            dialog.formulaEditWidget._edit
+        ):
+        assert '"if"' in edit.toolTip()
+        assert 'SHIFT(area, 1)' in edit.toolTip()
+    assert 't - 1' in dialog.otherCellsRangeStartEdit.toolTip()
+    assert timepoint_predictors.TimepointPredictor.from_equation(
+        acdc_df, '(area > SHIFT(area, 1)) & (stage == "S")', 'first_true'
+    ) == {1: [1], 2: []}
+    dialog.deleteLater()
+
+
+def test_constants_are_disabled(viewer):
+    assert not hasattr(viewer, 'editCellConstantsAction')
+    assert not hasattr(viewer, 'cellConstants')
+    assert not hasattr(apps, 'CellConstantsDialog')
+    assert not hasattr(timepoint_predictors, 'compute_cell_constants')
+    assert not hasattr(timepoint_predictors, 'default_constant')
+
+
+def test_class_api_has_no_module_level_compatibility_functions():
+    for name in (
+            'predict_timepoints', 'predict_from_equation', 'predict_from_function',
+            'validate_predictor', 'eval_cell_equation', 'validate_other_cells',
+            'frame_range_bounds', '_flat_df'
+        ):
+        assert not hasattr(timepoint_predictors, name)
+
+
+@pytest.mark.parametrize('start,end,t,expected', [
+    ('t - 1', 't', 5, (4, 5)),
+    ('0', 't + 2', 3, (0, 5)),
+    ('(t // 2) * 2', 't + 1', 3, (2, 4)),
+])
+def test_frame_range_class_bounds(start, end, t, expected):
+    assert timepoint_predictors.FrameRange.bounds(start, end, t) == expected
+
+
+@pytest.mark.parametrize('start,end,t,sizeT,expected', [
+    ('t - 5', 't + 3', 0, 3, (0, 2)),
+    ('t + 5', 't + 8', 0, 3, (5, 2)),
+    ('t - 8', 't - 5', 0, 3, (0, -5)),
+    ('t - 5', 't + 3', 0, 0, (0, -1)),
+])
+def test_frame_range_class_clips_to_video(
+        start, end, t, sizeT, expected
+    ):
+    assert timepoint_predictors.FrameRange.bounds(
+        start, end, t, SizeT=sizeT
+    ) == expected
+
+
+@pytest.mark.parametrize('start,end', [
+    ('t + 1', 't'), ('t / 2', 't'), ('unknown', 't'),
+])
+def test_frame_range_class_rejects_invalid_bounds(start, end):
+    with pytest.raises(ValueError):
+        timepoint_predictors.FrameRange.bounds(start, end, 3)
+
+
+def test_class_table_and_aggregate_helpers_preserve_inputs(acdc_df):
+    original = acdc_df.copy(deep=True)
+    flat = timepoint_predictors.CellTable.flatten(acdc_df)
+    assert {'Cell_ID', 'frame_i'}.issubset(flat.columns)
+    assert [
+        ID for ID, _ in timepoint_predictors.CellTable.iter_cells(
+            timepoint_predictors.CellTable.subset(flat, [2])
+        )
+    ] == [2]
+    settings = timepoint_predictors.CellFilter.default_other()
+    prepared, equation = (
+        timepoint_predictors.OtherCellMeasurements.prepare_inputs(
+            acdc_df, 'area > MEAN(area_other)', settings, 4
+        )
+    )
+    assert 'MEAN(area_other)' not in equation
+    assert prepared.index.equals(acdc_df.index)
+    assert len(prepared.columns) == len(acdc_df.columns) + 1
+    pd.testing.assert_frame_equal(acdc_df, original)
+    assert settings == timepoint_predictors.CellFilter.default_other()
 
 
 # def test_cell_constants_source_cells(lineage_df):

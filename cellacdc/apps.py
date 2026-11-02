@@ -14501,7 +14501,7 @@ class _CombineMetricsDialog(QBaseDialog):
                 )
             result = df.eval(formula)
             if enforce_dtype_output is not None:
-                result = timepoint_predictors.enforce_equation_output_dtype(
+                result = timepoint_predictors.CellEquation.enforce_dtype(
                     result, enforce_dtype_output, len(df)
                 )
             return result
@@ -14510,9 +14510,9 @@ class _CombineMetricsDialog(QBaseDialog):
             {'SizeT': self.SizeT}
             if getattr(self, 'SizeT', None) is not None else None
         )
-        flat = timepoint_predictors._flat_df(df)
+        flat = timepoint_predictors.CellTable.flatten(df)
         if 'Cell_ID' not in flat or flat.empty:
-            return timepoint_predictors.eval_cell_equation(
+            return timepoint_predictors.CellEquation.evaluate(
                 flat, formula, variables,
                 enforce_dtype_output=enforce_dtype_output
             )
@@ -14521,7 +14521,7 @@ class _CombineMetricsDialog(QBaseDialog):
             if 'frame_i' in cell:
                 cell = cell.sort_values('frame_i')
             try:
-                values = timepoint_predictors.eval_cell_equation(
+                values = timepoint_predictors.CellEquation.evaluate(
                     cell.reset_index(drop=True), formula, variables,
                     enforce_dtype_output=enforce_dtype_output
                 )
@@ -14692,13 +14692,30 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         self.equation = equation
         self.mode = mode
         self._otherCells = (
-            timepoint_predictors.default_other_cells()
+            timepoint_predictors.CellFilter.default_other()
             if otherCells is None else
-            timepoint_predictors.validate_other_cells(otherCells)
+            timepoint_predictors.CellFilter.validate_other(otherCells)
         )
+        self.otherCellFilterPresets = timepoint_predictors.CellFilter.other_presets(
+            self.acdcDf
+        )
+        source = self._otherCells['source']
+        if source != timepoint_predictors.SOURCE_SAME_FRAME:
+            if source not in self.otherCellFilterPresets:
+                raise ValueError(
+                    'The selected other-cell source requires lineage tree or '
+                    'budding relationship annotations.'
+                )
+            sourceCondition = self.otherCellFilterPresets[source][0]
+            condition = self._otherCells['condition'].strip()
+            self._otherCells['condition'] = (
+                f'({sourceCondition}) & ({condition})'
+                if condition else sourceCondition
+            )
+            self._otherCells['source'] = timepoint_predictors.SOURCE_SAME_FRAME
         self._mainCellFilter = (
             None if mainCellFilter is None else
-            timepoint_predictors.validate_main_cell_filter(mainCellFilter)
+            timepoint_predictors.CellFilter.validate_main(mainCellFilter)
         )
         self.newColNameLineEdit.setText(name)
         self.newColNameLineEdit.setReadOnly(True)
@@ -14802,6 +14819,17 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         self.mainCellConditionEdit = QLineEdit(
             mainCellCondition
         )
+        filterTooltip = (
+            'Express "if" as a boolean condition, e.g. area > 5. '
+            'Combine conditions with & (and), | (or), and ~ (not), with '
+            'parentheses around each comparison: '
+            '(area > 5) & (cell_cycle_stage == "S"). '
+            'Do not use Python if/else statements or and/or. '
+            'SHIFT(area, 1) is the previous observed value of this cell '
+            '(not necessarily the previous video frame).'
+        )
+        self.mainCellConditionEdit.setToolTip(filterTooltip)
+        self.formulaEditWidget._edit.setToolTip(filterTooltip)
         self.mainCellConditionButton = widgets.editPushButton('Edit filter...')
         self.mainCellMatchCombobox = QComboBox()
         for key in ('any', 'all'):
@@ -14832,30 +14860,35 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         self.otherCellsGroup.setChecked(otherCells is not None)
         otherCellsLayout = QGridLayout(self.otherCellsGroup)
         self._otherCellsCustomCondition = self._otherCells['condition']
-        self._otherCellsCustomSource = self._otherCells['source']
+        self._otherCellsCustomRange = (
+            self._otherCells['range_start'], self._otherCells['range_end']
+        )
         self.otherCellsSourceCombobox = QComboBox()
         for key, label in (
                 (timepoint_predictors.SOURCE_SAME_FRAME, 'Other cells'),
-                ('mother', 'Mother cell'),
-                ('sister', 'Sister cell(s)'),
-                ('daughter', 'Daughter cell(s)')
+                (timepoint_predictors.SOURCE_MOTHER, 'Mother cell'),
+                (timepoint_predictors.SOURCE_SISTER, 'Sister cell(s)'),
+                (timepoint_predictors.SOURCE_DAUGHTER, 'Daughter cell(s)')
             ):
-            self.otherCellsSourceCombobox.addItem(label, key)
-        customLabel = 'Custom equation'
-        if self._otherCellsCustomSource != timepoint_predictors.SOURCE_SAME_FRAME:
-            sourceLabel = self.otherCellsSourceCombobox.itemText(
-                self.otherCellsSourceCombobox.findData(self._otherCellsCustomSource)
-            )
-            customLabel = f'{customLabel} ({sourceLabel})'
-        self.otherCellsSourceCombobox.addItem(customLabel, 'custom')
-        otherCellsPreset = (
-            'custom' if self._otherCells['condition'].strip()
-            else self._otherCells['source']
+            if key in self.otherCellFilterPresets:
+                self.otherCellsSourceCombobox.addItem(label, key)
+        self.otherCellsSourceCombobox.addItem(
+            'Custom equation', timepoint_predictors.SOURCE_CUSTOM
         )
+        otherCellsPreset = timepoint_predictors.SOURCE_CUSTOM
+        for key, (condition, start, end) in self.otherCellFilterPresets.items():
+            if (condition == self._otherCells['condition']
+                    and (start, end) == self._otherCellsCustomRange):
+                otherCellsPreset = key
         self.otherCellsSourceCombobox.setCurrentIndex(
             self.otherCellsSourceCombobox.findData(otherCellsPreset)
         )
         self.otherCellsConditionEdit = QLineEdit(self._otherCells['condition'])
+        self.otherCellsConditionEdit.setToolTip(
+            filterTooltip + ' Candidate inputs use normal names; this_ '
+            'inputs refer to the enquiring cell at frame t, even when '
+            'candidates come from another frame.'
+        )
         self.otherCellsConditionButton = widgets.editPushButton('Edit filter...')
         self.otherCellsMatchCombobox = QComboBox()
         for key, label in timepoint_predictors.FILTER_FRAME_MODES.items():
@@ -14874,7 +14907,11 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             ):
             edit.setToolTip(
                 'Inclusive frame bounds relative to t, the frame being '
-                'predicted (e.g. t - 2 to t + 1).'
+                'predicted (e.g. t - 2 to t + 1). Shift both bounds to '
+                't - 1 for the previous frame (symmetric mother), or use '
+                't for budding relatives in the same frame. Unlike '
+                'SHIFT(column, 1), this selects an exact video frame; '
+                'missing frames are not padded.'
             )
         otherCellsLayout.addWidget(QLabel('Select cells:'), 0, 0)
         otherCellsLayout.addWidget(self.otherCellsSourceCombobox, 0, 1, 1, 2)
@@ -14915,8 +14952,8 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         self.otherCellsConditionEdit.textChanged.connect(
             self.otherCellsConditionChanged
         )
-        self.otherCellsRangeStartEdit.textChanged.connect(self.equationChanged)
-        self.otherCellsRangeEndEdit.textChanged.connect(self.equationChanged)
+        self.otherCellsRangeStartEdit.textChanged.connect(self.otherCellsRangeChanged)
+        self.otherCellsRangeEndEdit.textChanged.connect(self.otherCellsRangeChanged)
         self.otherCellsConditionButton.clicked.connect(
             self.editOtherCellsCondition
         )
@@ -14934,16 +14971,13 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
 
     def updateOtherCellsControls(self, enabled):
         custom = self.otherCellsSourceCombobox.currentData() == 'custom'
-        for widget in (
-                self.otherCellsSourceCombobox,
-                self.otherCellsRangeStartEdit,
-                self.otherCellsRangeEndEdit
-            ):
-            widget.setEnabled(enabled)
+        self.otherCellsSourceCombobox.setEnabled(enabled)
         for widget in (
                 self.otherCellsConditionEdit,
                 self.otherCellsConditionButton,
-                self.otherCellsMatchCombobox
+                self.otherCellsMatchCombobox,
+                self.otherCellsRangeStartEdit,
+                self.otherCellsRangeEndEdit
             ):
             widget.setEnabled(enabled and custom)
         self.otherMeasurementsTreeWidget.setEnabled(enabled)
@@ -14956,9 +14990,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
                 self.mainCellConditionButton
             ):
             widget.setEnabled(enabled and custom)
-        self.mainCellMatchCombobox.setEnabled(
-            enabled and (custom or bool(self.mainCellConditionEdit.text()))
-        )
+        self.mainCellMatchCombobox.setEnabled(enabled and custom)
 
     def mainCellConditionChanged(self, text):
         if self.mainCellFilterCombobox.currentData() == 'custom':
@@ -14968,6 +15000,14 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
     def otherCellsConditionChanged(self, text):
         if self.otherCellsSourceCombobox.currentData() == 'custom':
             self._otherCellsCustomCondition = text
+        self.equationChanged()
+
+    def otherCellsRangeChanged(self, text):
+        if self.otherCellsSourceCombobox.currentData() == 'custom':
+            self._otherCellsCustomRange = (
+                self.otherCellsRangeStartEdit.text(),
+                self.otherCellsRangeEndEdit.text()
+            )
         self.equationChanged()
 
     def mainCellPresetChanged(self, index):
@@ -14981,28 +15021,34 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         self.equationChanged()
 
     def otherCellsPresetChanged(self, index):
-        custom = self.otherCellsSourceCombobox.currentData() == 'custom'
-        self.otherCellsConditionEdit.setText(
-            self._otherCellsCustomCondition if custom else ''
-        )
+        preset = self.otherCellsSourceCombobox.currentData()
+        if preset == 'custom':
+            condition = self._otherCellsCustomCondition
+            start, end = self._otherCellsCustomRange
+        else:
+            condition, start, end = self.otherCellFilterPresets[preset]
+        self.otherCellsConditionEdit.setText(condition)
+        for edit, value in (
+                (self.otherCellsRangeStartEdit, start),
+                (self.otherCellsRangeEndEdit, end)
+            ):
+            edit.blockSignals(True)
+            edit.setText(value)
+            edit.blockSignals(False)
         self.updateOtherCellsControls(self.otherCellsGroup.isChecked())
         self.equationChanged()
 
     def currentOtherCells(self):
         if not self.otherCellsGroup.isChecked():
             return None
-        source = self.otherCellsSourceCombobox.currentData()
-        custom = source == 'custom'
         settings = {
-            'source': self._otherCellsCustomSource if custom else source,
-            'condition': (
-                self.otherCellsConditionEdit.text().strip() if custom else ''
-            ),
+            'source': self._predictors.SOURCE_SAME_FRAME,
+            'condition': self.otherCellsConditionEdit.text().strip(),
             'condition_mode': self.otherCellsMatchCombobox.currentData(),
             'range_start': self.otherCellsRangeStartEdit.text().strip(),
             'range_end': self.otherCellsRangeEndEdit.text().strip(),
         }
-        return self._predictors.validate_other_cells(settings)
+        return self._predictors.CellFilter.validate_other(settings)
 
     def currentMainCellFilter(self):
         if not self.mainCellGroup.isChecked():
@@ -15015,7 +15061,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             ),
             'condition_mode': self.mainCellMatchCombobox.currentData(),
         }
-        return self._predictors.validate_main_cell_filter(settings)
+        return self._predictors.CellFilter.validate_main(settings)
 
     def editOtherCellsCondition(self, checked=False):
         settings = self.currentOtherCells()
@@ -15024,6 +15070,9 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             acdc_df=self.acdcDf, SizeT=self.SizeT,
             condition=settings['condition'], includeEnquiringCell=True,
             parent=self
+        )
+        dialog.formulaEditWidget._edit.setToolTip(
+            self.otherCellsConditionEdit.toolTip()
         )
         dialog.exec_()
         if not dialog.cancel:
@@ -15034,7 +15083,11 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             self.allChNames, self.isZstack, self.isSegm3D,
             acdc_df=self.acdcDf, SizeT=self.SizeT,
             condition=self.mainCellConditionEdit.text(),
+            otherCells=self.currentOtherCells(),
             parent=self
+        )
+        dialog.formulaEditWidget._edit.setToolTip(
+            self.mainCellConditionEdit.toolTip()
         )
         dialog.exec_()
         if not dialog.cancel:
@@ -15058,29 +15111,30 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             otherMeasurementCalls = list(
                 self._predictors._OTHER_MEASUREMENT_PATTERN.finditer(formula)
             )
-            if otherMeasurementCalls and settings is None:
+            otherInputNames = {
+                name for name in self._predictors.CellEquation.names(formula)
+                if name.endswith('_other')
+            }
+            if otherInputNames and settings is None:
                 return False, (
                     'Enable Other-cell measurements to use _other inputs.'
                 )
+            available = (
+                self._predictors.CellTable.flatten(self.acdcDf).columns
+                if self.acdcDf is not None else ()
+            )
+            for otherName in otherInputNames:
+                if otherName not in self.otherMeasurementColumns:
+                    return False, f'Unknown other-cell input "{otherName}".'
+                column = self.otherMeasurementColumns[otherName]
+                if self.acdcDf is not None and column not in available:
+                    return False, f'Unknown input column "{column}".'
             if (
                     self._predictors._OTHER_FUNCTION_PATTERN.search(formula)
                     or otherMeasurementCalls
                 ):
-                available = (
-                    self._predictors._flat_df(self.acdcDf).columns
-                    if self.acdcDf is not None else ()
-                )
                 for match in self._predictors._OTHER_FUNCTION_PATTERN.finditer(formula):
                     column = match.group('column').strip('`')
-                    if self.acdcDf is not None and column not in available:
-                        return False, f'Unknown input column "{column}".'
-                for match in otherMeasurementCalls:
-                    otherName = match.group('column').strip('`')
-                    if otherName not in self.otherMeasurementColumns:
-                        return False, (
-                            f'Unknown other-cell input "{otherName}".'
-                        )
-                    column = self.otherMeasurementColumns[otherName]
                     if self.acdcDf is not None and column not in available:
                         return False, f'Unknown input column "{column}".'
                 formula = self._predictors._OTHER_FUNCTION_PATTERN.sub(
@@ -15121,7 +15175,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             self._showTestError(message)
             return
         try:
-            timepoints = self._predictors.predict_from_equation(
+            timepoints = self._predictors.TimepointPredictor.from_equation(
                 self.acdcDf, self.formulaEditWidget.text(), self.currentMode(),
                 SizeT=getattr(self, 'SizeT', None),
                 other_cells=self.currentOtherCells(),
@@ -15180,22 +15234,40 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             predictor equation. Select a preset for cells present at the start,
             end, or throughout the video. Cell-cycle presets are available
             when their annotation columns are loaded.
-            Select "Custom equation" to enable the equation field and editor.
+            Preset settings are read-only. Select "Custom equation" to enable
+            the equation field, editor and match mode.
             "Any" keeps a cell if the filter is true in
             at least one of its frames; "All" requires it to be true in every
-            frame.<br><br>
+            frame. Other-cell inputs use the configured Other-cell source and
+            frame window. To keep cells that have daughters, select the Daughter
+            preset under Other-cell measurements and use
+            <code>COUNT(cell_area_pxl_other) &gt; 0</code> with "Any" in the
+            main-cell filter. The predictor then evaluates all frames of each
+            retained cell.<br><br>
             <b>Other-cell measurements</b> are listed in the second tree with
             an <code>_other</code> suffix. Aggregate one in the equation with
             the usual functions, e.g. <code>area &gt; MEAN(area_other)</code>.
+            A direct input such as <code>area_other</code> is also allowed
+            when the selected nonmissing values are all identical (including
+            a single value). Multiple different values require an explicit
+            aggregate. No selected rows produce 0 for other-cell inputs and
+            aggregates; a direct input with only missing values also gives 0.
             The aggregation uses selected source cells in the configured
             inclusive frame window around t. Select a source preset or
-            "Custom equation" to enable filtering of
-            candidates; candidate and current-cell inputs use normal and
-            <code>this_</code>-prefixed names, respectively.<br><br>
-            <b>Per-cell constants</b> defined with the "Per-cell constants" 
-            button of the Time points toolbar are listed with the inputs and 
-            can be used like columns, e.g. 
-            <code>cell_area_pxl &gt; 0.8 * max_cell_area_pxl</code>.<br><br>
+            "Custom equation" to edit the displayed filter, match mode and
+            frame window. Preset settings are read-only.
+            Candidate inputs use normal names; <code>this_</code>-prefixed
+            names refer to the enquiring cell at t. Budding relatives use
+            frame t; symmetric mothers use the shifted bounds
+            <code>t - 1</code> to <code>t - 1</code>, and daughters
+            <code>t + 1</code> to <code>t + 1</code>.
+            <code>SHIFT(area, 1)</code> instead gives the previous observed
+            measurement of a cell, not a relative's frame.<br><br>
+            <b>If conditions:</b> write a boolean expression, e.g.
+            <code>(area &gt; 5) &amp; (cell_cycle_stage == "S")</code>.
+            Use <code>&amp;</code> (and), <code>|</code> (or),
+            <code>~</code> (not) and parentheses, not Python
+            <code>if/else</code> statements or <code>and/or</code>.<br><br>
             Double-click an input to add it to the equation.
         """)
         msg = widgets.myMessageBox(wrapText=False)
@@ -15205,15 +15277,18 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
 class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
     def __init__(
             self, allChNames, isZstack, isSegm3D, acdc_df=None, SizeT=None,
-            condition='', includeEnquiringCell=False, parent=None
+            condition='', includeEnquiringCell=False, parent=None,
+            otherCells=None
         ):
         from . import timepoint_predictors
         self._predictors = timepoint_predictors
         self.SizeT = SizeT
         self.includeEnquiringCell = includeEnquiringCell
+        self.otherCells = otherCells
+        self.includeOtherMeasurements = not includeEnquiringCell
         if includeEnquiringCell:
             df = (
-                timepoint_predictors._flat_df(acdc_df)
+                timepoint_predictors.CellTable.flatten(acdc_df)
                 if acdc_df is not None else
                 pd.DataFrame(columns=['frame_i', 'Cell_ID'])
             )
@@ -15257,7 +15332,11 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
                 'inputs are prefixed with <code>this_</code>.'
                 if includeEnquiringCell else
                 ' The equation is evaluated on each target cell across its '
-                'frames.'
+                'frames. Other-cell inputs use the source and frame window '
+                'configured in the predictor. With Daughter cells selected, '
+                '<code>COUNT(cell_area_pxl_other) &gt; 0</code> and match '
+                '"Any" retain cells with observed daughters, without limiting '
+                'the predictor to their division frame.'
             )
         )))
         self.formulaEditWidget.setText(condition)
@@ -15290,6 +15369,8 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
 
     def getTestData(self, preview=False):
         if not self.includeEnquiringCell:
+            if self.acdcDf is not None:
+                return self.acdcDf.copy()
             return super().getTestData(preview=preview)
         candidate, enquiring = self.acdcDfs.values()
         candidate = (
@@ -15311,6 +15392,28 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
         for name in enquiring.columns:
             candidate[f'this_{name}'] = enquiring[name].to_numpy()
         return candidate
+
+    def evaluateEquation(self, df, formula, *, enforce_dtype_output=None):
+        if not self.includeEnquiringCell:
+            if self.acdcDf is None:
+                otherNames = [
+                    name for name in self._predictors.CellEquation.names(formula)
+                    if name.endswith('_other')
+                ]
+                df = df.drop(columns=otherNames, errors='ignore').copy()
+                for name in otherNames:
+                    column = name[:-len('_other')]
+                    if column not in df:
+                        df[column] = 1.
+                for column in ('frame_i', 'Cell_ID'):
+                    if column not in df and column not in df.index.names:
+                        df[column] = 0
+            df, formula = self._predictors.OtherCellMeasurements.prepare_inputs(
+                df, formula, self.otherCells, self.SizeT
+            )
+        return super().evaluateEquation(
+            df, formula, enforce_dtype_output=enforce_dtype_output
+        )
 
     def validateEquation(self, formula):
         try:
@@ -15358,8 +15461,18 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
     def showHelp(self):
         txt = html_utils.paragraph(
             'Return a boolean condition or numeric 0/1. With the other-cell '
+            'inputs in the main-cell filter, use the predictor\'s configured '
+            'source and window, e.g. <code>COUNT(cell_area_pxl_other) &gt; 0</code> '
+            'with Daughter cells and match Any to retain whole cells with '
+            'daughters. The predictor still sees all their frames. With the other-cell '
             'filter, use <code>this_</code> before an input name to reference '
-            'the enquiring cell.'
+            'the enquiring cell at frame t. Express "if" as a condition, e.g. '
+            '<code>(area &gt; 5) &amp; (cell_cycle_stage == "S")</code>. '
+            'Use <code>&amp;</code>, <code>|</code>, <code>~</code> and '
+            'parentheses instead of Python if/else statements or and/or. '
+            '<code>SHIFT(area, 1)</code> is the previous observed value of '
+            'a cell. To select candidates in the previous video frame, set '
+            'both frame-window bounds to <code>t - 1</code>.'
         )
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Cell filter equation', txt)
@@ -15579,9 +15692,9 @@ class TimepointIdentifierDialog(QBaseDialog):
     
     def validatePredictor(self):
         predictor = self.predictor()
-        self._predictors.validate_predictor(predictor)
+        self._predictors.TimepointPredictor.validate(predictor)
         if predictor['type'] == self._predictors.PREDICTOR_FILE:
-            self._predictors.load_predictor_function(predictor['filepath'])
+            self._predictors.TimepointPredictor.load_function(predictor['filepath'])
         return predictor
     
     def testPredictor(self):
@@ -15592,7 +15705,7 @@ class TimepointIdentifierDialog(QBaseDialog):
                     'Predictor is valid. Load measurements to test it on data.'
                 )
                 return
-            timepoints = self._predictors.predict_timepoints(
+            timepoints = self._predictors.TimepointPredictor.predict(
                 self.acdc_df, predictor, SizeT=self.SizeT
             )
         except Exception as err:
