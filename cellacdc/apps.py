@@ -98,6 +98,7 @@ from . import path
 from . import fonts
 from . import QtScoped
 from . import debugutils
+from .timepoint_predictors import debug_trace as timepoint_debug_trace
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -14444,6 +14445,7 @@ class _CombineMetricsDialog(QBaseDialog):
     def _debug(self):
         print(self.formulaEditWidget.text(), self.equationColNames)
 
+    @timepoint_debug_trace
     def equationChanged(self, *args):
         self.okButton.setDisabled(True)
         self.statusLabel.clear()
@@ -14490,7 +14492,10 @@ class _CombineMetricsDialog(QBaseDialog):
             return False, str(err)
         return True, formula
 
-    def evaluateEquation(self, df, formula, *, enforce_dtype_output=None):
+    @timepoint_debug_trace
+    def evaluateEquation(
+            self, df, formula, *, enforce_dtype_output=None, alternatives=None
+        ):
         """Use downstream pandas/per-cell execution and optionally check dtype."""
         from . import timepoint_predictors
         if not self.allowCellAggregations:
@@ -14521,9 +14526,12 @@ class _CombineMetricsDialog(QBaseDialog):
             if 'frame_i' in cell:
                 cell = cell.sort_values('frame_i')
             try:
-                values = timepoint_predictors.CellEquation.evaluate(
-                    cell.reset_index(drop=True), formula, variables,
-                    enforce_dtype_output=enforce_dtype_output
+                values = (
+                    timepoint_predictors.OtherCellMeasurements
+                    .evaluate_with_alternatives(
+                        cell.reset_index(drop=True), formula, alternatives,
+                        variables, enforce_dtype_output=enforce_dtype_output
+                    )
                 )
                 results.append(pd.Series(
                     np.broadcast_to(np.asarray(values), len(cell)),
@@ -14688,6 +14696,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             allChNames, isZstack, isSegm3D, parent=parent, acdc_df=acdc_df,
             allowCellAggregations=True
         )
+        self.formulaEditWidget.setLiveValidation(False)
         self.setWindowTitle(f'Time point predictor equation - {name}')
         self.equation = equation
         self.mode = mode
@@ -15096,6 +15105,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
     def currentMode(self):
         return self.modeCombobox.currentData()
     
+    @timepoint_debug_trace
     def validateEquation(self, formula):
         try:
             if not formula.strip():
@@ -15153,6 +15163,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         self.testOutputDisplay.setPlainText(message)
         self.testOutputDisplay.setStyleSheet('border: 2px solid red')
     
+    @timepoint_debug_trace
     def test_cb(self):
         if self.acdcDf is None:
             self.equationChanged()
@@ -15302,6 +15313,7 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
                 allChNames, isZstack, isSegm3D, parent=parent,
                 acdc_df=acdc_df, allowCellAggregations=True
             )
+        self.formulaEditWidget.setLiveValidation(False)
         self.setWindowTitle(
             'Other-cell filter equation' if includeEnquiringCell
             else 'Main-cell filter equation'
@@ -15393,7 +15405,10 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
             candidate[f'this_{name}'] = enquiring[name].to_numpy()
         return candidate
 
-    def evaluateEquation(self, df, formula, *, enforce_dtype_output=None):
+    @timepoint_debug_trace
+    def evaluateEquation(
+            self, df, formula, *, enforce_dtype_output=None, preview=False
+        ):
         if not self.includeEnquiringCell:
             if self.acdcDf is None:
                 otherNames = [
@@ -15408,23 +15423,35 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
                 for column in ('frame_i', 'Cell_ID'):
                     if column not in df and column not in df.index.names:
                         df[column] = 0
-            df, formula = self._predictors.OtherCellMeasurements.prepare_inputs(
-                df, formula, self.otherCells, self.SizeT
+            # Preview rows still use the whole table as other-cell candidates.
+            df, formula, alternatives = (
+                self._predictors.OtherCellMeasurements.prepare_inputs(
+                    df, formula, self.otherCells, self.SizeT,
+                    max_targets=10 if preview else None,
+                    return_alternatives=True
+                )
             )
+        else:
+            alternatives = None
         return super().evaluateEquation(
-            df, formula, enforce_dtype_output=enforce_dtype_output
+            df, formula, enforce_dtype_output=enforce_dtype_output,
+            alternatives=alternatives
         )
 
+    @timepoint_debug_trace
     def validateEquation(self, formula):
         try:
             if not formula.strip():
                 return True, formula
             df = self.getTestData(preview=True)
-            self.evaluateEquation(df, formula, enforce_dtype_output=bool)
+            self.evaluateEquation(
+                df, formula, enforce_dtype_output=bool, preview=True
+            )
         except Exception as err:
             return False, str(err)
         return True, formula
 
+    @timepoint_debug_trace
     def test_cb(self):
         formula = self.formulaEditWidget.text()
         success, message = self.validateEquation(formula)
@@ -15697,6 +15724,7 @@ class TimepointIdentifierDialog(QBaseDialog):
             self._predictors.TimepointPredictor.load_function(predictor['filepath'])
         return predictor
     
+    @timepoint_debug_trace
     def testPredictor(self):
         try:
             predictor = self.validatePredictor()
@@ -19821,6 +19849,7 @@ class FormulaEditWidget(QWidget):
         self._variable_names = variable_names or []
         self._validator = validator
         self._allow_empty = allow_empty
+        self._live_validation = True
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -19858,6 +19887,12 @@ class FormulaEditWidget(QWidget):
         """Sets the formula text."""
         self._edit.setText(text)
 
+    def setLiveValidation(self, enabled):
+        """Enable or disable running the equation validator while typing."""
+        self._live_validation = bool(enabled)
+        if not self._live_validation:
+            self._clearStatus()
+
     def toPlainText(self):
         return self.text()
 
@@ -19884,7 +19919,12 @@ class FormulaEditWidget(QWidget):
         self._status_label.setText('')
         self._status_label.setStyleSheet('font-size: 11px;')
 
+    @timepoint_debug_trace
     def _onTextChanged(self, text):
+        if not self._live_validation:
+            self._clearStatus()
+            self.sigFormulaChanged.emit(text, False)
+            return
         if not text.strip():
             self._clearStatus()
 

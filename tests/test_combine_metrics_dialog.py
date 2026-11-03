@@ -590,6 +590,23 @@ def test_formula_editor_no_longer_requires_channel_parent(app):
     parent.deleteLater()
 
 
+def test_formula_editor_can_skip_live_validation_and_check_on_demand(app):
+    checked = []
+    editor = apps.FormulaEditWidget(
+        ['area'], validator=lambda formula: (
+            checked.append(formula) or (True, formula)
+        )
+    )
+    editor.setLiveValidation(False)
+    editor.setText('area > 0')
+
+    assert checked == []
+    assert editor._status_label.text() == ''
+    assert editor.checkValidity() == (True, 'area > 0')
+    assert checked == ['area > 0']
+    editor.deleteLater()
+
+
 def test_channel_formula_preserves_forbidden_inputs_and_empty_formula(app, monkeypatch):
     monkeypatch.setattr(apps.CombineChannelsSetupDialog, 'setLoadLastRecipe', lambda _: None)
     dialog = apps.CombineChannelsSetupDialog(['GFP', 'RFP'])

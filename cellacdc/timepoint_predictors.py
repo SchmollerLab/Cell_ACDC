@@ -58,6 +58,9 @@ For example::
     lower, upper = FrameRange.bounds('t - 1', 't', t=5)
 
 Shared configuration keys, UI labels and templates remain module constants.
+Set CELLACDC_TIMEPOINT_DEBUG=1 before launching, or set DEBUG=True in this
+module, to log operation timings and repeat the active Python stack every
+10 seconds during a slow operation. Diagnostics go to stderr, not Qt widgets.
 The historical per-cell constants implementation is retained as commented
 code, not an active API. Its old function names are preserved for reference;
 restoring it would require migrating those calls to the classes above.
@@ -70,16 +73,116 @@ import itertools
 import operator
 import os
 import re
+import sys
+import threading
+import time
+import traceback
+import warnings
 # from collections import defaultdict
 from dataclasses import dataclass, field
-from functools import lru_cache
+from functools import lru_cache, wraps
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from typing import Any
+from typing import Any, overload
 
 import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 from ._equations import equation_variable_spans
+
+DEBUG = False
+DEBUG_STACK_INTERVAL = 10.0
+_debug_state = threading.local()
+
+
+def _debug_enabled() -> bool:
+    return DEBUG or os.environ.get(
+        'CELLACDC_TIMEPOINT_DEBUG', ''
+    ).lower() in ('1', 'true', 'yes')
+
+
+def debug_trace(func):
+    """Trace timepoint operations without depending on the GUI event loop."""
+    signature = inspect.signature(func)
+    parameters = signature.parameters.values()
+    max_positional = None
+    if not any(p.kind == p.VAR_POSITIONAL for p in parameters):
+        max_positional = sum(
+            p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+            for p in parameters
+        )
+
+    @wraps(func)
+    def traced(*args, **kwargs):
+        # Qt passes signal arguments (e.g. clicked's checked) to *args slots.
+        if max_positional is not None:
+            args = args[:max_positional]
+        if not _debug_enabled():
+            return func(*args, **kwargs)
+        depth = getattr(_debug_state, 'depth', 0)
+        thread_id = threading.get_ident()
+        label = f'{func.__qualname__} [thread={thread_id}, depth={depth}]'
+        details = []
+        for name, value in signature.bind_partial(*args, **kwargs).arguments.items():
+            if isinstance(value, pd.DataFrame):
+                details.append(f'{name}.shape={value.shape}')
+            elif name in (
+                'equation', 'formula', 'condition', 'mode', 'combine',
+                'SizeT', 'other_cells', 'main_cell_filter',
+                'enforce_dtype_output',
+            ):
+                details.append(f'{name}={value!r}')
+        print(f'[timepoint-debug] BEGIN {label} {" ".join(details)}',
+              file=sys.stderr, flush=True)
+        start = time.perf_counter()
+        stop = threading.Event()
+        watcher = None
+        if depth == 0:
+            def dump_stack():
+                while not stop.wait(DEBUG_STACK_INTERVAL):
+                    print(
+                        f'[timepoint-debug] STILL RUNNING {label} '
+                        f'elapsed={time.perf_counter() - start:.3f}s',
+                        file=sys.stderr, flush=True
+                    )
+                    frame = sys._current_frames().get(thread_id)
+                    if frame is not None:
+                        traceback.print_stack(frame, file=sys.stderr)
+                        sys.stderr.flush()
+                    del frame
+
+            watcher = threading.Thread(
+                target=dump_stack, name='timepoint-debug-watchdog', daemon=True
+            )
+            watcher.start()
+        _debug_state.depth = depth + 1
+        outcome = 'END'
+        try:
+            result = func(*args, **kwargs)
+            if func.__name__ == 'constant_main_any':
+                print(
+                    '[timepoint-debug] constant_main_any '
+                    + ('FALLBACK' if result is None
+                       else f'FAST PATH eligible_cells={len(result)}'),
+                    file=sys.stderr, flush=True
+                )
+            return result
+        except BaseException:
+            outcome = 'FAILED'
+            traceback.print_exc(file=sys.stderr)
+            raise
+        finally:
+            stop.set()
+            if watcher is not None:
+                watcher.join()
+            _debug_state.depth = depth
+            print(
+                f'[timepoint-debug] {outcome} {label} '
+                f'elapsed={time.perf_counter() - start:.3f}s',
+                file=sys.stderr, flush=True
+            )
+
+    return traced
+
 
 DEFAULT_SHORTCUTS = tuple('QWERTYUIOP')
 DEFAULT_COLORS = (
@@ -241,7 +344,7 @@ class FrameRange:
     For example, bounds('t - 1', 't', 5) returns (4, 5).
     Bounds are clipped to nonnegative frames and, when SizeT is supplied, to
     the video's last frame. Missing frames are handled by callers, never padded.
-    Parsed syntax trees are cached; values are still evaluated for each frame t.
+    Parsed syntax trees are cached; array_bounds evaluates whole frame arrays.
     """
 
     @staticmethod
@@ -250,7 +353,17 @@ class FrameRange:
         return ast.parse(expression, mode='eval').body
 
     @staticmethod
-    def value(expression: str, t: int) -> int:
+    @overload
+    def value(expression: str, t: int) -> int: ...
+
+    @staticmethod
+    @overload
+    def value(expression: str, t: NDArray[np.object_]) -> int | NDArray[np.object_]: ...
+
+    @staticmethod
+    def value(
+            expression: str, t: int | NDArray[np.object_]
+        ) -> int | NDArray[np.object_]:
         """Evaluate a frame-bound expression using a restricted integer grammar.
 
         The expression is parsed in ``eval`` mode to produce an AST; it is
@@ -265,6 +378,9 @@ class FrameRange:
         forms are rejected with ``ValueError``. Syntax errors, arithmetic
         errors (such as division by zero), and excessive AST recursion are
         also reported as ``ValueError``.
+
+        An object-dtype integer array for ``t`` evaluates all its frames at once;
+        expressions without ``t`` still return a scalar.
         """
         if not isinstance(expression, str) or not expression.strip():
             raise ValueError('Frame range bounds cannot be empty.')
@@ -273,11 +389,11 @@ class FrameRange:
             ast.FloorDiv: operator.floordiv, ast.Mod: operator.mod,
         }
 
-        def evaluate(node: ast.AST) -> int:
+        def evaluate(node: ast.AST) -> int | NDArray[np.object_]:
             if isinstance(node, ast.Constant) and type(node.value) is int:
                 return node.value
             if isinstance(node, ast.Name) and node.id == 't':
-                return int(t)
+                return t if isinstance(t, np.ndarray) else int(t)
             if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
                 value = evaluate(node.operand)
                 return -value if isinstance(node.op, ast.USub) else value
@@ -315,6 +431,33 @@ class FrameRange:
             upper = min(upper, SizeT - 1)
         return lower, upper
 
+    @staticmethod
+    def array_bounds(
+            start: str, end: str, frames: ArrayLike, SizeT: int | None = None
+        ) -> tuple[NDArray[np.object_], NDArray[np.object_]]:
+        """Return inclusive bounds for all frames without per-frame AST walks."""
+        # Python integers preserve scalar overflow and division-error semantics.
+        times = np.asarray(frames, dtype=object)
+        lower = np.broadcast_to(
+            np.asarray(FrameRange.value(start, times), dtype=object), times.shape
+        )
+        upper = np.broadcast_to(
+            np.asarray(FrameRange.value(end, times), dtype=object), times.shape
+        )
+        reversed_range = lower > upper
+        if reversed_range.any():
+            i = np.flatnonzero(reversed_range)[0]
+            raise ValueError(
+                f'Frame range start ({lower[i]}) exceeds end ({upper[i]}) '
+                f'at t={times[i]}.'
+            )
+        lower = np.maximum(lower, 0)
+        if SizeT is not None:
+            if SizeT < 0:
+                raise ValueError('Video frame count cannot be negative.')
+            upper = np.minimum(upper, SizeT - 1)
+        return lower, upper
+
 
 class CellEquation:
     """Evaluate measurement expressions and their per-cell functions.
@@ -330,6 +473,8 @@ class CellEquation:
     @staticmethod
     def _numeric(x: ArrayLike) -> NDArray[np.float64]:
         values = np.atleast_1d(np.asarray(x)).ravel()
+        if values.dtype.kind in 'biuf':
+            return values.astype(float, copy=False)
         return pd.to_numeric(pd.Series(values), errors='coerce').to_numpy(float)
 
     @staticmethod
@@ -338,9 +483,10 @@ class CellEquation:
         ) -> Callable[[ArrayLike], float]:
         def aggregate(x: ArrayLike) -> float:
             values = CellEquation._numeric(x)
-            if not np.isfinite(values).any():
+            finite = values[np.isfinite(values)]
+            if not finite.size:
                 return np.nan
-            return float(func(values[np.isfinite(values)]))
+            return float(func(finite))
         return aggregate
 
     @staticmethod
@@ -414,6 +560,7 @@ class CellEquation:
         return values
 
     @staticmethod
+    @debug_trace
     def evaluate(
             df: pd.DataFrame, equation: str,
             variables: Mapping[str, object] | None = None, *,
@@ -435,6 +582,16 @@ class CellEquation:
         resolvers = [CellEquation.resolver()]
         if variables:
             resolvers.append(dict(variables))
+        if _debug_enabled():
+            print(f"{equation =}, {variables =}", file=sys.stderr, flush=True)
+        if '`' not in equation and '@' not in equation:
+            # DataFrame.eval builds a resolver for every column; wide
+            # measurement tables made each evaluation needlessly expensive.
+            used = CellEquation.names(equation)
+            if 'index' not in used and 'columns' not in used:
+                keep = df.columns.isin(list(used))
+                if not keep.all():
+                    df = df.loc[:, keep]
         values = df.eval(equation, resolvers=resolvers)
         if enforce_dtype_output is not None:
             values = CellEquation.enforce_dtype(
@@ -669,11 +826,193 @@ class OtherCellMeasurements:
     the original table unchanged. Invalid inputs raise contextual errors.
     Frame windows are located in a sorted candidate table with binary search;
     targets at the same frame reuse window offsets, not target-specific filters.
-    Direct *_other inputs collapse one distinct nonmissing value; ambiguous
-    inputs require an explicit aggregate. Empty candidate sets yield zero.
+    Direct *_other inputs use the first distinct nonmissing value in the
+    prepared table. When evaluating equations, distinct candidate-row values
+    are tried as alternatives and boolean results are combined with any().
+    Empty candidate sets yield zero.
     Row-local filter expressions run once per target window; expressions with
     function calls retain per-candidate-cell scope for temporal operations.
+    Main-cell Any filters with constant own-cell inputs can compare unique
+    candidate rows across the union of their frame windows once per cell.
+    Their bounds, merged row offsets and empty-window checks use whole arrays.
     """
+
+    @staticmethod
+    @debug_trace
+    def constant_main_any(
+            acdc_df: pd.DataFrame, equation: str,
+            other_cells: dict[str, str] | None, SizeT: int | None,
+            IDs: Iterable[int] | None
+        ) -> list[int] | None:
+        """Return eligible IDs, or None when temporal evaluation is required.
+
+        Fast path for main-cell filters in ``any`` mode such as
+        ``any(Cell_ID == parent_ID_tree_other)``. The general path evaluates
+        the filter once per (cell, frame, candidate row) combination. Here,
+        if every own-cell input is constant over the cell's frames, the
+        result of "is the condition true in at least one frame" is the same
+        as: collect the distinct candidate ``*_other`` values over all frames
+        of the cell, and test the equation once against each of them. A cell
+        is eligible when any comparison is true.
+
+        Returning None is always safe: the caller then falls back to the
+        general (slower) implementation with identical semantics.
+        """
+        # Only plain, parseable expressions can be handled.
+        try:
+            tree = ast.parse(equation, mode='eval')
+        except SyntaxError:
+            return None
+        body = tree.body
+        # any(<expr>) over frames is what this fast path computes anyway, so
+        # the wrapper is stripped and <expr> is evaluated row-wise instead.
+        if (
+            isinstance(body, ast.Call) and isinstance(body.func, ast.Name)
+            and body.func.id in ('any', 'ANY')
+            and len(body.args) == 1 and not body.keywords
+        ):
+            body = body.args[0]
+        expression = ast.unparse(body)
+        # Function calls (MEAN, SHIFT, ...) depend on the frames grouped
+        # together, which this approach does not preserve.
+        if not OtherCellMeasurements._is_rowwise_condition(expression):
+            return None
+        names = CellEquation.names(expression)
+        # direct maps equation names (area_other) to table columns (area).
+        direct = {name: name[:-6] for name in names if name.endswith('_other')}
+        if not direct or other_cells is None:
+            return None
+        settings = CellFilter.validate_other(other_cells)
+        try:
+            # Same condition as prepare_inputs, including lineage presets.
+            condition = OtherCellMeasurements._candidate_condition(
+                settings, acdc_df
+            )
+        except ValueError:
+            return None  # the general path reports the error
+        # An other-cell condition must filter single rows independently
+        # (where_true); any/all-per-candidate-cell needs temporal grouping.
+        if condition and (
+            settings['condition_mode'] != 'where_true'
+            or not OtherCellMeasurements._is_rowwise_condition(condition)
+        ):
+            return None
+        flat = CellTable.flatten(acdc_df)
+        variables = {'SizeT': SizeT} if SizeT is not None else None
+        own = names - direct.keys() - (variables or {}).keys()
+        # Bail out when inputs are missing, when an *_other name clashes with
+        # a real column, or when the source columns contain NaN (NaN handling
+        # of the general path is not replicated here).
+        if (
+            not own.issubset(flat.columns)
+            or any(name in flat or column not in flat for name, column in direct.items())
+            or flat[list(direct.values())].isna().any().any()
+        ):
+            return None
+        this_columns = CellFilter._this_columns(flat, condition)
+        cells = list(CellTable.iter_cells(CellTable.subset(flat, IDs)))
+        required = own | set(this_columns)
+        # The shortcut is only valid if the enquiring cell's own values do
+        # not change over time.
+        if any(
+            cell[list(required)].nunique(dropna=False).gt(1).any()
+            for _, cell in cells
+        ):
+            return None
+        # Candidate rows are looked up by frame via binary search on this
+        # sorted table.
+        sorted_df = flat.sort_values(['frame_i', 'Cell_ID'])
+        frames = sorted_df['frame_i'].to_numpy()
+        eligible = []
+        ambiguous = set()
+        for ID, cell in cells:
+            # Determine the valid frame range for the current cell.
+            lower, upper = FrameRange.array_bounds(
+                settings['range_start'], settings['range_end'],
+                cell['frame_i'].to_numpy(dtype=int), SizeT
+            )
+            left = np.searchsorted(frames, lower, side='left')
+            right = np.searchsorted(frames, upper, side='right')
+            valid = (lower <= upper) & (left < right)
+            left, right = left[valid], right[valid]
+            # Arbitrary bound expressions need not preserve temporal order.
+            order = np.argsort(left)
+            left, right = left[order], np.maximum.accumulate(right[order])
+            if left.size:
+                starts = np.flatnonzero(np.r_[True, left[1:] > right[:-1]])
+                ends = np.r_[starts[1:] - 1, len(left) - 1]
+                left, right = left[starts], right[ends]
+            lengths = right - left
+            offsets = np.cumsum(lengths) - lengths
+            positions = np.arange(lengths.sum()) + np.repeat(left - offsets, lengths)
+            # Apply the other-cell condition once for the whole cell using
+            # its (constant) own values; the cell itself is excluded.
+            candidates = OtherCellMeasurements._select_candidates(
+                sorted_df.iloc[positions], cell.iloc[0], condition,
+                settings['condition_mode'], this_columns, variables,
+                rowwise=True
+            )
+            candidate_frames = candidates['frame_i'].to_numpy()
+            # A frame without candidates evaluates the direct input as 0 in
+            # the general path, so a 0 comparison row is added to match.
+            has_empty_window = np.any(
+                (lower > upper)
+                | (np.searchsorted(candidate_frames, lower, side='left')
+                   == np.searchsorted(candidate_frames, upper, side='right'))
+            )
+            # One row per distinct candidate value (or value combination),
+            # with own-cell values broadcast, so a single vectorized
+            # evaluation replaces all per-frame evaluations.
+            comparisons = candidates[list(direct.values())].drop_duplicates()
+            comparisons = comparisons.rename(
+                columns={column: name for name, column in direct.items()}
+            ).reset_index(drop=True)
+            if has_empty_window:
+                comparisons.loc[len(comparisons)] = [0] * len(direct)
+            for name in own:
+                comparisons[name] = cell[name].iloc[0]
+            # Remember inputs with several distinct values to warn once.
+            ambiguous.update(
+                name for name in direct if comparisons[name].nunique() > 1
+            )
+            try:
+                values = CellEquation.evaluate(
+                    comparisons, expression, variables, enforce_dtype_output=bool
+                )
+                if CellFilter.boolean_values(values, len(comparisons)).any():
+                    eligible.append(ID)
+            except Exception as err:
+                raise ValueError(
+                    f'Main-cell filter failed for Cell_ID {ID}: {err}'
+                ) from err
+        # Same single warning as the general path in prepare_inputs.
+        if ambiguous:
+            warnings.warn(
+                f'Other-cell input(s) {", ".join(sorted(ambiguous))} have multiple '
+                'distinct values; evaluating the equation against each candidate row.',
+                UserWarning, stacklevel=2
+            )
+        return eligible
+
+    @staticmethod
+    def _candidate_condition(
+            settings: dict[str, str], acdc_df: pd.DataFrame
+        ) -> str:
+        """User condition combined with the lineage/budding source preset."""
+        condition = settings['condition'].strip()
+        if settings['source'] == SOURCE_SAME_FRAME:
+            return condition
+        presets = CellFilter.other_presets(acdc_df)
+        if settings['source'] not in presets:
+            raise ValueError(
+                'The selected other-cell source requires lineage tree or '
+                'budding relationship annotations.'
+            )
+        sourceCondition = presets[settings['source']][0]
+        return (
+            f'({sourceCondition}) & ({condition})'
+            if condition else sourceCondition
+        )
 
     @staticmethod
     def _is_rowwise_condition(condition: str) -> bool:
@@ -730,7 +1069,8 @@ class OtherCellMeasurements:
                 except Exception as err:
                     raise ValueError(
                         f'Other-cell filter failed at frame {int(target["frame_i"])} '
-                        f'for enquiring cell {int(target["Cell_ID"])}: {err}'
+                        f'for enquiring cell {int(target["Cell_ID"])} '
+                        f'with condition {condition!r}: {err}'
                     ) from err
             if mode != 'where_true':
                 mask = pd.Series(mask).groupby(
@@ -750,7 +1090,7 @@ class OtherCellMeasurements:
                 raise ValueError(
                     f'Other-cell filter failed at frame {int(target["frame_i"])} '
                     f'for enquiring cell {int(target["Cell_ID"])}, '
-                    f'candidate {candidateID}: {err}'
+                    f'candidate {candidateID} with condition {condition!r}: {err}'
                 ) from err
             if mode == 'where_true':
                 selected.append(rows.loc[mask])
@@ -762,16 +1102,194 @@ class OtherCellMeasurements:
         )
 
     @staticmethod
+    @debug_trace
+    def evaluate_with_alternatives(
+            df: pd.DataFrame, equation: str,
+            alternatives: dict | None,
+            variables: Mapping[str, object] | None = None, *,
+            combine: str = 'any',
+            enforce_dtype_output: (
+                DTypeLike | pd.api.extensions.ExtensionDtype | None
+            ) = None
+        ):
+        """Evaluate against aligned direct-input alternatives for each row.
+
+        ``alternatives`` comes from prepare_inputs(return_alternatives=True):
+        ``columns`` are the direct ``*_other`` input names and ``by_target``
+        maps (frame_i, Cell_ID) to a list of value tuples, one per distinct
+        candidate value (aligned across several inputs). Each row is
+        evaluated once per tuple and the results are reduced per row:
+        ``combine='any'`` (filters) is true if any alternative is true,
+        'max'/'min' (predictors) take the extreme numeric result.
+
+        All (row, alternative) pairs are expanded and evaluated together.
+        When no function call touches an ``*_other`` input, functions are
+        evaluated once on the original cell timeline before expansion.
+        Calls involving direct alternatives retain their expanded-row scope.
+        """
+        # No alternatives supplied: evaluate the original table directly.
+        if not alternatives:
+            return CellEquation.evaluate(
+                df, equation, variables=variables,
+                enforce_dtype_output=enforce_dtype_output
+            )
+
+        columns = alternatives['columns']
+        by_target = alternatives['by_target']
+        # Classify the equation (see strategies in the docstring).
+        try:
+            tree = ast.parse(equation, mode='eval')
+        except SyntaxError:
+            tree = None
+        has_function = tree is None or any(
+            isinstance(node, ast.Call) for node in ast.walk(tree)
+        )
+        has_direct_function = tree is None or any(
+            isinstance(node, ast.Call)
+            and any(
+                isinstance(child, ast.Name) and child.id in columns
+                for child in ast.walk(node)
+            )
+            for node in ast.walk(tree)
+        )
+
+        def reduce_grouped(positions, array):
+            # Vectorized reduce_options: ``positions`` maps each expanded
+            # result back to its source row; rows without results become NaN.
+            series = pd.Series(array)
+            if combine in ('max', 'min'):
+                reduced = pd.to_numeric(series, errors='coerce').groupby(
+                    positions
+                ).agg(combine)
+            else:
+                truth = series.dropna().astype(bool).reindex(
+                    series.index, fill_value=False
+                )
+                reduced = truth.groupby(positions).any()
+            fill_value = (
+                False if has_function and not has_direct_function
+                and combine not in ('max', 'min') else np.nan
+            )
+            return pd.Series(
+                reduced.reindex(range(len(df)), fill_value=fill_value).to_numpy(),
+                index=df.index
+            )
+
+        def frame_values(name):
+            # frame_i / Cell_ID may be columns or index levels.
+            if name in df.columns:
+                return df[name].to_numpy()
+            return df.index.get_level_values(name).to_numpy()
+
+        # Target row key and own values (fallback when a row has no
+        # alternatives, i.e. the value already in the table is used).
+        keys = list(zip(
+            frame_values('frame_i').astype(int).tolist(),
+            frame_values('Cell_ID').astype(int).tolist(),
+        ))
+        ownValues = [df[column].to_numpy() for column in columns]
+
+        def target_options(position):
+            """Return options for the zero-based df row offset, not its index label."""
+            options = by_target.get(keys[position])
+            if options is None:
+                options = [tuple(values[position] for values in ownValues)]
+            return options
+
+        options = [target_options(position) for position in range(len(df))]
+        counts = np.fromiter(map(len, options), dtype=np.intp, count=len(df))
+        # positions[i] is the zero-based row offset in df for expanded row i,
+        # not a frame number or index label: counts [2, 1] -> [0, 0, 1].
+        positions = np.repeat(np.arange(len(df)), counts)
+        if not positions.size:
+            if has_function and not has_direct_function:
+                # No comparisons: return the empty reduction for each source row.
+                return pd.Series(
+                    np.nan if combine in ('max', 'min') else False,
+                    index=df.index
+                )
+            # Other equation types retain plain evaluation when nothing expands.
+            return CellEquation.evaluate(
+                df, equation, variables=variables,
+                enforce_dtype_output=enforce_dtype_output
+            )
+
+        source = df
+        if tree is not None and has_function and not has_direct_function:
+            # Own-cell calls do not depend on alternatives. Compute them before
+            # repeating rows so MEAN/SHIFT/etc. see the original cell timeline.
+            source = df.copy()
+            cached_calls = {}
+            # Temporary names must not shadow measurements or equation variables.
+            reserved = (
+                set(df.columns) | CellEquation.names(equation)
+                | set(variables or {})
+            )
+
+            class CacheCalls(ast.NodeTransformer):
+                """Replace whole calls with cached scalar or per-row columns."""
+
+                def visit_Call(self, node: ast.Call):
+                    # Evaluate the whole outer call, including nested calls.
+                    expression = ast.unparse(node)
+                    if expression not in cached_calls:
+                        name = f'_acdc_cached_call_{len(cached_calls)}'
+                        while name in reserved:
+                            name += '_'
+                        reserved.add(name)
+                        cached_calls[expression] = name
+                        values = CellEquation.evaluate(
+                            df, expression, variables=variables
+                        )
+                        source[name] = np.asarray(values)
+                    return ast.copy_location(
+                        ast.Name(id=cached_calls[expression], ctx=ast.Load()), node
+                    )
+
+            equation = ast.unparse(CacheCalls().visit(tree))
+
+        # Flatten options in the same row-major order as positions, keeping
+        # multiple *_other values from each candidate tuple aligned.
+        direct_values = pd.DataFrame.from_records(
+            itertools.chain.from_iterable(options), columns=columns
+        )
+        # One take instead of concatenating a single-row frame per option.
+        evaluation = source.iloc[positions].reset_index(drop=True)
+        for column in columns:
+            evaluation[column] = direct_values[column].to_numpy()
+        values = CellEquation.evaluate(
+            evaluation, equation, variables=variables,
+            enforce_dtype_output=enforce_dtype_output
+        )
+        array = np.asarray(values)
+        if array.ndim == 0:
+            array = np.repeat(array, len(evaluation))
+        return reduce_grouped(positions, array)
+
+    @staticmethod
+    @debug_trace
     def prepare_inputs(
             acdc_df: pd.DataFrame, equation: str,
             other_cells: dict[str, str] | None, SizeT: int | None,
-            IDs: Iterable[int] | None = None
-        ) -> tuple[pd.DataFrame, str]:
+            IDs: Iterable[int] | None = None, *,
+            max_targets: int | None = None,
+            return_alternatives: bool = False
+        ) -> tuple[pd.DataFrame, str] | tuple[pd.DataFrame, str, dict | None]:
         """Resolve other-cell aggregates for target IDs using all candidate cells.
 
         The returned table contains only target rows, in their original order
         and with their original index. With IDs=None, all rows are targets.
+        max_targets keeps only the first target rows (for quick previews),
+        while still using the full table as candidates.
+        With return_alternatives=True, a third value holds the distinct
+        direct ``*_other`` options per target for evaluate_with_alternatives
+        (None without direct inputs). They are deliberately not stored in
+        DataFrame.attrs: pandas deep-copies attrs on every derived frame.
+        Targets share frame windows; equality-filtered windows are located
+        by binary search within each value's pre-indexed candidate rows.
         """
+        # Two syntaxes: legacy MEAN_OTHER(col) and MEAN(col_other). Direct
+        # inputs are bare ``col_other`` names outside such calls.
         legacyCalls = list(_OTHER_FUNCTION_PATTERN.finditer(equation))
         measurementCalls = list(_OTHER_MEASUREMENT_PATTERN.finditer(equation))
         calls = legacyCalls + measurementCalls
@@ -781,8 +1299,14 @@ class OtherCellMeasurements:
             if name.endswith('_other')
             and not any(call.start() <= start and end <= call.end() for call in calls)
         }
+        # No other-cell input: only subset the targets.
         if not calls and not directInputs:
-            return CellTable.subset(acdc_df, IDs), equation
+            targets = CellTable.subset(acdc_df, IDs)
+            if max_targets is not None:
+                targets = targets.iloc[:max_targets]
+            if return_alternatives:
+                return targets, equation, None
+            return targets, equation
         if other_cells is None:
             raise ValueError(
                 'Configure Other-cell measurements before using *_OTHER(...) '
@@ -798,6 +1322,8 @@ class OtherCellMeasurements:
                 raise ValueError(
                     f'Other-cell input "{name}" conflicts with an existing column.'
                 )
+        # replacements: (function, column) -> temporary column holding the
+        # aggregate; the equation is rewritten to use it at the end.
         replacements = {}
         for matches, suffixed in ((legacyCalls, False), (measurementCalls, True)):
             for match in matches:
@@ -820,21 +1346,11 @@ class OtherCellMeasurements:
                         name += '_'
                     replacements[key] = name
 
-        condition = settings['condition'].strip()
-        if settings['source'] != SOURCE_SAME_FRAME:
-            presets = CellFilter.other_presets(acdc_df)
-            if settings['source'] not in presets:
-                raise ValueError(
-                    'The selected other-cell source requires lineage tree or '
-                    'budding relationship annotations.'
-                )
-            sourceCondition = presets[settings['source']][0]
-            condition = (
-                f'({sourceCondition}) & ({condition})'
-                if condition else sourceCondition
-            )
+        condition = OtherCellMeasurements._candidate_condition(settings, acdc_df)
         variables = {'SizeT': SizeT} if SizeT is not None else None
+        # this_<col> columns referenced by the condition (enquiring cell).
         this_columns = CellFilter._this_columns(flatDf, condition)
+        # Row-wise conditions can be evaluated for many targets at once.
         rowwise = bool(condition) and OtherCellMeasurements._is_rowwise_condition(
             condition
         )
@@ -843,40 +1359,245 @@ class OtherCellMeasurements:
             for (function, column), name in replacements.items()
         ]
         targets = CellTable.subset(acdc_df, IDs)
-        sortedDf = flatDf.sort_values(['frame_i', 'Cell_ID'])
+        if max_targets is not None:
+            targets = targets.iloc[:max_targets]
+        neededColumns = {
+            'frame_i', 'Cell_ID', *this_columns, *directInputs.values(),
+            *(column for column, _, _ in aggregates),
+        }
+        if condition:
+            if '`' in condition:
+                neededColumns.update(columns)
+            else:
+                neededColumns.update(CellEquation.names(condition))
+        # Copying all measurement columns per target dominated large tables,
+        # so candidates keep only the columns that are actually needed.
+        # sortedDf is sorted by frame so windows are contiguous slices.
+        sortedDf = flatDf[
+            [column for column in columns if column in neededColumns]
+        ].sort_values(['frame_i', 'Cell_ID'])
         frames = sortedDf['frame_i'].to_numpy()
-        windows: dict[int, tuple[int, int]] = {}
-        results = {name: [] for name in replacements.values()}
-        results.update({name: [] for name in directInputs})
-        for _, target in CellTable.flatten(targets).iterrows():
-            t = int(target['frame_i'])
-            if t not in windows:
-                lower, upper = FrameRange.bounds(
-                    settings['range_start'], settings['range_end'], t, SizeT
-                )
-                windows[t] = (
-                    int(np.searchsorted(frames, lower, side='left')),
-                    int(np.searchsorted(frames, upper, side='right')),
-                )
-            left, right = windows[t]
-            rows = OtherCellMeasurements._select_candidates(
-                sortedDf.iloc[left:right], target, condition,
-                settings['condition_mode'], this_columns, variables, rowwise=rowwise
+        sortedIDs = sortedDf['Cell_ID'].to_numpy()
+        # Collect columns used by direct inputs or aggregates, removing
+        # duplicates while preserving their order (dict.fromkeys).
+        valueColumns = list(dict.fromkeys([
+            *directInputs.values(), *(column for column, _, _ in aggregates)
+        ]))
+        # Map each column name to its frame-sorted NumPy values so candidate
+        # windows can be sliced without repeated pandas column lookups.
+        sortedValues = {
+            column: sortedDf[column].to_numpy() for column in valueColumns
+        }
+        # Index row-wise equality candidates by value to avoid window scans.
+        # any/all must also see nonmatching frames of each candidate cell.
+        equalityIndex = None
+        equality = re.fullmatch(
+            r'([A-Za-z_]\w*)\s*==\s*this_([A-Za-z_]\w*)', condition
+        )
+        if (
+            equality is not None
+            and settings['condition_mode'] == 'where_true'
+            and equality[1] in sortedDf
+            and equality[2] in this_columns
+            and not equality[1].startswith(THIS_PREFIX)
+            and equality[1] not in CELL_FUNCTIONS
+            and (not variables or equality[1] not in variables)
+            and not pd.api.types.is_extension_array_dtype(
+                sortedDf[equality[1]]
             )
+        ):
+            equalityIndex = {
+                value: (rows, rows['frame_i'].to_numpy())
+                for value, rows in sortedDf.groupby(
+                    equality[1], sort=False
+                )
+            }
+        # Target values as arrays; results are filled by target position.
+        flatTargets = CellTable.flatten(targets)
+        nTargets = len(flatTargets)
+        targetColumns = list(dict.fromkeys(['frame_i', 'Cell_ID', *this_columns]))
+        targetArrays = {
+            column: flatTargets[column].to_numpy() for column in targetColumns
+        }
+        targetIDs = targetArrays['Cell_ID']
+        results = {name: [None] * nTargets for name in replacements.values()}
+        results.update({name: [None] * nTargets for name in directInputs})
+        directAlternatives = {}
+        ambiguousInputs = set()
+
+        def emit(position, t, candidateValues):
+            # Store aggregates and direct inputs of one target given the
+            # values of its (already filtered) candidate rows.
+            empty = not len(next(iter(candidateValues.values()), ()))
             for column, name, aggregate in aggregates:
-                results[name].append(0 if rows.empty else aggregate(rows[column]))
+                results[name][position] = (
+                    0 if empty else aggregate(candidateValues[column])
+                )
+            uniques = {}
             for name, column in directInputs.items():
-                values = rows[column].dropna().unique()
+                values = np.asarray(candidateValues[column])
+                values = np.unique(values[~pd.isna(values)])
+                uniques[name] = values
                 if len(values) > 1:
-                    raise ValueError(
-                        f'Other-cell input "{name}" has multiple distinct values '
-                        f'at frame {t} for enquiring cell {int(target["Cell_ID"])}; '
-                        'use an explicit aggregate such as MEAN or MAX.'
+                    ambiguousInputs.add(name)
+                results[name][position] = values[0] if len(values) else 0
+            if not directInputs:
+                return
+            # Alternatives for evaluate_with_alternatives: distinct non-NaN
+            # candidate values, 0 when there are no candidates at all.
+            if empty:
+                options = [tuple(0 for _ in directInputs)]
+            elif len(directInputs) == 1:
+                options = [(value,) for value in next(iter(uniques.values()))]
+                if not options:
+                    options = [(0,)]
+            else:
+                # Several inputs: keep value combinations aligned per row.
+                candidateFrame = pd.DataFrame({
+                    column: candidateValues[column]
+                    for column in directInputs.values()
+                })
+                for column in candidateFrame:
+                    if candidateFrame[column].notna().any():
+                        candidateFrame = candidateFrame.dropna(subset=[column])
+                    else:
+                        candidateFrame[column] = 0
+                candidateFrame = candidateFrame.drop_duplicates()
+                options = [
+                    tuple(option)
+                    for option in candidateFrame.itertuples(index=False, name=None)
+                ]
+            directAlternatives[(t, int(targetIDs[position]))] = options
+
+        def emit_positions(position, t, rowPositions):
+            # Candidates given as row offsets into sortedDf.
+            emit(position, t, {
+                column: values[rowPositions]
+                for column, values in sortedValues.items()
+            } or {'Cell_ID': sortedIDs[rowPositions]})
+
+        # Group targets by frame: they share the same candidate window.
+        targetFrames = pd.Series(targetArrays['frame_i'].astype(int))
+        framePositions = targetFrames.groupby(targetFrames, sort=False).indices
+
+        batchCondition = bool(condition) and rowwise and equalityIndex is None
+        mode = settings['condition_mode']
+        for t, group in framePositions.items():
+            # Candidate window of this frame as [left, right) offsets.
+            lower, upper = FrameRange.bounds(
+                settings['range_start'], settings['range_end'], t, SizeT
+            )
+            left = int(np.searchsorted(frames, lower, side='left'))
+            right = max(left, int(np.searchsorted(frames, upper, side='right')))
+            windowIDs = sortedIDs[left:right]
+            # Case 1: no condition, candidates are the window minus the
+            # target cell itself.
+            if not condition:
+                for position in group:
+                    emit_positions(position, t, left + np.flatnonzero(
+                        windowIDs != targetIDs[position]
+                    ))
+                continue
+            # Case 2: row-wise condition. Evaluate once for all
+            # (target, candidate) pairs of the frame instead of once per
+            # target, in chunks to bound memory (about 2M rows per chunk).
+            if batchCondition:
+                windowSize = right - left
+                if windowSize == 0:
+                    for position in group:
+                        emit_positions(position, t, np.arange(0))
+                    continue
+                window = sortedDf.iloc[left:right]
+                chunkSize = max(1, 2_000_000 // windowSize)
+                for chunkStart in range(0, len(group), chunkSize):
+                    chunk = group[chunkStart:chunkStart + chunkSize]
+                    evaluation = window.iloc[
+                        np.tile(np.arange(windowSize), len(chunk))
+                    ].reset_index(drop=True)
+                    for column in this_columns:
+                        evaluation[f'{THIS_PREFIX}{column}'] = np.repeat(
+                            targetArrays[column][chunk], windowSize
+                        )
+                    try:
+                        mask = CellFilter.boolean_values(CellEquation.evaluate(
+                            evaluation, condition, variables,
+                            enforce_dtype_output=bool
+                        ), len(evaluation))
+                    except Exception as err:
+                        raise ValueError(
+                            f'Other-cell filter failed at frame {t} '
+                            f'with condition {condition!r}: {err}'
+                        ) from err
+                    # Mask layout: one block of windowSize candidates per target.
+                    # any/all modes decide per (target, candidate cell).
+                    if mode != 'where_true':
+                        mask = pd.Series(mask).groupby(
+                            [
+                                np.repeat(np.arange(len(chunk)), windowSize),
+                                evaluation['Cell_ID'].to_numpy(),
+                            ],
+                            sort=False,
+                        ).transform(mode).to_numpy(dtype=bool)
+                    # Rows are targets, columns are candidate rows.
+                    mask = mask.reshape(len(chunk), windowSize)
+                    # Broadcasting excludes each target's own candidate rows.
+                    mask &= windowIDs[None, :] != targetIDs[chunk, None]
+                    for position, rowMask in zip(chunk, mask):
+                        emit_positions(
+                            int(position), t, left + np.flatnonzero(rowMask)
+                        )
+                continue
+            # Case 3: general per-target selection (function calls, backticks,
+            # or the ``col == this_col`` equality index).
+            window = sortedDf.iloc[left:right]
+            for position in group:
+                target = {
+                    column: values[position]
+                    for column, values in targetArrays.items()
+                }
+                candidateWindow = window
+                if equalityIndex is not None:
+                    targetValue = target[equality[2]]
+                    indexed = (
+                        None if pd.isna(targetValue)
+                        else equalityIndex.get(targetValue)
                     )
-                results[name].append(values[0] if len(values) else 0)
+                    if indexed is None:
+                        candidateWindow = window.iloc[:0]
+                    else:
+                        indexedRows, indexedFrames = indexed
+                        indexedLeft = np.searchsorted(
+                            indexedFrames, lower, side='left'
+                        )
+                        indexedRight = max(indexedLeft, np.searchsorted(
+                            indexedFrames, upper, side='right'
+                        ))
+                        candidateWindow = indexedRows.iloc[indexedLeft:indexedRight]
+                rows = OtherCellMeasurements._select_candidates(
+                    candidateWindow, target, condition, mode, this_columns, variables,
+                    rowwise=rowwise
+                )
+                emit(position, t, {
+                    column: rows[column].to_numpy() for column in valueColumns
+                } or {'Cell_ID': rows['Cell_ID'].to_numpy()})
+        if ambiguousInputs:
+            names = ', '.join(sorted(ambiguousInputs))
+            warnings.warn(
+                f'Other-cell input(s) {names} have multiple distinct values '
+                'for one or more enquiring cells; evaluating the equation '
+                'against each candidate row.',
+                UserWarning,
+                stacklevel=2,
+            )
         acdc_df = targets.copy()
         for name, values in results.items():
             acdc_df[name] = values
+        alternatives = None
+        if directInputs:
+            alternatives = {
+                'columns': tuple(directInputs),
+                'by_target': directAlternatives,
+            }
 
         # constants = []
         # replacements = {}
@@ -945,6 +1666,8 @@ class OtherCellMeasurements:
         equation = _OTHER_MEASUREMENT_PATTERN.sub(
             lambda match: replacement(match, suffixed=True), equation
         )
+        if return_alternatives:
+            return acdc_df, equation, alternatives
         return acdc_df, equation
 
 
@@ -1098,6 +1821,7 @@ class TimepointPredictor:
         )
 
     @staticmethod
+    @debug_trace
     def from_equation(
             acdc_df: pd.DataFrame, equation: str, mode: str,
             SizeT: int | None = None, IDs: Iterable[int] | None = None,
@@ -1114,46 +1838,112 @@ class TimepointPredictor:
         aggregates are computed only for eligible target rows but still use
         the full input table as candidates. Unlike predict(), this method
         retains empty lists and does not clip predicted frames to SizeT.
+
+        Steps: (1) optionally reduce IDs to the cells passing the main-cell
+        filter; (2) resolve other-cell inputs for the remaining targets;
+        (3) evaluate the equation per cell and convert the per-frame results
+        into frames according to ``mode``.
         """
         if mode not in EQUATION_MODES:
             raise ValueError(f'Invalid predictor equation mode: {mode}.')
         if IDs is not None:
             IDs = list(IDs)
+        # Step 1: main-cell filter. A cell is eligible if the condition holds
+        # in any/all of its frames; retained cells keep all their frames.
         if main_cell_filter is not None:
             settings = CellFilter.validate_main(main_cell_filter)
             if settings['condition'].strip():
                 eligibleIDs = []
                 variables = {'SizeT': SizeT} if SizeT is not None else None
-                filter_df, condition = OtherCellMeasurements.prepare_inputs(
-                    acdc_df, settings['condition'], other_cells, SizeT, IDs=IDs
+                # Fastest path: constant own values with mode "any" (see
+                # constant_main_any). None means "not applicable".
+                constantIDs = (
+                    OtherCellMeasurements.constant_main_any(
+                        acdc_df, settings['condition'], other_cells, SizeT, IDs
+                    )
+                    if settings['condition_mode'] == 'any' else None
                 )
-                for ID, df_ID in CellTable.iter_cells(filter_df):
-                    try:
-                        values = CellEquation.evaluate(
-                            df_ID, condition, variables=variables,
-                            enforce_dtype_output=bool
+                if constantIDs is not None:
+                    eligibleIDs = constantIDs
+                else:
+                    # General path: resolve other-cell inputs, then evaluate.
+                    filter_df, condition, alternatives = (
+                        OtherCellMeasurements.prepare_inputs(
+                            acdc_df, settings['condition'], other_cells, SizeT,
+                            IDs=IDs, return_alternatives=True
                         )
-                        mask = CellFilter.boolean_values(values, len(df_ID))
-                    except Exception as err:
-                        raise ValueError(
-                            f'Main-cell filter failed for Cell_ID {ID}: {err}'
-                        ) from err
-                    matches = mask.any() if settings['condition_mode'] == 'any' else mask.all()
-                    if matches:
-                        eligibleIDs.append(ID)
+                    )
+                    batchedIDs = None
+                    if (
+                        not filter_df.empty
+                        and OtherCellMeasurements._is_rowwise_condition(condition)
+                    ):
+                        # Row-wise filters need one evaluation for all cells;
+                        # per-cell results are then reduced with any/all.
+                        # On any failure fall back to the per-cell loop below,
+                        # which reports errors with the offending Cell_ID.
+                        try:
+                            flatFilter = CellTable.flatten(filter_df)
+                            values = OtherCellMeasurements.evaluate_with_alternatives(
+                                flatFilter, condition, alternatives,
+                                variables=variables, enforce_dtype_output=bool
+                            )
+                            mask = CellFilter.boolean_values(
+                                values, len(flatFilter)
+                            )
+                            matches = pd.Series(mask).groupby(
+                                flatFilter['Cell_ID'].to_numpy(), sort=True
+                            ).agg(settings['condition_mode'])
+                            batchedIDs = [
+                                int(ID) for ID in matches.index[matches.to_numpy()]
+                            ]
+                        except Exception:
+                            batchedIDs = None
+                    if batchedIDs is not None:
+                        eligibleIDs = batchedIDs
+                    # Per-cell fallback (temporal functions, errors).
+                    for ID, df_ID in (
+                        () if batchedIDs is not None
+                        else CellTable.iter_cells(filter_df)
+                    ):
+                        try:
+                            values = OtherCellMeasurements.evaluate_with_alternatives(
+                                df_ID, condition, alternatives,
+                                variables=variables, enforce_dtype_output=bool
+                            )
+                            mask = CellFilter.boolean_values(values, len(df_ID))
+                        except Exception as err:
+                            raise ValueError(
+                                f'Main-cell filter failed for Cell_ID {ID}: {err}'
+                            ) from err
+                        matches = (
+                            mask.any() if settings['condition_mode'] == 'any'
+                            else mask.all()
+                        )
+                        if matches:
+                            eligibleIDs.append(ID)
                 IDs = eligibleIDs
-        acdc_df, equation = OtherCellMeasurements.prepare_inputs(
-            acdc_df, equation, other_cells, SizeT, IDs=IDs
+        # Step 2: only the (filtered) targets get other-cell values; all rows
+        # of the original table remain candidates.
+        acdc_df, equation, alternatives = OtherCellMeasurements.prepare_inputs(
+            acdc_df, equation, other_cells, SizeT, IDs=IDs,
+            return_alternatives=True
         )
         variables = {'SizeT': SizeT} if SizeT is not None else None
+        # Step 3: per-cell evaluation (rows sorted by frame_i); 'mode' is
+        # also used to reduce alternatives (e.g. max/min predictors).
         timepoints = {}
         for ID, df_ID in CellTable.iter_cells(acdc_df):
             try:
-                values = CellEquation.evaluate(df_ID, equation, variables=variables)
+                values = OtherCellMeasurements.evaluate_with_alternatives(
+                    df_ID, equation, alternatives,
+                    variables=variables, combine=mode
+                )
             except Exception as err:
                 raise ValueError(
                     f'Evaluating the equation failed for Cell_ID {ID}: {err}'
                 ) from err
+            # Scalar results (e.g. constants) apply to every frame.
             if not isinstance(values, pd.Series):
                 values = pd.Series(np.broadcast_to(values, len(df_ID)))
             frames = df_ID['frame_i'].to_numpy()
@@ -1184,6 +1974,7 @@ class TimepointPredictor:
         return timepoints
 
     @staticmethod
+    @debug_trace
     def predict(
             acdc_df: pd.DataFrame | None, predictor: dict[str, Any],
             SizeT: int | None = None, IDs: Iterable[int] | None = None
