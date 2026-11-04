@@ -218,6 +218,7 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         self.isZstack = options.get('isZstack', False)
         self.isSegm3D = options.get('isSegm3D', False)
         self.nameGetter = options.get('nameGetter', lambda: '')
+        self.validateDependencies = options.get('validateDependencies')
         if predictor is None:
             predictor = {'type': timepoint_predictors.PREDICTOR_NONE}
         self.equation = predictor.get('equation', '')
@@ -349,6 +350,12 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
             mainCellFilter=self.mainCellFilter, SizeT=self.SizeT, parent=self,
             consolidation=self.consolidationCombobox.currentData()
         )
+        if self.validateDependencies is not None:
+            win.validatePredictorDependencies = (
+                lambda predictor: self.validateDependencies(
+                    self.nameGetter(), predictor
+                )
+            )
         win.exec_()
         if win.cancel:
             return
@@ -398,6 +405,8 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         Predictor = self._annotPredictors.CustomAnnotationPredictor
         predictor = self.predictor()
         Predictor.validate(predictor)
+        if self.validateDependencies is not None:
+            self.validateDependencies(self.nameGetter(), predictor)
         if predictor['type'] == self._predictors.PREDICTOR_FILE:
             Predictor.load_function(predictor['filepath'])
         return predictor
@@ -15499,6 +15508,23 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         if not self.okButton.isEnabled():
             self.test_cb()
             return
+        validator = getattr(self, 'validatePredictorDependencies', None)
+        if validator is not None:
+            predictor = {
+                'type': self._predictors.PREDICTOR_EQUATION,
+                'equation': self.formulaEditWidget.text(),
+                'other_cells': self.currentOtherCells(),
+                'main_cell_filter': self.currentMainCellFilter(),
+            }
+            try:
+                validator(predictor)
+            except ValueError as err:
+                msg = widgets.myMessageBox(wrapText=False)
+                msg.warning(
+                    self, 'Invalid predictor',
+                    html_utils.paragraph(html.escape(str(err)))
+                )
+                return
         self.equation = self.formulaEditWidget.text()
         self.mode = self.currentMode()
         self.otherCells = self.currentOtherCells()
@@ -15563,6 +15589,11 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             <code>~</code> (not) and parentheses, not Python
             <code>if/else</code> statements or <code>and/or</code>.<br><br>
             Double-click an input to add it to the equation.
+            In the measurements viewer, time points are boolean
+            <code>timepoint_&lt;name&gt;</code> inputs and custom annotations
+            are 0/1 <code>&lt;name&gt;</code> inputs. Compare annotations with
+            <code>== 1</code> for a boolean result. Prerequisite predictors
+            run first; circular equation dependencies cannot be accepted.
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Time point predictor help', txt)
@@ -16064,6 +16095,11 @@ class TimepointIdentifierDialog(QBaseDialog):
             mainCellFilter=self.mainCellFilter,
             SizeT=self.SizeT, parent=self
         )
+        validator = getattr(self, 'validatePredictorDependencies', None)
+        if validator is not None:
+            win.validatePredictorDependencies = (
+                lambda predictor: validator(self.nameLineEdit.text().strip(), predictor)
+            )
         win.exec_()
         if win.cancel:
             return
@@ -16109,6 +16145,9 @@ class TimepointIdentifierDialog(QBaseDialog):
     def validatePredictor(self):
         predictor = self.predictor()
         self._predictors.TimepointPredictor.validate(predictor)
+        validator = getattr(self, 'validatePredictorDependencies', None)
+        if validator is not None:
+            validator(self.nameLineEdit.text().strip(), predictor)
         if predictor['type'] == self._predictors.PREDICTOR_FILE:
             self._predictors.TimepointPredictor.load_function(predictor['filepath'])
         return predictor

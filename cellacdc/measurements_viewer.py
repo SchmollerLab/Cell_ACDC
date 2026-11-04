@@ -97,6 +97,15 @@ before overwriting manually edited cells and the re-evaluation (right-click
 on the annotation button) work as for the time points. The toolbar also has
 actions to re-evaluate all annotation predictors on the displayed cell or on
 all cells. Annotation definitions are stored in configurations.
+
+Predictor equations and their filters can use other identifiers' boolean
+``timepoint_<name>`` columns and annotations' 0/1 ``<name>`` columns. Dependencies
+are evaluated first, across both kinds of predictor. Explicit re-evaluation
+also re-runs prerequisite predictors (with the same manual-edit protection);
+automatic prediction still requires autoApply. Other-cell inputs evaluate
+prerequisites on all cells. Circular equation dependencies prevent accepting
+the customization, with a warning showing the cycle. Python-file predictors
+can read these columns, but their dependencies cannot be inferred.
 """
 import os
 import sys
@@ -104,6 +113,7 @@ import copy
 import json
 import logging
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from functools import partial
 from types import SimpleNamespace
@@ -651,6 +661,18 @@ class MeasurementsViewerWin(
         MeasurementsViewerWin.validateCustomAnnotConfiguration(
             configuration.get('custom_annotations', [])
         )
+        predictors = {
+            f'{TIMEPOINT_PREFIX}{identifier["name"]}': identifier['predictor']
+            for identifier in identifiers
+        }
+        for state in configuration.get('custom_annotations', []):
+            column = state['name']
+            if column in predictors:
+                raise ValueError(f'The predictor output "{column}" already exists.')
+            predictors[column] = state.get('predictor') or {
+                'type': timepoint_predictors.PREDICTOR_NONE
+            }
+        timepoint_predictors.PredictorDependencies.order(predictors)
         # timepoint_predictors.validate_constants(
         #     configuration.get('cell_constants', [])
         # )
@@ -772,8 +794,9 @@ class MeasurementsViewerWin(
         self.viewedCells = defaultdict(set)
         for path, IDs in configuration.get('viewed_cells', {}).items():
             self.viewedCells[os.path.normcase(os.path.abspath(path))].update(IDs)
-        self.setData(data)
-        self.setCustomAnnotations(configuration.get('custom_annotations', []))
+        with self.deferPredictorPredictions():
+            self.setData(data)
+            self.setCustomAnnotations(configuration.get('custom_annotations', []))
         self.configurationFilepath = None
         overlays = configuration['overlay_channels']
         if overlays:
@@ -4118,11 +4141,17 @@ class MeasurementsViewerWin(
             identifier.name, identifier.color, identifier.shortcut,
             predictor=identifier.predictor, existingNames=names,
             reservedShortcuts=self.reservedShortcuts(excludeUid=identifier.uid),
-            acdc_df=self.getAcdcDf(posData), 
+            acdc_df=self.timepointsDf(posData) if posData is not None else None,
             SizeT=getattr(posData, 'SizeT', None),
             allChNames=getattr(posData, 'chNames', []),
             isZstack=getattr(posData, 'SizeZ', 1) > 1,
             isSegm3D=bool(self.isSegm3D), title=title, parent=self
+        )
+        dialog.validatePredictorDependencies = (
+            lambda name, predictor: self.validatePredictorDependencies(
+                self.timepointColumn(identifier), f'{TIMEPOINT_PREFIX}{name}',
+                predictor
+            )
         )
         dialog.autoApplyCheckBox.setChecked(identifier.autoApply)
         dialog.exec_()
@@ -4481,34 +4510,10 @@ class MeasurementsViewerWin(
                 'No time point identifier with a predictor.', 5000
             )
             return False
-        edited = self.editedTimepointCells(posData)
-        editedCells = {}
-        for uid in uids:
-            IDs_edited = edited[uid] if IDs is None else edited[uid] & set(IDs)
-            if IDs_edited:
-                name = self.timepointIdentifier(uid).name
-                editedCells[name] = sorted(IDs_edited)
-        skip = False
-        if editedCells:
-            if IDs is not None and len(IDs) == 1:
-                scope = f'the displayed cell (ID {next(iter(IDs))})'
-            else:
-                numCells = len(set().union(*editedCells.values()))
-                scope = f'{numCells} cell(s)'
-            if posData is not self.posData():
-                posName = getattr(posData, 'pos_foldername', 'another position')
-                scope = f'{scope} of position "{posName}"'
-            answer = self.askOverwriteManualTimepoints(editedCells, scope)
-            if answer == 'cancel':
-                return False
-            skip = answer == 'skip'
-        for uid in uids:
-            skipIDs = edited[uid] if skip else ()
-            self.runTimepointPredictor(
-                uid, posData=posData, IDs=IDs, skipIDs=set(skipIDs), force=True
-            )
-        self.updateTimepointLines()
-        return True
+        columns = [
+            self.timepointColumn(self.timepointIdentifier(uid)) for uid in uids
+        ]
+        return self.evaluatePredictorColumns(columns, IDs, posData)
     
     def reevaluateAllTimepoints(self, checked=False):
         return self.reevaluateTimepoints()
@@ -4521,30 +4526,193 @@ class MeasurementsViewerWin(
     
     def ensureTimepointPredictions(self, posData=None):
         """Evaluate automatic predictors only on the newly displayed cell."""
+        self.ensurePredictorPredictions(posData)
+
+    def predictorDefinitions(self):
+        """Output column -> (kind, identifier/button, predictor, autoApply)."""
+        definitions = {
+            self.timepointColumn(identifier): (
+                'timepoint', identifier.uid, identifier.predictor,
+                identifier.autoApply
+            )
+            for identifier in self.timepointIdentifiers
+        }
+        for button, annot in self.customAnnotDict.items():
+            state = annot['state']
+            definitions[state['name']] = (
+                'annotation', button,
+                state.get('predictor') or {'type': timepoint_predictors.PREDICTOR_NONE},
+                state.get('autoApply', False)
+            )
+        return definitions
+
+    @contextmanager
+    def deferPredictorPredictions(self):
+        previous = getattr(self, '_deferPredictorPredictions', False)
+        self._deferPredictorPredictions = True
+        try:
+            yield
+        finally:
+            self._deferPredictorPredictions = previous
+        if not previous:
+            self.ensurePredictorPredictions()
+
+    def validatePredictorDependencies(self, oldColumn, newColumn, predictor):
+        definitions = self.predictorDefinitions()
+        if newColumn != oldColumn and newColumn in definitions:
+            raise ValueError(f'The predictor output "{newColumn}" already exists.')
+        predictors = {
+            column: definition[2] for column, definition in definitions.items()
+            if column != oldColumn
+        }
+        predictors[newColumn] = predictor
+        timepoint_predictors.PredictorDependencies.order(predictors)
+
+    def evaluatePredictorColumns(
+            self, columns, IDs, posData, automatic=False
+        ):
+        definitions = self.predictorDefinitions()
+        predictors = {
+            column: definition[2] for column, definition in definitions.items()
+            if definition[2].get('type') != timepoint_predictors.PREDICTOR_NONE
+        }
+        try:
+            ordered = timepoint_predictors.PredictorDependencies.order(
+                predictors, columns
+            )
+        except ValueError as err:
+            self.measurementProcessingWarning('Invalid predictors', str(err))
+            return False
+        if automatic:
+            ordered = [column for column in ordered if definitions[column][3]]
+        scopes = {column: None if IDs is None else set(IDs) for column in ordered}
+        for column in reversed(ordered):
+            inputs = timepoint_predictors.PredictorDependencies.inputs(
+                predictors[column]
+            )
+            for dependency, otherCells in inputs.items():
+                if dependency in scopes and (
+                        otherCells or scopes[column] is None):
+                    scopes[dependency] = None
+        edited = {}
+        editedCells = {}
+        for column in ordered:
+            kind, key, _, _ = definitions[column]
+            cells = (
+                self.editedTimepointCells(posData)[key]
+                if kind == 'timepoint' else
+                self.editedCustomAnnotCells(posData)[column]
+            )
+            scopeIDs = scopes[column]
+            edited[column] = set(cells) if scopeIDs is None else cells & scopeIDs
+            if edited[column]:
+                name = (
+                    self.timepointIdentifier(key).name
+                    if kind == 'timepoint' else column
+                )
+                editedCells[name] = sorted(edited[column])
+        skip = False
+        if editedCells:
+            allEdited = set().union(*editedCells.values())
+            scope = (
+                f'the displayed cell (ID {next(iter(IDs))})'
+                if IDs is not None and len(IDs) == 1 and allEdited <= set(IDs)
+                else f'{len(allEdited)} cell(s)'
+            )
+            if posData is not self.posData():
+                posName = getattr(posData, 'pos_foldername', 'another position')
+                scope = f'{scope} of position "{posName}"'
+            kinds = {definitions[column][0] for column in ordered}
+            if kinds == {'timepoint'}:
+                answer = self.askOverwriteManualTimepoints(editedCells, scope)
+            else:
+                what = (
+                    'Custom annotations' if kinds == {'annotation'}
+                    else 'Time points and custom annotations'
+                )
+                answer = self.askOverwriteManualTimepoints(
+                    editedCells, scope, what=what
+                )
+            if answer == 'cancel':
+                return False
+            skip = answer == 'skip'
+        failed = set()
+        names = []
+        for column in ordered:
+            inputs = timepoint_predictors.PredictorDependencies.inputs(
+                predictors[column]
+            )
+            if failed.intersection(inputs):
+                failed.add(column)
+                self.statusBar().showMessage(
+                    f'Skipped "{column}": a prerequisite prediction failed.', 5000
+                )
+                continue
+            kind, key, _, _ = definitions[column]
+            run = (
+                self.runTimepointPredictor if kind == 'timepoint'
+                else self.runCustomAnnotPredictor
+            )
+            if not run(
+                    key, posData=posData, IDs=scopes[column],
+                    skipIDs=edited[column] if skip else (),
+                    force=not automatic or bool(edited[column])
+                ):
+                failed.add(column)
+            if kind == 'annotation':
+                names.append(column)
+        if automatic and failed:
+            path = os.path.normcase(os.path.abspath(posData.pos_path))
+            acdc_df = self.timepointsDf(posData)
+            for column in failed:
+                scopeIDs = scopes[column]
+                if scopeIDs is None:
+                    scopeIDs = (
+                        set(acdc_df.index.get_level_values('Cell_ID'))
+                        if acdc_df is not None else set()
+                    )
+                kind, key, _, _ = definitions[column]
+                predictions = (
+                    self.timepointAutoPredictions if kind == 'timepoint'
+                    else self.customAnnotAutoPredictions
+                )
+                predictions[(path, key if kind == 'timepoint' else column)].update(
+                    scopeIDs
+                )
+        if names:
+            self.refreshCustomAnnotations(names)
+        self.updateTimepointLines()
+        return not failed
+
+    def ensurePredictorPredictions(self, posData=None):
+        if getattr(self, '_deferPredictorPredictions', False):
+            return
         if not self.data or self.selectedID is None:
             return
         if posData is None:
             posData = self.posData()
         if posData is not self.posData():
             return
-        # Custom annotations track their own predicted cells
-        self.ensureCustomAnnotPredictions(posData)
         path = os.path.normcase(os.path.abspath(posData.pos_path))
         ID = int(self.selectedID)
-        if ID in self.viewedCells[path]:
-            return
+        newCell = ID not in self.viewedCells[path]
         self.viewedCells[path].add(ID)
         self.initPositionTimepointState(posData)
-        # self.positionCellConstants(posData)
-        uids = [
-            identifier.uid for identifier in self.timepointIdentifiers
-            if identifier.autoApply
-        ]
-        for uid in self.predictorTimepointUids(uids):
-            if ID in posData.timepointsEdited[uid]:
-                self.reevaluateTimepoints([uid], IDs=[ID], posData=posData)
-            else:
-                self.runTimepointPredictor(uid, posData=posData, IDs=[ID])
+        columns = []
+        for column, definition in self.predictorDefinitions().items():
+            kind, key, predictor, autoApply = definition
+            if (not autoApply
+                    or predictor.get('type') == timepoint_predictors.PREDICTOR_NONE):
+                continue
+            if kind == 'timepoint':
+                if not newCell:
+                    continue
+            elif ID in self.customAnnotAutoPredictions[
+                    self.customAnnotPredictionKey(posData, column)]:
+                continue
+            columns.append(column)
+        if columns:
+            self.evaluatePredictorColumns(columns, [ID], posData, automatic=True)
     
     # --- Custom annotations -------------------------------------------------
     # Overrides of the `gui_custom_annotations.CustomAnnotationsGuiElements` 
@@ -4564,7 +4732,8 @@ class MeasurementsViewerWin(
                 'Load data to load custom annotations.', 5000
             )
             return
-        return super().loadCustomAnnotations()
+        with self.deferPredictorPredictions():
+            return super().loadCustomAnnotations()
     
     def customAnnotNames(self):
         customAnnotDict = getattr(self, 'customAnnotDict', {})
@@ -4620,6 +4789,12 @@ class MeasurementsViewerWin(
                 'allChNames': getattr(posData, 'chNames', []),
                 'isZstack': getattr(posData, 'SizeZ', 1) > 1,
                 'isSegm3D': bool(self.isSegm3D),
+                'validateDependencies': (
+                    lambda name, predictor: self.validatePredictorDependencies(
+                        None if state is None else state['name'],
+                        name, predictor
+                    )
+                ),
             },
             'reservedShortcuts': reservedShortcuts,
             'existingNames': [
@@ -5003,36 +5178,8 @@ class MeasurementsViewerWin(
                 'No custom annotation with a predictor.', 5000
             )
             return False
-        edited = self.editedCustomAnnotCells(posData)
-        editedCells = {}
-        for button in buttons:
-            name = self.customAnnotDict[button]['state']['name']
-            IDs_edited = edited[name] if IDs is None else edited[name] & set(IDs)
-            if IDs_edited:
-                editedCells[name] = sorted(IDs_edited)
-        skip = False
-        if editedCells:
-            if IDs is not None and len(IDs) == 1:
-                scope = f'the displayed cell (ID {next(iter(IDs))})'
-            else:
-                numCells = len(set().union(*editedCells.values()))
-                scope = f'{numCells} cell(s)'
-            answer = self.askOverwriteManualTimepoints(
-                editedCells, scope, what='Custom annotations'
-            )
-            if answer == 'cancel':
-                return False
-            skip = answer == 'skip'
-        names = []
-        for button in buttons:
-            name = self.customAnnotDict[button]['state']['name']
-            names.append(name)
-            skipIDs = set(edited[name]) if skip else ()
-            self.runCustomAnnotPredictor(
-                button, posData=posData, IDs=IDs, skipIDs=skipIDs, force=True
-            )
-        self.refreshCustomAnnotations(names)
-        return True
+        columns = [self.customAnnotDict[button]['state']['name'] for button in buttons]
+        return self.evaluatePredictorColumns(columns, IDs, posData)
     
     def reevaluateAllCellsCustomAnnot(self, button=None, checked=False):
         buttons = None if button is None else [button]
@@ -5071,27 +5218,7 @@ class MeasurementsViewerWin(
     def ensureCustomAnnotPredictions(self, posData=None):
         """Evaluate the automatic predictors of the custom annotations on 
         the displayed cell if not predicted yet."""
-        if not self.data or self.selectedID is None:
-            return
-        if posData is None:
-            posData = self.posData()
-        ID = int(self.selectedID)
-        for button, annot in list(self.customAnnotDict.items()):
-            state = annot['state']
-            if not state.get('autoApply', False):
-                continue
-            if not self.customAnnotHasPredictor(button):
-                continue
-            name = state['name']
-            key = self.customAnnotPredictionKey(posData, name)
-            if ID in self.customAnnotAutoPredictions[key]:
-                continue
-            if ID in self.editedCustomAnnotCells(posData)[name]:
-                self.reevaluateCustomAnnotations(
-                    [button], IDs=[ID], posData=posData
-                )
-            else:
-                self.runCustomAnnotPredictor(button, posData=posData, IDs=[ID])
+        self.ensurePredictorPredictions(posData)
     
     def customAnnotConfiguration(self):
         return [
@@ -5141,19 +5268,20 @@ class MeasurementsViewerWin(
         if not self.data or not states:
             return
         self.readSavedCustomAnnot()
-        for savedState in states:
-            symbolColor = pg.mkColor(tuple(savedState['symbolColor']))
-            state = {
-                'type': 'Single time-point', 'symbol': '', 'shortcut': '', 
-                'description': '', 'keepActive': True, 'isHideChecked': True,
-                **savedState, 'symbolColor': symbolColor
-            }
-            button = self.addCustomAnnotationItems(
-                custom_annot_symbol(state), symbolColor, state['shortcut'], 
-                self.customAnnotToolTip(state), state['name'], 
-                state['keepActive'], state['isHideChecked'], state
-            )
-            self.onCustomAnnotationChanged(button)
+        with self.deferPredictorPredictions():
+            for savedState in states:
+                symbolColor = pg.mkColor(tuple(savedState['symbolColor']))
+                state = {
+                    'type': 'Single time-point', 'symbol': '', 'shortcut': '',
+                    'description': '', 'keepActive': True, 'isHideChecked': True,
+                    **savedState, 'symbolColor': symbolColor
+                }
+                button = self.addCustomAnnotationItems(
+                    custom_annot_symbol(state), symbolColor, state['shortcut'],
+                    self.customAnnotToolTip(state), state['name'],
+                    state['keepActive'], state['isHideChecked'], state
+                )
+                self.onCustomAnnotationChanged(button)
         self.saveCustomAnnot(only_temp=True)
     
     def clipFrame(self, frame_i):

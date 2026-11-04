@@ -105,7 +105,6 @@ class CustomAnnotationsGuiElements:
         self.annotateToolbar.addAction(self.loadCustomAnnotationsAction)
         self.annotateToolbar.addAction(self.addCustomAnnotationAction)
         self.annotateToolbar.addAction(self.viewAllCustomAnnotAction)
-        self.annotateToolbar.addSeparator()
         self.annotateToolbar.setVisible(visible)
     
     # --- Hooks ---------------------------------------------------------------

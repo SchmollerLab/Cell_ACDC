@@ -46,6 +46,8 @@ The classes group stateless operations; no instances are required except for
 - ``OtherCellMeasurements`` prepares filtered, windowed aggregate inputs.
 - ``CellTable`` normalizes table layouts, iterates cells and subsets target IDs.
 - ``FrameRange`` parses and validates inclusive bounds relative to t.
+- ``PredictorDependencies`` orders equation predictors by their input columns
+  and rejects circular dependencies.
 
 For example::
 
@@ -643,6 +645,79 @@ CELL_FUNCTIONS = {
     'ANY': (CellEquation._any, 'True if the condition is true in at least one frame of the cell'),
     'ALL': (CellEquation._all, 'True only if the condition is true in every frame of the cell'),
 }
+
+
+class PredictorDependencies:
+    """Order predictors by the table columns read by equations and filters."""
+
+    @staticmethod
+    def inputs(predictor: Mapping[str, Any]) -> dict[str, bool]:
+        """Map input columns to whether they require predictions on other cells."""
+        if predictor.get('type') != PREDICTOR_EQUATION:
+            return {}
+        inputs: dict[str, bool] = {}
+
+        def add_inputs(expression, candidate=False):
+            spans = set(equation_variable_spans(expression))
+            legacyOther = {
+                match['column'].strip('`')
+                for match in _OTHER_FUNCTION_PATTERN.finditer(expression)
+                if (
+                    match['column'].strip('`'), *match.span('column')
+                ) in spans
+            }
+            for name, _, _ in spans:
+                otherCell = candidate
+                if candidate and name.startswith(THIS_PREFIX):
+                    name = name[len(THIS_PREFIX):]
+                    otherCell = False
+                elif not candidate and name.endswith('_other'):
+                    name = name[:-len('_other')]
+                    otherCell = True
+                elif name in legacyOther:
+                    otherCell = True
+                inputs[name] = inputs.get(name, False) or otherCell
+
+        add_inputs(predictor.get('equation', ''))
+        add_inputs((predictor.get('main_cell_filter') or {}).get('condition', ''))
+        other = predictor.get('other_cells')
+        if other is not None and any(inputs.values()):
+            add_inputs(other.get('condition', ''), candidate=True)
+        return inputs
+
+    @staticmethod
+    def order(
+            predictors: Mapping[str, Mapping[str, Any]],
+            targets: Iterable[str] | None = None,
+        ) -> list[str]:
+        """Stable dependency-first order, including prerequisites of targets."""
+        dependencies = {
+            column: PredictorDependencies.inputs(predictor)
+            for column, predictor in predictors.items()
+        }
+        ordered: list[str] = []
+        visiting: list[str] = []
+        visited: set[str] = set()
+
+        def visit(column: str) -> None:
+            if column in visiting:
+                cycle = visiting[visiting.index(column):] + [column]
+                raise ValueError(
+                    'Circular predictor dependency: ' + ' -> '.join(cycle)
+                )
+            if column in visited:
+                return
+            visiting.append(column)
+            for dependency in predictors:
+                if dependency in dependencies[column]:
+                    visit(dependency)
+            visiting.pop()
+            visited.add(column)
+            ordered.append(column)
+
+        for column in predictors if targets is None else targets:
+            visit(column)
+        return ordered
 
 
 class CellFilter:

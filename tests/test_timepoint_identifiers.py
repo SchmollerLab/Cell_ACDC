@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from qtpy.QtCore import Qt
+from qtpy.QtGui import QCloseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
@@ -54,6 +55,7 @@ def viewer(app, monkeypatch, acdc_df):
     window.updateColumnsList()
     window.plotMeasurements()
     yield window
+    window.reinitCustomAnnot()
     window.deleteLater()
     app.processEvents()
 
@@ -71,6 +73,267 @@ def timepoints(viewer, uid):
 
 def set_timepoints(viewer, uid, value):
     viewer.replaceTimepoints(uid, value, {1, 2})
+
+
+def annotation_predictors(viewer, predictors, autoApply=False):
+    viewer.setCustomAnnotations([
+        {
+            'name': name, 'symbol': "'o' circle",
+            'symbolColor': [255, 0, 0, 255], 'shortcut': '',
+            'predictor': {'type': 'equation', 'equation': equation},
+            'autoApply': autoApply,
+        }
+        for name, equation in predictors
+    ])
+
+
+@pytest.mark.parametrize('predictor, expected', [
+    ({'equation': '`timepoint_Bud emergence` & (Flag == 1)'},
+     {'timepoint_Bud emergence': False, 'Flag': False}),
+    ({'equation': 'stage == "Flag"'}, {'stage': False}),
+    ({'equation': 'area > 0', 'main_cell_filter': {'condition': 'Flag == 1'}},
+     {'area': False, 'Flag': False}),
+    ({'equation': 'MAX(Flag_other) > 0',
+      'other_cells': {'condition': 'Other == this_Target'}},
+     {'Flag': True, 'Other': True, 'Target': False}),
+    ({'equation': 'MAX_OTHER(Flag) > 0'}, {'Flag': True}),
+    ({'equation': 'MAX_OTHER(`Flag name`) > 0'}, {'Flag name': True}),
+    ({'equation': '(stage == "MAX_OTHER(Flag)") & (Flag == 1)'},
+     {'stage': False, 'Flag': False}),
+    ({'equation': 'area > 0', 'other_cells': {'condition': 'Flag == 1'}},
+     {'area': False}),
+])
+def test_predictor_dependency_inputs(predictor, expected):
+    assert timepoint_predictors.PredictorDependencies.inputs({
+        'type': 'equation', **predictor
+    }) == expected
+
+
+def test_predictor_dependencies_ignore_files_and_order_target_closure():
+    predictors = {
+        'Last': {'type': 'equation', 'equation': 'First & Manual'},
+        'First': {'type': 'equation', 'equation': 'area > 0'},
+        'Manual': {'type': 'none'},
+        'Unrelated': {'type': 'equation', 'equation': 'Unrelated'},
+    }
+    assert timepoint_predictors.PredictorDependencies.order(
+        predictors, ['Last']
+    ) == ['First', 'Manual', 'Last']
+    assert timepoint_predictors.PredictorDependencies.inputs({
+        'type': 'file', 'equation': 'Last'
+    }) == {}
+
+
+@pytest.mark.parametrize('predictors, cycle', [
+    ({'A': 'A'}, 'A -> A'),
+    ({'A': 'B', 'B': 'C', 'C': 'A'}, 'A -> B -> C -> A'),
+])
+def test_predictor_dependency_cycles(predictors, cycle):
+    with pytest.raises(ValueError, match=cycle):
+        timepoint_predictors.PredictorDependencies.order({
+            name: {'type': 'equation', 'equation': equation}
+            for name, equation in predictors.items()
+        })
+
+
+@pytest.mark.parametrize('automatic', [False, True])
+def test_mixed_predictors_run_prerequisites_first(viewer, automatic):
+    final = TimepointIdentifier(
+        'Final', (0, 0, 255), '',
+        {'type': 'equation', 'equation': '(Eligible == 1) & (frame_i > 1)',
+         'mode': 'first_true'},
+        autoApply=automatic
+    )
+    start = TimepointIdentifier(
+        'Start', (255, 0, 0), '',
+        {'type': 'equation', 'equation': 'area > 16', 'mode': 'rising_true'},
+        autoApply=automatic
+    )
+    viewer.addTimepointIdentifierItem(final)
+    viewer.addTimepointIdentifierItem(start)
+    viewer.viewedCells.clear()
+    annotation_predictors(
+        viewer, [('Eligible', 'any(timepoint_Start)')], autoApply=automatic
+    )
+    if not automatic:
+        assert viewer.reevaluateTimepoints([final.uid], IDs=[1])
+    assert viewer.cellTimepoints(start.uid, 1) == [1, 3]
+    assert viewer.cellTimepoints(final.uid, 1) == [2]
+    assert viewer.acdc_df.xs(1, level='Cell_ID')['Eligible'].tolist() == [1]*4
+    assert viewer.cellTimepoints(start.uid, 2) == []
+    viewer.measurementProcessingWarning.assert_not_called()
+
+
+@pytest.mark.parametrize('automatic', [False, True])
+def test_other_cell_predictor_prerequisites_cover_all_cells(viewer, automatic):
+    final = TimepointIdentifier(
+        'Final', (0, 0, 255), '',
+        {
+            'type': 'equation', 'equation': 'MAX(Flag_other) > 0',
+            'mode': 'first_true',
+            'other_cells': timepoint_predictors.CellFilter.default_other(),
+        },
+        autoApply=automatic
+    )
+    viewer.addTimepointIdentifierItem(final)
+    viewer.viewedCells.clear()
+    annotation_predictors(
+        viewer, [('Flag', 'area < 8')], autoApply=automatic
+    )
+    if not automatic:
+        assert viewer.reevaluateTimepoints([final.uid], IDs=[1])
+    assert viewer.cellTimepoints(final.uid, 1) == [0]
+    assert viewer.acdc_df.xs(2, level='Cell_ID')['Flag'].tolist() == [1]*4
+    assert viewer.cellTimepoints(final.uid, 2) == []
+    viewer.measurementProcessingWarning.assert_not_called()
+
+
+def test_loading_annotation_predictors_defers_forward_dependencies(viewer):
+    annotation_predictors(viewer, [
+        ('Dependent', 'Source == 1'), ('Source', 'MAX(area) > 25')
+    ], autoApply=True)
+    assert viewer.acdc_df.xs(1, level='Cell_ID')['Dependent'].tolist() == [1]*4
+    viewer.measurementProcessingWarning.assert_not_called()
+
+
+def test_annotation_reevaluation_includes_timepoint_prerequisite(viewer):
+    point = TimepointIdentifier(
+        'Point', (255, 0, 0), '',
+        {'type': 'equation', 'equation': 'area > 16', 'mode': 'first_true'}
+    )
+    viewer.addTimepointIdentifierItem(point)
+    annotation_predictors(viewer, [('Flag', 'any(timepoint_Point)')])
+    assert viewer.reevaluateDisplayedCellCustomAnnot(
+        viewer.customAnnotButtonByName('Flag')
+    )
+    assert viewer.cellTimepoints(point.uid, 1) == [1]
+    assert viewer.acdc_df.xs(1, level='Cell_ID')['Flag'].tolist() == [1]*4
+    assert viewer.cellTimepoints(point.uid, 2) == []
+
+
+@pytest.mark.parametrize('answer', ['cancel', 'skip', 'overwrite'])
+def test_prerequisite_manual_annotations_are_protected(viewer, monkeypatch, answer):
+    annotation_predictors(viewer, [('Flag', 'area < 0')])
+    final = TimepointIdentifier(
+        'Final', (0, 0, 255), '',
+        {'type': 'equation', 'equation': 'Flag == 1', 'mode': 'first_true'}
+    )
+    viewer.addTimepointIdentifierItem(final)
+    viewer.acdc_df.loc[(slice(None), 1), 'Flag'] = 1
+    viewer.editedCustomAnnotCells()['Flag'].add(1)
+    ask = Mock(return_value=answer)
+    monkeypatch.setattr(viewer, 'askOverwriteManualTimepoints', ask)
+    assert viewer.reevaluateTimepoints([final.uid], IDs=[1]) == (answer != 'cancel')
+    assert ask.call_args.args[0] == {'Flag': [1]}
+    assert viewer.cellTimepoints(final.uid, 1) == ([0] if answer == 'skip' else [])
+    assert viewer.acdc_df.xs(1, level='Cell_ID')['Flag'].tolist() == (
+        [0]*4 if answer == 'overwrite' else [1]*4
+    )
+
+
+def test_prerequisite_failure_stops_dependent_prediction(viewer):
+    annotation_predictors(viewer, [('Flag', 'missing_column > 0')])
+    final = TimepointIdentifier(
+        'Final', (0, 0, 255), '',
+        {'type': 'equation', 'equation': 'Flag == 0', 'mode': 'first_true'}
+    )
+    viewer.addTimepointIdentifierItem(final)
+    assert not viewer.reevaluateTimepoints([final.uid], IDs=[1])
+    assert viewer.cellTimepoints(final.uid, 1) == []
+    viewer.measurementProcessingWarning.assert_called_once()
+
+
+def test_failed_auto_prerequisites_are_not_retried_on_revisit(viewer):
+    point = TimepointIdentifier(
+        'Point', (255, 0, 0), '',
+        {'type': 'equation', 'equation': 'missing_column > 0',
+         'mode': 'first_true'},
+        autoApply=True
+    )
+    viewer.addTimepointIdentifierItem(point)
+    viewer.viewedCells.clear()
+    annotation_predictors(
+        viewer, [('Flag', 'any(timepoint_Point)')], autoApply=True
+    )
+    viewer.ensureTimepointPredictions()
+    viewer.ensureCustomAnnotPredictions()
+    viewer.measurementProcessingWarning.assert_called_once()
+    assert viewer.acdc_df['Flag'].tolist() == [0]*8
+
+
+def test_timepoint_customization_warns_about_mixed_cycle(viewer, monkeypatch):
+    point = TimepointIdentifier(
+        'Point', (255, 0, 0), '',
+        {'type': 'equation', 'equation': 'area > 0', 'mode': 'first_true'}
+    )
+    viewer.addTimepointIdentifierItem(point)
+    annotation_predictors(viewer, [('Flag', 'any(timepoint_Point)')])
+    warn = Mock()
+    monkeypatch.setattr(apps.TimepointIdentifierDialog, 'warn', warn)
+
+    def accept(dialog):
+        assert dialog.acdc_df is viewer.acdc_df
+        dialog.equation = 'Flag == 1'
+        dialog.ok_cb()
+        assert dialog.cancel
+
+    monkeypatch.setattr(apps.TimepointIdentifierDialog, 'exec_', accept)
+    assert viewer.execTimepointIdentifierDialog(point, 'Edit') is None
+    assert 'Circular predictor dependency' in warn.call_args.args[1]
+
+
+def test_annotation_customization_warns_about_mixed_cycle(viewer, monkeypatch):
+    annotation_predictors(viewer, [('Flag', 'area > 0')])
+    point = TimepointIdentifier(
+        'Point', (255, 0, 0), '',
+        {'type': 'equation', 'equation': 'Flag == 1', 'mode': 'first_true'}
+    )
+    viewer.addTimepointIdentifierItem(point)
+    state = viewer.customAnnotDict[viewer.customAnnotButtonByName('Flag')]['state']
+    dialog = apps.customAnnotationDialog(
+        {}, state=state, **viewer.customAnnotationDialogKwargs(state)
+    )
+    warning = Mock()
+    monkeypatch.setattr(apps.widgets, 'myMessageBox', Mock(return_value=warning))
+    try:
+        dialog.predictorGroupbox.equation = 'any(timepoint_Point)'
+        dialog.clickedButton = dialog.okButton
+        event = QCloseEvent()
+        dialog.closeEvent(event)
+        assert not event.isAccepted()
+        assert dialog.cancel
+        assert 'Circular predictor dependency' in warning.warning.call_args.args[2]
+    finally:
+        dialog.clickedButton = dialog.cancelButton
+        dialog.deleteLater()
+
+
+@pytest.mark.parametrize('Dialog', [
+    apps.TimepointPredictorEquationDialog,
+    apps.CustomAnnotationPredictorEquationDialog,
+])
+def test_equation_customization_warns_before_accepting_cycle(
+        viewer, monkeypatch, Dialog
+    ):
+    point = TimepointIdentifier('Point', (255, 0, 0), '')
+    viewer.addTimepointIdentifierItem(point)
+    dialog = Dialog([], False, False, acdc_df=viewer.acdc_df,
+                    equation='timepoint_Point')
+    warning = Mock()
+    monkeypatch.setattr(apps.widgets, 'myMessageBox', Mock(return_value=warning))
+    dialog.validatePredictorDependencies = (
+        lambda predictor: viewer.validatePredictorDependencies(
+            'timepoint_Point', 'timepoint_Point', predictor
+        )
+    )
+    try:
+        assert 'timepoint_Point' in dialog.variableNames
+        dialog.okButton.setEnabled(True)
+        dialog.ok_cb()
+        assert dialog.cancel
+        assert 'Circular predictor dependency' in warning.warning.call_args.args[2]
+    finally:
+        dialog.deleteLater()
 
 
 @pytest.mark.parametrize('mode, expected', [
