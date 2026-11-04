@@ -27,6 +27,7 @@ the main GUI (`gui.guiWin`) through the mixins in:
   timestamp, colormaps, search ID, hover info, shortcuts, slideshow, 
   3D viewer, objects properties, cell cycle table and objects count).
 - `gui_overlay`: overlay of other channels and of other segmentation files.
+- `gui_custom_annotations`: custom annotations of the objects.
 
 Run it with `python -m cellacdc.measurements_viewer [folder_path]`.
 
@@ -74,6 +75,28 @@ definitions are stored in configurations. The time points themselves live in
 the position's acdc_df as ``timepoint_<name>`` boolean columns (True at the 
 frames where the cell is marked), so they are part of any exported or processed 
 table.
+
+The ``Custom annotations`` toolbar shares the custom annotations of the main 
+GUI (``gui_custom_annotations``): add, load, modify or remove annotations, 
+each saved as a 0/1 column ``<name>`` of the acdc_df. Each annotation has a 
+keyboard shortcut (defaults A, S, D, F, ...) that annotates/un-annotates the 
+selected cell across its entire video history, while ``Shift+shortcut``
+re-evaluates its predictor on the selected cell. Alternatively, activate the 
+toolbar button and RIGHT-click on a cell. Like time points, annotations can 
+have a predictor (equation or ``predictor(df)`` from a Python file, see 
+``custom_annotation_predictors``) that must return booleans (one per row, 
+or one for all rows of the cell). ``All`` (default), ``None`` or ``Most``
+consolidates the results into one boolean for the entire Cell_ID history.
+Most requires strictly more than half True; ties are False. Existing
+frame-specific assignments are expanded to all frames if any frame is marked.
+Definitions and predictor settings are saved in viewer configurations; the
+main GUI's global saved definitions can be loaded, but are not overwritten.
+Cell assignments are saved with Export measurements, not in configurations.
+Automatic predictions (``autoApply``), the warning
+before overwriting manually edited cells and the re-evaluation (right-click 
+on the annotation button) work as for the time points. The toolbar also has
+actions to re-evaluate all annotation predictors on the displayed cell or on
+all cells. Annotation definitions are stored in configurations.
 """
 import os
 import sys
@@ -123,6 +146,12 @@ from . import html_utils
 from . import printl
 from . import workers
 from . import timepoint_predictors
+from . import custom_annotation_predictors
+from . import gui_custom_annotations
+from .gui_custom_annotations import (
+    custom_annot_state_to_save, custom_annot_symbol
+)
+from .custom_annotation_predictors import CustomAnnotationPredictor
 from .timepoint_predictors import TimepointIdentifier
 from . import exception_handler, disableWindow
 
@@ -361,6 +390,7 @@ class MeasurementsViewerWin(
         gui_navigation.RecentPathsGuiElements,
         gui_navigation.LutGuiElements,
         gui_annotations.AnnotationsGuiElements,
+        gui_custom_annotations.CustomAnnotationsGuiElements,
         gui_viewer_tools.ZoomGuiElements,
         gui_viewer_tools.RulerGuiElements,
         gui_viewer_tools.ScaleBarTimestampGuiElements,
@@ -445,6 +475,7 @@ class MeasurementsViewerWin(
         self.loadSettings()
         self.initAnnotationsAttributes()
         self.initViewerToolsAttributes()
+        self.initCustomAnnotationsAttributes()
         if sys.platform.startswith('win'):
             self.openFolderText = 'Show in Explorer...'
         else:
@@ -565,6 +596,7 @@ class MeasurementsViewerWin(
             'viewed_cells': {
                 path: sorted(IDs) for path, IDs in self.viewedCells.items()
             },
+            'custom_annotations': self.customAnnotConfiguration(),
             # 'cell_constants': [dict(constant) for constant in self.cellConstants],
         }
 
@@ -615,6 +647,10 @@ class MeasurementsViewerWin(
                 or any(type(ID) is not int or ID <= 0 for ID in IDs)
                 for path, IDs in viewed.items()):
             raise ValueError('Invalid viewed cells in configuration.')
+        # Optional for configurations saved before custom annotations
+        MeasurementsViewerWin.validateCustomAnnotConfiguration(
+            configuration.get('custom_annotations', [])
+        )
         # timepoint_predictors.validate_constants(
         #     configuration.get('cell_constants', [])
         # )
@@ -737,6 +773,7 @@ class MeasurementsViewerWin(
         for path, IDs in configuration.get('viewed_cells', {}).items():
             self.viewedCells[os.path.normcase(os.path.abspath(path))].update(IDs)
         self.setData(data)
+        self.setCustomAnnotations(configuration.get('custom_annotations', []))
         self.configurationFilepath = None
         overlays = configuration['overlay_channels']
         if overlays:
@@ -866,6 +903,17 @@ class MeasurementsViewerWin(
         self.equalizeHistPushButton.hide()
         self.imgGradRight = _NoOpItem()
     
+    def initCustomAnnotationsAttributes(self):
+        """Initialize the attributes required by 
+        `gui_custom_annotations.CustomAnnotationsGuiElements`"""
+        self.customAnnotDict = {}
+        self.customAnnotButton = None
+        self.savedCustomAnnot = {}
+        # {button: (toggle action, Shift+shortcut re-evaluate action)}
+        self.customAnnotShortcutActions = {}
+        # Cells already predicted {(normcase pos_path, name): set of IDs}
+        self.customAnnotAutoPredictions = defaultdict(set)
+    
     def initAnnotationsAttributes(self):
         """Initialize the attributes required by 
         `gui_annotations.AnnotationsGuiElements`"""
@@ -986,6 +1034,35 @@ class MeasurementsViewerWin(
         #     'or "Was at beginning")\n'
         #     'that can be used like columns in the time point predictors.'
         # )
+        
+        self.gui_createCustomAnnotationsActions()
+        self.reevaluateAllCustomAnnotationsAction = QAction(
+            QIcon(":reload.svg"),
+            'Re-evaluate annotation predictors on all cells', self
+        )
+        self.reevaluateAllCustomAnnotationsAction.setToolTip(
+            'Re-evaluate annotation predictors on all cells\n\n'
+            'Run the predictors of all custom annotations on every cell of '
+            'the current position, replacing their annotations.\n'
+            'You will be warned if manual edits would be overwritten.'
+        )
+        self.reevaluateCellCustomAnnotationsAction = QAction(
+            QIcon(":magic_wand.svg"),
+            'Re-evaluate annotation predictors on displayed cell', self
+        )
+        self.reevaluateCellCustomAnnotationsAction.setToolTip(
+            'Re-evaluate annotation predictors on displayed cell\n\n'
+            'Run the predictors of all custom annotations only on the '
+            'displayed cell, replacing its annotations.\n'
+            'You will be warned if manual edits would be overwritten.'
+        )
+        self.addCustomAnnotationAction.setToolTip(
+            'Add custom annotation\n\n'
+            'Define an annotation (saved as a 0/1 column) with a symbol, a '
+            'keyboard shortcut and an optional predictor.\n'
+            'Select a cell and press the shortcut to annotate it at the '
+            'current frame.'
+        )
         
         # Annotations actions (same as in the main GUI)
         self.scalingLabelsAction = widgets.CheckableAction(
@@ -1246,6 +1323,16 @@ class MeasurementsViewerWin(
         self.updateReevaluateTimepointsActions()
         self.addToolBar(self.timepointsToolBar)
         
+        self.gui_createAnnotateToolbar(area=Qt.TopToolBarArea, visible=True)
+        self.annotateToolbar.addAction(
+            self.reevaluateAllCustomAnnotationsAction
+        )
+        self.annotateToolbar.addAction(
+            self.reevaluateCellCustomAnnotationsAction
+        )
+        self.annotateToolbar.addSeparator()
+        self.updateReevaluateCustomAnnotationActions()
+
         navigateToolBar.addAction(self.searchAction)
         
         self.zoomRectButton = QToolButton(self)
@@ -1349,7 +1436,14 @@ class MeasurementsViewerWin(
         self.reevaluateCellTimepointsAction.triggered.connect(
             self.reevaluateDisplayedCellTimepoints
         )
+        self.reevaluateAllCustomAnnotationsAction.triggered.connect(
+            self.reevaluateAllCustomAnnotations
+        )
+        self.reevaluateCellCustomAnnotationsAction.triggered.connect(
+            self.reevaluateDisplayedCellCustomAnnotations
+        )
         # self.editCellConstantsAction.triggered.connect(self.editCellConstants)
+        self.gui_connectCustomAnnotationsActions()
         
         self.scalingLabelsAction.toggled.connect(self.scalingLabelsToggled)
         self.highLowResAction.toggled.connect(self.highLowResToggled)
@@ -2853,6 +2947,7 @@ class MeasurementsViewerWin(
         
         acdc_df = self._standardizeAcdcDf(acdc_df).sort_index()
         self.ensureTimepointColumns(acdc_df)
+        self.ensureCustomAnnotColumns(acdc_df)
         # The acdc_df of the position is the only store of the time points
         posData.acdc_df = acdc_df
         return acdc_df
@@ -2988,8 +3083,8 @@ class MeasurementsViewerWin(
         self.restoreTimepointColumns(posData, previous)
     
     def restoreTimepointColumns(self, posData, previous):
-        """Keep the time points (which are not in the file on disk) after 
-        the acdc_df of the position was reloaded."""
+        """Keep the time points and the custom annotations (which are not in 
+        the file on disk) after the acdc_df of the position was reloaded."""
         acdc_df = getattr(posData, 'acdc_df', None)
         if previous is None or acdc_df is None or acdc_df.empty:
             return
@@ -3001,6 +3096,13 @@ class MeasurementsViewerWin(
                 continue
             marked = previous.index[previous[column].fillna(False).to_numpy(bool)]
             acdc_df[column] = acdc_df.index.isin(marked)
+        for name in self.customAnnotNames():
+            if name not in previous.columns:
+                continue
+            values = pd.to_numeric(previous[name], errors='coerce').fillna(0)
+            marked = previous.index[values.to_numpy() != 0]
+            acdc_df[name] = acdc_df.index.isin(marked).astype(int)
+            self.ensureCustomAnnotColumn(acdc_df, name)
         posData.acdc_df = acdc_df
     
     @disableWindow
@@ -3188,8 +3290,8 @@ class MeasurementsViewerWin(
             return
         try:
             export_df = self.acdc_df.copy()
-            for column, values in self.timepointsColumns(export_df).items():
-                export_df[column] = values
+            self.ensureTimepointColumns(export_df)
+            self.ensureCustomAnnotColumns(export_df)
             export_df.to_csv(filepath)
         except (OSError, ValueError) as error:
             self.measurementProcessingWarning('Export failed', str(error))
@@ -3279,10 +3381,17 @@ class MeasurementsViewerWin(
         checkedColumns = set(self.checkedColumns())
         isFirstInit = self.columnsModel.rowCount() == 0
         
-        self.columnsModel.blockSignals(True)
+        # Do not block the model signals: the search proxy and the view must 
+        # be notified of the reset (otherwise they keep dangling indexes)
+        self._isUpdatingColumnsList = True
+        try:
+            self._updateColumnsList(checkedColumns, isFirstInit)
+        finally:
+            self._isUpdatingColumnsList = False
+    
+    def _updateColumnsList(self, checkedColumns, isFirstInit):
         self.columnsModel.clear()
         if self.acdc_df is None:
-            self.columnsModel.blockSignals(False)
             self.updateSignalAxes([])
             return
         
@@ -3310,7 +3419,6 @@ class MeasurementsViewerWin(
                 item.setCheckState(Qt.Checked)
             else:
                 item.setCheckState(Qt.Unchecked)
-        self.columnsModel.blockSignals(False)
         self.columnsListWidget.expandAll()
         self.updateSignalAxes(numericColumns)
         self.filterColumns(self.columnsSearchLineEdit.text())
@@ -3457,6 +3565,7 @@ class MeasurementsViewerWin(
             self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
         
         self.highlightSelectedID()
+        self.doCustomAnnotation(0)
         self.updateTimestampFrame()
         self.annotateAllObjectTracks()
         posData.visited = True
@@ -3941,8 +4050,12 @@ class MeasurementsViewerWin(
     def markTimepointEdited(self, uid, ID):
         self.editedTimepointCells()[uid].add(ID)
     
-    def reservedShortcuts(self, excludeUid=None):
-        """Key sequences already used in the viewer {sequence: used by}"""
+    def reservedShortcuts(self, excludeUid=None, excludeCustomAnnot=None):
+        """Key sequences already used in the viewer {sequence: used by}. 
+        
+        The shortcut of the time point identifier `excludeUid` and the 
+        shortcuts of the custom annotation button `excludeCustomAnnot` are 
+        not included (e.g., when editing them)."""
         reserved = {}
         for name in ('Left', 'Right', 'Up', 'Down', 'Space', 'Z', 'Esc'):
             reserved[name] = 'Viewer navigation'
@@ -3953,9 +4066,14 @@ class MeasurementsViewerWin(
         timepointActions = {
             action: uid for uid, action in self.timepointActions.items()
         }
+        excludedActions = set(
+            self.customAnnotShortcutActions.get(excludeCustomAnnot, ())
+        )
         widgets_ = self.findChildren(QAction) + self.findChildren(QAbstractButton)
         for widget in widgets_:
             if timepointActions.get(widget, -1) == excludeUid:
+                continue
+            if widget in excludedActions:
                 continue
             shortcut = widget.shortcut().toString()
             if not shortcut:
@@ -4301,8 +4419,16 @@ class MeasurementsViewerWin(
         hasPredictors = bool(self.predictorTimepointUids())
         self.reevaluateAllTimepointsAction.setEnabled(hasPredictors)
         self.reevaluateCellTimepointsAction.setEnabled(hasPredictors)
+
+    def updateReevaluateCustomAnnotationActions(self):
+        hasPredictors = any(
+            self.customAnnotHasPredictor(button)
+            for button in self.customAnnotDict
+        )
+        self.reevaluateAllCustomAnnotationsAction.setEnabled(hasPredictors)
+        self.reevaluateCellCustomAnnotationsAction.setEnabled(hasPredictors)
     
-    def askOverwriteManualTimepoints(self, editedCells, scope):
+    def askOverwriteManualTimepoints(self, editedCells, scope, what='Time points'):
         """Warn that re-evaluating overwrites manual edits.
         
         Parameters
@@ -4311,6 +4437,8 @@ class MeasurementsViewerWin(
             {identifier name: sorted list of edited Cell_IDs}
         scope : str
             Description of the re-evaluated cells.
+        what : str, optional
+            What has been edited (e.g., 'Custom annotations').
 
         Returns
         -------
@@ -4322,7 +4450,7 @@ class MeasurementsViewerWin(
             for name, IDs in editedCells.items()
         )
         txt = html_utils.paragraph(
-            f'Time points of {scope} have been <b>edited manually</b>.<br><br>'
+            f'{what} of {scope} have been <b>edited manually</b>.<br><br>'
             'Re-evaluating the predictors will <b>overwrite</b> these edits.'
             '<br><br>Do you want to overwrite the manual edits or skip the '
             'edited cells?'
@@ -4399,6 +4527,8 @@ class MeasurementsViewerWin(
             posData = self.posData()
         if posData is not self.posData():
             return
+        # Custom annotations track their own predicted cells
+        self.ensureCustomAnnotPredictions(posData)
         path = os.path.normcase(os.path.abspath(posData.pos_path))
         ID = int(self.selectedID)
         if ID in self.viewedCells[path]:
@@ -4415,6 +4545,616 @@ class MeasurementsViewerWin(
                 self.reevaluateTimepoints([uid], IDs=[ID], posData=posData)
             else:
                 self.runTimepointPredictor(uid, posData=posData, IDs=[ID])
+    
+    # --- Custom annotations -------------------------------------------------
+    # Overrides of the `gui_custom_annotations.CustomAnnotationsGuiElements` 
+    # hooks. The annotations are stored as 0/1 columns of the acdc_df of each 
+    # position (the frame tables of `posData.allData_li` are temporary copies).
+    def addCustomAnnotation(self):
+        if not self.data:
+            self.statusBar().showMessage(
+                'Load data to add custom annotations.', 5000
+            )
+            return
+        return super().addCustomAnnotation()
+    
+    def loadCustomAnnotations(self):
+        if not self.data:
+            self.statusBar().showMessage(
+                'Load data to load custom annotations.', 5000
+            )
+            return
+        return super().loadCustomAnnotations()
+    
+    def customAnnotNames(self):
+        customAnnotDict = getattr(self, 'customAnnotDict', {})
+        return [annot['state']['name'] for annot in customAnnotDict.values()]
+    
+    def ensureCustomAnnotColumn(self, acdc_df, name):
+        """One 0/1 value per Cell_ID, broadcast to its entire history.
+
+        Legacy frame-specific assignments mark the cell if any frame is
+        annotated, preserving existing assignments.
+        """
+        if name not in acdc_df.columns:
+            acdc_df[name] = 0
+            return
+        values = pd.to_numeric(acdc_df[name], errors='coerce').fillna(0)
+        acdc_df[name] = (
+            (values != 0).groupby(level='Cell_ID').transform('any').astype(int)
+        )
+    
+    def ensureCustomAnnotColumns(self, acdc_df):
+        for name in self.customAnnotNames():
+            self.ensureCustomAnnotColumn(acdc_df, name)
+    
+    def customAnnotIsVisibleMode(self):
+        return bool(self.data)
+    
+    def saveCustomAnnotPositionParams(self, posData):
+        # Annotations are columns of the in-memory acdc_df (exported with 
+        # the table) and their definitions are saved in configurations
+        pass
+
+    def saveCustomAnnot(self, only_temp=False):
+        """Viewer definitions are saved by saveConfiguration, not globally."""
+        pass
+    
+    def defaultCustomAnnotShortcut(self, reservedShortcuts):
+        for key in custom_annotation_predictors.DEFAULT_SHORTCUTS:
+            if QKeySequence(key).toString() not in reservedShortcuts:
+                return key
+        return ''
+    
+    def customAnnotationDialogKwargs(self, state=None):
+        posData = self.posData()
+        button = (
+            None if state is None 
+            else self.customAnnotButtonByName(state['name'])
+        )
+        reservedShortcuts = self.reservedShortcuts(excludeCustomAnnot=button)
+        kwargs = {
+            'predictorOptions': {
+                'acdc_df': self.timepointsDf(posData),
+                'SizeT': getattr(posData, 'SizeT', None),
+                'allChNames': getattr(posData, 'chNames', []),
+                'isZstack': getattr(posData, 'SizeZ', 1) > 1,
+                'isSegm3D': bool(self.isSegm3D),
+            },
+            'reservedShortcuts': reservedShortcuts,
+            'existingNames': [
+                name for name in self.customAnnotNames()
+                if state is None or name != state['name']
+            ],
+        }
+        if state is None:
+            kwargs['state'] = {
+                'type': 'Single time-point',
+                'name': '',
+                'symbol': '',
+                'shortcut': self.defaultCustomAnnotShortcut(reservedShortcuts),
+                'description': '',
+            }
+        return kwargs
+    
+    def customAnnotToolTip(self, state):
+        shortcut = state.get('shortcut') or ''
+        if shortcut:
+            shortcutText = (
+                f'Shortcut: "{shortcut}" (annotate/un-annotate the selected '
+                f'cell across its entire video history)\n'
+                f'Auto: "Shift+{shortcut}" (re-evaluate the predictor on the '
+                'selected cell)'
+            )
+        else:
+            shortcutText = 'No shortcut'
+        predictor = CustomAnnotationPredictor.describe(state.get('predictor'))
+        if state.get('autoApply', False):
+            predictor = f'{predictor} (auto apply on unvisited cells)'
+        lines = [
+            f'Custom annotation: {state["name"]}', '',
+            'Usage: select a cell and press the shortcut, or activate the '
+            'button and RIGHT-click on a cell.',
+            shortcutText, f'Predictor: {predictor}'
+        ]
+        description = state.get('description', '')
+        if description:
+            lines.extend(['', f'Description: {description}'])
+        lines.extend([
+            '', 'RIGHT-click on the button to modify, re-evaluate, clear or '
+            'remove the annotation.'
+        ])
+        return '\n'.join(lines)
+    
+    def setCustomAnnotShortcut(self, button, shortcut):
+        """The shortcut annotates the selected cell across its entire history
+        (instead of activating the button) and Shift+shortcut re-evaluates 
+        the predictor on the selected cell."""
+        button.setShortcut(QKeySequence())
+        actions = self.customAnnotShortcutActions.get(button)
+        if actions is None:
+            toggleAction = QAction(self)
+            toggleAction.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            toggleAction.triggered.connect(
+                partial(self.customAnnotShortcutTriggered, button)
+            )
+            autoAction = QAction(self)
+            autoAction.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            autoAction.triggered.connect(
+                partial(self.reevaluateDisplayedCellCustomAnnot, button)
+            )
+            self.addAction(toggleAction)
+            self.addAction(autoAction)
+            actions = (toggleAction, autoAction)
+            self.customAnnotShortcutActions[button] = actions
+        toggleAction, autoAction = actions
+        if isinstance(shortcut, QKeySequence):
+            shortcut = shortcut.toString()
+        keySequence = QKeySequence(shortcut or '')
+        autoKeySequence = QKeySequence()
+        if not keySequence.isEmpty() and 'Shift' not in keySequence.toString():
+            autoKeySequence = QKeySequence(f'Shift+{keySequence.toString()}')
+        toggleAction.setShortcut(keySequence)
+        autoAction.setShortcut(autoKeySequence)
+        name = getattr(button, 'name', '')
+        toggleAction.setText(f'Annotate "{name}"')
+        autoAction.setText(f'Re-evaluate "{name}" predictor')
+    
+    def initCustomAnnotColumn(self, button, name):
+        for acdc_df in self.allAcdcDfs():
+            self.ensureCustomAnnotColumn(acdc_df, name)
+        self.updateColumnsList()
+    
+    def renameCustomAnnotColumn(self, oldName, newName):
+        for acdc_df in self.allAcdcDfs():
+            if oldName in acdc_df.columns:
+                acdc_df.rename(columns={oldName: newName}, inplace=True)
+        self.updateColumnsList()
+        self.plotMeasurements()
+    
+    def removeCustomAnnotColumn(self, name):
+        for acdc_df in self.allAcdcDfs():
+            acdc_df.drop(columns=name, errors='ignore', inplace=True)
+        self.updateColumnsList()
+        self.plotMeasurements()
+    
+    def onCustomAnnotationChanged(self, button, oldState=None):
+        state = self.customAnnotDict[button]['state']
+        name = state['name']
+        oldName = name if oldState is None else oldState['name']
+        if oldName != name:
+            for key in list(self.customAnnotAutoPredictions.keys()):
+                if key[1] == oldName:
+                    self.customAnnotAutoPredictions[(key[0], name)] = (
+                        self.customAnnotAutoPredictions.pop(key)
+                    )
+            for posData in self.data or []:
+                edited = self.editedCustomAnnotCells(posData)
+                if oldName in edited:
+                    edited[name] = edited.pop(oldName)
+        predictorChanged = (
+            oldState is None 
+            or oldState.get('predictor') != state.get('predictor')
+        )
+        if predictorChanged:
+            self.clearCustomAnnotPredictionsTracking(name)
+        
+        button.extraContextMenuActions = []
+        if self.customAnnotHasPredictor(button):
+            button.extraContextMenuActions.extend([
+                (
+                    'Re-evaluate predictor on all cells', 
+                    self.reevaluateAllCellsCustomAnnot
+                ),
+                (
+                    'Re-evaluate predictor on displayed cell', 
+                    self.reevaluateDisplayedCellCustomAnnot
+                ),
+            ])
+        button.extraContextMenuActions.append(
+            ('Clear annotations of current position', self.clearCustomAnnotations)
+        )
+        self.updateReevaluateCustomAnnotationActions()
+        if not self.data:
+            return
+        self.ensureCustomAnnotPredictions()
+        self.refreshCustomAnnotations([name])
+    
+    def onCustomAnnotationRemoved(self, button, state):
+        for action in self.customAnnotShortcutActions.pop(button, ()):
+            self.removeAction(action)
+            action.deleteLater()
+        name = state['name']
+        self.clearCustomAnnotPredictionsTracking(name)
+        for posData in self.data or []:
+            self.editedCustomAnnotCells(posData).pop(name, None)
+        self.updateReevaluateCustomAnnotationActions()
+    
+    def clearCustomAnnotPredictionsTracking(self, name):
+        for key in list(self.customAnnotAutoPredictions.keys()):
+            if key[1] == name:
+                self.customAnnotAutoPredictions.pop(key)
+    
+    def customAnnotHasPredictor(self, button):
+        predictor = self.customAnnotDict[button]['state'].get('predictor')
+        return (
+            isinstance(predictor, dict) 
+            and predictor.get('type', timepoint_predictors.PREDICTOR_NONE)
+            != timepoint_predictors.PREDICTOR_NONE
+        )
+    
+    def editedCustomAnnotCells(self, posData=None):
+        """Cells with manual annotation edits {name: set of Cell_IDs}."""
+        if posData is None:
+            posData = self.posData()
+        edited = getattr(posData, 'customAnnotEdited', None)
+        if edited is None:
+            edited = defaultdict(set)
+            posData.customAnnotEdited = edited
+        return edited
+    
+    def customAnnotPredictionKey(self, posData, name):
+        return (os.path.normcase(os.path.abspath(posData.pos_path)), name)
+    
+    def customAnnotFrameIDs(self, name, frame_i=None, posData=None):
+        """IDs annotated with `name` at `frame_i` (default current frame)."""
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None or name not in acdc_df.columns:
+            return []
+        if frame_i is None:
+            frame_i = self.frame_i
+        try:
+            values = acdc_df[name].xs(frame_i, level='frame_i')
+        except KeyError:
+            return []
+        return [int(ID) for ID in values.index[values.to_numpy() != 0]]
+    
+    def replaceCustomAnnotations(self, name, annotated, IDs, posData=None):
+        """Replace the cell-wide assignments of IDs from predictor results."""
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None:
+            return False
+        if name in acdc_df.columns:
+            values = pd.to_numeric(acdc_df[name], errors='coerce').fillna(0)
+            values = (values.to_numpy() != 0).astype(int)
+        else:
+            values = np.zeros(len(acdc_df), dtype=int)
+        values[acdc_df.index.get_level_values('Cell_ID').isin(list(IDs))] = 0
+        markedIDs = {
+            ID for ID, frames in annotated.items() if frames and ID in IDs
+        }
+        values[acdc_df.index.get_level_values('Cell_ID').isin(markedIDs)] = 1
+        acdc_df[name] = values
+        return True
+    
+    def refreshCustomAnnotations(self, names=None):
+        """Redraw the annotations and the plot if it shows one of `names`."""
+        self.doCustomAnnotation(0)
+        if names is None:
+            names = self.customAnnotNames()
+        plotted = set(self.checkedColumns()) | set(self.measurementsAxes.values())
+        if plotted.intersection(names):
+            self.plotMeasurements()
+    
+    def toggleCustomAnnotation(self, button, ID, frame_i=None):
+        """Toggle one Cell_ID across its entire history in this position."""
+        if frame_i is None:
+            frame_i = self.frame_i
+        name = self.customAnnotDict[button]['state']['name']
+        if not self.cellHasRow(ID, frame_i):
+            self.statusBar().showMessage(
+                f'Cell ID {ID} is not in the measurements table at frame n. '
+                f'{frame_i+1}.', 5000
+            )
+            return False
+        acdc_df = self.acdc_df
+        self.ensureCustomAnnotColumn(acdc_df, name)
+        annotated = acdc_df.at[(frame_i, ID), name] != 0
+        acdc_df.loc[
+            acdc_df.index.get_level_values('Cell_ID') == ID, name
+        ] = 0 if annotated else 1
+        self.editedCustomAnnotCells()[name].add(int(ID))
+        action = 'Removed' if annotated else 'Added'
+        self.statusBar().showMessage(
+            f'{action} "{name}" annotation for Cell ID {ID} across its '
+            'entire video history.', 5000
+        )
+        return True
+    
+    def customAnnotShortcutTriggered(self, button, checked=False):
+        if not self.data or button not in self.customAnnotDict:
+            return
+        if self.selectedID is None:
+            self.statusBar().showMessage('Select a cell to annotate.', 5000)
+            return
+        if self.toggleCustomAnnotation(button, int(self.selectedID)):
+            self.refreshCustomAnnotations([button.name])
+    
+    def annotateClickedObject(self, xdata, ydata):
+        """Annotate the object under the right-click with the active custom 
+        annotation (as in `gui.guiWin` right-click with an active button)."""
+        button = self.customAnnotButton
+        posData = self.posData()
+        lab2D = self.get_2Dlab(posData.lab)
+        try:
+            ID = int(lab2D[ydata, xdata])
+        except IndexError:
+            ID = 0
+        if ID == 0:
+            self.statusBar().showMessage(
+                'RIGHT-click on a cell to annotate it.', 5000
+            )
+            return
+        self.doCustomAnnotation(ID)
+        if not button.keepToolActive:
+            button.setChecked(False)
+    
+    def doCustomAnnotation(self, ID):
+        """Toggle the annotation of `ID` across its entire history with the
+        active button (pass 0 to only redraw) and draw the annotations of 
+        the current frame."""
+        if not self.data or not self.customAnnotDict:
+            return
+        if self.switchPlaneCombobox.depthAxes() != 'z':
+            self.clearCustomAnnot()
+            return
+        
+        if ID > 0 and self.customAnnotButton in self.customAnnotDict:
+            button = self.customAnnotButton
+            if self.toggleCustomAnnotation(button, ID):
+                plotted = (
+                    set(self.checkedColumns()) 
+                    | set(self.measurementsAxes.values())
+                )
+                if button.name in plotted:
+                    self.plotMeasurements()
+        
+        buttons = self.customAnnotButtonsToDraw()
+        for button, annot in self.customAnnotDict.items():
+            if button not in buttons:
+                self.clearScatterPlotCustomAnnotButton(button)
+                continue
+            IDs = self.customAnnotFrameIDs(annot['state']['name'])
+            self.drawCustomAnnotationIDs(button, IDs)
+        if buttons:
+            return buttons[0]
+    
+    def runCustomAnnotPredictor(
+            self, button, posData=None, IDs=None, skipIDs=(), force=False
+        ):
+        """Same as `runTimepointPredictor` for a custom annotation: annotate 
+        the entire cell history after boolean consolidation.
+        
+        If `IDs` is not None, only these cells are predicted. Cells in 
+        `skipIDs` keep their current annotations. Unless `force` is True, 
+        require `autoApply` and skip cells already predicted for the same 
+        position path and annotation. Returns False if the prediction 
+        failed."""
+        if not self.data or button not in self.customAnnotDict:
+            return False
+        state = self.customAnnotDict[button]['state']
+        if not force and not state.get('autoApply', False):
+            return True
+        if not self.customAnnotHasPredictor(button):
+            return True
+        if posData is None:
+            posData = self.posData()
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None:
+            return True
+        name = state['name']
+        predictionKey = self.customAnnotPredictionKey(posData, name)
+        alreadyPredicted = self.customAnnotAutoPredictions[predictionKey]
+        allIDs = {
+            int(ID) for ID in acdc_df.index.get_level_values('Cell_ID').unique()
+        }
+        IDs = allIDs if IDs is None else allIDs.intersection(IDs)
+        IDs -= set(skipIDs)
+        if not force:
+            IDs -= alreadyPredicted
+        if not IDs:
+            return True
+        try:
+            # All cells are passed since predictors can use other cells
+            predicted = CustomAnnotationPredictor.predict(
+                acdc_df, state['predictor'], 
+                SizeT=getattr(posData, 'SizeT', None), IDs=IDs
+            )
+        except Exception as err:
+            if not force:
+                # Do not retry (and warn again) automatically
+                alreadyPredicted.update(IDs)
+            self.logger.exception('Custom annotation prediction failed')
+            self.measurementProcessingWarning(
+                'Custom annotation prediction failed', 
+                f'Predicting "{name}" failed:\n\n{err}'
+            )
+            return False
+        
+        self.replaceCustomAnnotations(name, predicted, IDs, posData)
+        self.editedCustomAnnotCells(posData)[name].difference_update(IDs)
+        alreadyPredicted.update(IDs)
+        
+        numFrames = sum(len(frames) for frames in predicted.values())
+        self.statusBar().showMessage(
+            f'Predicted {numFrames} "{name}" annotation(s) for '
+            f'{len(predicted)} cell(s).', 5000
+        )
+        return True
+    
+    def reevaluateCustomAnnotations(self, buttons=None, IDs=None, posData=None):
+        """Re-run the predictors of the custom annotations `buttons` 
+        (default all with a predictor) on cells `IDs` (default all cells), 
+        warning if manual edits would be overwritten. Returns False if 
+        cancelled."""
+        if not self.data:
+            return False
+        if posData is None:
+            posData = self.posData()
+        if buttons is None:
+            buttons = list(self.customAnnotDict.keys())
+        buttons = [
+            button for button in buttons
+            if button in self.customAnnotDict 
+            and self.customAnnotHasPredictor(button)
+        ]
+        if not buttons:
+            self.statusBar().showMessage(
+                'No custom annotation with a predictor.', 5000
+            )
+            return False
+        edited = self.editedCustomAnnotCells(posData)
+        editedCells = {}
+        for button in buttons:
+            name = self.customAnnotDict[button]['state']['name']
+            IDs_edited = edited[name] if IDs is None else edited[name] & set(IDs)
+            if IDs_edited:
+                editedCells[name] = sorted(IDs_edited)
+        skip = False
+        if editedCells:
+            if IDs is not None and len(IDs) == 1:
+                scope = f'the displayed cell (ID {next(iter(IDs))})'
+            else:
+                numCells = len(set().union(*editedCells.values()))
+                scope = f'{numCells} cell(s)'
+            answer = self.askOverwriteManualTimepoints(
+                editedCells, scope, what='Custom annotations'
+            )
+            if answer == 'cancel':
+                return False
+            skip = answer == 'skip'
+        names = []
+        for button in buttons:
+            name = self.customAnnotDict[button]['state']['name']
+            names.append(name)
+            skipIDs = set(edited[name]) if skip else ()
+            self.runCustomAnnotPredictor(
+                button, posData=posData, IDs=IDs, skipIDs=skipIDs, force=True
+            )
+        self.refreshCustomAnnotations(names)
+        return True
+    
+    def reevaluateAllCellsCustomAnnot(self, button=None, checked=False):
+        buttons = None if button is None else [button]
+        return self.reevaluateCustomAnnotations(buttons=buttons)
+
+    def reevaluateAllCustomAnnotations(self, checked=False):
+        return self.reevaluateAllCellsCustomAnnot()
+
+    def reevaluateDisplayedCellCustomAnnotations(self, checked=False):
+        return self.reevaluateDisplayedCellCustomAnnot()
+
+    def reevaluateDisplayedCellCustomAnnot(self, button=None, checked=False):
+        if not self.data:
+            return False
+        if self.selectedID is None:
+            self.statusBar().showMessage('Select a cell first.', 5000)
+            return False
+        buttons = None if button is None else [button]
+        return self.reevaluateCustomAnnotations(
+            buttons=buttons, IDs=[int(self.selectedID)]
+        )
+    
+    def clearCustomAnnotations(self, button, checked=False):
+        """Remove all the annotations of `button` in the current position."""
+        if not self.data or button not in self.customAnnotDict:
+            return
+        acdc_df = self.timepointsDf()
+        if acdc_df is None:
+            return
+        name = self.customAnnotDict[button]['state']['name']
+        IDs = set(acdc_df.index.get_level_values('Cell_ID'))
+        self.replaceCustomAnnotations(name, {}, IDs)
+        self.editedCustomAnnotCells()[name] = set()
+        self.refreshCustomAnnotations([name])
+    
+    def ensureCustomAnnotPredictions(self, posData=None):
+        """Evaluate the automatic predictors of the custom annotations on 
+        the displayed cell if not predicted yet."""
+        if not self.data or self.selectedID is None:
+            return
+        if posData is None:
+            posData = self.posData()
+        ID = int(self.selectedID)
+        for button, annot in list(self.customAnnotDict.items()):
+            state = annot['state']
+            if not state.get('autoApply', False):
+                continue
+            if not self.customAnnotHasPredictor(button):
+                continue
+            name = state['name']
+            key = self.customAnnotPredictionKey(posData, name)
+            if ID in self.customAnnotAutoPredictions[key]:
+                continue
+            if ID in self.editedCustomAnnotCells(posData)[name]:
+                self.reevaluateCustomAnnotations(
+                    [button], IDs=[ID], posData=posData
+                )
+            else:
+                self.runCustomAnnotPredictor(button, posData=posData, IDs=[ID])
+    
+    def customAnnotConfiguration(self):
+        return [
+            custom_annot_state_to_save(annot['state'])
+            for annot in self.customAnnotDict.values()
+        ]
+    
+    @staticmethod
+    def validateCustomAnnotConfiguration(customAnnotations):
+        if not isinstance(customAnnotations, list):
+            raise ValueError('Invalid custom annotations in configuration.')
+        names = []
+        for state in customAnnotations:
+            if not isinstance(state, dict):
+                raise ValueError('Invalid custom annotation in configuration.')
+            name = state.get('name')
+            if not isinstance(name, str) or not name:
+                raise ValueError('Invalid custom annotation name.')
+            for key in ('symbol', 'shortcut'):
+                if not isinstance(state.get(key, ''), str):
+                    raise ValueError(
+                        f'Invalid {key} of custom annotation "{name}".'
+                    )
+            color = state.get('symbolColor')
+            if (not isinstance(color, (list, tuple)) 
+                    or len(color) not in (3, 4)
+                    or any(type(value) is not int for value in color)):
+                raise ValueError(
+                    f'Invalid symbol color of custom annotation "{name}".'
+                )
+            if type(state.get('autoApply', False)) is not bool:
+                raise ValueError(
+                    f'Invalid auto apply of custom annotation "{name}".'
+                )
+            predictor = state.get('predictor')
+            if predictor is not None:
+                CustomAnnotationPredictor.validate(predictor)
+            names.append(name)
+        if len(set(names)) != len(names):
+            raise ValueError('Duplicated custom annotation names.')
+    
+    def setCustomAnnotations(self, states):
+        """Replace the custom annotations with `states` (e.g., from a 
+        configuration). Requires loaded data."""
+        self.setUncheckedAllCustomAnnotButtons()
+        self.reinitCustomAnnot()
+        if not self.data or not states:
+            return
+        self.readSavedCustomAnnot()
+        for savedState in states:
+            symbolColor = pg.mkColor(tuple(savedState['symbolColor']))
+            state = {
+                'type': 'Single time-point', 'symbol': '', 'shortcut': '', 
+                'description': '', 'keepActive': True, 'isHideChecked': True,
+                **savedState, 'symbolColor': symbolColor
+            }
+            button = self.addCustomAnnotationItems(
+                custom_annot_symbol(state), symbolColor, state['shortcut'], 
+                self.customAnnotToolTip(state), state['name'], 
+                state['keepActive'], state['isHideChecked'], state
+            )
+            self.onCustomAnnotationChanged(button)
+        self.saveCustomAnnot(only_temp=True)
     
     def clipFrame(self, frame_i):
         return int(min(max(frame_i, 0), self.posData().SizeT-1))
@@ -4625,6 +5365,8 @@ class MeasurementsViewerWin(
         self.plotMeasurements()
 
     def measurementColumnChanged(self, item):
+        if getattr(self, '_isUpdatingColumnsList', False):
+            return
         if not item.isCheckable():
             return
         if self.measurementsModeCombobox.currentIndex() == 1:
@@ -5108,6 +5850,10 @@ class MeasurementsViewerWin(
             highlightedItem.mousePressed(x, y)
             return
         
+        if right_click and self.customAnnotButton is not None:
+            self.annotateClickedObject(xdata, ydata)
+            return
+        
         if right_click:
             screenPos = event.screenPos()
             self.imgGradShowContextMenu(screenPos.x(), screenPos.y())
@@ -5285,6 +6031,8 @@ class MeasurementsViewerWin(
                 self.tempSegmentON = False
                 self.ax1_rulerPlotItem.setData([], [])
                 self.ax1_rulerAnchorsItem.setData([], [])
+            elif self.customAnnotButton is not None:
+                self.setUncheckedAllCustomAnnotButtons()
             else:
                 self.uncheckLeftClickButtons(None)
         elif key == Qt.Key_Z:

@@ -84,7 +84,7 @@ class CustomAnnotationsGuiElements:
         self.viewAllCustomAnnotAction.setCheckable(True)
         self.viewAllCustomAnnotAction.setIcon(QIcon(":eye.svg"))
         self.viewAllCustomAnnotAction.setToolTip('Show all custom annotations')
-            
+    
     def gui_connectCustomAnnotationsActions(self):
         self.loadCustomAnnotationsAction.triggered.connect(
             self.loadCustomAnnotations

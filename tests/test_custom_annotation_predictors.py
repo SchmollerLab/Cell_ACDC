@@ -457,6 +457,32 @@ def test_predictor_reevaluation_and_overwrite_warning(viewer, monkeypatch):
     assert annotated(viewer, 'Big') == []
 
 
+def test_global_reevaluation_actions_use_expected_scope(viewer, monkeypatch):
+    assert not viewer.reevaluateAllCustomAnnotationsAction.isEnabled()
+    assert not viewer.reevaluateCellCustomAnnotationsAction.isEnabled()
+    viewer.setCustomAnnotations([
+        annot_state(predictor=equation('area > 12')),
+        annot_state(
+            name='Small', shortcut='S', predictor=equation('area < 8')
+        ),
+    ])
+    assert viewer.reevaluateAllCustomAnnotationsAction.isEnabled()
+    assert viewer.reevaluateCellCustomAnnotationsAction.isEnabled()
+
+    reevaluate = Mock()
+    monkeypatch.setattr(viewer, 'reevaluateCustomAnnotations', reevaluate)
+    viewer.reevaluateAllCustomAnnotationsAction.trigger()
+    reevaluate.assert_called_once_with(buttons=None)
+
+    reevaluate.reset_mock()
+    viewer.reevaluateCellCustomAnnotationsAction.trigger()
+    reevaluate.assert_called_once_with(buttons=None, IDs=[1])
+
+    viewer.setCustomAnnotations([annot_state()])
+    assert not viewer.reevaluateAllCustomAnnotationsAction.isEnabled()
+    assert not viewer.reevaluateCellCustomAnnotationsAction.isEnabled()
+
+
 def test_auto_apply_runs_once_per_displayed_cell(viewer, monkeypatch):
     predict = Mock(wraps=CustomAnnotationPredictor.predict)
     monkeypatch.setattr(CustomAnnotationPredictor, 'predict', predict)
