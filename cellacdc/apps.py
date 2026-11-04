@@ -201,14 +201,265 @@ class QBaseDialog(_base_widgets.QBaseDialog):
         super().__init__(*args, **kwargs)
         
         
+class _CustomAnnotationPredictorGroupbox(QGroupBox):
+    """Predictor settings of a custom annotation (measurements viewer). 
+    
+    `options` is a dict with optional keys 'acdc_df', 'SizeT', 'allChNames', 
+    'isZstack' and 'isSegm3D' used to edit and test the equation.
+    """
+    def __init__(self, options, predictor=None, autoApply=False, parent=None):
+        from . import custom_annotation_predictors, timepoint_predictors
+        self._predictors = timepoint_predictors
+        self._annotPredictors = custom_annotation_predictors
+        super().__init__('Predictor', parent)
+        self.acdc_df = options.get('acdc_df')
+        self.SizeT = options.get('SizeT')
+        self.allChNames = list(options.get('allChNames', []))
+        self.isZstack = options.get('isZstack', False)
+        self.isSegm3D = options.get('isSegm3D', False)
+        self.nameGetter = options.get('nameGetter', lambda: '')
+        if predictor is None:
+            predictor = {'type': timepoint_predictors.PREDICTOR_NONE}
+        self.equation = predictor.get('equation', '')
+        self.otherCells = predictor.get('other_cells')
+        self.mainCellFilter = predictor.get('main_cell_filter')
+        
+        layout = QFormLayout(self)
+        self.autoApplyCheckBox = widgets.Toggle(
+            label_text='Auto apply on unvisited cells', parent=self
+        )
+        self.autoApplyCheckBox.setChecked(autoApply)
+        self.autoApplyCheckBox.setToolTip(
+            'Evaluate the predictor on each cell when it is displayed for '
+            'the first time.'
+        )
+        layout.addRow('', self.autoApplyCheckBox)
+        
+        self.predictorCombobox = QComboBox()
+        self.predictorCombobox.addItem(
+            'None (manual annotation)', timepoint_predictors.PREDICTOR_NONE
+        )
+        self.predictorCombobox.addItem(
+            'Equation', timepoint_predictors.PREDICTOR_EQUATION
+        )
+        self.predictorCombobox.addItem(
+            'Select own function (Python file)', 
+            timepoint_predictors.PREDICTOR_FILE
+        )
+        self.predictorCombobox.setToolTip(
+            'Assign one annotation to the entire cell history.\n'
+            'The predictor must return booleans (True/False).'
+        )
+        layout.addRow('Predictor:', self.predictorCombobox)
+
+        self.consolidationCombobox = QComboBox()
+        for mode in custom_annotation_predictors.CONSOLIDATION_MODES:
+            self.consolidationCombobox.addItem(mode.capitalize(), mode)
+        self.consolidationCombobox.setCurrentIndex(max(
+            self.consolidationCombobox.findData(
+                predictor.get('consolidation', 'all')
+            ), 0
+        ))
+        self.consolidationCombobox.setToolTip(
+            'All: every result is True (default).\n'
+            'None: no result is True.\n'
+            'Most: strictly more than half are True; ties are False.\n'
+            'A single boolean is applied to all rows before consolidation.'
+        )
+        layout.addRow('Consolidation:', self.consolidationCombobox)
+        
+        self.equationWidget = QWidget()
+        equationLayout = QHBoxLayout(self.equationWidget)
+        equationLayout.setContentsMargins(0, 0, 0, 0)
+        self.equationLineEdit = QLineEdit(self.equation)
+        self.equationLineEdit.setReadOnly(True)
+        self.equationLineEdit.setPlaceholderText('No equation set')
+        self.editEquationButton = widgets.calcPushButton('Edit equation...')
+        equationLayout.addWidget(self.equationLineEdit)
+        equationLayout.addWidget(self.editEquationButton)
+        layout.addRow('', self.equationWidget)
+        
+        self.fileWidget = QWidget()
+        fileLayout = QGridLayout(self.fileWidget)
+        fileLayout.setContentsMargins(0, 0, 0, 0)
+        self.fileLineEdit = QLineEdit(predictor.get('filepath', ''))
+        self.fileLineEdit.setPlaceholderText('Python file with predictor(df)')
+        self.browseFileButton = widgets.browseFileButton(
+            'Browse...', ext={'Python': '.py'}, 
+            title='Select Python file with predictor(df)'
+        )
+        self.saveTemplateButton = widgets.savePushButton('Save template...')
+        fileInfo = QLabel(html_utils.paragraph(
+            'The file must define <code>predictor(df)</code>. '
+            '<code>df</code> is the table of <b>one cell</b> (one row per '
+            'frame, with <code>frame_i</code> and <code>Cell_ID</code> '
+            'columns). Return <b>one boolean per row</b> or a single boolean. '
+            'All/None/Most consolidates the results into one annotation '
+            'for the entire cell history.<br>'
+            'Optionally, add the keyword argument <code>entire_df</code> '
+            '(<code>predictor(df, entire_df=None)</code>) to also receive '
+            'the table of all cells.', font_size='11px'
+        ))
+        fileInfo.setWordWrap(True)
+        fileLayout.addWidget(self.fileLineEdit, 0, 0)
+        fileLayout.addWidget(self.browseFileButton, 0, 1)
+        fileLayout.addWidget(self.saveTemplateButton, 0, 2)
+        fileLayout.addWidget(fileInfo, 1, 0, 1, 3)
+        layout.addRow('', self.fileWidget)
+        
+        testLayout = QHBoxLayout()
+        self.statusLabel = QLabel()
+        self.statusLabel.setWordWrap(True)
+        self.testButton = widgets.calcPushButton('Test predictor')
+        testLayout.addWidget(self.statusLabel, stretch=1)
+        testLayout.addWidget(self.testButton)
+        layout.addRow(testLayout)
+        
+        index = self.predictorCombobox.findData(predictor.get('type'))
+        self.predictorCombobox.setCurrentIndex(max(index, 0))
+        self.predictorChanged()
+        
+        self.predictorCombobox.currentIndexChanged.connect(self.predictorChanged)
+        self.consolidationCombobox.currentIndexChanged.connect(self.statusLabel.clear)
+        self.editEquationButton.clicked.connect(self.editEquation)
+        self.browseFileButton.sigPathSelected.connect(self.fileLineEdit.setText)
+        self.saveTemplateButton.clicked.connect(self.saveTemplate)
+        self.testButton.clicked.connect(self.testPredictor)
+    
+    def predictorType(self):
+        return self.predictorCombobox.currentData()
+    
+    def predictorChanged(self, *args):
+        kind = self.predictorType()
+        self.equationWidget.setVisible(
+            kind == self._predictors.PREDICTOR_EQUATION
+        )
+        self.fileWidget.setVisible(kind == self._predictors.PREDICTOR_FILE)
+        self.testButton.setVisible(kind != self._predictors.PREDICTOR_NONE)
+        self.consolidationCombobox.setEnabled(
+            kind != self._predictors.PREDICTOR_NONE
+        )
+        self.statusLabel.clear()
+    
+    def editEquation(self):
+        win = CustomAnnotationPredictorEquationDialog(
+            self.allChNames, self.isZstack, self.isSegm3D, 
+            acdc_df=self.acdc_df, name=self.nameGetter(),
+            equation=self.equation, otherCells=self.otherCells,
+            mainCellFilter=self.mainCellFilter, SizeT=self.SizeT, parent=self,
+            consolidation=self.consolidationCombobox.currentData()
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        self.equation = win.equation
+        self.otherCells = win.otherCells
+        self.mainCellFilter = win.mainCellFilter
+        self.equationLineEdit.setText(self.equation)
+        self.statusLabel.clear()
+    
+    def saveTemplate(self):
+        filepath = QFileDialog.getSaveFileName(
+            self, 'Save predictor template', 'custom_annotation_predictor.py',
+            'Python (*.py)'
+        )[0]
+        if not filepath:
+            return
+        try:
+            with open(filepath, 'w', encoding='utf-8') as file:
+                file.write(self._annotPredictors.PREDICTOR_FILE_TEMPLATE)
+        except OSError as err:
+            self.statusLabel.setText(html_utils.paragraph(
+                f'<font color="red">{html.escape(str(err))}</font>'
+            ))
+            return
+        self.fileLineEdit.setText(filepath)
+    
+    def predictor(self):
+        kind = self.predictorType()
+        if kind == self._predictors.PREDICTOR_EQUATION:
+            predictor = {
+                'type': kind, 'equation': self.equation,
+                'consolidation': self.consolidationCombobox.currentData()
+            }
+            if self.otherCells is not None:
+                predictor['other_cells'] = dict(self.otherCells)
+            if self.mainCellFilter is not None:
+                predictor['main_cell_filter'] = dict(self.mainCellFilter)
+            return predictor
+        if kind == self._predictors.PREDICTOR_FILE:
+            return {
+                'type': kind, 'filepath': self.fileLineEdit.text().strip(),
+                'consolidation': self.consolidationCombobox.currentData()
+            }
+        return {'type': kind}
+    
+    def validatePredictor(self):
+        Predictor = self._annotPredictors.CustomAnnotationPredictor
+        predictor = self.predictor()
+        Predictor.validate(predictor)
+        if predictor['type'] == self._predictors.PREDICTOR_FILE:
+            Predictor.load_function(predictor['filepath'])
+        return predictor
+    
+    def testPredictor(self):
+        Predictor = self._annotPredictors.CustomAnnotationPredictor
+        try:
+            predictor = self.validatePredictor()
+            if self.acdc_df is None or self.acdc_df.empty:
+                self.statusLabel.setText(
+                    'Predictor is valid. Load measurements to test it on data.'
+                )
+                return True
+            annotated = Predictor.predict(
+                self.acdc_df, predictor, SizeT=self.SizeT
+            )
+        except Exception as err:
+            traceback.print_exc()
+            self.statusLabel.setText(html_utils.paragraph(
+                f'<font color="red">{html.escape(str(err))}</font>'
+            ))
+            return False
+        numCells = self.acdc_df.index.get_level_values('Cell_ID').nunique()
+        numFrames = sum(len(frames) for frames in annotated.values())
+        self.statusLabel.setText(
+            f'Annotated {numFrames} frame(s) of {len(annotated)} '
+            f'of {numCells} cells.'
+        )
+        return True
+
+
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = Signal(object)
 
-    def __init__(self, savedCustomAnnot, parent=None, state=None):
+    def __init__(
+            self, savedCustomAnnot, parent=None, state=None, 
+            predictorOptions=None, reservedShortcuts=None, existingNames=()
+        ):
+        """Dialog to set the parameters of a custom annotation.
+
+        Parameters
+        ----------
+        savedCustomAnnot : dict
+            Previously saved annotations {name: state} that can be loaded.
+        parent : QWidget, optional
+        state : dict, optional
+            State of the annotation to modify.
+        predictorOptions : dict, optional
+            If not None, add the predictor settings (measurements viewer). 
+            See `_CustomAnnotationPredictorGroupbox`.
+        reservedShortcuts : dict, optional
+            {key sequence text: used by} of shortcuts that cannot be used.
+        existingNames : iterable of str, optional
+            Names of other annotations that cannot be used.
+        """
         self.cancel = True
         self.loop = None
         self.clickedButton = None
         self.savedCustomAnnot = savedCustomAnnot
+        self.reservedShortcuts = dict(reservedShortcuts or {})
+        self.existingNames = set(existingNames)
+        self.hasPredictor = predictorOptions is not None
 
         self.internalNames = measurements.get_all_acdc_df_colnames(
             include_custom=False
@@ -222,37 +473,6 @@ class customAnnotationDialog(QDialog):
         layout = widgets.FormLayout()
 
         row = 0
-        typeCombobox = QComboBox()
-        typeCombobox.addItems([
-            'Single time-point',
-            'Multiple time-points',
-            'Multiple values class'
-        ])
-        if state is not None:
-            typeCombobox.setCurrentText(state['type'])
-        self.typeCombobox = typeCombobox
-        body_txt = ("""
-        <b>Single time-point</b> annotation: use this to annotate
-        an event that happens on a <b>single frame in time</b>
-        (e.g. cell division).
-        <br><br>
-        <b>Multiple time-points</b> annotation: use this to annotate
-        an event that has a <b>duration</b>, i.e., a start frame and a stop
-        frame (e.g. cell cycle phase).<br><br>
-        <b>Multiple values class</b> annotation: use this to annotate a class
-        that has <b>multiple values</b>. An example could be a cell cycle stage
-        that can have different values, such as 2-cells division
-        or 4-cells division.
-        """)
-        typeInfoTxt = (f'{html_utils.paragraph(body_txt)}')
-        self.typeWidget = widgets.formWidget(
-            typeCombobox, addInfoButton=True, labelTextLeft='Type: ',
-            parent=self, infoTxt=typeInfoTxt
-        )
-        layout.addFormWidget(self.typeWidget, row=row)
-        typeCombobox.currentTextChanged.connect(self.warnType)
-
-        row += 1
         nameInfoTxt = ("""
         <b>Name of the column</b> that will be saved in the <code>acdc_output.csv</code>
         file.<br><br>
@@ -299,10 +519,18 @@ class customAnnotationDialog(QDialog):
         layout.addFormWidget(self.symbolWidget, row=row)
 
         row += 1
-        shortcutInfoTxt = ("""
-        <b>Shortcut</b> that you can use to <b>activate/deactivate</b> annotation
-        of this event.<br><br> Leave empty if you don't need a shortcut.
-        """)
+        if self.hasPredictor:
+            shortcutInfoTxt = ("""
+            <b>Shortcut</b> that you can use to <b>annotate/un-annotate</b> 
+            the displayed cell across its entire video history.<br><br>
+            <b>Shift+Shortcut</b> re-evaluates the predictor on the displayed 
+            cell.<br><br>Leave empty if you don't need a shortcut.
+            """)
+        else:
+            shortcutInfoTxt = ("""
+            <b>Shortcut</b> that you can use to <b>activate/deactivate</b> annotation
+            of this event.<br><br> Leave empty if you don't need a shortcut.
+            """)
         shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
         self.shortcutWidget = widgets.formWidget(
             widgets.ShortcutLineEdit(), addInfoButton=True,
@@ -356,6 +584,12 @@ class customAnnotationDialog(QDialog):
         optionsLayout.addWidget(colorButtonLabel, optRow, 1)
         optionsLayout.addWidget(self.colorButton, optRow, 2)
 
+        if state is not None:
+            self.keepActiveToggle.setChecked(state.get('keepActive', True))
+            self.hideAnnotTooggle.setChecked(state.get('isHideChecked', True))
+            if state.get('symbolColor') is not None:
+                self.colorButton.setColor(state['symbolColor'])
+
         optionsGroupBox.setLayout(optionsLayout)
         layout.addWidget(optionsGroupBox, row, 1, alignment=Qt.AlignCenter)
         optionsInfoButton = QPushButton(self)
@@ -366,6 +600,22 @@ class customAnnotationDialog(QDialog):
 
         row += 1
         layout.addItem(QSpacerItem(5, 5), row, 0)
+
+        self.predictorGroupbox = None
+        if self.hasPredictor:
+            row += 1
+            predictorOptions = {
+                'nameGetter': self.nameWidget.widget.text, **predictorOptions
+            }
+            self.predictorGroupbox = _CustomAnnotationPredictorGroupbox(
+                predictorOptions, 
+                predictor=None if state is None else state.get('predictor'),
+                autoApply=(
+                    False if state is None else state.get('autoApply', False)
+                ),
+                parent=self
+            )
+            layout.addWidget(self.predictorGroupbox, row, 1, 1, 3)
 
         row += 1
         noteText = (
@@ -460,7 +710,6 @@ class customAnnotationDialog(QDialog):
             return
         selectedName = self.selectAnnotWin.selectedItemsText[-1]
         selectedAnnot = self.savedCustomAnnot[selectedName]
-        self.typeCombobox.setCurrentText(selectedAnnot['type'])
         self.nameWidget.widget.setText(selectedAnnot['name'])
         self.symbolWidget.widget.setCurrentText(selectedAnnot['symbol'])
         self.shortcutWidget.widget.setText(selectedAnnot['shortcut'])
@@ -508,26 +757,6 @@ class customAnnotationDialog(QDialog):
         left = self.pos().x()
         colorDialogTop = self.colorButton.colorDialog.pos().y()
         self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
-
-    def warnType(self, currentText):
-        if currentText == 'Single time-point':
-            return
-
-        self.typeCombobox.setCurrentIndex(0)
-
-        txt = ("""
-        Unfortunately, the only annotation type that is available so far is
-        <b>Single time-point</b>.<br><br>
-        We are working on implementing the other types too, so stay tuned!<br><br>
-        Thank you for your patience!
-        """)
-        txt = (f'{html_utils.paragraph(txt)}')
-        msg = widgets.myMessageBox()
-        msg.setIcon(iconName='SP_MessageBoxWarning')
-        msg.setWindowTitle(f'Feature not implemented yet')
-        msg.addText(txt)
-        msg.addButton('   Ok   ')
-        msg.exec_()
 
     def showOptionsInfo(self):
         info = ("""
@@ -604,10 +833,59 @@ class customAnnotationDialog(QDialog):
             self.cancel = True
             return
 
+        name = self.nameWidget.widget.text()
+        if self.clickedButton==self.okButton and name in self.existingNames:
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.warning(
+                self, 'Name already used', html_utils.paragraph(
+                    f'A custom annotation called "{name}" already exists.'
+                )
+            )
+            event.ignore()
+            self.cancel = True
+            return
+        
+        shortcut = self.shortcutWidget.widget.text().strip()
+        usedBy = self.reservedShortcuts.get(
+            QKeySequence(shortcut).toString() if shortcut else None
+        )
+        if self.clickedButton==self.okButton and usedBy is not None:
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.warning(
+                self, 'Shortcut already used', html_utils.paragraph(
+                    f'The shortcut "{shortcut}" is already used by '
+                    f'"{usedBy}". Choose a different shortcut.'
+                )
+            )
+            event.ignore()
+            self.cancel = True
+            return
+        
+        predictor = None
+        if self.predictorGroupbox is not None:
+            try:
+                predictor = self.predictorGroupbox.validatePredictor()
+            except Exception as err:
+                msg = widgets.myMessageBox(wrapText=False)
+                msg.warning(
+                    self, 'Invalid predictor', 
+                    html_utils.paragraph(html.escape(str(err)))
+                )
+                event.ignore()
+                self.cancel = True
+                return
+        
+        if self.hasPredictor:
+            usage = (
+                'select a cell and press the shortcut (or activate the '
+                'button and RIGHT-CLICK on the cell) to annotate it at the '
+                'all frames of its video history'
+            )
+        else:
+            usage = 'activate the button and RIGHT-CLICK on cell to annotate'
         self.toolTip = (
             f'Name: {self.nameWidget.widget.text()}\n\n'
-            f'Type: {self.typeWidget.widget.currentText()}\n\n'
-            f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
+            f'Usage: {usage}\n\n'
             f'Description: {self.descWidget.widget.toPlainText()}\n\n'
             f'SHORTCUT: "{self.shortcutWidget.widget.text()}"'
         )
@@ -616,7 +894,7 @@ class customAnnotationDialog(QDialog):
         self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
 
         self.state = {
-            'type': self.typeWidget.widget.currentText(),
+            'type': 'Single time-point',
             'name': self.nameWidget.widget.text(),
             'symbol':  self.symbolWidget.widget.currentText(),
             'shortcut': self.shortcutWidget.widget.text(),
@@ -625,6 +903,11 @@ class customAnnotationDialog(QDialog):
             'isHideChecked': self.hideAnnotTooggle.isChecked(),
             'symbolColor': self.colorButton.color()
         }
+        if self.predictorGroupbox is not None:
+            self.state['predictor'] = predictor
+            self.state['autoApply'] = (
+                self.predictorGroupbox.autoApplyCheckBox.isChecked()
+            )
 
         if self.loop is not None:
             self.loop.exit()
@@ -15283,6 +15566,112 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         """)
         msg = widgets.myMessageBox(wrapText=False)
         msg.information(self, 'Time point predictor help', txt)
+
+
+class CustomAnnotationPredictorEquationDialog(TimepointPredictorEquationDialog):
+    """Equation editor of a custom annotation predictor. Same as 
+    `TimepointPredictorEquationDialog` without the time point rule: the
+    equation must return a boolean per frame (or a single boolean per cell)
+    and All/None/Most consolidates it into one annotation for the cell."""
+    def __init__(
+            self, allChNames, isZstack, isSegm3D, acdc_df=None, name='',
+            equation='', parent=None, otherCells=None, mainCellFilter=None,
+            SizeT=None, consolidation='all'
+        ):
+        from . import custom_annotation_predictors
+        self._annotPredictors = custom_annotation_predictors
+        self.consolidation = consolidation
+        super().__init__(
+            allChNames, isZstack, isSegm3D, acdc_df=acdc_df, name=name,
+            equation=equation, parent=parent, otherCells=otherCells,
+            mainCellFilter=mainCellFilter, SizeT=SizeT
+        )
+        self.setWindowTitle(f'Custom annotation predictor equation - {name}')
+        for label in self.findChildren(QLabel):
+            if label.text() == 'Time point identifier:':
+                label.setText('Custom annotation:')
+            elif label.text() == 'Time point(s) of each cell:':
+                label.hide()
+        self.modeCombobox.hide()
+        self.formulaEditWidget._edit.setPlaceholderText(
+            'e.g. cell_area_pxl > 500 or cell_cycle_stage == "S" '
+            '(must return True/False)'
+        )
+    
+    @timepoint_debug_trace
+    def test_cb(self):
+        if self.acdcDf is None:
+            super().test_cb()
+            return
+        self.equationChanged()
+        success, message = self.formulaEditWidget.checkValidity()
+        if not success:
+            self._showTestError(message)
+            return
+        Predictor = self._annotPredictors.CustomAnnotationPredictor
+        try:
+            annotated = Predictor.from_equation(
+                self.acdcDf, self.formulaEditWidget.text(),
+                SizeT=getattr(self, 'SizeT', None),
+                other_cells=self.currentOtherCells(),
+                main_cell_filter=self.currentMainCellFilter(),
+                consolidation=self.consolidation
+            )
+        except Exception as err:
+            traceback.print_exc()
+            self._showTestError(str(err))
+            return
+        withFrames = {ID: frames for ID, frames in annotated.items() if frames}
+        preview = pd.DataFrame({
+            'Cell_ID': list(withFrames),
+            'Annotated frame n.': [
+                ', '.join(str(frame+1) for frame in frames)
+                for frames in withFrames.values()
+            ]
+        }).head(20)
+        self.testOutputDisplay.setHtml(preview.to_html(index=False))
+        self.testOutputDisplay.setStyleSheet('border: 2px solid green')
+        numFrames = sum(len(frames) for frames in withFrames.values())
+        self.statusLabel.setText(
+            f'Annotated {numFrames} frame(s) of {len(withFrames)} of '
+            f'{len(annotated)} cells.'
+        )
+        self.okButton.setEnabled(True)
+    
+    def showHelp(self):
+        functions = '<br>'.join(
+            f'<code>{name}(x)</code>: {html.escape(description)}'
+            for name, (_, description) 
+            in self._predictors.CELL_FUNCTIONS.items()
+        )
+        txt = html_utils.paragraph(f"""
+            The equation is evaluated <b>separately for each cell</b> on its 
+            rows of the measurements table (one row per frame).<br><br>
+            The result <b>must be boolean</b> (True/False), either one value 
+            per frame (e.g., <code>cell_area_pxl &gt; 500</code>) or a single 
+            value for the entire cell (e.g., 
+            <code>MAX(cell_area_pxl) &gt; 500</code>). Results are consolidated
+            for the <b>entire cell history</b>: <b>All</b> requires every
+            result to be True; <b>None</b> requires no True results;
+            <b>Most</b> requires strictly more than half to be True.
+            A single boolean is broadcast before consolidation. Numerical results
+            (including 0/1) are not allowed.<br><br>
+            <b>Per-cell functions</b> are computed over all frames of the 
+            cell (NaNs are ignored):<br>{functions}<br><br>
+            <b>Main-cell filter</b> limits which cells are evaluated, and 
+            <b>Other-cell measurements</b> (<code>_other</code> suffix) work 
+            as in the time point predictors. With multiple other-cell values,
+            a frame's result is True if the equation is True for any of them,
+            before All/None/Most consolidation across the cell history.
+            <br><br>
+            <b>If conditions:</b> use <code>&amp;</code> (and), 
+            <code>|</code> (or), <code>~</code> (not) and parentheses, not 
+            Python <code>if/else</code> statements or <code>and/or</code>.
+            <br><br>
+            Double-click an input to add it to the equation.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Custom annotation predictor help', txt)
 
 
 class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):

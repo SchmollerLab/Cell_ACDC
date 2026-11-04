@@ -3881,10 +3881,18 @@ class customAnnotToolButton(ToolButtonCustomColor):
         self.symbol = symbol
         self.keepToolActive = keepToolActive
         self.isHideChecked = isHideChecked
+        # List of (text, callback) added on top of the context menu
+        self.extraContextMenuActions = []
         self.sigRightClick.connect(self.showContextMenu)
 
     def showContextMenu(self, event):
         contextMenu = QMenu(self)
+        for text, callback in self.extraContextMenuActions:
+            extraAction = QAction(text, contextMenu)
+            extraAction.triggered.connect(
+                lambda checked=False, callback=callback: callback(self)
+            )
+            contextMenu.addAction(extraAction)
         contextMenu.addSeparator()
 
         removeAction = QAction('Remove annotation')

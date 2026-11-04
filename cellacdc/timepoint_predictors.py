@@ -196,6 +196,9 @@ PREDICTOR_EQUATION = 'equation'
 PREDICTOR_FILE = 'file'
 PREDICTOR_TYPES = (PREDICTOR_NONE, PREDICTOR_EQUATION, PREDICTOR_FILE)
 
+# Pass as ``enforce_dtype_output`` to accept only booleans (no numeric 0/1)
+STRICT_BOOL = 'strict_bool'
+
 EQUATION_MODES = {
     'first_true': 'First frame where the equation is true',
     'last_true': 'Last frame where the equation is true',
@@ -545,7 +548,15 @@ class CellEquation:
             values, dtype: DTypeLike | pd.api.extensions.ExtensionDtype,
             length: int
         ):
-        """Validate output without lossy casts; bool also accepts numeric 0/1."""
+        """Validate output without lossy casts; bool also accepts numeric 0/1,
+        while ``STRICT_BOOL`` accepts only booleans (missing values -> False)."""
+        if isinstance(dtype, str) and dtype == STRICT_BOOL:
+            if np.ndim(values) == 0:
+                return bool(CellFilter.strict_boolean_values(values, 1)[0])
+            mask = CellFilter.strict_boolean_values(values, length)
+            if isinstance(values, pd.Series):
+                return pd.Series(mask, index=values.index, name=values.name)
+            return mask
         expected = pd.api.types.pandas_dtype(dtype)
         if pd.api.types.is_bool_dtype(expected):
             mask = CellFilter.boolean_values(values, length)
@@ -744,6 +755,61 @@ class CellFilter:
         if not np.isin(array, [0, 1]).all():
             raise ValueError('A cell filter must return only bool or 0/1 (no missing values).')
         return np.broadcast_to(array, length).astype(bool)
+
+    @staticmethod
+    def strict_boolean_values(values: ArrayLike, length: int) -> NDArray[np.bool_]:
+        """Validate results that must be booleans: a scalar bool (broadcast to
+        ``length``) or one bool per row. Numeric (including 0/1) and other 
+        values are rejected; missing values (e.g. ``pd.NA`` of nullable 
+        booleans) are treated as False."""
+        if isinstance(values, pd.DataFrame):
+            raise ValueError(
+                'The result must be a single boolean per row, not a table.'
+            )
+        array = (
+            values.array if isinstance(values, (pd.Series, pd.Index)) 
+            else values
+        )
+        if np.ndim(array) == 0:
+            item = np.asarray(array).item() if hasattr(array, 'dtype') else array
+            if not isinstance(item, (bool, np.bool_)):
+                raise ValueError(
+                    'The result must be a boolean (True/False); got '
+                    f'{type(item).__name__} {item!r}.'
+                )
+            return np.full(length, bool(item))
+        if not hasattr(array, 'dtype'):
+            array = np.asarray(array)
+        if array.ndim != 1 or len(array) != length:
+            raise ValueError(
+                'The result must be a single boolean or one boolean per row '
+                f'({length}); got shape {np.shape(array)}.'
+            )
+        dtype = array.dtype
+        if pd.api.types.is_bool_dtype(dtype):
+            return pd.array(array, dtype='boolean').fillna(False).to_numpy(
+                dtype=bool
+            )
+        if not pd.api.types.is_object_dtype(dtype):
+            raise ValueError(
+                f'The result must be boolean (True/False); got dtype {dtype}.'
+            )
+        objects = np.asarray(array, dtype=object)
+        isMissing = pd.isna(objects)
+        isBool = np.fromiter(
+            (isinstance(value, (bool, np.bool_)) for value in objects),
+            dtype=bool, count=len(objects)
+        )
+        invalid = ~(isBool | isMissing)
+        if invalid.any():
+            value = objects[invalid.argmax()]
+            raise ValueError(
+                'The result must be boolean (True/False); got '
+                f'{type(value).__name__} {value!r}.'
+            )
+        result = np.zeros(len(objects), dtype=bool)
+        result[isBool] = objects[isBool].astype(bool)
+        return result
 
     @staticmethod
     def evaluate(
@@ -1821,6 +1887,89 @@ class TimepointPredictor:
         )
 
     @staticmethod
+    def main_cell_filter_IDs(
+            acdc_df: pd.DataFrame,
+            main_cell_filter: dict[str, str] | None,
+            other_cells: dict[str, str] | None = None,
+            SizeT: int | None = None, IDs: Iterable[int] | None = None
+        ) -> list[int] | None:
+        """Return the cells of ``IDs`` (None means all cells) passing the
+        main-cell filter. A cell is eligible if the condition holds in any/all
+        of its frames. Returns ``IDs`` (as a list, or None) if there is no
+        filter condition."""
+        if IDs is not None:
+            IDs = list(IDs)
+        if main_cell_filter is None:
+            return IDs
+        settings = CellFilter.validate_main(main_cell_filter)
+        if not settings['condition'].strip():
+            return IDs
+        eligibleIDs = []
+        variables = {'SizeT': SizeT} if SizeT is not None else None
+        # Fastest path: constant own values with mode "any" (see
+        # constant_main_any). None means "not applicable".
+        constantIDs = (
+            OtherCellMeasurements.constant_main_any(
+                acdc_df, settings['condition'], other_cells, SizeT, IDs
+            )
+            if settings['condition_mode'] == 'any' else None
+        )
+        if constantIDs is not None:
+            return constantIDs
+        # General path: resolve other-cell inputs, then evaluate.
+        filter_df, condition, alternatives = (
+            OtherCellMeasurements.prepare_inputs(
+                acdc_df, settings['condition'], other_cells, SizeT,
+                IDs=IDs, return_alternatives=True
+            )
+        )
+        batchedIDs = None
+        if (
+            not filter_df.empty
+            and OtherCellMeasurements._is_rowwise_condition(condition)
+        ):
+            # Row-wise filters need one evaluation for all cells;
+            # per-cell results are then reduced with any/all.
+            # On any failure fall back to the per-cell loop below,
+            # which reports errors with the offending Cell_ID.
+            try:
+                flatFilter = CellTable.flatten(filter_df)
+                values = OtherCellMeasurements.evaluate_with_alternatives(
+                    flatFilter, condition, alternatives,
+                    variables=variables, enforce_dtype_output=bool
+                )
+                mask = CellFilter.boolean_values(values, len(flatFilter))
+                matches = pd.Series(mask).groupby(
+                    flatFilter['Cell_ID'].to_numpy(), sort=True
+                ).agg(settings['condition_mode'])
+                batchedIDs = [
+                    int(ID) for ID in matches.index[matches.to_numpy()]
+                ]
+            except Exception:
+                batchedIDs = None
+        if batchedIDs is not None:
+            return batchedIDs
+        # Per-cell fallback (temporal functions, errors).
+        for ID, df_ID in CellTable.iter_cells(filter_df):
+            try:
+                values = OtherCellMeasurements.evaluate_with_alternatives(
+                    df_ID, condition, alternatives,
+                    variables=variables, enforce_dtype_output=bool
+                )
+                mask = CellFilter.boolean_values(values, len(df_ID))
+            except Exception as err:
+                raise ValueError(
+                    f'Main-cell filter failed for Cell_ID {ID}: {err}'
+                ) from err
+            matches = (
+                mask.any() if settings['condition_mode'] == 'any'
+                else mask.all()
+            )
+            if matches:
+                eligibleIDs.append(ID)
+        return eligibleIDs
+
+    @staticmethod
     @debug_trace
     def from_equation(
             acdc_df: pd.DataFrame, equation: str, mode: str,
@@ -1846,83 +1995,12 @@ class TimepointPredictor:
         """
         if mode not in EQUATION_MODES:
             raise ValueError(f'Invalid predictor equation mode: {mode}.')
-        if IDs is not None:
-            IDs = list(IDs)
         # Step 1: main-cell filter. A cell is eligible if the condition holds
         # in any/all of its frames; retained cells keep all their frames.
-        if main_cell_filter is not None:
-            settings = CellFilter.validate_main(main_cell_filter)
-            if settings['condition'].strip():
-                eligibleIDs = []
-                variables = {'SizeT': SizeT} if SizeT is not None else None
-                # Fastest path: constant own values with mode "any" (see
-                # constant_main_any). None means "not applicable".
-                constantIDs = (
-                    OtherCellMeasurements.constant_main_any(
-                        acdc_df, settings['condition'], other_cells, SizeT, IDs
-                    )
-                    if settings['condition_mode'] == 'any' else None
-                )
-                if constantIDs is not None:
-                    eligibleIDs = constantIDs
-                else:
-                    # General path: resolve other-cell inputs, then evaluate.
-                    filter_df, condition, alternatives = (
-                        OtherCellMeasurements.prepare_inputs(
-                            acdc_df, settings['condition'], other_cells, SizeT,
-                            IDs=IDs, return_alternatives=True
-                        )
-                    )
-                    batchedIDs = None
-                    if (
-                        not filter_df.empty
-                        and OtherCellMeasurements._is_rowwise_condition(condition)
-                    ):
-                        # Row-wise filters need one evaluation for all cells;
-                        # per-cell results are then reduced with any/all.
-                        # On any failure fall back to the per-cell loop below,
-                        # which reports errors with the offending Cell_ID.
-                        try:
-                            flatFilter = CellTable.flatten(filter_df)
-                            values = OtherCellMeasurements.evaluate_with_alternatives(
-                                flatFilter, condition, alternatives,
-                                variables=variables, enforce_dtype_output=bool
-                            )
-                            mask = CellFilter.boolean_values(
-                                values, len(flatFilter)
-                            )
-                            matches = pd.Series(mask).groupby(
-                                flatFilter['Cell_ID'].to_numpy(), sort=True
-                            ).agg(settings['condition_mode'])
-                            batchedIDs = [
-                                int(ID) for ID in matches.index[matches.to_numpy()]
-                            ]
-                        except Exception:
-                            batchedIDs = None
-                    if batchedIDs is not None:
-                        eligibleIDs = batchedIDs
-                    # Per-cell fallback (temporal functions, errors).
-                    for ID, df_ID in (
-                        () if batchedIDs is not None
-                        else CellTable.iter_cells(filter_df)
-                    ):
-                        try:
-                            values = OtherCellMeasurements.evaluate_with_alternatives(
-                                df_ID, condition, alternatives,
-                                variables=variables, enforce_dtype_output=bool
-                            )
-                            mask = CellFilter.boolean_values(values, len(df_ID))
-                        except Exception as err:
-                            raise ValueError(
-                                f'Main-cell filter failed for Cell_ID {ID}: {err}'
-                            ) from err
-                        matches = (
-                            mask.any() if settings['condition_mode'] == 'any'
-                            else mask.all()
-                        )
-                        if matches:
-                            eligibleIDs.append(ID)
-                IDs = eligibleIDs
+        IDs = TimepointPredictor.main_cell_filter_IDs(
+            acdc_df, main_cell_filter, other_cells=other_cells, SizeT=SizeT,
+            IDs=IDs
+        )
         # Step 2: only the (filtered) targets get other-cell values; all rows
         # of the original table remain candidates.
         acdc_df, equation, alternatives = OtherCellMeasurements.prepare_inputs(
