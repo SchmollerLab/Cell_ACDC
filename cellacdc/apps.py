@@ -438,6 +438,311 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         return True
 
 
+class PhaseTranslatorRuleDialog(QDialog):
+    """Edit eligibility and the ordered, named intervals of one phase rule."""
+
+    def __init__(
+            self, timepoints, annotations, options, rule=None,
+            existingNames=(), parent=None
+        ):
+        super().__init__(parent)
+        self.cancel = True
+        self.existingNames = set(existingNames)
+        self.setWindowTitle('Time point to phase rule editor')
+        rule = rule or {
+            'name': '', 'predictor': {'type': 'none'},
+            'timepoints': [], 'annotations': [], 'phases': ['']
+        }
+        self.boundaries = list(rule['timepoints'])
+        self._phaseNames = dict(zip(
+            self.intervalKeys(), rule['phases']
+        ))
+        self.phaseEdits = {}
+        self.nameEdit = QLineEdit(rule['name'])
+        options = dict(options, nameGetter=self.nameEdit.text)
+        self.predictorGroupbox = _CustomAnnotationPredictorGroupbox(
+            options, predictor=rule['predictor'], parent=self
+        )
+        self.predictorGroupbox.setTitle('Rule eligibility formula')
+        self.predictorGroupbox.autoApplyCheckBox.hide()
+        self.predictorGroupbox.predictorCombobox.setItemText(
+            0, 'Always eligible (no formula)'
+        )
+        self.predictorGroupbox.predictorCombobox.setToolTip(
+            'The formula must pass for the entire cell using All/None/Most.'
+        )
+        self.requirementChecks = {}
+        self.available = set(timepoints) | set(annotations)
+        requirements = QWidget()
+        requirementsLayout = QVBoxLayout(requirements)
+        for title, available, selected, isBoundary in (
+            ('Time points (interval boundaries)', timepoints, rule['timepoints'], True),
+            ('Custom annotations (requirements only)', annotations, rule['annotations'], False)
+        ):
+            requirementsLayout.addWidget(QLabel(title))
+            for column in dict.fromkeys([*available, *selected]):
+                text = (
+                    column[len('timepoint_'):] if isBoundary else column
+                )
+                if column not in available:
+                    text += ' (missing)'
+                checkbox = QCheckBox(text)
+                checkbox.setChecked(column in selected)
+                self.requirementChecks[column] = (checkbox, isBoundary)
+                requirementsLayout.addWidget(checkbox)
+                if isBoundary:
+                    checkbox.toggled.connect(partial(self.boundaryToggled, column))
+        requirementsLayout.addStretch(1)
+        requirementsScroll = QScrollArea()
+        requirementsScroll.setWidgetResizable(True)
+        requirementsScroll.setWidget(requirements)
+        intervals = QWidget()
+        self.intervalsLayout = QVBoxLayout(intervals)
+        intervalsScroll = QScrollArea()
+        intervalsScroll.setWidgetResizable(True)
+        intervalsScroll.setWidget(intervals)
+        columns = QHBoxLayout()
+        columns.addWidget(requirementsScroll)
+        columns.addWidget(intervalsScroll)
+        buttons = QHBoxLayout()
+        cancelButton = widgets.cancelPushButton('Cancel')
+        self.okButton = widgets.okPushButton('  OK  ')
+        buttons.addStretch(1)
+        buttons.addWidget(cancelButton)
+        buttons.addWidget(self.okButton)
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel('Rule name:'))
+        layout.addWidget(self.nameEdit)
+        layout.addWidget(self.predictorGroupbox)
+        info = QLabel(
+            'All checked inputs must be present in the cell history. Each '
+            'boundary must occur exactly once, in this order. Phase intervals '
+            'include their start but exclude their end. Empty names leave '
+            'intervals unassigned.'
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        layout.addLayout(columns, stretch=1)
+        layout.addLayout(buttons)
+        cancelButton.clicked.connect(self.reject)
+        self.okButton.clicked.connect(self.ok_cb)
+        self.rebuildIntervals()
+        self.resize(950, 800)
+
+    def intervalKeys(self):
+        edges = [None, *self.boundaries, None]
+        return list(zip(edges, edges[1:]))
+
+    def rememberPhaseNames(self):
+        self._phaseNames.update({
+            key: edit.text() for key, edit in self.phaseEdits.items()
+        })
+
+    def boundaryToggled(self, column, checked):
+        self.rememberPhaseNames()
+        if checked:
+            self.boundaries.append(column)
+        else:
+            self.boundaries.remove(column)
+        self.rebuildIntervals()
+
+    def moveBoundary(self, column, offset):
+        self.rememberPhaseNames()
+        index = self.boundaries.index(column)
+        other = index + offset
+        if not 0 <= other < len(self.boundaries):
+            return
+        self.boundaries[index], self.boundaries[other] = (
+            self.boundaries[other], self.boundaries[index]
+        )
+        self.rebuildIntervals()
+
+    def rebuildIntervals(self):
+        while self.intervalsLayout.count():
+            item = self.intervalsLayout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self.phaseEdits = {}
+        for index, key in enumerate(self.intervalKeys()):
+            edit = QLineEdit(self._phaseNames.get(key, ''))
+            edit.setPlaceholderText(
+                'Phase before first point' if index == 0 and self.boundaries else
+                'Phase after last point' if index == len(self.boundaries) and self.boundaries else
+                'Phase between points' if self.boundaries else 'Phase for entire cell'
+            )
+            self.phaseEdits[key] = edit
+            self.intervalsLayout.addWidget(edit)
+            if index == len(self.boundaries):
+                break
+            column = self.boundaries[index]
+            row = QWidget()
+            rowLayout = QHBoxLayout(row)
+            rowLayout.setContentsMargins(0, 0, 0, 0)
+            rowLayout.addWidget(QLabel(column[len('timepoint_'):]), stretch=1)
+            for label, offset in (('Up', -1), ('Down', 1)):
+                button = QPushButton(label)
+                button.setEnabled(0 <= index + offset < len(self.boundaries))
+                button.clicked.connect(
+                    partial(self.moveBoundary, column, offset)
+                )
+                rowLayout.addWidget(button)
+            self.intervalsLayout.addWidget(row)
+        self.intervalsLayout.addStretch(1)
+
+    def ok_cb(self):
+        from . import phase_translator
+        try:
+            name = self.nameEdit.text().strip()
+            if name in self.existingNames:
+                raise ValueError('A phase rule with this name already exists.')
+            required = [
+                column for column, (check, _) in self.requirementChecks.items()
+                if check.isChecked()
+            ]
+            missing = set(required).difference(self.available)
+            if missing:
+                raise ValueError('Uncheck missing inputs: ' + ', '.join(sorted(missing)))
+            predictor = self.predictorGroupbox.validatePredictor()
+            self.rule = {
+                'name': name, 'predictor': predictor,
+                'timepoints': list(self.boundaries),
+                'annotations': [
+                    column for column, (check, boundary)
+                    in self.requirementChecks.items()
+                    if check.isChecked() and not boundary
+                ],
+                'phases': [
+                    self.phaseEdits[key].text().strip() for key in self.intervalKeys()
+                ],
+            }
+            phase_translator.validate_rules([self.rule])
+        except Exception as err:
+            traceback.print_exc()
+            widgets.myMessageBox(wrapText=False).warning(
+                self, 'Invalid phase rule', str(err)
+            )
+            return
+        self.cancel = False
+        self.accept()
+
+
+class PhaseTranslatorDialog(QDialog):
+    """Manage phase rules in descending priority, without editing the table."""
+    sigApply = Signal(object, bool)
+
+    def __init__(self, rules, timepoints, annotations, options, parent=None):
+        import copy
+        super().__init__(parent)
+        self.cancel = True
+        self.rules = copy.deepcopy(rules)
+        self.timepoints = timepoints
+        self.annotations = annotations
+        self.options = options
+        self.setWindowTitle('Time point to phase translator')
+        self.rulesList = QListWidget()
+        self.rulesList.itemDoubleClicked.connect(lambda *_: self.editRule())
+        controls = QHBoxLayout()
+        for text, callback in (
+            ('Add...', self.addRule), ('Edit...', self.editRule),
+            ('Remove...', self.removeRule), ('Up', partial(self.moveRule, -1)),
+            ('Down', partial(self.moveRule, 1))
+        ):
+            button = QPushButton(text)
+            button.clicked.connect(callback)
+            controls.addWidget(button)
+        applyButtons = QHBoxLayout()
+        self.applyCellButton = QPushButton('Apply phase evaluation on displayed cell')
+        self.applyAllButton = QPushButton('Apply phase evaluation on all cells')
+        for button, allCells in (
+            (self.applyCellButton, False), (self.applyAllButton, True)
+        ):
+            button.clicked.connect(lambda checked=False, batch=allCells: self.apply(batch))
+            applyButtons.addWidget(button)
+        buttons = QHBoxLayout()
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton('  OK  ')
+        buttons.addStretch(1)
+        buttons.addWidget(cancelButton)
+        buttons.addWidget(okButton)
+        cancelButton.clicked.connect(self.reject)
+        okButton.clicked.connect(self.ok_cb)
+        layout = QVBoxLayout(self)
+        info = QLabel(
+            'Rules are evaluated from top to bottom for each cell. The first '
+            'rule whose formula and all requirements pass supplies its phases. '
+            'Apply updates the current position in memory; Export measurements '
+            'saves the phase and phase_<name> columns. Save the viewer '
+            'configuration to keep these rules.'
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        layout.addWidget(self.rulesList)
+        layout.addLayout(controls)
+        layout.addLayout(applyButtons)
+        layout.addLayout(buttons)
+        self.refreshRules()
+        self.resize(800, 450)
+
+    def refreshRules(self, row=0):
+        self.rulesList.clear()
+        self.rulesList.addItems([
+            f'{index + 1}. {rule["name"]}'
+            for index, rule in enumerate(self.rules)
+        ])
+        self.rulesList.setCurrentRow(row)
+        self.applyCellButton.setEnabled(bool(self.rules))
+        self.applyAllButton.setEnabled(bool(self.rules))
+
+    def ruleDialog(self, rule=None):
+        dialog = PhaseTranslatorRuleDialog(
+            self.timepoints, self.annotations, self.options, rule=rule,
+            existingNames=[
+                item['name'] for item in self.rules if item is not rule
+            ], parent=self
+        )
+        dialog.exec_()
+        result = None if dialog.cancel else dialog.rule
+        dialog.deleteLater()
+        return result
+
+    def addRule(self, checked=False):
+        rule = self.ruleDialog()
+        if rule is not None:
+            self.rules.append(rule)
+            self.refreshRules(len(self.rules) - 1)
+
+    def editRule(self, checked=False):
+        row = self.rulesList.currentRow()
+        if row < 0:
+            return
+        rule = self.ruleDialog(self.rules[row])
+        if rule is not None:
+            self.rules[row] = rule
+            self.refreshRules(row)
+
+    def removeRule(self, checked=False):
+        row = self.rulesList.currentRow()
+        if row >= 0:
+            self.rules.pop(row)
+            self.refreshRules(min(row, len(self.rules) - 1))
+
+    def moveRule(self, offset, checked=False):
+        row = self.rulesList.currentRow()
+        other = row + offset
+        if row < 0 or not 0 <= other < len(self.rules):
+            return
+        self.rules[row], self.rules[other] = self.rules[other], self.rules[row]
+        self.refreshRules(other)
+
+    def apply(self, allCells):
+        import copy
+        self.sigApply.emit(copy.deepcopy(self.rules), allCells)
+
+    def ok_cb(self):
+        self.cancel = False
+        self.accept()
+
+
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = Signal(object)
 

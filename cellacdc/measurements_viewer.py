@@ -106,6 +106,24 @@ automatic prediction still requires autoApply. Other-cell inputs evaluate
 prerequisites on all cells. Circular equation dependencies prevent accepting
 the customization, with a warning showing the cycle. Python-file predictors
 can read these columns, but their dependencies cannot be inferred.
+
+``Time point to phase translator...`` opens an ordered list of phase rules.
+Each rule reuses the custom annotation formula editor (including filters,
+other-cell inputs and All/None/Most consolidation). A rule matches only if
+its formula passes, every checked annotation occurs in the cell history,
+and every checked time point occurs exactly once in the configured boundary
+order. Otherwise the next rule is tried. Cells left unmatched because of
+duplicate time points produce a warning. The first matching rule supplies
+all phases for that cell; empty intervals do not fall through to later rules.
+The right-hand list has phase names before, between and after its boundaries.
+Intervals include their start and exclude their end; blank names leave frames
+unassigned. Rules and boundaries can both be reordered.
+Apply phase evaluation updates either the displayed cell or all cells of the
+current position in memory. Export measurements prompts to evaluate all cells
+when rules are configured, and exports ``phase`` (string, empty if unassigned)
+and ``phase_<name>`` (boolean) columns. These output names are reserved by the
+translator; existing unrelated measurements are not overwritten. Rule
+definitions, but not evaluated table values, are saved in viewer configurations.
 """
 import os
 import sys
@@ -157,6 +175,7 @@ from . import printl
 from . import workers
 from . import timepoint_predictors
 from . import custom_annotation_predictors
+from . import phase_translator
 from . import gui_custom_annotations
 from .gui_custom_annotations import (
     custom_annot_state_to_save, custom_annot_symbol
@@ -474,6 +493,7 @@ class MeasurementsViewerWin(
         self.measurementProcessingWorker = None
         self.rescaleIntensChannelHowMapper = {}
         self.timepointIdentifiers = []
+        self.phaseTranslatorRules = []
         self.timepointActions = {}
         self.timepointAutoActions = {}
         self.timepointLines = []
@@ -607,6 +627,7 @@ class MeasurementsViewerWin(
                 path: sorted(IDs) for path, IDs in self.viewedCells.items()
             },
             'custom_annotations': self.customAnnotConfiguration(),
+            'phase_translator_rules': copy.deepcopy(self.phaseTranslatorRules),
             # 'cell_constants': [dict(constant) for constant in self.cellConstants],
         }
 
@@ -661,6 +682,7 @@ class MeasurementsViewerWin(
         MeasurementsViewerWin.validateCustomAnnotConfiguration(
             configuration.get('custom_annotations', [])
         )
+        phase_translator.validate_rules(configuration.get('phase_translator_rules', []))
         predictors = {
             f'{TIMEPOINT_PREFIX}{identifier["name"]}': identifier['predictor']
             for identifier in identifiers
@@ -797,6 +819,9 @@ class MeasurementsViewerWin(
         with self.deferPredictorPredictions():
             self.setData(data)
             self.setCustomAnnotations(configuration.get('custom_annotations', []))
+        self.phaseTranslatorRules = copy.deepcopy(
+            configuration.get('phase_translator_rules', [])
+        )
         self.configurationFilepath = None
         overlays = configuration['overlay_channels']
         if overlays:
@@ -1438,6 +1463,14 @@ class MeasurementsViewerWin(
         self.overlayToolbar = widgets.OverlayToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
         self.overlayToolbar.setVisible(False)
+        
+        self.phaseTranslatorToolbar = widgets.ToolBar(parent=self)
+        self.phaseTranslatorAction = QAction(
+            'Time point to phase translator...', self
+        )
+        self.phaseTranslatorAction.triggered.connect(self.configurePhaseTranslator)
+        self.phaseTranslatorToolbar.addAction(self.phaseTranslatorAction)
+        self.addToolBar(Qt.TopToolBarArea, self.phaseTranslatorToolbar)
         
         self.setEnabledFileToolbar(False)
     
@@ -3302,6 +3335,78 @@ class MeasurementsViewerWin(
         self.combineMeasurementsButton.setEnabled(True)
         self.refreshButton.setEnabled(True)
 
+    def configurePhaseTranslator(self, checked=False):
+        posData = self.posData() if self.data else None
+        options = {
+            'acdc_df': self.acdc_df,
+            'SizeT': getattr(posData, 'SizeT', None),
+            'allChNames': getattr(posData, 'chNames', []),
+            'isZstack': getattr(posData, 'SizeZ', 1) > 1,
+            'isSegm3D': bool(self.isSegm3D),
+        }
+        dialog = apps.PhaseTranslatorDialog(
+            self.phaseTranslatorRules,
+            [self.timepointColumn(item) for item in self.timepointIdentifiers],
+            self.customAnnotNames(), options, parent=self
+        )
+        dialog.sigApply.connect(self.applyPhaseTranslator)
+        dialog.exec_()
+        if not dialog.cancel:
+            self.phaseTranslatorRules = copy.deepcopy(dialog.rules)
+        dialog.deleteLater()
+
+    def applyPhaseTranslator(self, rules=None, allCells=True):
+        if self.measurementProcessingThread is not None:
+            self.measurementProcessingWarning(
+                'Measurement processing running',
+                'Wait for measurement processing to finish before evaluating phases.'
+            )
+            return False
+        if self.acdc_df is None or self.acdc_df.empty:
+            self.measurementProcessingWarning('No measurements', 'Load measurements first.')
+            return False
+        if not allCells and self.selectedID is None:
+            self.measurementProcessingWarning('No cell selected', 'Select a cell first.')
+            return False
+        if rules is None:
+            rules = self.phaseTranslatorRules
+        posData = self.posData()
+        try:
+            source = self.acdc_df.copy()
+            self.ensureTimepointColumns(source)
+            self.ensureCustomAnnotColumns(source)
+            evaluation = phase_translator.evaluate(
+                source, rules, IDs=None if allCells else [self.selectedID],
+                SizeT=getattr(posData, 'SizeT', None),
+                owned_columns=getattr(posData, 'phaseTranslatorColumns', ())
+            )
+        except Exception as err:
+            self.logger.exception('Phase evaluation failed')
+            self.measurementProcessingWarning('Phase evaluation failed', str(err))
+            return False
+        self.phaseTranslatorRules = copy.deepcopy(rules)
+        posData.phaseTranslatorColumns = evaluation.columns
+        posData.acdc_df = evaluation.table
+        self.acdc_df = evaluation.table
+        self.updateColumnsList()
+        self.plotMeasurements()
+        if evaluation.warnings:
+            self.measurementProcessingWarning(
+                'Phase evaluation warnings', '\n'.join(evaluation.warnings)
+            )
+        self.statusBar().showMessage(
+            'Phases evaluated. Use Export measurements to save the table.', 5000
+        )
+        return True
+
+    def renamePhaseTranslatorInput(self, oldColumn, newColumn):
+        for rule in self.phaseTranslatorRules:
+            for key in ('timepoints', 'annotations'):
+                rule[key] = [
+                    newColumn if column == oldColumn else column
+                    for column in rule[key]
+                ]
+
     def exportMeasurements(self, checked=False):
         if self.acdc_df is None or self.acdc_df.empty:
             self.measurementProcessingWarning('No measurements', 'Load measurements first.')
@@ -3311,6 +3416,18 @@ class MeasurementsViewerWin(
         )
         if not filepath:
             return
+        if self.phaseTranslatorRules:
+            msg = widgets.myMessageBox(wrapText=False)
+            cancel, skip, apply = msg.question(
+                self, 'Evaluate phases before export?',
+                'A phase translator is configured. Evaluate all cells of the '
+                'current position before exporting?',
+                buttonsTexts=('Cancel', 'Export existing values', 'Evaluate and export')
+            )
+            if msg.cancel or msg.clickedButton == cancel:
+                return
+            if msg.clickedButton == apply and not self.applyPhaseTranslator():
+                return
         try:
             export_df = self.acdc_df.copy()
             self.ensureTimepointColumns(export_df)
@@ -4282,6 +4399,7 @@ class MeasurementsViewerWin(
         identifier.name = values['name']
         newColumn = self.timepointColumn(identifier)
         if newColumn != oldColumn:
+            self.renamePhaseTranslatorInput(oldColumn, newColumn)
             for acdc_df in self.allAcdcDfs():
                 if oldColumn not in acdc_df.columns:
                     continue
@@ -4881,6 +4999,7 @@ class MeasurementsViewerWin(
         self.updateColumnsList()
     
     def renameCustomAnnotColumn(self, oldName, newName):
+        self.renamePhaseTranslatorInput(oldName, newName)
         for acdc_df in self.allAcdcDfs():
             if oldName in acdc_df.columns:
                 acdc_df.rename(columns={oldName: newName}, inplace=True)
