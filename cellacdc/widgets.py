@@ -38,7 +38,7 @@ from qtpy.QtCore import (
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
     QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel,
-    QAbstractAnimation
+    QAbstractAnimation, Slot
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -48,7 +48,7 @@ from qtpy.QtGui import (
     QValidator
 )
 from qtpy.QtWidgets import (
-    QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
+    QColorDialog, QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
     QApplication, QWidget, QVBoxLayout, QMainWindow, QTreeWidgetItemIterator,
     QLineEdit, QSlider, QSpinBox, QGridLayout, QRadioButton,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
@@ -59,7 +59,7 @@ from qtpy.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
     QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
-    QStyleOptionViewItem, QAbstractButton
+    QStyleOptionViewItem, QAbstractButton, QTreeView
 )
 import qtpy.compat
 
@@ -2551,6 +2551,10 @@ class readOnlyQList(QTextEdit):
         items = [str(item) for item in self.items]
         columnList = html_utils.paragraph('<br>'.join(items))
         self.setText(columnList)
+        
+    def clear(self):
+        self.items = []
+        self.setText('')
 
 class pgScatterSymbolsCombobox(QComboBox):
     def __init__(self, parent=None):
@@ -2619,7 +2623,9 @@ class alphaNumericLineEdit(QLineEdit):
         return re.findall(fr'{self.invalidPattern}', text)
     
     def keyPressEvent(self, event: QKeyEvent):
-        if not event.text():
+        text = event.text()
+
+        if not text:
             return super().keyPressEvent(event)
 
         if event.modifiers() & (
@@ -2629,14 +2635,23 @@ class alphaNumericLineEdit(QLineEdit):
         ):
             return super().keyPressEvent(event)
 
-        if not event.text().isprintable():
+        if not text.isprintable():
             return super().keyPressEvent(event)
-        
+
+        if text == ' ':
+            # replace the space with an underscore before QLineEdit processes it
+            event = QKeyEvent(
+                event.type(),
+                Qt.Key.Key_Underscore,
+                event.modifiers(),
+                '_',
+            )
+
         super().keyPressEvent(event)
-        
+
         if event.text() in self.text():
             return
-        
+
         self.sigInvalidCharacterPressed.emit(event.text())
 
 class NumericCommaLineEdit(QLineEdit):
@@ -3946,10 +3961,18 @@ class customAnnotToolButton(ToolButtonCustomColor):
         self.symbol = symbol
         self.keepToolActive = keepToolActive
         self.isHideChecked = isHideChecked
+        # List of (text, callback) added on top of the context menu
+        self.extraContextMenuActions = []
         self.sigRightClick.connect(self.showContextMenu)
 
     def showContextMenu(self, event):
         contextMenu = QMenu(self)
+        for text, callback in self.extraContextMenuActions:
+            extraAction = QAction(text, contextMenu)
+            extraAction.triggered.connect(
+                lambda checked=False, callback=callback: callback(self)
+            )
+            contextMenu.addAction(extraAction)
         contextMenu.addSeparator()
 
         removeAction = QAction('Remove annotation')
@@ -7113,7 +7136,39 @@ class myColorButton(pg.ColorButton):
         c = self._c
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
+        
+    def _make_dialog(self):
+        # Replaces pyqtgraph's parentless dialog so that it opens window-modal
+        # on top of the enclosing window (e.g. a modal dialog). It must keep
+        # the same connections as pg.ColorButton.__init__: live preview
+        # (sigColorChanging), restore on reject and commit on accept
+        # (colorSelected -> sigColorChanged).
+        dlg = QColorDialog(self.window())  # parent = enclosing dialog
+        dlg.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+        dlg.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        dlg.currentColorChanged.connect(self.dialogColorChanged)
+        dlg.rejected.connect(self.colorRejected)
+        dlg.colorSelected.connect(self.colorSelected)
+        return dlg
+        
+    # edit show color dialog on click
+    @Slot()
+    def selectColor(self):
+        # Re-parent every time, in case the button moved to another window
+        if self.colorDialog is None or self.colorDialog.parent() is not self.window():
+            if self.colorDialog is not None:
+                self.colorDialog.deleteLater()
+            self.colorDialog = self._make_dialog()
 
+        self.origColor = self.color()
+        self.colorDialog.setCurrentColor(self.color())
+        self.colorDialog.open()
+        self.colorDialog.raise_()
+        self.colorDialog.activateWindow()
+        
+        
 class highlightableQWidgetAction(QWidgetAction):
     def __init__(self, parent) -> None:
         super().__init__(parent)
@@ -10387,9 +10442,11 @@ class ScaleBar(QGraphicsObject):
         self.update()
     
     def addToAxis(self, ax):
-        ax.addItem(self.plotItem)
-        ax.addItem(self.labelItem)
-    
+        # The bar is positioned relative to the view range: it must not
+        # extend the bounds used by auto range
+        ax.addItem(self.plotItem, ignoreBounds=True)
+        ax.addItem(self.labelItem, ignoreBounds=True)
+
     def setText(self):
         if self._is_text_visible:
             number = round(self._length_unit, self._num_decimals)
@@ -12047,19 +12104,20 @@ class LineEdit(QLineEdit):
 
 class PreProcessingSelector(QComboBox):
     sigValuesChanged = Signal(dict, int)
+    preprocessMapper = PREPROCESS_MAPPER
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self._parent = parent
         
-        self.addItems(PREPROCESS_MAPPER.keys())
+        self.addItems(self.preprocessMapper.keys())
         self.methodToDefaultValuesMapper = {}
         self.step_n = -1
         self.setParamsWindow = None
 
     def htmlInfo(self):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
-        docstring = PREPROCESS_MAPPER[self.currentText()]['docstring']
+        docstring = self.preprocessMapper[self.currentText()]['docstring']
         if docstring is None:
             text = 'This function is not documented, yet. Sorry :('
         else:
@@ -12076,7 +12134,7 @@ class PreProcessingSelector(QComboBox):
     
     def askSetParams(self, df_metadata=None, addApplyButton=False):
         method = self.currentText()
-        function = PREPROCESS_MAPPER[method]['function']
+        function = self.preprocessMapper[method]['function']
         params_argspecs = myutils.get_function_argspec(
             function, 
             args_to_skip={
@@ -12118,6 +12176,7 @@ class PreProcessingSelector(QComboBox):
         self.setParamsWindow.emitValuesChanged()
         self.setParamsWindow.exec_()
         if self.setParamsWindow.cancel:
+            self.setParamsWindow = None
             return
         
         self.setParams(method, self.setParamsWindow.function_kwargs)
@@ -12130,6 +12189,10 @@ class PreProcessingSelector(QComboBox):
     def emitValuesChanged(self, functionKwargs: dict):
         self.sigValuesChanged.emit(functionKwargs, self.step_n)
     
+class SignalProcessingSelector(PreProcessingSelector):
+    from .measurement_processing import MEASUREMENT_PROCESSING_MAPPER as preprocessMapper
+
+
 class RescaleImageJroisGroupbox(QGroupBox):
     def __init__(self, TZYX_out_shape, parent=None):
         super().__init__(parent)
@@ -13861,6 +13924,68 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
             )
             self._similarityCache[cache_key] = similarity
         return similarity
+
+
+class MeasurementTreeModel(QStandardItemModel):
+    """Shared measurement hierarchy with selectable/checkable leaves only."""
+
+    def populate(self, dataframe, channels=(), checkable=False):
+        self.clear()
+        nodes = {(): self.invisibleRootItem()}
+        for path, columns in measurements.measurement_column_groups(dataframe, channels):
+            for depth in range(1, len(path)+1):
+                prefix = path[:depth]
+                if prefix not in nodes:
+                    group = QStandardItem(prefix[-1])
+                    group.setFlags(Qt.ItemIsEnabled)
+                    nodes[prefix[:-1]].appendRow(group)
+                    nodes[prefix] = group
+            for column in columns:
+                item = QStandardItem(column)
+                item.setEditable(False)
+                item.setCheckable(checkable)
+                item.setData(column, ButtonSearchCompleter.SEARCH_NAME_ROLE)
+                nodes[path].appendRow(item)
+
+    def measurementItems(self, parent=None):
+        if parent is None:
+            parent = self.invisibleRootItem()
+        for row in range(parent.rowCount()):
+            item = parent.child(row)
+            if item.hasChildren():
+                yield from self.measurementItems(item)
+            else:
+                yield item
+
+
+class MeasurementTreeSearchProxy(ButtonSearchCompleter):
+    """Keep ancestors of fuzzy-matched measurement leaves visible."""
+
+    def __init__(self, parent=None):
+        super().__init__(
+            parent, searchRoles=(self.SEARCH_NAME_ROLE,), tooltipRole=None
+        )
+        self.setRecursiveFilteringEnabled(True)
+        self.setDynamicSortFilter(True)
+        self.sort(0, Qt.AscendingOrder)
+
+    def _getScore(self, index):
+        # Sibling row numbers repeat across tree branches.
+        key = (index, self._filterText)
+        if key not in self._scoreCache:
+            self._scoreCache[key] = self._matchScore(index)
+        return self._scoreCache[key]
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        index = self.sourceModel().index(source_row, 0, source_parent)
+        if self._filterText and self.sourceModel().hasChildren(index):
+            return False
+        return super().filterAcceptsRow(source_row, source_parent)
+
+    def lessThan(self, left, right):
+        if self.sourceModel().hasChildren(left) or self.sourceModel().hasChildren(right):
+            return left.row() < right.row()
+        return super().lessThan(left, right)
 
 
 def _fuzzySearchSimilarity(query, text, minimum_similarity=0.0):

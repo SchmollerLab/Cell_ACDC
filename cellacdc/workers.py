@@ -44,6 +44,7 @@ from . import cca_df_colnames_with_tree
 from . import cli
 from .utils import resize
 from . import segm_utils
+from . import measurement_processing
 DEBUG = False
 
 def worker_exception_handler(func):
@@ -5870,6 +5871,45 @@ class CustomPreprocessWorkerGUI(QObject):
                 self.wait = True
 
         self.signals.finished.emit(self)
+
+class MeasurementProcessingWorkerGUI(CustomPreprocessWorkerGUI):
+    """One-shot measurement job using the preprocessing worker's job API."""
+    sigDone = Signal(object)
+    def applyRecipe(self, df, cols, recipe, new_colnames):
+        return measurement_processing.apply_recipe(df, cols, recipe, new_colnames)
+            
+    def setupJob(self, df, cols, recipe, new_colnames):
+        self._df = df
+        self._cols = cols
+        self._recipe = recipe
+        self._new_colnames = new_colnames
+        
+    def runJob(self):
+        try:
+            df = self.applyRecipe(
+                self._df,
+                self._cols,
+                self._recipe,
+                self._new_colnames
+            )
+            self.sigDone.emit(df)
+            return
+        except Exception as error:
+            self.logger.exception(traceback.format_exc())
+            self.signals.critical.emit((self, error))
+        finally:
+            self.signals.finished.emit(self)
+        
+    def run(self):
+        # One-shot job (no preview queue): the result is emitted by runJob 
+        # through `sigDone`, errors through `signals.critical`.
+        self.runJob()
+    
+    def enqueue(self, *args, **kwargs):
+        raise NotImplementedError(
+            'MeasurementProcessingWorkerGUI runs a single job, use setupJob'
+        )
+
 
 class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):
     sigDone = Signal(object, list)

@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pathlib
 import re
+import keyword
 import sys
 import os
 import traceback
@@ -14,6 +15,7 @@ from tqdm import tqdm
 
 from . import core, base_cca_dict, cca_df_colnames, html_utils, config, printl
 from . import user_profile_path, cca_functions
+from ._equations import equation_variable_spans
 
 skimage_rp_url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
 
@@ -237,6 +239,16 @@ def add_user_combine_metrics(configPars, equation, colName, isMixedChannels):
     configPars[section][colName] = equation
     return configPars
 
+def replace_equation_variables(equation, replacements):
+    for name, start, end in reversed(equation_variable_spans(equation)):
+        if name not in replacements:
+            continue
+        replacement = replacements[name]
+        if not replacement.isidentifier() or keyword.iskeyword(replacement):
+            replacement = f'`{replacement}`'
+        equation = equation[:start] + replacement + equation[end:]
+    return equation
+
 def add_channelLess_combine_metrics(configPars, equation, equation_name, terms):
     if 'channelLess_equations' not in configPars:
         configPars['channelLess_equations'] = {}
@@ -339,10 +351,6 @@ def channel_combine_metrics_desc(chName, posData=None, isSegm3D=False):
     equations = {}
     for name, equation in combine_metrics.items():
         metric_name = name
-        if not any([metric in equation for metric in all_metrics_names]):
-            # Equation does not contain any of the available metrics --> Skip it
-            continue
-
         if chName not in metric_name:
             # Equation name is not specific to the requested channel --> Skip it
             continue
@@ -370,9 +378,9 @@ def channel_combine_metrics_desc(chName, posData=None, isSegm3D=False):
         channelLess_equation, terms = equation_terms.split(';')
         _colNames = terms.split(',')
         metric_name = f'{chName}_{name}'
-        equation = channelLess_equation
-        for _col in _colNames:
-            equation = equation.replace(_col, f'{chName}{_col}')
+        equation = replace_equation_variables(
+            channelLess_equation, {_col: f'{chName}{_col}' for _col in _colNames}
+        )
 
         if not any([metric in equation for metric in all_metrics_names]):
             # Equation does not contain any of the available metrics --> Skip it
@@ -416,13 +424,9 @@ def _combine_mixed_channels_desc(isSegm3D=False, configPars=None):
     mixed_channels_desc = {}
     how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(True, isSegm3D)
     mixed_channels_combine_metrics = configPars['mixed_channels_equations']
-    all_metrics_names = get_all_metrics_names()
     equations = {}
     for name, equation in mixed_channels_combine_metrics.items():
         metric_name = name
-        if not any([metric in equation for metric in all_metrics_names]):
-            # Equation does not contain any of the available metrics --> Skip it
-            continue
 
         how_3Dto2D_present = [how for how in how_3Dto2D if how in equation]
         isZstack = len(how_3Dto2D_present) > 0
@@ -460,7 +464,7 @@ def combine_mixed_channels_desc(posData=None, isSegm3D=False, available_cols=Non
         available_desc = {}
         available_equations = {}
         for name, equation in all_equations.items():
-            cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
+            cols = [name for name, _, _ in equation_variable_spans(equation)]
             if all([col in available_cols for col in cols]):
                 available_desc[name] = all_desc[name]
                 available_equations[name] = equation
@@ -811,6 +815,41 @@ def classify_acdc_df_colnames(acdc_df, channels):
     }
 
     return metrics
+
+def measurement_column_groups(acdc_df, channels):
+    """Return non-empty (tree path, columns) groups in measurement order."""
+    numerical = [
+        col for col in acdc_df
+        if pd.api.types.is_numeric_dtype(acdc_df[col].dtype)
+        and not pd.api.types.is_bool_dtype(acdc_df[col].dtype)
+    ]
+    classified = classify_acdc_df_colnames(acdc_df[numerical], channels)
+    groups = []
+    for channel in channels:
+        for title, key in (
+            ('Cell measurements', 'foregr'),
+            ('Background values', 'bkgr'),
+            ('Custom measurements', 'custom'),
+        ):
+            groups.append((
+                ('Numerical inputs', f'{channel} measurements', title),
+                classified[key][channel]
+            ))
+    groups.extend([
+        (('Numerical inputs', 'Size measurements'), classified['size']),
+        (('Numerical inputs', 'Region properties'), classified['props']),
+    ])
+    grouped = {col for _, cols in groups for col in cols}
+    groups.extend([
+        (('Numerical inputs', 'Other numerical inputs'), [
+            col for col in numerical if col not in grouped
+        ]),
+        (('Categorical inputs',), [
+            col for col in acdc_df if col not in numerical
+        ]),
+    ])
+    return [(path, cols) for path, cols in groups if cols]
+
 
 def _get_metrics_names(is_manual_bkgr_present=False):
     metrics_names = {
@@ -1458,6 +1497,10 @@ def get_combine_metrics_help_txt():
 
         To <b>add a measurement</b> to the equation <b>double-click</b> on
         any of the available measurements in the list.<br><br>
+        Use <b>Search measurement</b> to filter inputs with the same
+        case-insensitive fuzzy search as measurement processing.
+        Search applies to every displayed table, highlights matching names,
+        and expands their parent groups. Clearing it restores the tree.<br><br>
 
         To <b>add a mathematical operator</b> click on any
         of the tool buttons.<br><br>
@@ -1471,9 +1514,11 @@ def get_combine_metrics_help_txt():
         This column will contain the resulting measurement.<br><br>
 
         Once you wrote the name and the equation you need to <b>test it</b> by
-        clicking on the "Test output" button.<br>
-        This will evaluate the equation with random inputs and it will
-        display the result below the button.<br>
+        clicking on the "Test equation" button.<br>
+        This evaluates equations on loaded tables, or on sample rows when
+        defining a reusable measurement.<br>
+        Inputs for measurements not yet calculated are random numerical
+        values. The preview shows the inputs and result below the button.<br>
         <b>Carefully inspect the output</b>, as it could contain an error.<br>
         If there is no error, <b>check that the result is as expected</b>.<br><br>
 
@@ -1500,6 +1545,36 @@ def get_combine_metrics_help_txt():
 
         Cell-ACDC uses the <b>Python package <code>pandas</code></b> to evaluate
         the expression.<br>
+        The formula editor validates measurement expressions with pandas,
+        rather than SymPy, so validation matches evaluation.<br><br>
+
+        Inputs are grouped as <b>numerical</b> or <b>categorical</b>.
+        Boolean, string and pandas category columns appear under categorical
+        inputs when a table is available.<br>
+        Numerical inputs support arithmetic, for example
+        <code>GFP_mean / 2</code>.
+        Categorical inputs support comparisons, for example
+        <code>cell_cycle_stage == "G1"</code>.<br>
+        Use the <b>Comparisons / logic</b> buttons to insert equality,
+        inequality, ordered comparisons, AND, OR, NOT, or boolean values
+        at the cursor. Enter text categories in quotes, for example
+        <code>"G1"</code>. Ordered comparisons require numerical or
+        ordered inputs.<br>
+        Combine conditions with parentheses and <code>&amp;</code> (and)
+        or <code>|</code> (or), for example
+        <code>(cell_cycle_stage == "G1") &amp; (GFP_mean > 10)</code>.<br>
+        In the Measurements viewer, the <code>any(...)</code> and
+        <code>all(...)</code> functions reduce a condition across all rows for
+        each cell and repeat the result on that cell's rows. Time point
+        identifiers are available there as boolean
+        <code>timepoint_&lt;name&gt;</code> inputs, true only on rows where
+        that time point is marked and false elsewhere.<br>
+        In the multi-table dialog, append the table suffix to input names,
+        for example <code>cell_cycle_stage_table1 == "G1"</code>.<br>
+        Names containing spaces or punctuation must be enclosed in backticks;
+        double-clicking an input adds these automatically.<br>
+        Edits to either the equation or its name require a new successful
+        test before saving.<br><br>
         You can <b>read more</b> about it
         {html_utils.href_tag('here', pandas_eval_url)}<br><br>
 

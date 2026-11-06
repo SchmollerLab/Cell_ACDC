@@ -1,0 +1,7801 @@
+"""Standalone window to navigate frames, z-slices and cell IDs of Cell-ACDC 
+data while plotting the time-course of `acdc_output` table columns (measurements)
+of the selected cell, or two measurements against each other for all cells and
+frames of the current position. Hover over a point for measurement details;
+click a point to navigate to its frame and zoom to its cell.
+In comparison mode, check two columns to select X and Y. X/Y markers replace
+the color swatches; comparison and time-course selections are independent.
+Column names are read-only, and the fixed-width selection indicator displays
+the color or axis instead of a separate checkbox tick. Clicking anywhere on a
+column (indicator or name) toggles its selection.
+Measurement selectors use the equation editor's tree organization: numerical
+and categorical inputs, channel-specific cell/background/custom measurements,
+size measurements, region properties, and other numerical inputs. Plotting
+lists only numerical and boolean columns. Search keeps matching leaves and
+their ancestors visible; group headings cannot be selected for plotting or
+processing.
+
+The window loads data on its own (menu `File --> Load Folder...`, 
+`Open Image File...` or `Open Recent`) and it shares only GUI elements with 
+the main GUI (`gui.guiWin`) through the mixins in:
+
+- `gui_navigation`: frames/z-slices navigation, zoom to object, recent paths 
+  and LUT.
+- `gui_annotations`: display of contours, segm. masks, IDs, cell cycle and 
+  lineage info, mother-daughter lines and object tracks.
+- `gui_viewer_tools`: the other 'Viewer' mode tools (zoom, ruler, scale bar, 
+  timestamp, colormaps, search ID, hover info, shortcuts, slideshow, 
+  3D viewer, objects properties, cell cycle table and objects count).
+- `gui_overlay`: overlay of other channels and of other segmentation files.
+- `gui_custom_annotations`: custom annotations of the objects.
+
+Run it with `python -m cellacdc.measurements_viewer [folder_path]`.
+
+At startup, load a saved configuration or skip to start normally. The File
+menu and the file toolbar can load, save or save a copy of a configuration. On closing, if any
+position's table or the configuration changed since it was loaded/saved, a
+prompt offers to save the tables (overwriting each position's acdc_output
+file), the configuration (or save it as a new file), both, or neither.
+Configurations are JSON files in the settings folder
+and retain multiple experiment inputs (Images folders, image/overlay channels
+and segmentation), both plot modes' selections, predictor/annotation definitions,
+phase rules, and separate processing recipes and combine equations. Loading
+prompts for a saved input or a new experiment (which reuses the configured
+channel, segmentation and overlays when every position has them, asks for
+replacements otherwise, and offers unused channels as extra overlays), then asks whether to calculate
+the measurement steps. Calculating replays them in their original order on all
+positions (overwriting their previous outputs) before lazy per-cell
+prediction; using existing values requires every output column to be present
+in every position. Version 1 files remain
+loadable; their viewed-cell lists are migrated to the table's visited column.
+
+Premade configurations are templates shipped in
+`cellacdc/measurements_viewer_premade_configurations/*.json` and listed as
+"Premade" in the load dialog (any loaded file with `channel_placeholders` is
+treated as premade). They use the normal configuration schema without
+`images_paths`/`input_options` (`segm_endname` may be empty) plus
+`"channel_placeholders": {"RED": "description", ...}`. Channels are written
+as braced tokens such as `{RED}` anywhere in the file (channel fields, column
+names like `{RED}_mean`, equations, predictors, phase rules; keys and values).
+Templates can also declare
+`"input_placeholders": {"NAME": {"type": "float"|"int"|"str", "default": v,
+"description": "...", "info": "..."}}` for values to enter during setup (e.g.
+normalization constants); their `{NAME}` tokens are replaced like channels,
+and a string that is exactly one token becomes the typed value (so recipe
+kwargs stay numeric). Loading a premade configuration asks for an experiment
+folder, then for one channel per placeholder (drop-down of the channels
+common to all positions, each channel used at most once) and for the input
+values (prefilled with the defaults, info button per input), replaces every
+token, asks which channel
+to display as base layer (template channel offered first; with an empty
+template `channel`, e.g. the FUCCI template whose reporters are both overlays,
+the unmapped channels such as phase contrast are offered first; a mapped
+channel that is not the base becomes a visible overlay), resolves the
+segmentation/overlays like a new experiment input, and writes the result
+(without placeholder sections, with a `premade` source/mapping/input values
+record) as a
+new configuration in the settings folder, which is then loaded. The template
+itself is never modified.
+
+Any configuration may have an empty `channel` (no display channel). Loading
+it asks for the channel to display (base layer), offering non-overlay channels
+first, for both saved and new experiment inputs; an overlay chosen as base is
+removed from the overlays. The choice becomes the loaded configuration's
+`channel` and is kept when the configuration is saved.
+
+Use ``Process measurements...`` to apply a recipe to selected measurements of the
+current position. Smooth measurement uses a centered moving average independently
+for each cell; Dummy leaves values unchanged. Accepting prompts for an output
+name and adds ``<measurement>_<name>`` columns without changing the originals.
+Results stay in memory across position switches; Reload table discards them.
+``Combine measurements...`` opens the combined-measurement equation editor.
+Equations are evaluated on the current position's raw table, including
+categorical inputs, and add columns without overwriting existing measurements.
+Combined columns stay in memory and are not saved to the global equation
+configuration. Numerical and boolean results are available for plotting;
+string/category results are retained in the exported table.
+Combine-measurement equations can use each time point identifier as a
+``timepoint_<name>`` boolean input. ``any(condition)`` and ``all(condition)``
+reduce the condition across the cell's frames and repeat the result on each
+of its rows.
+``Export measurements...`` saves the table, including processed columns, to a
+separate CSV. Processing is applied to raw measurements before plot normalization.
+
+Right-click a plotted column and select ``Conditional formatting...`` to color
+its time course with ordered rules ``{"condition": equation, "color": spec}``,
+saved per column in the configuration's ``conditional_formatting``. The color
+is ``"#rrggbb"`` or a shade of the column color: ``"lighter"`` /
+``"darker"``, optionally with a QColor factor in percent (>= 100; defaults
+150 and 200), e.g. ``"darker:250"``. Conditions are evaluated like predictor equations
+on the selected cell's raw rows (per-cell functions and ``SizeT``; bool or
+0/1, per frame or scalar; missing values are False). The first true rule
+colors a point and the line segment to the next point; other frames keep the
+column color. Hovering shows the matching condition. Evaluation errors are
+shown in the status bar and the column is drawn unformatted. Formatting
+applies to the time course only, not to the comparison mode.
+
+The ``Time points`` toolbar has ``Add time point identifier...`` to define a
+named time point (e.g., "Bud emergence") with a color, a keyboard shortcut
+(defaults Q, W, E, R, ...) and an optional per-cell predictor (an equation of
+the table columns or ``predictor(df)`` from a Python file, see
+``timepoint_predictors``). Each identifier gets its own toolbar action: hover
+over the time-course plot and press its shortcut to add a time point for the
+selected cell at the hovered frame (clicking the action adds it at the
+current frame). Time point lines can be dragged like the current frame line;
+right-click a line to remove it, or right-click an identifier action to edit,
+re-evaluate its predictor, clear or remove it. Automatic predictions require
+the identifier's ``autoApply`` flag and run only when a cell is first viewed.
+Viewed Cell_IDs are tracked in the boolean ``measuremnets_viewer_visited``
+column of each position's table and saved with Export measurements. Revisiting
+a cell does not retry failed predictions; use explicit re-evaluation to retry.
+The toolbar's ``Re-evaluate predictors on all cells`` and ``... on displayed
+cell`` re-run all predictors; cells with manual edits (added, moved or removed
+time points) trigger a warning to overwrite or skip them. Identifier
+definitions are stored in configurations. The time points themselves live in 
+the position's acdc_df as ``timepoint_<name>`` boolean columns (True at the 
+frames where the cell is marked), so they are part of any exported or processed 
+table.
+
+The ``Custom annotations`` toolbar shares the custom annotations of the main 
+GUI (``gui_custom_annotations``): add, load, modify or remove annotations, 
+each saved as a 0/1 column ``<name>`` of the acdc_df. Each annotation has a 
+keyboard shortcut (defaults A, S, D, F, ...) that annotates/un-annotates the 
+selected cell across its entire video history, while ``Shift+shortcut``
+re-evaluates its predictor on the selected cell. Alternatively, activate the 
+toolbar button and RIGHT-click on a cell. Like time points, annotations can 
+have a predictor (equation or ``predictor(df)`` from a Python file, see 
+``custom_annotation_predictors``) that must return booleans (one per row, 
+or one for all rows of the cell). ``All`` (default), ``None`` or ``Most``
+consolidates the results into one boolean for the entire Cell_ID history.
+Most requires strictly more than half True; ties are False. Existing
+frame-specific assignments are expanded to all frames if any frame is marked.
+Definitions and predictor settings are saved in viewer configurations; the
+main GUI's global saved definitions can be loaded, but are not overwritten.
+Cell assignments are saved with Export measurements, not in configurations.
+Automatic predictions (``autoApply``), the warning
+before overwriting manually edited cells and the re-evaluation (right-click 
+on the annotation button) work as for the time points. The toolbar also has
+actions to re-evaluate all annotation predictors on the displayed cell or on
+all cells. Annotation definitions are stored in configurations.
+
+Predictor equations and their filters can use other identifiers' boolean
+``timepoint_<name>`` columns and annotations' 0/1 ``<name>`` columns. Dependencies
+are evaluated first, across both kinds of predictor. Explicit re-evaluation
+also re-runs prerequisite predictors (with the same manual-edit protection);
+automatic prediction still requires autoApply. Other-cell inputs evaluate
+prerequisites on all cells. Circular equation dependencies prevent accepting
+the customization, with a warning showing the cycle. Python-file predictors
+can read these columns, but their dependencies cannot be inferred.
+
+``Time point to phase translator...`` opens an ordered list of phase rules.
+Each rule reuses the custom annotation formula editor (including filters,
+other-cell inputs and All/None/Most consolidation). A rule matches only if
+its formula passes, every checked annotation occurs in the cell history,
+and every checked time point occurs exactly once in the configured boundary
+order. Otherwise the next rule is tried. Cells left unmatched because of
+duplicate time points produce a warning. The first matching rule supplies
+all phases for that cell; empty intervals do not fall through to later rules.
+The right-hand list has phase names before, between and after its boundaries.
+Intervals include their start and exclude their end; blank names leave frames
+unassigned. Rules and boundaries can both be reordered.
+Apply phase evaluation updates either the displayed cell or all cells of the
+current position in memory. With ``Automatically evaluate phases when time
+points change or phases are missing`` (saved in the configuration as
+``auto_apply_phases``), every change of time points on the current position
+(added, moved, removed, cleared or predicted) re-evaluates the phases of the
+affected cells once the change is complete, and a displayed cell without
+evaluated phases (no ``phase`` column or only empty phases) is evaluated once
+per session (after its automatic predictors); errors and warnings then go to
+the status bar. Export measurements prompts to evaluate all cells
+when rules are configured, and exports ``phase`` (string, empty if unassigned)
+and ``phase_<name>`` (boolean) columns. These output names are reserved by the
+translator; existing unrelated measurements are not overwritten. Rule
+definitions, but not evaluated table values, are saved in viewer configurations.
+
+When the table has a ``phase`` column, the selected cell's phases are drawn as
+a solid colored band (one bar per run of consecutive frames, labeled with the
+phase; hover for frame ranges) in a separate x-linked plot directly below the
+time course, and Measurement vs Measurement colors each point by its phase
+(gray for unassigned, with a legend). Hover tips show the phase. The
+``Show phases`` checkbox toggles both; its state is stored in the settings CSV
+(``measurements_viewer_show_phases``). Phase colors are edited in the
+translator dialog's ``Phase colors`` box (committed on Apply or OK) and saved
+in the configuration's ``phase_colors`` ``{name: "#rrggbb"}``; phases without a
+color get evenly spaced default hues (``phase_translator.phase_colors``).
+"""
+import os
+import sys
+import copy
+import json
+import re
+import logging
+from collections import defaultdict
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+from functools import partial
+from types import SimpleNamespace
+
+import numpy as np
+import pandas as pd
+
+import skimage.measure
+
+from qtpy.QtCore import (
+    Qt, Signal, QTimer, QPoint, QEvent, QRect, QSaveFile, QIODevice,
+    QThread, QMutex, QWaitCondition
+)
+from qtpy.QtGui import (
+    QFont, QIcon, QGuiApplication, QPixmap, QPainter, QCursor, QKeySequence,
+    QColor
+)
+from qtpy.QtWidgets import (
+    QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QHBoxLayout,
+    QGroupBox, QSplitter, QListView, QLineEdit,
+    QCheckBox, QComboBox, QAbstractItemView, QFileDialog, QAction,
+    QApplication, QToolButton, QPushButton, QActionGroup, QAbstractSlider,
+    QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem, QTreeView,
+    QAbstractButton
+)
+
+import pyqtgraph as pg
+
+from . import widgets, core, load, myutils, colors, transformation
+from . import (
+    graphLayoutBkgrColor, darkBkgrColor, settings_csv_path, settings_folderpath
+)
+from . import cca_df_colnames, base_cca_dict
+from . import regionprops as acdc_regionprops
+from . import gui_navigation, gui_annotations, gui_viewer_tools, gui_overlay
+from .config import STANDARD_MOUSE_BUTTONS
+from . import gui_core
+from . import apps
+from . import html_utils
+from . import printl
+from . import workers
+from . import timepoint_predictors
+from . import custom_annotation_predictors
+from . import apps_measurements_viewer
+from .apps_measurements_viewer import (
+    ChannelPlaceholderMappingDialog,
+    ConditionalFormattingDialog,
+    RELATIVE_COLOR_FACTORS,
+    RELATIVE_COLOR_PATTERN,
+    _FormattingConditionDialog,
+    formatting_color,
+    is_formatting_color,
+)
+from . import phase_translator, measurement_processing
+from . import gui_custom_annotations
+from .gui_custom_annotations import (
+    custom_annot_state_to_save, custom_annot_symbol
+)
+from .custom_annotation_predictors import CustomAnnotationPredictor
+from .timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
+from . import exception_handler, disableWindow
+
+
+RESCALE_INTENS_HOW_TEXTS = (
+    'Rescale each 2D image',
+    'Rescale across z-stack',
+    'Rescale across time frames',
+    'Do no rescale, display raw image'
+)
+
+pg.setConfigOption('imageAxisOrder', 'row-major')
+
+_font = QFont()
+_font.setPixelSize(11)
+
+DEFAULT_MEASUREMENTS_COLUMNS = ('cell_area_pxl', 'cell_vol_vox', 'cell_area_um2')
+INDEX_COLUMNS = ('frame_i', 'Cell_ID', 'time_seconds')
+VISITED_COLUMN = 'measuremnets_viewer_visited' # for tracking which cells have been visited in the measurements viewer
+CCA_DF_INT_COLS = [
+    col for col in cca_df_colnames if type(base_cca_dict[col]) == int
+]
+MEASUREMENTS_CONFIGURATIONS_PATH = os.path.join(
+    settings_folderpath, 'measurements_viewer_configurations'
+)
+PREMADE_CONFIGURATIONS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'measurements_viewer_premade_configurations'
+)
+PREMADE_TAG = '[Premade] '
+
+
+class _TimepointLine(pg.InfiniteLine):
+    """Draggable line of a time point of the selected cell."""
+    sigRemoveRequested = Signal(object)
+
+    def __init__(self, identifier, ID, frame_i):
+        color = identifier.color
+        super().__init__(
+            pos=frame_i+1, angle=90, movable=True,
+            pen=pg.mkPen(color=color, width=2, style=Qt.DashLine),
+            hoverPen=pg.mkPen(color=color, width=4),
+            labelOpts={
+                'position': 0.95, 'color': color, 'movable': True,
+                'fill': (0, 0, 0, 120)
+            }
+        )
+        self.uid = identifier.uid
+        self.ID = ID
+        self.frame_i = frame_i
+        self.setToolTip(
+            f'{identifier.name} (Cell ID {ID}, frame n. {frame_i+1})\n\n'
+            'Drag to move. Right-click to remove.'
+        )
+        self.setZValue(9)
+
+    def mouseClickEvent(self, ev):
+        if ev.button() == Qt.MouseButton.RightButton and not self.moving:
+            ev.accept()
+            self.sigRemoveRequested.emit(self)
+            return
+        super().mouseClickEvent(ev)
+
+class _MeasurementColumnDelegate(widgets._ButtonSearchHighlightDelegate):
+    indicatorWidth = 28
+
+    def initStyleOption(self, option, index):
+        super().initStyleOption(option, index)
+        if not index.flags() & Qt.ItemIsUserCheckable:
+            return
+        option.features &= ~(
+            QStyleOptionViewItem.HasCheckIndicator
+            | QStyleOptionViewItem.HasDecoration
+        )
+        option.icon = QIcon()
+        option.rect.adjust(self.indicatorWidth, 0, 0, 0)
+
+    def paint(self, painter, option, index):
+        super().paint(painter, option, index)
+        if not index.flags() & Qt.ItemIsUserCheckable:
+            return
+        rect = QRect(
+            option.rect.left()+2, option.rect.center().y()-8, 24, 16
+        )
+        icon = index.data(Qt.DecorationRole)
+        painter.save()
+        if icon is not None and not icon.isNull():
+            icon.paint(painter, rect, Qt.AlignCenter)
+        else:
+            painter.setPen(option.palette.mid().color())
+            painter.drawRect(rect.adjusted(4, 2, -4, -2))
+        painter.restore()
+
+    def editorEvent(self, event, model, option, index):
+        if not index.flags() & Qt.ItemIsUserCheckable:
+            return False
+        if event.type() in (
+                QEvent.MouseButtonPress, QEvent.MouseButtonDblClick,
+                QEvent.MouseButtonRelease):
+            # The whole row (indicator and name) toggles the selection
+            if event.button() != Qt.LeftButton:
+                return False
+            if not option.rect.contains(event.pos()):
+                return False
+            if event.type() != QEvent.MouseButtonRelease:
+                return True
+        elif event.type() == QEvent.KeyPress:
+            if event.key() not in (Qt.Key_Space, Qt.Key_Select):
+                return False
+        else:
+            return False
+        state = (
+            Qt.Unchecked
+            if Qt.CheckState(index.data(Qt.CheckStateRole)) == Qt.Checked
+            else Qt.Checked
+        )
+        return model.setData(index, state, Qt.CheckStateRole)
+
+    def sizeHint(self, option, index):
+        size = super().sizeHint(option, index)
+        size.setWidth(size.width()+self.indicatorWidth)
+        size.setHeight(max(size.height(), 20))
+        return size
+
+def get_images_paths(folderpath):
+    """Get the list of `Images` folders from an experiment, Position or 
+    Images folder path."""
+    folderpath = os.path.normpath(folderpath)
+    if os.path.isfile(folderpath):
+        folderpath = os.path.dirname(folderpath)
+    
+    if os.path.basename(folderpath) == 'Images':
+        return [folderpath]
+    
+    images_path = os.path.join(folderpath, 'Images')
+    if os.path.isdir(images_path):
+        return [images_path]
+    
+    pos_foldernames = myutils.get_pos_foldernames(folderpath)
+    images_paths = [
+        os.path.join(folderpath, pos, 'Images') for pos in pos_foldernames
+    ]
+    return [path for path in images_paths if os.path.isdir(path)]
+
+def get_channels_and_segm_endnames(images_path):
+    """Return the channel names and the segmentation files end names 
+    (e.g., 'segm' or 'segm_<name>') available in `images_path`."""
+    basename, chNames = myutils.getBasenameAndChNames(images_path)
+    segm_files = load.get_segm_files(images_path)
+    segm_endnames = load.get_endnames(basename, segm_files)
+    segm_endnames = [
+        endname.lstrip('_') for endname in segm_endnames 
+        if not endname.endswith('_raw') and 'raw_postproc' not in endname
+    ] or [endname.lstrip('_') for endname in segm_endnames]
+    return chNames, sorted(set(segm_endnames))
+
+def get_channel_from_filepath(file_path):
+    """Return the channel name of an image file in an Images folder or None 
+    if it cannot be determined."""
+    images_path = os.path.dirname(file_path)
+    filename, _ = os.path.splitext(os.path.basename(file_path))
+    try:
+        basename, chNames = myutils.getBasenameAndChNames(images_path)
+    except Exception as err:
+        return
+    
+    matching = [ch for ch in chNames if filename.endswith(ch)]
+    if not matching:
+        return
+    return max(matching, key=len)
+
+def load_position(images_path, channel, segm_endname='segm'):
+    """Load image, segmentation, acdc_output table and metadata of one 
+    Position. 
+    
+    Image and segmentation data always have the time axis first.
+    """
+    img_path = load.get_filename_from_channel(images_path, channel)
+    if not img_path:
+        raise FileNotFoundError(
+            f'Could not find a file for channel "{channel}" '
+            f'in "{images_path}".'
+        )
+    posData = load.loadData(img_path, channel)
+    posData.getBasenameAndChNames()
+    posData.buildPaths()
+    posData.loadImgData()
+    posData.loadOtherFiles(
+        load_segm_data=True,
+        load_acdc_df=True,
+        load_metadata=True,
+        loadSegmInfo=True,
+        end_filename_segm=segm_endname
+    )
+    if not posData.segmFound:
+        raise FileNotFoundError(
+            f'Segmentation file ending with "{segm_endname}" not found '
+            f'in "{images_path}".'
+        )
+    
+    if posData.SizeZ > 1 and posData.img_data.ndim < 3:
+        posData.SizeZ = 1
+    
+    if posData.SizeT == 1:
+        posData.img_data = posData.img_data[np.newaxis]
+        posData.segm_data = posData.segm_data[np.newaxis]
+    
+    posData.SizeT = min(len(posData.img_data), len(posData.segm_data))
+    posData.savedAcdcDf = acdc_df_snapshot(getattr(posData, 'acdc_df', None))
+    return posData
+
+def acdc_df_snapshot(acdc_df):
+    """Copy of a table as it is on disk, used to detect unsaved changes."""
+    if acdc_df is None or acdc_df.empty:
+        return None
+    return MeasurementsViewerWin._standardizeAcdcDf(acdc_df).copy()
+
+def load_positions(images_paths, channel, segm_endname='segm', logger=print):
+    data = []
+    for images_path in images_paths:
+        try:
+            data.append(load_position(images_path, channel, segm_endname))
+        except Exception as err:
+            logger(f'[WARNING]: Skipping "{images_path}". {err}')
+    return data
+
+class _NoOpItem:
+    """Placeholder for main GUI items that do not exist in the viewer 
+    (e.g., the right image LUT). Every method call is a no-op."""
+    def __getattr__(self, name):
+        return lambda *args, **kwargs: None
+
+class _NoAutoPilotProfile:
+    """The viewer does not record auto-pilot profiles like the main GUI"""
+    def storeSelectedChannel(self, *args, **kwargs):
+        pass
+    
+    def storeClickMessageBox(self, *args, **kwargs):
+        pass
+    
+    def storeLoadedFluoChannels(self, *args, **kwargs):
+        pass
+
+class MeasurementsViewerWin(
+        QMainWindow,
+        gui_navigation.FramesNavigationGuiElements,
+        gui_navigation.ZsliceNavigationGuiElements,
+        gui_navigation.ZoomToObjGuiElements,
+        gui_navigation.RecentPathsGuiElements,
+        gui_navigation.LutGuiElements,
+        gui_annotations.AnnotationsGuiElements,
+        gui_custom_annotations.CustomAnnotationsGuiElements,
+        gui_viewer_tools.ZoomGuiElements,
+        gui_viewer_tools.RulerGuiElements,
+        gui_viewer_tools.ScaleBarTimestampGuiElements,
+        gui_viewer_tools.ColorSchemeGuiElements,
+        gui_viewer_tools.LabelsColormapGuiElements,
+        gui_viewer_tools.ImagePropertiesGuiElements,
+        gui_viewer_tools.CcaTableGuiElements,
+        gui_viewer_tools.CountObjectsGuiElements,
+        gui_viewer_tools.WorkersGuiElements,
+        gui_viewer_tools.SearchIDGuiElements,
+        gui_viewer_tools.HoverInfoGuiElements,
+        gui_viewer_tools.ShortcutsGuiElements,
+        gui_viewer_tools.SlideshowGuiElements,
+        gui_viewer_tools.Volume3DViewerGuiElements,
+        gui_viewer_tools.RegionPropsGuiElements,
+        gui_viewer_tools.BottomLayoutGuiElements,
+        gui_viewer_tools.DefaultSettingsGuiElements,
+        gui_overlay.OverlayChannelsGuiElements,
+        gui_overlay.OverlayLabelsGuiElements,
+        gui_overlay.ChannelImageHelpersGuiElements,
+        gui_core.GUICoreElements,
+    ):
+    """Window to view images, navigate cells and plot their measurements.
+
+    Parameters
+    ----------
+    data : list of `load.loadData`, optional
+        Loaded positions (see `load_positions`). Each `posData` must have 
+        `img_data` and `segm_data` with the time axis first. If None, the 
+        window starts empty and data can be loaded from `File` menu.
+    pos_i : int, optional
+        Index of the position to display at startup. Default is 0.
+    frame_i : int, optional
+        Index of the frame to display at startup. Default is `posData.frame_i` 
+        if present, otherwise 0.
+    ID : int, optional
+        Cell ID to select at startup. Default is the first ID.
+    isSegm3D : bool, optional
+        Whether the segmentation masks are 3D. If None, it is inferred from 
+        the shape of `posData.segm_data`.
+    invertBw : bool, optional
+        If True, invert black/white (light background) as with the action 
+        `Invert black/white` of the main GUI. Default is the value saved 
+        in the settings.
+    """
+    sigClosed = Signal(object)
+    # The bottom layout is different from guiWin's --> separate setting
+    bottomLayoutHeightSettingKey = 'measurements_viewer_bottomLayoutHeight'
+
+    def __init__(
+            self, data=None, pos_i=0, frame_i=None, ID=None, isSegm3D=None,
+            invertBw=False, parent=None
+        ):
+        super().__init__(parent)
+        self.data = []
+        self.pos_i = pos_i
+        self.isSegm3D = isSegm3D
+        self.isBwInverted = invertBw
+        
+        self.IDs = []
+        self.selectedID = None
+        self._IDframesCache = {}
+        self.acdc_df = None
+        self._lab = None
+        self._labKey = None
+        self.isDataLoaded = False
+        self.user_ch_name = None
+        self.configurationFilepath = None
+        self.savedConfiguration = None
+        self._startupConfigurationPrompted = False
+        self.measurementProcessingThread = None
+        self.measurementProcessingWorker = None
+        self.rescaleIntensChannelHowMapper = {}
+        self.timepointIdentifiers = []
+        self.phaseTranslatorRules = []
+        # User-chosen phase colors {phase name: '#rrggbb'}
+        self.phaseColors = {}
+        self.timepointActions = {}
+        self.timepointAutoActions = {}
+        self.timepointLines = []
+        self.timepointAutoPredictions = defaultdict(set)
+        self.configurationInputs = []
+        self.measurementProcessingSteps = []
+        self.combinedMeasurementSteps = []
+        # Per-cell constants [{'name': str, 'equation': str}]
+        # self.cellConstants = []
+        self.logger = logging.getLogger('cellacdc-measurements-viewer')
+        self.loadSettings()
+        # Re-evaluate phases of cells whose time points change or whose
+        # phases are missing (saved in the configuration)
+        self.autoApplyPhases = False
+        self._pendingPhaseIDs = set()
+        self.initAnnotationsAttributes()
+        self.initViewerToolsAttributes()
+        self.initCustomAnnotationsAttributes()
+        if sys.platform.startswith('win'):
+            self.openFolderText = 'Show in Explorer...'
+        else:
+            self.openFolderText = 'Reveal in Finder...'
+        
+        self.setWindowTitle('Cell-ACDC - Measurements viewer')
+        self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, False)
+        
+        self.gui_createActions()
+        self.gui_createMenuBar()
+        self.gui_createToolBars()
+        self.gui_connectActions()
+        self.gui_createGraphicsPlots()
+        self.gui_createNavigationWidgets()
+        self.gui_createAnnotationsWidgets()
+        self.gui_createMeasurementsPanel()
+        self.gui_createLayout()
+        self.gui_createStatusBar()
+        self.gui_connectSignals()
+        self.gui_connectViewerToolsSignals()
+        self.initShortcuts()
+        self.readRecentPaths()
+        self.postInitLoadSetSettings()
+        
+        self.setData(data, pos_i=pos_i, frame_i=frame_i, ID=ID)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._startupConfigurationPrompted:
+            self._startupConfigurationPrompted = True
+            QTimer.singleShot(0, self.loadConfiguration)
+        self.readSettings(setting_suffix='_measurements_viewer')
+        
+
+    def selectConfigurationFilepath(self):
+        from .apps import QTreeDialog
+
+        paths = {}
+        types = {}
+        for folder, prefix, kind in (
+                (MEASUREMENTS_CONFIGURATIONS_PATH, '', 'Saved'),
+                (PREMADE_CONFIGURATIONS_PATH, PREMADE_TAG, 'Premade')):
+            if not os.path.isdir(folder):
+                continue
+            for filename in sorted(os.listdir(folder)):
+                filepath = os.path.join(folder, filename)
+                if filename.lower().endswith('.json') and os.path.isfile(filepath):
+                    paths[f'{prefix}{filename}'] = filepath
+                    types[f'{prefix}{filename}'] = kind
+
+        browseButton = widgets.browseFileButton(
+            'Browse configuration...', self,
+            ext={'JSON': ['.json']},
+            title='Load measurements viewer configuration',
+            start_dir=MEASUREMENTS_CONFIGURATIONS_PATH,
+        )
+        skipButton = widgets.SkipPushButton('Skip/New configuration', self)
+        dialog = QTreeDialog(
+            [
+                (name, datetime.fromtimestamp(os.path.getmtime(path)).strftime(
+                    '%Y/%m/%d %H:%M'
+                ), types[name])
+                for name, path in paths.items()
+            ],
+            headerLabels=['Name', 'Date Modified', 'Type'],
+            title='Load measurements viewer configuration',
+            infoText='Select a configuration to load, or skip loading:',
+            parent=self,
+            path_to_browse=MEASUREMENTS_CONFIGURATIONS_PATH if paths else None,
+            additional_buttons=(browseButton,skipButton),
+        )
+        dialog.treeWidget.setCurrentItem(dialog.treeWidget.topLevelItem(0))
+        browsed = []
+
+        def selected(path):
+            if path:
+                browsed.append(path)
+                dialog.close()
+
+        browseButton.sigPathSelected.connect(selected)
+        skipButton.clicked.connect(lambda: setattr(dialog, 'cancel', True) or dialog.close())
+        dialog.exec_()
+        if browsed:
+            return browsed[0]
+        if dialog.cancel:
+            return None
+        return paths[dialog.selectedText]
+
+    def configuration(self):
+        posData = self.posData()
+        segm_filename = os.path.splitext(
+            os.path.basename(posData.segm_npz_path)
+        )[0]
+        segm_endname = segm_filename[len(posData.basename):].lstrip('_')
+        overlay_channels = (
+            sorted(self.checkedOverlayChannels)
+            if self.overlayButton.isChecked() else []
+        )
+        visible_channels = [
+            channel for channel, button in self.allOverlayToolbuttons.items()
+            if button.isChecked()
+            and (channel == self.user_ch_name or channel in overlay_channels)
+        ]
+        currentInput = {
+            'images_paths': [
+                os.path.abspath(pos.images_path) for pos in self.data
+            ],
+            'channel': self.user_ch_name,
+            'segm_endname': segm_endname,
+            'overlay_channels': overlay_channels,
+            'visible_channels': visible_channels,
+        }
+        inputs = copy.deepcopy(self.configurationInputs)
+        if currentInput not in inputs:
+            inputs.append(currentInput)
+        return {
+            'version': 2,
+            **currentInput,
+            'input_options': inputs,
+            'measurement_processing': copy.deepcopy(self.measurementProcessingSteps),
+            'combined_measurements': copy.deepcopy(self.combinedMeasurementSteps),
+            'measurements_mode': self.measurementsModeCombobox.currentIndex(),
+            'time_course_columns': (
+                self.checkedColumns() if self._measurementsMode == 0
+                else sorted(self._timeCourseColumns)
+            ),
+            'measurements_axes': self.measurementsAxes.copy(),
+            'normalize_measurements': self.normalizeCheckbox.isChecked(),
+            'conditional_formatting': copy.deepcopy(self.conditionalFormatting),
+            'timepoint_identifiers': [
+                identifier.to_dict() for identifier in self.timepointIdentifiers
+            ],
+            'custom_annotations': self.customAnnotConfiguration(),
+            'phase_translator_rules': copy.deepcopy(self.phaseTranslatorRules),
+            'phase_colors': dict(self.phaseColors),
+            'auto_apply_phases': self.autoApplyPhases,
+            # 'cell_constants': [dict(constant) for constant in self.cellConstants],
+        }
+
+    @staticmethod
+    def validateConfiguration(configuration):
+        if (not isinstance(configuration, dict)
+                or configuration.get('version') not in (1, 2)):
+            raise ValueError('Unsupported measurements viewer configuration.')
+        MeasurementsViewerWin.validateConfigurationInput(configuration)
+        inputs = configuration.get('input_options', [])
+        if not isinstance(inputs, list):
+            raise ValueError('Invalid input options in configuration.')
+        for option in inputs:
+            MeasurementsViewerWin.validateConfigurationInput(option)
+        MeasurementsViewerWin.validateMeasurementSteps(configuration)
+        columns = configuration.get('time_course_columns')
+        if not isinstance(columns, list) or any(
+                not isinstance(item, str) or not item for item in columns):
+            raise ValueError('Invalid configuration field: time_course_columns.')
+        axes = configuration.get('measurements_axes')
+        if (not isinstance(axes, dict) or set(axes) != {'X', 'Y'}
+                or any(not isinstance(value, str) for value in axes.values())
+                or (axes['X'] and axes['X'] == axes['Y'])):
+            raise ValueError('Invalid comparison axes in configuration.')
+        if (type(configuration.get('measurements_mode')) is not int
+                or configuration['measurements_mode'] not in (0, 1)
+                or type(configuration.get('normalize_measurements')) is not bool):
+            raise ValueError('Invalid plotting options in configuration.')
+        MeasurementsViewerWin.validateConditionalFormatting(
+            configuration.get('conditional_formatting', {})
+        )
+        # Optional for configurations saved before time point identifiers
+        identifiers = configuration.get('timepoint_identifiers', [])
+        if not isinstance(identifiers, list):
+            raise ValueError('Invalid time point identifiers in configuration.')
+        for identifier in identifiers:
+            timepoint_predictors.TimepointIdentifier.validate_dict(identifier)
+        names = [identifier['name'] for identifier in identifiers]
+        if len(set(names)) != len(names):
+            raise ValueError('Duplicated time point identifier names.')
+        viewed = configuration.get('viewed_cells', {})
+        if not isinstance(viewed, dict) or any(
+                not isinstance(path, str) or not path
+                or not isinstance(IDs, list)
+                or any(type(ID) is not int or ID <= 0 for ID in IDs)
+                for path, IDs in viewed.items()):
+            raise ValueError('Invalid viewed cells in configuration.')
+        MeasurementsViewerWin.validateCustomAnnotConfiguration(
+            configuration.get('custom_annotations', [])
+        )
+        phase_translator.validate_rules(configuration.get('phase_translator_rules', []))
+        phase_translator.validate_phase_colors(configuration.get('phase_colors', {}))
+        if not isinstance(configuration.get('auto_apply_phases', False), bool):
+            raise ValueError('auto_apply_phases must be true or false.')
+        predictors = {
+            f'{TIMEPOINT_PREFIX}{identifier["name"]}': identifier['predictor']
+            for identifier in identifiers
+        }
+        for state in configuration.get('custom_annotations', []):
+            column = state['name']
+            if column in predictors:
+                raise ValueError(f'The predictor output "{column}" already exists.')
+            predictors[column] = state.get('predictor') or {
+                'type': timepoint_predictors.PREDICTOR_NONE
+            }
+        timepoint_predictors.PredictorDependencies.order(predictors)
+
+    @staticmethod
+    def validateConditionalFormatting(formatting):
+        """Validate `{column: [{'condition': str, 'color': '#rrggbb'}]}`."""
+        if not isinstance(formatting, dict):
+            raise ValueError('Invalid conditional formatting in configuration.')
+        for column, rules in formatting.items():
+            if not isinstance(column, str) or not column:
+                raise ValueError('Invalid conditional formatting column.')
+            if not isinstance(rules, list):
+                raise ValueError(
+                    f'Invalid conditional formatting rules of "{column}".'
+                )
+            for rule in rules:
+                if (not isinstance(rule, dict)
+                        or set(rule) != {'condition', 'color'}
+                        or not isinstance(rule['condition'], str)
+                        or not rule['condition'].strip()
+                        or not is_formatting_color(rule['color'])):
+                    raise ValueError(
+                        f'Invalid conditional formatting rule of "{column}": '
+                        f'{rule!r}. Expected a non-empty condition and a '
+                        'color like "#ff0000", "lighter" or "darker:250".'
+                    )
+
+    @staticmethod
+    def evaluateConditionalFormatting(df_ID, rules, ID=None, SizeT=None):
+        """Index of the first true rule at each row of one cell (-1: none).
+
+        `df_ID` holds the rows of one cell in frame order (index `frame_i`).
+        Each condition is evaluated like a predictor equation and must
+        return bool or 0/1 (per row, or a scalar for the whole cell).
+        Missing values count as False. Errors are raised.
+        """
+        matched = np.full(len(df_ID), -1, dtype=int)
+        if not rules or not len(df_ID):
+            return matched
+        cell = timepoint_predictors.CellTable.flatten(df_ID)
+        if 'Cell_ID' not in cell.columns and ID is not None:
+            cell['Cell_ID'] = ID
+        variables = {'SizeT': SizeT} if SizeT is not None else None
+        for i, rule in enumerate(rules):
+            values = timepoint_predictors.CellEquation.evaluate(
+                cell, rule['condition'], variables
+            )
+            try:
+                if isinstance(values, (pd.Series, pd.Index)):
+                    values = values.to_numpy(dtype=float, na_value=np.nan)
+                elif values is None or values is pd.NA:
+                    values = np.nan
+                values = np.nan_to_num(
+                    np.asarray(values, dtype=float), nan=0.0
+                )
+            except (TypeError, ValueError):
+                raise ValueError(
+                    'The condition must return bool or 0/1 values.'
+                ) from None
+            mask = timepoint_predictors.CellFilter.boolean_values(
+                values, len(cell)
+            )
+            matched[(matched < 0) & mask] = i
+        return matched
+
+    @staticmethod
+    def validateConfigurationInput(configuration):
+        if not isinstance(configuration, dict):
+            raise ValueError('Invalid configuration input.')
+        for key in (
+                'images_paths', 'overlay_channels', 'visible_channels'):
+            value = configuration.get(key)
+            if not isinstance(value, list) or any(
+                    not isinstance(item, str) or not item for item in value):
+                raise ValueError(f'Invalid configuration field: {key}.')
+        if not configuration['images_paths']:
+            raise ValueError('The configuration contains no Images folders.')
+        if not isinstance(configuration.get('channel'), str):
+            raise ValueError('Invalid configuration field: channel.')
+        segm = configuration.get('segm_endname')
+        if not isinstance(segm, str) or not segm:
+            raise ValueError('Invalid configuration field: segm_endname.')
+        # An empty channel means "ask which channel to display when loading"
+        available = {
+            configuration['channel'], *configuration['overlay_channels']
+        } - {''}
+        if (not configuration['visible_channels']
+                or not set(configuration['visible_channels']) <= available):
+            raise ValueError('Invalid visible image channels in configuration.')
+
+    @staticmethod
+    def validateMeasurementSteps(configuration):
+        orders = set()
+        for section in ('measurement_processing', 'combined_measurements'):
+            steps = configuration.get(section, [])
+            if not isinstance(steps, list):
+                raise ValueError(f'Invalid {section} in configuration.')
+            for step in steps:
+                if (not isinstance(step, dict)
+                        or type(step.get('order')) is not int
+                        or step['order'] < 0 or step['order'] in orders):
+                    raise ValueError('Invalid or duplicate measurement step order.')
+                orders.add(step['order'])
+                if section == 'combined_measurements':
+                    equations = step.get('equations')
+                    if not isinstance(equations, dict) or not equations or any(
+                            not isinstance(key, str) or not key
+                            or not isinstance(value, str) or not value.strip()
+                            for key, value in equations.items()):
+                        raise ValueError('Invalid combined measurement equations.')
+                    continue
+                for key in ('columns', 'output_columns'):
+                    values = step.get(key)
+                    if (not isinstance(values, list) or not values
+                            or any(not isinstance(value, str) or not value for value in values)
+                            or len(values) != len(set(values))):
+                        raise ValueError(f'Invalid processing {key}.')
+                if len(step['columns']) != len(step['output_columns']):
+                    raise ValueError('Processing input/output counts differ.')
+                recipe = step.get('recipe')
+                if not isinstance(recipe, list) or not recipe:
+                    raise ValueError('Invalid measurement recipe.')
+                for item in recipe:
+                    if (not isinstance(item, dict)
+                            or not isinstance(item.get('method'), str)
+                            or item.get('method') not in measurement_processing.MEASUREMENT_PROCESSING_MAPPER
+                            or not isinstance(item.get('kwargs'), dict)):
+                        raise ValueError('Invalid measurement recipe step.')
+
+    def configurationError(self, operation, error):
+        self.logger.error('Could not %s configuration: %s', operation, error)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Configuration failed',
+            f'Could not {operation} configuration:\n\n{error}'
+        )
+
+    def saveConfiguration(self, checked=False, save_as=False):
+        if self.measurementProcessingThread is not None:
+            self.configurationError('save', 'Wait for measurement processing to finish.')
+            return False
+        if not self.isDataLoaded:
+            self.configurationError('save', 'Load image data before saving.')
+            return False
+        filepath = self.configurationFilepath
+        if save_as or filepath is None:
+            try:
+                os.makedirs(MEASUREMENTS_CONFIGURATIONS_PATH, exist_ok=True)
+            except OSError as err:
+                self.configurationError('save', err)
+                return False
+            current_files = sorted(os.listdir(MEASUREMENTS_CONFIGURATIONS_PATH))
+            helpText = html_utils.paragraph(
+                '''Select a filename for the measurements viewer configuration.
+                Which allows you to later reload it, preserving displayed measurements.'''
+                )
+            date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            msg = apps.filenameDialog(
+                ext='json', title='Save measurements viewer configuration as',
+                parent=self, helpText=helpText,existingNames=current_files,
+                allowEmpty=False, addDoNotSaveButton=True, defaultEntry=date
+            )
+            msg.exec_()
+            if msg.cancel:
+                return False
+            if msg.doNotSave:
+                return True
+            filename = msg.filename
+            if not filename:
+                return False
+            filepath = os.path.join(MEASUREMENTS_CONFIGURATIONS_PATH, filename)
+            if not filepath.lower().endswith('.json'):
+                filepath += '.json'
+            # fileNameDialog handles overwrite confirmation internally
+        try:
+            configuration = self.configuration()
+            self.validateConfiguration(configuration)
+            self.writeConfigurationFile(filepath, configuration)
+        except (OSError, ValueError, TypeError, AttributeError) as err:
+            self.configurationError('save', err)
+            return False
+        self.configurationFilepath = filepath
+        self.configurationInputs = copy.deepcopy(configuration['input_options'])
+        self.savedConfiguration = configuration
+        self.statusBar().showMessage(f'Configuration saved to "{filepath}".', 5000)
+        return True
+
+    def saveConfigurationAs(self, checked=False):
+        return self.saveConfiguration(save_as=True)
+
+    @staticmethod
+    def writeConfigurationFile(filepath, configuration):
+        payload = json.dumps(configuration, indent=2).encode('utf-8')
+        output = QSaveFile(filepath)
+        if not output.open(QIODevice.WriteOnly):
+            raise OSError(output.errorString())
+        if output.write(payload) != len(payload):
+            output.cancelWriting()
+            raise OSError(output.errorString())
+        if not output.commit():
+            raise OSError(output.errorString())
+
+    @staticmethod
+    def validateChannelPlaceholders(placeholders):
+        if not isinstance(placeholders, dict) or not placeholders:
+            raise ValueError('Invalid channel_placeholders in configuration.')
+        for name, description in placeholders.items():
+            if (not isinstance(name, str)
+                    or not re.fullmatch(r'[A-Za-z0-9_]+', name)
+                    or not isinstance(description, str)):
+                raise ValueError(f'Invalid channel placeholder "{name}".')
+
+    @staticmethod
+    def validateInputPlaceholders(inputs, channelNames=()):
+        """Validate a template's `input_placeholders`:
+        `{NAME: {"type": "float"|"int"|"str", "default": value,
+        "description": str, "info": str}}` (description and info optional).
+        Names follow the channel placeholder rules and must differ from them.
+        """
+        if not isinstance(inputs, dict):
+            raise ValueError('Invalid input_placeholders in configuration.')
+        for name, spec in inputs.items():
+            if (not isinstance(name, str)
+                    or not re.fullmatch(r'[A-Za-z0-9_]+', name)
+                    or name in channelNames):
+                raise ValueError(f'Invalid input placeholder "{name}".')
+            if (not isinstance(spec, dict)
+                    or not {'type', 'default'} <= set(spec)
+                    or not set(spec) <= {'type', 'default', 'description', 'info'}
+                    or any(not isinstance(spec.get(key, ''), str)
+                           for key in ('description', 'info'))):
+                raise ValueError(f'Invalid input placeholder "{name}".')
+            kind, default = spec['type'], spec['default']
+            valid = {
+                'float': lambda v: (
+                    isinstance(v, (int, float)) and not isinstance(v, bool)
+                ),
+                'int': lambda v: isinstance(v, int) and not isinstance(v, bool),
+                'str': lambda v: isinstance(v, str),
+            }
+            if kind not in valid or not valid[kind](default):
+                raise ValueError(
+                    f'Invalid type or default of input placeholder "{name}".'
+                )
+
+    @classmethod
+    def resolvePremadeTemplate(cls, template, mapping, values=None):
+        """Return the configuration of a premade `template` (not modified)
+        with channel tokens replaced by `mapping` and input tokens by
+        `values` (defaults for missing inputs). Raises ValueError if a token
+        remains unresolved."""
+        placeholders = template.get('channel_placeholders', {})
+        inputs = template.get('input_placeholders', {})
+        cls.validateInputPlaceholders(inputs, placeholders)
+        replacements = {name: spec['default'] for name, spec in inputs.items()}
+        replacements.update(values or {})
+        replacements.update(mapping)
+        result = {
+            key: value for key, value in template.items()
+            if key not in ('channel_placeholders', 'input_placeholders')
+        }
+        result = cls.substituteChannelPlaceholders(result, replacements)
+        unresolved = cls.unresolvedPlaceholders(
+            result, [*placeholders, *inputs]
+        )
+        if unresolved:
+            raise ValueError(
+                f'Unresolved placeholders: {", ".join(unresolved)}.'
+            )
+        return result
+
+    @staticmethod
+    def substituteChannelPlaceholders(obj, mapping):
+        """Return a copy of `obj` with every `{NAME}` token replaced by
+        `mapping[NAME]` in strings, dict keys and dict values (recursive).
+
+        A string that is exactly one token becomes the mapped value itself
+        (e.g. a number for input placeholders); tokens within longer strings
+        and dict keys are replaced by the value's text."""
+        def text(value):
+            return value if isinstance(value, str) else repr(value)
+
+        def substitute(value, isKey=False):
+            if isinstance(value, str):
+                match = re.fullmatch(r'\{([A-Za-z0-9_]+)\}', value)
+                if match and match.group(1) in mapping and not isKey:
+                    return copy.deepcopy(mapping[match.group(1)])
+                for name, replacement in mapping.items():
+                    value = value.replace(f'{{{name}}}', text(replacement))
+                return value
+            if isinstance(value, dict):
+                return {
+                    substitute(key, isKey=True): substitute(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, (list, tuple)):
+                return [substitute(item) for item in value]
+            return copy.deepcopy(value)
+        return substitute(obj)
+
+    @staticmethod
+    def unresolvedPlaceholders(obj, names):
+        """Return the `{NAME}` tokens of `names` still present in `obj`."""
+        text = json.dumps(obj)
+        return sorted(name for name in names if f'{{{name}}}' in text)
+
+    def selectChannelMapping(self, placeholders, channels, inputs=None):
+        """Return `(channel mapping, input values)` or None if cancelled."""
+        dialog = ChannelPlaceholderMappingDialog(
+            placeholders, channels, parent=self, inputs=inputs
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return None
+        return dialog.mapping, dialog.values
+
+    def selectPremadeBaseChannel(self, channels, default=None):
+        """Ask which channel to display as base layer (default listed first)."""
+        items = list(channels)
+        if default in items:
+            items.remove(default)
+            items.insert(0, default)
+        return self.selectItem(
+            'Select channel',
+            'Select channel to display (base layer).\n'
+            'The mapped channels that are not displayed as base are '
+            'added as overlays:', items
+        )
+
+    @staticmethod
+    def setConfigurationBaseChannel(configuration, base):
+        """Make `base` the displayed channel; the previous base becomes an
+        overlay so that it stays available and visible."""
+        previous = configuration.get('channel')
+        overlays = [
+            ch for ch in configuration.get('overlay_channels', [])
+            if ch != base
+        ]
+        visible = list(configuration.get('visible_channels', []))
+        if previous and previous != base and previous not in overlays:
+            overlays.insert(0, previous)
+            if previous not in visible:
+                visible.append(previous)
+        visible = [base, *(ch for ch in visible if ch != base)]
+        configuration.update(
+            channel=base, overlay_channels=overlays, visible_channels=visible
+        )
+
+    def askPremadeCopyFilename(self, defaultName):
+        """Return the filepath for the copy of a premade configuration."""
+        os.makedirs(MEASUREMENTS_CONFIGURATIONS_PATH, exist_ok=True)
+        current_files = sorted(os.listdir(MEASUREMENTS_CONFIGURATIONS_PATH))
+        helpText = html_utils.paragraph(
+            'The premade configuration with your channels is saved as a new '
+            'configuration, which you can later load and modify.'
+        )
+        msg = apps.filenameDialog(
+            ext='json', title='Save configuration from premade template',
+            parent=self, helpText=helpText, existingNames=current_files,
+            allowEmpty=False, defaultEntry=defaultName
+        )
+        msg.exec_()
+        if msg.cancel or not msg.filename:
+            return None
+        filepath = os.path.join(MEASUREMENTS_CONFIGURATIONS_PATH, msg.filename)
+        if not filepath.lower().endswith('.json'):
+            filepath += '.json'
+        # fileNameDialog handles overwrite confirmation internally
+        return filepath
+
+    def instantiatePremadeConfiguration(self, configuration, source):
+        """Create a configuration from a premade template.
+
+        Asks for an experiment folder and a channel for each placeholder,
+        replaces the `{NAME}` tokens, resolves the experiment input and writes
+        the result to the configurations folder. Returns
+        `(filepath, configuration, selectedInput)` or None if cancelled.
+        """
+        placeholders = configuration.get('channel_placeholders')
+        self.validateChannelPlaceholders(placeholders)
+        inputs = configuration.get('input_placeholders', {})
+        self.validateInputPlaceholders(inputs, placeholders)
+        folder = QFileDialog.getExistingDirectory(
+            self, 'Select experiment, Position or Images folder',
+            self.getMostRecentPath()
+        )
+        if not folder:
+            return None
+        paths = get_images_paths(folder)
+        if not paths:
+            raise ValueError(f'No Images folders found in "{folder}".')
+        available = [get_channels_and_segm_endnames(path) for path in paths]
+        channels = set(available[0][0]).intersection(
+            *(set(item[0]) for item in available)
+        )
+        if len(channels) < len(placeholders):
+            raise ValueError(
+                f'The premade configuration needs {len(placeholders)} '
+                f'channels, but the positions have only {len(channels)} '
+                'channels in common.'
+            )
+        selection = self.selectChannelMapping(
+            placeholders, sorted(channels), inputs=inputs
+        )
+        if selection is None:
+            return None
+        mapping, values = selection
+        result = self.resolvePremadeTemplate(configuration, mapping, values)
+        result.setdefault('segm_endname', '')
+        result.setdefault('overlay_channels', [])
+        result.setdefault('visible_channels', [result.get('channel', '')])
+        result.setdefault('version', 2)
+        result.setdefault('time_course_columns', [])
+        result.setdefault('measurements_axes', {'X': '', 'Y': ''})
+        result.setdefault('measurements_mode', 0)
+        result.setdefault('normalize_measurements', False)
+        default = result.get('channel') or None
+        offered = sorted(channels)
+        if default is None:
+            # No display channel in the template: offer the channels that
+            # are not mapped (e.g. phase contrast) first
+            mapped = set(mapping.values())
+            offered.sort(key=lambda ch: ch in mapped)
+        base = self.selectPremadeBaseChannel(offered, default)
+        if base is None:
+            return None
+        self.setConfigurationBaseChannel(result, base)
+        selectedInput = self.newExperimentInput(result, paths)
+        if selectedInput is None:
+            return None
+        result.update(selectedInput)
+        result['input_options'] = [copy.deepcopy(selectedInput)]
+        result['premade'] = {
+            'source': os.path.basename(source), 'channel_mapping': mapping
+        }
+        if inputs:
+            result['premade']['input_values'] = dict(values or {})
+        self.validateConfiguration(result)
+        stem = os.path.splitext(os.path.basename(source))[0]
+        defaultName = '_'.join([stem, *mapping.values()])
+        filepath = self.askPremadeCopyFilename(defaultName)
+        if filepath is None:
+            return None
+        self.writeConfigurationFile(filepath, result)
+        return filepath, result, selectedInput
+
+    def markConfigurationSaved(self):
+        try:
+            self.savedConfiguration = self.configuration()
+        except Exception:
+            self.logger.exception('Could not snapshot the configuration')
+            self.savedConfiguration = None
+
+    def hasUnsavedConfiguration(self):
+        if not self.isDataLoaded:
+            return False
+        try:
+            return self.configuration() != self.savedConfiguration
+        except Exception:
+            self.logger.exception('Could not compare the configuration')
+            return True
+
+    def viewerManagedColumns(self):
+        return {
+            *(self.timepointColumn(identifier)
+              for identifier in self.timepointIdentifiers),
+            *self.customAnnotNames(), VISITED_COLUMN
+        }
+
+    def hasUnsavedAcdcDf(self, posData):
+        if not hasattr(posData, 'savedAcdcDf'):
+            return False
+        current = getattr(posData, 'acdc_df', None)
+        if current is None or current.empty:
+            return False
+        saved = posData.savedAcdcDf
+        if saved is None:
+            return True
+        current = self._standardizeAcdcDf(current)
+        # Empty viewer columns (no marks yet) are not changes to the file.
+        managed = self.viewerManagedColumns()
+        def unmarked(df, other):
+            return [
+                column for column in managed
+                if column in df and column not in other
+                and df[column].fillna(0).eq(0).all()
+            ]
+        current, saved = (
+            current.drop(columns=unmarked(current, saved)),
+            saved.drop(columns=unmarked(saved, current))
+        )
+        try:
+            pd.testing.assert_frame_equal(
+                current, saved, check_dtype=False, check_like=True,
+                check_index_type=False, check_column_type=False
+            )
+        except AssertionError:
+            return True
+        return False
+
+    def unsavedAcdcDfPositions(self):
+        return [
+            posData for posData in self.data or []
+            if self.hasUnsavedAcdcDf(posData)
+        ]
+
+    def saveAcdcDfs(self, positions):
+        for posData in positions:
+            filepath = getattr(posData, 'acdc_output_csv_path', None)
+            try:
+                if not filepath:
+                    raise OSError('No acdc_output file path for this position.')
+                acdc_df = self._standardizeAcdcDf(posData.acdc_df).sort_index()
+                acdc_df = acdc_df.copy()
+                self.ensureTimepointColumns(acdc_df)
+                self.ensureCustomAnnotColumns(acdc_df)
+                if VISITED_COLUMN not in acdc_df:
+                    acdc_df[VISITED_COLUMN] = False
+                payload = acdc_df.to_csv().encode('utf-8')
+                output = QSaveFile(filepath)
+                if not output.open(QIODevice.WriteOnly):
+                    raise OSError(output.errorString())
+                if output.write(payload) != len(payload):
+                    output.cancelWriting()
+                    raise OSError(output.errorString())
+                if not output.commit():
+                    raise OSError(output.errorString())
+            except (OSError, ValueError, TypeError) as err:
+                self.logger.error('Could not save "%s": %s', filepath, err)
+                self.measurementProcessingWarning(
+                    'Saving tables failed',
+                    f'Could not save the table of '
+                    f'"{getattr(posData, "pos_foldername", filepath)}":\n\n{err}'
+                )
+                return False
+            posData.savedAcdcDf = acdc_df.copy()
+        if positions:
+            self.statusBar().showMessage(
+                f'Saved {len(positions)} acdc_output table(s).', 5000
+            )
+        return True
+
+    def askSaveBeforeClosing(self):
+        """Prompt for unsaved tables/configuration. Return False to cancel."""
+        positions = self.unsavedAcdcDfPositions()
+        configChanged = self.hasUnsavedConfiguration()
+        if not positions and not configChanged:
+            return True
+        hasFile = self.configurationFilepath is not None
+        saveConfigText = (
+            'Save configuration' if hasFile else 'Save configuration...'
+        )
+        changes = []
+        if positions:
+            changes.append(
+                f'the <b>measurement tables</b> of {len(positions)} '
+                f'position(s)'
+            )
+        if configChanged:
+            changes.append('the <b>configuration</b>')
+        txt = html_utils.paragraph(
+            f'There are unsaved changes to {" and ".join(changes)}.<br><br>'
+            'Do you want to save them before closing?<br><br>'
+            '<i>Saving the tables overwrites each position\'s acdc_output '
+            'file.</i>'
+        )
+        details = '\n'.join(
+            getattr(posData, 'acdc_output_csv_path', '') for posData in positions
+        )
+        options = [('Cancel', None), ("Don't save", (False, None))]
+        if positions and configChanged:
+            options += [
+                ('Save tables only', (True, None)),
+                (f'{saveConfigText} only', (False, 'save')),
+            ]
+            if hasFile:
+                options.append(('Save both as...', (True, 'save_as')))
+            options.append(('Save both', (True, 'save')))
+        elif positions:
+            options.append(('Save tables', (True, None)))
+        else:
+            if hasFile:
+                options.append(('Save configuration as...', (False, 'save_as')))
+            options.append((saveConfigText, (False, 'save')))
+        msg = widgets.myMessageBox(wrapText=False)
+        buttons = msg.warning(
+            self, 'Save changes?', txt, detailsText=details or None,
+            buttonsTexts=[text for text, _ in options]
+        )
+        if msg.cancel:
+            return False
+        actions = dict(zip(buttons, (action for _, action in options)))
+        action = actions.get(msg.clickedButton)
+        if action is None:
+            return False
+        saveTables, saveConfig = action
+        if saveTables and not self.saveAcdcDfs(positions):
+            return False
+        if saveConfig is not None and not self.saveConfiguration(
+                save_as=saveConfig == 'save_as'):
+            return False
+        return True
+
+    @staticmethod
+    def configurationInputOptions(configuration):
+        keys = (
+            'images_paths', 'channel', 'segm_endname',
+            'overlay_channels', 'visible_channels'
+        )
+        options = copy.deepcopy(configuration.get('input_options', []))
+        current = {key: copy.deepcopy(configuration[key]) for key in keys}
+        if current not in options:
+            options.append(current)
+        return options
+
+    def selectConfigurationInput(self, configuration):
+        options = self.configurationInputOptions(configuration)
+        labels = [
+            f'{i + 1}. {option["images_paths"][0]} '
+            f'({len(option["images_paths"])} positions; '
+            f'{option["channel"]}; {option["segm_endname"]})'
+            for i, option in enumerate(options)
+        ]
+        new = 'Load a new experiment...'
+        selected = self.selectItem(
+            'Select experiment', 'Load a saved experiment or a new one:',
+            [*labels, new]
+        )
+        if selected is None:
+            return None
+        if selected != new:
+            return options[labels.index(selected)]
+        folder = QFileDialog.getExistingDirectory(
+            self, 'Select experiment, Position or Images folder',
+            self.getMostRecentPath()
+        )
+        if not folder:
+            return None
+        paths = get_images_paths(folder)
+        if not paths:
+            raise ValueError(f'No Images folders found in "{folder}".')
+        return self.newExperimentInput(configuration, paths)
+
+    def newExperimentInput(self, configuration, paths):
+        """Map the configuration's input onto new Images folders.
+
+        The configured channel, segmentation and overlays are reused when
+        every position has them; otherwise the user picks a replacement
+        (channel/segmentation) or confirms dropping them (overlays). Channels
+        of the new experiment that the configuration does not use are then
+        offered as optional extra overlays.
+        """
+        available = [get_channels_and_segm_endnames(path) for path in paths]
+        channels = set(available[0][0]).intersection(*(set(item[0]) for item in available))
+        segmentations = set(available[0][1]).intersection(*(set(item[1]) for item in available))
+        if not channels or not segmentations:
+            raise ValueError('The positions have no common channels or segmentations.')
+        channel = configuration['channel']
+        if not channel:
+            channel = self.selectDisplayChannel(
+                channels, configuration['overlay_channels']
+            )
+            if channel is None:
+                return None
+        elif channel not in channels:
+            channel = self.selectItem(
+                'Select channel',
+                f'Channel "{channel}" is not in every position of the new '
+                'experiment. Select channel to display:', sorted(channels)
+            )
+            if channel is None:
+                return None
+        segm = configuration['segm_endname']
+        if segm not in segmentations:
+            segm = self.selectItem(
+                'Select segmentation',
+                f'Segmentation "{segm}" is not in every position of the new '
+                'experiment. Select segmentation to load:', sorted(segmentations)
+            )
+            if segm is None:
+                return None
+        configured = list(configuration['overlay_channels'])
+        overlays = [c for c in configured if c in channels and c != channel]
+        missing = [c for c in configured if c not in channels]
+        if missing:
+            msg = widgets.myMessageBox(wrapText=False)
+            cancel, _ = msg.warning(
+                self, 'Overlay channels missing',
+                html_utils.paragraph(
+                    'These overlay channels of the configuration are not in '
+                    'every position of the new experiment and will be '
+                    f'skipped:<br><br><b>{", ".join(missing)}</b>'
+                ),
+                buttonsTexts=('Cancel', 'Continue')
+            )
+            if msg.cancel or msg.clickedButton == cancel:
+                return None
+        used = {configuration['channel'], channel, *configured}
+        added = self.selectConfigurationOverlayChannels(
+            sorted(channels - used),
+            text=(
+                'The new experiment has channels that the configuration does '
+                'not use.<br>Select the ones to add as overlay channels '
+                '(or leave the selection empty):'
+            )
+        )
+        if added is None:
+            return None
+        overlays += added
+        visible = [
+            c for c in configuration['visible_channels']
+            if c == channel or c in overlays
+        ]
+        if channel != configuration['channel'] and channel not in visible:
+            visible.insert(0, channel)
+        visible += [c for c in added if c not in visible]
+        return {
+            'images_paths': [os.path.abspath(path) for path in paths],
+            'channel': channel, 'segm_endname': segm,
+            'overlay_channels': overlays,
+            'visible_channels': visible,
+        }
+
+    def selectDisplayChannel(self, channels, overlays=()):
+        """Ask for the display (base layer) channel of a configuration
+        without one. Channels that are not overlays are offered first; an
+        overlay chosen as base is removed from the overlays by the caller."""
+        items = sorted(channels, key=lambda ch: (ch in overlays, ch))
+        return self.selectItem(
+            'Select channel',
+            'The configuration does not specify a channel to display.\n'
+            'Select channel to display (base layer):', items
+        )
+
+    def resolveInputChannel(self, selectedInput):
+        """Return `selectedInput` with a display channel, asking for one if
+        it is empty (None if cancelled). The chosen channel is removed from
+        the overlays and shown first."""
+        if selectedInput['channel']:
+            return selectedInput
+        available = [
+            set(get_channels_and_segm_endnames(path)[0])
+            for path in selectedInput['images_paths']
+        ]
+        channels = set.intersection(*available) if available else set()
+        if not channels:
+            raise ValueError('The positions have no common channels.')
+        channel = self.selectDisplayChannel(
+            channels, selectedInput['overlay_channels']
+        )
+        if channel is None:
+            return None
+        resolved = copy.deepcopy(selectedInput)
+        self.setConfigurationBaseChannel(resolved, channel)
+        return resolved
+
+    def selectConfigurationOverlayChannels(self, channels, text=None):
+        if not channels:
+            return []
+        dialog = widgets.QDialogListbox(
+            'Select overlay channels',
+            text or 'Select optional overlay channels (or leave the selection empty):',
+            channels, multiSelection=True, parent=self, preSelectedItems=()
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return None
+        return list(dialog.selectedItemsText)
+
+    @staticmethod
+    def measurementStepOutputs(configuration):
+        steps = sorted(
+            (step['order'], section, step)
+            for section in ('measurement_processing', 'combined_measurements')
+            for step in configuration.get(section, [])
+        )
+        return list(dict.fromkeys(
+            column for _, section, step in steps
+            for column in (
+                step['output_columns'] if section == 'measurement_processing'
+                else step['equations']
+            )
+        ))
+
+    def askMeasurementReplay(self, outputs, data):
+        """Return 'recalculate', 'existing', or None if the user cancels."""
+        existing = {
+            column for posData in data
+            if getattr(posData, 'acdc_df', None) is not None
+            for column in outputs if column in posData.acdc_df
+        }
+        incomplete = [
+            os.path.basename(posData.pos_path) for posData in data
+            if getattr(posData, 'acdc_df', None) is None
+            or any(column not in posData.acdc_df for column in outputs)
+        ]
+        txt = (
+            'This configuration contains <b>measurement processing</b> and/or '
+            '<b>combined measurements</b> steps.<br><br>'
+        )
+        if incomplete:
+            txt += (
+                f'Their output columns are missing in {len(incomplete)} of '
+                f'{len(data)} positions, so they must be calculated to use '
+                'existing values.'
+            )
+        else:
+            txt += 'Their output columns already exist in every position.'
+        if existing:
+            txt += (
+                '<br><br>Calculating will <b>overwrite</b> the existing '
+                'output columns.'
+            )
+        txt = html_utils.paragraph(
+            f'{txt}<br><br>Do you want to calculate them?'
+        )
+        details = 'Output columns:\n' + '\n'.join(outputs)
+        if incomplete:
+            details += '\n\nPositions with missing columns:\n' + '\n'.join(incomplete)
+        msg = widgets.myMessageBox(wrapText=False)
+        cancel, existingButton, recalculate = msg.question(
+            self, 'Calculate measurements?', txt, detailsText=details,
+            buttonsTexts=('Cancel', 'Use existing values', 'Calculate')
+        )
+        if msg.cancel or msg.clickedButton == cancel:
+            return None
+        if msg.clickedButton == recalculate:
+            return 'recalculate'
+        if incomplete:
+            raise ValueError(
+                'Cannot use existing values: workflow columns are missing in '
+                + ', '.join(incomplete) + '.'
+            )
+        return 'existing'
+
+    @staticmethod
+    def replayMeasurementSteps(posData, configuration, overwrite=False):
+        steps = [
+            (step['order'], section, step)
+            for section in ('measurement_processing', 'combined_measurements')
+            for step in configuration.get(section, [])
+        ]
+        if not steps:
+            return
+        source = getattr(posData, 'acdc_df', None)
+        if source is None or source.empty:
+            raise ValueError('The experiment has no measurements to process.')
+        result = MeasurementsViewerWin._standardizeAcdcDf(source).copy()
+        if overwrite:
+            outputs = MeasurementsViewerWin.measurementStepOutputs(configuration)
+            result = result.drop(columns=[c for c in outputs if c in result])
+        for identifier in configuration.get('timepoint_identifiers', []):
+            column = f'{TIMEPOINT_PREFIX}{identifier["name"]}'
+            if column not in result:
+                result[column] = False
+        for state in configuration.get('custom_annotations', []):
+            if state['name'] not in result:
+                result[state['name']] = 0
+        for _, section, step in sorted(steps):
+            outputs = (
+                step['output_columns'] if section == 'measurement_processing'
+                else list(step['equations'])
+            )
+            collisions = set(outputs).intersection(result.columns)
+            if collisions:
+                raise ValueError(
+                    'Workflow would overwrite existing measurements: '
+                    + ', '.join(sorted(collisions))
+                )
+            if section == 'measurement_processing':
+                result = measurement_processing.apply_recipe(
+                    result, step['columns'], step['recipe'], step['output_columns']
+                )
+            else:
+                equationSource = result.copy()
+                for name, expression in step['equations'].items():
+                    result[name] = apps.CombineMetricsEquationDialog.evaluateCellEquation(
+                        equationSource, expression, SizeT=getattr(posData, 'SizeT', None)
+                    )
+        posData.acdc_df = result
+
+    def loadConfiguration(self, checked=False, filepath=None):
+        if self.measurementProcessingThread is not None:
+            self.configurationError('load', 'Wait for measurement processing to finish.')
+            return False
+        if filepath is None:
+            filepath = self.selectConfigurationFilepath()
+        if not filepath:
+            return False
+        try:
+            with open(filepath, encoding='utf-8') as file:
+                configuration = json.load(file)
+            if (isinstance(configuration, dict)
+                    and 'channel_placeholders' in configuration):
+                premade = self.instantiatePremadeConfiguration(
+                    configuration, filepath
+                )
+                if premade is None:
+                    return False
+                filepath, configuration, selectedInput = premade
+            else:
+                self.validateConfiguration(configuration)
+                selectedInput = self.selectConfigurationInput(configuration)
+                if selectedInput is not None:
+                    selectedInput = self.resolveInputChannel(selectedInput)
+            if selectedInput is None:
+                return False
+            inputs = self.configurationInputOptions(configuration)
+            if selectedInput not in inputs:
+                inputs.append(copy.deepcopy(selectedInput))
+            configuration.update(selectedInput)
+            for path in configuration['images_paths']:
+                if not os.path.isdir(path):
+                    raise FileNotFoundError(f'Images folder not found: "{path}".')
+                channels, segmentations = get_channels_and_segm_endnames(path)
+                required = {
+                    configuration['channel'], *configuration['overlay_channels']
+                }
+                missing = required.difference(channels)
+                if missing:
+                    raise ValueError(f'Missing channels in "{path}": {sorted(missing)}.')
+                if configuration['segm_endname'] not in segmentations:
+                    raise ValueError(f'Segmentation not found in "{path}".')
+            self.setCursor(Qt.WaitCursor)
+            try:
+                legacyViewed = {
+                    os.path.normcase(os.path.abspath(path)): IDs
+                    for path, IDs in configuration.get('viewed_cells', {}).items()
+                }
+                data = [
+                    load_position(
+                        path, configuration['channel'],
+                        configuration['segm_endname']
+                    )
+                    for path in configuration['images_paths']
+                ]
+                replay = None
+                outputs = self.measurementStepOutputs(configuration)
+                if outputs:
+                    self.unsetCursor()
+                    replay = self.askMeasurementReplay(outputs, data)
+                    if replay is None:
+                        return False
+                    self.setCursor(Qt.WaitCursor)
+                for posData in data:
+                    if replay == 'recalculate':
+                        self.replayMeasurementSteps(
+                            posData, configuration, overwrite=True
+                        )
+                    legacyIDs = legacyViewed.get(
+                        os.path.normcase(os.path.abspath(posData.pos_path)), []
+                    ) if legacyViewed else []
+                    if legacyIDs and posData.acdc_df is not None:
+                        if VISITED_COLUMN not in posData.acdc_df:
+                            posData.acdc_df[VISITED_COLUMN] = False
+                        rows = posData.acdc_df.index.get_level_values('Cell_ID').isin(legacyIDs)
+                        posData.acdc_df.loc[rows, VISITED_COLUMN] = True
+            finally:
+                self.unsetCursor()
+        except Exception as err:
+            self.logger.exception('Loading measurements viewer workflow failed')
+            self.configurationError('load', err)
+            return False
+
+        self.isSegm3D = None
+        # self.setCellConstants(configuration.get('cell_constants', []))
+        self.setTimepointIdentifiers([
+            TimepointIdentifier.from_dict(identifier)
+            for identifier in configuration.get('timepoint_identifiers', [])
+        ])
+        self.configurationInputs = inputs
+        self.measurementProcessingSteps = copy.deepcopy(
+            configuration.get('measurement_processing', [])
+        )
+        self.combinedMeasurementSteps = copy.deepcopy(
+            configuration.get('combined_measurements', [])
+        )
+        with self.deferPredictorPredictions():
+            self.setData(data)
+            self.setCustomAnnotations(configuration.get('custom_annotations', []))
+            # Exported assignments of visited cells must survive auto-prediction.
+            for posData in data:
+                table = getattr(posData, 'acdc_df', None)
+                if table is None or VISITED_COLUMN not in table:
+                    continue
+                IDs = set(table.index.get_level_values('Cell_ID')[
+                    table[VISITED_COLUMN].fillna(False).to_numpy(bool)
+                ])
+                for name in self.customAnnotNames():
+                    self.customAnnotAutoPredictions[
+                        self.customAnnotPredictionKey(posData, name)
+                    ].update(IDs)
+        self.phaseTranslatorRules = copy.deepcopy(
+            configuration.get('phase_translator_rules', [])
+        )
+        self.phaseColors = dict(configuration.get('phase_colors', {}))
+        self.autoApplyPhases = configuration.get('auto_apply_phases', False)
+        self.configurationFilepath = None
+        overlays = configuration['overlay_channels']
+        if overlays:
+            if not self.loadOverlayData(overlays):
+                self.configurationError('load', 'Could not load overlay channels.')
+                return False
+            self.setCheckedOverlayContextMenusActions(overlays)
+            self.overlayButton.setChecked(True)
+        for channel, button in self.allOverlayToolbuttons.items():
+            button.setChecked(channel in configuration['visible_channels'])
+        self.setOverlayItemsOpacities()
+
+        columns = {item.text() for item in self.columnsModel.measurementItems()}
+        selected = set(configuration['time_course_columns'])
+        axes = configuration['measurements_axes']
+        missing = (selected | set(axes.values())).difference(columns, {''})
+        self.measurementsModeCombobox.blockSignals(True)
+        self.measurementsModeCombobox.setCurrentIndex(configuration['measurements_mode'])
+        self.measurementsModeCombobox.blockSignals(False)
+        # Do not replace the restored time-course selection with the old checks.
+        self._measurementsMode = 1
+        self._timeCourseColumns = selected & columns
+        self.measurementsAxes = {
+            axis: value if value in columns else '' for axis, value in axes.items()
+        }
+        self.conditionalFormatting = copy.deepcopy(
+            configuration.get('conditional_formatting', {})
+        )
+        self.measurementsModeChanged()
+        self.normalizeCheckbox.setChecked(configuration['normalize_measurements'])
+        self.configurationFilepath = filepath
+        self.markConfigurationSaved()
+        if missing:
+            self.configurationError(
+                'restore all plot selections',
+                f'Columns no longer available: {", ".join(sorted(missing))}.'
+            )
+        return True
+    
+    def postInitLoadSetSettings(self):
+        followID = self._get_setting_value('followID', default=True, cast=bool)
+        self.followIDcheckbox.setChecked(followID)
+        
+        restrictFrames = self._get_setting_value('restrictFrames', default=True, cast=bool)
+        self.restrictFramesCheckbox.setChecked(restrictFrames)
+        
+        rescalePlot = self._get_setting_value('rescalePlot', default=True, cast=bool)
+        self.rescalePlotCheckbox.setChecked(rescalePlot)
+
+
+    def annotatedAxesIndices(self):
+        # The viewer has only the left image (no right image like in guiWin)
+        return (0,)
+    
+    def setDoNotAnnotate(self, checked):
+        # Same as `gui.guiWin.setDoNotAnnotate` but only for the left image
+        self.annotDoNotAnntoateCheckbox(0).setChecked(checked)
+    
+    @property
+    def frame_i(self):
+        # The current frame is stored in the current position data as in 
+        # guiWin (e.g., `SearchIDGuiElements.findID` sets `posData.frame_i`)
+        if not self.data:
+            return 0
+        return self.data[self.pos_i].frame_i
+    
+    @frame_i.setter
+    def frame_i(self, value):
+        if not self.data:
+            return
+        self.data[self.pos_i].frame_i = value
+    
+    def initViewerToolsAttributes(self):
+        """Initialize the attributes required by the mixins in 
+        `gui_viewer_tools` and `gui_overlay`"""
+        self._appName = 'Cell-ACDC'
+        try:
+            self._version = myutils.read_version()
+        except Exception as err:
+            self._version = None
+        self.app = QApplication.instance()
+        self.mainWin = None
+        self.isSnapshot = False
+        self.isTwoImageLayout = False
+        
+        self.exportMaskImage = None
+        self.exportToImageWindow = None
+        self.timestampStartTimedelta = timedelta(seconds=0)
+        
+        self.scaleBarDialog = None
+        self.timestampDialog = None
+        self.slideshowWin = None
+        self.ccaTableWin = None
+        self.countObjsWindow = None
+        self.progressWin = None
+        
+        self.tempSegmentON = False
+        self.isMouseDragImg1 = False
+        self.invertBwAlreadyCalledOnce = False
+        self.currentPropsID = -1
+        self.xHoverImg, self.yHoverImg = None, None
+        self.countKeyPress = 0
+        self.doubleKeyTimeElapsed = False
+        self.isKeyDoublePress = False
+        self.doubleSpaceBarState = False
+        
+        self.mouseBindings = {}
+        self.defaultMouseShortcuts = {
+            'Next': Qt.MouseButton.XButton2, 
+            'Previous': Qt.MouseButton.XButton1
+        }
+        self.zoomOutKeyValue = Qt.Key_H
+        self.delObjAction = None
+        self.delObjToolAction = QAction(self)
+        self.delObjToolAction.setCheckable(True)
+        self.delObjToolAction.setVisible(False)
+        self.widgetsWithShortcut = {}
+        self.leftClickButtons = []
+        
+        self.fluoDataChNameActions = []
+        self.retainSizeLutItems = False
+        self.AutoPilotProfile = _NoAutoPilotProfile()
+        self.checkedOverlayChannels = set()
+        self.overlayLabelsItems = {}
+        self.drawModeOverlayLabelsChannels = {}
+        self.existingSegmEndNames = []
+        self.ch_names = []
+        
+        # Main GUI widgets that do not exist in the viewer
+        self.equalizeHistPushButton = QPushButton(self)
+        self.equalizeHistPushButton.hide()
+        self.imgGradRight = _NoOpItem()
+    
+    def initCustomAnnotationsAttributes(self):
+        """Initialize the attributes required by 
+        `gui_custom_annotations.CustomAnnotationsGuiElements`"""
+        self.customAnnotDict = {}
+        self.customAnnotButton = None
+        self.savedCustomAnnot = {}
+        # {button: (toggle action, Shift+shortcut re-evaluate action)}
+        self.customAnnotShortcutActions = {}
+        # Cells already predicted {(normcase pos_path, name): set of IDs}
+        self.customAnnotAutoPredictions = defaultdict(set)
+    
+    def initAnnotationsAttributes(self):
+        """Initialize the attributes required by 
+        `gui_annotations.AnnotationsGuiElements`"""
+        self.annotOptionsCheckboxes = defaultdict(dict)
+        self.annotOptionsToRestore = defaultdict(dict)
+        self.textAnnot = {}
+        self.tracksPlotItems = {}
+        self.overlayLayersItems = {}
+        self.highlightedID = 0
+        self.isExportingVideo = False
+        self.lineage_tree = None
+        self.cca_df_colnames = cca_df_colnames
+        self.cca_df_int_cols = CCA_DF_INT_COLS
+        self._acdcRegionProps = acdc_regionprops.acdcRegionprops
+        
+        # Annotations in the viewer are always displayed as in 'Viewer' mode
+        self.modeComboBox = QComboBox(self)
+        self.modeComboBox.addItem('Viewer')
+        self.modeComboBox.hide()
+        
+        savedFontSize = '12'
+        if 'fontSize' in self.df_settings.index:
+            savedFontSize = str(self.df_settings.at['fontSize', 'value'])
+        if savedFontSize.find('pt') != -1:
+            savedFontSize = savedFontSize[:-2]
+        try:
+            self.fontSize = int(float(savedFontSize))
+        except Exception as err:
+            self.fontSize = 12
+    
+    def loadSettings(self):
+        self.settings_csv_path = settings_csv_path
+        if os.path.exists(settings_csv_path):
+            self.df_settings = pd.read_csv(
+                settings_csv_path, index_col='setting'
+            )
+        else:
+            self.df_settings = pd.DataFrame(
+                {'setting': [], 'value': []}, dtype=object
+            ).set_index('setting')
+        
+        if 'is_bw_inverted' not in self.df_settings.index:
+            self.df_settings.at['is_bw_inverted', 'value'] = 'No'
+        
+        try:
+            self.defaultRescaleIntensHow = (
+                self.df_settings.at['default_rescale_intens_how', 'value']
+            )
+        except Exception as err:
+            self.defaultRescaleIntensHow = RESCALE_INTENS_HOW_TEXTS[0]
+    
+    def gui_createActions(self):
+        self.openFolderAction = QAction(
+            QIcon(":folder-open.svg"), "&Load Folder...", self
+        )
+        self.openFolderAction.setShortcut('Ctrl+O')
+        self.openFolderAction.setToolTip(
+            'Load an experiment, Position or Images folder'
+        )
+        self.openFileAction = QAction(
+            QIcon(":image.svg"), "&Open Image File...", self
+        )
+        self.openFileAction.setToolTip(
+            'Open an image file from the Images folder of a Position'
+        )
+        self.showInExplorerAction = QAction(
+            QIcon(":drawer.svg"), f"&{self.openFolderText}", self
+        )
+        self.reloadAction = QAction(
+            QIcon(":reload.svg"), "Reload acdc_output Table", self
+        )
+        self.reloadAction.setShortcut('F5')
+        self.reloadAction.setToolTip(
+            'Reload the acdc_output table from the file '
+            '(e.g., after saving in the main GUI)'
+        )
+        self.exitAction = QAction("&Exit", self)
+        self.loadConfigurationAction = QAction(
+            QIcon(":file-open.svg"), 'Load configuration...', self
+        )
+        self.loadConfigurationAction.setToolTip(
+            'Load a measurements viewer configuration\n\n'
+            'Restores inputs, measurement steps, plots, time point '
+            'identifiers, custom annotations and phase rules.'
+        )
+        self.saveConfigurationAction = QAction(
+            QIcon(":file-save.svg"), 'Save configuration', self
+        )
+        self.saveConfigurationAction.setShortcut('Ctrl+S')
+        self.saveConfigurationAction.setToolTip(
+            'Save the current configuration (Ctrl+S)'
+        )
+        self.saveConfigurationAsAction = QAction(
+            QIcon(":edit-copy.svg"), 'Save configuration as...', self
+        )
+        self.saveConfigurationAsAction.setShortcut('Ctrl+Shift+S')
+        self.saveConfigurationAsAction.setToolTip(
+            'Save the current configuration to a new file (Ctrl+Shift+S)'
+        )
+        self.addTimepointIdentifierAction = QAction(
+            QIcon(":add.svg"), 'Add time point identifier...', self
+        )
+        self.addTimepointIdentifierAction.setToolTip(
+            'Add time point identifier\n\n'
+            'Define a named time point (e.g., "Bud emergence") with a color, '
+            'a keyboard shortcut and an optional per-cell predictor.\n'
+            'Hover over the measurements plot and press the shortcut to add '
+            'a time point at the hovered frame.'
+        )
+        self.reevaluateAllTimepointsAction = QAction(
+            QIcon(":reload.svg"), 'Re-evaluate predictors on all cells', self
+        )
+        self.reevaluateAllTimepointsAction.setToolTip(
+            'Re-evaluate predictors on all cells\n\n'
+            'Run the predictors of all time point identifiers on every cell '
+            'of the current position, replacing their time points.\n'
+            'You will be warned if manual edits would be overwritten.'
+        )
+        self.reevaluateCellTimepointsAction = QAction(
+            QIcon(":magic_wand.svg"), 
+            'Re-evaluate predictors on displayed cell', self
+        )
+        self.reevaluateCellTimepointsAction.setToolTip(
+            'Re-evaluate predictors on displayed cell\n\n'
+            'Run the predictors of all time point identifiers only on the '
+            'displayed cell, replacing its time points.\n'
+            'You will be warned if manual edits would be overwritten.'
+        )
+        # self.editCellConstantsAction = QAction(
+        #     QIcon(":calc.svg"), 'Per-cell constants...', self
+        # )
+        # self.editCellConstantsAction.setToolTip(
+        #     'Per-cell constants\n\n'
+        #     'Define constants computed once per cell (e.g., "Maximum value" '
+        #     'or "Was at beginning")\n'
+        #     'that can be used like columns in the time point predictors.'
+        # )
+        
+        self.gui_createCustomAnnotationsActions()
+        self.reevaluateAllCustomAnnotationsAction = QAction(
+            QIcon(":reload.svg"),
+            'Re-evaluate annotation predictors on all cells', self
+        )
+        self.reevaluateAllCustomAnnotationsAction.setToolTip(
+            'Re-evaluate annotation predictors on all cells\n\n'
+            'Run the predictors of all custom annotations on every cell of '
+            'the current position, replacing their annotations.\n'
+            'You will be warned if manual edits would be overwritten.'
+        )
+        self.reevaluateCellCustomAnnotationsAction = QAction(
+            QIcon(":magic_wand.svg"),
+            'Re-evaluate annotation predictors on displayed cell', self
+        )
+        self.reevaluateCellCustomAnnotationsAction.setToolTip(
+            'Re-evaluate annotation predictors on displayed cell\n\n'
+            'Run the predictors of all custom annotations only on the '
+            'displayed cell, replacing its annotations.\n'
+            'You will be warned if manual edits would be overwritten.'
+        )
+        self.addCustomAnnotationAction.setToolTip(
+            'Add custom annotation\n\n'
+            'Define an annotation (saved as a 0/1 column) with a symbol, a '
+            'keyboard shortcut and an optional predictor.\n'
+            'Select a cell and press the shortcut to annotate it at the '
+            'current frame.'
+        )
+        
+        # Annotations actions (same as in the main GUI)
+        self.scalingLabelsAction = widgets.CheckableAction(
+            'Fix text annotations to screen size'
+        )
+        self.scalingLabelsAction.setToolTip(
+            'When the text annotations are fixed to screen size, they do not '
+            'scale relative to the objects when zooming in/out.'
+        )
+        self.scalingLabelsAction.setChecked(
+            self._get_setting_value('scalingLabels', False, cast=bool)
+        )
+        self.highLowResAction = widgets.CheckableAction(
+            'High resolution text annotations'
+        )
+        self.highLowResAction.setToolTip(
+            'Resolution of the text annotations. High resolution results '
+            'in slower update of the annotations.\n'
+            'Not recommended with a number of segmented objects > 500.'
+        )
+        self.highLowResAction.setChecked(
+            self._get_setting_value('highLowRes', True, cast=bool)
+        )
+        self.editTextIDsColorAction = QAction(
+            'Edit text annotations color...', self
+        )
+        self.annotObjTrackSettingsAction = QAction(
+            'Object tracks settings...', self
+        )
+        self.resetAnnotOptionsAction = QAction(
+            'Reset default annotation options', self
+        )
+        self.annotationsActions = (
+            self.editTextIDsColorAction, self.annotObjTrackSettingsAction,
+            self.resetAnnotOptionsAction
+        )
+        self.gui_createViewerToolsActions()
+    
+    def gui_createViewerToolsActions(self):
+        """Create the actions of the 'Viewer' mode tools as in `gui.guiWin`"""
+        if 'colorScheme' in self.df_settings.index:
+            self._colorScheme = self.df_settings.at['colorScheme', 'value']
+        else:
+            self._colorScheme = 'light'
+        self.toggleColorSchemeAction = QAction(
+            'Switch to light theme', self
+        )
+        self.gui_updateSwitchColorSchemeActionText()
+        
+        self.editShortcutsAction = QAction(
+            'Customize keyboard shortcuts...', self
+        )
+        self.editShortcutsAction.setShortcut('Ctrl+K')
+        
+        self.editOverlayColorAction = QAction('Overlay color...', self)
+        self.editOverlayColorAction.setDisabled(True)
+        
+        self.viewCcaTableAction = QAction(
+            'View cell cycle annotations...', self
+        )
+        self.viewCcaTableAction.setDisabled(True)
+        self.viewCcaTableAction.setShortcut('Ctrl+P')
+        
+        self.addScaleBarAction = QAction('Add scale bar', self)
+        self.addScaleBarAction.setCheckable(True)
+        
+        self.addTimestampAction = QAction('Add timestamp', self)
+        self.addTimestampAction.setCheckable(True)
+        
+        self.invertBwAction = QAction('Invert black/white', self)
+        self.invertBwAction.setCheckable(True)
+        checked = (
+            self._get_setting_value('is_bw_inverted', 'No', cast=str) == 'Yes'
+            or self.isBwInverted
+        )
+        self.invertBwAction.setChecked(checked)
+        
+        self.shuffleCmapAction = QAction('Randomly shuffle colormap', self)
+        self.shuffleCmapAction.setShortcut('Shift+S')
+        
+        self.greedyShuffleCmapAction = QAction(
+            'Greedily shuffle colormap', self
+        )
+        self.greedyShuffleCmapAction.setShortcut('Alt+Shift+S')
+        
+        self.saveLabColormapAction = QAction(
+            'Save labels colormap...', self
+        )
+        
+        self.normalizeRawAction = QAction(
+            'Do not normalize. Display raw image', self)
+        self.normalizeToFloatAction = QAction(
+            'Convert to floating point format with values [0, 1]', self)
+        self.normalizeRescale0to1Action = QAction(
+            'Rescale to [0, 1]', self)
+        self.normalizeByMaxAction = QAction(
+            'Normalize by max value', self)
+        self.normalizeQActionGroup = QActionGroup(self)
+        for action in (
+                self.normalizeRawAction, self.normalizeToFloatAction,
+                self.normalizeRescale0to1Action, self.normalizeByMaxAction
+            ):
+            action.setCheckable(True)
+            self.normalizeQActionGroup.addAction(action)
+        
+        self.zoomToObjsAction = QAction(
+            'Zoom to objects  (Shortcut: H key)', self
+        )
+        self.zoomOutAction = QAction(
+            'Zoom out  (Shortcut: double press H key)', self
+        )
+        self.enableAutoZoomToCellsAction = QAction(
+            'Automatic zoom to all cells when pressing "Next/Previous"', self
+        )
+        self.enableAutoZoomToCellsAction.setCheckable(True)
+        
+        self.imgPropertiesAction = QAction('Properties...', self)
+        self.imgPropertiesAction.setDisabled(True)
+        
+        self.launch3dViewerAction = QAction(
+            'Launch 3D viewer for the currently visualised volume', self
+        )
+        self.launch3dViewerAction.setIcon(QIcon(":3d.svg"))
+        self.launch3dViewerAction.setCheckable(True)
+        self.launch3dViewerAction.setDisabled(True)
+        
+        self.searchAction = QAction(self)
+        self.searchAction.setIcon(QIcon(":find.svg"))
+        self.searchAction.setToolTip('Search for ID or functionality')
+        
+        self.focusOnSearchAction = QAction(
+            "Search for ID or functionality", self
+        )
+        self.focusOnSearchAction.setShortcut('Ctrl+F')
+        
+        # Frames (or z-slices if "z" is active) navigation as in guiWin
+        self.nextAction = QAction('Next', self)
+        self.widgetsWithShortcut['Next'] = self.nextAction
+        self.prevAction = QAction('Previous', self)
+        self.widgetsWithShortcut['Previous'] = self.prevAction
+        self.addAction(self.nextAction)
+        self.addAction(self.prevAction)
+        
+        self.MaxProjToggleAction = QAction(self)
+        self.MaxProjToggleAction.triggered.connect(
+            self.maxProjToggleActionTriggered
+        )
+        self.MaxProjToggleAction.setShortcutContext(
+            Qt.ShortcutContext.WindowShortcut
+        )
+        self.addAction(self.MaxProjToggleAction)
+        self.MaxProjToggleAction.setShortcut('Alt+X')
+        self.widgetsWithShortcut['Toggle max z projection'] = (
+            self.MaxProjToggleAction
+        )
+        
+        self.viewerToolsActions = (
+            self.viewCcaTableAction, self.imgPropertiesAction, 
+            self.addScaleBarAction, self.addTimestampAction, 
+            self.shuffleCmapAction, self.greedyShuffleCmapAction,
+            self.saveLabColormapAction, self.zoomToObjsAction, 
+            self.zoomOutAction, self.searchAction, self.focusOnSearchAction,
+            self.launch3dViewerAction, *self.normalizeQActionGroup.actions()
+        )
+    
+    def gui_createMenuBar(self):
+        fileMenu = self.menuBar().addMenu('&File')
+        self.fileMenu = fileMenu
+        fileMenu.addAction(self.openFolderAction)
+        fileMenu.addAction(self.openFileAction)
+        self.openRecentMenu = fileMenu.addMenu("Open Recent")
+        fileMenu.addSeparator()
+        fileMenu.addAction(self.showInExplorerAction)
+        fileMenu.addAction(self.reloadAction)
+        fileMenu.addSeparator()
+        fileMenu.addAction(self.loadConfigurationAction)
+        fileMenu.addAction(self.saveConfigurationAction)
+        fileMenu.addAction(self.saveConfigurationAsAction)
+        fileMenu.addSeparator()
+        fileMenu.addAction(self.exitAction)
+        
+        editMenu = self.menuBar().addMenu('&Edit')
+        editMenu.addAction(self.editShortcutsAction)
+        editMenu.addAction(self.editOverlayColorAction)
+        editMenu.addAction(self.enableAutoZoomToCellsAction)
+        
+        viewMenu = self.menuBar().addMenu('&View')
+        viewMenu.addAction(self.viewCcaTableAction)
+        viewMenu.addSeparator()
+        viewMenu.addAction(self.toggleColorSchemeAction)
+        
+        ImageMenu = self.menuBar().addMenu('&Image')
+        ImageMenu.addAction(self.imgPropertiesAction)
+        normalizeIntensitiesMenu = ImageMenu.addMenu('Normalize intensities')
+        normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
+        normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
+        normalizeIntensitiesMenu.addAction(self.normalizeRescale0to1Action)
+        normalizeIntensitiesMenu.addAction(self.normalizeByMaxAction)
+        self.normalizeToFloatAction.setChecked(True)
+        if 'how_normIntensities' in self.df_settings.index:
+            how = self.df_settings.at['how_normIntensities', 'value']
+            for action in self.normalizeQActionGroup.actions():
+                if action.text() == how:
+                    action.setChecked(True)
+                    break
+        self.rescaleIntensMenu = ImageMenu.addMenu('Rescale intensities (LUT)')
+        ImageMenu.addAction(self.invertBwAction)
+        ImageMenu.addAction(self.addScaleBarAction)
+        ImageMenu.addAction(self.addTimestampAction)
+        ImageMenu.addSeparator()
+        ImageMenu.addAction(self.shuffleCmapAction)
+        ImageMenu.addAction(self.greedyShuffleCmapAction)
+        ImageMenu.addAction(self.saveLabColormapAction)
+        ImageMenu.addSeparator()
+        ImageMenu.addAction(self.zoomToObjsAction)
+        ImageMenu.addAction(self.zoomOutAction)
+        ImageMenu.addAction(self.launch3dViewerAction)
+        
+        annotMenu = self.menuBar().addMenu('&Annotations')
+        self.annotationsMenu = annotMenu
+        annotMenu.addAction(self.scalingLabelsAction)
+        annotMenu.addAction(self.highLowResAction)
+        annotMenu.addAction(self.editTextIDsColorAction)
+        annotMenu.addAction(self.annotObjTrackSettingsAction)
+        annotMenu.addSeparator()
+        annotMenu.addAction(self.resetAnnotOptionsAction)
+        
+        self.searchWidget = widgets.ButtonSearchWidget(
+            self, loadingType=None
+        )
+        self.menuBar().setCornerWidget(self.searchWidget)
+        self.searchWidget.setMinimumHeight(
+            self.searchWidget.sizeHint().height()
+        )
+    
+    def gui_createToolBars(self):
+        fileToolBar = self.addToolBar("File")
+        fileToolBar.setMovable(False)
+        fileToolBar.addAction(self.openFolderAction)
+        fileToolBar.addAction(self.openFileAction)
+        fileToolBar.addAction(self.showInExplorerAction)
+        fileToolBar.addAction(self.reloadAction)
+        fileToolBar.addSeparator()
+        fileToolBar.addAction(self.loadConfigurationAction)
+        fileToolBar.addAction(self.saveConfigurationAction)
+        fileToolBar.addAction(self.saveConfigurationAsAction)
+        self.fileToolBar = fileToolBar
+        
+        # Navigation toolbar with the 'Viewer' mode tools as in guiWin
+        navigateToolBar = widgets.ToolBar("Navigation", self)
+        navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
+        self.addToolBar(navigateToolBar)
+        self.navigateToolBar = navigateToolBar
+        
+        self.timepointsToolBar = widgets.ToolBar("Time points", self)
+        self.timepointsToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
+        self.timepointsToolBar.addAction(self.addTimepointIdentifierAction)
+        self.timepointsToolBar.addAction(self.reevaluateAllTimepointsAction)
+        self.timepointsToolBar.addAction(self.reevaluateCellTimepointsAction)
+        # self.timepointsToolBar.addAction(self.editCellConstantsAction)
+        self.timepointsToolBar.addSeparator()
+        self.updateReevaluateTimepointsActions()
+        self.addToolBar(self.timepointsToolBar)
+        
+        self.gui_createAnnotateToolbar(area=Qt.TopToolBarArea, visible=True)
+        self.annotateToolbar.addAction(
+            self.reevaluateAllCustomAnnotationsAction
+        )
+        self.annotateToolbar.addAction(
+            self.reevaluateCellCustomAnnotationsAction
+        )
+        self.annotateToolbar.addSeparator()
+        self.updateReevaluateCustomAnnotationActions()
+
+        navigateToolBar.addAction(self.searchAction)
+        
+        self.zoomRectButton = QToolButton(self)
+        self.zoomRectButton.setIcon(QIcon(":zoom_rect.svg"))
+        self.zoomRectButton.setCheckable(True)
+        self.zoomRectButton.setShortcut('Shift+Z')
+        self.zoomRectButton.setToolTip(
+            'Zoom to rectangular area\n\n'
+            'Draw a rectangle with left-click to zoom into the area.\n'
+            'Right-click to zoom back to the previous range.\n\n'
+            'Shortcut: "Shift+Z"'
+        )
+        navigateToolBar.addWidget(self.zoomRectButton)
+        self.leftClickButtons.append(self.zoomRectButton)
+        self.widgetsWithShortcut['Zoom to rectangular area'] = (
+            self.zoomRectButton
+        )
+        
+        self.slideshowButton = QToolButton(self)
+        self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
+        self.slideshowButton.setCheckable(True)
+        self.slideshowButton.setShortcut('Ctrl+W')
+        self.slideshowButton.setToolTip(
+            'Open a new window to browse frames or channels\n\n'
+            'Shortcut: "Ctrl+W"'
+        )
+        navigateToolBar.addWidget(self.slideshowButton)
+        
+        navigateToolBar.addAction(self.launch3dViewerAction)
+        
+        self.overlayButton = widgets.rightClickToolButton(parent=self)
+        self.overlayButton.setIcon(QIcon(":overlay.svg"))
+        self.overlayButton.setCheckable(True)
+        self.overlayButton.setToolTip(
+            'Overlay channels\' images.\n\n'
+            'Right-click on the button to overlay additional channels.\n\n'
+            'Use the "Alpha" sliders to adjust the opacity.'
+        )
+        self.overlayButtonAction = navigateToolBar.addWidget(
+            self.overlayButton
+        )
+        
+        self.countObjsButton = QToolButton(self)
+        self.countObjsButton.setIcon(QIcon(":count_objects.svg"))
+        self.countObjsButton.setCheckable(True)
+        self.countObjsButton.setShortcut('Ctrl+Shift+C')
+        self.countObjsButton.setToolTip(
+            'Count objects in the current view\n\n'
+            'Shortcut: "Ctrl+Shift+C"'
+        )
+        navigateToolBar.addWidget(self.countObjsButton)
+        
+        self.overlayLabelsButton = widgets.rightClickToolButton(parent=self)
+        self.overlayLabelsButton.setIcon(QIcon(":overlay_labels.svg"))
+        self.overlayLabelsButton.setCheckable(True)
+        self.overlayLabelsButton.setToolTip(
+            'Add contours/masks of additional segmentation files.\n\n'
+            'Right-click on the button to select which segmentation files '
+            'to overlay.'
+        )
+        self.overlayLabelsButtonAction = navigateToolBar.addWidget(
+            self.overlayLabelsButton
+        )
+        
+        self.rulerButton = QToolButton(self)
+        self.rulerButton.setIcon(QIcon(":ruler.svg"))
+        self.rulerButton.setCheckable(True)
+        self.rulerButton.setToolTip(
+            'Draw a straight line and show its length. '
+            'Length is displayed on the bottom-right corner.\n\n'
+            'Hold "Ctrl" to snap the line to the closest 15° angle.'
+        )
+        navigateToolBar.addWidget(self.rulerButton)
+        self.leftClickButtons.append(self.rulerButton)
+        
+        self.overlayColorButton = pg.ColorButton(self, color=(230,230,230))
+        self.overlayColorButton.setDisabled(True)
+        self.overlayColorButton.hide()
+        
+        self.overlayToolbar = widgets.OverlayToolbar(parent=self)
+        self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
+        self.overlayToolbar.setVisible(False)
+        
+        self.phaseTranslatorToolbar = widgets.ToolBar(parent=self)
+        self.phaseTranslatorAction = QAction(
+            'Time point to phase translator...', self
+        )
+        self.phaseTranslatorAction.triggered.connect(self.configurePhaseTranslator)
+        self.phaseTranslatorToolbar.addAction(self.phaseTranslatorAction)
+        self.addToolBar(Qt.TopToolBarArea, self.phaseTranslatorToolbar)
+        
+        self.setEnabledFileToolbar(False)
+    
+    def gui_connectActions(self):
+        self.openFolderAction.triggered.connect(self.openFolder)
+        self.openFileAction.triggered.connect(self.openFile)
+        self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
+        self.reloadAction.triggered.connect(self.reloadButtonClicked)
+        self.exitAction.triggered.connect(self.close)
+        self.loadConfigurationAction.triggered.connect(self.loadConfiguration)
+        self.saveConfigurationAction.triggered.connect(self.saveConfiguration)
+        self.saveConfigurationAsAction.triggered.connect(self.saveConfigurationAs)
+        self.addTimepointIdentifierAction.triggered.connect(
+            self.addTimepointIdentifier
+        )
+        self.reevaluateAllTimepointsAction.triggered.connect(
+            self.reevaluateAllTimepoints
+        )
+        self.reevaluateCellTimepointsAction.triggered.connect(
+            self.reevaluateDisplayedCellTimepoints
+        )
+        self.reevaluateAllCustomAnnotationsAction.triggered.connect(
+            self.reevaluateAllCustomAnnotations
+        )
+        self.reevaluateCellCustomAnnotationsAction.triggered.connect(
+            self.reevaluateDisplayedCellCustomAnnotations
+        )
+        # self.editCellConstantsAction.triggered.connect(self.editCellConstants)
+        self.gui_connectCustomAnnotationsActions()
+        
+        self.scalingLabelsAction.toggled.connect(self.scalingLabelsToggled)
+        self.highLowResAction.toggled.connect(self.highLowResToggled)
+        self.editTextIDsColorAction.triggered.connect(
+            self.toggleTextIDsColorButton
+        )
+        self.annotObjTrackSettingsAction.triggered.connect(
+            self.setAnnotateObjTrackSettings
+        )
+        self.resetAnnotOptionsAction.triggered.connect(
+            self.resetDefaultAnnotationOptions
+        )
+        
+        self.toggleColorSchemeAction.triggered.connect(
+            self.onToggleColorScheme
+        )
+        self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
+        self.editOverlayColorAction.triggered.connect(
+            self.toggleOverlayColorButton
+        )
+        self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
+        self.imgPropertiesAction.triggered.connect(self.editImgProperties)
+        self.invertBwAction.toggled.connect(self.invertBw)
+        self.addScaleBarAction.toggled.connect(self.addScaleBar)
+        self.addTimestampAction.toggled.connect(self.addTimestamp)
+        self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
+        self.greedyShuffleCmapAction.triggered.connect(self.greedyShuffleCmap)
+        self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
+        self.normalizeQActionGroup.triggered.connect(
+            self.normaliseIntensitiesActionTriggered
+        )
+        self.zoomToObjsAction.triggered.connect(self.zoomToObjsActionCallback)
+        self.zoomOutAction.triggered.connect(self.zoomOut)
+        self.launch3dViewerAction.toggled.connect(
+            self.launch3dViewerActionToggled
+        )
+        self.searchAction.triggered.connect(
+            partial(self.focusOnSearch, blinking=True)
+        )
+        self.focusOnSearchAction.triggered.connect(self.focusOnSearch)
+        self.addAction(self.focusOnSearchAction)
+        self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
+        self.searchWidget.sigSearchId.connect(self.onSearchId)
+        self.nextAction.triggered.connect(self.nextActionTriggered)
+        self.prevAction.triggered.connect(self.prevActionTriggered)
+        
+        self.zoomRectButton.toggled.connect(self.zoomRectActionToggled)
+        self.slideshowButton.toggled.connect(self.launchSlideshow)
+        self.overlayButton.toggled.connect(self.overlay_cb)
+        self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
+        self.countObjsButton.toggled.connect(self.countObjectsCb)
+        self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
+        self.overlayLabelsButton.sigRightClick.connect(
+            self.showOverlayLabelsContextMenu
+        )
+        self.rulerButton.toggled.connect(self.ruler_cb)
+        self.overlayColorButton.sigColorChanging.connect(
+            self.changeOverlayColor
+        )
+        self.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
+        self.overlayToolbar.sigSetTranspacency.connect(
+            self.setOverlayTransparency
+        )
+        self.overlayToolbar.sigSetSingleChannel.connect(
+            self.setOverlaySingleChannel
+        )
+    
+    def setEnabledFileToolbar(self, enabled):
+        for action in getattr(self, 'annotationsActions', ()):
+            action.setEnabled(enabled)
+        for action in getattr(self, 'viewerToolsActions', ()):
+            action.setEnabled(enabled)
+        self.navigateToolBar.setEnabled(enabled)
+        alwaysEnabledActions = (
+            self.openFolderAction, self.openFileAction,
+            self.loadConfigurationAction
+        )
+        for action in self.fileToolBar.actions():
+            if action in alwaysEnabledActions:
+                continue
+            action.setEnabled(enabled)
+        if enabled and self.isDataLoaded:
+            self.imgPropertiesAction.setEnabled(True)
+            self.viewCcaTableAction.setEnabled(self.hasCcaAnnotations())
+        else:
+            self.imgPropertiesAction.setEnabled(False)
+            self.viewCcaTableAction.setEnabled(False)
+        
+        # As in guiWin the 3D viewer is available only for z-stacks
+        isZstack = (
+            enabled and self.isDataLoaded and self.posData().SizeZ > 1
+        )
+        for widget in (
+                getattr(self, 'launch3dViewerButton', None), 
+                self.launch3dViewerAction
+            ):
+            if widget is not None:
+                widget.setDisabled(not isZstack)
+                widget.setVisible(isZstack)
+        self.updateFunctionalitySearchRecords()
+
+    def updateFunctionalitySearchRecords(self):
+        """Expose only enabled functionality available in this viewer."""
+        records = {}
+        recentPathActions = tuple(self.openRecentMenu.actions())
+
+        def add_record(name, target):
+            if any(target is action for action in recentPathActions):
+                return
+            name = name.replace('&', '').strip().rstrip('.')
+            if not name or name == 'Search for ID or functionality':
+                return
+            records[name.casefold()] = {
+                'display': name,
+                'search_name': name,
+                'target': target,
+            }
+
+        def add_menu_actions(menu):
+            if menu is self.openRecentMenu or menu.title() == 'Open Recent':
+                return
+            for action in menu.actions():
+                if action.isSeparator():
+                    continue
+                submenu = action.menu()
+                if submenu is not None:
+                    add_menu_actions(submenu)
+                elif action.isEnabled():
+                    add_record(action.text(), action)
+
+        for action in self.menuBar().actions():
+            menu = action.menu()
+            if menu is not None:
+                add_menu_actions(menu)
+            elif action.isEnabled():
+                add_record(action.text(), action)
+
+        for name, target in self.widgetsWithShortcut.items():
+            targets = target if isinstance(target, (list, tuple)) else (target,)
+            if all(member.isEnabled() for member in targets):
+                add_record(name, target)
+
+        for button in (
+                getattr(self, name, None)
+                for name in (
+                    'zoomRectButton', 'slideshowButton', 'overlayButton',
+                    'countObjsButton', 'overlayLabelsButton', 'rulerButton',
+                    'normalizeCheckbox', 'refreshButton',
+                )
+            ):
+            if (
+                    button is not None
+                    and button.isEnabled()
+                    and not button.isHidden()
+                ):
+                name = button.text().strip()
+                if not name:
+                    tooltip = button.toolTip()
+                    name = (
+                        tooltip.splitlines()[0].strip()
+                        if tooltip else ''
+                    )
+                add_record(name, button)
+
+        self.searchWidget.setSearchRecords(records)
+    
+    def hasCcaAnnotations(self):
+        return any(
+            getattr(posData, 'cca_df', None) is not None 
+            or (
+                getattr(posData, 'acdc_df', None) is not None
+                and 'cell_cycle_stage' in posData.acdc_df.columns
+            )
+            for posData in self.data
+        )
+    
+    def nextActionTriggered(self):
+        if self.zSliceCheckbox.isChecked():
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+        else:
+            self.navigateScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepAdd
+            )
+    
+    def prevActionTriggered(self):
+        if self.zSliceCheckbox.isChecked():
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepSub
+            )
+        else:
+            self.navigateScrollBar.triggerAction(
+                QAbstractSlider.SliderAction.SliderSingleStepSub
+            )
+    
+    def launch3dViewerActionToggled(self, checked):
+        self.launch3dViewerButton.setChecked(checked)
+    
+    def normaliseIntensitiesActionTriggered(self, action):
+        how = action.text()
+        self.df_settings.at['how_normIntensities', 'value'] = how
+        self.df_settings.to_csv(self.settings_csv_path)
+        if not self.isDataLoaded:
+            return
+        self.updateAllImages()
+        self.updateImageValueFormatter()
+    
+    def getHardcodedShortcuts(self):
+        hard_shortcuts = {}
+        actions = (
+            self.openFolderAction, self.reloadAction, 
+            self.saveConfigurationAction, self.saveConfigurationAsAction,
+            self.focusOnSearchAction, self.editShortcutsAction, 
+            self.viewCcaTableAction, 
+            self.shuffleCmapAction, self.greedyShuffleCmapAction,
+            self.slideshowButton, self.countObjsButton
+        )
+        for widget in actions:
+            shortcut = widget.shortcut()
+            if shortcut.isEmpty():
+                continue
+            text = widget.text() or widget.toolTip().split('\n')[0]
+            hard_shortcuts[text] = shortcut.toString()
+        return hard_shortcuts
+    
+    def showInExplorer_cb(self):
+        posData = self.posData()
+        myutils.showInExplorer(posData.images_path)
+    
+    def openRecentFile(self, path):
+        print(f'Opening recent folder: {path}')
+        self.addToRecentPaths(path)
+        self.openFolder(folderpath=path)
+    
+    def openFolder(self, checked=False, folderpath=None):
+        if not folderpath:
+            folderpath = QFileDialog.getExistingDirectory(
+                self, 'Select experiment, Position or Images folder', 
+                self.getMostRecentPath()
+            )
+        if not folderpath:
+            return
+        
+        self.addToRecentPaths(folderpath)
+        self.addPathToOpenRecentMenu(folderpath)
+        
+        images_paths = get_images_paths(folderpath)
+        if not images_paths:
+            self.warnLoading(
+                f'No Position or Images folders found in "{folderpath}".'
+            )
+            return
+        
+        self.loadImagesPaths(images_paths)
+    
+    def openFile(self, checked=False, file_path=None):
+        if not file_path:
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, 'Select image file from an Images folder', 
+                self.getMostRecentPath(), 
+                'Images (*.tif *.tiff *.npz *.npy *.h5);;All Files (*)'
+            )
+        if not file_path:
+            return
+        
+        images_path = os.path.dirname(file_path)
+        if os.path.basename(images_path) != 'Images':
+            self.warnLoading(
+                f'The file "{file_path}" is not in an "Images" folder.\n\n'
+                'Create the Cell-ACDC data structure first (e.g., by opening '
+                'the file in the main GUI).'
+            )
+            return
+        
+        self.addToRecentPaths(images_path)
+        self.addPathToOpenRecentMenu(images_path)
+        channel = get_channel_from_filepath(file_path)
+        self.loadImagesPaths([images_path], channel=channel)
+    
+    def loadImagesPaths(self, images_paths, channel=None):
+        try:
+            chNames, segm_endnames = get_channels_and_segm_endnames(
+                images_paths[0]
+            )
+        except Exception as err:
+            self.warnLoading(str(err))
+            return
+        
+        if not segm_endnames:
+            self.warnLoading(
+                f'No segmentation files found in "{images_paths[0]}".'
+            )
+            return
+        
+        if channel is None:
+            channel = self.selectItem(
+                'Select channel', 'Select channel to display:', chNames
+            )
+        if channel is None:
+            return
+        
+        segm_endname = self.selectItem(
+            'Select segmentation file', 'Select segmentation file to load:', 
+            segm_endnames
+        )
+        if segm_endname is None:
+            return
+        
+        self.setCursor(Qt.WaitCursor)
+        try:
+            data = load_positions(
+                images_paths, channel, segm_endname=segm_endname
+            )
+        finally:
+            self.unsetCursor()
+        
+        if not data:
+            self.warnLoading(
+                'None of the selected Positions could be loaded '
+                '(see terminal for details).'
+            )
+            return
+        
+        self.isSegm3D = None
+        self.setData(data)
+        self.markConfigurationSaved()
+    
+    def selectItem(self, title, text, items):
+        if len(items) == 1:
+            return items[0]
+        
+        win = widgets.QDialogListbox(
+            title, text, items, multiSelection=False, parent=self
+        )
+        win.exec_()
+        if win.cancel or not win.selectedItemsText:
+            return
+        return win.selectedItemsText[0]
+    
+    def warnLoading(self, text):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Loading data failed', text)
+    
+    def setData(self, data, pos_i=0, frame_i=None, ID=None):
+        self.data = list(data) if data else []
+        hasData = len(self.data) > 0
+        self.centralWidget().setEnabled(hasData)
+        self.setEnabledFileToolbar(hasData)
+        
+        self.posCombobox.blockSignals(True)
+        self.posCombobox.clear()
+        for posData in self.data:
+            self.posCombobox.addItem(
+                getattr(posData, 'pos_foldername', str(posData))
+            )
+        self.posCombobox.blockSignals(False)
+        
+        if not hasData:
+            isMultiPos = False
+            self.posLabel.setVisible(isMultiPos)
+            self.posCombobox.setVisible(isMultiPos)
+            return
+        
+        relPath = getattr(self.data[0], 'relPath', '')
+        self.setWindowTitle(f'Cell-ACDC - Measurements viewer - {relPath}')
+        self.pos_i = pos_i
+        self.setPosDataDefaults()
+        self.initLut()
+        self.initViewerTools()
+        self.loadPosition(pos_i, frame_i=frame_i, ID=ID)
+        self.initViewerToolsAfterLoading()
+        self.setEnabledFileToolbar(hasData)
+        self.resizeBottomLayout()
+    
+    def resizeBottomLayout(self):
+        # As in `gui.guiWin.resizeGui`: fit the bottom layout to its 
+        # content and then restore the height saved by the user
+        self.bottomScrollArea._resizeVertical()
+        self.setBottomLayoutHeight()
+    
+    def setPosDataDefaults(self):
+        """Add the metadata attributes that `load.loadData` always sets, but 
+        that minimal posData objects passed to `setData` might lack"""
+        defaults = {
+            'PhysicalSizeX': 1.0, 'PhysicalSizeY': 1.0, 'PhysicalSizeZ': 1.0,
+            'TimeIncrement': 1.0, 'basename': '', 'loadedFluoChannels': set(),
+        }
+        for posData in self.data:
+            for name, value in defaults.items():
+                if not hasattr(posData, name):
+                    setattr(posData, name, copy.copy(value))
+            for name in ('fluo_data_dict', 'fluo_bkgrData_dict'):
+                if not hasattr(posData, name):
+                    setattr(posData, name, {})
+    
+    def resetViewerToolsWidgets(self):
+        """Uncheck the tools and remove the overlay items of previously 
+        loaded data"""
+        for button in (
+                self.overlayButton, self.overlayLabelsButton, 
+                self.rulerButton, self.zoomRectButton, self.countObjsButton,
+                self.slideshowButton
+            ):
+            if button.isChecked():
+                button.setChecked(False)
+        if self.launch3dViewerAction.isChecked():
+            self.launch3dViewerAction.setChecked(False)
+        self.overlayToolbar.setVisible(False)
+        for widget in self.overlayZsliceWidgets():
+            widget.hide()
+        
+        self.removeOverlayItems()
+        # Re-added by `gui_createOverlayItems`
+        self.ax1.removeItem(self.rgbaImg1)
+        for items in self.overlayLayersItems.values():
+            imageItem, lutItem, alphaSB = items[:3]
+            self.ax1.removeItem(imageItem)
+            for widget in (alphaSB, alphaSB.label):
+                self.bottomLeftLayout.removeWidget(widget)
+                widget.deleteLater()
+        alphaScrollbar = getattr(self.img1, 'alphaScrollbar', None)
+        if alphaScrollbar is not None:
+            for widget in (alphaScrollbar, alphaScrollbar.label):
+                self.bottomLeftLayout.removeWidget(widget)
+                widget.deleteLater()
+            self.img1.alphaScrollbar = None
+        self.alphaScrollbarRow = self.firstAlphaScrollbarRow
+        
+        for items in self.overlayLabelsItems.values():
+            imageItem, contoursItem, gradItem = items
+            self.ax1.removeItem(imageItem)
+            self.ax1.removeItem(contoursItem)
+            self.mainLayout.removeWidget(gradItem)
+            gradItem.deleteLater()
+        if hasattr(self, 'overlayLabelsContoursImages'):
+            del self.overlayLabelsContoursImages
+        
+        self.overlayLayersItems = {}
+        self.overlayLabelsItems = {}
+        self.drawModeOverlayLabelsChannels = {}
+        self.fluoDataChNameActions = []
+        self.checkedOverlayChannels = set()
+        self.overlayButton.setStyleSheet('')
+        self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
+        
+        if hasattr(self, 'zoomRectItem'):
+            self.ax1.removeItem(self.zoomRectItem)
+        self.tempSegmentON = False
+        self.isMouseDragImg1 = False
+        self.ax1_rulerPlotItem.setData([], [])
+        self.ax1_rulerAnchorsItem.setData([], [])
+        self.clearCursors()
+    
+    def initViewerTools(self):
+        """Initialize the overlay of other channels and segmentation files 
+        as in `gui.guiWin` after loading data"""
+        self.resetViewerToolsWidgets()
+        
+        posData = self.posData()
+        self.isSnapshot = posData.SizeT == 1
+        try:
+            self.ch_names, _ = get_channels_and_segm_endnames(
+                posData.images_path
+            )
+        except Exception as err:
+            self.ch_names = [self.user_ch_name]
+        if self.user_ch_name not in self.ch_names:
+            self.ch_names = [self.user_ch_name, *self.ch_names]
+        
+        existingSegmEndNames = set()
+        for _posData in self.data:
+            try:
+                segm_files = load.get_segm_files(_posData.images_path)
+                existingSegmEndNames.update(
+                    load.get_endnames(_posData.basename, segm_files)
+                )
+            except Exception as err:
+                # posData without files on disk --> no overlay labels
+                pass
+        self.existingSegmEndNames = existingSegmEndNames
+        
+        for _posData in self.data:
+            _posData.ol_data_dict = {}
+            _posData.ol_data = None
+            _posData.ol_labels_data = None
+            for ch in self.ch_names:
+                _posData.lutLevels.setdefault(ch, {})
+        
+        self.setOverlayColors()
+        self.createOverlayContextMenu()
+        self.userChNameAction = QAction(self)
+        self.userChNameAction.setCheckable(True)
+        self.userChNameAction.setText(self.user_ch_name)
+        self.gui_createOverlayColors()
+        self.gui_createOverlayItems()
+        
+        self.createOverlayLabelsContextMenu(existingSegmEndNames)
+        self.createOverlayLabelsItems(existingSegmEndNames)
+        self.gui_addOverlayLayerItems()
+        
+        self.chNamesQActionGroup = QActionGroup(self)
+        self.chNamesQActionGroup.addAction(self.userChNameAction)
+        self.userChNameAction.setChecked(True)
+        self.addActionsLutItemContextMenu(self.imgGrad)
+        # Scrollbar for opacity of img1 (when overlaying)
+        self.img1.alphaScrollbar = self.addAlphaScrollbar(
+            self.user_ch_name, self.img1
+        )
+        
+        self.guiTabControl.addChannels([self.user_ch_name])
+        self.showPropsDockButton.setDisabled(False)
+        self.setPermanentGreedyCmapPreferences()
+    
+    def initViewerToolsAfterLoading(self):
+        self.updateImageValueFormatter()
+        self.initPixelSizePropsDockWidget()
+        if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
+            self.invertBw(True)
+        self.gui_createZoomRectItem()
+    
+    def gui_createGraphicsPlots(self):
+        self.graphLayout = pg.GraphicsLayoutWidget()
+        if self.invertBwAction.isChecked():
+            self.graphLayout.setBackground(graphLayoutBkgrColor)
+            self.titleColor = 'black'
+        else:
+            self.graphLayout.setBackground(darkBkgrColor)
+            self.titleColor = 'white'
+        
+        # Layout with the LUT items of the image and overlaid channels
+        self.lutItemsLayout = self.graphLayout.addLayout(row=0, col=0)
+        
+        self.ax1 = widgets.MainPlotItem(ax_number=0)
+        self.ax1.invertY(True)
+        self.ax1.setAspectLocked(True)
+        self.ax1.hideAxis('bottom')
+        self.ax1.hideAxis('left')
+        self.graphLayout.addItem(self.ax1, row=0, col=1)
+        
+        self.imgGrad = widgets.myHistogramLUTitem(parent=self, name='image')
+        self.imgGrad.restoreState(self.df_settings)
+        # Main GUI-only features
+        imgGradMenu = self.imgGrad.gradient.menu
+        imgGradMenu.removeAction(self.imgGrad.fontSizeMenu.menuAction())
+        self.lutItemsLayout.addItem(self.imgGrad, row=0, col=0)
+        for action in self.imgGrad.rescaleActionGroup.actions():
+            if action.text() == self.defaultRescaleIntensHow:
+                action.setChecked(True)
+            self.rescaleIntensMenu.addAction(action)
+        
+        # Labels colormap used for the segm. masks overlay (as in guiWin)
+        self.labelsGrad = widgets.labelsGradientWidget(parent=self)
+        try:
+            self.labelsGrad.restoreState(self.df_settings)
+        except Exception as err:
+            self.logger.info(
+                'Failed to restore previously used colormap. '
+                'Using default colormap "viridis"'
+            )
+            self.labelsGrad.item.loadPreset('viridis')
+        self.labelsGrad.showRightImgAction.setChecked(False)
+        self.hideRightImageLabelsGradActions()
+        
+        self.img1 = widgets.ParentImageItem()
+        self.imgGrad.setImageItem(self.img1)
+        self.img1.lutItem = self.imgGrad
+        self.imgGrad.sigRescaleIntes.connect(self.rescaleIntensitiesLut)
+        self.imgGrad.gradient.sigGradientChangeFinished.connect(
+            self.imgGradLUTfinished_cb
+        )
+        self.ax1.addBaseImageItem(self.img1)
+        
+        # RGBA image for true transparency mode (added in 
+        # `gui_createOverlayItems`)
+        self.rgbaImg1 = pg.ImageItem()
+        
+        # Overwrite axes viewbox context menu
+        self.ax1.vb.menu = self.imgGrad.gradient.menu
+        
+        self.gui_createAnnotationsItems()
+        
+        # Ruler plotItem and scatterItem
+        rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
+        self.ax1_rulerPlotItem = widgets.RulerPlotItem(pen=rulerPen)
+        self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
+            symbol='o', size=9,
+            brush=pg.mkBrush((255,0,0,50)),
+            pen=pg.mkPen((255,0,0), width=2), tip=None
+        )
+        self.ax1.addItem(self.ax1_rulerPlotItem)
+        self.ax1.addItem(self.ax1_rulerPlotItem.labelItem)
+        self.ax1.addItem(self.ax1_rulerAnchorsItem)
+        
+        # Mirrored cursor from the slideshow window
+        self.ax1_cursor = pg.ScatterPlotItem(
+            symbol='d', pxMode=True, 
+            pen=pg.mkPen('w', width=1),
+            brush=pg.mkBrush((255, 255, 255, 70)), 
+            size=16, tip=None
+        )
+        self.ax1.addItem(self.ax1_cursor)
+        
+        self.img1.hoverEvent = self.gui_hoverEventImg1
+        self.img1.mousePressEvent = self.gui_mousePressEventImg1
+        self.img1.mouseMoveEvent = self.gui_mouseDragEventImg1
+        self.img1.mouseReleaseEvent = self.gui_mouseReleaseEventImg1
+        self.img1.mouseClickEvent = self.gui_mouseClickEventImg1
+        self.ax1.sigRangeChanged.connect(self.viewRangeChanged)
+        
+        self.labelsGrad.sigGradientChangeFinished.connect(self.updateLabelsCmap)
+        self.labelsGrad.sigShuffleCmap.connect(self.shuffle_cmap)
+        self.labelsGrad.sigGreeedyShuffleCmap.connect(self.greedyShuffleCmap)
+        self.labelsGrad.permanentGreedyCmapAction.toggled.connect(
+            self.permanentGreedyCmapToggled
+        )
+        self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+        self.labelsGrad.defaultSettingsAction.triggered.connect(
+            self.restoreDefaultSettings
+        )
+        self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+        self.imgGrad.defaultSettingsAction.triggered.connect(
+            self.restoreDefaultSettings
+        )
+        self.imgGrad.sigAddScaleBar.connect(self.addScaleBarAction.setChecked)
+        self.imgGrad.sigAddTimestamp.connect(self.addTimestampAction.setChecked)
+    
+    def hideRightImageLabelsGradActions(self):
+        # The viewer has no right image (segm. image, duplicated left image, 
+        # or next frame), hence the actions that only affect it are hidden
+        lg = self.labelsGrad
+        rightImageButtons = (lg.colorButton, lg.textColorButton)
+        for action in lg.menu.actions():
+            if not isinstance(action, QWidgetAction):
+                continue
+            widget = action.defaultWidget()
+            if widget is None:
+                continue
+            if any(widget.isAncestorOf(b) for b in rightImageButtons):
+                action.setVisible(False)
+        
+        for action in (
+                lg.showLabelsImgAction, lg.showRightImgAction, 
+                lg.showNextFrameAction, lg.fontSizeMenu.menuAction()
+            ):
+            action.setVisible(False)
+    
+    def gui_createAnnotationsItems(self):
+        """Create the annotations items as in `gui.guiWin` (left image)"""
+        # Text annotations color
+        self.textIDsColorButton = pg.ColorButton(self)
+        self.textIDsColorButton.hide()
+        if 'textIDsColor' in self.df_settings.index:
+            rgbString = self.df_settings.at['textIDsColor', 'value']
+            r, g, b = colors.rgb_str_to_values(rgbString)
+            self.gui_createTextAnnotColors(r, g, b, custom=True)
+            self.textIDsColorButton.setColor((r, g, b))
+        else:
+            self.gui_createTextAnnotColors(0, 0, 0, custom=False)
+        
+        self.gui_createContourPens()
+        self.gui_createMothBudLinePens()
+        
+        # Overlay segm. masks item
+        self.labelsLayerImg1 = widgets.BaseLabelsImageItem()
+        self.ax1.addItem(self.labelsLayerImg1)
+        self.setLut()
+        self.initLabelsImageItems()
+        
+        self.ax1_contoursImageItem = pg.ImageItem()
+        self.ax1_oldMothBudLinesItem = pg.ScatterPlotItem(
+            symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
+            size=self.mothBudLineWeight, pen=None
+        )
+        self.ax1_newMothBudLinesItem = pg.ScatterPlotItem(
+            symbol='s', pxMode=False, brush=self.newMothBudLineBrush,
+            size=self.mothBudLineWeight, pen=None
+        )
+        self.ax1_movementAgainstPrevLinesItem = pg.ScatterPlotItem(
+            symbol='s', pxMode=False, brush=self.oldMothBudLineBrush,
+            size=self.mothBudLineWeight, pen=None
+        )
+        self.ax1_movementAgainstPrevScatterItem = (
+            self.gui_getLostObjScatterItem()
+        )
+        # Required to initialize the tracked lost objects text color
+        self.gui_getTrackedLostObjScatterItem()
+        
+        self.ax1.addItem(self.ax1_contoursImageItem)
+        self.ax1.addItem(self.ax1_oldMothBudLinesItem)
+        self.ax1.addItem(self.ax1_newMothBudLinesItem)
+        self.ax1.addItem(self.ax1_movementAgainstPrevLinesItem)
+        self.ax1.addItem(self.ax1_movementAgainstPrevScatterItem)
+        
+        # Selected ID highlight items (same as searched ID in guiWin)
+        self.highLightIDLayerImg1 = pg.ImageItem()
+        self.ax1.addItem(self.highLightIDLayerImg1)
+        self.searchedIDitemLeft = pg.ScatterPlotItem()
+        self.searchedIDitemLeft.setData(
+            [], [], symbol='s', pxMode=False, size=1,
+            brush=pg.mkBrush(color=(255,0,0,150)),
+            pen=pg.mkPen(width=3, color='r'), tip=None
+        )
+        self.ax1.addItem(self.searchedIDitemLeft)
+
+        # Overlay channel layers are added later (when data is loaded) with
+        # the default z-value 0, which would draw them above these items.
+        # Keep annotations above every image layer and below the text IDs
+        # (z-value 1, see `gui_annotations`).
+        annotationItems = (
+            self.labelsLayerImg1, self.ax1_contoursImageItem,
+            self.ax1_oldMothBudLinesItem, self.ax1_newMothBudLinesItem,
+            self.ax1_movementAgainstPrevLinesItem,
+            self.ax1_movementAgainstPrevScatterItem,
+            self.highLightIDLayerImg1, self.searchedIDitemLeft,
+        )
+        for i, item in enumerate(annotationItems):
+            item.setZValue(0.5 + i * 0.01)
+
+        self.textIDsColorButton.sigColorChanging.connect(
+            self.updateTextAnnotColor
+        )
+        self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
+        self.imgGrad.textColorButton.disconnect()
+        self.imgGrad.textColorButton.clicked.connect(
+            self.editTextIDsColorAction.trigger
+        )
+        self.imgGrad.labelsAlphaSlider.valueChanged.connect(
+            self.updateLabelsAlpha
+        )
+    
+    def initLabelsImageItems(self):
+        lut = self.getLabelsImageLut()
+        self.labelsLayerImg1.setLevels([0, len(lut)])
+        self.labelsLayerImg1.setLookupTable(lut)
+        alpha = self.imgGrad.labelsAlphaSlider.value()
+        self.labelsLayerImg1.setOpacity(alpha)
+    
+    def updateLabelsAlpha(self, value):
+        self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
+        self.labelsLayerImg1.setOpacity(value)
+    
+    def gui_createAxesTextAnnotItems(self, allIDs):
+        if 0 in self.textAnnot:
+            self.textAnnot[0].removeFromPlotItem(self.ax1)
+        self.gui_createTextAnnotItems(allIDs)
+        self.gui_setTextAnnotColors()
+        self.textAnnot[0].addToPlotItem(self.ax1)
+        self.initTextAnnot()
+        self.syncTextAnnotOptions()
+    
+    def syncTextAnnotOptions(self):
+        """Set the text annotations flags from the annotation checkboxes"""
+        for ax in self.annotatedAxesIndices():
+            if ax not in self.textAnnot:
+                continue
+            textAnnot = self.textAnnot[ax]
+            textAnnot.setLabelAnnot(self.annotIDsCheckbox(ax).isChecked())
+            textAnnot.setCcaAnnot(self.isCellCycleInfoChecked(ax))
+            textAnnot.setLineageAnnot(
+                self.annotLineageInfoCheckbox(ax).isChecked()
+            )
+            textAnnot.setScaling(self.scalingLabelsAction.isChecked())
+    
+    def restoreViewerAnnotationOptions(self):
+        """Restore the saved annotation options without triggering the 
+        checkboxes callbacks (data might not be loaded yet)."""
+        checkboxes = [
+            checkbox for checkbox in self.annotOptionsCheckboxes[0].values()
+            if hasattr(checkbox, 'setChecked')
+        ]
+        for checkbox in checkboxes:
+            checkbox.blockSignals(True)
+        try:
+            self.restoreSavedAnnotationOptions()
+        finally:
+            for checkbox in checkboxes:
+                checkbox.blockSignals(False)
+        self.syncTextAnnotOptions()
+    
+    def resetDefaultAnnotationOptions(self, *args):
+        super().resetDefaultAnnotationOptions(*args)
+        self.syncTextAnnotOptions()
+        if self.isDataLoaded:
+            self.updateImages()
+    
+    def resetFocus(self):
+        self.setFocus()
+    
+    def setTitleText(self, *args, **kwargs):
+        # The viewer does not have the title label of the main GUI
+        pass
+    
+    def setLookingGoodTitle(self):
+        pass
+    
+    def get_labels_array(
+            self, from_store=False, frame_i=None, return_existing=False,
+            return_copy=True
+        ):
+        posData = self.posData()
+        if frame_i is None:
+            frame_i = posData.frame_i
+        lab = posData.segm_data[frame_i]
+        if return_copy:
+            lab = lab.copy()
+        if return_existing:
+            return lab, False
+        return lab
+    
+    def changeFontSize(self):
+        fontSize = self.fontSizeSpinBox.value()
+        if fontSize == self.fontSize:
+            return
+        
+        self.fontSize = fontSize
+        self._set_setting_value('fontSize', self.fontSize)
+        if not self.isDataLoaded:
+            return
+        
+        for ax in self.annotatedAxesIndices():
+            self.textAnnot[ax].changeFontSize(self.fontSize)
+        self.updateImages()
+    
+    def changeTextResolution(self):
+        if not self.isDataLoaded:
+            return
+        
+        mode = 'high' if self.highLowResAction.isChecked() else 'low'
+        posData = self.posData()
+        img_shape = self.img1.image.shape[:2]
+        scalingMode = self.scalingLabelsAction.isChecked()
+        for ax in self.annotatedAxesIndices():
+            self.textAnnot[ax].changeResolution(
+                mode, posData.allIDs, self.ax1, img_shape, 
+                scalingMode=scalingMode
+            )
+        self.updateImages()
+    
+    def highLowResToggled(self, checked=True):
+        self._set_setting_value('highLowRes', self.highLowResAction.isChecked())
+        self.changeTextResolution()
+    
+    def scalingLabelsToggled(self, checked=True):
+        self._set_setting_value(
+            'scalingLabels', self.scalingLabelsAction.isChecked()
+        )
+        if not self.isDataLoaded:
+            return
+        for annot in self.textAnnot.values():
+            annot.setScaling(self.scalingLabelsAction.isChecked())
+    
+    def imgGradLUTfinished_cb(self):
+        self.df_settings = self.imgGrad.saveState(self.df_settings)
+        self.df_settings.to_csv(self.settings_csv_path)
+    
+    def initLut(self):
+        """Initialize LUT levels as in `gui.guiWin` after loading data."""
+        self.isDataLoaded = True
+        posData = self.posData()
+        self.user_ch_name = posData.user_ch_name
+        self.rescaleIntensChannelHowMapper.setdefault(
+            self.user_ch_name, 'Rescale each 2D image'
+        )
+        for _posData in self.data:
+            if not hasattr(_posData, 'lutLevels'):
+                _posData.lutLevels = {self.user_ch_name: {}}
+        self.imgGrad.setAxisLabel(self.user_ch_name)
+        self.img1.preComputedMinMaxValues(self.data)
+        self.imgGrad.rescaleAcrossZstackAction.setDisabled(
+            posData.SizeZ == 1
+        )
+        self.initImgGradRescaleIntensitiesHowPreference()
+        self.rescaleIntensitiesLut(setImage=False)
+    
+    def gui_createNavigationWidgets(self):
+        self.gui_createFramesNavigationWidgets()
+        self.t_label.setText('Frame n.')
+        self.gui_createZsliceNavigationWidgets()
+        # z-projection lock is a main GUI-only feature
+        self.zProjLockViewButton.hide()
+        
+        self.zSliceOverlay_SB = widgets.ScrollBar(Qt.Horizontal)
+        self.overlay_z_label = QLabel('Overlay z-slice  ')
+        self.overlay_z_label.setFont(_font)
+        self.overlay_z_label.setDisabled(True)
+        self.zProjOverlay_CB = widgets.ComboBox()
+        self.zProjOverlay_CB.setFont(_font)
+        self.zProjOverlay_CB.addItems([
+            'single z-slice', 'max z-projection', 'mean z-projection',
+            'median z-proj.', 'same as above'
+        ])
+        self.zProjOverlay_CB.setCurrentIndex(4)
+        self.zSliceOverlay_SB.setDisabled(True)
+        for widget in self.overlayZsliceWidgets():
+            widget.hide()
+        
+        self.idScrollBar = widgets.ScrollBar(Qt.Horizontal)
+        self.idScrollBar.setMinimum(0)
+        self.idLabel = QLabel('Cell ID')
+        self.idLabel.setFont(_font)
+        self.idSpinBox = widgets.SpinBox(disableKeyPress=True)
+        self.idSpinBox.setMinimum(0)
+        
+        idSpinBoxHight = int(self.idSpinBox.sizeHint().height() * 0.8)
+        self.idScrollBar.setFixedHeight(idSpinBoxHight)
+        self.numIDsLabel = QLabel('')
+        self.idNotPresentLabel = QLabel('')
+        self.idNotPresentLabel.setFont(_font)
+        self.followIDcheckbox = QCheckBox('Follow cell')
+        self.followIDcheckbox.setToolTip(
+            'If active, the view zooms on the selected cell also when '
+            'changing frame or z-slice'
+        )
+        self.restrictFramesCheckbox = QCheckBox(
+            'Only frames with selected cell'
+        )
+        self.restrictFramesCheckbox.setToolTip(
+            'If active, the frames slider is restricted to the range of '
+            'frames where the selected cell ID is present'
+        )
+        self.rescalePlotCheckbox = QCheckBox('Rescale plot')
+        self.rescalePlotCheckbox.setToolTip(
+            'If active, the plot is rescaled when changing Cell ID'
+        )
+        
+        self.normalizeCheckbox = QCheckBox('Normalize measurements (0-1)')
+        self.normalizeCheckbox.setToolTip(
+            'Rescale each measurement to the range 0-1 to compare measurements with '
+            'different scales'
+        )
+        self.showPhasesCheckbox = QCheckBox('Show phases')
+        self.showPhasesCheckbox.setToolTip(
+            'Show the evaluated phases (phase column) as a band below the '
+            'time course and as point colors in Measurement vs Measurement. '
+            'Set colors in the time point to phase translator.'
+        )
+        self.showPhasesCheckbox.setChecked(self._get_setting_value(
+            'measurements_viewer_show_phases', True, cast=bool
+        ))
+        self.showPhasesCheckbox.setEnabled(False)
+ 
+        
+        self.posLabel = QLabel('Position')
+        self.posCombobox = QComboBox()
+        
+        navLayout = QGridLayout()
+        row = 0
+        posLayout = QHBoxLayout()
+        posLayout.addWidget(self.posLabel)
+        posLayout.addWidget(self.posCombobox)
+        posLayout.addStretch(1)
+        navLayout.addLayout(posLayout, row, 0, 1, 4)
+        
+        row += 1
+        navLayout.addLayout(
+            self.gui_createFramesNavigationLabelLayout(), row, 0, 
+            alignment=Qt.AlignRight
+        )
+        navLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)
+        
+        row += 1
+        navLayout.addLayout(
+            self.gui_createZsliceCheckboxLayout(), row, 0, 
+            alignment=Qt.AlignRight
+        )
+        navLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
+        navLayout.addWidget(self.zProjComboBox, row, 3)
+        navLayout.addWidget(self.switchPlaneCombobox, row, 4)
+        navLayout.addWidget(self.launch3dViewerButton, row, 5)
+        
+        row += 1
+        navLayout.addWidget(
+            self.overlay_z_label, row, 0, alignment=Qt.AlignRight
+        )
+        navLayout.addWidget(self.zSliceOverlay_SB, row, 1, 1, 2)
+        navLayout.addWidget(self.zProjOverlay_CB, row, 3)
+        
+        row += 1
+        idLayout = QHBoxLayout()
+        idLayout.addWidget(self.idLabel)
+        idLayout.addWidget(self.idSpinBox)
+        idLayout.addWidget(self.numIDsLabel)
+        navLayout.addLayout(idLayout, row, 0, alignment=Qt.AlignRight)
+        navLayout.addWidget(self.idScrollBar, row, 1, 1, 2)
+        
+        row += 1
+        idOptionsLayout = QHBoxLayout()
+        idOptionsLayout.addWidget(self.followIDcheckbox)
+        idOptionsLayout.addWidget(self.restrictFramesCheckbox)
+        idOptionsLayout.addWidget(self.idNotPresentLabel)
+        idOptionsLayout.addWidget(self.rescalePlotCheckbox)
+        
+        idOptionsLayout.addWidget(self.normalizeCheckbox)
+        idOptionsLayout.addWidget(self.showPhasesCheckbox)
+        idOptionsLayout.addStretch(1)
+        navLayout.addLayout(idOptionsLayout, row, 0, 1, 6)
+        
+        for scrollbar in self.navigationScrollbars():
+            scrollbar.setMinimumWidth(200)
+        
+        navLayout.setColumnStretch(0, 0)
+        navLayout.setColumnStretch(1, 3)
+        navLayout.setColumnStretch(2, 0)
+        
+        # Overlay channels alpha scrollbars are added from this row on 
+        # (see `OverlayChannelsGuiElements.addAlphaScrollbar`)
+        self.bottomLeftLayout = navLayout
+        self.firstAlphaScrollbarRow = row + 1
+        self.alphaScrollbarRow = row + 1
+        self.h = self.navSpinBox.sizeHint().height()
+        
+        self.navigationGroupbox = QGroupBox('Navigate')
+        self.navigationGroupbox.setLayout(navLayout)
+    
+    def overlayZsliceWidgets(self):
+        return (self.overlay_z_label, self.zSliceOverlay_SB, self.zProjOverlay_CB)
+    
+    def navigationScrollbars(self):
+        return (self.navigateScrollBar, self.zSliceScrollBar, self.idScrollBar)
+    
+    def gui_createAnnotationsWidgets(self):
+        """Create the annotation options checkboxes and the quick settings 
+        of `gui.guiWin` relevant for the display of the annotations."""
+        self.gui_setupAnnotationOptionsLayout(0)
+        
+        self.annotLostObjsToggle = widgets.Toggle()
+        annotLostObjsToggleTooltip = (
+            'Toggle annotation of lost objects mode ON/OFF'
+        )
+        self.annotLostObjsToggle.setChecked(True)
+        self.annotLostObjsToggle.setToolTip(annotLostObjsToggleTooltip)
+        annotLostObjsLabel = QLabel('Annot. lost objects')
+        annotLostObjsLabel.setToolTip(annotLostObjsToggleTooltip)
+        self.annotLostObjsToggle.toggled.connect(self.annotLostObjsToggled)
+        
+        self.showAllContoursToggle = widgets.Toggle()
+        showAllContoursTooltip = (
+            'If active, all contours will be displayed, including inner '
+            'contours (e.g. holes and sub-objects)'
+        )
+        self.showAllContoursToggle.setToolTip(showAllContoursTooltip)
+        showAllContourLabel = QLabel('Show all contours')
+        showAllContourLabel.setToolTip(showAllContoursTooltip)
+        self.showAllContoursToggle.toggled.connect(
+            self.showAllContoursToggled
+        )
+        
+        self.fontSizeSpinBox = widgets.SpinBox()
+        self.fontSizeSpinBox.setMinimum(1)
+        self.fontSizeSpinBox.setMaximum(99)
+        self.fontSizeSpinBox.setValue(self.fontSize)
+        self.fontSizeSpinBox.editingFinished.connect(self.changeFontSize) 
+        self.fontSizeSpinBox.sigUpClicked.connect(self.changeFontSize)
+        self.fontSizeSpinBox.sigDownClicked.connect(self.changeFontSize)
+        
+        quickSettingsLayout = QHBoxLayout()
+        quickSettingsLayout.addWidget(annotLostObjsLabel)
+        quickSettingsLayout.addWidget(self.annotLostObjsToggle)
+        quickSettingsLayout.addSpacing(15)
+        quickSettingsLayout.addWidget(showAllContourLabel)
+        quickSettingsLayout.addWidget(self.showAllContoursToggle)
+        quickSettingsLayout.addSpacing(15)
+        quickSettingsLayout.addWidget(QLabel('Font size'))
+        quickSettingsLayout.addWidget(self.fontSizeSpinBox)
+        quickSettingsLayout.addStretch(1)
+        
+        annotLayout = QVBoxLayout()
+        annotLayout.addWidget(self.annotOptionsCheckboxes[0]['container'])
+        annotLayout.addLayout(quickSettingsLayout)
+        
+        self.annotationsGroupbox = QGroupBox('Annotations')
+        self.annotationsGroupbox.setLayout(annotLayout)
+        
+        self.restoreViewerAnnotationOptions()
+    
+    def gui_createMeasurementsPanel(self):
+        self.measurementsPlot = pg.PlotWidget()
+        if self.invertBwAction.isChecked():
+            self.measurementsPlot.setBackground(graphLayoutBkgrColor)
+        else:
+            self.measurementsPlot.setBackground(darkBkgrColor)
+        self.measurementsPlot.setLabel('bottom', 'Frame n.')
+        self.measurementsPlot.showGrid(x=True, y=True, alpha=0.3)
+        self.measurementsLegend = self.measurementsPlot.addLegend()
+        
+        self.currentFrameLine = pg.InfiniteLine(
+            angle=90, movable=True, 
+            pen=pg.mkPen(color=(255, 0, 0), width=2),
+            hoverPen=pg.mkPen(color=(255, 100, 100), width=3)
+        )
+        self.currentFrameLine.setToolTip(
+            'Current frame. Drag the line to change frame.'
+        )
+        self.currentFrameLine.setZValue(10)
+        self.measurementsPlot.addItem(self.currentFrameLine, ignoreBounds=True)
+
+        # Solid band of the selected cell's phases below the time course,
+        # x-linked to the measurements plot
+        self.phaseBandPlot = pg.PlotWidget()
+        self.phaseBandPlot.setBackground(
+            graphLayoutBkgrColor if self.invertBwAction.isChecked()
+            else darkBkgrColor
+        )
+        self.phaseBandPlot.setFixedHeight(32)
+        self.phaseBandPlot.setMouseEnabled(x=False, y=False)
+        self.phaseBandPlot.setMenuEnabled(False)
+        self.phaseBandPlot.hideButtons()
+        self.phaseBandPlot.hideAxis('bottom')
+        self.phaseBandPlot.getAxis('left').setStyle(showValues=False)
+        self.phaseBandPlot.getAxis('left').setTicks([[]])
+        self.phaseBandPlot.getAxis('left').setLabel('Phase')
+        self.phaseBandPlot.setYRange(0, 1, padding=0)
+        self.phaseBandPlot.setXLink(self.measurementsPlot)
+        self.phaseBandFrameLine = pg.InfiniteLine(
+            angle=90, movable=False, pen=pg.mkPen(color=(255, 0, 0), width=2)
+        )
+        self.phaseBandFrameLine.setZValue(10)
+        self.phaseBandPlot.addItem(self.phaseBandFrameLine, ignoreBounds=True)
+        self.phaseBandItems = []
+        self.phaseBandPlot.setVisible(False)
+        # Keep the x positions aligned while the main left axis auto-sizes
+        self.measurementsPlot.getAxis('left').geometryChanged.connect(
+            self.syncPhaseBandAxisWidth
+        )
+        measurementsPlotLayout = QVBoxLayout()
+        measurementsPlotLayout.setContentsMargins(0, 0, 0, 0)
+        measurementsPlotLayout.setSpacing(0)
+        measurementsPlotLayout.addWidget(self.measurementsPlot)
+        measurementsPlotLayout.addWidget(self.phaseBandPlot)
+        measurementsPlotContainer = QWidget()
+        measurementsPlotContainer.setLayout(measurementsPlotLayout)
+        
+        self.columnsSearchLineEdit = QLineEdit()
+        self.columnsSearchLineEdit.setPlaceholderText('Search column...')
+        self.columnsSearchLineEdit.setClearButtonEnabled(True)
+        
+        self.columnsModel = widgets.MeasurementTreeModel(self)
+        self.columnsSearchProxy = widgets.MeasurementTreeSearchProxy(self)
+        self.columnsSearchProxy.setSourceModel(self.columnsModel)
+        self.columnsSearchProxy.setDynamicSortFilter(True)
+        self.columnsSearchProxy.sort(0, Qt.AscendingOrder)
+
+        self.columnsListWidget = QTreeView()
+        self.columnsListWidget.setHeaderHidden(True)
+        self.columnsListWidget.setIndentation(6)
+        self.columnsListWidget.setUniformRowHeights(True)
+        self.columnsListWidget.setModel(self.columnsSearchProxy)
+        self.columnsHighlightDelegate = _MeasurementColumnDelegate(
+            self.columnsListWidget
+        )
+        self.columnsListWidget.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.columnsListWidget.setItemDelegate(
+            self.columnsHighlightDelegate
+        )
+        self.columnsListWidget.setSelectionMode(
+            QAbstractItemView.SelectionMode.NoSelection
+        )
+        self.columnsListWidget.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.columnsListWidget.setToolTip(
+            'Click a column to plot/unplot it. Right-click on a column to '
+            'change its color or conditional formatting.'
+        )
+        # Custom plotting colors set by the user {column: QColor}
+        self.measurementsColors = {}
+        # Ordered rules {column: [{'condition': str, 'color': '#rrggbb'}]}
+        self.conditionalFormatting = {}
+
+        self.measurementsModeCombobox = QComboBox()
+        self.measurementsModeCombobox.addItems(
+            ['Time course', 'Measurement vs Measurement']
+        )
+        self.measurementsModeCombobox.setToolTip(
+            'Time course: selected cell. Measurement vs Measurement: all cells and '
+            'all frames of the current position. Hover for details; click '
+            'a point to zoom to its cell.'
+        )
+        self.measurementsAxes = {'X': '', 'Y': ''}
+        self._measurementsMode = 0
+        self._timeCourseColumns = set()
+        
+        self.refreshButton = widgets.reloadPushButton(' Reload table ')
+        self.refreshButton.setToolTip(
+            'Reload the acdc_output table from the file '
+            '(e.g., after saving in the main GUI)'
+        )
+        self.processMeasurementsButton = widgets.setPushButton('Process measurements...')
+        self.processMeasurementsButton.clicked.connect(self.processMeasurements)
+        self.combineMeasurementsButton = widgets.calcPushButton(
+            'Combine measurements...'
+        )
+        self.combineMeasurementsButton.setToolTip(
+            'Add columns calculated from the current position. '
+            'Use Export measurements to save the results.'
+        )
+        self.combineMeasurementsButton.clicked.connect(self.combineMeasurements)
+        self.exportMeasurementsButton = widgets.savePushButton(
+            'Export measurements...'
+        )
+        self.exportMeasurementsButton.clicked.connect(self.exportMeasurements)
+        
+        timeCourseLayout = QVBoxLayout()
+        timeCourseLayout.setContentsMargins(0, 0, 0, 0)
+        timeCourseLayout.addWidget(QLabel('Columns to plot:'))
+        timeCourseLayout.addWidget(self.columnsSearchLineEdit)
+        timeCourseLayout.addWidget(self.columnsListWidget)
+        self.timeCourseColumnsWidget = QWidget()
+        self.timeCourseColumnsWidget.setLayout(timeCourseLayout)
+
+        columnsLayout = QVBoxLayout()
+        columnsLayout.addWidget(self.measurementsModeCombobox)
+        columnsLayout.addWidget(self.timeCourseColumnsWidget)
+        columnsLayout.addWidget(self.processMeasurementsButton)
+        columnsLayout.addWidget(self.combineMeasurementsButton)
+        columnsLayout.addWidget(self.exportMeasurementsButton)
+        columnsLayout.addWidget(self.refreshButton)
+        columnsWidget = QWidget()
+        columnsWidget.setLayout(columnsLayout)
+        
+        self.measurementsSplitter = QSplitter(Qt.Horizontal)
+        self.measurementsSplitter.addWidget(measurementsPlotContainer)
+        self.measurementsSplitter.addWidget(columnsWidget)
+        self.measurementsSplitter.setStretchFactor(0, 3)
+        self.measurementsSplitter.setStretchFactor(1, 1)
+        
+        self.measurementsGroupbox = QGroupBox('Measurements')
+        measurementsGroupboxLayout = QVBoxLayout()
+        measurementsGroupboxLayout.addWidget(self.measurementsSplitter)
+        self.measurementsGroupbox.setLayout(measurementsGroupboxLayout)
+    
+    def gui_createLayout(self):
+        self.gui_createRegionPropsDockWidget()
+        self.gui_createShowPropsButton()
+        
+        # Column 0 is used by the overlay labels gradient items 
+        # (see `OverlayLabelsGuiElements.createOverlayLabelsItems`)
+        self.mainLayout = QGridLayout()
+        self.mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.mainLayout.addLayout(self.leftSideDocksLayout, 0, 1, 3, 1)
+        self.mainLayout.addWidget(self.graphLayout, 0, 2)
+        # Labels colormap gradient editor on the right of the image (as in 
+        # guiWin)
+        self.mainLayout.addWidget(self.labelsGrad, 0, 3)
+        
+        # Resizable bottom layout (as in guiWin)
+        self.resizeBottomLayoutLine = widgets.VerticalResizeHline()
+        self.mainLayout.addWidget(self.resizeBottomLayoutLine, 1, 2)
+        self.resizeBottomLayoutLine.dragged.connect(
+            self.resizeBottomLayoutLineDragged
+        )
+        self.resizeBottomLayoutLine.clicked.connect(
+            self.resizeBottomLayoutLineClicked
+        )
+        self.resizeBottomLayoutLine.released.connect(
+            self.resizeBottomLayoutLineReleased
+        )
+        
+        self.img1BottomGroupbox = QWidget()
+        bottomLayout = QVBoxLayout()
+        bottomLayout.setContentsMargins(0, 0, 0, 0)
+        bottomLayout.addWidget(self.annotationsGroupbox)
+        bottomLayout.addWidget(self.navigationGroupbox)
+        bottomLayout.addStretch(1)
+        self.img1BottomGroupbox.setLayout(bottomLayout)
+        
+        self.bottomScrollArea = widgets.ScrollArea(resizeVerticalOnShow=True)
+        self.bottomScrollArea.setWidgetResizable(True)
+        self.bottomScrollArea.setWidget(self.img1BottomGroupbox)
+        self.mainLayout.addWidget(self.bottomScrollArea, 2, 2)
+        self.mainLayout.setRowStretch(2, 0)
+        self.bottomScrollArea._resizeVertical()
+        self.mainLayout.setRowStretch(0, 1)
+        self.mainLayout.setColumnStretch(2, 1)
+        imagePanel = QWidget()
+        imagePanel.setLayout(self.mainLayout)
+        
+        self.mainSplitter = QSplitter(Qt.Horizontal)
+        self.mainSplitter.addWidget(imagePanel)
+        self.mainSplitter.addWidget(self.measurementsGroupbox)
+        self.mainSplitter.setStretchFactor(0, 1)
+        self.mainSplitter.setStretchFactor(1, 1)
+        
+        self.setCentralWidget(self.mainSplitter)
+        self.resize(1400, 800)
+    
+    def gui_createStatusBar(self):
+        self.statusbar = self.statusBar()
+        self.statusBarLabel = QLabel('')
+        self.statusbar.addWidget(self.statusBarLabel)
+        # Permanent widget with mouse hover info (as in guiWin)
+        self.wcLabel = QLabel('')
+        self.statusbar.addPermanentWidget(self.wcLabel)
+    
+    def gui_connectViewerToolsSignals(self):
+        self.launch3dViewerButton.toggled.connect(self.launch3dViewerToggled)
+        
+        self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
+            self.propsWidgetIDvalueChanged
+        )
+        self.guiTabControl.highlightCheckbox.toggled.connect(
+            self.highlightIDonHoverCheckBoxToggled
+        )
+        self.guiTabControl.highlightSearchedCheckbox.toggled.connect(
+            self.highlightSearchedIDcheckBoxToggled
+        )
+        intensMeasurQGBox = self.guiTabControl.intensMeasurQGBox
+        intensMeasurQGBox.additionalMeasCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
+        )
+        intensMeasurQGBox.channelCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
+        )
+        propsQGBox = self.guiTabControl.propsQGBox
+        propsQGBox.additionalPropsCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
+        )
+        self.showPropsDockButton.sigClicked.connect(self.showPropsDockWidget)
+    
+    def gui_connectSignals(self):
+        self.posCombobox.currentIndexChanged.connect(
+            self.posComboboxIndexChanged
+        )
+        
+        self.navigateScrollBar.connectEvents({
+            'valueChanged': self.framesScrollBarValueChanged
+        })
+        self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
+        
+        self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+        self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
+        self.switchPlaneCombobox.sigPlaneChanged.connect(
+            self.switchViewedPlane
+        )
+        
+        self.idScrollBar.valueChanged.connect(self.idScrollBarValueChanged)
+        self.idSpinBox.editingFinished.connect(self.idSpinBoxEditingFinished)
+        self.idSpinBox.sigUpClicked.connect(self.idSpinBoxEditingFinished)
+        self.idSpinBox.sigDownClicked.connect(self.idSpinBoxEditingFinished)
+        self.followIDcheckbox.toggled.connect(self.followIDtoggled)
+        self.restrictFramesCheckbox.toggled.connect(self.restrictFramesToggled)
+        self.rescalePlotCheckbox.toggled.connect(self.rescalePlotToggled)
+        
+        self.currentFrameLine.sigPositionChangeFinished.connect(
+            self.currentFrameLineMoved
+        )
+        self.columnsSearchLineEdit.textChanged.connect(self.filterColumns)
+        self.columnsModel.itemChanged.connect(self.measurementColumnChanged)
+        self.columnsListWidget.customContextMenuRequested.connect(
+            self.showColumnsContextMenu
+        )
+        self.normalizeCheckbox.toggled.connect(self.plotMeasurements)
+        self.showPhasesCheckbox.toggled.connect(self.showPhasesToggled)
+        self.measurementsModeCombobox.currentIndexChanged.connect(
+            self.measurementsModeChanged
+        )
+        self.refreshButton.clicked.connect(self.reloadButtonClicked)
+    
+    def posData(self):
+        return self.data[self.pos_i]
+
+    def onSearchId(self, ID):
+        if not self.isDataLoaded:
+            self.logger.warning(
+                'Data not loaded yet. Key pressing events are not connected.'
+            )
+            return
+
+        self.get_data()
+        self.findID(ID=ID)
+    
+    def loadPosition(self, pos_i, frame_i=None, ID=None):
+        self.pos_i = pos_i
+        posData = self.posData()
+        self._lab = None
+        self._labKey = None
+        
+        if self.isSegm3D is None:
+            self.isSegm3D = posData.segm_data.ndim == 4
+        
+        if frame_i is None:
+            frame_i = max(getattr(posData, 'frame_i', 0), 0)
+        self.frame_i = min(frame_i, posData.SizeT-1)
+        posData.frame_i = self.frame_i
+        
+        self.posCombobox.blockSignals(True)
+        self.posCombobox.setCurrentIndex(pos_i)
+        self.posCombobox.blockSignals(False)
+        isMultiPos = len(self.data) > 1
+        self.posLabel.setVisible(isMultiPos)
+        self.posCombobox.setVisible(isMultiPos)
+        
+        self.initFramesNavigation()
+        self.initZsliceNavigation()
+        allIDs = self.initPosAnnotData(posData)
+        self._IDframesCache = {}
+        self.refreshAcdcDf(plot=False)
+        self.initIDsNavigation(ID=ID)
+        self.updateFramesRange()
+        
+        self.get_data()
+        self.initContoursImage()
+        self.gui_createAxesTextAnnotItems(allIDs)
+        self.updateImages()
+        self.ax1.autoRange()
+        self.zoomToSelectedID()
+        self.plotMeasurements()
+        
+        if self.rescalePlotCheckbox.isChecked():
+            self.measurementsPlot.autoRange()
+                
+    def initPosAnnotData(self, posData):
+        """Initialize the per-frame stored data (`allData_li`) and the 
+        attributes of `posData` required by the annotations as in 
+        `gui.guiWin` and return the set of all IDs."""
+        if getattr(posData, '_isViewerAnnotDataInit', False):
+            return posData.allIDs
+        
+        posData.allData_li = [None]*posData.SizeT
+        allIDs, posData = core.count_objects_and_init_rps(
+            posData, self.logger.info
+        )
+        for i in range(posData.SizeT):
+            if posData.allData_li[i] is None:
+                posData.allData_li[i] = myutils.get_empty_stored_data_dict()
+        posData.allIDs = set(allIDs)
+        
+        try:
+            posData.loadTrackedLostCentroids()
+        except Exception as err:
+            pass
+        tracked_lost_centroids = getattr(posData, 'tracked_lost_centroids', None)
+        if not isinstance(tracked_lost_centroids, dict):
+            posData.tracked_lost_centroids = {}
+        for i in range(posData.SizeT):
+            posData.tracked_lost_centroids.setdefault(i, set())
+        
+        posData.lost_IDs = []
+        posData.new_IDs = []
+        posData.old_IDs = []
+        posData.trackedLostIDs = set()
+        posData.whitelist = getattr(posData, 'whitelist', None)
+        posData.cca_df = None
+        SizeY, SizeX = posData.segm_data.shape[-2:]
+        if not hasattr(posData, 'SizeY'):
+            posData.SizeY = SizeY
+        if not hasattr(posData, 'SizeX'):
+            posData.SizeX = SizeX
+        posData._isViewerAnnotDataInit = True
+        return posData.allIDs
+    
+    def getFrameAcdcDf(self, frame_i):
+        """Get the acdc_df of `frame_i` (index is Cell_ID) as stored in 
+        `posData.allData_li` by `gui.guiWin`"""
+        if self.acdc_df is None:
+            return
+        
+        frames = self.acdc_df.index.get_level_values(0)
+        if frame_i not in frames:
+            return
+        
+        df = self.acdc_df.loc[frame_i].copy()
+        if 'cell_cycle_stage' in df.columns:
+            cca_cols = df.columns.intersection(self.cca_df_colnames)
+            cca_df = df[cca_cols].dropna()
+            if cca_df.empty:
+                df = df.drop(columns=self.cca_df_colnames, errors='ignore')
+            else:
+                df = df.loc[cca_df.index]
+                cols = df.columns.intersection(self.cca_df_int_cols)
+                try:
+                    df[cols] = df[cols].astype('Int64')
+                except Exception as err:
+                    pass
+        return df
+    
+    def get_data(self):
+        """Load data of the current frame into `posData` as in 
+        `gui.guiWin.get_data` (read-only)"""
+        posData = self.posData()
+        frame_i = posData.frame_i
+        storedData = posData.allData_li[frame_i]
+        posData.lab = self.getLabels(frame_i)
+        rp = storedData['regionprops']
+        if rp is None:
+            rp = self._acdcRegionProps(posData.lab, precache_centroids=False)
+            storedData['regionprops'] = rp
+        storedData['labels'] = posData.lab
+        posData.rp = rp
+        posData.IDs = rp.IDs
+        
+        df = self.getFrameAcdcDf(frame_i)
+        storedData['acdc_df'] = df
+        cca_df = None
+        if df is not None and 'cell_cycle_stage' in df.columns:
+            cca_cols = df.columns.intersection(self.cca_df_colnames)
+            cca_df = df[cca_cols].copy().dropna()
+        posData.cca_df = cca_df
+    
+    def initFramesNavigation(self):
+        posData = self.posData()
+        SizeT = posData.SizeT
+        self.navigateScrollBar.setMaximum(SizeT)
+        self.navigateScrollBar.setAbsoluteMaximum(SizeT)
+        self.navSpinBox.setMaximum(SizeT)
+        self.navSizeLabel.setText(f'/{SizeT}')
+        self.navigateScrollBar.setDisabled(SizeT == 1)
+        self.navSpinBox.setDisabled(SizeT == 1)
+        self.resetNavigateFramesScrollbar(frame_i=self.frame_i)
+        self.navSpinBox.setValueNoEmit(self.frame_i+1)
+    
+    def initZsliceNavigation(self):
+        posData = self.posData()
+        isZstack = posData.SizeZ > 1
+        self.imgGrad.rescaleAcrossZstackAction.setDisabled(not isZstack)
+        for widget in self.zSliceNavigationWidgets():
+            widget.setVisible(isZstack)
+        
+        if not isZstack:
+            return
+        
+        self.switchPlaneCombobox.blockSignals(True)
+        self.switchPlaneCombobox.setPlane('xy')
+        self.switchPlaneCombobox.blockSignals(False)
+        # 2D segmentation masks cannot be displayed on planes other than xy
+        self.switchPlaneCombobox.setDisabled(not self.isSegm3D)
+        self.zProjComboBox.setDisabled(False)
+        self.setZsliceNavigationRange(posData.SizeZ)
+        
+        z = posData.SizeZ // 2
+        zProjHow = 'single z-slice'
+        segmInfo_df = getattr(posData, 'segmInfo_df', None)
+        idx = (getattr(posData, 'filename', None), self.frame_i)
+        try:
+            z = int(segmInfo_df.at[idx, 'z_slice_used_gui'])
+            zProjHow = segmInfo_df.at[idx, 'which_z_proj_gui']
+        except Exception as err:
+            pass
+        
+        self.zProjComboBox.blockSignals(True)
+        self.zProjComboBox.setCurrentText(zProjHow)
+        self.zProjComboBox.blockSignals(False)
+        self.setZSliceWidgetsEnabled(zProjHow)
+        
+        self.zSliceScrollBar.blockSignals(True)
+        self.zSliceScrollBar.setSliderPosition(z)
+        self.zSliceScrollBar.blockSignals(False)
+        self.zSliceSpinbox.setValueNoEmit(z+1)
+    
+    def zSliceNavigationWidgets(self):
+        return (
+            self.zSliceCheckbox, self.zSliceSpinbox, self.SizeZlabel, 
+            self.zSliceScrollBar, self.zProjComboBox, self.switchPlaneCombobox
+        )
+    
+    def setZSliceWidgetsEnabled(self, how):
+        enabled = how == 'single z-slice'
+        self.zSliceScrollBar.setEnabled(enabled)
+        self.zSliceSpinbox.setEnabled(enabled)
+        self.zSliceCheckbox.setEnabled(enabled)
+    
+    def getAcdcDf(self, posData=None):
+        """Get the acdc_df of the position indexed by (frame_i, Cell_ID)."""
+        if posData is None:
+            posData = self.posData()
+        
+        acdc_df = getattr(posData, 'acdc_df', None)
+        if acdc_df is None or acdc_df.empty:
+            return
+        
+        acdc_df = self._standardizeAcdcDf(acdc_df).sort_index()
+        self.ensureTimepointColumns(acdc_df)
+        self.ensureCustomAnnotColumns(acdc_df)
+        if VISITED_COLUMN not in acdc_df:
+            acdc_df[VISITED_COLUMN] = False
+        else:
+            acdc_df[VISITED_COLUMN] = acdc_df[VISITED_COLUMN].fillna(False).astype(bool)
+        # The acdc_df of the position is the only store of the time points
+        posData.acdc_df = acdc_df
+        return acdc_df
+    
+    def allAcdcDfs(self):
+        """Unique tables of the loaded positions including the displayed one."""
+        dfs = [getattr(posData, 'acdc_df', None) for posData in self.data or []]
+        dfs.append(self.acdc_df)
+        unique = {id(df): df for df in dfs if df is not None}
+        return list(unique.values())
+    
+    def timepointColumn(self, identifier):
+        return f'{TIMEPOINT_PREFIX}{identifier.name}'
+    
+    def ensureTimepointColumns(self, acdc_df):
+        """Add the missing boolean column of each time point identifier."""
+        for identifier in self.timepointIdentifiers:
+            column = self.timepointColumn(identifier)
+            if column not in acdc_df.columns:
+                acdc_df[column] = False
+            elif acdc_df[column].dtype != bool:
+                acdc_df[column] = acdc_df[column].fillna(False).astype(bool)
+    
+    def timepointsDf(self, posData=None):
+        """The acdc_df holding the time points of a position (or None)."""
+        if posData is None:
+            posData = self.posData()
+        if posData is self.posData():
+            return self.acdc_df
+        return self.getAcdcDf(posData)
+    
+    def cellTimepoints(self, uid, ID, posData=None):
+        """Sorted frame indices of the time points `uid` of cell `ID`."""
+        acdc_df = self.timepointsDf(posData)
+        column = self.timepointColumn(self.timepointIdentifier(uid))
+        if acdc_df is None or column not in acdc_df.columns:
+            return []
+        try:
+            values = acdc_df[column].xs(ID, level='Cell_ID')
+        except KeyError:
+            return []
+        return sorted(int(frame_i) for frame_i in values.index[values.to_numpy()])
+    
+    def timepointCellIDs(self, uid, posData=None):
+        """Cell IDs with at least one time point `uid`."""
+        acdc_df = self.timepointsDf(posData)
+        column = self.timepointColumn(self.timepointIdentifier(uid))
+        if acdc_df is None or column not in acdc_df.columns:
+            return set()
+        IDs = acdc_df.index.get_level_values('Cell_ID')
+        return set(IDs[acdc_df[column].to_numpy()])
+    
+    def replaceTimepoints(self, uid, timepoints, IDs, posData=None):
+        """Update one identifier's boolean column in the in-memory acdc_df.
+
+        First clear all marks for cells in `IDs`, then mark every
+        (frame_i, Cell_ID) pair supplied in `timepoints`. Other marks are
+        preserved. Missing columns are initialized to False; pairs without
+        an existing table row are ignored (no rows are added). This is the central
+        function to update the time points inside acdc_df. 
+
+        Parameters
+        ----------
+        uid : int
+            UID of an existing time point identifier. Its name determines
+            the column to update: ``timepoint_<name>``.
+        timepoints : dict
+            Mapping of Cell_ID to an iterable of zero-based frame indices.
+            Normally its keys are a subset of `IDs`. Keys outside `IDs`
+            also get marked, but their previous marks are not cleared.
+        IDs : iterable of int
+            Cells whose previous marks should be cleared. A cell omitted
+            from `timepoints` has all its marks removed.
+        posData : optional
+            Target position; defaults to the currently displayed position.
+
+        Returns
+        -------
+        bool
+            False if the position has no table, otherwise True, even when
+            none of the supplied pairs match a row.
+
+        Notes
+        -----
+        This only changes the table in memory. It does not write a CSV,
+        record manual edits, update prediction/viewed-cell tracking, or
+        redraw plot lines; callers handle those steps separately.
+
+        For example, ``replaceTimepoints(uid, {7: [2, 5]}, [7, 9])`` replaces
+        cell 7's marks with frames 2 and 5 and clears all marks for cell 9,
+        leaving other cells and other identifiers unchanged.
+        """
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None:
+            return False
+        column = self.timepointColumn(self.timepointIdentifier(uid))
+        values = (
+            acdc_df[column].to_numpy().copy() if column in acdc_df.columns 
+            else np.zeros(len(acdc_df), dtype=bool)
+        )
+        values[acdc_df.index.get_level_values('Cell_ID').isin(list(IDs))] = False
+        pairs = [
+            (frame_i, ID) for ID, frames in timepoints.items() 
+            for frame_i in frames
+        ]
+        if pairs:
+            values |= acdc_df.index.isin(pairs)
+        acdc_df[column] = values
+        if posData is None or posData is self.posData():
+            self.schedulePhaseAutoApply(set(IDs).union(timepoints))
+        return True
+
+    def setAutoApplyPhases(self, enabled):
+        self.autoApplyPhases = bool(enabled)
+        if self.autoApplyPhases:
+            self.ensurePhasePrediction()
+
+    def ensurePhasePrediction(self, posData=None, ID=None):
+        """Schedule phase evaluation of the displayed cell (or `ID`) if it
+        has no evaluated phase yet (no phase column or only empty phases).
+        Each cell is tried once per session and position, so cells that no
+        rule matches are not re-evaluated on every visit."""
+        if not self.autoApplyPhases or not self.phaseTranslatorRules:
+            return
+        if not self.data:
+            return
+        if posData is None:
+            posData = self.posData()
+        if posData is not self.posData() or self.acdc_df is None:
+            return
+        if ID is None:
+            ID = self.selectedID
+        if ID is None:
+            return
+        ID = int(ID)
+        tried = getattr(posData, 'phaseAutoEvaluatedIDs', None)
+        if tried is None:
+            tried = posData.phaseAutoEvaluatedIDs = set()
+        if ID in tried:
+            return
+        tried.add(ID)
+        try:
+            df_ID = self.acdc_df.xs(ID, level='Cell_ID')
+        except KeyError:
+            return
+        if self.phaseValues(df_ID).astype(bool).any():
+            return
+        self.schedulePhaseAutoApply([ID])
+
+    def schedulePhaseAutoApply(self, IDs):
+        """Collect cells with changed time points and re-evaluate their
+        phases once control returns to the event loop, so that batch
+        updates (e.g., predictors on all cells) trigger one evaluation and
+        callers holding a reference to the table are not disrupted."""
+        if not self.autoApplyPhases or not self.phaseTranslatorRules:
+            return
+        if not self._pendingPhaseIDs:
+            QTimer.singleShot(0, self.autoApplyPhaseTranslator)
+        self._pendingPhaseIDs.update(IDs)
+
+    def autoApplyPhaseTranslator(self):
+        IDs, self._pendingPhaseIDs = self._pendingPhaseIDs, set()
+        if (not self.autoApplyPhases or not self.phaseTranslatorRules
+                or not self.data or self.acdc_df is None):
+            return False
+        IDs = IDs.intersection(self.acdc_df.index.get_level_values('Cell_ID'))
+        if not IDs:
+            return False
+        return self.applyPhaseTranslator(IDs=IDs, quiet=True)
+    
+    def cellHasRow(self, ID, frame_i, posData=None):
+        acdc_df = self.timepointsDf(posData)
+        return acdc_df is not None and (frame_i, ID) in acdc_df.index
+    
+    @staticmethod
+    def _standardizeAcdcDf(acdc_df):
+        if list(acdc_df.index.names) == ['frame_i', 'Cell_ID']:
+            return acdc_df
+        acdc_df = acdc_df.reset_index()
+        acdc_df = acdc_df.drop(columns='index', errors='ignore')
+        return acdc_df.set_index(['frame_i', 'Cell_ID'])
+    
+    def reloadAcdcDfFile(self, posData=None):
+        if posData is None:
+            posData = self.posData()
+        
+        acdc_df_path = getattr(posData, 'acdc_output_csv_path', None)
+        if not acdc_df_path or not os.path.exists(acdc_df_path):
+            print(f"ACDC output CSV path not found: {acdc_df_path}")
+            return
+        
+        previous = getattr(posData, 'acdc_df', None)
+        posData.loadAcdcDf(acdc_df_path)
+        posData.savedAcdcDf = acdc_df_snapshot(getattr(posData, 'acdc_df', None))
+        self.restoreTimepointColumns(posData, previous)
+    
+    def restoreTimepointColumns(self, posData, previous):
+        """Keep the time points and the custom annotations (which are not in 
+        the file on disk) after the acdc_df of the position was reloaded."""
+        acdc_df = getattr(posData, 'acdc_df', None)
+        if previous is None or acdc_df is None or acdc_df.empty:
+            return
+        previous = self._standardizeAcdcDf(previous)
+        acdc_df = self._standardizeAcdcDf(acdc_df)
+        for identifier in self.timepointIdentifiers:
+            column = self.timepointColumn(identifier)
+            if column not in previous.columns:
+                continue
+            marked = previous.index[previous[column].fillna(False).to_numpy(bool)]
+            acdc_df[column] = acdc_df.index.isin(marked)
+        for name in self.customAnnotNames():
+            if name not in previous.columns:
+                continue
+            values = pd.to_numeric(previous[name], errors='coerce').fillna(0)
+            marked = previous.index[values.to_numpy() != 0]
+            acdc_df[name] = acdc_df.index.isin(marked).astype(int)
+            self.ensureCustomAnnotColumn(acdc_df, name)
+        if VISITED_COLUMN in previous:
+            marked = previous.index[previous[VISITED_COLUMN].fillna(False).to_numpy(bool)]
+            acdc_df[VISITED_COLUMN] = acdc_df.index.isin(marked)
+        posData.acdc_df = acdc_df
+    
+    @disableWindow
+    def reloadButtonClicked(self, checked=False):
+        self.reloadAcdcDfFile()
+        self.refreshAcdcDf()
+
+    def measurementProcessingWarning(self, title, text):
+        self.logger.warning('%s: %s', title, text)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, title, text)
+
+    def combineMeasurements(self, checked=False):
+        if self.measurementProcessingThread is not None:
+            self.measurementProcessingWarning(
+                'Measurement processing running',
+                'Wait for measurement processing to finish before combining measurements.'
+            )
+            return
+        if self.acdc_df is None or self.acdc_df.empty:
+            self.measurementProcessingWarning('No measurements', 'Load measurements first.')
+            return
+        posData = self.posData()
+        source = self.acdc_df
+        equationSource = source.copy()
+        dialog = apps.CombineMetricsEquationDialog(
+            posData.chNames, posData.SizeZ > 1, self.isSegm3D,
+            parent=self, closeOnOk=False, acdc_df=equationSource,
+            saveToConfig=False, allowCellAggregations=True
+        )
+        dialog.setToolTip(
+            'Results are added to the current position in memory. '
+            'Use Export measurements to save them.'
+        )
+        dialog.sigOk.connect(
+            partial(
+                self.applyCombinedMeasurements, posData=posData,
+                source=source, equationSource=equationSource
+            )
+        )
+        dialog.exec_()
+        dialog.deleteLater()
+
+    def applyCombinedMeasurements(
+            self, dialog, *, posData, source, equationSource
+        ):
+        dialog.cancel = True
+        if (
+            self.measurementProcessingThread is not None
+            or not any(pos is posData for pos in self.data)
+            or self.posData() is not posData
+            or self.acdc_df is not source
+        ):
+            self.measurementProcessingWarning(
+                'Measurements changed',
+                'The source table changed. Reopen Combine measurements and try again.'
+            )
+            return
+        equations, _ = dialog.getEquationsDict()
+        collisions = set(equations).intersection(equationSource.columns)
+        if collisions:
+            self.measurementProcessingWarning(
+                'Invalid measurement name',
+                'Choose a name that does not overwrite existing columns: '
+                + ', '.join(sorted(collisions))
+            )
+            return
+        try:
+            result = source.copy()
+            for name, expression in equations.items():
+                values = dialog.evaluateEquation(equationSource, expression)
+                if not isinstance(values, pd.Series):
+                    raise ValueError('The equation must return one value per row.')
+                result[name] = values
+        except Exception as err:
+            self.logger.exception('Combining measurements failed')
+            self.measurementProcessingWarning('Combining measurements failed', str(err))
+            return
+        posData.acdc_df = result
+        self.acdc_df = result
+        self.recordMeasurementStep(
+            self.combinedMeasurementSteps, {'equations': equations}
+        )
+        self.updateColumnsList()
+        self.plotMeasurements()
+        dialog.cancel = False
+        dialog.close()
+        self.statusBar().showMessage(
+            'Combined measurements added. Use Export measurements to save them.',
+            5000
+        )
+
+    def processMeasurements(self, checked=False):
+        if self.measurementProcessingThread is not None:
+            return
+        if self.acdc_df is None or self.acdc_df.empty:
+            self.measurementProcessingWarning('No measurements', 'Load measurements first.')
+            return
+        columns = [
+            col for col in self.acdc_df.select_dtypes(include='number').columns
+            if col not in INDEX_COLUMNS
+        ]
+        if not columns:
+            self.measurementProcessingWarning(
+                'No measurements', 'The table has no numeric measurements to process.'
+            )
+            return
+        dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+            columns, parent=self, acdc_df=self.acdc_df,
+            allChNames=self.posData().chNames
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return       
+
+        self.startMeasurementsProcessing(
+            dialog.selectedChannels, dialog.selectedRecipe, dialog.saveNames
+        )
+
+    def startMeasurementsProcessing(self, columns, recipe, saveNames):
+        posData = self.posData()
+        self._pendingMeasurementStep = copy.deepcopy({
+            'columns': list(columns), 'recipe': recipe,
+            'output_columns': list(saveNames)
+        })
+        self._measurementProcessingTarget = (
+            posData, self.acdc_df, getattr(posData, 'acdc_df', None)
+        )
+        self.measurementProcessingThread = QThread(self)
+        self.measurementProcessingWorker = workers.MeasurementProcessingWorkerGUI(
+            QMutex(), QWaitCondition()
+        )
+        worker = self.measurementProcessingWorker
+        worker.setupJob(
+            df=self.acdc_df.copy(),
+            cols=columns,
+            recipe=recipe,
+            new_colnames=saveNames
+        )
+        worker.moveToThread(self.measurementProcessingThread)
+        self.measurementProcessingThread.started.connect(worker.runJob)
+        worker.sigDone.connect(self.measurementProcessingDone)
+        worker.signals.critical.connect(self.measurementProcessingFailed)
+        worker.signals.finished.connect(self.measurementProcessingThread.quit)
+        worker.signals.finished.connect(worker.deleteLater)
+        self.measurementProcessingThread.finished.connect(self.measurementProcessingFinished)
+        self.processMeasurementsButton.setEnabled(False)
+        self.combineMeasurementsButton.setEnabled(False)
+        self.refreshButton.setEnabled(False)
+        self.measurementProcessingThread.start()
+
+    def measurementProcessingDone(self, processed):
+        posData, source, original = self._measurementProcessingTarget
+        if (not any(pos is posData for pos in self.data)
+                or getattr(posData, 'acdc_df', None) is not original
+                or (self.posData() is posData
+                    and (self.acdc_df is None or not self.acdc_df.sort_index().equals(
+                        source.sort_index()
+                    )))):
+            self.measurementProcessingWarning(
+                'Measurements changed',
+                'The source table changed during processing. Results were not applied.'
+            )
+            return
+
+        posData.acdc_df = processed
+        self.recordMeasurementStep(
+            self.measurementProcessingSteps, self._pendingMeasurementStep
+        )
+        if self.posData() is posData:
+            self.acdc_df = processed
+            self.updateColumnsList()
+            self.plotMeasurements()
+
+    def measurementProcessingFailed(self, out):
+        worker, error = out
+        self.measurementProcessingWarning('Measurement processing failed', str(error))
+
+    def recordMeasurementStep(self, steps, step):
+        # Applying the same operation at another position is not a new recipe.
+        if any({key: value for key, value in saved.items() if key != 'order'} == step
+               for saved in steps):
+            return
+        orders = [
+            saved['order']
+            for saved in self.measurementProcessingSteps + self.combinedMeasurementSteps
+        ]
+        steps.append({'order': max(orders, default=-1) + 1, **copy.deepcopy(step)})
+
+    def measurementProcessingFinished(self):
+        self.measurementProcessingThread.deleteLater()
+        self.measurementProcessingThread = None
+        self.measurementProcessingWorker = None
+        self.processMeasurementsButton.setEnabled(True)
+        self.combineMeasurementsButton.setEnabled(True)
+        self.refreshButton.setEnabled(True)
+
+    def configurePhaseTranslator(self, checked=False):
+        posData = self.posData() if self.data else None
+        options = {
+            'acdc_df': self.acdc_df,
+            'SizeT': getattr(posData, 'SizeT', None),
+            'allChNames': getattr(posData, 'chNames', []),
+            'isZstack': getattr(posData, 'SizeZ', 1) > 1,
+            'isSegm3D': bool(self.isSegm3D),
+        }
+        dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+            self.phaseTranslatorRules,
+            [self.timepointColumn(item) for item in self.timepointIdentifiers],
+            self.customAnnotNames(), options, parent=self,
+            phaseColors=self.phaseColors
+        )
+
+        dialog.autoApplyCheckbox.setChecked(self.autoApplyPhases)
+
+        def apply(rules, allCells):
+            # Apply commits the colors and options together with the rules
+            self.phaseColors = dialog.currentPhaseColors()
+            self.setAutoApplyPhases(dialog.autoApplyCheckbox.isChecked())
+            self.applyPhaseTranslator(rules, allCells)
+
+        dialog.sigApply.connect(apply)
+        dialog.exec_()
+        if not dialog.cancel:
+            self.phaseTranslatorRules = copy.deepcopy(dialog.rules)
+            self.phaseColors = dialog.currentPhaseColors()
+            self.setAutoApplyPhases(dialog.autoApplyCheckbox.isChecked())
+            self.plotMeasurements()
+        dialog.deleteLater()
+
+    def applyPhaseTranslator(
+            self, rules=None, allCells=True, IDs=None, quiet=False
+        ):
+        """Evaluate phases on all cells, the displayed cell (`allCells`
+        False) or the cells `IDs` (overrides `allCells`) of the current
+        position. With `quiet`, errors and warnings go to the status bar
+        instead of message boxes (automatic re-evaluation)."""
+        def warn(title, text):
+            if quiet:
+                self.statusBar().showMessage(f'{title}: {text}', 8000)
+            else:
+                self.measurementProcessingWarning(title, text)
+
+        if self.measurementProcessingThread is not None:
+            warn(
+                'Measurement processing running',
+                'Wait for measurement processing to finish before evaluating phases.'
+            )
+            return False
+        if self.acdc_df is None or self.acdc_df.empty:
+            warn('No measurements', 'Load measurements first.')
+            return False
+        if IDs is None and not allCells:
+            if self.selectedID is None:
+                warn('No cell selected', 'Select a cell first.')
+                return False
+            IDs = [self.selectedID]
+        if rules is None:
+            rules = self.phaseTranslatorRules
+        posData = self.posData()
+        try:
+            source = self.acdc_df.copy()
+            self.ensureTimepointColumns(source)
+            self.ensureCustomAnnotColumns(source)
+            evaluation = phase_translator.evaluate(
+                source, rules, IDs=IDs,
+                SizeT=getattr(posData, 'SizeT', None),
+                owned_columns=getattr(posData, 'phaseTranslatorColumns', ())
+            )
+        except Exception as err:
+            self.logger.exception('Phase evaluation failed')
+            warn('Phase evaluation failed', str(err))
+            return False
+        self.phaseTranslatorRules = copy.deepcopy(rules)
+        posData.phaseTranslatorColumns = evaluation.columns
+        posData.acdc_df = evaluation.table
+        self.acdc_df = evaluation.table
+        self.updateColumnsList()
+        self.plotMeasurements()
+        if evaluation.warnings:
+            warn('Phase evaluation warnings', '\n'.join(evaluation.warnings))
+            if quiet:
+                return True
+        self.statusBar().showMessage(
+            'Phases evaluated. Use Export measurements to save the table.', 5000
+        )
+        return True
+
+    def renamePhaseTranslatorInput(self, oldColumn, newColumn):
+        for rule in self.phaseTranslatorRules:
+            for key in ('timepoints', 'annotations'):
+                rule[key] = [
+                    newColumn if column == oldColumn else column
+                    for column in rule[key]
+                ]
+
+    def exportMeasurements(self, checked=False):
+        if self.acdc_df is None or self.acdc_df.empty:
+            self.measurementProcessingWarning('No measurements', 'Load measurements first.')
+            return
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, 'Export measurements', 'processed_measurements.csv', 'CSV (*.csv)'
+        )
+        if not filepath:
+            return
+        if self.phaseTranslatorRules:
+            msg = widgets.myMessageBox(wrapText=False)
+            cancel, skip, apply = msg.question(
+                self, 'Evaluate phases before export?',
+                'A phase translator is configured. Evaluate all cells of the '
+                'current position before exporting?',
+                buttonsTexts=('Cancel', 'Export existing values', 'Evaluate and export')
+            )
+            if msg.cancel or msg.clickedButton == cancel:
+                return
+            if msg.clickedButton == apply and not self.applyPhaseTranslator():
+                return
+        try:
+            export_df = self.acdc_df.copy()
+            self.ensureTimepointColumns(export_df)
+            self.ensureCustomAnnotColumns(export_df)
+            export_df.to_csv(filepath)
+        except (OSError, ValueError) as error:
+            self.measurementProcessingWarning('Export failed', str(error))
+            return
+        self.statusBarLabel.setText(f'Measurements exported to {filepath}')
+    
+    def refreshAcdcDf(self, plot=True):
+        self.acdc_df = self.getAcdcDf()
+        self._IDframesCache = {}
+        self.initLineageTree()
+        self.updateColumnsList()
+        if not plot:
+            return
+        self.initIDsNavigation(ID=self.selectedID)
+        self.updateFramesRange()
+        self.updateImages()
+        self.plotMeasurements()
+    
+    def onMotherDaughterLine(self, checked, checkbox, ax=0):
+        super().onMotherDaughterLine(checked, checkbox, ax=ax)
+        if checked and self.initLineageTreeFrameData():
+            self.drawAllLineageTreeLines()
+    
+    def initLineageTree(self):
+        """Stand-in for the `normal_division_lineage_tree` of `gui.guiWin` 
+        (only `frames_for_dfs` is required by 
+        `AnnotationsGuiElements.drawAllLineageTreeLines`). Lineage tree lines 
+        are drawn from the saved `parent_ID_tree` column of the acdc_df."""
+        self.lineage_tree = None
+        if self.acdc_df is None:
+            return
+        
+        if 'parent_ID_tree' not in self.acdc_df.columns:
+            return
+        
+        frames = self.acdc_df.index.get_level_values(0).unique()
+        self.lineage_tree = SimpleNamespace(frames_for_dfs=set(frames))
+    
+    def _getLineageTreeFrameDf(self, frame_i, rp, prev_IDs=None):
+        df = self.getFrameAcdcDf(frame_i)
+        if df is None:
+            return
+        
+        if 'emerg_frame_i' not in df.columns:
+            df['emerg_frame_i'] = -1
+        
+        # Parents that cannot be drawn are unknown (-1) as in `gui.guiWin`
+        parent_IDs = df['parent_ID_tree'].fillna(-1).astype(int)
+        isDrawable = df.index.isin(rp.IDs)
+        if prev_IDs is not None:
+            isDrawable = isDrawable & parent_IDs.isin(prev_IDs).to_numpy()
+        df['parent_ID_tree'] = parent_IDs.where(isDrawable, -1)
+        return df
+    
+    def initLineageTreeFrameData(self):
+        """Store the acdc_df of current and previous frame required by 
+        `AnnotationsGuiElements.drawAllLineageTreeLines` in 
+        `posData.allData_li`. Returns False if lineage tree lines cannot be 
+        drawn."""
+        if self.lineage_tree is None:
+            return False
+        
+        posData = self.posData()
+        frame_i = posData.frame_i
+        if frame_i == 0:
+            return True
+        
+        prevData = posData.allData_li[frame_i-1]
+        prev_rp = prevData['regionprops']
+        if prev_rp is None:
+            prev_lab = self.getLabels(frame_i-1)
+            prev_rp = self._acdcRegionProps(prev_lab, precache_centroids=False)
+            prevData['regionprops'] = prev_rp
+        
+        prev_df = self._getLineageTreeFrameDf(frame_i-1, prev_rp)
+        df = self._getLineageTreeFrameDf(
+            frame_i, posData.rp, prev_IDs=prev_rp.IDs
+        )
+        if prev_df is None or df is None:
+            return False
+        
+        prevData['acdc_df'] = prev_df
+        posData.allData_li[frame_i]['acdc_df'] = df
+        return True
+    
+    def updateColumnsList(self):
+        checkedColumns = set(self.checkedColumns())
+        isFirstInit = self.columnsModel.rowCount() == 0
+        
+        # Do not block the model signals: the search proxy and the view must 
+        # be notified of the reset (otherwise they keep dangling indexes)
+        self._isUpdatingColumnsList = True
+        try:
+            self._updateColumnsList(checkedColumns, isFirstInit)
+        finally:
+            self._isUpdatingColumnsList = False
+    
+    def _updateColumnsList(self, checkedColumns, isFirstInit):
+        self.columnsModel.clear()
+        if self.acdc_df is None:
+            self.updateSignalAxes([])
+            return
+        
+        numericColumns = [
+            col for col in self.acdc_df.select_dtypes(
+                include=['number', 'bool']
+            ).columns
+            if col not in INDEX_COLUMNS
+        ]
+        if isFirstInit and self.measurementsModeCombobox.currentIndex() == 0:
+            for col in DEFAULT_MEASUREMENTS_COLUMNS:
+                if col in numericColumns:
+                    checkedColumns = {col}
+                    break
+            else:
+                checkedColumns = set(numericColumns[:1])
+        
+        channels = getattr(self.posData(), 'chNames', ()) if self.data else ()
+        self.columnsModel.populate(
+            self.acdc_df[numericColumns], channels, checkable=True
+        )
+        for item in self.columnsModel.measurementItems():
+            col = item.text()
+            if col in checkedColumns:
+                item.setCheckState(Qt.Checked)
+            else:
+                item.setCheckState(Qt.Unchecked)
+        self.columnsListWidget.expandAll()
+        self.updateSignalAxes(numericColumns)
+        self.filterColumns(self.columnsSearchLineEdit.text())
+
+    def updateSignalAxes(self, columns):
+        for axis, col in self.measurementsAxes.items():
+            if col not in columns:
+                self.measurementsAxes[axis] = ''
+        self._timeCourseColumns.intersection_update(columns)
+        self.updateColumnsIcons()
+    
+    def checkedColumns(self):
+        columns = []
+        for item in self.columnsModel.measurementItems():
+            if item.checkState() == Qt.Checked:
+                columns.append(item.text())
+        return columns
+    
+    def filterColumns(self, text):
+        self.columnsSearchProxy.setFilterText(text)
+        self.columnsHighlightDelegate.setFilterText(text)
+        if text.strip():
+            self.columnsListWidget.expandAll()
+        self.columnsListWidget.viewport().update()
+    
+    def getAllIDs(self):
+        if self.acdc_df is not None:
+            IDs = self.acdc_df.index.get_level_values('Cell_ID').unique()
+            return sorted([int(ID) for ID in IDs if ID > 0])
+        
+        posData = self.posData()
+        IDs = set()
+        for frame_i in range(posData.SizeT):
+            IDs.update(np.unique(self.getLabels(frame_i)))
+        IDs.discard(0)
+        return sorted([int(ID) for ID in IDs])
+    
+    def initIDsNavigation(self, ID=None):
+        self.IDs = self.getAllIDs()
+        numIDs = len(self.IDs)
+        self.numIDsLabel.setText(f'({numIDs} cells)')
+        hasIDs = numIDs > 0
+        self.idScrollBar.setEnabled(hasIDs)
+        self.idSpinBox.setEnabled(hasIDs)
+        if not hasIDs:
+            self.selectedID = None
+            return
+        
+        if ID not in self.IDs:
+            # Select first ID present in current frame (if any)
+            frameIDs = set(np.unique(self.getLabels()))
+            ID = next((_ID for _ID in self.IDs if _ID in frameIDs), self.IDs[0])
+        
+        self.selectedID = ID
+        self.idScrollBar.blockSignals(True)
+        self.idScrollBar.setMaximum(numIDs-1)
+        self.idScrollBar.setValue(self.IDs.index(ID))
+        self.idScrollBar.blockSignals(False)
+        self.idSpinBox.setMaximum(max(self.IDs))
+        self.idSpinBox.setValueNoEmit(ID)
+        self.ensureTimepointPredictions()
+    
+    def getLabels(self, frame_i=None):
+        """Get labels of `frame_i` (default current frame)."""
+        posData = self.posData()
+        if frame_i is None:
+            frame_i = self.frame_i
+        
+        key = (self.pos_i, frame_i)
+        if key == self._labKey:
+            return self._lab
+        
+        lab = posData.segm_data[frame_i]
+        
+        if frame_i == self.frame_i:
+            self._lab, self._labKey = lab, key
+        return lab
+    
+    def getImage(self, frame_i=None, raw=False):
+        posData = self.posData()
+        if frame_i is None:
+            frame_i = self.frame_i
+        img = posData.img_data[frame_i]
+        if posData.SizeZ > 1:
+            img = self.get_2Dimg_from_3D(img)
+        return img
+    
+    def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None):
+        img = self.get_2Dimg_from_switched_plane(imgData)
+        if img is not None:
+            return img
+        
+        zProjHow = self.zProjComboBox.currentText()
+        z = self.zSliceScrollBar.sliderPosition()
+        if not isLayer0:
+            zProjHowOverlay = self.zProjOverlay_CB.currentText()
+            if zProjHowOverlay != 'same as above':
+                zProjHow = zProjHowOverlay
+                z = self.zSliceOverlay_SB.sliderPosition()
+        return self.zProjectImage(imgData, zProjHow, z)
+    
+    def getHighlightedIDfromPropsDock(self):
+        if not self.propsDockWidget.isVisible():
+            return 0
+        guiTabControl = self.guiTabControl
+        doHighlight = (
+            guiTabControl.highlightCheckbox.isChecked()
+            or guiTabControl.highlightSearchedCheckbox.isChecked()
+        )
+        if not doHighlight:
+            return 0
+        return guiTabControl.propsQGBox.idSB.value()
+    
+    def updateImages(self):
+        """Update image and annotations as `gui.guiWin.updateAllImages` in 
+        'Viewer' mode"""
+        if not self.data:
+            return
+        
+        self.get_data()
+        self.highlightedID = (
+            self.getHighlightedIDfromPropsDock() or self.selectedID or 0
+        )
+        self.clearAx1Items()
+        
+        self.rescaleIntensitiesLut(setImage=False)
+        self.setImageImg1()
+        
+        posData = self.posData()
+        self.currentLab2D = self.get_2Dlab(posData.lab, force_z=False)
+        self.setOverlayImages()
+        self.setOverlayLabelsItems()
+        self.setOverlaySegmMasks()
+        self.updateViewerWindow()
+        
+        self.setAllTextAnnotations()
+        self.setAllContoursImages(compute=False)
+        self.drawAllMothBudLines()
+        if self.initLineageTreeFrameData():
+            self.drawAllLineageTreeLines()
+        
+        if self.ccaTableWin is not None:
+            zoomIDs = self.getZoomIDs()
+            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
+        
+        self.highlightSelectedID()
+        self.doCustomAnnotation(0)
+        self.updateTimestampFrame()
+        self.annotateAllObjectTracks()
+        posData.visited = True
+        self.updateObjectCounts()
+        self.updateIDnotPresentLabel()
+    
+    def clearAx1Items(self):
+        self.labelsLayerImg1.clear()
+        self.labelsLayerImg1.setOpacity(self.imgGrad.labelsAlphaSlider.value())
+        self.highLightIDLayerImg1.clear()
+        self.searchedIDitemLeft.clear()
+        self.ax1_contoursImageItem.clear()
+        if 0 in self.textAnnot:
+            self.textAnnot[0].clear()
+        self.ax1_newMothBudLinesItem.setData([], [])
+        self.ax1_oldMothBudLinesItem.setData([], [])
+        self.ax1_movementAgainstPrevLinesItem.setData([], [])
+        self.ax1_movementAgainstPrevScatterItem.setData([], [])
+        self.clearObjTracks()
+    
+    def highlightSelectedID(self):
+        """Highlight the selected ID as the searched ID in `gui.guiWin`"""
+        ID = self.highlightedID
+        if not ID:
+            return
+        
+        posData = self.posData()
+        obj = posData.rp.get_obj_from_ID(ID, warn=False)
+        if obj is None:
+            return
+        
+        if not self.isObjInCurrSlice(obj.bbox):
+            return
+        
+        display_rp = self.get2DRP()
+        obj = display_rp.get_obj_from_ID(ID, warn=False)
+        if obj is None:
+            return
+        contours = self.getObjContours(
+            obj,
+            all_external=True,
+            include_internal=self.showAllContoursToggle.isChecked()
+        )
+        for cont in contours:
+            self.searchedIDitemLeft.addPoints(cont[:,0]+0.5, cont[:,1]+0.5)
+    
+    def updateAllImages(self, *args, **kwargs):
+        self.updateImages()
+    
+    def setImageImg1(self):
+        posData = self.posData()
+        self.img1.setCurrentPosIndex(self.pos_i)
+        self.img1.setCurrentFrameIndex(posData.frame_i)
+        if posData.SizeZ > 1:
+            zProjHow = self.zProjComboBox.currentText()
+            if self.switchPlaneCombobox.depthAxes() != 'z':
+                # Pre-computed min/max values refer to xy planes only
+                z = None
+            elif zProjHow == 'single z-slice':
+                z = self.zSliceScrollBar.sliderPosition()
+            else:
+                z = zProjHow
+            
+            self.img1.setCurrentZsliceIndex(z)
+        
+        self.img1.setImage(self.getImage())
+    
+    def updateIDnotPresentLabel(self):
+        if self.selectedID is None:
+            self.idNotPresentLabel.setText('')
+            return
+        
+        isPresent = np.any(self.getLabels() == self.selectedID)
+        if isPresent:
+            self.idNotPresentLabel.setText('')
+        else:
+            self.idNotPresentLabel.setText(
+                f'<i>Cell ID {self.selectedID} is not present in frame '
+                f'n. {self.frame_i+1}</i>'
+            )
+    
+    def posComboboxIndexChanged(self, pos_i):
+        self.loadPosition(pos_i, ID=self.selectedID)
+    
+    def navigateSpinboxValueChanged(self, value):
+        self.navigateScrollBar.setSliderPosition(value)
+    
+    def framesScrollBarValueChanged(self, frame_n):
+        self.setFrame(frame_n-1)
+    
+    def setFrame(self, frame_i):
+        posData = self.posData()
+        first_i, last_i = self.framesRange()
+        frame_i = int(np.clip(frame_i, first_i, last_i))
+        self.navSpinBox.setValueNoEmit(frame_i+1)
+        if self.navigateScrollBar.sliderPosition() != frame_i+1:
+            self.resetNavigateFramesScrollbar(frame_i=frame_i)
+        
+        if frame_i == self.frame_i:
+            return
+        
+        self.frame_i = frame_i
+        posData.frame_i = frame_i
+        self.updateImages()
+        self.zoomToSelectedID()
+        self.updateCurrentFrameLine()
+    
+    def update_z_slice(self, z):
+        self.zSliceSpinbox.setValueNoEmit(z+1)
+        self.updateImages()
+    
+    def updateZproj(self, how):
+        self.setZSliceWidgetsEnabled(how)
+        self.updateImages()
+    
+    def switchViewedPlane(self, previousPlane, currentPlane):
+        posData = self.posData()
+        depthAxes = self.switchPlaneCombobox.depthAxes()
+        if depthAxes == 'z':
+            self.zProjComboBox.setDisabled(False)
+            depthSize = posData.SizeZ
+        else:
+            self.zProjComboBox.blockSignals(True)
+            self.zProjComboBox.setCurrentText('single z-slice')
+            self.zProjComboBox.blockSignals(False)
+            self.setZSliceWidgetsEnabled('single z-slice')
+            self.zProjComboBox.setDisabled(True)
+            SizeY, SizeX = posData.img_data.shape[-2:]
+            depthSize = SizeY if depthAxes == 'y' else SizeX
+        
+        self.zSliceScrollBar.blockSignals(True)
+        self.setZsliceNavigationRange(depthSize)
+        self.zSliceScrollBar.setSliderPosition(depthSize // 2)
+        self.zSliceScrollBar.blockSignals(False)
+        self.zSliceSpinbox.setValueNoEmit(depthSize // 2 + 1)
+        
+        self.initContoursImage()
+        self.updateImages()
+        self.ax1.autoRange()
+        self.zoomToSelectedID()
+    
+    def idScrollBarValueChanged(self, idx):
+        if not self.IDs:
+            return
+        ID = self.IDs[idx]
+        self.idSpinBox.setValueNoEmit(ID)
+        self.setSelectedID(ID)
+        
+        if self.rescalePlotCheckbox.isChecked():
+            self.measurementsPlot.autoRange()
+            
+    def rescalePlotToggled(self, checked):
+        if checked:
+            self.measurementsPlot.autoRange()
+    
+    def idSpinBoxEditingFinished(self):
+        ID = self.idSpinBox.value()
+        if ID == self.selectedID:
+            return
+        
+        if ID not in self.IDs:
+            self.statusBar().showMessage(f'Cell ID {ID} does not exist.', 3000)
+            self.idSpinBox.setValueNoEmit(self.selectedID)
+            return
+        
+        self.idScrollBar.setValue(self.IDs.index(ID))
+    
+    def setSelectedID(self, ID):
+        self.selectedID = ID
+        self.ensureTimepointPredictions()
+        self.updateFramesRange()
+        self.zoomToSelectedID(goToZslice=True)
+        self.updateImages()
+        self.plotMeasurements()
+    
+    def getIDframes(self, ID):
+        """Get the sorted frame indices where `ID` is present."""
+        key = (self.pos_i, ID)
+        cached = self._IDframesCache.get(key)
+        if cached is not None:
+            return cached
+        
+        frames = None
+        if self.acdc_df is not None:
+            try:
+                df_ID = self.acdc_df.xs(ID, level='Cell_ID')
+                frames = df_ID.index.get_level_values(0).unique().to_numpy()
+            except KeyError:
+                frames = None
+        
+        if frames is None or len(frames) == 0:
+            segm_data = self.posData().segm_data
+            frames = np.array([
+                frame_i for frame_i in range(len(segm_data))
+                if np.any(segm_data[frame_i] == ID)
+            ], dtype=int)
+        
+        frames = np.sort(frames.astype(int))
+        self._IDframesCache[key] = frames
+        return frames
+    
+    def framesRange(self):
+        """Get the (first, last) frame index the user can navigate to."""
+        SizeT = self.posData().SizeT
+        if not self.restrictFramesCheckbox.isChecked():
+            return 0, SizeT-1
+        
+        if self.selectedID is None:
+            return 0, SizeT-1
+        
+        frames = self.getIDframes(self.selectedID)
+        frames = frames[(frames >= 0) & (frames < SizeT)]
+        if len(frames) == 0:
+            return 0, SizeT-1
+        
+        return int(frames[0]), int(frames[-1])
+    
+    def updateFramesRange(self):
+        """Restrict the frames navigation widgets to `framesRange` and move 
+        the current frame into the range if it is outside. 
+        
+        Returns True if the current frame changed (images not updated).
+        """
+        posData = self.posData()
+        first_i, last_i = self.framesRange()
+        
+        self.navigateScrollBar.blockSignals(True)
+        self.navigateScrollBar.setMinimum(first_i+1)
+        self.navigateScrollBar.setMaximum(last_i+1)
+        self.navigateScrollBar.blockSignals(False)
+        self.navSpinBox.blockSignals(True)
+        self.navSpinBox.setMinimum(first_i+1)
+        self.navSpinBox.setMaximum(last_i+1)
+        self.navSpinBox.blockSignals(False)
+        
+        isRangeZero = first_i == last_i
+        self.navigateScrollBar.setDisabled(isRangeZero)
+        self.navSpinBox.setDisabled(isRangeZero)
+        
+        frame_i = int(np.clip(self.frame_i, first_i, last_i))
+        isFrameChanged = frame_i != self.frame_i
+        self.frame_i = frame_i
+        posData.frame_i = frame_i
+        self.navSpinBox.setValueNoEmit(frame_i+1)
+        self.resetNavigateFramesScrollbar(frame_i=frame_i)
+        if isFrameChanged:
+            self.updateCurrentFrameLine()
+        return isFrameChanged
+    
+    def restrictFramesToggled(self, checked):
+        if not self.data:
+            return
+        isFrameChanged = self.updateFramesRange()
+        if not isFrameChanged:
+            return
+        self.updateImages()
+        if self.followIDcheckbox.isChecked():
+            self.zoomToSelectedID()
+            
+        self._set_setting_value('restrictFrames', checked)
+    
+    def followIDtoggled(self, checked):
+        if checked:
+            self.zoomToSelectedID()
+            
+        self._set_setting_value('followID', checked)
+    
+    def goToZsliceID(self, ID):
+        """Move the z-slice scrollbar to the slice of `ID` (along the 
+        current depth axis) if the ID is not visible in the current slice.
+        """
+        posData = self.posData()
+        if not self.isSegm3D or posData.SizeZ == 1:
+            return
+        
+        if self.zProjComboBox.currentText() != 'single z-slice':
+            return
+        
+        lab = self.getLabels()
+        lab2D = self.get_2Dlab(lab, force_z=False)
+        if np.any(lab2D == ID):
+            return
+        
+        objMask = (lab == ID).astype(np.uint8)
+        if not np.any(objMask):
+            return
+        
+        obj = skimage.measure.regionprops(objMask)[0]
+        depthAxes = self.switchPlaneCombobox.depthAxes()
+        if depthAxes == 'z':
+            current_z = self.zSliceScrollBar.sliderPosition()
+            z = core.nearest_nonzero_z_idx_from_z_centroid(
+                obj, current_z=current_z
+            )
+        elif depthAxes == 'y':
+            z = round(obj.centroid[1])
+        else:
+            z = round(obj.centroid[2])
+        
+        self.zSliceScrollBar.setSliderPosition(int(z))
+    
+    def zoomToSelectedID(self, goToZslice=False, force=False):
+        ID = self.selectedID
+        if ID is None:
+            return
+        
+        if not self.followIDcheckbox.isChecked() and not force:
+            return
+        
+        if goToZslice or self.followIDcheckbox.isChecked():
+            self.goToZsliceID(ID)
+        
+        lab = self.getLabels()
+        lab2D = self.get_2Dlab(lab, force_z=False)
+        objMask = None
+        if np.any(lab2D == ID):
+            objMask = lab2D == ID
+        elif self.switchPlaneCombobox.depthAxes() == 'z':
+            # ID not visible on current slice --> zoom on its projection
+            objMask = lab == ID
+            if objMask.ndim == 3:
+                objMask = objMask.any(axis=0)
+        
+        if objMask is None or not np.any(objMask):
+            return
+        
+        rows, cols = np.nonzero(objMask)
+        obj_bbox = (rows.min(), cols.min(), rows.max()+1, cols.max()+1)
+        self.setViewRangeToObjBbox(obj_bbox, padding=10)
+    
+    def updateCurrentFrameLine(self):
+        self.currentFrameLine.blockSignals(True)
+        self.currentFrameLine.setValue(self.frame_i+1)
+        self.currentFrameLine.blockSignals(False)
+        self.phaseBandFrameLine.setValue(self.frame_i+1)
+    
+    def currentFrameLineMoved(self, line):
+        frame_n = int(round(line.value()))
+        self.setFrame(frame_n-1)
+        self.updateCurrentFrameLine()
+    
+    def timepointIdentifier(self, uid):
+        for identifier in self.timepointIdentifiers:
+            if identifier.uid == uid:
+                return identifier
+    
+    def initPositionTimepointState(self, posData=None):
+        """Session state of the time points of a position. The time points 
+        themselves are stored in the acdc_df."""
+        if posData is None:
+            posData = self.posData()
+        if getattr(posData, 'timepointsPredicted', None) is None:
+            posData.timepointsPredicted = set()
+            # Cells with manual edits {uid: set of Cell_IDs}
+            posData.timepointsEdited = defaultdict(set)
+            # Per-cell constants values {name: {Cell_ID: value}}
+    #         posData.cellConstants = {}
+    #         posData.cellConstantsSource = None
+    
+    # def positionCellConstants(self, posData=None, acdc_df=None):
+    #     """Values of the per-cell constants of a position 
+    #     {name: {Cell_ID: value}} (or a Series indexed by (frame_i, Cell_ID) 
+    #     for per-frame constants), recomputed if the constants or the 
+    #     measurements table changed."""
+    #     if posData is None:
+    #         posData = self.posData()
+    #     self.initPositionTimepointState(posData)
+    #     if not self.cellConstants:
+    #         posData.cellConstants = {}
+    #         posData.cellConstantsSource = None
+    #         return posData.cellConstants
+    #     if acdc_df is None:
+    #         acdc_df = (
+    #             self.acdc_df if posData is self.posData() 
+    #             else self.getAcdcDf(posData)
+    #         )
+    #     constants = tuple(
+    #         tuple(timepoint_predictors.normalize_constant(constant).items())
+    #         for constant in self.cellConstants
+    #     )
+    #     source = posData.cellConstantsSource
+    #     if source is not None and source[0] is acdc_df and source[1] == constants:
+    #         return posData.cellConstants
+    #     try:
+    #         values = timepoint_predictors.compute_cell_constants(
+    #             acdc_df, self.cellConstants, SizeT=posData.SizeT
+    #         )
+    #     except Exception as err:
+    #         self.logger.exception('Computing per-cell constants failed')
+    #         self.measurementProcessingWarning(
+    #             'Per-cell constants failed', 
+    #             f'Computing the per-cell constants failed:\n\n{err}'
+    #         )
+    #         values = {}
+    #     posData.cellConstants = values
+    #     # Keep a reference to the table to detect changes by identity
+    #     posData.cellConstantsSource = (acdc_df, constants)
+    #     return values
+    
+    # def acdcDfWithConstants(self, acdc_df=None, posData=None):
+    #     """Copy of `acdc_df` (default current table) with the per-cell 
+    #     constants added as columns."""
+    #     if not self.data:
+    #         return acdc_df if acdc_df is not None else self.acdc_df
+    #     if posData is None:
+    #         posData = self.posData()
+    #     if acdc_df is None and posData is self.posData():
+    #         acdc_df = self.acdc_df
+    #     if acdc_df is None:
+    #         return None
+    #     values = self.positionCellConstants(posData, acdc_df=acdc_df)
+    #     return timepoint_predictors.add_constants_columns(acdc_df, values)
+    
+    # def setCellConstants(self, constants):
+    #     timepoint_predictors.validate_constants(constants)
+    #     self.cellConstants = [
+    #         timepoint_predictors.normalize_constant(constant)
+    #         for constant in constants
+    #     ]
+    #     for posData in self.data or []:
+    #         if getattr(posData, 'timepointsPredicted', None) is not None:
+    #             posData.cellConstants = {}
+    #             posData.cellConstantsSource = None
+    
+    # def askReevaluateAfterConstantsChanged(self):
+    #     txt = html_utils.paragraph(
+    #         'The per-cell constants changed.<br><br>'
+    #         'Do you want to <b>re-evaluate the time point predictors</b> on '
+    #         'all cells now?'
+    #     )
+    #     msg = widgets.myMessageBox(wrapText=False)
+    #     _, yesButton = msg.question(
+    #         self, 'Re-evaluate predictors?', txt, 
+    #         buttonsTexts=('No', 'Yes, re-evaluate')
+    #     )
+    #     return msg.clickedButton == yesButton
+    
+    # def editCellConstants(self, checked=False):
+    #     posData = self.posData() if self.data else None
+    #     dialog = apps.CellConstantsDialog(
+    #         constants=self.cellConstants, acdc_df=self.acdc_df,
+    #         SizeT=getattr(posData, 'SizeT', None), parent=self
+    #     )
+    #     dialog.exec_()
+    #     if dialog.cancel or dialog.constants is None:
+    #         return False
+    #     newConstants = [
+    #         timepoint_predictors.normalize_constant(constant) 
+    #         for constant in dialog.constants
+    #     ]
+    #     if newConstants == self.cellConstants:
+    #         return True
+    #     self.setCellConstants(newConstants)
+    #     if posData is not None:
+    #         values = self.positionCellConstants(posData)
+    #         self.statusBar().showMessage(
+    #             f'Computed {len(values)} per-cell constant(s).', 5000
+    #         )
+    #     if posData is not None and self.predictorTimepointUids():
+    #         # Other positions are re-predicted when they are loaded
+    #         for otherPosData in self.data:
+    #             if otherPosData is posData:
+    #                 continue
+    #             if getattr(otherPosData, 'timepointsPredicted', None) is not None:
+    #                 otherPosData.timepointsPredicted.difference_update(
+    #                     self.predictorTimepointUids()
+    #                 )
+    #                 positionPath = os.path.normcase(
+    #                     os.path.abspath(otherPosData.pos_path)
+    #                 )
+    #                 for uid in self.predictorTimepointUids():
+    #                     self.timepointAutoPredictions.pop((positionPath, uid), None)
+    #         if self.askReevaluateAfterConstantsChanged():
+    #             self.reevaluateAllTimepoints()
+    #     return True
+    
+    def editedTimepointCells(self, posData=None):
+        self.initPositionTimepointState(posData)
+        if posData is None:
+            posData = self.posData()
+        return posData.timepointsEdited
+    
+    def markTimepointEdited(self, uid, ID):
+        self.editedTimepointCells()[uid].add(ID)
+    
+    def reservedShortcuts(self, excludeUid=None, excludeCustomAnnot=None):
+        """Key sequences already used in the viewer {sequence: used by}. 
+        
+        The shortcut of the time point identifier `excludeUid` and the 
+        shortcuts of the custom annotation button `excludeCustomAnnot` are 
+        not included (e.g., when editing them)."""
+        reserved = {}
+        for name in ('Left', 'Right', 'Up', 'Down', 'Space', 'Z', 'Esc'):
+            reserved[name] = 'Viewer navigation'
+        for n in range(1, 10):
+            reserved[str(n)] = 'Overlay channels toggle'
+        zoomOutKey = QKeySequence(self.zoomOutKeyValue).toString()
+        reserved[zoomOutKey] = 'Zoom out'
+        timepointActions = {
+            action: uid for uid, action in self.timepointActions.items()
+        }
+        excludedActions = set(
+            self.customAnnotShortcutActions.get(excludeCustomAnnot, ())
+        )
+        widgets_ = self.findChildren(QAction) + self.findChildren(QAbstractButton)
+        for widget in widgets_:
+            if timepointActions.get(widget, -1) == excludeUid:
+                continue
+            if widget in excludedActions:
+                continue
+            shortcut = widget.shortcut().toString()
+            if not shortcut:
+                continue
+            text = widget.text() or widget.toolTip().split('\n')[0]
+            reserved[shortcut] = text.replace('&', '') or shortcut
+        for name, widget in self.widgetsWithShortcut.items():
+            shortcut = getattr(widget, 'keyPressShortcut', None)
+            if isinstance(shortcut, QKeySequence) and not shortcut.isEmpty():
+                reserved[shortcut.toString()] = name
+        return reserved
+    
+    def defaultTimepointIdentifier(self):
+        names = {identifier.name for identifier in self.timepointIdentifiers}
+        n = len(self.timepointIdentifiers) + 1
+        while f'Time point {n}' in names:
+            n += 1
+        palette = timepoint_predictors.DEFAULT_COLORS
+        usedColors = {
+            tuple(identifier.color) for identifier in self.timepointIdentifiers
+        }
+        color = next(
+            (c for c in palette if c not in usedColors), 
+            palette[len(self.timepointIdentifiers) % len(palette)]
+        )
+        reserved = self.reservedShortcuts()
+        shortcut = next(
+            (key for key in timepoint_predictors.DEFAULT_SHORTCUTS 
+             if key not in reserved), ''
+        )
+        return TimepointIdentifier(
+            name=f'Time point {n}', color=color, shortcut=shortcut
+        )
+    
+    def execTimepointIdentifierDialog(self, identifier, title):
+        posData = self.posData() if self.data else None
+        names = {
+            other.name for other in self.timepointIdentifiers
+            if other.uid != identifier.uid
+        }
+        dialog = apps_measurements_viewer.TimepointIdentifierDialog(
+            identifier.name, identifier.color, identifier.shortcut,
+            predictor=identifier.predictor, existingNames=names,
+            reservedShortcuts=self.reservedShortcuts(excludeUid=identifier.uid),
+            acdc_df=self.timepointsDf(posData) if posData is not None else None,
+            SizeT=getattr(posData, 'SizeT', None),
+            allChNames=getattr(posData, 'chNames', []),
+            isZstack=getattr(posData, 'SizeZ', 1) > 1,
+            isSegm3D=bool(self.isSegm3D), title=title, parent=self
+        )
+        dialog.validatePredictorDependencies = (
+            lambda name, predictor: self.validatePredictorDependencies(
+                self.timepointColumn(identifier), f'{TIMEPOINT_PREFIX}{name}',
+                predictor
+            )
+        )
+        dialog.autoApplyCheckBox.setChecked(identifier.autoApply)
+        dialog.exec_()
+        if dialog.cancel:
+            return
+        return dialog.identifier
+    
+    def addTimepointIdentifier(self, checked=False):
+        identifier = self.defaultTimepointIdentifier()
+        values = self.execTimepointIdentifierDialog(
+            identifier, 'Add time point identifier'
+        )
+        if values is None:
+            return
+        identifier = TimepointIdentifier(**values)
+        self.addTimepointIdentifierItem(identifier)
+        self.ensureTimepointPredictions()
+        self.updateTimepointLines()
+        return identifier
+    
+    def addTimepointIdentifierItem(self, identifier):
+        self.timepointIdentifiers.append(identifier)
+        for acdc_df in self.allAcdcDfs():
+            self.ensureTimepointColumns(acdc_df)
+        action = QAction(self)
+        action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        action.triggered.connect(
+            partial(self.timepointActionTriggered, identifier.uid)
+        )
+        self.timepointActions[identifier.uid] = action
+        self.timepointsToolBar.addAction(action)
+        
+        # Shift+shortcut re-evaluates the predictor for the selected cell.
+        autoAction = QAction(self)
+        autoAction.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+        autoAction.triggered.connect(
+            lambda checked=False: self.reevaluateDisplayedCellTimepoints(
+                uids=[identifier.uid]
+            )
+        )
+        self.addAction(autoAction)
+        self.timepointAutoActions[identifier.uid] = autoAction
+        
+        self.updateTimepointAction(identifier)
+        self.updateReevaluateTimepointsActions()
+        button = self.timepointsToolBar.widgetForAction(action)
+        if button is not None:
+            button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            button.customContextMenuRequested.connect(
+                partial(self.showTimepointActionContextMenu, identifier.uid)
+            )
+        return action
+    
+    def updateTimepointAction(self, identifier):
+        action = self.timepointActions[identifier.uid]
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(pg.mkPen(color=identifier.color, width=4))
+        painter.drawLine(16, 2, 16, 30)
+        painter.setBrush(pg.mkBrush(identifier.color))
+        painter.drawEllipse(9, 9, 14, 14)
+        painter.end()
+        action.setIcon(QIcon(pixmap))
+        action.setText(identifier.name)
+        action.setShortcut(QKeySequence(identifier.shortcut))
+        shortcutText = (
+            f'Shortcut: "{identifier.shortcut}", Auto: "Shift+{identifier.shortcut}"' 
+            if identifier.shortcut else 'No shortcut'
+        )
+        predictorText = timepoint_predictors.TimepointPredictor.describe(
+            identifier.predictor
+        )
+        action.setToolTip(
+            f'Time point: {identifier.name}\n\n'
+            'Hover over the measurements plot and press the shortcut to add '
+            'it at the hovered frame for the selected cell.\n'
+            'Click to add it at the current frame.\n'
+            'Right-click for more options.\n\n'
+            f'{shortcutText}\nPredictor: {predictorText}'
+        )
+        
+        # update AutoAction
+        autoAction = self.timepointAutoActions[identifier.uid]
+        autoAction.setShortcut(QKeySequence(f'Shift+{identifier.shortcut}'))
+
+    
+    def showTimepointActionContextMenu(self, uid, pos):
+        identifier = self.timepointIdentifier(uid)
+        button = self.timepointsToolBar.widgetForAction(
+            self.timepointActions[uid]
+        )
+        menu = QMenu(button)
+        menu.addAction('Edit...', partial(self.editTimepointIdentifier, uid))
+        hasPredictor = (
+            identifier.predictor['type'] != timepoint_predictors.PREDICTOR_NONE
+        )
+        predictAllAction = menu.addAction(
+            'Re-evaluate predictor on all cells', 
+            partial(self.reevaluateTimepoints, [uid])
+        )
+        predictCellAction = menu.addAction(
+            'Re-evaluate predictor on displayed cell', 
+            partial(self.reevaluateDisplayedCellTimepoints, uids=[uid])
+        )
+        predictAllAction.setEnabled(hasPredictor and bool(self.data))
+        predictCellAction.setEnabled(
+            hasPredictor and bool(self.data) and self.selectedID is not None
+        )
+        menu.addAction(
+            'Clear time points of current position', 
+            partial(self.clearTimepoints, uid)
+        )
+        menu.addSeparator()
+        menu.addAction('Remove', partial(self.removeTimepointIdentifier, uid))
+        menu.exec_(button.mapToGlobal(pos))
+    
+    def editTimepointIdentifier(self, uid):
+        identifier = self.timepointIdentifier(uid)
+        values = self.execTimepointIdentifierDialog(
+            identifier, f'Edit time point identifier "{identifier.name}"'
+        )
+        if values is None:
+            return
+        predictorChanged = values['predictor'] != identifier.predictor
+        oldColumn = self.timepointColumn(identifier)
+        identifier.name = values['name']
+        newColumn = self.timepointColumn(identifier)
+        if newColumn != oldColumn:
+            self.renamePhaseTranslatorInput(oldColumn, newColumn)
+            for acdc_df in self.allAcdcDfs():
+                if oldColumn not in acdc_df.columns:
+                    continue
+                acdc_df.drop(columns=newColumn, inplace=True, errors='ignore')
+                acdc_df.rename(columns={oldColumn: newColumn}, inplace=True)
+        identifier.color = values['color']
+        identifier.shortcut = values['shortcut']
+        identifier.predictor = values['predictor']
+        identifier.autoApply = values['autoApply']
+        self.updateTimepointAction(identifier)
+        self.updateReevaluateTimepointsActions()
+        if predictorChanged:
+            for key in list(self.timepointAutoPredictions):
+                if key[1] == uid:
+                    del self.timepointAutoPredictions[key]
+            for posData in self.data:
+                if posData is not self.posData():
+                    getattr(posData, 'timepointsPredicted', set()).discard(uid)
+        self.updateTimepointLines()
+    
+    def removeTimepointIdentifier(self, uid, ask=True):
+        identifier = self.timepointIdentifier(uid)
+        if ask:
+            msg = widgets.myMessageBox(wrapText=False)
+            _, yes = msg.question(
+                self, 'Remove time point identifier?',
+                f'Remove "{identifier.name}" and its time points of all '
+                'positions?', buttonsTexts=('Cancel', 'Remove')
+            )
+            if msg.clickedButton != yes:
+                return
+        action = self.timepointActions.pop(uid)
+        self.timepointsToolBar.removeAction(action)
+        action.deleteLater()
+        self.timepointIdentifiers.remove(identifier)
+        for key in list(self.timepointAutoPredictions):
+            if key[1] == uid:
+                del self.timepointAutoPredictions[key]
+        column = self.timepointColumn(identifier)
+        for acdc_df in self.allAcdcDfs():
+            acdc_df.drop(columns=column, inplace=True, errors='ignore')
+        for posData in self.data:
+            getattr(posData, 'timepointsPredicted', set()).discard(uid)
+            getattr(posData, 'timepointsEdited', {}).pop(uid, None)
+            
+        autoAction = self.timepointAutoActions.pop(uid)
+        self.removeAction(autoAction)
+        autoAction.deleteLater()
+        
+        self.updateReevaluateTimepointsActions()
+        self.updateTimepointLines()
+    
+    def clearTimepoints(self, uid):
+        if not self.data:
+            return
+        self.replaceTimepoints(uid, {}, self.timepointCellIDs(uid))
+        self.editedTimepointCells()[uid] = set()
+        self.updateTimepointLines()
+    
+    def setTimepointIdentifiers(self, identifiers):
+        for identifier in list(self.timepointIdentifiers):
+            self.removeTimepointIdentifier(identifier.uid, ask=False)
+        for identifier in identifiers:
+            self.addTimepointIdentifierItem(identifier)
+    
+    def runTimepointPredictor(
+            self, uid, posData=None, replot=False, IDs=None, skipIDs=(),
+            force=False, autoAction_cb=False, checked=False
+        ):
+        """Predict the time points of `uid` for the cells of `posData` 
+        (default current position), replacing the existing ones.
+        
+        If `IDs` is not None, only these cells are predicted. Cells in 
+        `skipIDs` keep their current time points. Unless `force` is True,
+        require `autoApply` and skip cells already predicted in this session
+        for the same position path and identifier. Returns False if the
+        prediction failed."""
+        identifier = self.timepointIdentifier(uid)
+        if not self.data or identifier is None:
+            return False
+        if not force and not identifier.autoApply:
+            return True
+        
+        if posData is None:
+            posData = self.posData()
+        self.initPositionTimepointState(posData)
+        if identifier.predictor['type'] == timepoint_predictors.PREDICTOR_NONE:
+            return True
+        acdc_df = (
+            self.acdc_df if posData is self.posData() 
+            else self.getAcdcDf(posData)
+        )
+        predictionKey = (os.path.normcase(os.path.abspath(posData.pos_path)), uid)
+        alreadyPredicted = self.timepointAutoPredictions[predictionKey]
+        skipIDs = set(skipIDs)
+        if autoAction_cb:
+            IDs = [self.currID()]
+        if IDs is not None:
+            IDs = set(IDs) - skipIDs
+        if not force:
+            if IDs is None:
+                IDs = (
+                    set(acdc_df.index.get_level_values('Cell_ID'))
+                    if acdc_df is not None else set()
+                )
+            IDs -= alreadyPredicted | skipIDs
+        if IDs is not None and not IDs:
+            return True
+        acdc_df = self.acdc_df if posData is self.posData() else self.getAcdcDf(posData)
+        try:
+            # All cells are passed since predictors can use other cells
+            predicted = timepoint_predictors.TimepointPredictor.predict(
+                acdc_df, identifier.predictor, SizeT=posData.SizeT, IDs=IDs
+            )
+        except Exception as err:
+            self.logger.exception('Time point prediction failed')
+            self.measurementProcessingWarning(
+                'Time point prediction failed', 
+                f'Predicting "{identifier.name}" failed:\n\n{err}'
+            )
+            return False
+        
+        if IDs is None:
+            replacedIDs = (
+                self.timepointCellIDs(uid, posData).union(predicted) - skipIDs
+            )
+        else:
+            replacedIDs = set(IDs) - skipIDs
+        self.replaceTimepoints(
+            uid, {ID: predicted[ID] for ID in replacedIDs if ID in predicted},
+            replacedIDs, posData
+        )
+        posData.timepointsEdited[uid].difference_update(replacedIDs)
+
+        completedIDs = (
+            set(acdc_df.index.get_level_values('Cell_ID'))
+            if acdc_df is not None else set()
+        )
+        if IDs is not None:
+            completedIDs.intersection_update(IDs)
+        alreadyPredicted.update(completedIDs - skipIDs)
+        posData.timepointsPredicted.add(uid)
+        
+        numCells = sum(1 for ID in replacedIDs if ID in predicted)
+        numTimepoints = sum(len(predicted[ID]) for ID in replacedIDs if ID in predicted)
+        self.statusBar().showMessage(
+            f'Predicted {numTimepoints} "{identifier.name}" time point(s) '
+            f'for {numCells} cell(s).', 5000
+        )
+        if replot:
+            self.updateTimepointLines()
+        return True
+    
+    def predictorTimepointUids(self, uids=None):
+        if uids is None:
+            uids = [identifier.uid for identifier in self.timepointIdentifiers]
+        return [
+            uid for uid in uids 
+            if self.timepointIdentifier(uid).predictor['type'] 
+            != timepoint_predictors.PREDICTOR_NONE
+        ]
+    
+    def updateReevaluateTimepointsActions(self):
+        hasPredictors = bool(self.predictorTimepointUids())
+        self.reevaluateAllTimepointsAction.setEnabled(hasPredictors)
+        self.reevaluateCellTimepointsAction.setEnabled(hasPredictors)
+
+    def updateReevaluateCustomAnnotationActions(self):
+        hasPredictors = any(
+            self.customAnnotHasPredictor(button)
+            for button in self.customAnnotDict
+        )
+        self.reevaluateAllCustomAnnotationsAction.setEnabled(hasPredictors)
+        self.reevaluateCellCustomAnnotationsAction.setEnabled(hasPredictors)
+    
+    def askOverwriteManualTimepoints(self, editedCells, scope, what='Time points'):
+        """Warn that re-evaluating overwrites manual edits.
+        
+        Parameters
+        ----------
+        editedCells : dict
+            {identifier name: sorted list of edited Cell_IDs}
+        scope : str
+            Description of the re-evaluated cells.
+        what : str, optional
+            What has been edited (e.g., 'Custom annotations').
+
+        Returns
+        -------
+        str
+            'overwrite', 'skip' (keep the manually edited cells) or 'cancel'.
+        """
+        details = '\n'.join(
+            f'{name}: Cell ID {", ".join(str(ID) for ID in IDs)}'
+            for name, IDs in editedCells.items()
+        )
+        txt = html_utils.paragraph(
+            f'{what} of {scope} have been <b>edited manually</b>.<br><br>'
+            'Re-evaluating the predictors will <b>overwrite</b> these edits.'
+            '<br><br>Do you want to overwrite the manual edits or skip the '
+            'edited cells?'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        _, skipButton, overwriteButton = msg.warning(
+            self, 'Overwrite manual edits?', txt, detailsText=details,
+            buttonsTexts=('Cancel', 'Skip edited cells', 'Overwrite')
+        )
+        if msg.clickedButton == overwriteButton:
+            return 'overwrite'
+        if msg.clickedButton == skipButton:
+            return 'skip'
+        return 'cancel'
+    
+    def reevaluateTimepoints(self, uids=None, IDs=None, posData=None):
+        """Re-run the predictors of `uids` (default all identifiers with 
+        a predictor) on cells `IDs` (default all cells) of `posData`, 
+        warning if manual edits would be overwritten. Returns False if 
+        cancelled."""
+        if not self.data:
+            return False
+        if posData is None:
+            posData = self.posData()
+        uids = self.predictorTimepointUids(uids)
+        if not uids:
+            self.statusBar().showMessage(
+                'No time point identifier with a predictor.', 5000
+            )
+            return False
+        columns = [
+            self.timepointColumn(self.timepointIdentifier(uid)) for uid in uids
+        ]
+        return self.evaluatePredictorColumns(columns, IDs, posData)
+    
+    def reevaluateAllTimepoints(self, checked=False):
+        return self.reevaluateTimepoints()
+    
+    def reevaluateDisplayedCellTimepoints(self, checked=False, uids=None):
+        if self.selectedID is None:
+            self.statusBar().showMessage('Select a cell first.', 5000)
+            return False
+        return self.reevaluateTimepoints(uids=uids, IDs=[self.selectedID])
+    
+    def ensureTimepointPredictions(self, posData=None):
+        """Evaluate automatic predictors only on the newly displayed cell."""
+        self.ensurePredictorPredictions(posData)
+
+    def predictorDefinitions(self):
+        """Output column -> (kind, identifier/button, predictor, autoApply)."""
+        definitions = {
+            self.timepointColumn(identifier): (
+                'timepoint', identifier.uid, identifier.predictor,
+                identifier.autoApply
+            )
+            for identifier in self.timepointIdentifiers
+        }
+        for button, annot in self.customAnnotDict.items():
+            state = annot['state']
+            definitions[state['name']] = (
+                'annotation', button,
+                state.get('predictor') or {'type': timepoint_predictors.PREDICTOR_NONE},
+                state.get('autoApply', False)
+            )
+        return definitions
+
+    @contextmanager
+    def deferPredictorPredictions(self):
+        previous = getattr(self, '_deferPredictorPredictions', False)
+        self._deferPredictorPredictions = True
+        try:
+            yield
+        finally:
+            self._deferPredictorPredictions = previous
+        if not previous:
+            self.ensurePredictorPredictions()
+
+    def validatePredictorDependencies(self, oldColumn, newColumn, predictor):
+        definitions = self.predictorDefinitions()
+        if newColumn != oldColumn and newColumn in definitions:
+            raise ValueError(f'The predictor output "{newColumn}" already exists.')
+        predictors = {
+            column: definition[2] for column, definition in definitions.items()
+            if column != oldColumn
+        }
+        predictors[newColumn] = predictor
+        timepoint_predictors.PredictorDependencies.order(predictors)
+
+    def evaluatePredictorColumns(
+            self, columns, IDs, posData, automatic=False
+        ):
+        definitions = self.predictorDefinitions()
+        predictors = {
+            column: definition[2] for column, definition in definitions.items()
+            if definition[2].get('type') != timepoint_predictors.PREDICTOR_NONE
+        }
+        try:
+            ordered = timepoint_predictors.PredictorDependencies.order(
+                predictors, columns
+            )
+        except ValueError as err:
+            self.measurementProcessingWarning('Invalid predictors', str(err))
+            return False
+        if automatic:
+            ordered = [column for column in ordered if definitions[column][3]]
+        scopes = {column: None if IDs is None else set(IDs) for column in ordered}
+        for column in reversed(ordered):
+            inputs = timepoint_predictors.PredictorDependencies.inputs(
+                predictors[column]
+            )
+            for dependency, otherCells in inputs.items():
+                if dependency in scopes and (
+                        otherCells or scopes[column] is None):
+                    scopes[dependency] = None
+        edited = {}
+        editedCells = {}
+        for column in ordered:
+            kind, key, _, _ = definitions[column]
+            cells = (
+                self.editedTimepointCells(posData)[key]
+                if kind == 'timepoint' else
+                self.editedCustomAnnotCells(posData)[column]
+            )
+            scopeIDs = scopes[column]
+            edited[column] = set(cells) if scopeIDs is None else cells & scopeIDs
+            if edited[column]:
+                name = (
+                    self.timepointIdentifier(key).name
+                    if kind == 'timepoint' else column
+                )
+                editedCells[name] = sorted(edited[column])
+        skip = False
+        if editedCells:
+            allEdited = set().union(*editedCells.values())
+            scope = (
+                f'the displayed cell (ID {next(iter(IDs))})'
+                if IDs is not None and len(IDs) == 1 and allEdited <= set(IDs)
+                else f'{len(allEdited)} cell(s)'
+            )
+            if posData is not self.posData():
+                posName = getattr(posData, 'pos_foldername', 'another position')
+                scope = f'{scope} of position "{posName}"'
+            kinds = {definitions[column][0] for column in ordered}
+            if kinds == {'timepoint'}:
+                answer = self.askOverwriteManualTimepoints(editedCells, scope)
+            else:
+                what = (
+                    'Custom annotations' if kinds == {'annotation'}
+                    else 'Time points and custom annotations'
+                )
+                answer = self.askOverwriteManualTimepoints(
+                    editedCells, scope, what=what
+                )
+            if answer == 'cancel':
+                return False
+            skip = answer == 'skip'
+        failed = set()
+        names = []
+        for column in ordered:
+            inputs = timepoint_predictors.PredictorDependencies.inputs(
+                predictors[column]
+            )
+            if failed.intersection(inputs):
+                failed.add(column)
+                self.statusBar().showMessage(
+                    f'Skipped "{column}": a prerequisite prediction failed.', 5000
+                )
+                continue
+            kind, key, _, _ = definitions[column]
+            run = (
+                self.runTimepointPredictor if kind == 'timepoint'
+                else self.runCustomAnnotPredictor
+            )
+            if not run(
+                    key, posData=posData, IDs=scopes[column],
+                    skipIDs=edited[column] if skip else (),
+                    force=not automatic or bool(edited[column])
+                ):
+                failed.add(column)
+            if kind == 'annotation':
+                names.append(column)
+        if automatic and failed:
+            path = os.path.normcase(os.path.abspath(posData.pos_path))
+            acdc_df = self.timepointsDf(posData)
+            for column in failed:
+                scopeIDs = scopes[column]
+                if scopeIDs is None:
+                    scopeIDs = (
+                        set(acdc_df.index.get_level_values('Cell_ID'))
+                        if acdc_df is not None else set()
+                    )
+                kind, key, _, _ = definitions[column]
+                predictions = (
+                    self.timepointAutoPredictions if kind == 'timepoint'
+                    else self.customAnnotAutoPredictions
+                )
+                predictions[(path, key if kind == 'timepoint' else column)].update(
+                    scopeIDs
+                )
+        if names:
+            self.refreshCustomAnnotations(names)
+        self.updateTimepointLines()
+        return not failed
+
+    def ensurePredictorPredictions(self, posData=None):
+        if getattr(self, '_deferPredictorPredictions', False):
+            return
+        if not self.data or self.selectedID is None:
+            return
+        if posData is None:
+            posData = self.posData()
+        if posData is not self.posData():
+            return
+        ID = int(self.selectedID)
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None:
+            return
+        if VISITED_COLUMN not in acdc_df:
+            acdc_df[VISITED_COLUMN] = False
+        rows = acdc_df.index.get_level_values('Cell_ID') == ID
+        newCell = not acdc_df.loc[rows, VISITED_COLUMN].fillna(False).any()
+        acdc_df.loc[rows, VISITED_COLUMN] = True
+        posData.acdc_df = acdc_df
+        self.initPositionTimepointState(posData)
+        columns = []
+        for column, definition in self.predictorDefinitions().items():
+            kind, key, predictor, autoApply = definition
+            if (not autoApply
+                    or predictor.get('type') == timepoint_predictors.PREDICTOR_NONE):
+                continue
+            if kind == 'timepoint':
+                if not newCell:
+                    continue
+            elif ID in self.customAnnotAutoPredictions[
+                    self.customAnnotPredictionKey(posData, column)]:
+                continue
+            columns.append(column)
+        if columns:
+            self.evaluatePredictorColumns(columns, [ID], posData, automatic=True)
+        self.ensurePhasePrediction(posData, ID)
+    
+    # --- Custom annotations -------------------------------------------------
+    # Overrides of the `gui_custom_annotations.CustomAnnotationsGuiElements` 
+    # hooks. The annotations are stored as 0/1 columns of the acdc_df of each 
+    # position (the frame tables of `posData.allData_li` are temporary copies).
+    def addCustomAnnotation(self):
+        if not self.data:
+            self.statusBar().showMessage(
+                'Load data to add custom annotations.', 5000
+            )
+            return
+        return super().addCustomAnnotation()
+    
+    def loadCustomAnnotations(self):
+        if not self.data:
+            self.statusBar().showMessage(
+                'Load data to load custom annotations.', 5000
+            )
+            return
+        with self.deferPredictorPredictions():
+            return super().loadCustomAnnotations()
+    
+    def customAnnotNames(self):
+        customAnnotDict = getattr(self, 'customAnnotDict', {})
+        return [annot['state']['name'] for annot in customAnnotDict.values()]
+    
+    def ensureCustomAnnotColumn(self, acdc_df, name):
+        """One 0/1 value per Cell_ID, broadcast to its entire history.
+
+        Legacy frame-specific assignments mark the cell if any frame is
+        annotated, preserving existing assignments.
+        """
+        if name not in acdc_df.columns:
+            acdc_df[name] = 0
+            return
+        values = pd.to_numeric(acdc_df[name], errors='coerce').fillna(0)
+        acdc_df[name] = (
+            (values != 0).groupby(level='Cell_ID').transform('any').astype(int)
+        )
+    
+    def ensureCustomAnnotColumns(self, acdc_df):
+        for name in self.customAnnotNames():
+            self.ensureCustomAnnotColumn(acdc_df, name)
+    
+    def customAnnotIsVisibleMode(self):
+        return bool(self.data)
+    
+    def saveCustomAnnotPositionParams(self, posData):
+        # Annotations are columns of the in-memory acdc_df (exported with 
+        # the table) and their definitions are saved in configurations
+        pass
+
+    def saveCustomAnnot(self, only_temp=False):
+        """Viewer definitions are saved by saveConfiguration, not globally."""
+        pass
+    
+    def defaultCustomAnnotShortcut(self, reservedShortcuts):
+        for key in custom_annotation_predictors.DEFAULT_SHORTCUTS:
+            if QKeySequence(key).toString() not in reservedShortcuts:
+                return key
+        return ''
+    
+    def customAnnotationDialogKwargs(self, state=None):
+        posData = self.posData()
+        button = (
+            None if state is None 
+            else self.customAnnotButtonByName(state['name'])
+        )
+        reservedShortcuts = self.reservedShortcuts(excludeCustomAnnot=button)
+        kwargs = {
+            'predictorOptions': {
+                'acdc_df': self.timepointsDf(posData),
+                'SizeT': getattr(posData, 'SizeT', None),
+                'allChNames': getattr(posData, 'chNames', []),
+                'isZstack': getattr(posData, 'SizeZ', 1) > 1,
+                'isSegm3D': bool(self.isSegm3D),
+                'validateDependencies': (
+                    lambda name, predictor: self.validatePredictorDependencies(
+                        None if state is None else state['name'],
+                        name, predictor
+                    )
+                ),
+            },
+            'reservedShortcuts': reservedShortcuts,
+            'existingNames': [
+                name for name in self.customAnnotNames()
+                if state is None or name != state['name']
+            ],
+        }
+        if state is None:
+            kwargs['state'] = {
+                'type': 'Single time-point',
+                'name': '',
+                'symbol': '',
+                'shortcut': self.defaultCustomAnnotShortcut(reservedShortcuts),
+                'description': '',
+            }
+        return kwargs
+    
+    def customAnnotToolTip(self, state):
+        shortcut = state.get('shortcut') or ''
+        if shortcut:
+            shortcutText = (
+                f'Shortcut: "{shortcut}" (annotate/un-annotate the selected '
+                f'cell across its entire video history)\n'
+                f'Auto: "Shift+{shortcut}" (re-evaluate the predictor on the '
+                'selected cell)'
+            )
+        else:
+            shortcutText = 'No shortcut'
+        predictor = CustomAnnotationPredictor.describe(state.get('predictor'))
+        if state.get('autoApply', False):
+            predictor = f'{predictor} (auto apply on unvisited cells)'
+        lines = [
+            f'Custom annotation: {state["name"]}', '',
+            'Usage: select a cell and press the shortcut, or activate the '
+            'button and RIGHT-click on a cell.',
+            shortcutText, f'Predictor: {predictor}'
+        ]
+        description = state.get('description', '')
+        if description:
+            lines.extend(['', f'Description: {description}'])
+        lines.extend([
+            '', 'RIGHT-click on the button to modify, re-evaluate, clear or '
+            'remove the annotation.'
+        ])
+        return '\n'.join(lines)
+    
+    def setCustomAnnotShortcut(self, button, shortcut):
+        """The shortcut annotates the selected cell across its entire history
+        (instead of activating the button) and Shift+shortcut re-evaluates 
+        the predictor on the selected cell."""
+        button.setShortcut(QKeySequence())
+        actions = self.customAnnotShortcutActions.get(button)
+        if actions is None:
+            toggleAction = QAction(self)
+            toggleAction.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            toggleAction.triggered.connect(
+                partial(self.customAnnotShortcutTriggered, button)
+            )
+            autoAction = QAction(self)
+            autoAction.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
+            autoAction.triggered.connect(
+                partial(self.reevaluateDisplayedCellCustomAnnot, button)
+            )
+            self.addAction(toggleAction)
+            self.addAction(autoAction)
+            actions = (toggleAction, autoAction)
+            self.customAnnotShortcutActions[button] = actions
+        toggleAction, autoAction = actions
+        if isinstance(shortcut, QKeySequence):
+            shortcut = shortcut.toString()
+        keySequence = QKeySequence(shortcut or '')
+        autoKeySequence = QKeySequence()
+        if not keySequence.isEmpty() and 'Shift' not in keySequence.toString():
+            autoKeySequence = QKeySequence(f'Shift+{keySequence.toString()}')
+        toggleAction.setShortcut(keySequence)
+        autoAction.setShortcut(autoKeySequence)
+        name = getattr(button, 'name', '')
+        toggleAction.setText(f'Annotate "{name}"')
+        autoAction.setText(f'Re-evaluate "{name}" predictor')
+    
+    def initCustomAnnotColumn(self, button, name):
+        for acdc_df in self.allAcdcDfs():
+            self.ensureCustomAnnotColumn(acdc_df, name)
+        self.updateColumnsList()
+    
+    def renameCustomAnnotColumn(self, oldName, newName):
+        self.renamePhaseTranslatorInput(oldName, newName)
+        for acdc_df in self.allAcdcDfs():
+            if oldName in acdc_df.columns:
+                acdc_df.rename(columns={oldName: newName}, inplace=True)
+        self.updateColumnsList()
+        self.plotMeasurements()
+    
+    def removeCustomAnnotColumn(self, name):
+        for acdc_df in self.allAcdcDfs():
+            acdc_df.drop(columns=name, errors='ignore', inplace=True)
+        self.updateColumnsList()
+        self.plotMeasurements()
+    
+    def onCustomAnnotationChanged(self, button, oldState=None):
+        state = self.customAnnotDict[button]['state']
+        name = state['name']
+        oldName = name if oldState is None else oldState['name']
+        if oldName != name:
+            for key in list(self.customAnnotAutoPredictions.keys()):
+                if key[1] == oldName:
+                    self.customAnnotAutoPredictions[(key[0], name)] = (
+                        self.customAnnotAutoPredictions.pop(key)
+                    )
+            for posData in self.data or []:
+                edited = self.editedCustomAnnotCells(posData)
+                if oldName in edited:
+                    edited[name] = edited.pop(oldName)
+        predictorChanged = (
+            oldState is None 
+            or oldState.get('predictor') != state.get('predictor')
+        )
+        if predictorChanged:
+            self.clearCustomAnnotPredictionsTracking(name)
+        
+        button.extraContextMenuActions = []
+        if self.customAnnotHasPredictor(button):
+            button.extraContextMenuActions.extend([
+                (
+                    'Re-evaluate predictor on all cells', 
+                    self.reevaluateAllCellsCustomAnnot
+                ),
+                (
+                    'Re-evaluate predictor on displayed cell', 
+                    self.reevaluateDisplayedCellCustomAnnot
+                ),
+            ])
+        button.extraContextMenuActions.append(
+            ('Clear annotations of current position', self.clearCustomAnnotations)
+        )
+        self.updateReevaluateCustomAnnotationActions()
+        if not self.data:
+            return
+        self.ensureCustomAnnotPredictions()
+        self.refreshCustomAnnotations([name])
+    
+    def onCustomAnnotationRemoved(self, button, state):
+        for action in self.customAnnotShortcutActions.pop(button, ()):
+            self.removeAction(action)
+            action.deleteLater()
+        name = state['name']
+        self.clearCustomAnnotPredictionsTracking(name)
+        for posData in self.data or []:
+            self.editedCustomAnnotCells(posData).pop(name, None)
+        self.updateReevaluateCustomAnnotationActions()
+    
+    def clearCustomAnnotPredictionsTracking(self, name):
+        for key in list(self.customAnnotAutoPredictions.keys()):
+            if key[1] == name:
+                self.customAnnotAutoPredictions.pop(key)
+    
+    def customAnnotHasPredictor(self, button):
+        predictor = self.customAnnotDict[button]['state'].get('predictor')
+        return (
+            isinstance(predictor, dict) 
+            and predictor.get('type', timepoint_predictors.PREDICTOR_NONE)
+            != timepoint_predictors.PREDICTOR_NONE
+        )
+    
+    def editedCustomAnnotCells(self, posData=None):
+        """Cells with manual annotation edits {name: set of Cell_IDs}."""
+        if posData is None:
+            posData = self.posData()
+        edited = getattr(posData, 'customAnnotEdited', None)
+        if edited is None:
+            edited = defaultdict(set)
+            posData.customAnnotEdited = edited
+        return edited
+    
+    def customAnnotPredictionKey(self, posData, name):
+        return (os.path.normcase(os.path.abspath(posData.pos_path)), name)
+    
+    def customAnnotFrameIDs(self, name, frame_i=None, posData=None):
+        """IDs annotated with `name` at `frame_i` (default current frame)."""
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None or name not in acdc_df.columns:
+            return []
+        if frame_i is None:
+            frame_i = self.frame_i
+        try:
+            values = acdc_df[name].xs(frame_i, level='frame_i')
+        except KeyError:
+            return []
+        return [int(ID) for ID in values.index[values.to_numpy() != 0]]
+    
+    def replaceCustomAnnotations(self, name, annotated, IDs, posData=None):
+        """Replace the cell-wide assignments of IDs from predictor results."""
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None:
+            return False
+        if name in acdc_df.columns:
+            values = pd.to_numeric(acdc_df[name], errors='coerce').fillna(0)
+            values = (values.to_numpy() != 0).astype(int)
+        else:
+            values = np.zeros(len(acdc_df), dtype=int)
+        values[acdc_df.index.get_level_values('Cell_ID').isin(list(IDs))] = 0
+        markedIDs = {
+            ID for ID, frames in annotated.items() if frames and ID in IDs
+        }
+        values[acdc_df.index.get_level_values('Cell_ID').isin(markedIDs)] = 1
+        acdc_df[name] = values
+        return True
+    
+    def refreshCustomAnnotations(self, names=None):
+        """Redraw the annotations and the plot if it shows one of `names`."""
+        self.doCustomAnnotation(0)
+        if names is None:
+            names = self.customAnnotNames()
+        plotted = set(self.checkedColumns()) | set(self.measurementsAxes.values())
+        if plotted.intersection(names):
+            self.plotMeasurements()
+    
+    def toggleCustomAnnotation(self, button, ID, frame_i=None):
+        """Toggle one Cell_ID across its entire history in this position."""
+        if frame_i is None:
+            frame_i = self.frame_i
+        name = self.customAnnotDict[button]['state']['name']
+        if not self.cellHasRow(ID, frame_i):
+            self.statusBar().showMessage(
+                f'Cell ID {ID} is not in the measurements table at frame n. '
+                f'{frame_i+1}.', 5000
+            )
+            return False
+        acdc_df = self.acdc_df
+        self.ensureCustomAnnotColumn(acdc_df, name)
+        annotated = acdc_df.at[(frame_i, ID), name] != 0
+        acdc_df.loc[
+            acdc_df.index.get_level_values('Cell_ID') == ID, name
+        ] = 0 if annotated else 1
+        self.editedCustomAnnotCells()[name].add(int(ID))
+        action = 'Removed' if annotated else 'Added'
+        self.statusBar().showMessage(
+            f'{action} "{name}" annotation for Cell ID {ID} across its '
+            'entire video history.', 5000
+        )
+        return True
+    
+    def customAnnotShortcutTriggered(self, button, checked=False):
+        if not self.data or button not in self.customAnnotDict:
+            return
+        if self.selectedID is None:
+            self.statusBar().showMessage('Select a cell to annotate.', 5000)
+            return
+        if self.toggleCustomAnnotation(button, int(self.selectedID)):
+            self.refreshCustomAnnotations([button.name])
+    
+    def annotateClickedObject(self, xdata, ydata):
+        """Annotate the object under the right-click with the active custom 
+        annotation (as in `gui.guiWin` right-click with an active button)."""
+        button = self.customAnnotButton
+        posData = self.posData()
+        lab2D = self.get_2Dlab(posData.lab)
+        try:
+            ID = int(lab2D[ydata, xdata])
+        except IndexError:
+            ID = 0
+        if ID == 0:
+            self.statusBar().showMessage(
+                'RIGHT-click on a cell to annotate it.', 5000
+            )
+            return
+        self.doCustomAnnotation(ID)
+        if not button.keepToolActive:
+            button.setChecked(False)
+    
+    def doCustomAnnotation(self, ID):
+        """Toggle the annotation of `ID` across its entire history with the
+        active button (pass 0 to only redraw) and draw the annotations of 
+        the current frame."""
+        if not self.data or not self.customAnnotDict:
+            return
+        if self.switchPlaneCombobox.depthAxes() != 'z':
+            self.clearCustomAnnot()
+            return
+        
+        if ID > 0 and self.customAnnotButton in self.customAnnotDict:
+            button = self.customAnnotButton
+            if self.toggleCustomAnnotation(button, ID):
+                plotted = (
+                    set(self.checkedColumns()) 
+                    | set(self.measurementsAxes.values())
+                )
+                if button.name in plotted:
+                    self.plotMeasurements()
+        
+        buttons = self.customAnnotButtonsToDraw()
+        for button, annot in self.customAnnotDict.items():
+            if button not in buttons:
+                self.clearScatterPlotCustomAnnotButton(button)
+                continue
+            IDs = self.customAnnotFrameIDs(annot['state']['name'])
+            self.drawCustomAnnotationIDs(button, IDs)
+        if buttons:
+            return buttons[0]
+    
+    def runCustomAnnotPredictor(
+            self, button, posData=None, IDs=None, skipIDs=(), force=False
+        ):
+        """Same as `runTimepointPredictor` for a custom annotation: annotate 
+        the entire cell history after boolean consolidation.
+        
+        If `IDs` is not None, only these cells are predicted. Cells in 
+        `skipIDs` keep their current annotations. Unless `force` is True, 
+        require `autoApply` and skip cells already predicted for the same 
+        position path and annotation. Returns False if the prediction 
+        failed."""
+        if not self.data or button not in self.customAnnotDict:
+            return False
+        state = self.customAnnotDict[button]['state']
+        if not force and not state.get('autoApply', False):
+            return True
+        if not self.customAnnotHasPredictor(button):
+            return True
+        if posData is None:
+            posData = self.posData()
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None:
+            return True
+        name = state['name']
+        predictionKey = self.customAnnotPredictionKey(posData, name)
+        alreadyPredicted = self.customAnnotAutoPredictions[predictionKey]
+        allIDs = {
+            int(ID) for ID in acdc_df.index.get_level_values('Cell_ID').unique()
+        }
+        IDs = allIDs if IDs is None else allIDs.intersection(IDs)
+        IDs -= set(skipIDs)
+        if not force:
+            IDs -= alreadyPredicted
+        if not IDs:
+            return True
+        try:
+            # All cells are passed since predictors can use other cells
+            predicted = CustomAnnotationPredictor.predict(
+                acdc_df, state['predictor'], 
+                SizeT=getattr(posData, 'SizeT', None), IDs=IDs
+            )
+        except Exception as err:
+            if not force:
+                # Do not retry (and warn again) automatically
+                alreadyPredicted.update(IDs)
+            self.logger.exception('Custom annotation prediction failed')
+            self.measurementProcessingWarning(
+                'Custom annotation prediction failed', 
+                f'Predicting "{name}" failed:\n\n{err}'
+            )
+            return False
+        
+        self.replaceCustomAnnotations(name, predicted, IDs, posData)
+        self.editedCustomAnnotCells(posData)[name].difference_update(IDs)
+        alreadyPredicted.update(IDs)
+        
+        numFrames = sum(len(frames) for frames in predicted.values())
+        self.statusBar().showMessage(
+            f'Predicted {numFrames} "{name}" annotation(s) for '
+            f'{len(predicted)} cell(s).', 5000
+        )
+        return True
+    
+    def reevaluateCustomAnnotations(self, buttons=None, IDs=None, posData=None):
+        """Re-run the predictors of the custom annotations `buttons` 
+        (default all with a predictor) on cells `IDs` (default all cells), 
+        warning if manual edits would be overwritten. Returns False if 
+        cancelled."""
+        if not self.data:
+            return False
+        if posData is None:
+            posData = self.posData()
+        if buttons is None:
+            buttons = list(self.customAnnotDict.keys())
+        buttons = [
+            button for button in buttons
+            if button in self.customAnnotDict 
+            and self.customAnnotHasPredictor(button)
+        ]
+        if not buttons:
+            self.statusBar().showMessage(
+                'No custom annotation with a predictor.', 5000
+            )
+            return False
+        columns = [self.customAnnotDict[button]['state']['name'] for button in buttons]
+        return self.evaluatePredictorColumns(columns, IDs, posData)
+    
+    def reevaluateAllCellsCustomAnnot(self, button=None, checked=False):
+        buttons = None if button is None else [button]
+        return self.reevaluateCustomAnnotations(buttons=buttons)
+
+    def reevaluateAllCustomAnnotations(self, checked=False):
+        return self.reevaluateAllCellsCustomAnnot()
+
+    def reevaluateDisplayedCellCustomAnnotations(self, checked=False):
+        return self.reevaluateDisplayedCellCustomAnnot()
+
+    def reevaluateDisplayedCellCustomAnnot(self, button=None, checked=False):
+        if not self.data:
+            return False
+        if self.selectedID is None:
+            self.statusBar().showMessage('Select a cell first.', 5000)
+            return False
+        buttons = None if button is None else [button]
+        return self.reevaluateCustomAnnotations(
+            buttons=buttons, IDs=[int(self.selectedID)]
+        )
+    
+    def clearCustomAnnotations(self, button, checked=False):
+        """Remove all the annotations of `button` in the current position."""
+        if not self.data or button not in self.customAnnotDict:
+            return
+        acdc_df = self.timepointsDf()
+        if acdc_df is None:
+            return
+        name = self.customAnnotDict[button]['state']['name']
+        IDs = set(acdc_df.index.get_level_values('Cell_ID'))
+        self.replaceCustomAnnotations(name, {}, IDs)
+        self.editedCustomAnnotCells()[name] = set()
+        self.refreshCustomAnnotations([name])
+    
+    def ensureCustomAnnotPredictions(self, posData=None):
+        """Evaluate the automatic predictors of the custom annotations on 
+        the displayed cell if not predicted yet."""
+        self.ensurePredictorPredictions(posData)
+    
+    def customAnnotConfiguration(self):
+        return [
+            custom_annot_state_to_save(annot['state'])
+            for annot in self.customAnnotDict.values()
+        ]
+    
+    @staticmethod
+    def validateCustomAnnotConfiguration(customAnnotations):
+        if not isinstance(customAnnotations, list):
+            raise ValueError('Invalid custom annotations in configuration.')
+        names = []
+        for state in customAnnotations:
+            if not isinstance(state, dict):
+                raise ValueError('Invalid custom annotation in configuration.')
+            name = state.get('name')
+            if not isinstance(name, str) or not name:
+                raise ValueError('Invalid custom annotation name.')
+            for key in ('symbol', 'shortcut'):
+                if not isinstance(state.get(key, ''), str):
+                    raise ValueError(
+                        f'Invalid {key} of custom annotation "{name}".'
+                    )
+            color = state.get('symbolColor')
+            if (not isinstance(color, (list, tuple)) 
+                    or len(color) not in (3, 4)
+                    or any(type(value) is not int for value in color)):
+                raise ValueError(
+                    f'Invalid symbol color of custom annotation "{name}".'
+                )
+            if type(state.get('autoApply', False)) is not bool:
+                raise ValueError(
+                    f'Invalid auto apply of custom annotation "{name}".'
+                )
+            predictor = state.get('predictor')
+            if predictor is not None:
+                CustomAnnotationPredictor.validate(predictor)
+            names.append(name)
+        if len(set(names)) != len(names):
+            raise ValueError('Duplicated custom annotation names.')
+    
+    def setCustomAnnotations(self, states):
+        """Replace the custom annotations with `states` (e.g., from a 
+        configuration). Requires loaded data."""
+        self.setUncheckedAllCustomAnnotButtons()
+        self.reinitCustomAnnot()
+        if not self.data or not states:
+            return
+        self.readSavedCustomAnnot()
+        with self.deferPredictorPredictions():
+            for savedState in states:
+                symbolColor = pg.mkColor(tuple(savedState['symbolColor']))
+                state = {
+                    'type': 'Single time-point', 'symbol': '', 'shortcut': '',
+                    'description': '', 'keepActive': True, 'isHideChecked': True,
+                    **savedState, 'symbolColor': symbolColor
+                }
+                button = self.addCustomAnnotationItems(
+                    custom_annot_symbol(state), symbolColor, state['shortcut'],
+                    self.customAnnotToolTip(state), state['name'],
+                    state['keepActive'], state['isHideChecked'], state
+                )
+                self.onCustomAnnotationChanged(button)
+        self.saveCustomAnnot(only_temp=True)
+    
+    def clipFrame(self, frame_i):
+        return int(min(max(frame_i, 0), self.posData().SizeT-1))
+    
+    def hoveredMeasurementsPlotFrame(self):
+        """Frame index under the mouse cursor in the measurements plot or 
+        None if the cursor is not over the plot."""
+        plot = self.measurementsPlot
+        if not plot.isVisible():
+            return
+        pos = plot.mapFromGlobal(QCursor.pos())
+        if not plot.rect().contains(pos):
+            return
+        viewPos = plot.getViewBox().mapSceneToView(plot.mapToScene(pos))
+        return self.clipFrame(int(round(viewPos.x())) - 1)
+    
+    def timepointActionTriggered(self, uid, checked=False):
+        identifier = self.timepointIdentifier(uid)
+        frame_i = self.hoveredMeasurementsPlotFrame()
+        if frame_i is None:
+            toolbar = self.timepointsToolBar
+            toolbarPos = toolbar.mapFromGlobal(QCursor.pos())
+            if not toolbar.isVisible() or not toolbar.rect().contains(toolbarPos):
+                self.statusBar().showMessage(
+                    f'Hover over the measurements plot to add a '
+                    f'"{identifier.name}" time point with its shortcut.', 5000
+                )
+                return
+            frame_i = self.frame_i if self.data else None
+        self.addTimepoint(uid, frame_i)
+    
+    def addTimepoint(self, uid, frame_i, ID=None):
+        identifier = self.timepointIdentifier(uid)
+        if not self.data or frame_i is None:
+            self.statusBar().showMessage('Load data to add time points.', 5000)
+            return False
+        if self.measurementsModeCombobox.currentIndex() == 1:
+            self.statusBar().showMessage(
+                'Switch to "Time course" mode to add time points.', 5000
+            )
+            return False
+        if ID is None:
+            ID = self.selectedID
+        if ID is None:
+            self.statusBar().showMessage('Select a cell to add time points.', 5000)
+            return False
+        frame_i = self.clipFrame(frame_i)
+        cellTimepoints = self.cellTimepoints(uid, ID)
+        if frame_i in cellTimepoints:
+            self.statusBar().showMessage(
+                f'"{identifier.name}" is already at frame n. {frame_i+1} '
+                f'for Cell ID {ID}.', 5000
+            )
+            return False
+        if not self.cellHasRow(ID, frame_i):
+            self.statusBar().showMessage(
+                f'Cell ID {ID} is not in the measurements table at frame n. '
+                f'{frame_i+1}.', 5000
+            )
+            return False
+        self.replaceTimepoints(uid, {ID: cellTimepoints + [frame_i]}, [ID])
+        self.markTimepointEdited(uid, ID)
+        self.updateTimepointLines()
+        self.statusBar().showMessage(
+            f'Added "{identifier.name}" at frame n. {frame_i+1} for '
+            f'Cell ID {ID}.', 5000
+        )
+        return True
+    
+    def removeTimepoint(self, uid, ID, frame_i):
+        frames = [f for f in self.cellTimepoints(uid, ID) if f != frame_i]
+        self.replaceTimepoints(uid, {ID: frames}, [ID])
+    
+    def timepointLineRemoveRequested(self, line):
+        self.removeTimepoint(line.uid, line.ID, line.frame_i)
+        self.markTimepointEdited(line.uid, line.ID)
+        self.updateTimepointLines()
+    
+    def timepointLineMoved(self, line):
+        new_frame_i = self.clipFrame(int(round(line.value())) - 1)
+        # A time point can only sit on a frame where the cell has a row
+        if (new_frame_i != line.frame_i 
+                and self.cellHasRow(line.ID, new_frame_i)):
+            self.removeTimepoint(line.uid, line.ID, line.frame_i)
+            frames = self.cellTimepoints(line.uid, line.ID)
+            self.replaceTimepoints(
+                line.uid, {line.ID: frames + [new_frame_i]}, [line.ID]
+            )
+            self.markTimepointEdited(line.uid, line.ID)
+        # Rebuild the lines after the drag event has been fully handled
+        QTimer.singleShot(0, self.updateTimepointLines)
+    
+    def updateTimepointLines(self):
+        for line in self.timepointLines:
+            self.measurementsPlot.removeItem(line)
+        self.timepointLines = []
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        if not self.data or isComparison or self.selectedID is None:
+            return
+        for identifier in self.timepointIdentifiers:
+            frames = self.cellTimepoints(identifier.uid, self.selectedID)
+            for frame_i in frames:
+                line = _TimepointLine(identifier, self.selectedID, frame_i)
+                line.sigPositionChangeFinished.connect(self.timepointLineMoved)
+                line.sigRemoveRequested.connect(
+                    self.timepointLineRemoveRequested
+                )
+                self.measurementsPlot.addItem(line, ignoreBounds=True)
+                self.timepointLines.append(line)
+    
+    def getMeasurementsDf(self):
+        """Get the subset of acdc_df for the selected ID (index is frame_i)"""
+        if self.acdc_df is None or self.selectedID is None:
+            return
+        
+        try:
+            df_ID = self.acdc_df.xs(self.selectedID, level='Cell_ID')
+        except KeyError:
+            return
+        
+        return df_ID.sort_index()
+    
+    def plotMeasurements(self, *args):
+        for item in self.measurementsPlot.listDataItems():
+            self.measurementsPlot.removeItem(item)
+        self.measurementsLegend.clear()
+        self.updateCurrentFrameLine()
+        self.updateColumnsIcons()
+
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        self.currentFrameLine.setVisible(not isComparison)
+        self.updateTimepointLines()
+        self.updatePhaseBand()
+        if not self.data:
+            self.measurementsPlot.setTitle('No data loaded')
+            return
+        if isComparison:
+            self.plotMeasurementsComparison()
+            return
+
+        self.measurementsPlot.setLabel('bottom', 'Frame n.')
+        isNormalized = self.normalizeCheckbox.isChecked()
+        self.measurementsPlot.setLabel(
+            'left', 'Normalized value' if isNormalized else 'Value'
+        )
+        
+        posData = self.posData()
+        self.measurementsPlot.setXRange(1, max(posData.SizeT, 2), padding=0.02)
+        
+        df_ID = self.getMeasurementsDf()
+        columns = self.checkedColumns()
+        if self.selectedID is None:
+            self.measurementsPlot.setTitle('')
+        else:
+            self.measurementsPlot.setTitle(f'Cell ID {self.selectedID}')
+        
+        if df_ID is None or not columns:
+            return
+        
+        frames_n = df_ID.index.get_level_values(0).to_numpy() + 1
+        phases = self.phaseValues(df_ID)
+        for c, col in enumerate(columns):
+            if col not in df_ID.columns:
+                continue
+            values = pd.to_numeric(df_ID[col], errors='coerce').to_numpy()
+            rawValues = values.astype(float)
+            values = rawValues
+            if isNormalized:
+                values = self._normalize(values)
+            color = self.getSignalColor(col, c, len(columns))
+            rules = self.conditionalFormatting.get(col, [])
+            matched = self.cellConditionalFormatting(df_ID, col, rules)
+            pointData = [
+                {
+                    'frame_i': int(frame_n-1),
+                    'Cell_ID': self.selectedID,
+                    'values': {col: (raw, value)},
+                    'normalized': isNormalized,
+                    'formatting': (
+                        rules[m]['condition'] if m >= 0 else None
+                    ),
+                    'phase': phase,
+                }
+                for frame_n, raw, value, m, phase
+                in zip(frames_n, rawValues, values, matched, phases)
+            ]
+            brushes = [
+                pg.mkBrush(
+                    formatting_color(rules[m]['color'], color) if m >= 0
+                    else color
+                )
+                for m in matched
+            ]
+            # Segment i (point i to i+1) takes the format of point i. The
+            # main curve draws only unformatted segments; each rule draws
+            # its segments as separate pairs below the main curve's points.
+            finite = np.isfinite(values)
+            segments = finite[:-1] & finite[1:]
+            connect = np.append(segments & (matched[:-1] < 0), False)
+            for r, rule in enumerate(rules):
+                idx = np.flatnonzero(segments & (matched[:-1] == r))
+                if not len(idx):
+                    continue
+                pairs = np.column_stack((idx, idx + 1)).ravel()
+                segmentsItem = self.measurementsPlot.plot(
+                    frames_n[pairs], values[pairs], connect='pairs',
+                    pen=pg.mkPen(
+                        color=formatting_color(rule['color'], color), width=2
+                    )
+                )
+                segmentsItem.setZValue(-1)
+            item = self.measurementsPlot.plot(
+                frames_n, values, name=col,
+                pen=pg.mkPen(color=color, width=2), connect=connect,
+                symbol='o', symbolSize=5, symbolBrush=brushes, symbolPen=None,
+                data=pointData
+            )
+            self.connectSignalPoints(item)
+
+    def measurementsModeChanged(self, *args):
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        if self._measurementsMode == 0:
+            self._timeCourseColumns = set(self.checkedColumns())
+        self._measurementsMode = self.measurementsModeCombobox.currentIndex()
+        columns = (
+            set(self.measurementsAxes.values()) if isComparison
+            else self._timeCourseColumns
+        )
+        self.columnsModel.blockSignals(True)
+        for item in self.columnsModel.measurementItems():
+            item.setCheckState(
+                Qt.Checked if item.text() in columns else Qt.Unchecked
+            )
+        self.columnsModel.blockSignals(False)
+        self.columnsListWidget.setToolTip(
+            'Click two columns to plot: first X, then Y. '
+            'Click a selected column again to free its axis.'
+            if isComparison else
+            'Click a column to plot/unplot it. Right-click on a column to '
+            'change its color or conditional formatting.'
+        )
+        self.plotMeasurements()
+
+    def measurementColumnChanged(self, item):
+        if getattr(self, '_isUpdatingColumnsList', False):
+            return
+        if not item.isCheckable():
+            return
+        if self.measurementsModeCombobox.currentIndex() == 1:
+            col = item.text()
+            if item.checkState() != Qt.Checked:
+                for axis, measurement in self.measurementsAxes.items():
+                    if measurement == col:
+                        self.measurementsAxes[axis] = ''
+            elif col not in self.measurementsAxes.values():
+                axis = next(
+                    (axis for axis, measurement in self.measurementsAxes.items()
+                     if not measurement), None
+                )
+                if axis is None:
+                    self.columnsModel.blockSignals(True)
+                    item.setCheckState(Qt.Unchecked)
+                    self.columnsModel.blockSignals(False)
+                    self.statusBar().showMessage(
+                        'Two measurements are already selected. Uncheck X or Y '
+                        'before selecting another measurement.', 5000
+                    )
+                else:
+                    self.measurementsAxes[axis] = col
+        self.plotMeasurements()
+
+    def plotMeasurementsComparison(self):
+        xCol = self.measurementsAxes['X']
+        yCol = self.measurementsAxes['Y']
+        isNormalized = self.normalizeCheckbox.isChecked()
+        suffix = ' (normalized)' if isNormalized else ''
+        self.measurementsPlot.setLabel('bottom', f'{xCol}{suffix}')
+        self.measurementsPlot.setLabel('left', f'{yCol}{suffix}')
+        self.measurementsPlot.setTitle('All cells, all frames (current position)')
+        self.measurementsPlot.enableAutoRange()
+        if self.acdc_df is None:
+            self.measurementsPlot.setTitle('No measurements available')
+            return
+        if not xCol or not yCol:
+            self.measurementsPlot.setTitle('Select X and Y measurements from the column list')
+            return
+
+        df = self.acdc_df
+        frames = df.index.get_level_values('frame_i').to_numpy()
+        IDs = df.index.get_level_values('Cell_ID').to_numpy()
+        inRange = (frames >= 0) & (frames < self.posData().SizeT) & (IDs > 0)
+        df = df.loc[inRange]
+        frames, IDs = frames[inRange], IDs[inRange]
+        rawX = pd.to_numeric(df[xCol], errors='coerce').to_numpy(dtype=float)
+        rawY = pd.to_numeric(df[yCol], errors='coerce').to_numpy(dtype=float)
+        phases = self.phaseValues(df)
+        finite = np.isfinite(rawX) & np.isfinite(rawY)
+        frames, IDs = frames[finite], IDs[finite]
+        rawX, rawY = rawX[finite], rawY[finite]
+        phases = phases[finite]
+        if not len(rawX):
+            self.measurementsPlot.setTitle('No finite paired measurements')
+            return
+        x = self._normalize(rawX) if isNormalized else rawX
+        y = self._normalize(rawY) if isNormalized else rawY
+        pointData = [
+            {
+                'frame_i': int(frame_i),
+                'Cell_ID': int(ID),
+                'values': {xCol: (rx, vx), yCol: (ry, vy)},
+                'normalized': isNormalized,
+                'phase': phase,
+            }
+            for frame_i, ID, rx, ry, vx, vy, phase
+            in zip(frames, IDs, rawX, rawY, x, y, phases)
+        ]
+        brush = self.getSignalColor(yCol)
+        if self.isShowingPhases():
+            brush = self.comparisonPhaseBrushes(phases)
+        item = self.measurementsPlot.plot(
+            x, y, pen=None, symbol='o', symbolSize=7,
+            symbolBrush=brush, symbolPen=None, data=pointData
+        )
+        self.connectSignalPoints(item)
+
+    def hasPhaseColumn(self):
+        return self.acdc_df is not None and 'phase' in self.acdc_df.columns
+
+    def isShowingPhases(self):
+        return self.showPhasesCheckbox.isChecked() and self.hasPhaseColumn()
+
+    def showPhasesToggled(self, checked):
+        self._set_setting_value(
+            'measurements_viewer_show_phases', 'Yes' if checked else 'No'
+        )
+        self.plotMeasurements()
+
+    @staticmethod
+    def phaseValues(df):
+        """Phase name per row of df ('' if unassigned or no phase column)."""
+        if 'phase' not in df.columns:
+            return np.full(len(df), '', dtype=object)
+        return df['phase'].map(
+            lambda value: value if isinstance(value, str) else ''
+        ).to_numpy(dtype=object)
+
+    def phaseColorMap(self):
+        """{phase name: QColor} of the rules' phases and of any other phase
+        found in the current table (e.g., from an exported CSV)."""
+        names = phase_translator.phase_names(self.phaseTranslatorRules)
+        if self.hasPhaseColumn():
+            extra = set(self.phaseValues(self.acdc_df)).difference(names, {''})
+            names += sorted(extra)
+        return {
+            name: QColor(color) for name, color in
+            phase_translator.phase_colors(names, self.phaseColors).items()
+        }
+
+    def comparisonPhaseBrushes(self, phases):
+        """Per-point brushes by phase; adds a legend entry per shown phase."""
+        colors = self.phaseColorMap()
+        unassigned = pg.mkBrush(150, 150, 150, 120)
+        brushes = {name: pg.mkBrush(color) for name, color in colors.items()}
+        present = set(phases)
+        for name, brush in brushes.items():
+            if name in present:
+                self.measurementsLegend.addItem(
+                    pg.ScatterPlotItem(symbol='o', brush=brush, pen=None),
+                    name
+                )
+        if '' in present:
+            self.measurementsLegend.addItem(
+                pg.ScatterPlotItem(symbol='o', brush=unassigned, pen=None),
+                'No phase'
+            )
+        return [brushes.get(phase, unassigned) for phase in phases]
+
+    def syncPhaseBandAxisWidth(self):
+        width = self.measurementsPlot.getAxis('left').width()
+        self.phaseBandPlot.getAxis('left').setWidth(int(width))
+
+    @staticmethod
+    def phaseRuns(frames, phases):
+        """Contiguous runs [(start frame, end frame, phase)] of the same
+        nonempty phase; a missing frame or a phase change ends a run."""
+        runs = []
+        for frame, phase in zip(frames, phases):
+            if not phase:
+                continue
+            if runs and runs[-1][2] == phase and runs[-1][1] == frame - 1:
+                runs[-1][1] = frame
+            else:
+                runs.append([frame, frame, phase])
+        return [tuple(run) for run in runs]
+
+    def updatePhaseBand(self):
+        """Draw the selected cell's phases as colored bars below the time
+        course. Hidden in comparison mode, without phases or when disabled."""
+        for item in self.phaseBandItems:
+            self.phaseBandPlot.removeItem(item)
+        self.phaseBandItems = []
+        self.phaseBandPlot.setToolTip('')
+        self.showPhasesCheckbox.setEnabled(self.hasPhaseColumn())
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        df_ID = None
+        if self.data and not isComparison and self.isShowingPhases():
+            df_ID = self.getMeasurementsDf()
+        runs = []
+        if df_ID is not None:
+            frames_n = df_ID.index.get_level_values(0).to_numpy() + 1
+            runs = self.phaseRuns(frames_n, self.phaseValues(df_ID))
+        self.phaseBandPlot.setVisible(bool(runs))
+        if not runs:
+            return
+        colors = self.phaseColorMap()
+        bars = pg.BarGraphItem(
+            x0=[start - 0.5 for start, _, _ in runs],
+            x1=[end + 0.5 for _, end, _ in runs],
+            y0=0, height=1, pen=None,
+            brushes=[pg.mkBrush(colors[phase]) for _, _, phase in runs]
+        )
+        self.phaseBandPlot.addItem(bars)
+        self.phaseBandItems.append(bars)
+        for start, end, phase in runs:
+            color = colors[phase]
+            textColor = 'k' if color.lightness() > 140 else 'w'
+            text = pg.TextItem(phase, color=textColor, anchor=(0.5, 0.5))
+            text.setPos((start + end) / 2, 0.5)
+            self.phaseBandPlot.addItem(text, ignoreBounds=True)
+            self.phaseBandItems.append(text)
+        self.phaseBandPlot.setToolTip('\n'.join(
+            f'{phase}: frames {start}-{end}' for start, end, phase in runs
+        ))
+        self.phaseBandPlot.setYRange(0, 1, padding=0)
+        self.syncPhaseBandAxisWidth()
+
+    def connectSignalPoints(self, item):
+        # PlotDataItem does not forward hover options to its scatter item.
+        item.scatter.setData(
+            x=item.xData, y=item.yData, data=item.opts['data'],
+            brush=item.opts['symbolBrush'],
+            hoverable=True, tip=self.measurementPointTip,
+            hoverSize=11, hoverBrush=pg.mkBrush(255, 100, 100)
+        )
+        item.scatter.sigClicked.connect(self.measurementPointClicked)
+
+    @staticmethod
+    def measurementPointTip(x, y, data):
+        lines = [
+            f'Cell ID: {data["Cell_ID"]}',
+            f'Frame: {data["frame_i"]+1}',
+        ]
+        for col, (raw, value) in data['values'].items():
+            lines.append(f'{col}: {raw:.6g}')
+            if data['normalized']:
+                lines.append(f'{col} (normalized): {value:.6g}')
+        if data.get('phase'):
+            lines.append(f'Phase: {data["phase"]}')
+        if data.get('formatting'):
+            lines.append(f'Formatting: {data["formatting"]}')
+        return '\n'.join(lines)
+
+    def measurementPointClicked(self, item, points, event):
+        if event.button() != Qt.LeftButton or not len(points):
+            return
+        data = points[0].data()
+        ID, frame_i = data['Cell_ID'], data['frame_i']
+        if ID not in self.IDs or not 0 <= frame_i < self.posData().SizeT:
+            self.statusBar().showMessage(
+                f'Cell ID {ID} at frame {frame_i+1} is not available.', 5000
+            )
+            return
+        # Navigating replots the measurements, deleting the clicked scatter item
+        # while pyqtgraph is still dispatching the click to it --> defer
+        QTimer.singleShot(
+            100, partial(self.navigateToSignalPoint, ID, frame_i)
+        )
+
+    def navigateToSignalPoint(self, ID, frame_i):
+        self.idScrollBar.setValue(self.IDs.index(ID))
+        self.setFrame(frame_i)
+        self.zoomToSelectedID(goToZslice=True, force=True)
+    
+    def getSignalColor(self, col, c=None, numColumns=None):
+        """Get the plotting color of column `col`: the custom color if set 
+        by the user, otherwise the default color based on the index `c` of 
+        the column among the plotted ones."""
+        color = self.measurementsColors.get(col)
+        if color is not None:
+            return color
+        
+        columns = self.checkedColumns()
+        if c is None:
+            c = columns.index(col) if col in columns else len(columns)
+        if numColumns is None:
+            numColumns = len(columns)
+        return pg.intColor(c, hues=max(numColumns, 9))
+    
+    def updateColumnsIcons(self):
+        """Show color swatches or comparison-axis markers beside columns."""
+        columns = self.checkedColumns()
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        self.columnsModel.blockSignals(True)
+        for item in self.columnsModel.measurementItems():
+            col = item.text()
+            item.setCheckable(True)
+            if isComparison:
+                axes = '/'.join(
+                    axis for axis, measurement in self.measurementsAxes.items()
+                    if measurement == col
+                )
+                item.setData(axes, Qt.AccessibleDescriptionRole)
+                if not axes:
+                    item.setIcon(QIcon())
+                    continue
+                pixmap = QPixmap(24, 16)
+                pixmap.fill(Qt.transparent)
+                painter = QPainter(pixmap)
+                painter.setPen(self.columnsListWidget.palette().text().color())
+                font = self.columnsListWidget.font()
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(pixmap.rect(), Qt.AlignCenter, axes)
+                painter.end()
+                item.setIcon(QIcon(pixmap))
+                continue
+            item.setData('', Qt.AccessibleDescriptionRole)
+            if col not in columns:
+                item.setIcon(QIcon())
+                continue
+            pixmap = QPixmap(12, 12)
+            pixmap.fill(self.getSignalColor(col))
+            item.setIcon(QIcon(pixmap))
+        self.columnsModel.blockSignals(False)
+        # Signals were blocked to avoid itemChanged, so repaint explicitly
+        self.columnsListWidget.viewport().update()
+    
+    def showColumnsContextMenu(self, pos):
+        proxy_index = self.columnsListWidget.indexAt(pos)
+        if not proxy_index.isValid():
+            return
+        source_index = self.columnsSearchProxy.mapToSource(proxy_index)
+        item = self.columnsModel.itemFromIndex(source_index)
+        if not item.isCheckable():
+            return
+        
+        col = item.text()
+        menu = QMenu(self.columnsListWidget)
+
+        plotAction = QAction('Plot', menu)
+        plotAction.setCheckable(True)
+        plotAction.setChecked(item.checkState() == Qt.Checked)
+        plotAction.toggled.connect(
+            lambda checked, item=item: item.setCheckState(
+                Qt.Checked if checked else Qt.Unchecked
+            )
+        )
+        menu.addAction(plotAction)
+        if self.measurementsModeCombobox.currentIndex() == 1:
+            menu.popup(self.columnsListWidget.viewport().mapToGlobal(pos))
+            return
+        menu.addSeparator()
+        
+        changeColorAction = QAction('Change color...', menu)
+        changeColorAction.triggered.connect(
+            lambda checked=False, col=col: self.changeSignalColor(col)
+        )
+        menu.addAction(changeColorAction)
+        
+        resetColorAction = QAction('Reset to default color', menu)
+        resetColorAction.setEnabled(col in self.measurementsColors)
+        resetColorAction.triggered.connect(
+            lambda checked=False, col=col: self.resetSignalColor(col)
+        )
+        menu.addAction(resetColorAction)
+        menu.addSeparator()
+
+        formattingAction = QAction('Conditional formatting...', menu)
+        formattingAction.triggered.connect(
+            lambda checked=False, col=col: self.editConditionalFormatting(col)
+        )
+        menu.addAction(formattingAction)
+
+        clearFormattingAction = QAction('Clear conditional formatting', menu)
+        clearFormattingAction.setEnabled(col in self.conditionalFormatting)
+        clearFormattingAction.triggered.connect(
+            lambda checked=False, col=col: self.setConditionalFormatting(
+                col, []
+            )
+        )
+        menu.addAction(clearFormattingAction)
+
+        menu.popup(self.columnsListWidget.viewport().mapToGlobal(pos))
+    
+    def changeSignalColor(self, col):
+        initialColor = pg.mkColor(self.getSignalColor(col))
+        color = QColorDialog.getColor(
+            initialColor, self, f'Select color of "{col}"',
+            parent=self
+        )
+        if not color.isValid():
+            return
+        
+        self.measurementsColors[col] = color
+        self.plotMeasurements()
+    
+    def resetSignalColor(self, col):
+        self.measurementsColors.pop(col, None)
+        self.plotMeasurements()
+
+    def cellConditionalFormatting(self, df_ID, col, rules):
+        """Rule index per row of the selected cell for column `col` (-1: no
+        rule). Errors are reported in the status bar, and the column is then
+        plotted without formatting."""
+        if not rules:
+            return np.full(len(df_ID), -1, dtype=int)
+        try:
+            return self.evaluateConditionalFormatting(
+                df_ID, rules, ID=self.selectedID,
+                SizeT=getattr(self.posData(), 'SizeT', None)
+            )
+        except Exception as err:
+            message = f'Conditional formatting of "{col}" failed: {err}'
+            if message != getattr(self, '_lastFormattingError', None):
+                self.logger.warning(message)
+            self._lastFormattingError = message
+            self.statusBar().showMessage(message, 10000)
+            return np.full(len(df_ID), -1, dtype=int)
+
+    def formattingTestCell(self):
+        """Rows and ID of the selected cell (or the first cell) to test
+        formatting conditions on, or (None, None) without data."""
+        df_ID = self.getMeasurementsDf()
+        if df_ID is not None:
+            return df_ID, self.selectedID
+        if self.acdc_df is None or self.acdc_df.empty:
+            return None, None
+        ID, df_ID = next(
+            timepoint_predictors.CellTable.iter_cells(self.acdc_df)
+        )
+        return df_ID, ID
+
+    def validateFormattingCondition(self, condition):
+        df_ID, ID = self.formattingTestCell()
+        if df_ID is None:
+            return
+        self.evaluateConditionalFormatting(
+            df_ID, [{'condition': condition, 'color': '#000000'}], ID=ID,
+            SizeT=getattr(self.posData(), 'SizeT', None)
+        )
+
+    def editFormattingCondition(self, condition):
+        posData = self.posData() if self.data else None
+        dialog = _FormattingConditionDialog(
+            getattr(posData, 'chNames', []),
+            getattr(posData, 'SizeZ', 1) > 1, bool(self.isSegm3D),
+            acdc_df=self.acdc_df, SizeT=getattr(posData, 'SizeT', None),
+            condition=condition, parent=self
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return None
+        return dialog.equation
+
+    def editConditionalFormatting(self, col):
+        dialog = ConditionalFormattingDialog(
+            col, self.conditionalFormatting.get(col, []),
+            validateCondition=self.validateFormattingCondition,
+            editCondition=self.editFormattingCondition, parent=self
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return
+        self.setConditionalFormatting(col, dialog.rules)
+
+    def setConditionalFormatting(self, col, rules):
+        if rules:
+            self.conditionalFormatting[col] = copy.deepcopy(rules)
+        else:
+            self.conditionalFormatting.pop(col, None)
+        self._lastFormattingError = None
+        self.plotMeasurements()
+    
+    @staticmethod
+    def _normalize(values):
+        finite = np.isfinite(values)
+        normalized = np.full(values.shape, np.nan, dtype=float)
+        if not finite.any():
+            return normalized
+        _min, _max = values[finite].min(), values[finite].max()
+        if _max == _min:
+            normalized[finite] = 0
+        else:
+            normalized[finite] = (values[finite] - _min) / (_max - _min)
+        return normalized
+    
+    def stepID(self, step):
+        if not self.IDs:
+            return
+        idx = int(np.clip(
+            self.idScrollBar.value() + step, 0, len(self.IDs)-1
+        ))
+        self.idScrollBar.setValue(idx)
+        
+    def currID(self):
+        if not self.IDs:
+            return None
+        idx = self.idScrollBar.value()
+        return self.IDs[idx]
+    
+    def updateScrollbars(self):
+        """Sync the navigation widgets after `posData.frame_i` was changed 
+        externally (e.g., by `SearchIDGuiElements.findID`)"""
+        frame_i = self.frame_i
+        self.navSpinBox.setValueNoEmit(frame_i+1)
+        self.resetNavigateFramesScrollbar(frame_i=frame_i)
+        self._lab = None
+        self._labKey = None
+        self.updateCurrentFrameLine()
+        self.plotMeasurements()
+        self.updateIDnotPresentLabel()
+    
+    def invertBw(self, checked, update=True):
+        # `ColorSchemeGuiElements.invertBw` inverts the text annotations of 
+        # both images of guiWin while the viewer has only the left image
+        textAnnot = self.textAnnot
+        hasLeftTextAnnot = 0 in textAnnot
+        if not hasLeftTextAnnot:
+            del self.textAnnot
+        else:
+            textAnnot[1] = _NoOpItem()
+        try:
+            super().invertBw(checked, update=update and self.isDataLoaded)
+        finally:
+            self.textAnnot = textAnnot
+            textAnnot.pop(1, None)
+        
+        self.isBwInverted = checked
+        background = graphLayoutBkgrColor if checked else darkBkgrColor
+        self.measurementsPlot.setBackground(background)
+        self.phaseBandPlot.setBackground(background)
+    
+    def highlightSearchedID(self, ID, force=False, greyOthers=True):
+        self.highlightedID = ID
+        self.highLightIDLayerImg1.clear()
+        self.searchedIDitemLeft.clear()
+        if ID == 0:
+            return
+        self.highlightSelectedID()
+    
+    def goToObjectID(self, ID):
+        if ID not in self.IDs:
+            self.statusBar().showMessage(
+                f'Cell ID {ID} does not exist in the acdc_output table.', 
+                3000
+            )
+            return
+        
+        idx = self.IDs.index(ID)
+        if self.idScrollBar.value() == idx:
+            self.setSelectedID(ID)
+        else:
+            self.idScrollBar.setValue(idx)
+    
+    def goToLostObjectID(self, ID, color=None):
+        self.goToObjectID(ID)
+    
+    def goToAcceptedLostObjectID(self, ID):
+        self.goToObjectID(ID)
+    
+    def initLookupTableLab(self):
+        self.initLabelsImageItems()
+    
+    def updateLookuptable(self, *args, **kwargs):
+        self.initLabelsImageItems()
+    
+    def update_rp(self, *args, **kwargs):
+        self.get_data()
+    
+    def clearCursors(self):
+        self.ax1_cursor.setData([], [])
+    
+    def connectLeftClickButtons(self):
+        # The viewer does not have editing tools that need to be reconnected
+        pass
+    
+    def disconnectLeftClickButtons(self):
+        pass
+    
+    def uncheckLeftClickButtons(self, sender):
+        for button in self.leftClickButtons:
+            if button == sender:
+                continue
+            if button.isChecked():
+                button.setChecked(False)
+    
+    def drawPointsLayers(self, **kwargs):
+        # Points layers are a main GUI-only feature
+        pass
+    
+    def addPointsLayersToVolumeViewer(self, *args, **kwargs):
+        pass
+    
+    def resetCursor(self):
+        while self.app.overrideCursor() is not None:
+            self.app.restoreOverrideCursor()
+    
+    def addScaleBar(self, checked):
+        super().addScaleBar(checked)
+        # Rescale once the scale bar items and the dialog are settled
+        QTimer.singleShot(0, self.autoRange)
+
+    def autoRange(self):
+        self.ax1.autoRange()
+        if self.followIDcheckbox.isChecked():
+            # Keep the view on the selected cell (e.g., after resizing the 
+            # bottom layout)
+            self.zoomToSelectedID()
+    
+    def clearComboBoxFocus(self, *args):
+        self.setFocus()
+    
+    def isScaleBarOrTimestampHighlighted(self):
+        for name in ('scaleBar', 'timestamp'):
+            item = getattr(self, name, None)
+            if item is not None and item.isHighlighted():
+                return item
+    
+    def resetCountKeyPress(self):
+        self.doubleKeyTimeElapsed = True
+        self.countKeyPress = 0
+    
+    def isHoveringRoiHandle(self, roi):
+        # Same as `gui.guiWin.gui_isHoveringRoiHandle`
+        if roi is None:
+            return False
+        try:
+            handles = roi.getHandles()
+        except Exception:
+            return False
+
+        for handle in handles:
+            try:
+                if handle.currentPen == handle.hoverPen:
+                    return True
+            except Exception:
+                continue
+        return False
+    
+    def gui_hoverEventImg1(self, event):
+        if not self.isDataLoaded:
+            return
+        
+        if event.isExit():
+            self.xHoverImg, self.yHoverImg = None, None
+            self.wcLabel.setText('')
+            self.resetCursor()
+            if self.slideshowWin is not None:
+                self.slideshowWin.setMirroredCursorPos(None, None)
+            return
+        
+        x, y = event.pos()
+        self.xHoverImg, self.yHoverImg = x, y
+        
+        if self.slideshowWin is not None:
+            self.slideshowWin.setMirroredCursorPos(x, y)
+        
+        if self.rulerButton.isChecked() and self.tempSegmentON:
+            self.drawTempRulerLine(event)
+        
+        Y, X = self.currentLab2D.shape
+        xdata, ydata = int(x), int(y)
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            self.wcLabel.setText('')
+            return
+        
+        ID = self.currentLab2D[ydata, xdata]
+        self.updatePropsWidget(ID, fromHover=True)
+        activeToolButton = self.getActiveToolButton()
+        txt = self.hoverValuesFormatted(xdata, ydata, activeToolButton, True)
+        self.checkHighlightScaleBar(x, y, activeToolButton)
+        self.checkHighlightTimestamp(x, y, activeToolButton)
+        self.wcLabel.setText(txt)
+    
+    def gui_mousePressEventImg1(self, event):
+        if not self.isDataLoaded:
+            pg.ImageItem.mousePressEvent(self.img1, event)
+            return
+        
+        if event.button() not in STANDARD_MOUSE_BUTTONS:
+            self.mousePressEvent(event)
+            return
+        
+        left_click = event.button() == Qt.MouseButton.LeftButton
+        right_click = event.button() == Qt.MouseButton.RightButton
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        
+        isZoomRectActive = self.zoomRectButton.isChecked()
+        if isZoomRectActive and self.isHoveringRoiHandle(self.zoomRectItem):
+            event.ignore()
+            return
+        
+        if left_click and self.rulerButton.isChecked():
+            if not self.tempSegmentON:
+                self.ax1_rulerAnchorsItem.setData([xdata], [ydata])
+                self.tempSegmentON = True
+            else:
+                modifiers = QGuiApplication.keyboardModifiers()
+                ctrl = modifiers == Qt.ControlModifier
+                self.tempSegmentON = False
+                xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
+                x0, y0 = xxRA[0], yyRA[0]
+                if ctrl:
+                    x1, y1 = transformation.snap_xy_to_closest_angle(
+                        x0, y0, xdata, ydata
+                    )
+                else:
+                    x1, y1 = xdata, ydata
+                lengthText = self.getRulerLengthText()
+                self.ax1_rulerPlotItem.setData(
+                    [x0, x1], [y0, y1], lengthText=lengthText
+                )
+                self.ax1_rulerAnchorsItem.setData([x0, x1], [y0, y1])
+            return
+        
+        if isZoomRectActive and (left_click or right_click):
+            if left_click:
+                self.zoomRectItem.setPos((xdata, ydata))
+                self.isMouseDragImg1 = True
+            else:
+                try:
+                    xRange, yRange = self.zoomRectItem.getLastRange()
+                    self.ax1.setRange(xRange=xRange, yRange=yRange, padding=0)
+                except Exception as err:
+                    QTimer.singleShot(100, self.autoRange)
+            return
+        
+        highlightedItem = self.isScaleBarOrTimestampHighlighted()
+        if left_click and highlightedItem is not None:
+            highlightedItem.mousePressed(x, y)
+            return
+        
+        if right_click and self.customAnnotButton is not None:
+            self.annotateClickedObject(xdata, ydata)
+            return
+        
+        if right_click:
+            screenPos = event.screenPos()
+            self.imgGradShowContextMenu(screenPos.x(), screenPos.y())
+            return
+        
+        pg.ImageItem.mousePressEvent(self.img1, event)
+        event.ignore()
+    
+    def imgGradShowContextMenu(self, x, y):
+        # Same as `gui.guiWin.gui_imgGradShowContextMenu`
+        highlightedItem = self.isScaleBarOrTimestampHighlighted()
+        if highlightedItem is not None:
+            highlightedItem.showContextMenu(x, y)
+            return
+        self.imgGrad.gradient.menu.popup(QPoint(int(x), int(y)))
+    
+    def gui_mouseDragEventImg1(self, event):
+        if not self.isDataLoaded:
+            pg.ImageItem.mouseMoveEvent(self.img1, event)
+            return
+        
+        x, y = event.pos().x(), event.pos().y()
+        
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBarDialog is not None:
+                self.scaleBarDialog.locCombobox.setCurrentText('Custom')
+            if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
+                self.scaleBar.setLocationProperty('custom')
+                self.scaleBar.move(x, y)
+                return
+        
+        if hasattr(self, 'timestamp'):
+            if self.timestampDialog is not None:
+                self.timestampDialog.locCombobox.setCurrentText('Custom')
+            if self.timestamp.isHighlighted() and self.timestamp.clicked:
+                self.timestamp.setLocationProperty('custom')
+                self.timestamp.move(x, y)
+                return
+        
+        if self.isMouseDragImg1 and self.zoomRectButton.isChecked():
+            xdata, ydata = int(x), int(y)
+            x0, y0 = self.zoomRectItem.pos()
+            w, h = (xdata-x0), (ydata-y0)
+            self.zoomRectItem.setSize((w, h))
+            return
+        
+        pg.ImageItem.mouseMoveEvent(self.img1, event)
+    
+    def gui_mouseReleaseEventImg1(self, event):
+        if not self.isDataLoaded:
+            pg.ImageItem.mouseReleaseEvent(self.img1, event)
+            return
+        
+        if hasattr(self, 'scaleBar'):
+            if self.scaleBar.isHighlighted() and self.scaleBar.clicked:
+                self.scaleBar.clicked = False
+                return
+        
+        if hasattr(self, 'timestamp'):
+            if self.timestamp.isHighlighted() and self.timestamp.clicked:
+                self.timestamp.clicked = False
+                return
+        
+        if self.isMouseDragImg1 and self.zoomRectButton.isChecked():
+            self.isMouseDragImg1 = False
+            self.zoomRectDone()
+            return
+        
+        pg.ImageItem.mouseReleaseEvent(self.img1, event)
+    
+    def gui_mouseClickEventImg1(self, event):
+        """Select the clicked cell (pyqtgraph sends click events only if 
+        the mouse was not dragged, hence panning does not select)."""
+        if not self.isDataLoaded:
+            return
+        
+        if event.button() != Qt.MouseButton.LeftButton:
+            return
+        
+        isToolActive = (
+            self.rulerButton.isChecked() 
+            or self.zoomRectButton.isChecked()
+            or self.isScaleBarOrTimestampHighlighted() is not None
+        )
+        if isToolActive:
+            return
+        
+        x, y = event.pos().x(), event.pos().y()
+        lab2D = self.currentLab2D
+        Y, X = lab2D.shape[-2:]
+        xdata, ydata = int(x), int(y)
+        if not (0 <= xdata < X and 0 <= ydata < Y):
+            return
+        
+        ID = int(lab2D[ydata, xdata])
+        if ID == 0:
+            return
+        
+        event.accept()
+        self.goToObjectID(ID)
+    
+    def mousePressEvent(self, event):
+        # Custom mouse bindings (e.g., "Next"/"Previous" on mouse side 
+        # buttons) as in guiWin
+        for name, button in self.mouseBindings.items():
+            if event.button() != button:
+                continue
+            widget = self.widgetsWithShortcut.get(name)
+            if widget is None:
+                continue
+            if hasattr(widget, 'click'):
+                widget.click()
+            else:
+                widget.trigger()
+            return
+        super().mousePressEvent(event)
+    
+    def keyPressEvent(self, event):
+        if not self.data:
+            super().keyPressEvent(event)
+            return
+        key = event.key()
+        modifiers = event.modifiers()
+        isNoModifier = modifiers == Qt.NoModifier
+        if self.overlayButton.isChecked() and isNoModifier:
+            isButtonClicked = self.checkOverlayToolbuttonClicked(event)
+            if isButtonClicked:
+                return
+        
+        if key == self.zoomOutKeyValue and isNoModifier:
+            doubleKeyPress = False
+            if self.countKeyPress == 0:
+                self.countKeyPress = 1
+                self.doubleKeyTimeElapsed = False
+                QTimer.singleShot(400, self.resetCountKeyPress)
+            elif self.countKeyPress == 1 and not self.doubleKeyTimeElapsed:
+                doubleKeyPress = True
+                self.countKeyPress = 0
+                
+            if self.measurementsPlot.underMouse():
+                if not doubleKeyPress:
+                    self.measurementsPlot.autoRange()
+                else:
+                    posData = self.posData()
+                    max_frame_index = posData.SizeT
+                    self.measurementsPlot.setXRange(0, max_frame_index)
+                return
+            
+            if not self.img1.isUnderMouse():
+                return
+            # Over the image: press --> zoom to objects,
+            # double press --> zoom out
+            if not doubleKeyPress:
+                self.zoomToCells(enforce=True)
+            else:
+                self.ax1.autoRange()
+                
+        elif key == Qt.Key_Space and isNoModifier:
+            # Same as guiWin: double press --> toggle "Do not annotate"
+            if self.countKeyPress == 0:
+                # Single press --> wait that it's not double press
+                self.isKeyDoublePress = False
+                self.countKeyPress = 1
+                self.doubleKeyTimeElapsed = False
+                QTimer.singleShot(300, self.doubleKeySpacebarTimerCallback)
+            elif self.countKeyPress == 1 and not self.doubleKeyTimeElapsed:
+                self.isKeyDoublePress = True
+                # Double press --> toggle draw nothing
+                self.onDoubleSpaceBar()
+                self.countKeyPress = 0
+        elif key == Qt.Key_Escape:
+            if self.zoomRectButton.isChecked():
+                self.zoomRectCancelled()
+            elif self.rulerButton.isChecked() and self.tempSegmentON:
+                self.tempSegmentON = False
+                self.ax1_rulerPlotItem.setData([], [])
+                self.ax1_rulerAnchorsItem.setData([], [])
+            elif self.customAnnotButton is not None:
+                self.setUncheckedAllCustomAnnotButtons()
+            else:
+                self.uncheckLeftClickButtons(None)
+        elif key == Qt.Key_Z:
+            self.zSliceCheckbox.setChecked(not self.zSliceCheckbox.isChecked())
+        elif key in (Qt.Key_Left, Qt.Key_Right):
+            step = 1 if key == Qt.Key_Right else -1
+            isZstack = self.posData().SizeZ > 1
+            if isZstack and self.zSliceCheckbox.isChecked():
+                z = self.zSliceScrollBar.sliderPosition() + step
+                self.zSliceScrollBar.setSliderPosition(z)
+            else:
+                self.setFrame(self.frame_i + step)
+        elif key in (Qt.Key_Up, Qt.Key_Down):
+            self.stepID(1 if key == Qt.Key_Up else -1)
+        else:
+            super().keyPressEvent(event)
+    
+    def closeEvent(self, event):
+        if self.measurementProcessingThread is not None:
+            self.measurementProcessingWarning(
+                'Signal processing running',
+                'Wait for measurement processing to finish before closing the viewer.'
+            )
+            event.ignore()
+            return
+        if self.isDataLoaded:
+            if not self.askSaveBeforeClosing():
+                event.ignore()
+                return
+            self.saveAnnotationOptions()
+        if self.slideshowWin is not None:
+            self.slideshowWin.close()
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.close()
+        if self.countObjsWindow is not None:
+            self.countObjsWindow.close()
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is not None:
+            self._volume_renderer = None
+            volume_renderer.force_close()
+        self.saveWindowGeometry(setting_suffix='_measurements_viewer')
+        super().closeEvent(event)
+        self.sigClosed.emit(self)
+        
+        
+def run(folderpath=None):
+    """Launch the measurements viewer as a standalone application, optionally 
+    loading `folderpath` (experiment, Position or Images folder)."""
+    from ._run import _setup_app
+    app, _ = _setup_app()
+    win = MeasurementsViewerWin()
+    win.show()
+    if folderpath:
+        win.openFolder(folderpath=folderpath)
+    app.exec_()
+
+if __name__ == '__main__':
+    run(sys.argv[1] if len(sys.argv) > 1 else None)
