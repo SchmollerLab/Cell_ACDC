@@ -20,6 +20,7 @@ from qtpy.QtWidgets import (
 
 import pyqtgraph as pg
 
+from .. import _window_stacking
 from .. import printl
 from .._run import _setup_app
 from .. import apps, widgets
@@ -434,8 +435,8 @@ class VolumeRendererWindow(QMainWindow):
         text_color_colorbutton.sigColorChanging.connect(
             self._set_labels_text_color
         )
-        text_color_colorbutton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            text_color_colorbutton.colorDialog, Qt.Window
         )
         text_settings_layout.addFormWidget(text_color_form_widget, row=row)
 
@@ -1741,7 +1742,7 @@ class VolumeRendererWindow(QMainWindow):
     
     def show(self, block=False):
         self.resize(960, 720)
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         
         self.set_camera_view()
