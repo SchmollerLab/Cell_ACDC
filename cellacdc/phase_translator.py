@@ -28,8 +28,7 @@ import numpy as np
 import pandas as pd
 
 from .custom_annotation_predictors import CustomAnnotationPredictor
-from .timepoint_predictors import CellTable, PREDICTOR_NONE
-from .measurements_viewer import TIMEPOINT_PREFIX
+from .timepoint_predictors import CellTable, PREDICTOR_NONE, TIMEPOINT_PREFIX
 
 
 def validate_rules(rules: list[dict[str, Any]]) -> None:

@@ -8,6 +8,7 @@ import pytest
 from qtpy.QtWidgets import QApplication, QPushButton
 
 from cellacdc import apps, measurements_viewer, phase_translator, widgets
+from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TimepointIdentifier
 
@@ -25,8 +26,8 @@ def table():
         'frame_i': [0, 1, 2, 3] * 2,
         'Cell_ID': [1] * 4 + [2] * 4,
         'area': [0., 10., 20., 30., 3., 3., 3., 3.],
-        'timepoint_Start': [False, True, False, False] * 2,
-        'timepoint_End': [False, False, False, True] * 2,
+        f'{TIMEPOINT_PREFIX}Start': [False, True, False, False] * 2,
+        f'{TIMEPOINT_PREFIX}End': [False, False, False, True] * 2,
         'Flag': [1] * 8,
     }).set_index(['frame_i', 'Cell_ID'])
 
@@ -34,7 +35,7 @@ def table():
 def rule(**kwargs):
     return {
         'name': 'Cycle', 'predictor': {'type': 'none'},
-        'timepoints': ['timepoint_Start', 'timepoint_End'],
+        'timepoints': [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'],
         'annotations': ['Flag'], 'phases': ['G1', 'S', 'G2'],
         **kwargs
     }
@@ -67,15 +68,15 @@ def test_ineligible_rule_falls_through_per_cell(table, kind):
     elif kind == 'annotation':
         table.loc[(slice(None), 2), 'Flag'] = 0
     elif kind == 'missing':
-        table.loc[(3, 2), 'timepoint_End'] = False
+        table.loc[(3, 2), f'{TIMEPOINT_PREFIX}End'] = False
     elif kind == 'order':
-        table.loc[(1, 2), 'timepoint_Start'] = False
-        table.loc[(3, 2), 'timepoint_Start'] = True
-        table.loc[(3, 2), 'timepoint_End'] = False
-        table.loc[(1, 2), 'timepoint_End'] = True
+        table.loc[(1, 2), f'{TIMEPOINT_PREFIX}Start'] = False
+        table.loc[(3, 2), f'{TIMEPOINT_PREFIX}Start'] = True
+        table.loc[(3, 2), f'{TIMEPOINT_PREFIX}End'] = False
+        table.loc[(1, 2), f'{TIMEPOINT_PREFIX}End'] = True
     else:
-        table.loc[(3, 2), 'timepoint_End'] = False
-        table.loc[(1, 2), 'timepoint_End'] = True
+        table.loc[(3, 2), f'{TIMEPOINT_PREFIX}End'] = False
+        table.loc[(1, 2), f'{TIMEPOINT_PREFIX}End'] = True
     result = phase_translator.evaluate(table, [first, fallback()]).table
     assert result.xs(1, level='Cell_ID')['phase'].tolist() == ['G1', 'S', 'S', 'G2']
     assert result.xs(2, level='Cell_ID')['phase'].tolist() == ['Other'] * 4
@@ -133,7 +134,7 @@ def test_only_first_matching_rule_supplies_all_intervals(table):
 
 
 def test_duplicates_warn_only_for_unmatched_cells(table):
-    table.loc[(2, 2), 'timepoint_Start'] = True
+    table.loc[(2, 2), f'{TIMEPOINT_PREFIX}Start'] = True
     result = phase_translator.evaluate(table, [rule()])
     assert result.table.xs(2, level='Cell_ID')['phase'].eq('').all()
     assert result.warnings == [
@@ -225,7 +226,7 @@ def test_formula_failure_does_not_change_source(table):
 
 def test_rule_editor_roundtrip_and_reordering(app, table):
     dialog = apps.PhaseTranslatorRuleDialog(
-        ['timepoint_Start', 'timepoint_End'], ['Flag'],
+        [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table}, rule=rule()
     )
     assert dialog.predictorGroupbox.autoApplyCheckBox.isHidden()
@@ -236,7 +237,7 @@ def test_rule_editor_roundtrip_and_reordering(app, table):
     dialog.deleteLater()
 
     dialog = apps.PhaseTranslatorRuleDialog(
-        ['timepoint_Start', 'timepoint_End'], ['Flag'],
+        [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table}, rule=rule()
     )
     down = next(
@@ -244,13 +245,13 @@ def test_rule_editor_roundtrip_and_reordering(app, table):
         if button.text() == 'Down' and button.isEnabled()
     )
     down.click()
-    assert dialog.boundaries == ['timepoint_End', 'timepoint_Start']
+    assert dialog.boundaries == [f'{TIMEPOINT_PREFIX}End', f'{TIMEPOINT_PREFIX}Start']
     # Named intervals stay associated with their two boundaries.
-    dialog.moveBoundary('timepoint_Start', -1)
+    dialog.moveBoundary(f'{TIMEPOINT_PREFIX}Start', -1)
     assert [edit.text() for edit in dialog.phaseEdits.values()] == ['G1', 'S', 'G2']
-    checkbox, _ = dialog.requirementChecks['timepoint_End']
+    checkbox, _ = dialog.requirementChecks[f'{TIMEPOINT_PREFIX}End']
     checkbox.setChecked(False)
-    assert dialog.boundaries == ['timepoint_Start']
+    assert dialog.boundaries == [f'{TIMEPOINT_PREFIX}Start']
     assert len(dialog.phaseEdits) == 2
     assert dialog.requirementChecks['Flag'][0].isChecked()
     dialog.deleteLater()
@@ -258,7 +259,7 @@ def test_rule_editor_roundtrip_and_reordering(app, table):
 
 def test_rule_editor_reuses_annotation_formula_editor(app, table, monkeypatch):
     dialog = apps.PhaseTranslatorRuleDialog(
-        ['timepoint_Start', 'timepoint_End'], ['Flag'],
+        [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table, 'allChNames': ['GFP'], 'SizeT': 4}, rule=rule()
     )
     equation = Mock(
@@ -309,7 +310,7 @@ def test_rule_editor_rejects_missing_inputs_and_duplicate_names(app, monkeypatch
 def test_manager_priority_apply_and_cancel_are_isolated(app):
     rules = [rule(), fallback()]
     dialog = apps.PhaseTranslatorDialog(
-        rules, ['timepoint_Start', 'timepoint_End'], ['Flag'], {}
+        rules, [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'], {}
     )
     applied = Mock()
     dialog.sigApply.connect(applied)
@@ -350,7 +351,7 @@ def viewer(app, table, monkeypatch):
 
 
 def test_viewer_apply_persists_table_rules_and_warns(viewer):
-    viewer.acdc_df.loc[(2, 1), 'timepoint_Start'] = True
+    viewer.acdc_df.loc[(2, 1), f'{TIMEPOINT_PREFIX}Start'] = True
     assert viewer.applyPhaseTranslator([rule()], allCells=False)
     assert viewer.posData().acdc_df is viewer.acdc_df
     assert viewer.phaseTranslatorRules == [rule()]
@@ -471,6 +472,10 @@ def test_configuration_save_load_and_legacy(viewer, tmp_path, monkeypatch):
         Mock(return_value=(['GFP'], ['segm']))
     )
     monkeypatch.setattr(measurements_viewer, 'load_position', Mock(return_value=pos))
+    monkeypatch.setattr(
+        viewer, 'selectConfigurationInput',
+        lambda config: viewer.configurationInputOptions(config)[0]
+    )
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())
     viewer.phaseTranslatorRules = []
@@ -491,6 +496,6 @@ def test_timepoint_and_annotation_renames_keep_rule_requirements(viewer, monkeyp
     monkeypatch.setattr(viewer, 'execTimepointIdentifierDialog', Mock(return_value=values))
     monkeypatch.setattr(viewer, 'updateTimepointLines', Mock())
     viewer.editTimepointIdentifier(identifier.uid)
-    assert viewer.phaseTranslatorRules[0]['timepoints'][0] == 'timepoint_Renamed'
+    assert viewer.phaseTranslatorRules[0]['timepoints'][0] == f'{TIMEPOINT_PREFIX}Renamed'
     viewer.renameCustomAnnotColumn('Flag', 'NewFlag')
     assert viewer.phaseTranslatorRules[0]['annotations'] == ['NewFlag']

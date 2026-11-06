@@ -12,8 +12,8 @@ from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
 from cellacdc import apps, measurements_viewer, timepoint_predictors
-from cellacdc.measurements_viewer import MeasurementsViewerWin, _TimepointLine
-from cellacdc.timepoint_predictors import TimepointIdentifier
+from cellacdc.measurements_viewer import MeasurementsViewerWin, _TimepointLine, VISITED_COLUMN
+from cellacdc.timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
 
 load_configuration = MeasurementsViewerWin.loadConfiguration
 
@@ -88,8 +88,8 @@ def annotation_predictors(viewer, predictors, autoApply=False):
 
 
 @pytest.mark.parametrize('predictor, expected', [
-    ({'equation': '`timepoint_Bud emergence` & (Flag == 1)'},
-     {'timepoint_Bud emergence': False, 'Flag': False}),
+    ({'equation': f'`{TIMEPOINT_PREFIX}Bud emergence` & (Flag == 1)'},
+     {f'{TIMEPOINT_PREFIX}Bud emergence': False, 'Flag': False}),
     ({'equation': 'stage == "Flag"'}, {'stage': False}),
     ({'equation': 'area > 0', 'main_cell_filter': {'condition': 'Flag == 1'}},
      {'area': False, 'Flag': False}),
@@ -151,7 +151,7 @@ def test_mixed_predictors_run_prerequisites_first(viewer, automatic):
     )
     viewer.addTimepointIdentifierItem(final)
     viewer.addTimepointIdentifierItem(start)
-    viewer.viewedCells.clear()
+    viewer.acdc_df[VISITED_COLUMN] = False
     annotation_predictors(
         viewer, [('Eligible', 'any(timepoint_Start)')], autoApply=automatic
     )
@@ -176,7 +176,7 @@ def test_other_cell_predictor_prerequisites_cover_all_cells(viewer, automatic):
         autoApply=automatic
     )
     viewer.addTimepointIdentifierItem(final)
-    viewer.viewedCells.clear()
+    viewer.acdc_df[VISITED_COLUMN] = False
     annotation_predictors(
         viewer, [('Flag', 'area < 8')], autoApply=automatic
     )
@@ -251,7 +251,7 @@ def test_failed_auto_prerequisites_are_not_retried_on_revisit(viewer):
         autoApply=True
     )
     viewer.addTimepointIdentifierItem(point)
-    viewer.viewedCells.clear()
+    viewer.acdc_df[VISITED_COLUMN] = False
     annotation_predictors(
         viewer, [('Flag', 'any(timepoint_Point)')], autoApply=True
     )
@@ -318,16 +318,16 @@ def test_equation_customization_warns_before_accepting_cycle(
     point = TimepointIdentifier('Point', (255, 0, 0), '')
     viewer.addTimepointIdentifierItem(point)
     dialog = Dialog([], False, False, acdc_df=viewer.acdc_df,
-                    equation='timepoint_Point')
+                    equation=f'{TIMEPOINT_PREFIX}Point')
     warning = Mock()
     monkeypatch.setattr(apps.widgets, 'myMessageBox', Mock(return_value=warning))
     dialog.validatePredictorDependencies = (
         lambda predictor: viewer.validatePredictorDependencies(
-            'timepoint_Point', 'timepoint_Point', predictor
+            f'{TIMEPOINT_PREFIX}Point', f'{TIMEPOINT_PREFIX}Point', predictor
         )
     )
     try:
-        assert 'timepoint_Point' in dialog.variableNames
+        assert f'{TIMEPOINT_PREFIX}Point' in dialog.variableNames
         dialog.okButton.setEnabled(True)
         dialog.ok_cb()
         assert dialog.cancel
@@ -670,12 +670,12 @@ def test_predictor_runs_and_export_columns(viewer):
         autoApply=True
     )
     viewer.addTimepointIdentifierItem(identifier)
-    viewer.viewedCells.clear()
+    viewer.acdc_df[VISITED_COLUMN] = False
     viewer.ensureTimepointPredictions()
     assert timepoints(viewer, identifier.uid) == {1: [1, 3]}
     viewer.updateTimepointLines()
     assert lines(viewer) == [(identifier.uid, 1, 1), (identifier.uid, 1, 3)]
-    flagged = viewer.acdc_df.index[viewer.acdc_df['timepoint_Big']].tolist()
+    flagged = viewer.acdc_df.index[viewer.acdc_df[f'{TIMEPOINT_PREFIX}Big']].tolist()
     assert flagged == [(1, 1), (3, 1)]
     # Already predicted --> manual edits are not overwritten
     viewer.removeTimepoint(identifier.uid, 1, 1)
@@ -696,8 +696,8 @@ def test_combine_measurements_uses_timepoint_columns_and_cell_aggregations(
 
     class TestDialog(originalDialog):
         def exec_(self):
-            assert 'timepoint_Bud' in self.acdcDf
-            assert 'timepoint_Bud' in self.variableNames
+            assert f'{TIMEPOINT_PREFIX}Bud' in self.acdcDf
+            assert f'{TIMEPOINT_PREFIX}Bud' in self.variableNames
             self.newColNameLineEdit.setText('ever_bud')
             self.formulaEditWidget.setText('any(timepoint_Bud)')
             self.test_cb()
@@ -718,7 +718,7 @@ def big_identifier(viewer):
         autoApply=True
     )
     viewer.addTimepointIdentifierItem(identifier)
-    viewer.viewedCells.clear()
+    viewer.acdc_df[VISITED_COLUMN] = False
     viewer.ensureTimepointPredictions()
     return identifier
 
@@ -727,7 +727,9 @@ def test_automatic_predictions_only_run_on_newly_viewed_cells(viewer, monkeypatc
     identifier = big_identifier(viewer)
     predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
     monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
-    assert set().union(*viewer.viewedCells.values()) == {1}
+    assert set(viewer.acdc_df.index.get_level_values('Cell_ID')[
+        viewer.acdc_df[VISITED_COLUMN]
+    ]) == {1}
     viewer.setSelectedID(2)
     assert predict.call_args.kwargs['IDs'] == {2}
     assert timepoints(viewer, identifier.uid) == {1: [1, 3]}
@@ -735,7 +737,7 @@ def test_automatic_predictions_only_run_on_newly_viewed_cells(viewer, monkeypatc
     viewer.setSelectedID(2)
     viewer.initIDsNavigation(ID=1)
     assert predict.call_count == 1
-    assert set().union(*viewer.viewedCells.values()) == {1, 2}
+    assert viewer.acdc_df[VISITED_COLUMN].all()
 
 
 def test_failed_automatic_prediction_is_not_retried_on_revisit(viewer, monkeypatch):
@@ -754,19 +756,26 @@ def test_failed_automatic_prediction_is_not_retried_on_revisit(viewer, monkeypat
     assert timepoints(viewer, identifier.uid)[2] == [2]
 
 
-def test_viewed_cells_are_scoped_to_position_path(viewer, monkeypatch):
+def test_viewed_cells_are_scoped_to_position_table(viewer, monkeypatch):
     big_identifier(viewer)
     predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
     monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     posData = viewer.posData()
-    original = posData.pos_path
+    originalPath = posData.pos_path
     posData.pos_path = r'C:\experiment\Position_2'
+    original = viewer.acdc_df
+    other = original.copy()
+    other[VISITED_COLUMN] = False
+    viewer.acdc_df = other
     viewer.ensureTimepointPredictions()
     assert predict.call_args.kwargs['IDs'] == {1}
-    posData.pos_path = original.upper()
+    viewer.acdc_df = original
+    posData.pos_path = originalPath
+    posData.acdc_df = original
     viewer.ensureTimepointPredictions()
     assert predict.call_count == 1
-    assert len(viewer.viewedCells) == 2
+    assert original.xs(1, level='Cell_ID')[VISITED_COLUMN].all()
+    assert other.xs(1, level='Cell_ID')[VISITED_COLUMN].all()
 
 
 def test_adding_identifier_does_not_repredict_viewed_cells(viewer, monkeypatch):
@@ -833,32 +842,36 @@ def test_viewed_cells_configuration_roundtrip(viewer, tmp_path, monkeypatch):
     configuration = viewer.configuration()
     MeasurementsViewerWin.validateConfiguration(configuration)
     path = os.path.normcase(os.path.abspath(posData.pos_path))
-    assert configuration['viewed_cells'] == {path: [1, 2]}
+    assert 'viewed_cells' not in configuration
+    assert viewer.acdc_df[VISITED_COLUMN].all()
     filepath = tmp_path / 'state.json'
     filepath.write_text(json.dumps(configuration))
-    viewer.viewedCells.clear()
     viewer.timepointAutoPredictions.clear()
     monkeypatch.setattr(
         measurements_viewer, 'get_channels_and_segm_endnames',
         Mock(return_value=(['GFP'], ['segm']))
     )
     monkeypatch.setattr(measurements_viewer, 'load_position', Mock(return_value=posData))
+    monkeypatch.setattr(
+        viewer, 'selectConfigurationInput',
+        lambda config: viewer.configurationInputOptions(config)[0]
+    )
     predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
     monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
 
     def set_data(data):
         assert data == [posData]
-        assert viewer.viewedCells[path] == {1, 2}
+        assert data[0].acdc_df[VISITED_COLUMN].all()
         viewer.ensureTimepointPredictions()
 
     monkeypatch.setattr(viewer, 'setData', set_data)
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())
     assert load_configuration(viewer, filepath=str(filepath))
     predict.assert_not_called()
-    assert isinstance(viewer.viewedCells[path], set)
-    assert viewer.configuration()['viewed_cells'] == {path: [1, 2]}
+    assert viewer.acdc_df[VISITED_COLUMN].all()
+    assert 'viewed_cells' not in viewer.configuration()
     legacy = dict(configuration)
-    legacy.pop('viewed_cells')
+    legacy['viewed_cells'] = {path: [1, 2]}
     MeasurementsViewerWin.validateConfiguration(legacy)
     for invalid in ([], {'position': [True]}, {'position': [-1]}, {'position': ['1']}):
         with pytest.raises(ValueError, match='Invalid viewed cells'):
@@ -941,7 +954,7 @@ def test_auto_predictions_skip_cells_without_marking_them_completed(viewer, monk
     monkeypatch.setattr(timepoint_predictors.TimepointPredictor, 'predict', predict)
     assert viewer.runTimepointPredictor(identifier.uid, skipIDs=[1])
     assert predict.call_args.kwargs['IDs'] == {2}
-    viewer.viewedCells.clear()
+    viewer.acdc_df[VISITED_COLUMN] = False
     viewer.ensureTimepointPredictions()
     assert predict.call_args.kwargs['IDs'] == {1}
     assert predict.call_count == 2
@@ -1107,7 +1120,7 @@ def test_remove_identifier(viewer):
     assert autoAction not in viewer.actions()
     assert identifier.uid not in viewer.timepointAutoActions
     assert viewer.timepointIdentifiers == []
-    assert 'timepoint_Big' not in viewer.acdc_df.columns
+    assert f'{TIMEPOINT_PREFIX}Big' not in viewer.acdc_df.columns
     assert viewer.timepointLines == []
 
 

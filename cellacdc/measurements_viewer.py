@@ -32,10 +32,22 @@ the main GUI (`gui.guiWin`) through the mixins in:
 Run it with `python -m cellacdc.measurements_viewer [folder_path]`.
 
 At startup, load a saved configuration or skip to start normally. The File
-menu can load, save or save a copy of a configuration; closing the window
-also offers to save. Configurations are JSON files in the settings folder
-and retain Images folders, image/overlay channels, segmentation, and both
-plot modes' selections (including X/Y order and measurement normalization).
+menu and the file toolbar can load, save or save a copy of a configuration. On closing, if any
+position's table or the configuration changed since it was loaded/saved, a
+prompt offers to save the tables (overwriting each position's acdc_output
+file), the configuration (or save it as a new file), both, or neither.
+Configurations are JSON files in the settings folder
+and retain multiple experiment inputs (Images folders, image/overlay channels
+and segmentation), both plot modes' selections, predictor/annotation definitions,
+phase rules, and separate processing recipes and combine equations. Loading
+prompts for a saved input or a new experiment (which reuses the configured
+channel, segmentation and overlays when every position has them, asks for
+replacements otherwise, and offers unused channels as extra overlays), then asks whether to calculate
+the measurement steps. Calculating replays them in their original order on all
+positions (overwriting their previous outputs) before lazy per-cell
+prediction; using existing values requires every output column to be present
+in every position. Version 1 files remain
+loadable; their viewed-cell lists are migrated to the table's visited column.
 
 Use ``Process measurements...`` to apply a recipe to selected measurements of the
 current position. Smooth measurement uses a centered moving average independently
@@ -66,7 +78,8 @@ current frame). Time point lines can be dragged like the current frame line;
 right-click a line to remove it, or right-click an identifier action to edit,
 re-evaluate its predictor, clear or remove it. Automatic predictions require
 the identifier's ``autoApply`` flag and run only when a cell is first viewed.
-Viewed Cell_IDs are tracked per position and saved in configurations. Revisiting
+Viewed Cell_IDs are tracked in the boolean ``measuremnets_viewer_visited``
+column of each position's table and saved with Export measurements. Revisiting
 a cell does not retry failed predictions; use explicit re-evaluation to retry.
 The toolbar's ``Re-evaluate predictors on all cells`` and ``... on displayed
 cell`` re-run all predictors; cells with manual edits (added, moved or removed
@@ -175,13 +188,13 @@ from . import printl
 from . import workers
 from . import timepoint_predictors
 from . import custom_annotation_predictors
-from . import phase_translator
+from . import phase_translator, measurement_processing
 from . import gui_custom_annotations
 from .gui_custom_annotations import (
     custom_annot_state_to_save, custom_annot_symbol
 )
 from .custom_annotation_predictors import CustomAnnotationPredictor
-from .timepoint_predictors import TimepointIdentifier
+from .timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
 from . import exception_handler, disableWindow
 
 
@@ -199,7 +212,7 @@ _font.setPixelSize(11)
 
 DEFAULT_MEASUREMENTS_COLUMNS = ('cell_area_pxl', 'cell_vol_vox', 'cell_area_um2')
 INDEX_COLUMNS = ('frame_i', 'Cell_ID', 'time_seconds')
-TIMEPOINT_PREFIX = 'timepoint_'
+VISITED_COLUMN = 'measuremnets_viewer_visited' # for tracking which cells have been visited in the measurements viewer
 CCA_DF_INT_COLS = [
     col for col in cca_df_colnames if type(base_cca_dict[col]) == int
 ]
@@ -383,7 +396,14 @@ def load_position(images_path, channel, segm_endname='segm'):
         posData.segm_data = posData.segm_data[np.newaxis]
     
     posData.SizeT = min(len(posData.img_data), len(posData.segm_data))
+    posData.savedAcdcDf = acdc_df_snapshot(getattr(posData, 'acdc_df', None))
     return posData
+
+def acdc_df_snapshot(acdc_df):
+    """Copy of a table as it is on disk, used to detect unsaved changes."""
+    if acdc_df is None or acdc_df.empty:
+        return None
+    return MeasurementsViewerWin._standardizeAcdcDf(acdc_df).copy()
 
 def load_positions(images_paths, channel, segm_endname='segm', logger=print):
     data = []
@@ -488,6 +508,7 @@ class MeasurementsViewerWin(
         self.isDataLoaded = False
         self.user_ch_name = None
         self.configurationFilepath = None
+        self.savedConfiguration = None
         self._startupConfigurationPrompted = False
         self.measurementProcessingThread = None
         self.measurementProcessingWorker = None
@@ -498,7 +519,9 @@ class MeasurementsViewerWin(
         self.timepointAutoActions = {}
         self.timepointLines = []
         self.timepointAutoPredictions = defaultdict(set)
-        self.viewedCells = defaultdict(set)
+        self.configurationInputs = []
+        self.measurementProcessingSteps = []
+        self.combinedMeasurementSteps = []
         # Per-cell constants [{'name': str, 'equation': str}]
         # self.cellConstants = []
         self.logger = logging.getLogger('cellacdc-measurements-viewer')
@@ -604,8 +627,7 @@ class MeasurementsViewerWin(
             if button.isChecked()
             and (channel == self.user_ch_name or channel in overlay_channels)
         ]
-        return {
-            'version': 1,
+        currentInput = {
             'images_paths': [
                 os.path.abspath(pos.images_path) for pos in self.data
             ],
@@ -613,6 +635,16 @@ class MeasurementsViewerWin(
             'segm_endname': segm_endname,
             'overlay_channels': overlay_channels,
             'visible_channels': visible_channels,
+        }
+        inputs = copy.deepcopy(self.configurationInputs)
+        if currentInput not in inputs:
+            inputs.append(currentInput)
+        return {
+            'version': 2,
+            **currentInput,
+            'input_options': inputs,
+            'measurement_processing': copy.deepcopy(self.measurementProcessingSteps),
+            'combined_measurements': copy.deepcopy(self.combinedMeasurementSteps),
             'measurements_mode': self.measurementsModeCombobox.currentIndex(),
             'time_course_columns': (
                 self.checkedColumns() if self._measurementsMode == 0
@@ -623,9 +655,6 @@ class MeasurementsViewerWin(
             'timepoint_identifiers': [
                 identifier.to_dict() for identifier in self.timepointIdentifiers
             ],
-            'viewed_cells': {
-                path: sorted(IDs) for path, IDs in self.viewedCells.items()
-            },
             'custom_annotations': self.customAnnotConfiguration(),
             'phase_translator_rules': copy.deepcopy(self.phaseTranslatorRules),
             # 'cell_constants': [dict(constant) for constant in self.cellConstants],
@@ -633,20 +662,20 @@ class MeasurementsViewerWin(
 
     @staticmethod
     def validateConfiguration(configuration):
-        if not isinstance(configuration, dict) or configuration.get('version') != 1:
+        if (not isinstance(configuration, dict)
+                or configuration.get('version') not in (1, 2)):
             raise ValueError('Unsupported measurements viewer configuration.')
-        for key in (
-                'images_paths', 'overlay_channels', 'visible_channels',
-                'time_course_columns'):
-            value = configuration.get(key)
-            if not isinstance(value, list) or any(
-                    not isinstance(item, str) or not item for item in value):
-                raise ValueError(f'Invalid configuration field: {key}.')
-        if not configuration['images_paths']:
-            raise ValueError('The configuration contains no Images folders.')
-        for key in ('channel', 'segm_endname'):
-            if not isinstance(configuration.get(key), str) or not configuration[key]:
-                raise ValueError(f'Invalid configuration field: {key}.')
+        MeasurementsViewerWin.validateConfigurationInput(configuration)
+        inputs = configuration.get('input_options', [])
+        if not isinstance(inputs, list):
+            raise ValueError('Invalid input options in configuration.')
+        for option in inputs:
+            MeasurementsViewerWin.validateConfigurationInput(option)
+        MeasurementsViewerWin.validateMeasurementSteps(configuration)
+        columns = configuration.get('time_course_columns')
+        if not isinstance(columns, list) or any(
+                not isinstance(item, str) or not item for item in columns):
+            raise ValueError('Invalid configuration field: time_course_columns.')
         axes = configuration.get('measurements_axes')
         if (not isinstance(axes, dict) or set(axes) != {'X', 'Y'}
                 or any(not isinstance(value, str) for value in axes.values())
@@ -656,12 +685,6 @@ class MeasurementsViewerWin(
                 or configuration['measurements_mode'] not in (0, 1)
                 or type(configuration.get('normalize_measurements')) is not bool):
             raise ValueError('Invalid plotting options in configuration.')
-        available = {
-            configuration['channel'], *configuration['overlay_channels']
-        }
-        if (not configuration['visible_channels']
-                or not set(configuration['visible_channels']) <= available):
-            raise ValueError('Invalid visible image channels in configuration.')
         # Optional for configurations saved before time point identifiers
         identifiers = configuration.get('timepoint_identifiers', [])
         if not isinstance(identifiers, list):
@@ -678,7 +701,6 @@ class MeasurementsViewerWin(
                 or any(type(ID) is not int or ID <= 0 for ID in IDs)
                 for path, IDs in viewed.items()):
             raise ValueError('Invalid viewed cells in configuration.')
-        # Optional for configurations saved before custom annotations
         MeasurementsViewerWin.validateCustomAnnotConfiguration(
             configuration.get('custom_annotations', [])
         )
@@ -695,9 +717,67 @@ class MeasurementsViewerWin(
                 'type': timepoint_predictors.PREDICTOR_NONE
             }
         timepoint_predictors.PredictorDependencies.order(predictors)
-        # timepoint_predictors.validate_constants(
-        #     configuration.get('cell_constants', [])
-        # )
+
+    @staticmethod
+    def validateConfigurationInput(configuration):
+        if not isinstance(configuration, dict):
+            raise ValueError('Invalid configuration input.')
+        for key in (
+                'images_paths', 'overlay_channels', 'visible_channels'):
+            value = configuration.get(key)
+            if not isinstance(value, list) or any(
+                    not isinstance(item, str) or not item for item in value):
+                raise ValueError(f'Invalid configuration field: {key}.')
+        if not configuration['images_paths']:
+            raise ValueError('The configuration contains no Images folders.')
+        for key in ('channel', 'segm_endname'):
+            if not isinstance(configuration.get(key), str) or not configuration[key]:
+                raise ValueError(f'Invalid configuration field: {key}.')
+        available = {
+            configuration['channel'], *configuration['overlay_channels']
+        }
+        if (not configuration['visible_channels']
+                or not set(configuration['visible_channels']) <= available):
+            raise ValueError('Invalid visible image channels in configuration.')
+
+    @staticmethod
+    def validateMeasurementSteps(configuration):
+        orders = set()
+        for section in ('measurement_processing', 'combined_measurements'):
+            steps = configuration.get(section, [])
+            if not isinstance(steps, list):
+                raise ValueError(f'Invalid {section} in configuration.')
+            for step in steps:
+                if (not isinstance(step, dict)
+                        or type(step.get('order')) is not int
+                        or step['order'] < 0 or step['order'] in orders):
+                    raise ValueError('Invalid or duplicate measurement step order.')
+                orders.add(step['order'])
+                if section == 'combined_measurements':
+                    equations = step.get('equations')
+                    if not isinstance(equations, dict) or not equations or any(
+                            not isinstance(key, str) or not key
+                            or not isinstance(value, str) or not value.strip()
+                            for key, value in equations.items()):
+                        raise ValueError('Invalid combined measurement equations.')
+                    continue
+                for key in ('columns', 'output_columns'):
+                    values = step.get(key)
+                    if (not isinstance(values, list) or not values
+                            or any(not isinstance(value, str) or not value for value in values)
+                            or len(values) != len(set(values))):
+                        raise ValueError(f'Invalid processing {key}.')
+                if len(step['columns']) != len(step['output_columns']):
+                    raise ValueError('Processing input/output counts differ.')
+                recipe = step.get('recipe')
+                if not isinstance(recipe, list) or not recipe:
+                    raise ValueError('Invalid measurement recipe.')
+                for item in recipe:
+                    if (not isinstance(item, dict)
+                            or not isinstance(item.get('method'), str)
+                            or item.get('method') not in measurement_processing.MEASUREMENT_PROCESSING_MAPPER
+                            or not isinstance(item.get('kwargs'), dict)):
+                        raise ValueError('Invalid measurement recipe step.')
 
     def configurationError(self, operation, error):
         self.logger.error('Could not %s configuration: %s', operation, error)
@@ -708,6 +788,9 @@ class MeasurementsViewerWin(
         )
 
     def saveConfiguration(self, checked=False, save_as=False):
+        if self.measurementProcessingThread is not None:
+            self.configurationError('save', 'Wait for measurement processing to finish.')
+            return False
         if not self.isDataLoaded:
             self.configurationError('save', 'Load image data before saving.')
             return False
@@ -765,13 +848,414 @@ class MeasurementsViewerWin(
             self.configurationError('save', err)
             return False
         self.configurationFilepath = filepath
+        self.configurationInputs = copy.deepcopy(configuration['input_options'])
+        self.savedConfiguration = configuration
         self.statusBar().showMessage(f'Configuration saved to "{filepath}".', 5000)
         return True
 
     def saveConfigurationAs(self, checked=False):
         return self.saveConfiguration(save_as=True)
 
+    def markConfigurationSaved(self):
+        try:
+            self.savedConfiguration = self.configuration()
+        except Exception:
+            self.logger.exception('Could not snapshot the configuration')
+            self.savedConfiguration = None
+
+    def hasUnsavedConfiguration(self):
+        if not self.isDataLoaded:
+            return False
+        try:
+            return self.configuration() != self.savedConfiguration
+        except Exception:
+            self.logger.exception('Could not compare the configuration')
+            return True
+
+    def viewerManagedColumns(self):
+        return {
+            *(self.timepointColumn(identifier)
+              for identifier in self.timepointIdentifiers),
+            *self.customAnnotNames(), VISITED_COLUMN
+        }
+
+    def hasUnsavedAcdcDf(self, posData):
+        if not hasattr(posData, 'savedAcdcDf'):
+            return False
+        current = getattr(posData, 'acdc_df', None)
+        if current is None or current.empty:
+            return False
+        saved = posData.savedAcdcDf
+        if saved is None:
+            return True
+        current = self._standardizeAcdcDf(current)
+        # Empty viewer columns (no marks yet) are not changes to the file.
+        managed = self.viewerManagedColumns()
+        def unmarked(df, other):
+            return [
+                column for column in managed
+                if column in df and column not in other
+                and df[column].fillna(0).eq(0).all()
+            ]
+        current, saved = (
+            current.drop(columns=unmarked(current, saved)),
+            saved.drop(columns=unmarked(saved, current))
+        )
+        try:
+            pd.testing.assert_frame_equal(
+                current, saved, check_dtype=False, check_like=True,
+                check_index_type=False, check_column_type=False
+            )
+        except AssertionError:
+            return True
+        return False
+
+    def unsavedAcdcDfPositions(self):
+        return [
+            posData for posData in self.data or []
+            if self.hasUnsavedAcdcDf(posData)
+        ]
+
+    def saveAcdcDfs(self, positions):
+        for posData in positions:
+            filepath = getattr(posData, 'acdc_output_csv_path', None)
+            try:
+                if not filepath:
+                    raise OSError('No acdc_output file path for this position.')
+                acdc_df = self._standardizeAcdcDf(posData.acdc_df).sort_index()
+                acdc_df = acdc_df.copy()
+                self.ensureTimepointColumns(acdc_df)
+                self.ensureCustomAnnotColumns(acdc_df)
+                if VISITED_COLUMN not in acdc_df:
+                    acdc_df[VISITED_COLUMN] = False
+                payload = acdc_df.to_csv().encode('utf-8')
+                output = QSaveFile(filepath)
+                if not output.open(QIODevice.WriteOnly):
+                    raise OSError(output.errorString())
+                if output.write(payload) != len(payload):
+                    output.cancelWriting()
+                    raise OSError(output.errorString())
+                if not output.commit():
+                    raise OSError(output.errorString())
+            except (OSError, ValueError, TypeError) as err:
+                self.logger.error('Could not save "%s": %s', filepath, err)
+                self.measurementProcessingWarning(
+                    'Saving tables failed',
+                    f'Could not save the table of '
+                    f'"{getattr(posData, "pos_foldername", filepath)}":\n\n{err}'
+                )
+                return False
+            posData.savedAcdcDf = acdc_df.copy()
+        if positions:
+            self.statusBar().showMessage(
+                f'Saved {len(positions)} acdc_output table(s).', 5000
+            )
+        return True
+
+    def askSaveBeforeClosing(self):
+        """Prompt for unsaved tables/configuration. Return False to cancel."""
+        positions = self.unsavedAcdcDfPositions()
+        configChanged = self.hasUnsavedConfiguration()
+        if not positions and not configChanged:
+            return True
+        hasFile = self.configurationFilepath is not None
+        saveConfigText = (
+            'Save configuration' if hasFile else 'Save configuration...'
+        )
+        changes = []
+        if positions:
+            changes.append(
+                f'the <b>measurement tables</b> of {len(positions)} '
+                f'position(s)'
+            )
+        if configChanged:
+            changes.append('the <b>configuration</b>')
+        txt = html_utils.paragraph(
+            f'There are unsaved changes to {" and ".join(changes)}.<br><br>'
+            'Do you want to save them before closing?<br><br>'
+            '<i>Saving the tables overwrites each position\'s acdc_output '
+            'file.</i>'
+        )
+        details = '\n'.join(
+            getattr(posData, 'acdc_output_csv_path', '') for posData in positions
+        )
+        options = [('Cancel', None), ("Don't save", (False, None))]
+        if positions and configChanged:
+            options += [
+                ('Save tables only', (True, None)),
+                (f'{saveConfigText} only', (False, 'save')),
+            ]
+            if hasFile:
+                options.append(('Save both as...', (True, 'save_as')))
+            options.append(('Save both', (True, 'save')))
+        elif positions:
+            options.append(('Save tables', (True, None)))
+        else:
+            if hasFile:
+                options.append(('Save configuration as...', (False, 'save_as')))
+            options.append((saveConfigText, (False, 'save')))
+        msg = widgets.myMessageBox(wrapText=False)
+        buttons = msg.warning(
+            self, 'Save changes?', txt, detailsText=details or None,
+            buttonsTexts=[text for text, _ in options]
+        )
+        if msg.cancel:
+            return False
+        actions = dict(zip(buttons, (action for _, action in options)))
+        action = actions.get(msg.clickedButton)
+        if action is None:
+            return False
+        saveTables, saveConfig = action
+        if saveTables and not self.saveAcdcDfs(positions):
+            return False
+        if saveConfig is not None and not self.saveConfiguration(
+                save_as=saveConfig == 'save_as'):
+            return False
+        return True
+
+    @staticmethod
+    def configurationInputOptions(configuration):
+        keys = (
+            'images_paths', 'channel', 'segm_endname',
+            'overlay_channels', 'visible_channels'
+        )
+        options = copy.deepcopy(configuration.get('input_options', []))
+        current = {key: copy.deepcopy(configuration[key]) for key in keys}
+        if current not in options:
+            options.append(current)
+        return options
+
+    def selectConfigurationInput(self, configuration):
+        options = self.configurationInputOptions(configuration)
+        labels = [
+            f'{i + 1}. {option["images_paths"][0]} '
+            f'({len(option["images_paths"])} positions; '
+            f'{option["channel"]}; {option["segm_endname"]})'
+            for i, option in enumerate(options)
+        ]
+        new = 'Load a new experiment...'
+        selected = self.selectItem(
+            'Select experiment', 'Load a saved experiment or a new one:',
+            [*labels, new]
+        )
+        if selected is None:
+            return None
+        if selected != new:
+            return options[labels.index(selected)]
+        folder = QFileDialog.getExistingDirectory(
+            self, 'Select experiment, Position or Images folder',
+            self.getMostRecentPath()
+        )
+        if not folder:
+            return None
+        paths = get_images_paths(folder)
+        if not paths:
+            raise ValueError(f'No Images folders found in "{folder}".')
+        return self.newExperimentInput(configuration, paths)
+
+    def newExperimentInput(self, configuration, paths):
+        """Map the configuration's input onto new Images folders.
+
+        The configured channel, segmentation and overlays are reused when
+        every position has them; otherwise the user picks a replacement
+        (channel/segmentation) or confirms dropping them (overlays). Channels
+        of the new experiment that the configuration does not use are then
+        offered as optional extra overlays.
+        """
+        available = [get_channels_and_segm_endnames(path) for path in paths]
+        channels = set(available[0][0]).intersection(*(set(item[0]) for item in available))
+        segmentations = set(available[0][1]).intersection(*(set(item[1]) for item in available))
+        if not channels or not segmentations:
+            raise ValueError('The positions have no common channels or segmentations.')
+        channel = configuration['channel']
+        if channel not in channels:
+            channel = self.selectItem(
+                'Select channel',
+                f'Channel "{channel}" is not in every position of the new '
+                'experiment. Select channel to display:', sorted(channels)
+            )
+            if channel is None:
+                return None
+        segm = configuration['segm_endname']
+        if segm not in segmentations:
+            segm = self.selectItem(
+                'Select segmentation',
+                f'Segmentation "{segm}" is not in every position of the new '
+                'experiment. Select segmentation to load:', sorted(segmentations)
+            )
+            if segm is None:
+                return None
+        configured = list(configuration['overlay_channels'])
+        overlays = [c for c in configured if c in channels and c != channel]
+        missing = [c for c in configured if c not in channels]
+        if missing:
+            msg = widgets.myMessageBox(wrapText=False)
+            cancel, _ = msg.warning(
+                self, 'Overlay channels missing',
+                html_utils.paragraph(
+                    'These overlay channels of the configuration are not in '
+                    'every position of the new experiment and will be '
+                    f'skipped:<br><br><b>{", ".join(missing)}</b>'
+                ),
+                buttonsTexts=('Cancel', 'Continue')
+            )
+            if msg.cancel or msg.clickedButton == cancel:
+                return None
+        used = {configuration['channel'], channel, *configured}
+        added = self.selectConfigurationOverlayChannels(
+            sorted(channels - used),
+            text=(
+                'The new experiment has channels that the configuration does '
+                'not use.<br>Select the ones to add as overlay channels '
+                '(or leave the selection empty):'
+            )
+        )
+        if added is None:
+            return None
+        overlays += added
+        visible = [
+            c for c in configuration['visible_channels']
+            if c == channel or c in overlays
+        ]
+        if channel != configuration['channel'] and channel not in visible:
+            visible.insert(0, channel)
+        visible += [c for c in added if c not in visible]
+        return {
+            'images_paths': [os.path.abspath(path) for path in paths],
+            'channel': channel, 'segm_endname': segm,
+            'overlay_channels': overlays,
+            'visible_channels': visible,
+        }
+
+    def selectConfigurationOverlayChannels(self, channels, text=None):
+        if not channels:
+            return []
+        dialog = widgets.QDialogListbox(
+            'Select overlay channels',
+            text or 'Select optional overlay channels (or leave the selection empty):',
+            channels, multiSelection=True, parent=self, preSelectedItems=()
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return None
+        return list(dialog.selectedItemsText)
+
+    @staticmethod
+    def measurementStepOutputs(configuration):
+        steps = sorted(
+            (step['order'], section, step)
+            for section in ('measurement_processing', 'combined_measurements')
+            for step in configuration.get(section, [])
+        )
+        return list(dict.fromkeys(
+            column for _, section, step in steps
+            for column in (
+                step['output_columns'] if section == 'measurement_processing'
+                else step['equations']
+            )
+        ))
+
+    def askMeasurementReplay(self, outputs, data):
+        """Return 'recalculate', 'existing', or None if the user cancels."""
+        existing = {
+            column for posData in data
+            if getattr(posData, 'acdc_df', None) is not None
+            for column in outputs if column in posData.acdc_df
+        }
+        incomplete = [
+            os.path.basename(posData.pos_path) for posData in data
+            if getattr(posData, 'acdc_df', None) is None
+            or any(column not in posData.acdc_df for column in outputs)
+        ]
+        txt = (
+            'This configuration contains <b>measurement processing</b> and/or '
+            '<b>combined measurements</b> steps.<br><br>'
+        )
+        if incomplete:
+            txt += (
+                f'Their output columns are missing in {len(incomplete)} of '
+                f'{len(data)} positions, so they must be calculated to use '
+                'existing values.'
+            )
+        else:
+            txt += 'Their output columns already exist in every position.'
+        if existing:
+            txt += (
+                '<br><br>Calculating will <b>overwrite</b> the existing '
+                'output columns.'
+            )
+        txt = html_utils.paragraph(
+            f'{txt}<br><br>Do you want to calculate them?'
+        )
+        details = 'Output columns:\n' + '\n'.join(outputs)
+        if incomplete:
+            details += '\n\nPositions with missing columns:\n' + '\n'.join(incomplete)
+        msg = widgets.myMessageBox(wrapText=False)
+        cancel, existingButton, recalculate = msg.question(
+            self, 'Calculate measurements?', txt, detailsText=details,
+            buttonsTexts=('Cancel', 'Use existing values', 'Calculate')
+        )
+        if msg.cancel or msg.clickedButton == cancel:
+            return None
+        if msg.clickedButton == recalculate:
+            return 'recalculate'
+        if incomplete:
+            raise ValueError(
+                'Cannot use existing values: workflow columns are missing in '
+                + ', '.join(incomplete) + '.'
+            )
+        return 'existing'
+
+    @staticmethod
+    def replayMeasurementSteps(posData, configuration, overwrite=False):
+        steps = [
+            (step['order'], section, step)
+            for section in ('measurement_processing', 'combined_measurements')
+            for step in configuration.get(section, [])
+        ]
+        if not steps:
+            return
+        source = getattr(posData, 'acdc_df', None)
+        if source is None or source.empty:
+            raise ValueError('The experiment has no measurements to process.')
+        result = MeasurementsViewerWin._standardizeAcdcDf(source).copy()
+        if overwrite:
+            outputs = MeasurementsViewerWin.measurementStepOutputs(configuration)
+            result = result.drop(columns=[c for c in outputs if c in result])
+        for identifier in configuration.get('timepoint_identifiers', []):
+            column = f'{TIMEPOINT_PREFIX}{identifier["name"]}'
+            if column not in result:
+                result[column] = False
+        for state in configuration.get('custom_annotations', []):
+            if state['name'] not in result:
+                result[state['name']] = 0
+        for _, section, step in sorted(steps):
+            outputs = (
+                step['output_columns'] if section == 'measurement_processing'
+                else list(step['equations'])
+            )
+            collisions = set(outputs).intersection(result.columns)
+            if collisions:
+                raise ValueError(
+                    'Workflow would overwrite existing measurements: '
+                    + ', '.join(sorted(collisions))
+                )
+            if section == 'measurement_processing':
+                result = measurement_processing.apply_recipe(
+                    result, step['columns'], step['recipe'], step['output_columns']
+                )
+            else:
+                equationSource = result.copy()
+                for name, expression in step['equations'].items():
+                    result[name] = apps.CombineMetricsEquationDialog.evaluateCellEquation(
+                        equationSource, expression, SizeT=getattr(posData, 'SizeT', None)
+                    )
+        posData.acdc_df = result
+
     def loadConfiguration(self, checked=False, filepath=None):
+        if self.measurementProcessingThread is not None:
+            self.configurationError('load', 'Wait for measurement processing to finish.')
+            return False
         if filepath is None:
             filepath = self.selectConfigurationFilepath()
         if not filepath:
@@ -780,6 +1264,13 @@ class MeasurementsViewerWin(
             with open(filepath, encoding='utf-8') as file:
                 configuration = json.load(file)
             self.validateConfiguration(configuration)
+            selectedInput = self.selectConfigurationInput(configuration)
+            if selectedInput is None:
+                return False
+            inputs = self.configurationInputOptions(configuration)
+            if selectedInput not in inputs:
+                inputs.append(copy.deepcopy(selectedInput))
+            configuration.update(selectedInput)
             for path in configuration['images_paths']:
                 if not os.path.isdir(path):
                     raise FileNotFoundError(f'Images folder not found: "{path}".')
@@ -794,6 +1285,10 @@ class MeasurementsViewerWin(
                     raise ValueError(f'Segmentation not found in "{path}".')
             self.setCursor(Qt.WaitCursor)
             try:
+                legacyViewed = {
+                    os.path.normcase(os.path.abspath(path)): IDs
+                    for path, IDs in configuration.get('viewed_cells', {}).items()
+                }
                 data = [
                     load_position(
                         path, configuration['channel'],
@@ -801,9 +1296,31 @@ class MeasurementsViewerWin(
                     )
                     for path in configuration['images_paths']
                 ]
+                replay = None
+                outputs = self.measurementStepOutputs(configuration)
+                if outputs:
+                    self.unsetCursor()
+                    replay = self.askMeasurementReplay(outputs, data)
+                    if replay is None:
+                        return False
+                    self.setCursor(Qt.WaitCursor)
+                for posData in data:
+                    if replay == 'recalculate':
+                        self.replayMeasurementSteps(
+                            posData, configuration, overwrite=True
+                        )
+                    legacyIDs = legacyViewed.get(
+                        os.path.normcase(os.path.abspath(posData.pos_path)), []
+                    ) if legacyViewed else []
+                    if legacyIDs and posData.acdc_df is not None:
+                        if VISITED_COLUMN not in posData.acdc_df:
+                            posData.acdc_df[VISITED_COLUMN] = False
+                        rows = posData.acdc_df.index.get_level_values('Cell_ID').isin(legacyIDs)
+                        posData.acdc_df.loc[rows, VISITED_COLUMN] = True
             finally:
                 self.unsetCursor()
-        except (OSError, ValueError, TypeError, KeyError) as err:
+        except Exception as err:
+            self.logger.exception('Loading measurements viewer workflow failed')
             self.configurationError('load', err)
             return False
 
@@ -813,12 +1330,28 @@ class MeasurementsViewerWin(
             TimepointIdentifier.from_dict(identifier)
             for identifier in configuration.get('timepoint_identifiers', [])
         ])
-        self.viewedCells = defaultdict(set)
-        for path, IDs in configuration.get('viewed_cells', {}).items():
-            self.viewedCells[os.path.normcase(os.path.abspath(path))].update(IDs)
+        self.configurationInputs = inputs
+        self.measurementProcessingSteps = copy.deepcopy(
+            configuration.get('measurement_processing', [])
+        )
+        self.combinedMeasurementSteps = copy.deepcopy(
+            configuration.get('combined_measurements', [])
+        )
         with self.deferPredictorPredictions():
             self.setData(data)
             self.setCustomAnnotations(configuration.get('custom_annotations', []))
+            # Exported assignments of visited cells must survive auto-prediction.
+            for posData in data:
+                table = getattr(posData, 'acdc_df', None)
+                if table is None or VISITED_COLUMN not in table:
+                    continue
+                IDs = set(table.index.get_level_values('Cell_ID')[
+                    table[VISITED_COLUMN].fillna(False).to_numpy(bool)
+                ])
+                for name in self.customAnnotNames():
+                    self.customAnnotAutoPredictions[
+                        self.customAnnotPredictionKey(posData, name)
+                    ].update(IDs)
         self.phaseTranslatorRules = copy.deepcopy(
             configuration.get('phase_translator_rules', [])
         )
@@ -850,6 +1383,7 @@ class MeasurementsViewerWin(
         self.measurementsModeChanged()
         self.normalizeCheckbox.setChecked(configuration['normalize_measurements'])
         self.configurationFilepath = filepath
+        self.markConfigurationSaved()
         if missing:
             self.configurationError(
                 'restore all plot selections',
@@ -1039,11 +1573,28 @@ class MeasurementsViewerWin(
             '(e.g., after saving in the main GUI)'
         )
         self.exitAction = QAction("&Exit", self)
-        self.loadConfigurationAction = QAction('Load configuration...', self)
-        self.saveConfigurationAction = QAction('Save configuration', self)
+        self.loadConfigurationAction = QAction(
+            QIcon(":file-open.svg"), 'Load configuration...', self
+        )
+        self.loadConfigurationAction.setToolTip(
+            'Load a measurements viewer configuration\n\n'
+            'Restores inputs, measurement steps, plots, time point '
+            'identifiers, custom annotations and phase rules.'
+        )
+        self.saveConfigurationAction = QAction(
+            QIcon(":file-save.svg"), 'Save configuration', self
+        )
         self.saveConfigurationAction.setShortcut('Ctrl+S')
-        self.saveConfigurationAsAction = QAction('Save configuration as...', self)
+        self.saveConfigurationAction.setToolTip(
+            'Save the current configuration (Ctrl+S)'
+        )
+        self.saveConfigurationAsAction = QAction(
+            QIcon(":edit-copy.svg"), 'Save configuration as...', self
+        )
         self.saveConfigurationAsAction.setShortcut('Ctrl+Shift+S')
+        self.saveConfigurationAsAction.setToolTip(
+            'Save the current configuration to a new file (Ctrl+Shift+S)'
+        )
         self.addTimepointIdentifierAction = QAction(
             QIcon(":add.svg"), 'Add time point identifier...', self
         )
@@ -1353,6 +1904,10 @@ class MeasurementsViewerWin(
         fileToolBar.addAction(self.openFileAction)
         fileToolBar.addAction(self.showInExplorerAction)
         fileToolBar.addAction(self.reloadAction)
+        fileToolBar.addSeparator()
+        fileToolBar.addAction(self.loadConfigurationAction)
+        fileToolBar.addAction(self.saveConfigurationAction)
+        fileToolBar.addAction(self.saveConfigurationAsAction)
         self.fileToolBar = fileToolBar
         
         # Navigation toolbar with the 'Viewer' mode tools as in guiWin
@@ -1573,7 +2128,10 @@ class MeasurementsViewerWin(
         for action in getattr(self, 'viewerToolsActions', ()):
             action.setEnabled(enabled)
         self.navigateToolBar.setEnabled(enabled)
-        alwaysEnabledActions = (self.openFolderAction, self.openFileAction)
+        alwaysEnabledActions = (
+            self.openFolderAction, self.openFileAction,
+            self.loadConfigurationAction
+        )
         for action in self.fileToolBar.actions():
             if action in alwaysEnabledActions:
                 continue
@@ -1709,6 +2267,7 @@ class MeasurementsViewerWin(
         hard_shortcuts = {}
         actions = (
             self.openFolderAction, self.reloadAction, 
+            self.saveConfigurationAction, self.saveConfigurationAsAction,
             self.focusOnSearchAction, self.editShortcutsAction, 
             self.viewCcaTableAction, 
             self.shuffleCmapAction, self.greedyShuffleCmapAction,
@@ -1822,6 +2381,7 @@ class MeasurementsViewerWin(
         
         self.isSegm3D = None
         self.setData(data)
+        self.markConfigurationSaved()
     
     def selectItem(self, title, text, items):
         if len(items) == 1:
@@ -2827,7 +3387,6 @@ class MeasurementsViewerWin(
         allIDs = self.initPosAnnotData(posData)
         self._IDframesCache = {}
         self.refreshAcdcDf(plot=False)
-        self.ensureTimepointPredictions(posData)
         self.initIDsNavigation(ID=ID)
         self.updateFramesRange()
         
@@ -3004,6 +3563,10 @@ class MeasurementsViewerWin(
         acdc_df = self._standardizeAcdcDf(acdc_df).sort_index()
         self.ensureTimepointColumns(acdc_df)
         self.ensureCustomAnnotColumns(acdc_df)
+        if VISITED_COLUMN not in acdc_df:
+            acdc_df[VISITED_COLUMN] = False
+        else:
+            acdc_df[VISITED_COLUMN] = acdc_df[VISITED_COLUMN].fillna(False).astype(bool)
         # The acdc_df of the position is the only store of the time points
         posData.acdc_df = acdc_df
         return acdc_df
@@ -3118,7 +3681,8 @@ class MeasurementsViewerWin(
         acdc_df = self.timepointsDf(posData)
         return acdc_df is not None and (frame_i, ID) in acdc_df.index
     
-    def _standardizeAcdcDf(self, acdc_df):
+    @staticmethod
+    def _standardizeAcdcDf(acdc_df):
         if list(acdc_df.index.names) == ['frame_i', 'Cell_ID']:
             return acdc_df
         acdc_df = acdc_df.reset_index()
@@ -3136,6 +3700,7 @@ class MeasurementsViewerWin(
         
         previous = getattr(posData, 'acdc_df', None)
         posData.loadAcdcDf(acdc_df_path)
+        posData.savedAcdcDf = acdc_df_snapshot(getattr(posData, 'acdc_df', None))
         self.restoreTimepointColumns(posData, previous)
     
     def restoreTimepointColumns(self, posData, previous):
@@ -3159,6 +3724,9 @@ class MeasurementsViewerWin(
             marked = previous.index[values.to_numpy() != 0]
             acdc_df[name] = acdc_df.index.isin(marked).astype(int)
             self.ensureCustomAnnotColumn(acdc_df, name)
+        if VISITED_COLUMN in previous:
+            marked = previous.index[previous[VISITED_COLUMN].fillna(False).to_numpy(bool)]
+            acdc_df[VISITED_COLUMN] = acdc_df.index.isin(marked)
         posData.acdc_df = acdc_df
     
     @disableWindow
@@ -3239,6 +3807,9 @@ class MeasurementsViewerWin(
             return
         posData.acdc_df = result
         self.acdc_df = result
+        self.recordMeasurementStep(
+            self.combinedMeasurementSteps, {'equations': equations}
+        )
         self.updateColumnsList()
         self.plotMeasurements()
         dialog.cancel = False
@@ -3277,6 +3848,10 @@ class MeasurementsViewerWin(
 
     def startMeasurementsProcessing(self, columns, recipe, saveNames):
         posData = self.posData()
+        self._pendingMeasurementStep = copy.deepcopy({
+            'columns': list(columns), 'recipe': recipe,
+            'output_columns': list(saveNames)
+        })
         self._measurementProcessingTarget = (
             posData, self.acdc_df, getattr(posData, 'acdc_df', None)
         )
@@ -3318,6 +3893,9 @@ class MeasurementsViewerWin(
             return
 
         posData.acdc_df = processed
+        self.recordMeasurementStep(
+            self.measurementProcessingSteps, self._pendingMeasurementStep
+        )
         if self.posData() is posData:
             self.acdc_df = processed
             self.updateColumnsList()
@@ -3326,6 +3904,17 @@ class MeasurementsViewerWin(
     def measurementProcessingFailed(self, out):
         worker, error = out
         self.measurementProcessingWarning('Measurement processing failed', str(error))
+
+    def recordMeasurementStep(self, steps, step):
+        # Applying the same operation at another position is not a new recipe.
+        if any({key: value for key, value in saved.items() if key != 'order'} == step
+               for saved in steps):
+            return
+        orders = [
+            saved['order']
+            for saved in self.measurementProcessingSteps + self.combinedMeasurementSteps
+        ]
+        steps.append({'order': max(orders, default=-1) + 1, **copy.deepcopy(step)})
 
     def measurementProcessingFinished(self):
         self.measurementProcessingThread.deleteLater()
@@ -4811,10 +5400,16 @@ class MeasurementsViewerWin(
             posData = self.posData()
         if posData is not self.posData():
             return
-        path = os.path.normcase(os.path.abspath(posData.pos_path))
         ID = int(self.selectedID)
-        newCell = ID not in self.viewedCells[path]
-        self.viewedCells[path].add(ID)
+        acdc_df = self.timepointsDf(posData)
+        if acdc_df is None:
+            return
+        if VISITED_COLUMN not in acdc_df:
+            acdc_df[VISITED_COLUMN] = False
+        rows = acdc_df.index.get_level_values('Cell_ID') == ID
+        newCell = not acdc_df.loc[rows, VISITED_COLUMN].fillna(False).any()
+        acdc_df.loc[rows, VISITED_COLUMN] = True
+        posData.acdc_df = acdc_df
         self.initPositionTimepointState(posData)
         columns = []
         for column, definition in self.predictorDefinitions().items():
@@ -6306,10 +6901,9 @@ class MeasurementsViewerWin(
             event.ignore()
             return
         if self.isDataLoaded:
-            if not self.saveConfiguration():
+            if not self.askSaveBeforeClosing():
                 event.ignore()
                 return
-        if self.isDataLoaded:
             self.saveAnnotationOptions()
         if self.slideshowWin is not None:
             self.slideshowWin.close()

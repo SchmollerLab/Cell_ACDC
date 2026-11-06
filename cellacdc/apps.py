@@ -99,6 +99,7 @@ from . import fonts
 from . import QtScoped
 from . import debugutils
 from .timepoint_predictors import debug_trace as timepoint_debug_trace
+from .timepoint_predictors import TIMEPOINT_PREFIX
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -482,7 +483,7 @@ class PhaseTranslatorRuleDialog(QDialog):
             requirementsLayout.addWidget(QLabel(title))
             for column in dict.fromkeys([*available, *selected]):
                 text = (
-                    column[len('timepoint_'):] if isBoundary else column
+                    column[len(TIMEPOINT_PREFIX):] if isBoundary else column
                 )
                 if column not in available:
                     text += ' (missing)'
@@ -578,7 +579,7 @@ class PhaseTranslatorRuleDialog(QDialog):
             row = QWidget()
             rowLayout = QHBoxLayout(row)
             rowLayout.setContentsMargins(0, 0, 0, 0)
-            rowLayout.addWidget(QLabel(column[len('timepoint_'):]), stretch=1)
+            rowLayout.addWidget(QLabel(column[len(TIMEPOINT_PREFIX):]), stretch=1)
             for label, offset in (('Up', -1), ('Down', 1)):
                 button = QPushButton(label)
                 button.setEnabled(0 <= index + offset < len(self.boundaries))
@@ -15108,10 +15109,19 @@ class _CombineMetricsDialog(QBaseDialog):
                 )
             return result
 
-        variables = (
-            {'SizeT': self.SizeT}
-            if getattr(self, 'SizeT', None) is not None else None
+        return self.evaluateCellEquation(
+            df, formula, SizeT=getattr(self, 'SizeT', None),
+            enforce_dtype_output=enforce_dtype_output, alternatives=alternatives
         )
+
+    @staticmethod
+    def evaluateCellEquation(
+            df, formula, *, SizeT=None, enforce_dtype_output=None,
+            alternatives=None
+        ):
+        """Evaluate viewer equations without requiring an equation editor."""
+        from . import timepoint_predictors
+        variables = {'SizeT': SizeT} if SizeT is not None else None
         flat = timepoint_predictors.CellTable.flatten(df)
         if 'Cell_ID' not in flat or flat.empty:
             return timepoint_predictors.CellEquation.evaluate(

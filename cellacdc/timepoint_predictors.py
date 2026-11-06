@@ -91,6 +91,9 @@ import pandas as pd
 from numpy.typing import ArrayLike, DTypeLike, NDArray
 from ._equations import equation_variable_spans
 
+# Prefix of the boolean acdc_df columns that store time point identifiers.
+TIMEPOINT_PREFIX = 'timepoint_'
+
 DEBUG = False
 DEBUG_STACK_INTERVAL = 10.0
 _debug_state = threading.local()
