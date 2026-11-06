@@ -49,6 +49,40 @@ prediction; using existing values requires every output column to be present
 in every position. Version 1 files remain
 loadable; their viewed-cell lists are migrated to the table's visited column.
 
+Premade configurations are templates shipped in
+`cellacdc/measurements_viewer_premade_configurations/*.json` and listed as
+"Premade" in the load dialog (any loaded file with `channel_placeholders` is
+treated as premade). They use the normal configuration schema without
+`images_paths`/`input_options` (`segm_endname` may be empty) plus
+`"channel_placeholders": {"RED": "description", ...}`. Channels are written
+as braced tokens such as `{RED}` anywhere in the file (channel fields, column
+names like `{RED}_mean`, equations, predictors, phase rules; keys and values).
+Templates can also declare
+`"input_placeholders": {"NAME": {"type": "float"|"int"|"str", "default": v,
+"description": "...", "info": "..."}}` for values to enter during setup (e.g.
+normalization constants); their `{NAME}` tokens are replaced like channels,
+and a string that is exactly one token becomes the typed value (so recipe
+kwargs stay numeric). Loading a premade configuration asks for an experiment
+folder, then for one channel per placeholder (drop-down of the channels
+common to all positions, each channel used at most once) and for the input
+values (prefilled with the defaults, info button per input), replaces every
+token, asks which channel
+to display as base layer (template channel offered first; with an empty
+template `channel`, e.g. the FUCCI template whose reporters are both overlays,
+the unmapped channels such as phase contrast are offered first; a mapped
+channel that is not the base becomes a visible overlay), resolves the
+segmentation/overlays like a new experiment input, and writes the result
+(without placeholder sections, with a `premade` source/mapping/input values
+record) as a
+new configuration in the settings folder, which is then loaded. The template
+itself is never modified.
+
+Any configuration may have an empty `channel` (no display channel). Loading
+it asks for the channel to display (base layer), offering non-overlay channels
+first, for both saved and new experiment inputs; an overlay chosen as base is
+removed from the overlays. The choice becomes the loaded configuration's
+`channel` and is kept when the configuration is saved.
+
 Use ``Process measurements...`` to apply a recipe to selected measurements of the
 current position. Smooth measurement uses a centered moving average independently
 for each cell; Dummy leaves values unchanged. Accepting prompts for an output
@@ -66,6 +100,19 @@ reduce the condition across the cell's frames and repeat the result on each
 of its rows.
 ``Export measurements...`` saves the table, including processed columns, to a
 separate CSV. Processing is applied to raw measurements before plot normalization.
+
+Right-click a plotted column and select ``Conditional formatting...`` to color
+its time course with ordered rules ``{"condition": equation, "color": spec}``,
+saved per column in the configuration's ``conditional_formatting``. The color
+is ``"#rrggbb"`` or a shade of the column color: ``"lighter"`` /
+``"darker"``, optionally with a QColor factor in percent (>= 100; defaults
+150 and 200), e.g. ``"darker:250"``. Conditions are evaluated like predictor equations
+on the selected cell's raw rows (per-cell functions and ``SizeT``; bool or
+0/1, per frame or scalar; missing values are False). The first true rule
+colors a point and the line segment to the next point; other frames keep the
+column color. Hovering shows the matching condition. Evaluation errors are
+shown in the status bar and the column is drawn unformatted. Formatting
+applies to the time course only, not to the comparison mode.
 
 The ``Time points`` toolbar has ``Add time point identifier...`` to define a
 named time point (e.g., "Bud emergence") with a color, a keyboard shortcut
@@ -132,16 +179,35 @@ The right-hand list has phase names before, between and after its boundaries.
 Intervals include their start and exclude their end; blank names leave frames
 unassigned. Rules and boundaries can both be reordered.
 Apply phase evaluation updates either the displayed cell or all cells of the
-current position in memory. Export measurements prompts to evaluate all cells
+current position in memory. With ``Automatically evaluate phases when time
+points change or phases are missing`` (saved in the configuration as
+``auto_apply_phases``), every change of time points on the current position
+(added, moved, removed, cleared or predicted) re-evaluates the phases of the
+affected cells once the change is complete, and a displayed cell without
+evaluated phases (no ``phase`` column or only empty phases) is evaluated once
+per session (after its automatic predictors); errors and warnings then go to
+the status bar. Export measurements prompts to evaluate all cells
 when rules are configured, and exports ``phase`` (string, empty if unassigned)
 and ``phase_<name>`` (boolean) columns. These output names are reserved by the
 translator; existing unrelated measurements are not overwritten. Rule
 definitions, but not evaluated table values, are saved in viewer configurations.
+
+When the table has a ``phase`` column, the selected cell's phases are drawn as
+a solid colored band (one bar per run of consecutive frames, labeled with the
+phase; hover for frame ranges) in a separate x-linked plot directly below the
+time course, and Measurement vs Measurement colors each point by its phase
+(gray for unassigned, with a legend). Hover tips show the phase. The
+``Show phases`` checkbox toggles both; its state is stored in the settings CSV
+(``measurements_viewer_show_phases``). Phase colors are edited in the
+translator dialog's ``Phase colors`` box (committed on Apply or OK) and saved
+in the configuration's ``phase_colors`` ``{name: "#rrggbb"}``; phases without a
+color get evenly spaced default hues (``phase_translator.phase_colors``).
 """
 import os
 import sys
 import copy
 import json
+import re
 import logging
 from collections import defaultdict
 from contextlib import contextmanager
@@ -188,6 +254,16 @@ from . import printl
 from . import workers
 from . import timepoint_predictors
 from . import custom_annotation_predictors
+from . import apps_measurements_viewer
+from .apps_measurements_viewer import (
+    ChannelPlaceholderMappingDialog,
+    ConditionalFormattingDialog,
+    RELATIVE_COLOR_FACTORS,
+    RELATIVE_COLOR_PATTERN,
+    _FormattingConditionDialog,
+    formatting_color,
+    is_formatting_color,
+)
 from . import phase_translator, measurement_processing
 from . import gui_custom_annotations
 from .gui_custom_annotations import (
@@ -219,6 +295,12 @@ CCA_DF_INT_COLS = [
 MEASUREMENTS_CONFIGURATIONS_PATH = os.path.join(
     settings_folderpath, 'measurements_viewer_configurations'
 )
+PREMADE_CONFIGURATIONS_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'measurements_viewer_premade_configurations'
+)
+PREMADE_TAG = '[Premade] '
+
 
 class _TimepointLine(pg.InfiniteLine):
     """Draggable line of a time point of the selected cell."""
@@ -515,6 +597,8 @@ class MeasurementsViewerWin(
         self.rescaleIntensChannelHowMapper = {}
         self.timepointIdentifiers = []
         self.phaseTranslatorRules = []
+        # User-chosen phase colors {phase name: '#rrggbb'}
+        self.phaseColors = {}
         self.timepointActions = {}
         self.timepointAutoActions = {}
         self.timepointLines = []
@@ -526,6 +610,10 @@ class MeasurementsViewerWin(
         # self.cellConstants = []
         self.logger = logging.getLogger('cellacdc-measurements-viewer')
         self.loadSettings()
+        # Re-evaluate phases of cells whose time points change or whose
+        # phases are missing (saved in the configuration)
+        self.autoApplyPhases = False
+        self._pendingPhaseIDs = set()
         self.initAnnotationsAttributes()
         self.initViewerToolsAttributes()
         self.initCustomAnnotationsAttributes()
@@ -567,11 +655,17 @@ class MeasurementsViewerWin(
         from .apps import QTreeDialog
 
         paths = {}
-        if os.path.isdir(MEASUREMENTS_CONFIGURATIONS_PATH):
-            for filename in sorted(os.listdir(MEASUREMENTS_CONFIGURATIONS_PATH)):
-                filepath = os.path.join(MEASUREMENTS_CONFIGURATIONS_PATH, filename)
+        types = {}
+        for folder, prefix, kind in (
+                (MEASUREMENTS_CONFIGURATIONS_PATH, '', 'Saved'),
+                (PREMADE_CONFIGURATIONS_PATH, PREMADE_TAG, 'Premade')):
+            if not os.path.isdir(folder):
+                continue
+            for filename in sorted(os.listdir(folder)):
+                filepath = os.path.join(folder, filename)
                 if filename.lower().endswith('.json') and os.path.isfile(filepath):
-                    paths[filename] = filepath
+                    paths[f'{prefix}{filename}'] = filepath
+                    types[f'{prefix}{filename}'] = kind
 
         def browse():
             return QFileDialog.getOpenFileName(
@@ -585,10 +679,10 @@ class MeasurementsViewerWin(
             [
                 (name, datetime.fromtimestamp(os.path.getmtime(path)).strftime(
                     '%Y/%m/%d %H:%M'
-                ))
+                ), types[name])
                 for name, path in paths.items()
             ],
-            headerLabels=['Name', 'Date Modified'],
+            headerLabels=['Name', 'Date Modified', 'Type'],
             title='Load measurements viewer configuration',
             infoText='Select a configuration to load, or skip loading:',
             parent=self,
@@ -652,11 +746,14 @@ class MeasurementsViewerWin(
             ),
             'measurements_axes': self.measurementsAxes.copy(),
             'normalize_measurements': self.normalizeCheckbox.isChecked(),
+            'conditional_formatting': copy.deepcopy(self.conditionalFormatting),
             'timepoint_identifiers': [
                 identifier.to_dict() for identifier in self.timepointIdentifiers
             ],
             'custom_annotations': self.customAnnotConfiguration(),
             'phase_translator_rules': copy.deepcopy(self.phaseTranslatorRules),
+            'phase_colors': dict(self.phaseColors),
+            'auto_apply_phases': self.autoApplyPhases,
             # 'cell_constants': [dict(constant) for constant in self.cellConstants],
         }
 
@@ -685,6 +782,9 @@ class MeasurementsViewerWin(
                 or configuration['measurements_mode'] not in (0, 1)
                 or type(configuration.get('normalize_measurements')) is not bool):
             raise ValueError('Invalid plotting options in configuration.')
+        MeasurementsViewerWin.validateConditionalFormatting(
+            configuration.get('conditional_formatting', {})
+        )
         # Optional for configurations saved before time point identifiers
         identifiers = configuration.get('timepoint_identifiers', [])
         if not isinstance(identifiers, list):
@@ -705,6 +805,9 @@ class MeasurementsViewerWin(
             configuration.get('custom_annotations', [])
         )
         phase_translator.validate_rules(configuration.get('phase_translator_rules', []))
+        phase_translator.validate_phase_colors(configuration.get('phase_colors', {}))
+        if not isinstance(configuration.get('auto_apply_phases', False), bool):
+            raise ValueError('auto_apply_phases must be true or false.')
         predictors = {
             f'{TIMEPOINT_PREFIX}{identifier["name"]}': identifier['predictor']
             for identifier in identifiers
@@ -719,6 +822,68 @@ class MeasurementsViewerWin(
         timepoint_predictors.PredictorDependencies.order(predictors)
 
     @staticmethod
+    def validateConditionalFormatting(formatting):
+        """Validate `{column: [{'condition': str, 'color': '#rrggbb'}]}`."""
+        if not isinstance(formatting, dict):
+            raise ValueError('Invalid conditional formatting in configuration.')
+        for column, rules in formatting.items():
+            if not isinstance(column, str) or not column:
+                raise ValueError('Invalid conditional formatting column.')
+            if not isinstance(rules, list):
+                raise ValueError(
+                    f'Invalid conditional formatting rules of "{column}".'
+                )
+            for rule in rules:
+                if (not isinstance(rule, dict)
+                        or set(rule) != {'condition', 'color'}
+                        or not isinstance(rule['condition'], str)
+                        or not rule['condition'].strip()
+                        or not is_formatting_color(rule['color'])):
+                    raise ValueError(
+                        f'Invalid conditional formatting rule of "{column}": '
+                        f'{rule!r}. Expected a non-empty condition and a '
+                        'color like "#ff0000", "lighter" or "darker:250".'
+                    )
+
+    @staticmethod
+    def evaluateConditionalFormatting(df_ID, rules, ID=None, SizeT=None):
+        """Index of the first true rule at each row of one cell (-1: none).
+
+        `df_ID` holds the rows of one cell in frame order (index `frame_i`).
+        Each condition is evaluated like a predictor equation and must
+        return bool or 0/1 (per row, or a scalar for the whole cell).
+        Missing values count as False. Errors are raised.
+        """
+        matched = np.full(len(df_ID), -1, dtype=int)
+        if not rules or not len(df_ID):
+            return matched
+        cell = timepoint_predictors.CellTable.flatten(df_ID)
+        if 'Cell_ID' not in cell.columns and ID is not None:
+            cell['Cell_ID'] = ID
+        variables = {'SizeT': SizeT} if SizeT is not None else None
+        for i, rule in enumerate(rules):
+            values = timepoint_predictors.CellEquation.evaluate(
+                cell, rule['condition'], variables
+            )
+            try:
+                if isinstance(values, (pd.Series, pd.Index)):
+                    values = values.to_numpy(dtype=float, na_value=np.nan)
+                elif values is None or values is pd.NA:
+                    values = np.nan
+                values = np.nan_to_num(
+                    np.asarray(values, dtype=float), nan=0.0
+                )
+            except (TypeError, ValueError):
+                raise ValueError(
+                    'The condition must return bool or 0/1 values.'
+                ) from None
+            mask = timepoint_predictors.CellFilter.boolean_values(
+                values, len(cell)
+            )
+            matched[(matched < 0) & mask] = i
+        return matched
+
+    @staticmethod
     def validateConfigurationInput(configuration):
         if not isinstance(configuration, dict):
             raise ValueError('Invalid configuration input.')
@@ -730,12 +895,15 @@ class MeasurementsViewerWin(
                 raise ValueError(f'Invalid configuration field: {key}.')
         if not configuration['images_paths']:
             raise ValueError('The configuration contains no Images folders.')
-        for key in ('channel', 'segm_endname'):
-            if not isinstance(configuration.get(key), str) or not configuration[key]:
-                raise ValueError(f'Invalid configuration field: {key}.')
+        if not isinstance(configuration.get('channel'), str):
+            raise ValueError('Invalid configuration field: channel.')
+        segm = configuration.get('segm_endname')
+        if not isinstance(segm, str) or not segm:
+            raise ValueError('Invalid configuration field: segm_endname.')
+        # An empty channel means "ask which channel to display when loading"
         available = {
             configuration['channel'], *configuration['overlay_channels']
-        }
+        } - {''}
         if (not configuration['visible_channels']
                 or not set(configuration['visible_channels']) <= available):
             raise ValueError('Invalid visible image channels in configuration.')
@@ -823,27 +991,11 @@ class MeasurementsViewerWin(
             filepath = os.path.join(MEASUREMENTS_CONFIGURATIONS_PATH, filename)
             if not filepath.lower().endswith('.json'):
                 filepath += '.json'
-                if os.path.exists(filepath):
-                    msg = widgets.myMessageBox(wrapText=False)
-                    no, yes = msg.question(
-                        self, 'Overwrite configuration?',
-                        f'The file "{filepath}" already exists. Overwrite it?',
-                        buttonsTexts=('Cancel', 'Overwrite')
-                    )
-                    if msg.clickedButton != yes:
-                        return False
+            # fileNameDialog handles overwrite confirmation internally
         try:
             configuration = self.configuration()
             self.validateConfiguration(configuration)
-            payload = json.dumps(configuration, indent=2).encode('utf-8')
-            output = QSaveFile(filepath)
-            if not output.open(QIODevice.WriteOnly):
-                raise OSError(output.errorString())
-            if output.write(payload) != len(payload):
-                output.cancelWriting()
-                raise OSError(output.errorString())
-            if not output.commit():
-                raise OSError(output.errorString())
+            self.writeConfigurationFile(filepath, configuration)
         except (OSError, ValueError, TypeError, AttributeError) as err:
             self.configurationError('save', err)
             return False
@@ -855,6 +1007,262 @@ class MeasurementsViewerWin(
 
     def saveConfigurationAs(self, checked=False):
         return self.saveConfiguration(save_as=True)
+
+    @staticmethod
+    def writeConfigurationFile(filepath, configuration):
+        payload = json.dumps(configuration, indent=2).encode('utf-8')
+        output = QSaveFile(filepath)
+        if not output.open(QIODevice.WriteOnly):
+            raise OSError(output.errorString())
+        if output.write(payload) != len(payload):
+            output.cancelWriting()
+            raise OSError(output.errorString())
+        if not output.commit():
+            raise OSError(output.errorString())
+
+    @staticmethod
+    def validateChannelPlaceholders(placeholders):
+        if not isinstance(placeholders, dict) or not placeholders:
+            raise ValueError('Invalid channel_placeholders in configuration.')
+        for name, description in placeholders.items():
+            if (not isinstance(name, str)
+                    or not re.fullmatch(r'[A-Za-z0-9_]+', name)
+                    or not isinstance(description, str)):
+                raise ValueError(f'Invalid channel placeholder "{name}".')
+
+    @staticmethod
+    def validateInputPlaceholders(inputs, channelNames=()):
+        """Validate a template's `input_placeholders`:
+        `{NAME: {"type": "float"|"int"|"str", "default": value,
+        "description": str, "info": str}}` (description and info optional).
+        Names follow the channel placeholder rules and must differ from them.
+        """
+        if not isinstance(inputs, dict):
+            raise ValueError('Invalid input_placeholders in configuration.')
+        for name, spec in inputs.items():
+            if (not isinstance(name, str)
+                    or not re.fullmatch(r'[A-Za-z0-9_]+', name)
+                    or name in channelNames):
+                raise ValueError(f'Invalid input placeholder "{name}".')
+            if (not isinstance(spec, dict)
+                    or not {'type', 'default'} <= set(spec)
+                    or not set(spec) <= {'type', 'default', 'description', 'info'}
+                    or any(not isinstance(spec.get(key, ''), str)
+                           for key in ('description', 'info'))):
+                raise ValueError(f'Invalid input placeholder "{name}".')
+            kind, default = spec['type'], spec['default']
+            valid = {
+                'float': lambda v: (
+                    isinstance(v, (int, float)) and not isinstance(v, bool)
+                ),
+                'int': lambda v: isinstance(v, int) and not isinstance(v, bool),
+                'str': lambda v: isinstance(v, str),
+            }
+            if kind not in valid or not valid[kind](default):
+                raise ValueError(
+                    f'Invalid type or default of input placeholder "{name}".'
+                )
+
+    @classmethod
+    def resolvePremadeTemplate(cls, template, mapping, values=None):
+        """Return the configuration of a premade `template` (not modified)
+        with channel tokens replaced by `mapping` and input tokens by
+        `values` (defaults for missing inputs). Raises ValueError if a token
+        remains unresolved."""
+        placeholders = template.get('channel_placeholders', {})
+        inputs = template.get('input_placeholders', {})
+        cls.validateInputPlaceholders(inputs, placeholders)
+        replacements = {name: spec['default'] for name, spec in inputs.items()}
+        replacements.update(values or {})
+        replacements.update(mapping)
+        result = {
+            key: value for key, value in template.items()
+            if key not in ('channel_placeholders', 'input_placeholders')
+        }
+        result = cls.substituteChannelPlaceholders(result, replacements)
+        unresolved = cls.unresolvedPlaceholders(
+            result, [*placeholders, *inputs]
+        )
+        if unresolved:
+            raise ValueError(
+                f'Unresolved placeholders: {", ".join(unresolved)}.'
+            )
+        return result
+
+    @staticmethod
+    def substituteChannelPlaceholders(obj, mapping):
+        """Return a copy of `obj` with every `{NAME}` token replaced by
+        `mapping[NAME]` in strings, dict keys and dict values (recursive).
+
+        A string that is exactly one token becomes the mapped value itself
+        (e.g. a number for input placeholders); tokens within longer strings
+        and dict keys are replaced by the value's text."""
+        def text(value):
+            return value if isinstance(value, str) else repr(value)
+
+        def substitute(value, isKey=False):
+            if isinstance(value, str):
+                match = re.fullmatch(r'\{([A-Za-z0-9_]+)\}', value)
+                if match and match.group(1) in mapping and not isKey:
+                    return copy.deepcopy(mapping[match.group(1)])
+                for name, replacement in mapping.items():
+                    value = value.replace(f'{{{name}}}', text(replacement))
+                return value
+            if isinstance(value, dict):
+                return {
+                    substitute(key, isKey=True): substitute(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, (list, tuple)):
+                return [substitute(item) for item in value]
+            return copy.deepcopy(value)
+        return substitute(obj)
+
+    @staticmethod
+    def unresolvedPlaceholders(obj, names):
+        """Return the `{NAME}` tokens of `names` still present in `obj`."""
+        text = json.dumps(obj)
+        return sorted(name for name in names if f'{{{name}}}' in text)
+
+    def selectChannelMapping(self, placeholders, channels, inputs=None):
+        """Return `(channel mapping, input values)` or None if cancelled."""
+        dialog = ChannelPlaceholderMappingDialog(
+            placeholders, channels, parent=self, inputs=inputs
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return None
+        return dialog.mapping, dialog.values
+
+    def selectPremadeBaseChannel(self, channels, default=None):
+        """Ask which channel to display as base layer (default listed first)."""
+        items = list(channels)
+        if default in items:
+            items.remove(default)
+            items.insert(0, default)
+        return self.selectItem(
+            'Select channel',
+            'Select channel to display (base layer).\n'
+            'The mapped channels that are not displayed as base are '
+            'added as overlays:', items
+        )
+
+    @staticmethod
+    def setConfigurationBaseChannel(configuration, base):
+        """Make `base` the displayed channel; the previous base becomes an
+        overlay so that it stays available and visible."""
+        previous = configuration.get('channel')
+        overlays = [
+            ch for ch in configuration.get('overlay_channels', [])
+            if ch != base
+        ]
+        visible = list(configuration.get('visible_channels', []))
+        if previous and previous != base and previous not in overlays:
+            overlays.insert(0, previous)
+            if previous not in visible:
+                visible.append(previous)
+        visible = [base, *(ch for ch in visible if ch != base)]
+        configuration.update(
+            channel=base, overlay_channels=overlays, visible_channels=visible
+        )
+
+    def askPremadeCopyFilename(self, defaultName):
+        """Return the filepath for the copy of a premade configuration."""
+        os.makedirs(MEASUREMENTS_CONFIGURATIONS_PATH, exist_ok=True)
+        current_files = sorted(os.listdir(MEASUREMENTS_CONFIGURATIONS_PATH))
+        helpText = html_utils.paragraph(
+            'The premade configuration with your channels is saved as a new '
+            'configuration, which you can later load and modify.'
+        )
+        msg = apps.filenameDialog(
+            ext='json', title='Save configuration from premade template',
+            parent=self, helpText=helpText, existingNames=current_files,
+            allowEmpty=False, defaultEntry=defaultName
+        )
+        msg.exec_()
+        if msg.cancel or not msg.filename:
+            return None
+        filepath = os.path.join(MEASUREMENTS_CONFIGURATIONS_PATH, msg.filename)
+        if not filepath.lower().endswith('.json'):
+            filepath += '.json'
+        # fileNameDialog handles overwrite confirmation internally
+        return filepath
+
+    def instantiatePremadeConfiguration(self, configuration, source):
+        """Create a configuration from a premade template.
+
+        Asks for an experiment folder and a channel for each placeholder,
+        replaces the `{NAME}` tokens, resolves the experiment input and writes
+        the result to the configurations folder. Returns
+        `(filepath, configuration, selectedInput)` or None if cancelled.
+        """
+        placeholders = configuration.get('channel_placeholders')
+        self.validateChannelPlaceholders(placeholders)
+        inputs = configuration.get('input_placeholders', {})
+        self.validateInputPlaceholders(inputs, placeholders)
+        folder = QFileDialog.getExistingDirectory(
+            self, 'Select experiment, Position or Images folder',
+            self.getMostRecentPath()
+        )
+        if not folder:
+            return None
+        paths = get_images_paths(folder)
+        if not paths:
+            raise ValueError(f'No Images folders found in "{folder}".')
+        available = [get_channels_and_segm_endnames(path) for path in paths]
+        channels = set(available[0][0]).intersection(
+            *(set(item[0]) for item in available)
+        )
+        if len(channels) < len(placeholders):
+            raise ValueError(
+                f'The premade configuration needs {len(placeholders)} '
+                f'channels, but the positions have only {len(channels)} '
+                'channels in common.'
+            )
+        selection = self.selectChannelMapping(
+            placeholders, sorted(channels), inputs=inputs
+        )
+        if selection is None:
+            return None
+        mapping, values = selection
+        result = self.resolvePremadeTemplate(configuration, mapping, values)
+        result.setdefault('segm_endname', '')
+        result.setdefault('overlay_channels', [])
+        result.setdefault('visible_channels', [result.get('channel', '')])
+        result.setdefault('version', 2)
+        result.setdefault('time_course_columns', [])
+        result.setdefault('measurements_axes', {'X': '', 'Y': ''})
+        result.setdefault('measurements_mode', 0)
+        result.setdefault('normalize_measurements', False)
+        default = result.get('channel') or None
+        offered = sorted(channels)
+        if default is None:
+            # No display channel in the template: offer the channels that
+            # are not mapped (e.g. phase contrast) first
+            mapped = set(mapping.values())
+            offered.sort(key=lambda ch: ch in mapped)
+        base = self.selectPremadeBaseChannel(offered, default)
+        if base is None:
+            return None
+        self.setConfigurationBaseChannel(result, base)
+        selectedInput = self.newExperimentInput(result, paths)
+        if selectedInput is None:
+            return None
+        result.update(selectedInput)
+        result['input_options'] = [copy.deepcopy(selectedInput)]
+        result['premade'] = {
+            'source': os.path.basename(source), 'channel_mapping': mapping
+        }
+        if inputs:
+            result['premade']['input_values'] = dict(values or {})
+        self.validateConfiguration(result)
+        stem = os.path.splitext(os.path.basename(source))[0]
+        defaultName = '_'.join([stem, *mapping.values()])
+        filepath = self.askPremadeCopyFilename(defaultName)
+        if filepath is None:
+            return None
+        self.writeConfigurationFile(filepath, result)
+        return filepath, result, selectedInput
 
     def markConfigurationSaved(self):
         try:
@@ -1068,7 +1476,13 @@ class MeasurementsViewerWin(
         if not channels or not segmentations:
             raise ValueError('The positions have no common channels or segmentations.')
         channel = configuration['channel']
-        if channel not in channels:
+        if not channel:
+            channel = self.selectDisplayChannel(
+                channels, configuration['overlay_channels']
+            )
+            if channel is None:
+                return None
+        elif channel not in channels:
             channel = self.selectItem(
                 'Select channel',
                 f'Channel "{channel}" is not in every position of the new '
@@ -1126,6 +1540,39 @@ class MeasurementsViewerWin(
             'overlay_channels': overlays,
             'visible_channels': visible,
         }
+
+    def selectDisplayChannel(self, channels, overlays=()):
+        """Ask for the display (base layer) channel of a configuration
+        without one. Channels that are not overlays are offered first; an
+        overlay chosen as base is removed from the overlays by the caller."""
+        items = sorted(channels, key=lambda ch: (ch in overlays, ch))
+        return self.selectItem(
+            'Select channel',
+            'The configuration does not specify a channel to display.\n'
+            'Select channel to display (base layer):', items
+        )
+
+    def resolveInputChannel(self, selectedInput):
+        """Return `selectedInput` with a display channel, asking for one if
+        it is empty (None if cancelled). The chosen channel is removed from
+        the overlays and shown first."""
+        if selectedInput['channel']:
+            return selectedInput
+        available = [
+            set(get_channels_and_segm_endnames(path)[0])
+            for path in selectedInput['images_paths']
+        ]
+        channels = set.intersection(*available) if available else set()
+        if not channels:
+            raise ValueError('The positions have no common channels.')
+        channel = self.selectDisplayChannel(
+            channels, selectedInput['overlay_channels']
+        )
+        if channel is None:
+            return None
+        resolved = copy.deepcopy(selectedInput)
+        self.setConfigurationBaseChannel(resolved, channel)
+        return resolved
 
     def selectConfigurationOverlayChannels(self, channels, text=None):
         if not channels:
@@ -1263,8 +1710,19 @@ class MeasurementsViewerWin(
         try:
             with open(filepath, encoding='utf-8') as file:
                 configuration = json.load(file)
-            self.validateConfiguration(configuration)
-            selectedInput = self.selectConfigurationInput(configuration)
+            if (isinstance(configuration, dict)
+                    and 'channel_placeholders' in configuration):
+                premade = self.instantiatePremadeConfiguration(
+                    configuration, filepath
+                )
+                if premade is None:
+                    return False
+                filepath, configuration, selectedInput = premade
+            else:
+                self.validateConfiguration(configuration)
+                selectedInput = self.selectConfigurationInput(configuration)
+                if selectedInput is not None:
+                    selectedInput = self.resolveInputChannel(selectedInput)
             if selectedInput is None:
                 return False
             inputs = self.configurationInputOptions(configuration)
@@ -1355,6 +1813,8 @@ class MeasurementsViewerWin(
         self.phaseTranslatorRules = copy.deepcopy(
             configuration.get('phase_translator_rules', [])
         )
+        self.phaseColors = dict(configuration.get('phase_colors', {}))
+        self.autoApplyPhases = configuration.get('auto_apply_phases', False)
         self.configurationFilepath = None
         overlays = configuration['overlay_channels']
         if overlays:
@@ -1380,6 +1840,9 @@ class MeasurementsViewerWin(
         self.measurementsAxes = {
             axis: value if value in columns else '' for axis, value in axes.items()
         }
+        self.conditionalFormatting = copy.deepcopy(
+            configuration.get('conditional_formatting', {})
+        )
         self.measurementsModeChanged()
         self.normalizeCheckbox.setChecked(configuration['normalize_measurements'])
         self.configurationFilepath = filepath
@@ -2759,7 +3222,21 @@ class MeasurementsViewerWin(
             pen=pg.mkPen(width=3, color='r'), tip=None
         )
         self.ax1.addItem(self.searchedIDitemLeft)
-        
+
+        # Overlay channel layers are added later (when data is loaded) with
+        # the default z-value 0, which would draw them above these items.
+        # Keep annotations above every image layer and below the text IDs
+        # (z-value 1, see `gui_annotations`).
+        annotationItems = (
+            self.labelsLayerImg1, self.ax1_contoursImageItem,
+            self.ax1_oldMothBudLinesItem, self.ax1_newMothBudLinesItem,
+            self.ax1_movementAgainstPrevLinesItem,
+            self.ax1_movementAgainstPrevScatterItem,
+            self.highLightIDLayerImg1, self.searchedIDitemLeft,
+        )
+        for i, item in enumerate(annotationItems):
+            item.setZValue(0.5 + i * 0.01)
+
         self.textIDsColorButton.sigColorChanging.connect(
             self.updateTextAnnotColor
         )
@@ -2968,6 +3445,23 @@ class MeasurementsViewerWin(
             'If active, the plot is rescaled when changing Cell ID'
         )
         
+        self.normalizeCheckbox = QCheckBox('Normalize measurements (0-1)')
+        self.normalizeCheckbox.setToolTip(
+            'Rescale each measurement to the range 0-1 to compare measurements with '
+            'different scales'
+        )
+        self.showPhasesCheckbox = QCheckBox('Show phases')
+        self.showPhasesCheckbox.setToolTip(
+            'Show the evaluated phases (phase column) as a band below the '
+            'time course and as point colors in Measurement vs Measurement. '
+            'Set colors in the time point to phase translator.'
+        )
+        self.showPhasesCheckbox.setChecked(self._get_setting_value(
+            'measurements_viewer_show_phases', True, cast=bool
+        ))
+        self.showPhasesCheckbox.setEnabled(False)
+ 
+        
         self.posLabel = QLabel('Position')
         self.posCombobox = QComboBox()
         
@@ -3017,6 +3511,9 @@ class MeasurementsViewerWin(
         idOptionsLayout.addWidget(self.restrictFramesCheckbox)
         idOptionsLayout.addWidget(self.idNotPresentLabel)
         idOptionsLayout.addWidget(self.rescalePlotCheckbox)
+        
+        idOptionsLayout.addWidget(self.normalizeCheckbox)
+        idOptionsLayout.addWidget(self.showPhasesCheckbox)
         idOptionsLayout.addStretch(1)
         navLayout.addLayout(idOptionsLayout, row, 0, 1, 6)
         
@@ -3118,6 +3615,42 @@ class MeasurementsViewerWin(
         )
         self.currentFrameLine.setZValue(10)
         self.measurementsPlot.addItem(self.currentFrameLine, ignoreBounds=True)
+
+        # Solid band of the selected cell's phases below the time course,
+        # x-linked to the measurements plot
+        self.phaseBandPlot = pg.PlotWidget()
+        self.phaseBandPlot.setBackground(
+            graphLayoutBkgrColor if self.invertBwAction.isChecked()
+            else darkBkgrColor
+        )
+        self.phaseBandPlot.setFixedHeight(32)
+        self.phaseBandPlot.setMouseEnabled(x=False, y=False)
+        self.phaseBandPlot.setMenuEnabled(False)
+        self.phaseBandPlot.hideButtons()
+        self.phaseBandPlot.hideAxis('bottom')
+        self.phaseBandPlot.getAxis('left').setStyle(showValues=False)
+        self.phaseBandPlot.getAxis('left').setTicks([[]])
+        self.phaseBandPlot.getAxis('left').setLabel('Phase')
+        self.phaseBandPlot.setYRange(0, 1, padding=0)
+        self.phaseBandPlot.setXLink(self.measurementsPlot)
+        self.phaseBandFrameLine = pg.InfiniteLine(
+            angle=90, movable=False, pen=pg.mkPen(color=(255, 0, 0), width=2)
+        )
+        self.phaseBandFrameLine.setZValue(10)
+        self.phaseBandPlot.addItem(self.phaseBandFrameLine, ignoreBounds=True)
+        self.phaseBandItems = []
+        self.phaseBandPlot.setVisible(False)
+        # Keep the x positions aligned while the main left axis auto-sizes
+        self.measurementsPlot.getAxis('left').geometryChanged.connect(
+            self.syncPhaseBandAxisWidth
+        )
+        measurementsPlotLayout = QVBoxLayout()
+        measurementsPlotLayout.setContentsMargins(0, 0, 0, 0)
+        measurementsPlotLayout.setSpacing(0)
+        measurementsPlotLayout.addWidget(self.measurementsPlot)
+        measurementsPlotLayout.addWidget(self.phaseBandPlot)
+        measurementsPlotContainer = QWidget()
+        measurementsPlotContainer.setLayout(measurementsPlotLayout)
         
         self.columnsSearchLineEdit = QLineEdit()
         self.columnsSearchLineEdit.setPlaceholderText('Search column...')
@@ -3149,10 +3682,12 @@ class MeasurementsViewerWin(
         )
         self.columnsListWidget.setToolTip(
             'Click a column to plot/unplot it. Right-click on a column to '
-            'change its color.'
+            'change its color or conditional formatting.'
         )
         # Custom plotting colors set by the user {column: QColor}
         self.measurementsColors = {}
+        # Ordered rules {column: [{'condition': str, 'color': '#rrggbb'}]}
+        self.conditionalFormatting = {}
 
         self.measurementsModeCombobox = QComboBox()
         self.measurementsModeCombobox.addItems(
@@ -3167,11 +3702,6 @@ class MeasurementsViewerWin(
         self._measurementsMode = 0
         self._timeCourseColumns = set()
         
-        self.normalizeCheckbox = QCheckBox('Normalize measurements (0-1)')
-        self.normalizeCheckbox.setToolTip(
-            'Rescale each measurement to the range 0-1 to compare measurements with '
-            'different scales'
-        )
         self.refreshButton = widgets.reloadPushButton(' Reload table ')
         self.refreshButton.setToolTip(
             'Reload the acdc_output table from the file '
@@ -3203,7 +3733,6 @@ class MeasurementsViewerWin(
         columnsLayout = QVBoxLayout()
         columnsLayout.addWidget(self.measurementsModeCombobox)
         columnsLayout.addWidget(self.timeCourseColumnsWidget)
-        columnsLayout.addWidget(self.normalizeCheckbox)
         columnsLayout.addWidget(self.processMeasurementsButton)
         columnsLayout.addWidget(self.combineMeasurementsButton)
         columnsLayout.addWidget(self.exportMeasurementsButton)
@@ -3212,7 +3741,7 @@ class MeasurementsViewerWin(
         columnsWidget.setLayout(columnsLayout)
         
         self.measurementsSplitter = QSplitter(Qt.Horizontal)
-        self.measurementsSplitter.addWidget(self.measurementsPlot)
+        self.measurementsSplitter.addWidget(measurementsPlotContainer)
         self.measurementsSplitter.addWidget(columnsWidget)
         self.measurementsSplitter.setStretchFactor(0, 3)
         self.measurementsSplitter.setStretchFactor(1, 1)
@@ -3343,6 +3872,7 @@ class MeasurementsViewerWin(
             self.showColumnsContextMenu
         )
         self.normalizeCheckbox.toggled.connect(self.plotMeasurements)
+        self.showPhasesCheckbox.toggled.connect(self.showPhasesToggled)
         self.measurementsModeCombobox.currentIndexChanged.connect(
             self.measurementsModeChanged
         )
@@ -3675,7 +4205,67 @@ class MeasurementsViewerWin(
         if pairs:
             values |= acdc_df.index.isin(pairs)
         acdc_df[column] = values
+        if posData is None or posData is self.posData():
+            self.schedulePhaseAutoApply(set(IDs).union(timepoints))
         return True
+
+    def setAutoApplyPhases(self, enabled):
+        self.autoApplyPhases = bool(enabled)
+        if self.autoApplyPhases:
+            self.ensurePhasePrediction()
+
+    def ensurePhasePrediction(self, posData=None, ID=None):
+        """Schedule phase evaluation of the displayed cell (or `ID`) if it
+        has no evaluated phase yet (no phase column or only empty phases).
+        Each cell is tried once per session and position, so cells that no
+        rule matches are not re-evaluated on every visit."""
+        if not self.autoApplyPhases or not self.phaseTranslatorRules:
+            return
+        if not self.data:
+            return
+        if posData is None:
+            posData = self.posData()
+        if posData is not self.posData() or self.acdc_df is None:
+            return
+        if ID is None:
+            ID = self.selectedID
+        if ID is None:
+            return
+        ID = int(ID)
+        tried = getattr(posData, 'phaseAutoEvaluatedIDs', None)
+        if tried is None:
+            tried = posData.phaseAutoEvaluatedIDs = set()
+        if ID in tried:
+            return
+        tried.add(ID)
+        try:
+            df_ID = self.acdc_df.xs(ID, level='Cell_ID')
+        except KeyError:
+            return
+        if self.phaseValues(df_ID).astype(bool).any():
+            return
+        self.schedulePhaseAutoApply([ID])
+
+    def schedulePhaseAutoApply(self, IDs):
+        """Collect cells with changed time points and re-evaluate their
+        phases once control returns to the event loop, so that batch
+        updates (e.g., predictors on all cells) trigger one evaluation and
+        callers holding a reference to the table are not disrupted."""
+        if not self.autoApplyPhases or not self.phaseTranslatorRules:
+            return
+        if not self._pendingPhaseIDs:
+            QTimer.singleShot(0, self.autoApplyPhaseTranslator)
+        self._pendingPhaseIDs.update(IDs)
+
+    def autoApplyPhaseTranslator(self):
+        IDs, self._pendingPhaseIDs = self._pendingPhaseIDs, set()
+        if (not self.autoApplyPhases or not self.phaseTranslatorRules
+                or not self.data or self.acdc_df is None):
+            return False
+        IDs = IDs.intersection(self.acdc_df.index.get_level_values('Cell_ID'))
+        if not IDs:
+            return False
+        return self.applyPhaseTranslator(IDs=IDs, quiet=True)
     
     def cellHasRow(self, ID, frame_i, posData=None):
         acdc_df = self.timepointsDf(posData)
@@ -3834,7 +4424,7 @@ class MeasurementsViewerWin(
                 'No measurements', 'The table has no numeric measurements to process.'
             )
             return
-        dialog = apps.MeasurementProcessingRecipeDialog(
+        dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
             columns, parent=self, acdc_df=self.acdc_df,
             allChNames=self.posData().chNames
         )
@@ -3933,30 +4523,57 @@ class MeasurementsViewerWin(
             'isZstack': getattr(posData, 'SizeZ', 1) > 1,
             'isSegm3D': bool(self.isSegm3D),
         }
-        dialog = apps.PhaseTranslatorDialog(
+        dialog = apps_measurements_viewer.PhaseTranslatorDialog(
             self.phaseTranslatorRules,
             [self.timepointColumn(item) for item in self.timepointIdentifiers],
-            self.customAnnotNames(), options, parent=self
+            self.customAnnotNames(), options, parent=self,
+            phaseColors=self.phaseColors
         )
-        dialog.sigApply.connect(self.applyPhaseTranslator)
+
+        dialog.autoApplyCheckbox.setChecked(self.autoApplyPhases)
+
+        def apply(rules, allCells):
+            # Apply commits the colors and options together with the rules
+            self.phaseColors = dialog.currentPhaseColors()
+            self.setAutoApplyPhases(dialog.autoApplyCheckbox.isChecked())
+            self.applyPhaseTranslator(rules, allCells)
+
+        dialog.sigApply.connect(apply)
         dialog.exec_()
         if not dialog.cancel:
             self.phaseTranslatorRules = copy.deepcopy(dialog.rules)
+            self.phaseColors = dialog.currentPhaseColors()
+            self.setAutoApplyPhases(dialog.autoApplyCheckbox.isChecked())
+            self.plotMeasurements()
         dialog.deleteLater()
 
-    def applyPhaseTranslator(self, rules=None, allCells=True):
+    def applyPhaseTranslator(
+            self, rules=None, allCells=True, IDs=None, quiet=False
+        ):
+        """Evaluate phases on all cells, the displayed cell (`allCells`
+        False) or the cells `IDs` (overrides `allCells`) of the current
+        position. With `quiet`, errors and warnings go to the status bar
+        instead of message boxes (automatic re-evaluation)."""
+        def warn(title, text):
+            if quiet:
+                self.statusBar().showMessage(f'{title}: {text}', 8000)
+            else:
+                self.measurementProcessingWarning(title, text)
+
         if self.measurementProcessingThread is not None:
-            self.measurementProcessingWarning(
+            warn(
                 'Measurement processing running',
                 'Wait for measurement processing to finish before evaluating phases.'
             )
             return False
         if self.acdc_df is None or self.acdc_df.empty:
-            self.measurementProcessingWarning('No measurements', 'Load measurements first.')
+            warn('No measurements', 'Load measurements first.')
             return False
-        if not allCells and self.selectedID is None:
-            self.measurementProcessingWarning('No cell selected', 'Select a cell first.')
-            return False
+        if IDs is None and not allCells:
+            if self.selectedID is None:
+                warn('No cell selected', 'Select a cell first.')
+                return False
+            IDs = [self.selectedID]
         if rules is None:
             rules = self.phaseTranslatorRules
         posData = self.posData()
@@ -3965,13 +4582,13 @@ class MeasurementsViewerWin(
             self.ensureTimepointColumns(source)
             self.ensureCustomAnnotColumns(source)
             evaluation = phase_translator.evaluate(
-                source, rules, IDs=None if allCells else [self.selectedID],
+                source, rules, IDs=IDs,
                 SizeT=getattr(posData, 'SizeT', None),
                 owned_columns=getattr(posData, 'phaseTranslatorColumns', ())
             )
         except Exception as err:
             self.logger.exception('Phase evaluation failed')
-            self.measurementProcessingWarning('Phase evaluation failed', str(err))
+            warn('Phase evaluation failed', str(err))
             return False
         self.phaseTranslatorRules = copy.deepcopy(rules)
         posData.phaseTranslatorColumns = evaluation.columns
@@ -3980,9 +4597,9 @@ class MeasurementsViewerWin(
         self.updateColumnsList()
         self.plotMeasurements()
         if evaluation.warnings:
-            self.measurementProcessingWarning(
-                'Phase evaluation warnings', '\n'.join(evaluation.warnings)
-            )
+            warn('Phase evaluation warnings', '\n'.join(evaluation.warnings))
+            if quiet:
+                return True
         self.statusBar().showMessage(
             'Phases evaluated. Use Export measurements to save the table.', 5000
         )
@@ -4629,6 +5246,7 @@ class MeasurementsViewerWin(
         self.currentFrameLine.blockSignals(True)
         self.currentFrameLine.setValue(self.frame_i+1)
         self.currentFrameLine.blockSignals(False)
+        self.phaseBandFrameLine.setValue(self.frame_i+1)
     
     def currentFrameLineMoved(self, line):
         frame_n = int(round(line.value()))
@@ -4843,7 +5461,7 @@ class MeasurementsViewerWin(
             other.name for other in self.timepointIdentifiers
             if other.uid != identifier.uid
         }
-        dialog = apps.TimepointIdentifierDialog(
+        dialog = apps_measurements_viewer.TimepointIdentifierDialog(
             identifier.name, identifier.color, identifier.shortcut,
             predictor=identifier.predictor, existingNames=names,
             reservedShortcuts=self.reservedShortcuts(excludeUid=identifier.uid),
@@ -5426,6 +6044,7 @@ class MeasurementsViewerWin(
             columns.append(column)
         if columns:
             self.evaluatePredictorColumns(columns, [ID], posData, automatic=True)
+        self.ensurePhasePrediction(posData, ID)
     
     # --- Custom annotations -------------------------------------------------
     # Overrides of the `gui_custom_annotations.CustomAnnotationsGuiElements` 
@@ -6129,6 +6748,7 @@ class MeasurementsViewerWin(
         isComparison = self.measurementsModeCombobox.currentIndex() == 1
         self.currentFrameLine.setVisible(not isComparison)
         self.updateTimepointLines()
+        self.updatePhaseBand()
         if not self.data:
             self.measurementsPlot.setTitle('No data loaded')
             return
@@ -6156,6 +6776,7 @@ class MeasurementsViewerWin(
             return
         
         frames_n = df_ID.index.get_level_values(0).to_numpy() + 1
+        phases = self.phaseValues(df_ID)
         for c, col in enumerate(columns):
             if col not in df_ID.columns:
                 continue
@@ -6165,19 +6786,51 @@ class MeasurementsViewerWin(
             if isNormalized:
                 values = self._normalize(values)
             color = self.getSignalColor(col, c, len(columns))
+            rules = self.conditionalFormatting.get(col, [])
+            matched = self.cellConditionalFormatting(df_ID, col, rules)
             pointData = [
                 {
                     'frame_i': int(frame_n-1),
                     'Cell_ID': self.selectedID,
                     'values': {col: (raw, value)},
                     'normalized': isNormalized,
+                    'formatting': (
+                        rules[m]['condition'] if m >= 0 else None
+                    ),
+                    'phase': phase,
                 }
-                for frame_n, raw, value in zip(frames_n, rawValues, values)
+                for frame_n, raw, value, m, phase
+                in zip(frames_n, rawValues, values, matched, phases)
             ]
+            brushes = [
+                pg.mkBrush(
+                    formatting_color(rules[m]['color'], color) if m >= 0
+                    else color
+                )
+                for m in matched
+            ]
+            # Segment i (point i to i+1) takes the format of point i. The
+            # main curve draws only unformatted segments; each rule draws
+            # its segments as separate pairs below the main curve's points.
+            finite = np.isfinite(values)
+            segments = finite[:-1] & finite[1:]
+            connect = np.append(segments & (matched[:-1] < 0), False)
+            for r, rule in enumerate(rules):
+                idx = np.flatnonzero(segments & (matched[:-1] == r))
+                if not len(idx):
+                    continue
+                pairs = np.column_stack((idx, idx + 1)).ravel()
+                segmentsItem = self.measurementsPlot.plot(
+                    frames_n[pairs], values[pairs], connect='pairs',
+                    pen=pg.mkPen(
+                        color=formatting_color(rule['color'], color), width=2
+                    )
+                )
+                segmentsItem.setZValue(-1)
             item = self.measurementsPlot.plot(
                 frames_n, values, name=col,
-                pen=pg.mkPen(color=color, width=2),
-                symbol='o', symbolSize=5, symbolBrush=color, symbolPen=None,
+                pen=pg.mkPen(color=color, width=2), connect=connect,
+                symbol='o', symbolSize=5, symbolBrush=brushes, symbolPen=None,
                 data=pointData
             )
             self.connectSignalPoints(item)
@@ -6202,7 +6855,7 @@ class MeasurementsViewerWin(
             'Click a selected column again to free its axis.'
             if isComparison else
             'Click a column to plot/unplot it. Right-click on a column to '
-            'change its color.'
+            'change its color or conditional formatting.'
         )
         self.plotMeasurements()
 
@@ -6258,9 +6911,11 @@ class MeasurementsViewerWin(
         frames, IDs = frames[inRange], IDs[inRange]
         rawX = pd.to_numeric(df[xCol], errors='coerce').to_numpy(dtype=float)
         rawY = pd.to_numeric(df[yCol], errors='coerce').to_numpy(dtype=float)
+        phases = self.phaseValues(df)
         finite = np.isfinite(rawX) & np.isfinite(rawY)
         frames, IDs = frames[finite], IDs[finite]
         rawX, rawY = rawX[finite], rawY[finite]
+        phases = phases[finite]
         if not len(rawX):
             self.measurementsPlot.setTitle('No finite paired measurements')
             return
@@ -6272,21 +6927,136 @@ class MeasurementsViewerWin(
                 'Cell_ID': int(ID),
                 'values': {xCol: (rx, vx), yCol: (ry, vy)},
                 'normalized': isNormalized,
+                'phase': phase,
             }
-            for frame_i, ID, rx, ry, vx, vy
-            in zip(frames, IDs, rawX, rawY, x, y)
+            for frame_i, ID, rx, ry, vx, vy, phase
+            in zip(frames, IDs, rawX, rawY, x, y, phases)
         ]
+        brush = self.getSignalColor(yCol)
+        if self.isShowingPhases():
+            brush = self.comparisonPhaseBrushes(phases)
         item = self.measurementsPlot.plot(
             x, y, pen=None, symbol='o', symbolSize=7,
-            symbolBrush=self.getSignalColor(yCol), symbolPen=None,
-            data=pointData
+            symbolBrush=brush, symbolPen=None, data=pointData
         )
         self.connectSignalPoints(item)
+
+    def hasPhaseColumn(self):
+        return self.acdc_df is not None and 'phase' in self.acdc_df.columns
+
+    def isShowingPhases(self):
+        return self.showPhasesCheckbox.isChecked() and self.hasPhaseColumn()
+
+    def showPhasesToggled(self, checked):
+        self._set_setting_value(
+            'measurements_viewer_show_phases', 'Yes' if checked else 'No'
+        )
+        self.plotMeasurements()
+
+    @staticmethod
+    def phaseValues(df):
+        """Phase name per row of df ('' if unassigned or no phase column)."""
+        if 'phase' not in df.columns:
+            return np.full(len(df), '', dtype=object)
+        return df['phase'].map(
+            lambda value: value if isinstance(value, str) else ''
+        ).to_numpy(dtype=object)
+
+    def phaseColorMap(self):
+        """{phase name: QColor} of the rules' phases and of any other phase
+        found in the current table (e.g., from an exported CSV)."""
+        names = phase_translator.phase_names(self.phaseTranslatorRules)
+        if self.hasPhaseColumn():
+            extra = set(self.phaseValues(self.acdc_df)).difference(names, {''})
+            names += sorted(extra)
+        return {
+            name: QColor(color) for name, color in
+            phase_translator.phase_colors(names, self.phaseColors).items()
+        }
+
+    def comparisonPhaseBrushes(self, phases):
+        """Per-point brushes by phase; adds a legend entry per shown phase."""
+        colors = self.phaseColorMap()
+        unassigned = pg.mkBrush(150, 150, 150, 120)
+        brushes = {name: pg.mkBrush(color) for name, color in colors.items()}
+        present = set(phases)
+        for name, brush in brushes.items():
+            if name in present:
+                self.measurementsLegend.addItem(
+                    pg.ScatterPlotItem(symbol='o', brush=brush, pen=None),
+                    name
+                )
+        if '' in present:
+            self.measurementsLegend.addItem(
+                pg.ScatterPlotItem(symbol='o', brush=unassigned, pen=None),
+                'No phase'
+            )
+        return [brushes.get(phase, unassigned) for phase in phases]
+
+    def syncPhaseBandAxisWidth(self):
+        width = self.measurementsPlot.getAxis('left').width()
+        self.phaseBandPlot.getAxis('left').setWidth(int(width))
+
+    @staticmethod
+    def phaseRuns(frames, phases):
+        """Contiguous runs [(start frame, end frame, phase)] of the same
+        nonempty phase; a missing frame or a phase change ends a run."""
+        runs = []
+        for frame, phase in zip(frames, phases):
+            if not phase:
+                continue
+            if runs and runs[-1][2] == phase and runs[-1][1] == frame - 1:
+                runs[-1][1] = frame
+            else:
+                runs.append([frame, frame, phase])
+        return [tuple(run) for run in runs]
+
+    def updatePhaseBand(self):
+        """Draw the selected cell's phases as colored bars below the time
+        course. Hidden in comparison mode, without phases or when disabled."""
+        for item in self.phaseBandItems:
+            self.phaseBandPlot.removeItem(item)
+        self.phaseBandItems = []
+        self.phaseBandPlot.setToolTip('')
+        self.showPhasesCheckbox.setEnabled(self.hasPhaseColumn())
+        isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        df_ID = None
+        if self.data and not isComparison and self.isShowingPhases():
+            df_ID = self.getMeasurementsDf()
+        runs = []
+        if df_ID is not None:
+            frames_n = df_ID.index.get_level_values(0).to_numpy() + 1
+            runs = self.phaseRuns(frames_n, self.phaseValues(df_ID))
+        self.phaseBandPlot.setVisible(bool(runs))
+        if not runs:
+            return
+        colors = self.phaseColorMap()
+        bars = pg.BarGraphItem(
+            x0=[start - 0.5 for start, _, _ in runs],
+            x1=[end + 0.5 for _, end, _ in runs],
+            y0=0, height=1, pen=None,
+            brushes=[pg.mkBrush(colors[phase]) for _, _, phase in runs]
+        )
+        self.phaseBandPlot.addItem(bars)
+        self.phaseBandItems.append(bars)
+        for start, end, phase in runs:
+            color = colors[phase]
+            textColor = 'k' if color.lightness() > 140 else 'w'
+            text = pg.TextItem(phase, color=textColor, anchor=(0.5, 0.5))
+            text.setPos((start + end) / 2, 0.5)
+            self.phaseBandPlot.addItem(text, ignoreBounds=True)
+            self.phaseBandItems.append(text)
+        self.phaseBandPlot.setToolTip('\n'.join(
+            f'{phase}: frames {start}-{end}' for start, end, phase in runs
+        ))
+        self.phaseBandPlot.setYRange(0, 1, padding=0)
+        self.syncPhaseBandAxisWidth()
 
     def connectSignalPoints(self, item):
         # PlotDataItem does not forward hover options to its scatter item.
         item.scatter.setData(
             x=item.xData, y=item.yData, data=item.opts['data'],
+            brush=item.opts['symbolBrush'],
             hoverable=True, tip=self.measurementPointTip,
             hoverSize=11, hoverBrush=pg.mkBrush(255, 100, 100)
         )
@@ -6302,6 +7072,10 @@ class MeasurementsViewerWin(
             lines.append(f'{col}: {raw:.6g}')
             if data['normalized']:
                 lines.append(f'{col} (normalized): {value:.6g}')
+        if data.get('phase'):
+            lines.append(f'Phase: {data["phase"]}')
+        if data.get('formatting'):
+            lines.append(f'Formatting: {data["formatting"]}')
         return '\n'.join(lines)
 
     def measurementPointClicked(self, item, points, event):
@@ -6417,7 +7191,23 @@ class MeasurementsViewerWin(
             lambda checked=False, col=col: self.resetSignalColor(col)
         )
         menu.addAction(resetColorAction)
-        
+        menu.addSeparator()
+
+        formattingAction = QAction('Conditional formatting...', menu)
+        formattingAction.triggered.connect(
+            lambda checked=False, col=col: self.editConditionalFormatting(col)
+        )
+        menu.addAction(formattingAction)
+
+        clearFormattingAction = QAction('Clear conditional formatting', menu)
+        clearFormattingAction.setEnabled(col in self.conditionalFormatting)
+        clearFormattingAction.triggered.connect(
+            lambda checked=False, col=col: self.setConditionalFormatting(
+                col, []
+            )
+        )
+        menu.addAction(clearFormattingAction)
+
         menu.popup(self.columnsListWidget.viewport().mapToGlobal(pos))
     
     def changeSignalColor(self, col):
@@ -6434,6 +7224,79 @@ class MeasurementsViewerWin(
     
     def resetSignalColor(self, col):
         self.measurementsColors.pop(col, None)
+        self.plotMeasurements()
+
+    def cellConditionalFormatting(self, df_ID, col, rules):
+        """Rule index per row of the selected cell for column `col` (-1: no
+        rule). Errors are reported in the status bar, and the column is then
+        plotted without formatting."""
+        if not rules:
+            return np.full(len(df_ID), -1, dtype=int)
+        try:
+            return self.evaluateConditionalFormatting(
+                df_ID, rules, ID=self.selectedID,
+                SizeT=getattr(self.posData(), 'SizeT', None)
+            )
+        except Exception as err:
+            message = f'Conditional formatting of "{col}" failed: {err}'
+            if message != getattr(self, '_lastFormattingError', None):
+                self.logger.warning(message)
+            self._lastFormattingError = message
+            self.statusBar().showMessage(message, 10000)
+            return np.full(len(df_ID), -1, dtype=int)
+
+    def formattingTestCell(self):
+        """Rows and ID of the selected cell (or the first cell) to test
+        formatting conditions on, or (None, None) without data."""
+        df_ID = self.getMeasurementsDf()
+        if df_ID is not None:
+            return df_ID, self.selectedID
+        if self.acdc_df is None or self.acdc_df.empty:
+            return None, None
+        ID, df_ID = next(
+            timepoint_predictors.CellTable.iter_cells(self.acdc_df)
+        )
+        return df_ID, ID
+
+    def validateFormattingCondition(self, condition):
+        df_ID, ID = self.formattingTestCell()
+        if df_ID is None:
+            return
+        self.evaluateConditionalFormatting(
+            df_ID, [{'condition': condition, 'color': '#000000'}], ID=ID,
+            SizeT=getattr(self.posData(), 'SizeT', None)
+        )
+
+    def editFormattingCondition(self, condition):
+        posData = self.posData() if self.data else None
+        dialog = _FormattingConditionDialog(
+            getattr(posData, 'chNames', []),
+            getattr(posData, 'SizeZ', 1) > 1, bool(self.isSegm3D),
+            acdc_df=self.acdc_df, SizeT=getattr(posData, 'SizeT', None),
+            condition=condition, parent=self
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return None
+        return dialog.equation
+
+    def editConditionalFormatting(self, col):
+        dialog = ConditionalFormattingDialog(
+            col, self.conditionalFormatting.get(col, []),
+            validateCondition=self.validateFormattingCondition,
+            editCondition=self.editFormattingCondition, parent=self
+        )
+        dialog.exec_()
+        if dialog.cancel:
+            return
+        self.setConditionalFormatting(col, dialog.rules)
+
+    def setConditionalFormatting(self, col, rules):
+        if rules:
+            self.conditionalFormatting[col] = copy.deepcopy(rules)
+        else:
+            self.conditionalFormatting.pop(col, None)
+        self._lastFormattingError = None
         self.plotMeasurements()
     
     @staticmethod
@@ -6491,10 +7354,9 @@ class MeasurementsViewerWin(
             textAnnot.pop(1, None)
         
         self.isBwInverted = checked
-        if checked:
-            self.measurementsPlot.setBackground(graphLayoutBkgrColor)
-        else:
-            self.measurementsPlot.setBackground(darkBkgrColor)
+        background = graphLayoutBkgrColor if checked else darkBkgrColor
+        self.measurementsPlot.setBackground(background)
+        self.phaseBandPlot.setBackground(background)
     
     def highlightSearchedID(self, ID, force=False, greyOthers=True):
         self.highlightedID = ID
@@ -6561,6 +7423,11 @@ class MeasurementsViewerWin(
         while self.app.overrideCursor() is not None:
             self.app.restoreOverrideCursor()
     
+    def addScaleBar(self, checked):
+        super().addScaleBar(checked)
+        # Rescale once the scale bar items and the dialog are settled
+        QTimer.singleShot(0, self.autoRange)
+
     def autoRange(self):
         self.ax1.autoRange()
         if self.followIDcheckbox.isChecked():

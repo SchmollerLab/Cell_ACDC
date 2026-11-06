@@ -9,7 +9,7 @@ from qtpy.QtCore import QMutex, QWaitCondition, Qt
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QLabel
 
-from cellacdc import apps, measurements_viewer, measurement_processing, widgets, workers
+from cellacdc import apps, apps_measurements_viewer, measurements_viewer, measurement_processing, widgets, workers
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 
 
@@ -46,7 +46,7 @@ def wait_for_worker(window):
 
 
 def test_measurement_recipe_ui_uses_separate_registry_and_defaults(app):
-    dialog = apps.MeasurementProcessingRecipeDialog(['area', 'intensity'])
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(['area', 'intensity'])
     params = dialog.preProcessParamsWidget
     assert params.recipe() == [
         {'method': 'Smooth measurement', 'kwargs': {'window': 3}}
@@ -71,12 +71,12 @@ def test_measurement_recipe_ui_uses_separate_registry_and_defaults(app):
 
 
 def test_recipe_parameters_roundtrip(app):
-    original = apps.MeasurementProcessingParamsWidget()
+    original = apps_measurements_viewer.MeasurementProcessingParamsWidget()
     original.stepsWidgets[1]['step_kwargs'] = {'window': 7}
     original.addStep()
     original.stepsWidgets[2]['selector'].setCurrentText('Dummy')
     saved = original.recipeConfigPars('acdc')
-    loaded = apps.MeasurementProcessingParamsWidget()
+    loaded = apps_measurements_viewer.MeasurementProcessingParamsWidget()
     loaded.stepsWidgets[1]['step_kwargs'] = {'window': 99}
     loaded.loadRecipe({section: saved[section] for section in saved.sections()})
     assert loaded.recipe() == original.recipe()
@@ -85,7 +85,7 @@ def test_recipe_parameters_roundtrip(app):
 
 
 def test_empty_measurement_selection_is_rejected(app, monkeypatch):
-    dialog = apps.MeasurementProcessingRecipeDialog(['area'])
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(['area'])
     dialog.listSelector.clearSelection()
     warning = Mock()
     monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
@@ -96,7 +96,7 @@ def test_empty_measurement_selection_is_rejected(app, monkeypatch):
 
 
 def test_unsupported_recipe_does_not_change_steps(app, monkeypatch):
-    params = apps.MeasurementProcessingParamsWidget()
+    params = apps_measurements_viewer.MeasurementProcessingParamsWidget()
     original = params.recipe()
     warning = Mock()
     monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
@@ -239,7 +239,7 @@ def test_accept_prompts_for_name_and_rejects_collisions(viewer, monkeypatch):
         cancel=False, selectedChannels=['area'],
         selectedRecipe=[{'method': 'Dummy', 'kwargs': {}}], exec_=Mock()
     )
-    monkeypatch.setattr(apps, 'MeasurementProcessingRecipeDialog', Mock(return_value=dialog))
+    monkeypatch.setattr(apps_measurements_viewer, 'MeasurementProcessingRecipeDialog', Mock(return_value=dialog))
     viewer.acdc_df['area_taken'] = 0
     names = [
         SimpleNamespace(cancel=False, entryText=name, exec_=Mock())
@@ -261,7 +261,7 @@ def test_cancel_does_not_process(viewer, monkeypatch, cancel_recipe):
         cancel=cancel_recipe, selectedChannels=['area'], selectedRecipe=[],
         exec_=Mock()
     )
-    monkeypatch.setattr(apps, 'MeasurementProcessingRecipeDialog', Mock(return_value=dialog))
+    monkeypatch.setattr(apps_measurements_viewer, 'MeasurementProcessingRecipeDialog', Mock(return_value=dialog))
     monkeypatch.setattr(apps, 'filenameDialog', Mock(return_value=SimpleNamespace(
         cancel=True, exec_=Mock()
     )))

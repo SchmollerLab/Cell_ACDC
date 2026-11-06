@@ -20,7 +20,13 @@ Rules are dictionaries with these fields:
 
 Evaluation returns a new position table with a shared ``phase`` string column
 and boolean ``phase_<name>`` columns. It does not modify or save the input table.
+
+``phase_names`` lists the distinct phase names of the rules and
+``phase_colors`` resolves their display colors (``#rrggbb``): user overrides
+first, otherwise evenly spaced hues by name order.
 """
+import colorsys
+import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
@@ -84,6 +90,62 @@ def output_columns(rules: list[dict[str, Any]]) -> set[str]:
     return {'phase'} | {
         f'phase_{phase}' for rule in rules for phase in rule['phases'] if phase
     }
+
+
+def phase_names(rules: list[dict[str, Any]]) -> list[str]:
+    """Return the nonempty phase names of all rules, ordered by first use."""
+    names = {}
+    for rule in rules:
+        for phase in rule.get('phases', []):
+            if phase:
+                names.setdefault(phase, None)
+    return list(names)
+
+
+HEX_COLOR = re.compile(r'#[0-9a-fA-F]{6}')
+
+
+def default_phase_color(index: int, count: int) -> str:
+    """Return the default ``#rrggbb`` color of the index-th of count phases.
+
+    Hues are evenly spaced (at least 9 hues, like ``pyqtgraph.intColor``) so
+    adding a phase does not change the colors of the others much.
+    """
+    hues = max(count, 9)
+    r, g, b = colorsys.hsv_to_rgb((index % hues) / hues, 1.0, 1.0)
+    return '#{:02x}{:02x}{:02x}'.format(
+        round(r * 255), round(g * 255), round(b * 255)
+    )
+
+
+def phase_colors(
+        names: Iterable[str], overrides: dict[str, str] | None = None
+    ) -> dict[str, str]:
+    """Return ``{name: '#rrggbb'}`` for names, preferring valid overrides.
+
+    Defaults depend on each name's position in ``names``; overrides that are
+    not ``#rrggbb`` strings are ignored.
+    """
+    names = list(dict.fromkeys(names))
+    overrides = overrides or {}
+    colors = {}
+    for index, name in enumerate(names):
+        color = overrides.get(name)
+        if not isinstance(color, str) or not HEX_COLOR.fullmatch(color):
+            color = default_phase_color(index, len(names))
+        colors[name] = color.lower()
+    return colors
+
+
+def validate_phase_colors(colors: Any) -> None:
+    """Validate a serialized ``{phase name: '#rrggbb'}`` mapping."""
+    if not isinstance(colors, dict) or any(
+            not isinstance(name, str) or not name
+            or not isinstance(color, str) or not HEX_COLOR.fullmatch(color)
+            for name, color in colors.items()):
+        raise ValueError(
+            'Phase colors must map phase names to colors like "#ff0000".'
+        )
 
 
 def existing_output_columns(df: pd.DataFrame) -> set[str]:

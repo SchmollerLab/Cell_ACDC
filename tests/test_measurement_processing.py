@@ -16,7 +16,10 @@ def test_registry_loads_processors_from_model_style_packages():
     )
 
     registry = measurement_processing.MEASUREMENT_PROCESSING_MAPPER
-    assert list(registry) == ['Smooth measurement', 'Dummy']
+    assert list(registry) == [
+        'Smooth measurement', 'Dummy', 'Min-max normalization',
+        'Ramp detection'
+    ]
     assert registry['Smooth measurement']['class'] is SmoothMeasurement
     assert registry['Dummy']['class'] is Dummy
     assert registry['Smooth measurement']['function'] is SmoothMeasurement.run

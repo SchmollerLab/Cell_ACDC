@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 from qtpy.QtWidgets import QApplication, QPushButton
 
-from cellacdc import apps, measurements_viewer, phase_translator, widgets
+from cellacdc import apps, apps_measurements_viewer, measurements_viewer, phase_translator, widgets
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TimepointIdentifier
@@ -225,7 +225,7 @@ def test_formula_failure_does_not_change_source(table):
 
 
 def test_rule_editor_roundtrip_and_reordering(app, table):
-    dialog = apps.PhaseTranslatorRuleDialog(
+    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog(
         [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table}, rule=rule()
     )
@@ -236,7 +236,7 @@ def test_rule_editor_roundtrip_and_reordering(app, table):
     assert dialog.rule == rule()
     dialog.deleteLater()
 
-    dialog = apps.PhaseTranslatorRuleDialog(
+    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog(
         [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table}, rule=rule()
     )
@@ -258,7 +258,7 @@ def test_rule_editor_roundtrip_and_reordering(app, table):
 
 
 def test_rule_editor_reuses_annotation_formula_editor(app, table, monkeypatch):
-    dialog = apps.PhaseTranslatorRuleDialog(
+    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog(
         [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'],
         {'acdc_df': table, 'allChNames': ['GFP'], 'SizeT': 4}, rule=rule()
     )
@@ -269,7 +269,7 @@ def test_rule_editor_reuses_annotation_formula_editor(app, table, monkeypatch):
         }
     )
     factory = Mock(return_value=equation)
-    monkeypatch.setattr(apps, 'CustomAnnotationPredictorEquationDialog', factory)
+    monkeypatch.setattr(apps_measurements_viewer, 'CustomAnnotationPredictorEquationDialog', factory)
     group = dialog.predictorGroupbox
     group.predictorCombobox.setCurrentIndex(
         group.predictorCombobox.findData('equation')
@@ -293,12 +293,12 @@ def test_rule_editor_reuses_annotation_formula_editor(app, table, monkeypatch):
 def test_rule_editor_rejects_missing_inputs_and_duplicate_names(app, monkeypatch):
     warning = Mock()
     monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
-    dialog = apps.PhaseTranslatorRuleDialog([], [], {}, rule=rule())
+    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog([], [], {}, rule=rule())
     dialog.okButton.click()
     assert dialog.cancel
     assert 'missing inputs' in warning.call_args.args[-1]
     dialog.deleteLater()
-    dialog = apps.PhaseTranslatorRuleDialog(
+    dialog = apps_measurements_viewer.PhaseTranslatorRuleDialog(
         [], [], {}, rule=fallback(), existingNames=['Fallback']
     )
     dialog.okButton.click()
@@ -309,7 +309,7 @@ def test_rule_editor_rejects_missing_inputs_and_duplicate_names(app, monkeypatch
 
 def test_manager_priority_apply_and_cancel_are_isolated(app):
     rules = [rule(), fallback()]
-    dialog = apps.PhaseTranslatorDialog(
+    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
         rules, [f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'], ['Flag'], {}
     )
     applied = Mock()
@@ -326,7 +326,7 @@ def test_manager_priority_apply_and_cancel_are_isolated(app):
     dialog.reject()
     assert dialog.cancel
     dialog.deleteLater()
-    empty = apps.PhaseTranslatorDialog([], [], [], {})
+    empty = apps_measurements_viewer.PhaseTranslatorDialog([], [], [], {})
     assert not empty.applyCellButton.isEnabled()
     assert not empty.applyAllButton.isEnabled()
     empty.deleteLater()
@@ -454,18 +454,32 @@ def test_configuration_save_load_and_legacy(viewer, tmp_path, monkeypatch):
         'GFP': SimpleNamespace(isChecked=lambda: True, setChecked=Mock())
     }
     viewer.phaseTranslatorRules = [rule(), fallback()]
+    viewer.phaseColors = {'S': '#123456'}
+    viewer.autoApplyPhases = True
     viewer.isDataLoaded = True
     viewer.configurationFilepath = str(tmp_path / 'configuration.json')
     assert viewer.saveConfiguration()
     configuration = json.loads((tmp_path / 'configuration.json').read_text())
     assert configuration['phase_translator_rules'] == [rule(), fallback()]
+    assert configuration['phase_colors'] == {'S': '#123456'}
+    assert configuration['auto_apply_phases'] is True
     assert 'phase' not in viewer.acdc_df
     legacy = copy.deepcopy(configuration)
     del legacy['phase_translator_rules']
+    del legacy['phase_colors']
+    del legacy['auto_apply_phases']
     MeasurementsViewerWin.validateConfiguration(legacy)
     with pytest.raises(ValueError):
         MeasurementsViewerWin.validateConfiguration(
             dict(configuration, phase_translator_rules=[rule(phases=[])])
+        )
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateConfiguration(
+            dict(configuration, phase_colors={'S': 'red'})
+        )
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateConfiguration(
+            dict(configuration, auto_apply_phases='yes')
         )
     monkeypatch.setattr(
         measurements_viewer, 'get_channels_and_segm_endnames',
@@ -479,10 +493,14 @@ def test_configuration_save_load_and_legacy(viewer, tmp_path, monkeypatch):
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())
     viewer.phaseTranslatorRules = []
+    viewer.phaseColors = {}
+    viewer.autoApplyPhases = False
     assert load_configuration(
         viewer, filepath=viewer.configurationFilepath
     )
     assert viewer.phaseTranslatorRules == [rule(), fallback()]
+    assert viewer.phaseColors == {'S': '#123456'}
+    assert viewer.autoApplyPhases is True
     viewer.phaseTranslatorRules[0]['phases'][0] = 'Changed'
     assert configuration['phase_translator_rules'][0]['phases'][0] == 'G1'
 
@@ -499,3 +517,133 @@ def test_timepoint_and_annotation_renames_keep_rule_requirements(viewer, monkeyp
     assert viewer.phaseTranslatorRules[0]['timepoints'][0] == f'{TIMEPOINT_PREFIX}Renamed'
     viewer.renameCustomAnnotColumn('Flag', 'NewFlag')
     assert viewer.phaseTranslatorRules[0]['annotations'] == ['NewFlag']
+
+
+def test_phase_names_and_colors():
+    rules = [rule(phases=['G1', '', 'S']), fallback(), rule(name='B', phases=['S', 'G1', 'M'])]
+    names = phase_translator.phase_names(rules)
+    assert names == ['G1', 'S', 'Other', 'M']
+    colors = phase_translator.phase_colors(names, {'S': '#ABCDEF', 'M': 'red'})
+    assert list(colors) == names
+    assert colors['S'] == '#abcdef'
+    assert colors['M'] == phase_translator.default_phase_color(3, 4)
+    assert len(set(colors.values())) == 4
+    phase_translator.validate_phase_colors({'S': '#000000'})
+    for invalid in ({'S': 'red'}, {'': '#000000'}, ['S']):
+        with pytest.raises(ValueError):
+            phase_translator.validate_phase_colors(invalid)
+
+
+def test_manager_phase_color_buttons(app):
+    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+        [rule(), fallback()], [], [], {}, phaseColors={'S': '#ff0000', 'Gone': '#00ff00'}
+    )
+    assert list(dialog.phaseColorButtons) == ['G1', 'S', 'G2', 'Other']
+    assert dialog.phaseColorButtons['S'].color().name() == '#ff0000'
+    dialog.phaseColorButtons['G1'].setColor('#0000ff')
+    colors = dialog.currentPhaseColors()
+    assert colors['G1'] == '#0000ff'
+    assert 'Gone' not in colors
+    dialog.removeRule()
+    assert list(dialog.phaseColorButtons) == ['Other']
+    dialog.deleteLater()
+
+
+def test_phase_runs():
+    runs = MeasurementsViewerWin.phaseRuns(
+        [1, 2, 3, 5, 6, 7], ['A', 'A', 'B', 'B', '', 'B']
+    )
+    assert runs == [(1, 2, 'A'), (3, 3, 'B'), (5, 5, 'B'), (7, 7, 'B')]
+
+
+def test_phase_band_and_comparison_colors(viewer, tmp_path):
+    viewer.settings_csv_path = str(tmp_path / 'settings.csv')
+    viewer.showPhasesCheckbox.setChecked(True)
+    viewer.phaseBandPlot.setVisible(True)
+    viewer.updatePhaseBand()
+    assert viewer.phaseBandPlot.isHidden()
+    assert not viewer.showPhasesCheckbox.isEnabled()
+    assert viewer.applyPhaseTranslator([rule()])
+    viewer.phaseColors = {'S': '#123456'}
+    viewer.updatePhaseBand()
+    assert not viewer.phaseBandPlot.isHidden()
+    assert viewer.showPhasesCheckbox.isEnabled()
+    bars = viewer.phaseBandItems[0]
+    assert list(bars.opts['x0']) == [0.5, 1.5, 3.5]
+    assert list(bars.opts['x1']) == [1.5, 3.5, 4.5]
+    assert bars.opts['brushes'][1].color().name() == '#123456'
+    assert 'S: frames 2-3' in viewer.phaseBandPlot.toolTip()
+
+    brushes = viewer.comparisonPhaseBrushes(viewer.phaseValues(viewer.acdc_df))
+    assert brushes[1].color().name() == '#123456'
+
+    viewer.showPhasesCheckbox.setChecked(False)
+    assert not viewer.isShowingPhases()
+    viewer.updatePhaseBand()
+    assert viewer.phaseBandPlot.isHidden()
+    assert viewer._get_setting_value(
+        'measurements_viewer_show_phases', True, cast=bool
+    ) is False
+    settings = pd.read_csv(viewer.settings_csv_path, index_col='setting')
+    assert settings.at['measurements_viewer_show_phases', 'value'] == 'No'
+    viewer.showPhasesCheckbox.setChecked(True)
+    viewer.measurementsModeCombobox.setCurrentIndex(1)
+    viewer.updatePhaseBand()
+    assert viewer.phaseBandPlot.isHidden()
+
+
+def test_auto_apply_phases_on_timepoint_change(viewer, app, monkeypatch):
+    identifier = TimepointIdentifier(name='Start', color=(255, 0, 0), shortcut='Q')
+    viewer.addTimepointIdentifierItem(identifier)
+    viewer.phaseTranslatorRules = [rule()]
+    viewer.setAutoApplyPhases(False)
+    viewer.replaceTimepoints(identifier.uid, {1: [2]}, [1])
+    app.processEvents()
+    assert 'phase' not in viewer.acdc_df
+
+    apply = Mock(wraps=viewer.applyPhaseTranslator)
+    monkeypatch.setattr(viewer, 'applyPhaseTranslator', apply)
+    monkeypatch.setattr(viewer, 'ensurePhasePrediction', Mock())
+    viewer.setAutoApplyPhases(True)
+    viewer.replaceTimepoints(identifier.uid, {1: [2]}, [1])
+    viewer.replaceTimepoints(identifier.uid, {}, [999])
+    app.processEvents()
+    apply.assert_called_once_with(IDs={1}, quiet=True)
+    assert viewer.acdc_df.xs(1, level='Cell_ID')['phase'].tolist() == [
+        'G1', 'G1', 'S', 'G2'
+    ]
+    # Other cells are not evaluated
+    assert viewer.acdc_df.xs(2, level='Cell_ID')['phase'].eq('').all()
+    # Errors do not open message boxes
+    viewer.phaseTranslatorRules = [rule(predictor={'type': 'equation', 'equation': 'area'})]
+    viewer.replaceTimepoints(identifier.uid, {1: [1]}, [1])
+    app.processEvents()
+    viewer.measurementProcessingWarning.assert_not_called()
+
+
+def test_auto_apply_phases_when_missing(viewer, app, monkeypatch):
+    viewer.phaseTranslatorRules = [rule()]
+    apply = Mock(wraps=viewer.applyPhaseTranslator)
+    monkeypatch.setattr(viewer, 'applyPhaseTranslator', apply)
+    viewer.ensurePhasePrediction()
+    app.processEvents()
+    apply.assert_not_called()
+    # Enabling evaluates the displayed cell without phases
+    viewer.setAutoApplyPhases(True)
+    app.processEvents()
+    apply.assert_called_once_with(IDs={1}, quiet=True)
+    assert viewer.acdc_df.xs(1, level='Cell_ID')['phase'].ne('').all()
+    # Cells are tried once; cells that already have phases are skipped
+    viewer.posData().phaseAutoEvaluatedIDs.clear()
+    viewer.ensurePhasePrediction()
+    viewer.ensurePhasePrediction(ID=2)
+    viewer.ensurePhasePrediction(ID=2)
+    app.processEvents()
+    assert apply.call_count == 2
+    assert apply.call_args.kwargs['IDs'] == {2}
+    # Viewing a cell (predictor hook) triggers the check
+    viewer.acdc_df.loc[(slice(None), 1), 'phase'] = ''
+    viewer.posData().phaseAutoEvaluatedIDs.clear()
+    viewer.ensurePredictorPredictions()
+    app.processEvents()
+    assert apply.call_args.kwargs['IDs'] == {1}

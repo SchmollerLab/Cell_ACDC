@@ -7,7 +7,7 @@ from qtpy.QtCore import QItemSelectionModel, QModelIndex, Qt
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication, QTreeView
 
-from cellacdc import apps, measurements, measurements_viewer, widgets
+from cellacdc import apps, apps_measurements_viewer, measurements, measurements_viewer, widgets
 
 
 @pytest.fixture(scope='module')
@@ -98,7 +98,7 @@ def test_recursive_search_matches_flat_fuzzy_search_across_branches(app, datafra
 
 
 def test_recipe_selects_only_measurement_leaves_across_groups(app, dataframe):
-    dialog = apps.MeasurementProcessingRecipeDialog(
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
         dataframe.columns, acdc_df=dataframe, allChNames=['GFP', 'RFP']
     )
     assert isinstance(dialog.listSelector, QTreeView)
@@ -123,7 +123,7 @@ def test_recipe_selects_only_measurement_leaves_across_groups(app, dataframe):
 
 
 def test_recipe_search_expands_ancestors_and_clears(app, dataframe):
-    dialog = apps.MeasurementProcessingRecipeDialog(
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
         dataframe.columns, acdc_df=dataframe, allChNames=['GFP', 'RFP']
     )
     dialog.listSelector.collapseAll()
@@ -142,7 +142,7 @@ def test_recipe_search_expands_ancestors_and_clears(app, dataframe):
 
 
 def test_recipe_group_heading_cannot_be_processed(app, dataframe, monkeypatch):
-    dialog = apps.MeasurementProcessingRecipeDialog(
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
         dataframe.columns, acdc_df=dataframe, allChNames=['GFP', 'RFP']
     )
     dialog.listSelector.clearSelection()
@@ -159,7 +159,7 @@ def test_recipe_group_heading_cannot_be_processed(app, dataframe, monkeypatch):
 
 
 def test_recipe_name_only_api_and_image_channel_selector_remain_supported(app):
-    dialog = apps.MeasurementProcessingRecipeDialog(['area', 'volume', 'intensity'])
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(['area', 'volume', 'intensity'])
     assert {item.text() for item in dialog.measurementsModel.measurementItems()} == {
         'area', 'volume', 'intensity'
     }
@@ -226,7 +226,7 @@ def test_viewer_passes_table_and_channels_to_processing_tree(viewer, monkeypatch
                 'GFP_mean') in paths
         dialog.cancel = True
 
-    monkeypatch.setattr(apps.MeasurementProcessingRecipeDialog, 'exec_', cancel)
+    monkeypatch.setattr(apps_measurements_viewer.MeasurementProcessingRecipeDialog, 'exec_', cancel)
     viewer.processMeasurements()
 
 

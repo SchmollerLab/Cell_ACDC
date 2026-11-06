@@ -1,4 +1,6 @@
+import copy
 import json
+import os
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -709,3 +711,650 @@ def test_exported_manual_assignments_are_not_predicted_again(viewer, tmp_path):
     viewer.setSelectedID(2)
     assert viewer.acdc_df[f'{TIMEPOINT_PREFIX}Start'].tolist() == [False, True]
     assert viewer.acdc_df['Flag'].tolist() == [1, 0]
+
+
+def premade_config():
+    return {
+        'version': 2,
+        'channel_placeholders': {'MAIN': 'main channel', 'OTHER': ''},
+        'channel': '{MAIN}', 'segm_endname': '',
+        'overlay_channels': ['{OTHER}'],
+        'visible_channels': ['{MAIN}'],
+        'combined_measurements': [
+            {'order': 0, 'equations': {'{OTHER}_double': 'area * 2'}}
+        ],
+        'measurements_mode': 0,
+        'time_course_columns': ['{OTHER}_double'],
+        'measurements_axes': {'X': '', 'Y': ''},
+        'normalize_measurements': False,
+    }
+
+
+def test_substitute_channel_placeholders():
+    obj = {
+        '{RED}_x': ['{RED}', 'RED_y', {'a': '{RED}/{GREEN}'}],
+        'n': 1, 'b': None
+    }
+    result = MeasurementsViewerWin.substituteChannelPlaceholders(
+        obj, {'RED': 'mCherry', 'GREEN': 'GFP'}
+    )
+    assert result == {
+        'mCherry_x': ['mCherry', 'RED_y', {'a': 'mCherry/GFP'}],
+        'n': 1, 'b': None
+    }
+    assert obj['{RED}_x'][0] == '{RED}'
+    assert MeasurementsViewerWin.unresolvedPlaceholders(
+        {'a': '{RED}'}, ['RED', 'GREEN']
+    ) == ['RED']
+
+
+@pytest.mark.parametrize('bad', [
+    None, {}, [], {'': 'x'}, {'RE D': 'x'}, {'{RED}': 'x'}, {'RED': 1}
+])
+def test_invalid_channel_placeholders_are_rejected(bad):
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateChannelPlaceholders(bad)
+
+
+def patch_premade_dialogs(viewer, monkeypatch, folder, saved, mapping):
+    monkeypatch.setattr(measurements_viewer, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(saved))
+    monkeypatch.setattr(
+        measurements_viewer.QFileDialog, 'getExistingDirectory',
+        lambda *args, **kwargs: str(folder)
+    )
+    offered = []
+
+    def select(placeholders, channels, inputs=None):
+        offered.append(channels)
+        return None if mapping is None else (mapping, {})
+
+    monkeypatch.setattr(viewer, 'selectChannelMapping', select)
+    monkeypatch.setattr(
+        viewer, 'selectConfigurationOverlayChannels', lambda c, text=None: []
+    )
+    monkeypatch.setattr(
+        viewer, 'askPremadeCopyFilename',
+        lambda name: str(saved / f'{name}.json')
+    )
+    # Keep the template's base channel unless a test overrides this
+    monkeypatch.setattr(
+        viewer, 'selectPremadeBaseChannel',
+        lambda channels, default=None: default
+    )
+    return offered
+
+
+def test_premade_configuration_is_copied_and_loaded(viewer, tmp_path, monkeypatch):
+    experiment = tmp_path / 'exp'
+    paths = make_experiment(experiment)
+    for images in paths:
+        add_channel(images, 'GFP')
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    premade = tmp_path / 'template.json'
+    premade.write_text(json.dumps(premade_config()))
+    offered = patch_premade_dialogs(
+        viewer, monkeypatch, experiment, saved,
+        {'MAIN': 'phase', 'OTHER': 'GFP'}
+    )
+    assert viewer.loadConfiguration(filepath=str(premade))
+    assert offered == [['GFP', 'phase']]
+    copy_path = saved / 'template_phase_GFP.json'
+    assert viewer.configurationFilepath == str(copy_path)
+    text = copy_path.read_text()
+    assert '{MAIN}' not in text and '{OTHER}' not in text
+    written = json.loads(text)
+    assert 'channel_placeholders' not in written
+    assert written['premade'] == {
+        'source': 'template.json',
+        'channel_mapping': {'MAIN': 'phase', 'OTHER': 'GFP'}
+    }
+    assert written['channel'] == 'phase'
+    assert written['segm_endname'] == 'segm'
+    assert written['overlay_channels'] == ['GFP']
+    assert written['images_paths'] == paths
+    assert written['combined_measurements'][0]['equations'] == {
+        'GFP_double': 'area * 2'
+    }
+    assert viewer.user_ch_name == 'phase'
+    assert 'GFP_double' in viewer.data[0].acdc_df
+    # The template is untouched
+    assert json.loads(premade.read_text()) == premade_config()
+
+
+def test_premade_selected_display_channel_is_base(viewer, tmp_path, monkeypatch):
+    experiment = tmp_path / 'exp'
+    paths = make_experiment(experiment, positions=1)
+    add_channel(paths[0], 'GFP')
+    add_channel(paths[0], 'combined', 3)
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    premade = tmp_path / 'template.json'
+    premade.write_text(json.dumps(premade_config()))
+    patch_premade_dialogs(
+        viewer, monkeypatch, experiment, saved,
+        {'MAIN': 'phase', 'OTHER': 'GFP'}
+    )
+    asked = []
+
+    def select_base(channels, default=None):
+        asked.append((channels, default))
+        return 'combined'
+
+    monkeypatch.setattr(viewer, 'selectPremadeBaseChannel', select_base)
+    assert viewer.loadConfiguration(filepath=str(premade))
+    assert asked == [(['GFP', 'combined', 'phase'], 'phase')]
+    written = json.loads(next(saved.iterdir()).read_text())
+    assert written['channel'] == 'combined'
+    # The mapped channel of the template's base becomes an overlay
+    assert written['overlay_channels'] == ['phase', 'GFP']
+    assert written['visible_channels'] == ['combined', 'phase']
+    assert viewer.user_ch_name == 'combined'
+    assert list(viewer.allOverlayToolbuttons)[0] == 'combined'
+    # Masks and contours are drawn above the overlay channel layers
+    overlayZ = max(
+        items[0].zValue() for items in viewer.overlayLayersItems.values()
+    )
+    assert viewer.labelsLayerImg1.zValue() > overlayZ
+    assert viewer.ax1_contoursImageItem.zValue() > overlayZ
+    assert viewer.ax1_contoursImageItem.zValue() < 1  # below text IDs
+
+
+def test_set_configuration_base_channel():
+    configuration = {
+        'channel': 'GFP', 'overlay_channels': ['mCherry', 'BF'],
+        'visible_channels': ['GFP', 'mCherry']
+    }
+    MeasurementsViewerWin.setConfigurationBaseChannel(configuration, 'BF')
+    assert configuration == {
+        'channel': 'BF', 'overlay_channels': ['GFP', 'mCherry'],
+        'visible_channels': ['BF', 'GFP', 'mCherry']
+    }
+    MeasurementsViewerWin.setConfigurationBaseChannel(configuration, 'BF')
+    assert configuration['overlay_channels'] == ['GFP', 'mCherry']
+
+
+def test_premade_mapping_cancel_writes_nothing(viewer, tmp_path, monkeypatch):
+    experiment = tmp_path / 'exp'
+    paths = make_experiment(experiment, positions=1)
+    add_channel(paths[0], 'GFP')
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    premade = tmp_path / 'template.json'
+    premade.write_text(json.dumps(premade_config()))
+    patch_premade_dialogs(viewer, monkeypatch, experiment, saved, None)
+    assert not viewer.loadConfiguration(filepath=str(premade))
+    assert list(saved.iterdir()) == []
+    assert not viewer.isDataLoaded
+
+
+def test_premade_needs_enough_channels(viewer, tmp_path, monkeypatch):
+    experiment = tmp_path / 'exp'
+    make_experiment(experiment, positions=1)
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    premade = tmp_path / 'template.json'
+    premade.write_text(json.dumps(premade_config()))
+    patch_premade_dialogs(
+        viewer, monkeypatch, experiment, saved, {'MAIN': 'phase', 'OTHER': 'x'}
+    )
+    assert not viewer.loadConfiguration(filepath=str(premade))
+    assert 'channels in common' in str(viewer.configurationError.call_args)
+
+
+def test_shipped_premade_configurations_are_valid():
+    folder = measurements_viewer.PREMADE_CONFIGURATIONS_PATH
+    files = [f for f in os.listdir(folder) if f.endswith('.json')]
+    assert files
+    for filename in files:
+        with open(os.path.join(folder, filename), encoding='utf-8') as file:
+            template = json.load(file)
+        placeholders = template['channel_placeholders']
+        MeasurementsViewerWin.validateChannelPlaceholders(placeholders)
+        mapping = {name: f'ch{i}' for i, name in enumerate(placeholders)}
+        result = MeasurementsViewerWin.resolvePremadeTemplate(template, mapping)
+        if not result['channel']:
+            # Asked when instantiating: e.g. a phase contrast channel
+            MeasurementsViewerWin.setConfigurationBaseChannel(result, 'phase')
+        result['segm_endname'] = 'segm'
+        result['images_paths'] = ['unused']
+        MeasurementsViewerWin.validateConfiguration(result)
+
+
+def test_channel_mapping_dialog(app, monkeypatch):
+    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+        {'RED': 'red channel', 'GREEN': ''}, ['GFP', 'mCherry_red', 'phase']
+    )
+    # Matching names are preselected, the rest get the first unused channel
+    assert dialog.currentMapping() == {'RED': 'mCherry_red', 'GREEN': 'GFP'}
+    warnings = []
+    monkeypatch.setattr(
+        measurements_viewer.widgets, 'myMessageBox',
+        lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
+    )
+    dialog.comboboxes['GREEN'].setCurrentText('mCherry_red')
+    dialog.ok_cb()
+    assert warnings and dialog.cancel and dialog.mapping is None
+    dialog.comboboxes['GREEN'].setCurrentText('phase')
+    dialog.ok_cb()
+    assert not dialog.cancel
+    assert dialog.mapping == {'RED': 'mCherry_red', 'GREEN': 'phase'}
+
+
+# --- Conditional formatting ---------------------------------------------------
+
+@pytest.mark.parametrize('bad', [
+    [], {'a': {}}, {'': []}, {'a': [{'condition': 'x > 1'}]},
+    {'a': [{'condition': ' ', 'color': '#ff0000'}]},
+    {'a': [{'condition': 'x > 1', 'color': 'red'}]},
+    {'a': [{'condition': 'x > 1', 'color': 'lighter:50'}]},
+    {'a': [{'condition': 'x > 1', 'color': 'brighter'}]},
+    {'a': [{'condition': 'x > 1', 'color': '#ff0000', 'extra': 1}]},
+])
+def test_invalid_conditional_formatting_is_rejected(bad):
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateConditionalFormatting(bad)
+
+
+def test_evaluate_conditional_formatting_first_true_rule_wins():
+    df_ID = pd.DataFrame(
+        {'ramp': [1, 1, -1, np.nan, 0], 'value': [1., 5., 3., 2., 9.]},
+        index=pd.Index([0, 1, 2, 3, 5], name='frame_i')
+    )
+    rules = [
+        {'condition': 'value == MAX(value)', 'color': '#000000'},
+        {'condition': 'ramp == 1', 'color': '#00ff00'},
+        {'condition': 'ramp == -1', 'color': '#ff0000'},
+    ]
+    matched = MeasurementsViewerWin.evaluateConditionalFormatting(
+        df_ID, rules, ID=1, SizeT=6
+    )
+    assert matched.tolist() == [1, 1, 2, -1, 0]
+    # Scalars apply to the whole cell; NaN counts as False; SizeT is known
+    scalar = [{'condition': 'any(ramp == -1) & (SizeT == 6)', 'color': '#000000'}]
+    assert MeasurementsViewerWin.evaluateConditionalFormatting(
+        df_ID, scalar, SizeT=6
+    ).tolist() == [0] * 5
+    nan = [{'condition': 'ramp', 'color': '#000000'}]
+    assert MeasurementsViewerWin.evaluateConditionalFormatting(
+        df_ID.iloc[3:4], nan
+    ).tolist() == [-1]
+    for condition in ('value', 'missing > 0', 'value >'):
+        with pytest.raises(Exception):
+            MeasurementsViewerWin.evaluateConditionalFormatting(
+                df_ID, [{'condition': condition, 'color': '#000000'}]
+            )
+
+
+def test_conditional_formatting_colors_points_and_segments(viewer, tmp_path):
+    load_clean_workflow(viewer, tmp_path)
+    viewer.acdc_df = pd.DataFrame({
+        'frame_i': [0, 1, 2, 3, 4], 'Cell_ID': 1,
+        'final': [1., 2., 3., 4., np.nan], 'ramp': [1, 1, 0, 0, -1],
+    }).set_index(['frame_i', 'Cell_ID'])
+    viewer.selectedID = 1
+    rules = [
+        {'condition': 'ramp == 1', 'color': '#00ff00'},
+        {'condition': 'ramp == -1', 'color': '#ff0000'},
+    ]
+    viewer.setConditionalFormatting('final', rules)
+    items = viewer.measurementsPlot.listDataItems()
+    main = next(item for item in items if item.name() == 'final')
+    brushes = [b.color().name() for b in main.scatter.data['brush']]
+    default = pg_color_name(viewer.getSignalColor('final'))
+    assert brushes == ['#00ff00', '#00ff00', default, default, '#ff0000']
+    # The main curve keeps the unformatted segment 3->4 (frame numbers);
+    # nothing connects to the missing last value
+    assert main.opts['connect'].tolist() == [False, False, True, False, False]
+    segments = [
+        item for item in items if isinstance(item.opts['connect'], str)
+        and item.opts['connect'] == 'pairs'
+    ]
+    assert len(segments) == 1  # the falling ramp has no finite segment
+    assert segments[0].xData.tolist() == [1, 2, 2, 3]
+    tip = viewer.measurementPointTip(1, 1, main.scatter.data['data'][0])
+    assert 'Formatting: ramp == 1' in tip
+    assert viewer.configuration()['conditional_formatting'] == {
+        'final': rules
+    }
+    assert viewer.hasUnsavedConfiguration()
+    # Errors leave the curve unformatted and are shown in the status bar
+    viewer.setConditionalFormatting('final', [
+        {'condition': 'missing == 1', 'color': '#00ff00'}
+    ])
+    main = next(
+        item for item in viewer.measurementsPlot.listDataItems()
+        if item.name() == 'final'
+    )
+    assert {b.color().name() for b in main.scatter.data['brush']} == {default}
+    assert 'Conditional formatting of "final" failed' in (
+        viewer.statusBar().currentMessage()
+    )
+    viewer.setConditionalFormatting('final', [])
+    assert 'final' not in viewer.configuration()['conditional_formatting']
+
+
+def pg_color_name(color):
+    import pyqtgraph as pg
+    return pg.mkColor(color).name()
+
+
+def test_conditional_formatting_is_saved_and_loaded(viewer, tmp_path):
+    _, path = load_clean_workflow(viewer, tmp_path)
+    rules = [{'condition': 'area > 20', 'color': '#123456'}]
+    viewer.setConditionalFormatting('final', rules)
+    assert viewer.saveConfiguration()
+    assert json.loads(path.read_text())['conditional_formatting'] == {
+        'final': rules
+    }
+    viewer.conditionalFormatting = {}
+    assert viewer.loadConfiguration(filepath=str(path))
+    assert viewer.conditionalFormatting == {'final': rules}
+    assert not viewer.hasUnsavedConfiguration()
+
+
+def test_conditional_formatting_dialog(app, monkeypatch):
+    warnings = []
+    monkeypatch.setattr(
+        measurements_viewer.widgets, 'myMessageBox',
+        lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
+    )
+
+    def validate(condition):
+        if 'bad' in condition:
+            raise ValueError('invalid')
+
+    dialog = measurements_viewer.ConditionalFormattingDialog(
+        'x', [{'condition': 'a == 1', 'color': '#00ff00'}],
+        validateCondition=validate, editCondition=lambda text: 'b == 2'
+    )
+    dialog.addRule()
+    assert len(dialog.rows) == 2
+    dialog.ok_cb()  # the new rule is empty
+    assert warnings and dialog.cancel
+    dialog.rows[1]['edit'].setText('bad')
+    dialog.ok_cb()
+    assert len(warnings) == 2 and dialog.cancel
+    dialog.editRule(1)
+    dialog.moveRule(1, -1)
+    assert [rule['condition'] for rule in dialog.rules] == ['b == 2', 'a == 1']
+    dialog.removeRule(1)
+    dialog.ok_cb()
+    assert not dialog.cancel
+    assert dialog.rules == [{'condition': 'b == 2', 'color': 'lighter'}]
+
+
+def test_fucci_template_formats_reporters_by_ramp():
+    with open(os.path.join(
+            measurements_viewer.PREMADE_CONFIGURATIONS_PATH,
+            'fucci_cell_cycle.json'), encoding='utf-8') as file:
+        template = json.load(file)
+    result = MeasurementsViewerWin.resolvePremadeTemplate(
+        template, {'GEMININ': 'GFP', 'CDT1': 'mCherry'}
+    )
+    formatting = result['conditional_formatting']
+    assert set(formatting) == {'GFP_fucci', 'mCherry_fucci'}
+    assert formatting['mCherry_fucci'] == [
+        {'condition': 'mCherry_ramp == 1', 'color': 'lighter'},
+        {'condition': 'mCherry_ramp == -1', 'color': 'darker'},
+    ]
+
+
+def test_formatting_condition_editor(app):
+    acdc_df = pd.DataFrame({
+        'frame_i': [0, 1, 0], 'Cell_ID': [1, 1, 2], 'area': [12., 30., 24.]
+    }).set_index(['frame_i', 'Cell_ID'])
+    dialog = measurements_viewer._FormattingConditionDialog(
+        ['phase'], False, False, acdc_df=acdc_df, SizeT=2,
+        condition='area > MEAN(area)'
+    )
+    assert dialog.windowTitle() == 'Conditional formatting condition'
+    dialog.ok_cb()
+    assert not dialog.cancel and dialog.equation == 'area > MEAN(area)'
+
+
+def test_relative_formatting_colors(app, viewer, tmp_path):
+    base = measurements_viewer.QColor('#ff0000')
+    lighter = measurements_viewer.formatting_color('lighter', base)
+    darker = measurements_viewer.formatting_color('darker', base)
+    assert lighter.lightness() > base.lightness() > darker.lightness()
+    assert lighter.hue() == darker.hue() == base.hue()
+    assert measurements_viewer.formatting_color('darker:300', base).value() < (
+        darker.value()
+    )
+    assert measurements_viewer.formatting_color('#123456', base).name() == (
+        '#123456'
+    )
+    MeasurementsViewerWin.validateConditionalFormatting({'a': [
+        {'condition': 'x', 'color': c}
+        for c in ('lighter', 'darker', 'darker:250', '#00ff00')
+    ]})
+    # Plotted shades follow the column color
+    load_clean_workflow(viewer, tmp_path)
+    viewer.acdc_df = pd.DataFrame({
+        'frame_i': [0, 1, 2], 'Cell_ID': 1,
+        'final': [1., 2., 3.], 'ramp': [1, -1, 0],
+    }).set_index(['frame_i', 'Cell_ID'])
+    viewer.selectedID = 1
+    viewer.measurementsColors['final'] = base
+    viewer.setConditionalFormatting('final', [
+        {'condition': 'ramp == 1', 'color': 'lighter'},
+        {'condition': 'ramp == -1', 'color': 'darker'},
+    ])
+    items = viewer.measurementsPlot.listDataItems()
+    main = next(item for item in items if item.name() == 'final')
+    assert [b.color().name() for b in main.scatter.data['brush']] == [
+        lighter.name(), darker.name(), '#ff0000'
+    ]
+    pens = {
+        item.opts['pen'].color().name() for item in items
+        if isinstance(item.opts['connect'], str)
+        and item.opts['connect'] == 'pairs'
+    }
+    assert pens == {lighter.name(), darker.name()}
+
+
+def test_formatting_dialog_keeps_relative_modes(app):
+    dialog = measurements_viewer.ConditionalFormattingDialog('x', [
+        {'condition': 'a', 'color': 'darker:250'},
+        {'condition': 'b', 'color': '#00ff00'},
+    ])
+    assert dialog.rows[0]['mode'].currentText() == 'Darker shade'
+    assert not dialog.rows[0]['color'].isEnabled()
+    assert dialog.rows[1]['color'].isEnabled()
+    dialog.syncRules()
+    assert [rule['color'] for rule in dialog.rules] == ['darker:250', '#00ff00']
+    dialog.rows[1]['mode'].setCurrentIndex(0)
+    dialog.syncRules()
+    assert dialog.rules[1]['color'] == 'lighter'
+
+
+# --- Premade input placeholders ----------------------------------------------
+def premade_inputs():
+    return {
+        'BG': {'type': 'float', 'default': 0.5, 'description': 'bg', 'info': 'i'},
+        'N': {'type': 'int', 'default': 3},
+        'LABEL': {'type': 'str', 'default': 'x'},
+    }
+
+
+def test_resolve_premade_template_with_inputs():
+    template = dict(
+        premade_config(), input_placeholders=premade_inputs(),
+        measurement_processing=[{
+            'order': 1, 'columns': ['{MAIN}_mean'],
+            'recipe': [{'method': 'Smooth measurement', 'kwargs': {
+                'window': '{N}', 'bg': '{BG}'
+            }}],
+            'output_columns': ['{MAIN}_{LABEL}'],
+        }],
+        combined_measurements=[
+            {'order': 0, 'equations': {'{OTHER}_shift': 'area - {BG}'}}
+        ],
+    )
+    original = copy.deepcopy(template)
+    result = MeasurementsViewerWin.resolvePremadeTemplate(
+        template, {'MAIN': 'GFP', 'OTHER': 'RFP'}, {'BG': 2.0}
+    )
+    assert template == original
+    assert 'input_placeholders' not in result
+    assert 'channel_placeholders' not in result
+    kwargs = result['measurement_processing'][0]['recipe'][0]['kwargs']
+    # Whole-token strings become typed values, defaults fill missing inputs
+    assert kwargs == {'window': 3, 'bg': 2.0}
+    assert result['measurement_processing'][0]['output_columns'] == ['GFP_x']
+    assert result['combined_measurements'][0]['equations'] == {
+        'RFP_shift': 'area - 2.0'
+    }
+
+
+@pytest.mark.parametrize('bad', [
+    [], {'MAIN': {'type': 'float', 'default': 0.0}},
+    {'A B': {'type': 'float', 'default': 0.0}},
+    {'A': {'type': 'float'}}, {'A': {'type': 'complex', 'default': 0}},
+    {'A': {'type': 'int', 'default': 0.5}}, {'A': {'type': 'float', 'default': True}},
+    {'A': {'type': 'str', 'default': 'x', 'extra': 1}},
+    {'A': {'type': 'str', 'default': 'x', 'info': 1}},
+])
+def test_invalid_input_placeholders_are_rejected(bad):
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateInputPlaceholders(bad, ['MAIN'])
+
+
+def test_setup_dialog_asks_for_inputs(app, monkeypatch):
+    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+        {'MAIN': ''}, ['GFP'], inputs=premade_inputs()
+    )
+    assert dialog.inputLineEdits['BG'].text() == '0.5'
+    warnings = []
+    monkeypatch.setattr(
+        measurements_viewer.widgets, 'myMessageBox',
+        lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
+    )
+    dialog.inputLineEdits['N'].setText('2.5')
+    dialog.ok_cb()
+    assert warnings and dialog.cancel
+    dialog.inputLineEdits['N'].setText(' 4 ')
+    dialog.inputLineEdits['BG'].setText('1e3')
+    dialog.ok_cb()
+    assert not dialog.cancel
+    assert dialog.mapping == {'MAIN': 'GFP'}
+    assert dialog.values == {'BG': 1000.0, 'N': 4, 'LABEL': 'x'}
+
+
+def test_premade_input_values_are_written(viewer, tmp_path, monkeypatch):
+    experiment = tmp_path / 'exp'
+    paths = make_experiment(experiment)
+    for images in paths:
+        add_channel(images, 'GFP')
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    premade = tmp_path / 'template.json'
+    template = premade_config()
+    template['input_placeholders'] = premade_inputs()
+    template['combined_measurements'][0]['equations'] = {
+        '{OTHER}_double': 'area * {N}'
+    }
+    premade.write_text(json.dumps(template))
+    patch_premade_dialogs(
+        viewer, monkeypatch, experiment, saved,
+        {'MAIN': 'phase', 'OTHER': 'GFP'}
+    )
+    monkeypatch.setattr(
+        viewer, 'selectChannelMapping',
+        lambda placeholders, channels, inputs=None: (
+            {'MAIN': 'phase', 'OTHER': 'GFP'}, {'BG': 0.5, 'N': 5, 'LABEL': 'x'}
+        )
+    )
+    assert viewer.loadConfiguration(filepath=str(premade))
+    written = json.loads(next(saved.glob('*.json')).read_text())
+    assert 'input_placeholders' not in written
+    assert written['premade']['input_values'] == {'BG': 0.5, 'N': 5, 'LABEL': 'x'}
+    assert written['combined_measurements'][0]['equations'] == {
+        'GFP_double': 'area * 5'
+    }
+
+
+# --- Empty display channel ----------------------------------------------------
+def test_fucci_template_has_both_reporters_as_overlays():
+    with open(os.path.join(
+            measurements_viewer.PREMADE_CONFIGURATIONS_PATH,
+            'fucci_cell_cycle.json'), encoding='utf-8') as file:
+        template = json.load(file)
+    result = MeasurementsViewerWin.resolvePremadeTemplate(
+        template, {'GEMININ': 'GFP', 'CDT1': 'mCherry'}
+    )
+    assert result['channel'] == ''
+    assert result['overlay_channels'] == ['GFP', 'mCherry']
+    assert result['visible_channels'] == ['GFP', 'mCherry']
+
+
+def test_premade_without_channel_asks_unmapped_first(viewer, tmp_path, monkeypatch):
+    experiment = tmp_path / 'exp'
+    paths = make_experiment(experiment, positions=1)
+    add_channel(paths[0], 'GFP')
+    add_channel(paths[0], 'mCherry', 3)
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    template = premade_config()
+    template.update(
+        channel='', overlay_channels=['{MAIN}', '{OTHER}'],
+        visible_channels=['{MAIN}', '{OTHER}']
+    )
+    premade = tmp_path / 'template.json'
+    premade.write_text(json.dumps(template))
+    patch_premade_dialogs(
+        viewer, monkeypatch, experiment, saved,
+        {'MAIN': 'mCherry', 'OTHER': 'GFP'}
+    )
+    asked = []
+
+    def select_base(channels, default=None):
+        asked.append((channels, default))
+        return channels[0]
+
+    monkeypatch.setattr(viewer, 'selectPremadeBaseChannel', select_base)
+    assert viewer.loadConfiguration(filepath=str(premade))
+    assert asked == [(['phase', 'GFP', 'mCherry'], None)]
+    written = json.loads(next(saved.iterdir()).read_text())
+    # The selected channel is saved in the instantiated configuration
+    assert written['channel'] == 'phase'
+    assert written['overlay_channels'] == ['mCherry', 'GFP']
+    assert written['visible_channels'] == ['phase', 'mCherry', 'GFP']
+    assert viewer.user_ch_name == 'phase'
+
+
+def test_configuration_without_channel_asks_when_loading(viewer, tmp_path):
+    paths = make_experiment(tmp_path, positions=2)
+    for images in paths:
+        add_channel(images, 'GFP')
+    configuration = config('unused')
+    configuration.update(
+        images_paths=[str(path) for path in paths], channel='',
+        overlay_channels=['GFP'], visible_channels=['GFP']
+    )
+    MeasurementsViewerWin.validateConfiguration(configuration)
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateConfiguration(
+            dict(configuration, visible_channels=[''])
+        )
+    viewer.selectItem = Mock(return_value='GFP')
+    # The current input (empty channel) follows the stored input_options
+    selectedInput = MeasurementsViewerWin.configurationInputOptions(configuration)[-1]
+    assert selectedInput['channel'] == ''
+    resolved = viewer.resolveInputChannel(selectedInput)
+    # Non-overlay channels are offered first
+    assert viewer.selectItem.call_args.args[2] == ['phase', 'GFP']
+    assert resolved['channel'] == 'GFP'
+    assert resolved['overlay_channels'] == []
+    assert resolved['visible_channels'] == ['GFP']
+    assert selectedInput['channel'] == ''
+    viewer.selectItem = Mock(return_value=None)
+    assert viewer.resolveInputChannel(selectedInput) is None
+    # New experiments ask as well
+    viewer.selectItem = Mock(return_value='phase')
+    viewer.selectConfigurationOverlayChannels = Mock(return_value=[])
+    option = viewer.newExperimentInput(configuration, paths)
+    assert option['channel'] == 'phase'
+    assert option['overlay_channels'] == ['GFP']
+    assert option['visible_channels'] == ['phase', 'GFP']

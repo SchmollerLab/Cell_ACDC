@@ -10235,9 +10235,11 @@ class ScaleBar(QGraphicsObject):
         self.update()
     
     def addToAxis(self, ax):
-        ax.addItem(self.plotItem)
-        ax.addItem(self.labelItem)
-    
+        # The bar is positioned relative to the view range: it must not
+        # extend the bounds used by auto range
+        ax.addItem(self.plotItem, ignoreBounds=True)
+        ax.addItem(self.labelItem, ignoreBounds=True)
+
     def setText(self):
         if self._is_text_visible:
             number = round(self._length_unit, self._num_decimals)

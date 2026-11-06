@@ -10,7 +10,7 @@ from qtpy.QtCore import QPoint
 from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import QApplication, QLabel
 
-from cellacdc import apps, gui_custom_annotations, measurements_viewer
+from cellacdc import apps, apps_measurements_viewer, gui_custom_annotations, measurements_viewer
 from cellacdc.custom_annotation_predictors import (
     CustomAnnotationPredictor, DEFAULT_SHORTCUTS
 )
@@ -289,7 +289,7 @@ def test_predictor_dialog_consolidation_roundtrip(app):
 
 @pytest.mark.parametrize('mode, cells', [('all', 0), ('none', 1), ('most', 1)])
 def test_equation_editor_preview_uses_consolidation(app, acdc_df, mode, cells):
-    dialog = apps.CustomAnnotationPredictorEquationDialog(
+    dialog = apps_measurements_viewer.CustomAnnotationPredictorEquationDialog(
         [], False, False, acdc_df=acdc_df, equation='area > 12',
         SizeT=4, consolidation=mode
     )
