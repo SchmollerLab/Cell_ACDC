@@ -51,6 +51,7 @@ from . import io
 from . import measurements
 from . import favourite_func_metrics_csv_path
 from . import default_index_cols
+from . import myutils_models
 
 from ._types import (
     ChannelsDict
@@ -923,15 +924,7 @@ def annotate_lineage_tree_from_labels(tracked_labels, labels_to_IDs_mapper):
     return cca_dfs
 
 def getBaseCca_df(IDs, with_tree_cols=False):
-    row_data = base_cca_dict
-    if with_tree_cols:
-        row_data = {**base_cca_dict, **base_cca_tree_dict}
-    data = [row_data]*len(IDs)
-    cca_df = pd.DataFrame(data, index=IDs)    
-    if with_tree_cols:
-       cca_df['Cell_ID_tree'] = IDs
-    cca_df.index.name = 'Cell_ID'
-    return cca_df
+    return myutils_models.getBaseCca_df(IDs, with_tree_cols=with_tree_cols)
 
 def apply_tracking_from_table(
         segmData, trackColsInfo, src_df, signal=None, logger=print, 

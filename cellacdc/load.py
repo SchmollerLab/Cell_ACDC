@@ -715,20 +715,20 @@ def store_copy_acdc_df(posData, acdc_output_csv_path, log_func=printl):
     except Exception as e:
         log_func(traceback.format_exc())
 
+
 def _copy_acdc_dfs_to_temp_archive(
-        zip_path, temp_zip_path, csv_names
-    ):
+    zip_path, temp_zip_path, csv_names
+):
     if not os.path.exists(zip_path):
         return
 
-    with (
-            zipfile.ZipFile(zip_path, mode='r') as src_zip,
-            zipfile.ZipFile(
-                temp_zip_path,
-                mode='w',
-                compression=zipfile.ZIP_DEFLATED,
-            ) as dst_zip,
-        ):
+    with zipfile.ZipFile(zip_path, mode='r') as src_zip, \
+         zipfile.ZipFile(
+             temp_zip_path,
+             mode='w',
+             compression=zipfile.ZIP_DEFLATED,
+         ) as dst_zip:
+
         for csv_name in csv_names:
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")

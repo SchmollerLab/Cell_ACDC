@@ -1,7 +1,6 @@
 r"""Opt-in integration tests that install and run every public segmentation model.
 
 PowerShell:
-    $env:ACDC_MODEL_TEST_IMAGE = 'C:\path\to\single_frame.tif'
     python -X faulthandler -m pytest .\tests\test_all_model_environments.py -v -s --tb=short
 
 These tests can download large dependencies and model weights. They use isolated
@@ -31,10 +30,12 @@ MODEL_NAMES = sorted(
     path.parent.name for path in MODEL_ROOT.glob("*/acdcSegment.py")
     if not path.parent.name.startswith("_")
 )
-IMAGE_PATH = os.environ.get("ACDC_MODEL_TEST_IMAGE")
+IMAGE_PATH = (
+    # r'/home/stegosaurus/Downloads/JA E#15.10 B7_001_001_s01_DAPI.tif'
+)
 pytestmark = pytest.mark.skipif(
     not IMAGE_PATH,
-    reason="Set ACDC_MODEL_TEST_IMAGE to enable dependency/weight downloads and inference.",
+    reason="Set IMAGE_PATH to enable dependency/weight downloads and inference.",
 )
 
 

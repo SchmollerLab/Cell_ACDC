@@ -80,6 +80,8 @@ from . import printl
 from . import colors
 from . import issues_url
 from . import myutils
+from . import _torch_utils
+from ._torch_utils import torch_requirement
 from . import qutils
 from . import _palettes
 from . import base_cca_dict
@@ -100,6 +102,7 @@ from . import QtScoped
 from . import debugutils
 from .timepoint_predictors import debug_trace as timepoint_debug_trace
 from .timepoint_predictors import TIMEPOINT_PREFIX
+from . import disableWindow
 
 POSITIVE_FLOAT_REGEX = float_regex(allow_negative=False)
 TREEWIDGET_STYLESHEET = _palettes.TreeWidgetStyleSheet()
@@ -10020,7 +10023,7 @@ class askStopFrameSegm(QDialog):
                 img_filename = filenames[i]
                 images_path = os.path.join(exp_path, pos_foldername, 'Images')
                 img_path = os.path.join(images_path, img_filename)
-                spinBox = widgets.mySpinBox()
+                spinBox = widgets.SpinBox()
                 spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
                 posData = load.loadData(img_path, user_ch_name, QParent=parent)
                 posData.getBasenameAndChNames(qparent=self)
@@ -10493,7 +10496,11 @@ class EditIDDialog(QDialog):
             parent=None, 
             nextUniqueID=1, 
             allIDs=None,
-            addPropagateCheckbox=False
+            addPropagateCheckbox=False,
+            isSegm3D=False,
+            currentZslice=1,
+            SizeZ=None,
+            zSliceStartValue=None
         ):
         self.assignNewID = False
         self.IDs = IDs
@@ -10503,6 +10510,7 @@ class EditIDDialog(QDialog):
         self.mergeWithExistingID = False
         self.doNotAskAgainExistingID = doNotShowAgain
         self.allIDs = allIDs
+        self.isSegm3D = isSegm3D
         if allIDs is None:
             self.allIDs = set(self.IDs)
         self.nextUniqueID = nextUniqueID
@@ -10551,6 +10559,14 @@ class EditIDDialog(QDialog):
         note.setStyleSheet("padding:12px 0px 0px 0px;")
         VBoxLayout.addWidget(note, alignment=Qt.AlignCenter)
         mainLayout.addLayout(VBoxLayout)
+
+        if isSegm3D:
+            howToPropagateGroupbox = self.addHowToPropagateZslicesOptions(
+                currentZslice, SizeZ, zSliceStartValue
+            )
+            mainLayout.addWidget(widgets.QHLine())
+            mainLayout.addSpacing(10)
+            mainLayout.addWidget(howToPropagateGroupbox)
         
         self.propagateCheckbox = None
         if addPropagateCheckbox:
@@ -10582,6 +10598,118 @@ class EditIDDialog(QDialog):
         applyNewIDButton.clicked.connect(self.assignNewIDclicked)
         
         # self.setModal(True)
+    
+    def addHowToPropagateZslicesOptions(
+            self, currentZslice, SizeZ, zSliceStartValue
+        ):
+        howToPropagateGroupbox = QGroupBox('Apply ID change to')
+        howToPropagateLayout = QGridLayout()
+        self.howToPropagateButtonsGroup = QButtonGroup()
+        howToPropagateGroupbox.setLayout(howToPropagateLayout)
+        self.howToPropagateRadioCurrent = QRadioButton(
+            'Current z-slice'
+        )
+        self.howToPropagateRadioCurrent.setChecked(True)
+        self.howToPropagateRadioCurrent.setToolTip(
+            'Change the object ID only in the current z-slice'
+        )
+        self.howToPropagateRadioEntireObj = QRadioButton(
+            'Entire object'
+        )
+        self.howToPropagateRadioEntireObj.setToolTip(
+            'Change the object ID in the entire object'
+        )
+        self.howToPropagateRadioToEnd = QRadioButton(
+            'From current to last z-slice')
+        self.howToPropagateRadioToEnd.setToolTip(
+            'Change the object ID from the current Z-slice to the last '
+            "Z-slice of the object's bounding box (inclusive)."
+        )
+        self.howToPropagateRadioToStart = QRadioButton(
+            'From current to first z-slice'
+        )
+        self.howToPropagateRadioToStart.setToolTip(
+            'Change the object ID from the first Z-slice of the '
+            "object's bounding box to the current Z-slice (inclusive)."
+        )
+
+        self.howToPropagateRadioRange = QRadioButton('Custom range')
+        self.howToPropagateRadioRange.setToolTip(
+            'Change the object ID within a defined range of Z-slices (last included).'
+        )
+
+        self.howToPropagateRangeStartZSpinbox = widgets.SpinBox()
+        self.howToPropagateRangeStartZSpinbox.setMinimum(0)
+        self.howToPropagateRangeStartZSpinbox.setStartValue(1)
+        self.howToPropagateRangeStartZSpinbox.setValue(currentZslice)
+        self.howToPropagateRangeStartZSpinbox.setDisabled(True)
+        if SizeZ is not None:
+            self.howToPropagateRangeStartZSpinbox.setMaximum(SizeZ)
+
+        self.howToPropagateRangeEndZSpinbox = widgets.SpinBox()
+        self.howToPropagateRangeEndZSpinbox.setMinimum(0)
+        self.howToPropagateRangeEndZSpinbox.setStartValue(1)
+        self.howToPropagateRangeEndZSpinbox.setValue(currentZslice)
+        if SizeZ is not None:
+            self.howToPropagateRangeEndZSpinbox.setMaximum(SizeZ-1)
+        self.howToPropagateRangeEndZSpinbox.setDisabled(True)
+
+        howToPropagateLayout.addWidget(self.howToPropagateRadioEntireObj, 0, 0)
+        howToPropagateLayout.addWidget(self.howToPropagateRadioCurrent, 1, 0)
+        howToPropagateLayout.addWidget(self.howToPropagateRadioToEnd, 2, 0)
+        howToPropagateLayout.addWidget(self.howToPropagateRadioToStart, 3, 0)
+        howToPropagateLayout.addWidget(self.howToPropagateRadioRange, 4, 0)
+
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioCurrent
+        )
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioEntireObj
+        )
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioToEnd
+        )
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioToStart
+        )
+        self.howToPropagateButtonsGroup.addButton(
+            self.howToPropagateRadioRange
+        )
+
+        self.howToPropagateRangeStartZSpinbox.setStartValue(zSliceStartValue)
+        self.howToPropagateRangeEndZSpinbox.setStartValue(zSliceStartValue)
+
+        howToPropagateLayout.addWidget(QLabel('From z-slice'), 4, 1)
+        howToPropagateLayout.addWidget(QLabel('To z-slice'), 4, 2)
+        howToPropagateLayout.addWidget(
+            self.howToPropagateRangeStartZSpinbox, 5, 1
+        )
+        howToPropagateLayout.addWidget(
+            self.howToPropagateRangeEndZSpinbox, 5, 2
+        )
+        howToPropagateLayout.addWidget(self.howToPropagateRadioRange, 5, 0)
+
+        self.howToPropagateRadioRange.toggled.connect(
+            self.howToPropagateRadioRangeToggled
+        )
+        self.howToPropagateRangeStartZSpinbox.sigValueChanged.connect(
+            self.howToPropagateRangeStartZSpinboxValueChanged
+        )
+
+        return howToPropagateGroupbox
+
+    def howToPropagateRangeStartZSpinboxValueChanged(self, value):
+        self.howToPropagateRangeEndZSpinbox.setMinimum(value)
+        if value > self.howToPropagateRangeEndZSpinbox.value():
+            self.howToPropagateRangeEndZSpinbox.setValue(value)
+
+    def howToPropagateRadioRangeToggled(self, checked: bool):
+        self.howToPropagateRangeStartZSpinbox.setDisabled(not checked)
+        self.howToPropagateRangeEndZSpinbox.setDisabled(not checked)
+        start_z = self.howToPropagateRangeStartZSpinbox.value()
+        end_z = self.howToPropagateRangeEndZSpinbox.value()
+        if start_z > end_z:
+            self.howToPropagateRangeEndZSpinbox.setValue(start_z)
 
     def onTextChanged(self, text):
         self.warnExistingIDLabel.setText('')
@@ -10703,8 +10831,31 @@ class EditIDDialog(QDialog):
         self.doPropagateFutureFrames = False
         if self.propagateCheckbox is not None:
             self.doPropagateFutureFrames = self.propagateCheckbox.isChecked()
-        self.close()
         
+        self.howToPropagateZslices = self.getHowToPropagateZslices()
+        self.close()
+    
+    def setHowToPropagateZslices(self, how: str, z_range):
+        z_start, z_end = z_range
+        self.howToPropagateRangeStartZSpinbox.setValue(z_start)
+        self.howToPropagateRangeEndZSpinbox.setValue(z_end)
+        for button in self.howToPropagateButtonsGroup.buttons():
+            if button.text() != how:
+                continue
+            
+            button.setChecked(True)
+            break
+
+    def getHowToPropagateZslices(self):
+        if not self.isSegm3D:
+            return
+        
+        how = self.howToPropagateButtonsGroup.checkedButton().text()
+        z_range = (
+            self.howToPropagateRangeStartZSpinbox.value(), 
+            self.howToPropagateRangeEndZSpinbox.value()
+        )
+        return how, z_range
 
     def cancel_cb(self, event):
         self.cancel = True
@@ -16901,16 +17052,19 @@ class InstallPyTorchDialog(QBaseDialog):
     def __init__(
             self, parent=None, caller_name='Cell-ACDC',
             target_python=None, platform=None, found_cuda_version=None,
-            possible_links=None,
+            possible_links=None, torch_version=None,
         ):
         """Dialog to choose how to install PyTorch.
 
         Parameters
         ----------
         possible_links : tuple, optional
-            Precomputed result of `myutils.get_torch_options`, i.e.
+            Precomputed result of `_torch_utils.get_torch_options`, i.e.
             (options, preferred_index). If None, it is fetched here
             (needs network access).
+        torch_version : str, optional
+            PyTorch release or PEP 440 constraint (e.g. '<2') required by the
+            model. Pip resolves a compatible torchvision release.
         """
         super().__init__(parent=parent)
 
@@ -16918,6 +17072,7 @@ class InstallPyTorchDialog(QBaseDialog):
         self.platform = None
         self.indexUrl = None
         self._targetPython = target_python
+        self._torchVersion = torch_version
 
         mainLayout = QVBoxLayout()
 
@@ -16931,12 +17086,15 @@ class InstallPyTorchDialog(QBaseDialog):
         innerLayout.addWidget(iconLabel, 0, 0, alignment=Qt.AlignTop)
 
         if found_cuda_version is None:
-            found_cuda_version = myutils.get_driver_cuda_version()
+            found_cuda_version = _torch_utils.get_driver_cuda_version()
 
         if possible_links is None:
-            possible_links = myutils.get_torch_options_safe(
-                driver_cuda_version=found_cuda_version
-            )
+            options_kwargs = {'driver_cuda_version': found_cuda_version}
+            if target_python is not None:
+                options_kwargs['exec_path'] = target_python
+            if torch_version:
+                options_kwargs['torch_version'] = torch_version
+            possible_links = _torch_utils.get_torch_options_safe(**options_kwargs)
         self._options, self._preferred = possible_links
         self._detectedOnMac = sys.platform == 'darwin'
 
@@ -16974,6 +17132,10 @@ class InstallPyTorchDialog(QBaseDialog):
         preferencesLayout = QGridLayout()
 
         row = 0
+        if torch_version:
+            preferencesLayout.addWidget(QLabel('PyTorch version'), row, 0)
+            preferencesLayout.addWidget(QLabel(torch_version), row, 1)
+            row += 1
         self.osCombobox = QComboBox()
         self.osCombobox.addItems(['Linux', 'Mac', 'Windows'])
         osLabel = QLabel('Your OS')
@@ -17053,7 +17215,7 @@ class InstallPyTorchDialog(QBaseDialog):
             return [('Default (CPU / Apple GPU)', None)], 0
         if self._detectedOnMac:
             # Options were detected on a Mac, so there is no CUDA info
-            return [('CPU', f'{myutils.BASE_PYTORCH_LINK}cpu')], 0
+            return [('CPU', f'{_torch_utils.BASE_PYTORCH_LINK}cpu')], 0
         return self._options, self._preferred
 
     def populatePlatforms(self, *args, **kwargs):
@@ -17075,7 +17237,8 @@ class InstallPyTorchDialog(QBaseDialog):
         _, pip_prefix = myutils.get_pip_conda_prefix(
             exec_path=self._targetPython
             )
-        command = f'{pip_prefix} torch torchvision'
+        torch_spec = torch_requirement(self._torchVersion, quoted=True)
+        command = f'{pip_prefix} {torch_spec} torchvision'
         if indexUrl is not None:    # None -> default PyPI install (macOS)
             command += f' --index-url {indexUrl}'
         self.commandWidget.setCommand(command)
@@ -21206,7 +21369,7 @@ class SelectFoldersToAnalyse(QBaseDialog):
 
     def addFromRecentPaths(self):
         """Open a multi-select dialog containing existing recent folders."""
-        recent_paths, dates = myutils.get_recent_paths(self)
+        recent_paths, dates = myutils.get_recent_paths()
         if not recent_paths:
             return
         
@@ -21990,7 +22153,9 @@ as a single file containing multiple positions. If fields of view were acquired 
         )
 
         row += 1
-        self.sourceFolderPathControl = widgets.FolderPathControl()
+        self.sourceFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
 
         noteText = ("""
 Microscopy files are those files that are typically generated 
@@ -22022,7 +22187,9 @@ Please make sure this folder contains <b>only microscopy files</b> and no other 
         )
 
         row += 1
-        self.dstFolderPathControl = widgets.FolderPathControl()
+        self.dstFolderPathControl = widgets.FolderPathControl(
+            add_browse_recent=True
+        )
 
         data_structure_url_href = html_utils.href_tag(
             'documentation page', urls.data_structure_docs_url)
@@ -22610,7 +22777,7 @@ class SearchableListboxDialog(QBaseDialog):
 
         # add all items to the search model
         for item_text in self.allItems:
-            model_item = widgets.QStandardItem(item_text)
+            model_item = widgets.StandardItem(item_text)
             model_item.setData(
                 self._normalizeSearchText(item_text),
                 widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
@@ -22670,6 +22837,14 @@ class SearchableListboxDialog(QBaseDialog):
 
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
+        is_any_item_path = any([os.path.exists(item) for item in items])
+        if is_any_item_path:
+            showInFileManagerButton = widgets.showInFileManagerButton(
+                myutils.get_open_filemaneger_os_string()
+            )
+            buttonsLayout.insertWidget(3, showInFileManagerButton)
+            showInFileManagerButton.clicked.connect(self.showInFileManager)
+
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
         if not self.multiSelection:
@@ -22686,6 +22861,27 @@ class SearchableListboxDialog(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.setFont(fonts.font)
+    
+    def showInFileManager(self):
+        selected_items = self.listWidget.selectedItems()
+        selected_texts = [
+            item.data(0, Qt.UserRole) or item.text(0)
+            for item in selected_items
+        ]
+        valid_paths = [
+            text for text in selected_texts if os.path.exists(text)
+        ]
+        if not valid_paths:
+            print('WARNING: None of the selected items is a valid path')
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                'None of the selected items is a valid path :(.'
+            )
+            msg.warning(self, 'Not a valid path', txt)
+            return
+        
+        first_valid_path = valid_paths[0]
+        myutils.showInExplorer(first_valid_path)
 
     def _lastEditedDate(self, item_text):
         """Return a display date and tooltip for an item's modification time.
@@ -22731,7 +22927,10 @@ class SearchableListboxDialog(QBaseDialog):
             last_edited = self.searchModel.item(
                 source_index.row(), 1
             ).text()
-            tree_item = QTreeWidgetItem([item_text, last_edited])
+            if os.path.exists(item_text):
+                tree_item = widgets.PathTreeWidgetItem(item_text, [last_edited])
+            else:
+                tree_item = QTreeWidgetItem([item_text, last_edited])
             tree_item.setToolTip(
                 1,
                 self.searchModel.item(
@@ -23106,3 +23305,300 @@ class SetupCreateTrackastraInputDataDialog(SetupSplitVideoIntoTiffsDialog):
         ))
 
         self.setWindowTitle('Generate Trackastra training data setup')
+
+class askZPlaneView(QDialog):
+    def __init__(
+            self, user_ch_file_paths, user_ch_name, 
+            mainWin, version, parent=None, logger_func=print
+        ):
+        self._parent = parent
+        self.cancel = True
+        self._user_ch_name = user_ch_name
+        self._mainWin = mainWin
+        self._version = version
+        self._logger_func = logger_func
+
+        super().__init__(parent)
+        self.setWindowTitle('Select z-plane view')
+
+        self.visualizeWindows = []
+
+        mainLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        # Message
+        infoTxt = html_utils.paragraph("""
+            Enter a <b>z-slice</b> or <b>projection mode</b> to segment for each Position loaded.<br><br>
+            <i>NOTE: for more complex selection launch the data prep module</i>
+        """)
+        infoLabel = QLabel(infoTxt, self)
+        infoLabel.setAlignment(Qt.AlignCenter)
+        # padding: top, left, bottom, right
+        infoLabel.setStyleSheet("padding:0px 0px 8px 0px;")
+
+        self.dataDict = {}
+
+        exp_path_pos_mapper = path.get_exp_path_pos_foldernames_mapper(
+            user_ch_file_paths
+        )
+
+        columnsLayout = QHBoxLayout()
+        mainScrollArea = widgets.ScrollArea()
+        mainScrollAreaWidget = QWidget()
+        mainScrollAreaWidget.setLayout(columnsLayout)
+        mainScrollArea.setWidget(mainScrollAreaWidget)
+        self.mainScrollArea = mainScrollArea
+
+        # Form layout widget
+        self.spinBoxes = []
+        self.tab_idx = 0
+        iter_items = exp_path_pos_mapper.items()
+        self.groupboxScrollAreas = []
+        
+        for col, (exp_path, pos_folders_files) in enumerate(iter_items):
+            groupboxScrollArea = widgets.ScrollArea()
+            self.groupboxScrollAreas.append(groupboxScrollArea)
+            groupbox = QGroupBox()
+            groupbox.setCheckable(False)
+            groupbox.setToolTip(exp_path)
+            groupboxLayout = QFormLayout()
+            groupbox.setLayout(groupboxLayout)
+            groupboxScrollArea.setWidget(groupbox)
+            columnsLayout.addWidget(groupboxScrollArea)
+            pos_folders = pos_folders_files['pos_foldernames']
+            filenames = pos_folders_files['filenames']
+            for i, pos_foldername in enumerate(pos_folders):
+                img_filename = filenames[i]
+                images_path = os.path.join(exp_path, pos_foldername, 'Images')
+                img_path = os.path.join(images_path, img_filename)
+                spinBox = widgets.SpinBox()
+                spinBox.sigTabEvent.connect(self.keyTabEventSpinbox)
+                posData = load.loadData(img_path, user_ch_name, QParent=parent)
+                posData.getBasenameAndChNames(qparent=self)
+                posData.buildPaths()
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_metadata=True,
+                    loadSegmInfo=True,
+                )
+                spinBox.setMaximum(posData.SizeZ)
+                zProjComboBox = QComboBox()
+                zProjComboBox.addItems([
+                    'single z-slice',
+                    'max z-projection',
+                    'mean z-projection',
+                    'median z-proj.'
+                ])
+
+                spinBox.setValue(round(posData.SizeZ/2))
+                
+                visualizeButton = widgets.viewPushButton(' View')
+                visualizeButton.clicked.connect(
+                    partial(self.visualize_cb, images_path=images_path)
+                )
+
+                dataPrepButton = widgets.dataPrepButton('Launch data prep...')
+                dataPrepButton.clicked.connect(
+                    partial(self.launch_dataprep, images_path=images_path)
+                )
+
+                formLabel = QLabel(html_utils.paragraph(f'{pos_foldername}  '))
+                layout = QHBoxLayout()
+                layout.addWidget(formLabel, alignment=Qt.AlignRight)
+                layout.addWidget(spinBox)
+                layout.addWidget(zProjComboBox)
+                layout.addWidget(visualizeButton)
+                layout.addWidget(dataPrepButton)
+                self.dataDict[images_path] = (
+                    spinBox, zProjComboBox, posData
+                )
+                groupboxLayout.addRow(layout)
+                self.spinBoxes.append(spinBox)
+            
+            fm = QFontMetrics(self.font())
+            elidedTitle = fm.elidedText(
+                exp_path, Qt.ElideLeft, groupbox.sizeHint().width()
+            )
+            groupbox.setTitle(elidedTitle)
+
+        self.disableControlsDataPreppedPos()
+
+        mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        mainLayout.addWidget(mainScrollArea)
+
+        okButton = widgets.okPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        buttonsLayout.addStretch(1)    
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+
+        if posData.SizeT == 1:
+            launchDataPrepButton = widgets.dataPrepButton(
+                'Launch data prep with all Positions...'
+            )
+            buttonsLayout.addWidget(launchDataPrepButton)
+            launchDataPrepButton.clicked.connect(self.launch_dataprep)
+
+        buttonsLayout.addWidget(okButton)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+    def disableControlsDataPreppedPos(self):
+        for images_path, values in self.dataDict.items():
+            posData = values[-1]
+            posData.loadOtherFiles(
+                load_segm_data=False,
+                loadSegmInfo=True,
+            )
+            disabled = False
+            if posData.segmInfo_df is not None:
+                segmInfofilenames = (
+                    posData.segmInfo_df.index.get_level_values(0).unique()
+                )
+                for _filename in segmInfofilenames:
+                    if _filename.endswith(self._user_ch_name):
+                        disabled = True
+                        break
+            spinBox, zProjComboBox = values[:2]
+            if disabled:
+                tooltip = (
+                    'Disabled because already selected in data prep.\n\n'
+                    'Launch data prep if you need to modify it.'
+                )
+                spinBox.setToolTip(tooltip)
+                zProjComboBox.setToolTip(tooltip)
+            
+            spinBox.setDisabled(disabled)
+            zProjComboBox.setDisabled(disabled)
+
+    def keyTabEventSpinbox(self, event, sender):
+        self.tab_idx += 1      
+        if self.tab_idx >= len(self.spinBoxes):
+            self.tab_idx = 0
+        focusSpinbox = self.spinBoxes[self.tab_idx]
+        focusSpinbox.setFocus()
+
+    def ok_cb(self, event):
+        self.cancel = False
+        for spinBox, zProjComboBox, posData in self.dataDict.values():
+            if not spinBox.isEnabled():
+                continue
+            
+            filename = posData.filename
+            if posData.segmInfo_df is None:
+                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                posData.segmInfo_df = df
+            
+            if filename not in posData.segmInfo_df.index:
+                df = myutils.getDefault_SegmInfo_df(posData, filename)
+                posData.segmInfo_df = pd.concat([df, posData.segmInfo_df])
+            
+            posData.segmInfo_df.loc[filename, 'z_slice_used_dataPrep'] = (
+                spinBox.value()
+            )
+            posData.segmInfo_df.loc[filename, 'which_z_proj'] = (
+                zProjComboBox.currentText()
+            )
+            posData.segmInfo_df.loc[filename, 'is_from_dataPrep'] = (
+                False
+            )
+            posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+
+        self.close()
+    
+    def closeEvent(self, event):
+        for window in self.visualizeWindows:
+            window.close()
+
+    @disableWindow
+    def visualize_cb(self, checked=True, images_path=None):
+        if images_path is None:
+            return
+
+        spinBox, zProjComboBox, posData = self.dataDict[images_path]
+        print('Loading image data...')
+        posData.loadImgData()
+        posData.frame_i = spinBox.value()-1
+        win = plot.imshow(
+            posData.img_data, 
+            lut='gray',
+            figure_title=posData.relPath,
+            block=False
+        )
+        self.visualizeWindows.append(win)
+
+    def launch_dataprep(self, checked=True, images_path=None):
+        if images_path is not None:
+            exp_path = os.path.dirname(images_path)
+            posData = self.dataDict[images_path][-1]
+            user_ch_file_paths = [posData.imgPath]
+        else:
+            user_ch_file_paths = []
+            for images_path, values in self.dataDict.items():
+                posData = values[-1]
+                user_ch_file_paths.append(posData.imgPath)
+        
+        self._launch_dataprep(exp_path, user_ch_file_paths)
+
+    @disableWindow
+    def _launch_dataprep(self, exp_path, user_ch_file_paths):
+        from cellacdc.dataPrep import launchDataPrepSelectZPlane
+
+        cancel = launchDataPrepSelectZPlane(
+            exp_path, 
+            user_ch_file_paths, 
+            self._user_ch_name, 
+            mainWin=self._mainWin, 
+            version=self._version,
+            logger_func=self._logger_func,
+            parent=self._parent
+        )
+        if not cancel:
+            self.disableControlsDataPreppedPos()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        screenSize = self.screen().size()
+        maxWidth = screenSize.width() - 50
+        maxHeight = screenSize.height() - 100
+        width, height = 0, 0
+        for scrollArea in self.groupboxScrollAreas:
+            width += scrollArea.minimumWidthNoScrollbar()
+            scrollAreaHeight = scrollArea.minimumHeightNoScrollbar()
+            if scrollAreaHeight > height:
+                height = scrollAreaHeight
+        
+        width += 70
+        height += (
+            self.sizeHint().height() 
+            - self.mainScrollArea.sizeHint().height()
+        )
+
+        if width > maxWidth:
+            width = maxWidth
+        
+        if height > maxHeight:
+            height = maxHeight
+
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        super().show()
+        self.resize(width, height)
+        self.move(25, 50)
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()

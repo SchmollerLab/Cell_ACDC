@@ -226,6 +226,7 @@ class QtHandler(PromptHandler):
             platform=prompt.extra.get('platform'),
             found_cuda_version=prompt.extra.get('found_cuda_version'),
             possible_links=prompt.extra.get('possible_links'),
+            torch_version=prompt.extra.get('torch_version'),
         )
         win.exec_()
         return None if win.cancel else win.command

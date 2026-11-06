@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from time import perf_counter
 
 
+from typing import Callable, Generator
+
 @contextmanager
 def startup_timer(
     label: str, logger_func: Callable = print

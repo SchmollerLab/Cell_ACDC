@@ -285,6 +285,7 @@ def test_segmentation_module_checks_gpu_before_init(
 
     execution = SimpleNamespace(
         env_python=python_exec, init_model=Mock(return_value=object()),
+        cancel_preparation=Mock(),
     )
     pos_data = object()
     window = SimpleNamespace(

@@ -301,7 +301,12 @@ class OverlayChannelsGuiElements:
                 self.zSliceOverlay_SB.setDisabled(True)
             else:
                 z = self.zSliceOverlay_SB.sliderPosition()
-                self.overlay_z_label.setText(f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                start_value = self.zSliceSpinbox.getStartValue()
+                correction = start_value - self.zSliceSpinbox.minimum()
+                self.overlay_z_label.setText(
+                    f'Overlay z-slice {z+start_value:02}'
+                    f'/{posData.SizeZ+correction}'
+                )
                 self.zSliceOverlay_SB.setDisabled(False)
                 self.overlay_z_label.setDisabled(False)
             self.zSliceOverlay_SB.show()
@@ -375,8 +380,14 @@ class OverlayChannelsGuiElements:
                         self.updateOverlayZslice
                     )
             if zProjHow == 'single z-slice':
+                start_value =  self.zSliceSpinbox.getStartValue()
+                if start_value is None:
+                    start_value = self.zSliceSpinbox.minimum()
+                correction = start_value - self.zSliceSpinbox.minimum()
                 self.overlay_z_label.setText(
-                    f'Overlay z-slice  {z+1:02}/{posData.SizeZ}')
+                    f'Overlay z-slice {z-correction:02}'
+                    f'/{posData.SizeZ+correction}'
+                )
                 ol_img = img[z].copy()
             elif zProjHow == 'max z-projection':
                 ol_img = img.max(axis=0)

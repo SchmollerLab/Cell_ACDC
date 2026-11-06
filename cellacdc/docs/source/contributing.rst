@@ -62,7 +62,7 @@ Development process
        ::
 
          # Create a virtual env with the name you like, e.g., ``acdc-dev``
-         conda create -n acdc-dev python=3.10
+         conda create -n acdc-dev python=3.12
 
          # Activate the environment
          conda activate acdc-dev

@@ -9,7 +9,14 @@ Entry fields (all optional):
     python: Python version of the environment, e.g. "3.11". Default is the
         Python version of the main Cell-ACDC environment.
     torch: True if the model needs PyTorch. It is installed automatically
-        with the build matching the machine
+        with the build matching the machine.
+    torch_version: optional PyTorch release, e.g. "2.5.1", or PEP 440 version
+        constraint, e.g. "<2" or ">=1.13,<2", used with torch=True.
+        Plain versions are exact pins. Omit it to install the latest compatible
+        release. CUDA builds are filtered for this constraint; pip resolves a
+        compatible torchvision version. Existing environments must satisfy it too.
+        Wheel compatibility is checked using the model environment's Python,
+        not the Python running Cell-ACDC (e.g. use python="3.10" for torch<2).
     packages: list of packages to install. Each item is either a string
         (pip name, also used as import name) or a dict with the keys
         accepted by ``myutils.check_install_package``
@@ -115,6 +122,11 @@ MODEL_ENVS = {
     },
     'YeastMate': {
         'torch': True,
+        'torch_version': '<2',
+        'python': '3.8',
+        'packages': [
+            {'pkg_name': 'Pillow', 'max_version': '10.0.0', 'import_pkg_name': 'PIL'},
+        ],
         'main_env_packages': ['detectron2', 'yeastmatedetector'],
         'setup_steps': [
             {

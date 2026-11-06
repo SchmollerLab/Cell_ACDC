@@ -659,7 +659,7 @@ class AnnotationsGuiElements:
 
         self.lut = np.insert(self.lut, 0, [r, g, b], axis=0)
 
-    def extendLabelsLUT(self, lenNewLut):
+    def extendLabelsLUT(self, lenNewLut, return_lut=False):
         posData = self.data[self.pos_i]
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(self.lut):
@@ -672,9 +672,16 @@ class AnnotationsGuiElements:
             for i, idx in enumerate(randomIdx):
                 rgb = self.lut[idx]
                 _lut[len(self.lut)+i] = rgb
+            if return_lut:
+                return _lut
+
             self.lut = _lut
             self.initLabelsImageItems()
             return True
+        
+        if return_lut:
+            return self.lut
+
         return False
 
     def getLabelsImageLut(self):

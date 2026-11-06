@@ -7,9 +7,9 @@
 A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 -------------------------------------------------------------------------------------------------------------------------------------
 
-*Written in Python 3 by* \ `Francesco Padovani <https://github.com/ElpadoCan>`__ \ *and* \ `Benedikt Mairhoermann <https://github.com/Beno71>`__\ *.*
-
-*Core developers:* `Francesco Padovani <https://github.com/ElpadoCan>`__, `Timon Stegmaier <https://github.com/Teranis>`__, \ *and* \ `Benedikt Mairhoermann <https://github.com/Beno71>`__\ *.*
+| *Written in Python 3 by* \ `Francesco Padovani <https://github.com/ElpadoCan>`__ \ *and* \ `Benedikt Mairhoermann <https://github.com/Beno71>`__\ *.*
+| *Core developers:* `Francesco Padovani <https://github.com/ElpadoCan>`__, `Timon Stegmaier <https://github.com/Teranis>`__ \ *and* \ `Benedikt Mairhoermann <https://github.com/Beno71>`__\ *.*
+| 
 
 .. |build_win_pyqt5| image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml/badge.svg
    :target: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows_pyqt5.yml
@@ -55,7 +55,7 @@ A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle an
    :target: https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6
    :alt: DOI
 
-.. |docs| image:: https://readthedocs.org/projects/cell-acdc/badge/?version=latest
+.. |docs| image:: https://app.readthedocs.org/projects/cell-acdc/badge/?version=latest
     :target: https://cell-acdc.readthedocs.io/en/latest/?badge=latest
     :alt: Documentation Status
 

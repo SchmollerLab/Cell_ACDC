@@ -1480,7 +1480,7 @@ class Volume3DViewerGuiElements:
         posData = self.data[self.pos_i]
         
         volumes = {
-            self.user_ch_name: posData.img_data[posData.frame_i]
+            self.user_ch_name: posData.img_data
         }
         lut_items_states = {
             self.user_ch_name: self.imgGrad.super_saveState()
@@ -1491,7 +1491,7 @@ class Volume3DViewerGuiElements:
             ol_data = {}
 
         for filename, ol_image_data in ol_data.items():
-            volume = ol_image_data[posData.frame_i]
+            volume = ol_image_data
 
             channel_name = myutils.get_chname_from_basename(
                 filename, posData.basename, remove_ext=False
@@ -1510,7 +1510,8 @@ class Volume3DViewerGuiElements:
         
         self._volume_renderer = VolumeRendererWindow(
             app=self.app, 
-            parent=self,
+            parent=self.mainWin,
+            parent_gui=self,
             version=self._version,
             hide_on_close=False,
             logger_func=self.logger.info
@@ -1520,10 +1521,33 @@ class Volume3DViewerGuiElements:
             lut_items_states=lut_items_states,
             voxel_size=voxel_size,
         )
+        labels = []
+        max_ID = 1
+        for frame_i in range(len(posData.segm_data)):
+            if frame_i == posData.frame_i:
+                lab = posData.lab
+            else:
+                lab = posData.allData_li[frame_i]['labels']
+                if lab is None:
+                    lab = posData.segm_data[frame_i]
+            labels.append(lab)
+            try:
+                max_ID_i = np.max(lab)
+            except Exception as err:
+                max_ID_i = 1
+            if max_ID_i > max_ID:
+                max_ID = max_ID_i
+
+        labels = np.asarray(labels)
+        lut = self.extendLabelsLUT(max_ID+1, return_lut=True)
+        lut = lut[:max_ID+1]
         self._volume_renderer.set_labels(
-            posData.lab,
+            labels,
             gradient_item_state=self.labelsGrad.item.saveState(),
-            SizeZ=posData.SizeZ
+            lut=lut,
+            SizeZ=posData.SizeZ,
+            font_size=self.fontSizeSpinBox.value(),
+            text_color=self.imgGrad.textColorButton.color(),
         ) 
         
         self.addPointsLayersToVolumeViewer(self._volume_renderer)
@@ -1540,6 +1564,16 @@ class Volume3DViewerGuiElements:
     def onUpdate3dViewer(self):
         self.launch3dViewerAction.setChecked(False)
         self.launch3dViewerAction.setChecked(True)
+
+    def update3DViewer(self):
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is None:
+            return
+
+        if not volume_renderer.are_frames_synced():
+            return 
+        
+        volume_renderer.set_frame_number(self.navigateScrollBar.value())
 
 class RegionPropsGuiElements:
     def gui_createRegionPropsDockWidget(self, side=Qt.LeftDockWidgetArea):

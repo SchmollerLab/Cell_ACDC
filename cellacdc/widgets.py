@@ -44,7 +44,8 @@ from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
-    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument
+    QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument,
+    QValidator
 )
 from qtpy.QtWidgets import (
     QColorDialog, QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -85,6 +86,7 @@ from . import _base_widgets
 from . import debugutils
 from . import rst_utils
 from . import tooltips_rst_filepath
+from . import path as acdc_path
 
 LINEEDIT_WARNING_STYLESHEET = _palettes.lineedit_warning_stylesheet()
 LINEEDIT_INVALID_ENTRY_STYLESHEET = _palettes.lineedit_invalid_entry_stylesheet()
@@ -368,8 +370,6 @@ class okPushButton(PushButton):
         self.setIcon(QIcon(':yesGray.svg'))
         if isDefault:
             self.setDefault(True)
-        # QShortcut(Qt.Key_Return, self, self.click)
-        # QShortcut(Qt.Key_Enter, self, self.click)
 
 class MagnifyingGlassPushButton(PushButton):
     def __init__(self, *args, **kwargs):
@@ -385,6 +385,11 @@ class AssignNewIDButton(PushButton):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':assign_new_id.svg'))
+
+class dataPrepButton(PushButton):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setIcon(QIcon(':prep.svg'))
 
 class LockPushButton(PushButton):
     sigToggled = Signal(bool)
@@ -853,7 +858,7 @@ class browseFileButton(PushButton):
 
     def __init__(
             self, *args, ext=None, title='Select file', start_dir='', 
-            openFolder=False, **kwargs
+            openFolder=False, get_start_dir_func=None, **kwargs
         ):
         """PushButton with sigPathSelected Signal to select file or folder
 
@@ -874,6 +879,9 @@ class browseFileButton(PushButton):
         openFolder : bool, optional
             If True, allows for selection of folders instead of files. 
             Default is False
+        get_start_dir_func : callable, optional
+            If a callable function without arguments, it will be used to retrieve the directory where the file manager window will initially open. 
+            If the retrieved directory is not valid or not existing, `start_dir` will be used instead.
         """        
         super().__init__(*args, **kwargs)
         self.setIcon(QIcon(':folder-open.svg'))
@@ -882,6 +890,7 @@ class browseFileButton(PushButton):
         self._title = title
         self._start_dir = start_dir
         self._openFolder = openFolder
+        self._get_start_dir_func = get_start_dir_func
         self._file_types = 'All Files (*)'
         if ext is not None:
             s_li = []
@@ -899,13 +908,24 @@ class browseFileButton(PushButton):
     def setStartPath(self, start_path):
         self._start_dir = start_path
     
+    def getStartPath(self):
+        if self._get_start_dir_func is None:
+            return self._start_dir
+        
+        try:
+            start_dir = str(self._get_start_dir_func())
+            if os.path.exists(start_dir):
+                return start_dir
+        except Exception as err:
+            return self._start_dir
+    
     def browse(self):
         if self._openFolder:
             fileDialog = QFileDialog.getExistingDirectory
-            args = (self, self._title, self._start_dir)
+            args = (self, self._title, self.getStartPath())
         else:
             fileDialog = QFileDialog.getOpenFileName
-            args = (self, self._title, self._start_dir, self._file_types)
+            args = (self, self._title, self.getStartPath(), self._file_types)
         file_path = fileDialog(*args)
         if not isinstance(file_path, str):
             file_path = file_path[0]
@@ -1711,7 +1731,8 @@ class filePathControl(QFrame):
             fileManagerTitle='Select file', 
             validExtensions=None, 
             startFolder='', 
-            elide=False
+            elide=False,
+            add_browse_recent=False
         ):
         super().__init__(parent)
 
@@ -1722,18 +1743,67 @@ class filePathControl(QFrame):
             self.le = ValidLineEdit()
             
         self.browseButton = browseFileButton(
-            openFolder=browseFolder, title=fileManagerTitle, 
-            ext=validExtensions, start_dir=startFolder
+            openFolder=browseFolder, 
+            title=fileManagerTitle, 
+            ext=validExtensions, 
+            start_dir=startFolder,
+            get_start_dir_func=self.le.text
         )
 
         layout.addWidget(self.le)
         layout.addWidget(self.browseButton)
+
+        if add_browse_recent and browseFolder:
+            recentPathsButton = PushButton()
+            recentPathsButton.setIcon(QIcon(':open_file.svg'))
+            recentPathsButton.setToolTip(
+                'Select one existing folder from recent paths.'
+            )
+            layout.addWidget(recentPathsButton)
+            self.recentPathsButton = recentPathsButton
+            self.recentPathsButton.clicked.connect(self.browseRecentPaths)
+
         self.setLayout(layout)
 
         self.le.editingFinished.connect(self.setTextTooltip)
         self.browseButton.sigPathSelected.connect(self.setText)
     
         self.setFrameStyle(QFrame.Shape.StyledPanel)
+
+    def browseRecentPaths(self):
+        recent_paths, dates = myutils.get_recent_paths(self)
+        if not recent_paths:
+            msg = myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                'There are no existing recent paths :(.<br><br>'
+            )
+            msg.warning(self, 'No existing recent paths', txt)
+            return
+        
+        try:
+            self.recentPathsDialog.cancel = True
+            self.recentPathsDialog.close()
+        except Exception as err:
+            pass
+
+        self.recentPathsDialog = apps.SearchableListboxDialog(
+            recent_paths,
+            title='Select recent paths',
+            searchLineEditText='Search recent paths...',
+            parent=self,
+            multiSelection=False,
+            dates=dates,
+        )
+        self.recentPathsDialog.sigOk.connect(
+            self.setFromRecentPath
+        )
+        self.recentPathsDialog.hide()
+        self.recentPathsDialog.show()
+        self.recentPathsDialog.raise_()
+        self.recentPathsDialog.activateWindow()
+    
+    def setFromRecentPath(self, recent_path: os.PathLike):
+        self.setText(recent_path)
 
     def setText(self, text):
         self.le.setText(text)
@@ -1761,7 +1831,6 @@ class FolderPathControl(filePathControl):
     def __init__(self, **kwargs):
         super().__init__(
             browseFolder=True, 
-            fileManagerTitle='Select folder', 
             **kwargs
         )
 
@@ -2600,19 +2669,6 @@ class NumericCommaLineEdit(QLineEdit):
             vals = []
         return vals
 
-class mySpinBox(QSpinBox):
-    sigTabEvent = Signal(object, object)
-
-    def __init__(self, *args) -> None:
-        super().__init__(*args)
-    
-    def event(self, event):
-        if event.type()==QtScoped.QEventTypeAttribute('KeyPress') and event.key() == Qt.Key_Tab:
-            self.sigTabEvent.emit(event, self)
-            return True
-
-        return super().event(event)
-
 class KeptObjectIDsList(list):
     def __init__(self, lineEdit, confirmSelectionAction, *args):
         self.lineEdit = lineEdit
@@ -3386,7 +3442,7 @@ class ToolBar(QToolBar):
                 break
         
         self._logLabelAdded = False
-    
+
     def showEvent(self, event):
         if self._log_func is None:
             return super().showEvent(event)
@@ -3417,16 +3473,20 @@ class ToolBar(QToolBar):
     def removeSeparator(self, separator):
         separator.removeFromToolbar()
     
-    def addSpinBox(self, label=''):
+    def addSpinBox(self, label='', fixedWidth=False):
         spinbox = SpinBox(disableKeyPress=True)
         if label:
             spinbox.label = QLabel(label)
             spinbox.labelAction = self.addWidget(spinbox.label)
         
+        if fixedWidth:
+            spinbox.setFixedWidth(spinbox.sizeHint().width())
         spinbox.action = self.addWidget(spinbox)
         return spinbox
     
-    def addButton(self, icon_str: str, text='', checkable=False, ret_widget=False):
+    def addButton(
+            self, icon_str: str, text='', checkable=False, ret_widget=False
+        ):
         action = QAction(QIcon(icon_str), text, self)
         action.setCheckable(checkable)
         widget = self.addAction(action)
@@ -3466,6 +3526,23 @@ class ToolBar(QToolBar):
         spacer.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Maximum)
         action = self.addWidget(spacer)
         return action
+    
+    def addStretch(self, stretch=1):
+        stretchItem = QWidget()
+        stretchItem.setMinimumWidth(stretch)
+        stretchItem.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+        action = self.addWidget(stretchItem)
+        return action
+    
+    def addRadioButton(self, text: str, checked=False, buttonsGroup=None):
+        if buttonsGroup is None:
+            buttonsGroup = QButtonGroup()
+            buttonsGroup.setExclusive(True)
+        radioButton = QRadioButton(text)
+        radioButton.setChecked(checked)
+        radioButton.action = self.addWidget(radioButton)
+        buttonsGroup.addButton(radioButton)
+        return radioButton, buttonsGroup
     
 class ManualTrackingToolBar(ToolBar):
     sigIDchanged = Signal(int)
@@ -3675,6 +3752,9 @@ class ManualBackgroundToolBar(ToolBar):
     
     def clearInfoText(self):
         self.infoLabel.setText('')
+    
+    def doesIDexist(self):
+        return not bool(self.infoLabel.text())
     
 
 class rightClickToolButton(QToolButton):
@@ -4715,86 +4795,160 @@ class DoubleSpinBox(QDoubleSpinBox):
         return super().valueFromText(text)
 
 class SpinBox(QSpinBox):
-    sigValueChanged = Signal(int)
     sigUpClicked = Signal()
     sigDownClicked = Signal()
+    sigTabEvent = Signal(object, object)
+    sigValueChanged = Signal(int)
 
     def __init__(
-            self, 
-            parent=None, 
-            disableKeyPress=False,
-            allowNegative=True
-        ):
+        self,
+        parent=None,
+        disableKeyPress=False,
+        allowNegative=True,
+    ):
         super().__init__(parent=parent)
+
         self.setAlignment(Qt.AlignCenter)
-        self.setMaximum(2**31-1)
+        self.setMaximum(2**31 - 1)
+
         if allowNegative:
-            self.setMinimum(-2**31)
+            self.setMinimum(-(2**31))
         else:
             self.setMinimum(0)
+
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
         self._linkedWidget = None
-    
-    def mousePressEvent(self, event) -> None:
+        self._start_value = None
+        self._display_correction = 0
+        self.valueChanged.connect(self.sigValueChanged.emit)
+
+    def mousePressEvent(self, event):
         super().mousePressEvent(event)
+
         opt = QStyleOptionSpinBox()
         self.initStyleOption(opt)
 
         control = self.style().hitTestComplexControl(
-            QStyle.ComplexControl.CC_SpinBox, opt, event.pos(), self
+            QStyle.ComplexControl.CC_SpinBox,
+            opt,
+            event.pos(),
+            self,
         )
+
         if control == QStyle.SubControl.SC_SpinBoxUp:
             self.sigUpClicked.emit()
         elif control == QStyle.SubControl.SC_SpinBoxDown:
             self.sigDownClicked.emit()
 
-    # def focusOutEvent(self, event):
-    #     self.editingFinished.emit()
-    #     super().focusOutEvent(event)
-    #     printl('emitted')
+    def setStartValue(self, value: int):
+        if value is None:
+            value = self.minimum()
+
+        self._start_value = int(value)
+        self._updateDisplayCorrection()
     
-    def keyPressEvent(self, event) -> None:
-        isBackSpaceKey = event.key() == Qt.Key_Backspace
-        isDeleteKey = event.key() == Qt.Key_Delete
+    def getStartValue(self):
+        if self._start_value is None:
+            return self.minimum()
+        
+        return self._start_value
+    
+    def startValue(self):
+        return self._start_value
+
+    def _updateDisplayCorrection(self):
+        self._display_correction = (
+            self._start_value - self.minimum()
+            if self._start_value is not None
+            else 0
+        )
+        self.update()
+        self.lineEdit().setText(self.textFromValue(self.value()))
+
+    def textFromValue(self, value: int) -> str:
+        return str(value + self._display_correction)
+
+    def valueFromText(self, text: str) -> int:
+        text = text.strip()
+
+        try:
+            displayed_value = int(text)
+        except ValueError:
+            return self.value()
+
+        return displayed_value - self._display_correction
+
+    def validate(self, text: str, pos: int):
+        state, text, pos = super().validate(text, pos)
+
+        # Allow the user to type the displayed value even if its
+        # corresponding internal value differs from the minimum.
+        try:
+            displayed_value = int(text)
+        except ValueError:
+            return state, text, pos
+
+        internal_value = displayed_value - self._display_correction
+
+        if self.minimum() <= internal_value <= self.maximum():
+            return QValidator.State.Acceptable, text, pos
+
+        return state, text, pos
+
+    def keyPressEvent(self, event):
+        isBackSpaceKey = event.key() == Qt.Key.Key_Backspace
+        isDeleteKey = event.key() == Qt.Key.Key_Delete
+        isTabKeyPress = event.key() == Qt.Key.Key_Tab
+
+        if isTabKeyPress:
+            self.sigTabEvent.emit(event, self)
+
         try:
             int(event.text())
             isIntegerKey = True
-        except:
+        except (ValueError, TypeError):
             isIntegerKey = False
+
         acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
+
         if self.disableKeyPress and not acceptEvent:
             event.ignore()
             self.clearFocus()
         else:
             super().keyPressEvent(event)
-    
+
     def connectValueChanged(self, function):
         self._valueChangedFunction = function
         self.valueChanged.connect(function)
-    
+
     def setValue(self, value, setLinkedWidget=True):
         super().setValue(int(value))
+
         if self._linkedWidget is not None and setLinkedWidget:
             self._linkedWidget.setValue(value)
-    
+
     def setValueNoEmit(self, value):
         if self._valueChangedFunction is None:
             self.setValue(value)
             return
+
         try:
             self.valueChanged.disconnect()
-        except TypeError as e: # this fails if its not cennected yet
+        except TypeError:
             pass
-        
+
         self.setValue(value)
         self.valueChanged.connect(self._valueChangedFunction)
-    
+
     def wheelEvent(self, event):
         event.ignore()
-    
+
     def setLinkedValueWidget(self, widget):
         self._linkedWidget = widget
+
+    def minimumChanged(self, minimum):
+        self._updateDisplayCorrection()
 
 class ReadOnlyLineEdit(QLineEdit):
     def __init__(self, parent=None):
@@ -6972,11 +7126,13 @@ class myColorButton(pg.ColorButton):
         p.end()
     
     def enterEvent(self, event):
+        QApplication.instance().setOverrideCursor(Qt.PointingHandCursor)
         c = self._c + self._hoverDeltaC
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
     
     def leaveEvent(self, event):
+        QApplication.instance().restoreOverrideCursor()
         c = self._c
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
@@ -8620,11 +8776,13 @@ class CopiableCommandWidget(QGroupBox):
         cb.setText(plain_command, mode=cb.Clipboard)
         print('Command copied!')
     
-    def setCommand(self, command, font_size=None):
+    def setCommand(self, command, font_size=None, escape_html=True):
         if font_size is None:
             font_size = self._font_size
         
         self._command = command
+        
+        command = html.escape(command)
         txt = html_utils.paragraph(
             f'<code>{command}</code>', font_size=font_size
         )
@@ -8827,11 +8985,13 @@ class ScrollBarWithNumericControl(QWidget):
     
         layout = QHBoxLayout()
         self.scrollbar = QScrollBar(orientation, self)
-        self.spinbox = QSpinBox(self)
+        self.spinbox = SpinBox(self)
         self.maxLabel = QLabel(self)
+        self.leftLabel = None
         idx = 0
         if labelText:
-            layout.addWidget(QLabel(labelText))
+            self.leftLabel = QLabel(labelText)
+            layout.addWidget(self.leftLabel)
             layout.setStretch(idx, 0)
             idx += 1
 
@@ -8863,6 +9023,27 @@ class ScrollBarWithNumericControl(QWidget):
         if add_max_proj_button:
             self.maxProjCheckbox.toggled.connect(self.maxProjToggled)
     
+    def setStartValue(self, start_value: int):
+        if start_value is None:
+            return
+
+        self.spinbox.setStartValue(start_value)
+        if self.leftLabel is None:
+            return
+        
+        label_text = self.leftLabel.text()
+        if start_value == 0:
+            label_text = label_text.replace('n.', 'idx')
+        else:
+            label_text = label_text.replace('idx', 'n.')
+        self.leftLabel.setText(label_text)
+        if not self.maxLabel.text():
+            return
+        
+        correction = start_value - self.spinbox.minimum()
+        maximum = self.maximum()
+        self.maxLabel.setText(f'/{maximum + correction}')
+
     def connectValueChanged(self, slot):
         self.sigValueChanged.connect(slot)
         self._slot = slot
@@ -8887,10 +9068,12 @@ class ScrollBarWithNumericControl(QWidget):
         self.maxLabel.setText(f'/{maximum}')
         self.scrollbar.setMaximum(maximum)
         self.spinbox.setMaximum(maximum)
+        self.setStartValue(self.spinbox._start_value)
     
     def setMinimum(self, minumum):
         self.scrollbar.setMinimum(minumum)
         self.spinbox.setMinimum(minumum)
+        self.setStartValue(self.spinbox._start_value)
     
     def spinboxValueChanged(self, value):
         self.scrollbar.setValue(value)
@@ -10059,11 +10242,29 @@ class Label(QLabel):
     def __init__(self, parent=None, force_html=False):
         super().__init__(parent)
         self._force_html = force_html
+        self._is_disabled = False
+        self._original_stylesheet = self.styleSheet()
         
     def setText(self, text):
         if self._force_html:
             text = html_utils.paragraph(text)
         super().setText(text)
+    
+    def setStyleSheet(self):
+        if self._is_disabled:
+            return
+        
+        self._original_stylesheet = self.styleSheet()
+    
+    def setDisabled(self, disabled: bool):
+        self._is_disabled = disabled
+        if disabled:
+            self.z_label.setStyleSheet('color: gray')
+        else:
+            self.z_label.setStyleSheet(self._original_stylesheet)
+        
+    def isDisabled(self):
+        return self._is_disabled
         
         
 class LabelItem(pg.LabelItem):    
@@ -13060,7 +13261,7 @@ class AutoSaveIntervalWidget(QWidget):
         layout.setStretch(0, 1)
         layout.setStretch(1, 0)
         layout.setContentsMargins(5, 0, 5, 0)
-        
+    
         self.setLayout(layout)
         
         self.spinbox.sigValueChanged.connect(self.emitSigValueChanged)
@@ -14689,6 +14890,53 @@ class SeparateBudToolbar(ToolBar):
         super().__init__(parent)
         self.seg_3D = False
         self.parent = parent
+
+        self.howToPropagateRadioEntireObj, self.howToPropagateButtonsGroup = (
+            self.addRadioButton(
+                'Entire object'
+            )
+        )
+        self.howToPropagateRadioEntireObj.setChecked(True)
+        self.howToPropagateRadioEntireObj.setToolTip(
+            'Change the object ID in the entire object.'
+        )
+
+        self.howToPropagateRadioCurrent, _ = (
+            self.addRadioButton(
+                'Current z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioCurrent.setToolTip(
+            'Change the object ID only in the current z-slice.\n\n'
+            'Shortcut: Shift'
+        )
+
+        self.howToPropagateRadioToEnd, _ = (
+            self.addRadioButton(
+                'From current to last z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToEnd.setToolTip(
+            'Change the object ID from the current Z-slice to the last '
+            "Z-slice of the object's bounding box (inclusive).\n\n"
+            'Shortcut: Shift + Ctrl'
+        )
+
+        self.howToPropagateRadioToStart, _ = (
+            self.addRadioButton(
+                'From current to first z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToStart.setToolTip(
+            'Change the object ID from the first Z-slice of the '
+            "object's bounding box to the current Z-slice (inclusive).\n\n"
+            'Shortcut: Alt + Ctrl'
+        )
+
+        self.addSeparator()
         
         sepModeSelector = QComboBox(self)
         sepModeSelector.addItems(['Slice by slice', '3D Convexity defects'])
@@ -14922,6 +15170,30 @@ class SeparateBudToolbar(ToolBar):
                 widget.isChecked() if value_type is bool else widget.value()
             )
         return kwargs
+    
+    def getHowToPropagateZslices(self, current_z: int):
+        how = self.howToPropagateButtonsGroup.checkedButton().text()
+        if how == 'Entire object':
+            return None, None
+        
+        if how == 'Current z-slice':
+            return None, None
+        
+        if how == 'From current to last z-slice':
+            return current_z, None
+        
+        return None, current_z
+
+    def setHowToPropagateZslicesVisible(self, isSegm3D: bool):
+        self.howToPropagateRadioEntireObj.setVisible(isSegm3D)
+        self.howToPropagateRadioCurrent.setVisible(isSegm3D)
+        self.howToPropagateRadioToEnd.setVisible(isSegm3D)
+        self.howToPropagateRadioToStart.setVisible(isSegm3D)
+
+        self.howToPropagateRadioEntireObj.action.setVisible(isSegm3D)
+        self.howToPropagateRadioCurrent.action.setVisible(isSegm3D)
+        self.howToPropagateRadioToEnd.action.setVisible(isSegm3D)
+        self.howToPropagateRadioToStart.action.setVisible(isSegm3D)
 
 class PrefixFilenameLineEdit(QWidget):
     def __init__(self, endNameLabel, *args):      
@@ -14983,3 +15255,290 @@ class _RecentItemsSearchCompleter(ButtonSearchCompleter):
             return left_score[1] < right_score[1]
 
         return left.row() < right.row()
+
+class ExportCurrentViewToolbar(ToolBar):    
+    sigExport = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        models = ['Cellpose']
+
+        self.modelCombobox = self.addComboBox(
+            models,
+            'For the model: '
+        )
+        self.addSeparator()
+
+        startFolder = myutils.get_export_current_view_gui_most_recent_path()
+
+        self.addWidget(QLabel('Destination folder: '))
+        self.dstFolderPathControl = ElidingLineEdit()
+        self.dstFolderPathControl.setToolTip(
+            'Select destination folder where to export the current view data'
+        )
+        self.dstFolderPathControl.action = self.addWidget(
+            self.dstFolderPathControl
+        )
+        self.dstFolderPathControl.setText(startFolder)
+
+        self.dstBrowseButton = self.addButton(
+            ':folder-open.svg', 
+            text='Select destination folder...',
+        )
+        self.dstBrowseButton.triggered.connect(
+            self.selectDstFolder
+        )
+
+        self.selectDstFromRecentPathsAction = self.addButton(
+            ':open_file.svg', 
+            text='Select destination folder from recent paths...',
+        )
+        self.selectDstFromRecentPathsAction.triggered.connect(
+            self.selectDstFromRecentPaths
+        )
+
+        self.showInFileManagerAction = self.addButton(
+            ':drawer.svg', 
+            text='Open folder in file manager',
+        )
+        self.showInFileManagerAction.triggered.connect(
+            self.showInFileManager
+        )
+
+        self.addSeparator()
+
+        self.exportAction, button = self.addButton(
+            ':file-save.svg', 
+            text='Export - Save current view data',
+            ret_widget=True
+        )
+        self.exportAction.setToolTip(
+            'Save current view data\n\n'
+            'Shortcut: Shift+E'
+        )
+        self.exportAction.triggered.connect(self.emitExport)
+        self.exportAction.keyPressShortcut = KeySequenceFromText('Shift+E')
+
+        self.widgetsWithShortcut['Export - Save current view data'] = (
+            self.exportAction
+        )
+        self.widgetsForActions['Export - Save current view data'] = button
+
+        self.addSpacing(5)
+
+        self.autoExportOnNextCheckbox = self.addCheckBox(
+            text='Automatically export when going to next frame/Position'
+        )
+
+        self.addSeparator()
+
+        self.infoTextLabel = self.addLabel()
+        self.infoTextLabel.setMinimumWidth(50)
+
+        self.addStretch(10)
+    
+    def selectDstFromRecentPaths(self):
+        recent_paths, dates = myutils.get_export_current_view_gui_recent_paths(
+            self
+        )
+        if not recent_paths:
+            return
+        
+        searchLineEditText = (
+            'Search recent paths (Ctrl+click to select multiple)...'
+        )
+        self.recentPathsDialog = apps.SearchableListboxDialog(
+            recent_paths,
+            title='Select destination folder from recent paths',
+            searchLineEditText=searchLineEditText,
+            parent=self.parent(),
+            multiSelection=False,
+            dates=dates,
+        )
+        self.recentPathsDialog.sigOk.connect(
+            self.dstFolderPathControl.setText
+        )
+        self.recentPathsDialog.show()
+
+    def selectDstFolder(self):
+        startFolder = self.dstFolderPathControl.text()
+        folder_path = qtpy.compat.getexistingdirectory(
+            caption='Select destination folder', 
+            basedir=startFolder
+        )
+        if not folder_path:
+            return
+        
+        self.dstFolderPathControl.setText(folder_path)
+        myutils.add_to_export_current_view_gui_recent_paths(folder_path)
+
+    def showInFileManager(self):
+        dstFolderPath = self.dstFolderPathControl.text()
+        if not os.path.exists(dstFolderPath):
+            self.setInfoText(
+                html_utils.span('WARNING: Destination folder does not exist')
+            )
+            return
+        
+        myutils.showInExplorer(dstFolderPath)
+
+    def isAutoExportOnNext(self):
+        return self.autoExportOnNextCheckbox.isChecked()
+    
+    def dstFolderPath(self):
+        return self.dstFolderPathControl.text()
+    
+    def dstFolderPathSelected(self, folderPath):
+        self.dstFolderPathControl.setText(folderPath)
+        myutils.addToRecentPaths(folderPath)
+    
+    def emitExport(self):
+        self.sigExport.emit()
+    
+    def selectedModelName(self):
+        return self.modelCombobox.currentText()
+    
+    def setInfoText(self, text):
+        self.infoTextLabel.setText(text)
+        
+class EditIDToolbar(ToolBar):    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.howToPropagateRadioEntireObj, self.howToPropagateButtonsGroup = (
+            self.addRadioButton(
+                'Entire object'
+            )
+        )
+        self.howToPropagateRadioEntireObj.setChecked(True)
+        self.howToPropagateRadioEntireObj.setToolTip(
+            'Change the object ID in the entire object.'
+        )
+
+        self.howToPropagateRadioCurrent, _ = (
+            self.addRadioButton(
+                'Current z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioCurrent.setToolTip(
+            'Change the object ID only in the current z-slice.\n\n'
+            'Shortcut: Shift'
+        )
+
+        self.howToPropagateRadioToEnd, _ = (
+            self.addRadioButton(
+                'From current to last z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToEnd.setToolTip(
+            'Change the object ID from the current Z-slice to the last '
+            "Z-slice of the object's bounding box (inclusive).\n\n"
+            'Shortcut: Shift + Ctrl'
+        )
+
+        self.howToPropagateRadioToStart, _ = (
+            self.addRadioButton(
+                'From current to first z-slice', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioToStart.setToolTip(
+            'Change the object ID from the first Z-slice of the '
+            "object's bounding box to the current Z-slice (inclusive).\n\n"
+            'Shortcut: Alt + Ctrl'
+        )
+
+        self.addSeparator()
+
+        self.howToPropagateRadioRange, _ = (
+            self.addRadioButton(
+                'Custom range', 
+                buttonsGroup=self.howToPropagateButtonsGroup
+            )
+        )
+        self.howToPropagateRadioRange.setToolTip(
+            'Change the object ID within a defined range of Z-slices (last included).'
+        )
+
+        self.addSpacing(5)
+
+        self.howToPropagateRangeStartZSpinbox = self.addSpinBox(
+            'Start z', fixedWidth=True
+        )
+        self.howToPropagateRangeStartZSpinbox.setMinimum(0)
+        self.howToPropagateRangeStartZSpinbox.setStartValue(1)
+        self.howToPropagateRangeStartZSpinbox.setDisabled(True)
+
+        self.addSpacing(5)
+            
+        self.howToPropagateRangeEndZSpinbox = self.addSpinBox(
+            'End z', fixedWidth=True
+        )
+        self.howToPropagateRangeEndZSpinbox.setMinimum(0)
+        self.howToPropagateRangeEndZSpinbox.setStartValue(1)
+        self.howToPropagateRangeEndZSpinbox.setDisabled(True)
+
+        self.howToPropagateRadioRange.toggled.connect(
+            self.howToPropagateRadioRangeToggled
+        )
+        self.howToPropagateRangeStartZSpinbox.sigValueChanged.connect(
+            self.howToPropagateRangeStartZSpinboxValueChanged
+        )
+    
+    def setStartValue(self, start_value):
+        self.howToPropagateRangeStartZSpinbox.setStartValue(start_value)
+        self.howToPropagateRangeEndZSpinbox.setStartValue(start_value)
+    
+    def getStartValue(self):
+        return self.howToPropagateRangeStartZSpinbox.getStartValue()
+    
+    def getHowToPropagateZslices(self):
+        how = self.howToPropagateButtonsGroup.checkedButton().text()
+        z_range = (
+            self.howToPropagateRangeStartZSpinbox.value(), 
+            self.howToPropagateRangeEndZSpinbox.value()
+        )
+        return how, z_range 
+    
+    def setCurrentZslice(self, currentZslice, SizeZ):
+        self.howToPropagateRangeStartZSpinbox.setValue(currentZslice)
+        self.howToPropagateRangeStartZSpinbox.setMaximum(SizeZ)
+        self.howToPropagateRangeEndZSpinbox.setValue(currentZslice)
+        self.howToPropagateRangeEndZSpinbox.setMaximum(SizeZ)
+    
+    def howToPropagateRangeStartZSpinboxValueChanged(self, value):
+        self.howToPropagateRangeEndZSpinbox.setMinimum(value)
+        if value > self.howToPropagateRangeEndZSpinbox.value():
+            self.howToPropagateRangeEndZSpinbox.setValue(value)
+
+    def howToPropagateRadioRangeToggled(self, checked: bool):
+        self.howToPropagateRangeStartZSpinbox.setDisabled(not checked)
+        self.howToPropagateRangeEndZSpinbox.setDisabled(not checked)
+        start_z = self.howToPropagateRangeStartZSpinbox.value()
+        end_z = self.howToPropagateRangeEndZSpinbox.value()
+        if start_z > end_z:
+            self.howToPropagateRangeEndZSpinbox.setValue(start_z)
+
+class StandardItem(QStandardItem):
+    def __init__(self, other):
+        super().__init__(other)
+    
+    def setData(self, value, role = ...):
+        return super().setData(value, role)
+
+class PathTreeWidgetItem(QTreeWidgetItem):
+    def __init__(self, path, strings):
+        path = acdc_path.unexpanduser(path)
+        strings = [path, *strings]
+        super().__init__(strings)
+    
+    def text(self, column):
+        if column == 0:
+            path = super().text(column)
+            path = os.path.expanduser(path)
+            return path
+            
+        return super().text(column)

@@ -502,4 +502,17 @@ def warnCannotInterpolateZVolume(qparent, ID):
         qparent, 'Cannot interpolate missing z-slices', txt, 
     )
     return msg.cancel
-    
+
+def warnExportCurrentViewDstFolderPathInvalid(
+        dst_folderpath, qparent=None
+    ):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        The destination folder path is invalid or it does not exist.<br><br>
+        Selected folder path: 
+        <copiable>{dst_folderpath}</copiable>
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Destination folder path not valid', txt, 
+    )

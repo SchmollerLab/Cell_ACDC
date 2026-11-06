@@ -19,10 +19,9 @@ import time
 import subprocess
 import importlib
 from uuid import uuid4
-from importlib import import_module
+from importlib import import_module, metadata
 from math import pow, ceil, floor
 from functools import wraps, partial
-import functools
 from collections import namedtuple, Counter
 from tqdm import tqdm
 import requests
@@ -32,7 +31,6 @@ import numpy as np
 import pandas as pd
 import skimage
 import inspect
-import ctypes
 import traceback
 import itertools
 from packaging import version as packaging_version
@@ -49,15 +47,24 @@ from . import core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url, is_mac_arm64
 from . import cellacdc_path, printl, acdc_fiji_path, logs_path, acdc_ffmpeg_path
 from . import user_profile_path, recentPaths_path
+from . import export_current_view_gui_recent_paths_csv_path
 from . import models_list_file_path, models_path
 from . import promptable_models_list_file_path, promptable_models_path
 from . import github_home_url
 from . import try_input_install_package
 from . import _warnings
 from . import urls
+from . import myutils_models
 from . import qrc_resources_path
 from . import settings_folderpath
 from . import cellacdc_installation_path
+# Keep the existing model-facing imports working.
+from ._torch_utils import (
+    BASE_PYTORCH_LINK, check_install_torch, get_driver_cuda_version,
+    get_min_compute_cap, get_pytorch_command, get_torch_device,
+    get_torch_options, get_torch_options_safe, resolve_torch_link,
+)
+
 
 from .models._cellpose_base import min_target_versions_cp
 
@@ -585,14 +592,14 @@ def get_info_version_text(is_cli=False, cli_formatted_text=True):
         except Exception as err:
             info_txts.append('Qt: Not installed')
     
+    try:
+        branch_name = get_git_branch_name()
+        info_txts.append(f'Git branch: "{branch_name}"')
+    except Exception as err:
+        pass
+
     from . import IS_CLONED
-    if IS_CLONED:
-        try:
-            branch_name = get_git_branch_name()
-            info_txts.append(f'Git branch: "{branch_name}"')
-        except Exception as err:
-            pass
-        
+    if IS_CLONED:        
         try:
             remote_repos = get_git_remote_repos_names()
             indentation = ' '*8
@@ -1030,14 +1037,53 @@ def get_date_from_version(version: str, package='cellacdc', debug=False):
     return 'ND'  
 
 def get_git_branch_name():
-    command = (
-        f'git -C "{cellacdc_installation_path}" rev-parse --abbrev-ref HEAD'
+    # First, try the existing Git checkout approach.
+    try:
+        result = subprocess.run(
+            [
+                'git',
+                '-C',
+                str(cellacdc_installation_path),
+                'rev-parse',
+                '--abbrev-ref',
+                'HEAD',
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        branch_name = result.stdout.strip()
+
+        if branch_name and branch_name != 'HEAD':
+            return branch_name
+
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+
+    # Fall back to pip's installation metadata.
+    # Find the distribution corresponding to the cellacdc package.
+    distributions = metadata.packages_distributions().get(
+        'cellacdc', []
     )
-    output = _subprocess_run_command(
-        command, shell=False, callback='check_output'
-    )
-    branch_name = output.decode().strip()
-    return branch_name
+
+    for dist_name in distributions:
+        try:
+            dist = metadata.distribution(dist_name)
+            direct_url = dist.read_text('direct_url.json')
+
+            if not direct_url:
+                continue
+
+            data = json.loads(direct_url)
+            vcs_info = data.get('vcs_info', {})
+
+            if vcs_info.get('vcs') == 'git':
+                return vcs_info.get('requested_revision')
+
+        except (metadata.PackageNotFoundError, json.JSONDecodeError):
+            continue
+
+    return None
 
 def get_git_remote_repos_names():
     command = (
@@ -1053,9 +1099,9 @@ def get_git_remote_repos_names():
 
 def showInExplorer(path):
     if is_mac:
-        os.system(f'open "{path}"')
+        subprocess.run(["open", str(path)], check=True)
     elif is_linux:
-        os.system(f'xdg-open "{path}"')
+        subprocess.run(["xdg-open", str(path)], check=True)
     else:
         os.startfile(path)
 
@@ -1309,60 +1355,7 @@ def get_function_argspec(function, args_to_skip={'logger_func',}):
     return params
 
 def getModelArgSpec(acdcSegment):
-    init_ArgSpec = inspect.getfullargspec(acdcSegment.Model.__init__)
-    init_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.__init__)
-    init_doc = acdcSegment.Model.__init__.__doc__
-    init_params = params_to_ArgSpec(
-        init_ArgSpec, init_kwargs_type_hints, init_doc
-    )
-    init_params = add_segm_data_param(init_params, init_ArgSpec)
-    
-    segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)
-    segment_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.segment)
-    try:
-        segment_ArgSpec.args.remove('frame_i')
-    except Exception as e:
-        pass
-    
-    segment_doc = acdcSegment.Model.segment.__doc__
-    segment_params = params_to_ArgSpec(
-        segment_ArgSpec, segment_kwargs_type_hints, segment_doc,
-    )
-    
-    return init_params, segment_params
-
-def _serialize_model_param_type(param_type):
-    """Transfer GUI type metadata without importing model dependencies on the client side.
-    Used in insertModelArgSpec and testing"""
-    from . import _types
-
-    if _types.is_optional(param_type):
-        param_type = next(t for t in typing.get_args(param_type) if t is not type(None))
-    for name, cls in (
-            ('bool', bool), ('int', int), ('float', float), ('str', str),
-            ('path', os.PathLike), ('none', type(None)),
-            ('vector', _types.Vector), ('folder', _types.FolderPath),
-            ('second_channel', _types.SecondChannelImage),
-            ('hidden', _types.NotGUIParam), ('yeaz_model', _types.YeazV2ModelType),
-            ('csv_path', _types.CsvFilePath)
-        ):
-        if param_type is cls:
-            return {'kind': name}
-    if getattr(param_type, 'not_a_param', False):
-        return {'kind': 'hidden'}
-    if typing.get_origin(param_type) is Literal:
-        return {'kind': 'choices', 'values': list(typing.get_args(param_type))}
-    if hasattr(param_type, 'values'):
-        return {
-            'kind': 'choices',
-            'values': list(param_type.values),
-            'is_exclusive_with': getattr(param_type, 'is_exclusive_with', []),
-            'default_exclusive': getattr(param_type, 'default_exclusive', ''),
-        }
-    if getattr(param_type, 'isWidget', False):
-        raise TypeError(f'No client-side widget registered for {param_type}')
-    # Other annotations (e.g. torch.device unions) use the existing text editor.
-    return {'kind': 'str'}
+    return myutils_models.getModelArgSpec(acdcSegment)
 
 
 def _deserialize_model_param_type(data):
@@ -1394,18 +1387,18 @@ def getModelArgSpecFromEnv(
     """
     script = f'''
 import json, sys
-from cellacdc import myutils
+from cellacdc import myutils_models
 try:
     importer = (
-        myutils.import_promptable_segment_module
+        myutils_models.import_promptable_segment_module
         if "{model_kind}" == "promptable"
-        else myutils.import_segment_module
+        else myutils_models.import_segment_module
     )
     acdcSegment = importer("{model_name}")
-    init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+    init_params, segment_params = myutils_models.getModelArgSpec(acdcSegment)
     url = getattr(acdcSegment, "url_help", lambda: None)()
     def _serialize_p(p):
-        return [p.name, p.default, myutils._serialize_model_param_type(p.type), p.desc, p.docstring]
+        return [p.name, p.default, myutils_models._serialize_model_param_type(p.type), p.desc, p.docstring]
     res = {{
         "init_params": [_serialize_p(p) for p in init_params],
         "segment_params": [_serialize_p(p) for p in segment_params],
@@ -1443,137 +1436,25 @@ except Exception as e:
     raise RuntimeError(f"No spec returned by model worker:\n{proc.stdout}")
 
 def _get_doc_stop_idx(docstring, start_idx, next_param_name=None, debug=False):
-    if debug:
-        import pdb; pdb.set_trace()
-    
-    if next_param_name is not None:
-        doc_stop_idx = docstring.find(f'{next_param_name} : ')
-        if doc_stop_idx > 1:
-            return doc_stop_idx
-    
-    docstring_from_start = docstring[start_idx:]
-    next_param_searched = re.search(r'\w+ : ', docstring_from_start)
-    if next_param_searched is not None:
-        return next_param_searched.start(0) + start_idx
-    
-    doc_stop_idx = docstring.find('Returns')
-    if doc_stop_idx > 1:
-        return doc_stop_idx
-    
-    doc_stop_idx = docstring.find('Notes')
-    if doc_stop_idx > 1:
-        return doc_stop_idx 
-    
-    return -1
+    return myutils_models._get_doc_stop_idx(
+        docstring, start_idx, next_param_name=next_param_name, debug=debug
+    )   
 
 def parse_model_param_doc(name, next_param_name=None, docstring=None):
-    if not docstring:
-        return ''
-    
-    try:
-        # Extract parameter description from 'param : ...'
-        start_text = f'{name} : '
-        if docstring.find(start_text) == -1:
-            # Parameter not present in docstring
-            return ''
-        
-        doc_start_idx = docstring.find(start_text) + len(start_text)
-        
-        doc_stop_idx = _get_doc_stop_idx(
-            docstring, doc_start_idx, next_param_name=next_param_name
+    return myutils_models.parse_model_param_doc(
+        name, next_param_name=next_param_name, docstring=docstring
         )
-        if doc_stop_idx == -1:
-            doc_stop_idx = len(docstring)
-        
-        param_doc = docstring[doc_start_idx:doc_stop_idx]
-        
-        # Start at first end of line
-        param_doc = param_doc[param_doc.find('\n')+1:]
-        
-        # Replace multiples spaces with single space
-        param_doc = re.sub(' +', ' ', param_doc)
-        
-        # Remove trailing spaces
-        param_doc = param_doc.strip()
-    except Exception as err:
-        param_doc = ''
-    
-    param_doc = param_doc.replace(', optional', '')
-    
-    return param_doc
 
 def add_segm_data_param(init_params, init_argspecs):
-    if init_argspecs.defaults is None:
-        num_kwargs = 0
-    else:
-        num_kwargs = len(init_argspecs.defaults)
-    
-    # Segm model requires segm data --> add it to params
-    num_args = len(init_argspecs.args) - num_kwargs
-    if num_args == 1:
-        # Args is only self --> segm data not needed
-        return init_params
-    
-    desc = (
-'This model requires an additional segmentation file as input.\n\n'
-'Please, select which segmentation file to provide to the model.'
-    )
-    
-    segm_data_argspec = ArgSpec(
-        name='Auxiliary segmentation file', 
-        default='', 
-        type=str, 
-        desc=desc,
-        docstring=None
-    )
-    
-    init_params.insert(0, segm_data_argspec)
-    return init_params
+    return myutils_models.add_segm_data_param(init_params, init_argspecs)
 
 def params_to_ArgSpec(
         fullargspecs, type_hints, docstring, args_to_skip=None
     ):
-    params = []
+    return myutils_models.params_to_ArgSpec(
+        fullargspecs, type_hints, docstring, args_to_skip=args_to_skip
+    )
     
-    if fullargspecs.defaults is None:
-        return params
-    
-    if args_to_skip is None:
-        args_to_skip = set()
-    
-    num_params = len(fullargspecs.args)
-    ip = num_params - len(fullargspecs.defaults)
-    if ip < 0:
-        return params
-    
-    for arg, default in zip(fullargspecs.args[ip:], fullargspecs.defaults):
-        if arg in args_to_skip:
-            continue
-        
-        if arg in type_hints:
-            _type = type_hints[arg]
-        else:
-            _type = type(default)
-        
-        next_param_name = None
-        if ip+1 < num_params:
-            next_param_name = fullargspecs.args[ip+1]
-        
-        param_doc = parse_model_param_doc(
-            arg, 
-            next_param_name=next_param_name,
-            docstring=docstring
-        )
-        param = ArgSpec(
-            name=arg, 
-            default=default, 
-            type=_type, 
-            desc=param_doc,
-            docstring=docstring
-        )
-        params.append(param)
-        ip += 1
-    return params
 
 def getClassArgSpecs(classModule, runMethodName='run'):
     init_ArgSpec = inspect.getfullargspec(classModule.__init__)
@@ -3263,7 +3144,16 @@ def check_install_baby():
         'TensorFlow', 
         pypi_name='tensorflow', 
         import_pkg_name='tensorflow', 
-        max_version='2.14'
+        min_version='2.12',
+        include_lower_version=True,
+        max_version='2.13'
+    )
+    # TF 2.13 pins typing-extensions<4.6, incompatible with pydantic/fastapi
+    check_install_package(
+        'typing-extensions', 
+        import_pkg_name='typing_extensions', 
+        min_version='4.16',
+        include_lower_version=True
     )
     check_install_package('baby', pypi_name='baby-seg', import_pkg_name='baby')
 
@@ -3483,22 +3373,6 @@ def _run_command(command: str | list[str], shell=False):
     except Exception as err:
         pass
 
-def _warn_dll_torch(qparent=None):
-    msg = widgets.myMessageBox()
-    txt = html_utils.paragraph("""
-    <b>An error message will occur after you close this message.</b><br>
-    <b>Please save your data and restart Cell-ACDC.</b><br>
-    Sorry for the inconvenience!<br>
-    This error is not critical for the main functionality of Cell-ACDC,
-    and only concerns the segmentation model. Your can save your data without
-    a problem.<br>
-    The specific reason is that PyTorch and QtPy have weird issues with 
-    DLL conflicts.
-    """)
-    msg.information(
-    qparent, 'Please restart Cell-ACDC', txt, 
-    buttonsTexts=('Ok, I will save my data and restart Cell-ACDC'),
-    )
 
 def is_server_mode():
     """True when running inside a model worker process (`service.worker`).
@@ -3517,255 +3391,6 @@ def _raise_server_missing(what):
         f'cellacdc/models/_env_config.py and restart, or install it in the '
         f'environment: {sys.executable}'
     )
-
-def check_install_torch(is_cli=False, caller_name='Cell-ACDC', qparent=None, python_exec=None,
-                        platform=None, found_cuda_version=None, possible_links=None):
-    if is_server_mode() and python_exec in (None, sys.executable):
-        try:
-            import torch
-            import torchvision
-            return
-        except Exception as err:
-            raise ModuleNotFoundError(
-                f'PyTorch could not be imported in the model worker '
-                f'environment ({err}). It is installed by the client when '
-                f'`torch: True` is set in cellacdc/models/_env_config.py.'
-            ) from err
-
-    if python_exec is not None and python_exec != sys.executable:
-        # Isolated model env: single installer that detects CPU/CUDA
-        from cellacdc.service.environment import ensure_torch
-        from cellacdc.service import prompts
-        if is_cli or not is_gui_running():
-            handler = prompts.CliHandler()
-        else:
-            handler = prompts.QtHandler(qparent)
-        platform = platform or sys.platform
-        if not ensure_torch(python_exec, prompt_func=handler.ask,
-                            platform=platform, 
-                            found_cuda_version=found_cuda_version,
-                            possible_links=possible_links,
-                            ):
-            raise ModuleNotFoundError(
-                f'PyTorch is not installed in {python_exec} (installation '
-                'cancelled or failed). The model cannot run without it.'
-            )
-        return
-
-    try:
-        import torch
-        import torchvision
-        return
-
-    except OSError as err:
-        if 'dll' in str(err):
-            _warn_dll_torch(qparent=qparent)
-            raise err
-        else:
-            traceback.print_exc()
-    except Exception as err:
-        traceback.print_exc()
-        print(f'Failed to import PyTorch in venv ({sys.executable}): {err}')
-    
-    if is_cli:
-        _install_pytorch_cli(caller_name=caller_name) 
-        return
-    
-    win = apps.InstallPyTorchDialog(parent=qparent, caller_name=caller_name)
-    win.exec_()
-    if win.cancel:
-        _warnings.log_pytorch_not_installed() 
-        return
-    
-    command = win.command
-    print(f'Running command: "{command}"')
-    _run_command(command)
-    
-    try:
-        import torch
-    except OSError as e:
-        if 'dll' in str(e):
-            _warn_dll_torch(qparent=qparent)
-        raise e
-    
-    purge_module('torch')
-
-def get_driver_cuda_version():
-    """Max CUDA version supported by the driver, as (major, minor), or False."""
-    # 1) CUDA driver API (no dependencies, no nvidia-smi parsing)
-
-        
-    def _decode(v: int):
-        return v // 1000, (v % 1000) // 10  # 13040 -> (13, 4)
-
-    libname = "nvcuda.dll" if sys.platform == "win32" else "libcuda.so.1"
-    try:
-        lib = ctypes.CDLL(libname)
-        v = ctypes.c_int()
-        if lib.cuDriverGetVersion(ctypes.byref(v)) == 0:
-            return _decode(v.value)
-    except (OSError, AttributeError):
-        pass
-
-    # 2) NVML, if pynvml / nvidia-ml-py is installed
-    try:
-        import pynvml
-        pynvml.nvmlInit()
-        try:
-            return _decode(pynvml.nvmlSystemGetCudaDriverVersion())
-        finally:
-            pynvml.nvmlShutdown()
-    except Exception:
-        pass
-
-    # 3) Last resort: parse nvidia-smi, tolerant of label changes
-    #    ("CUDA Version: 12.4", "CUDA UMD Version: 13.4", ...)
-    try:
-        out = subprocess.run(["nvidia-smi"], capture_output=True, text=True,
-                             check=True, timeout=15).stdout
-        m = re.search(r"CUDA\s+(?:\w+\s+)?Version\s*:\s*(\d+)\.(\d+)", out)
-        if m:
-            return int(m.group(1)), int(m.group(2))
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        pass
-
-    return False
-
-@functools.lru_cache(maxsize=None)
-def _get(url):
-    r = requests.get(url, timeout=20)
-    r.raise_for_status()
-    return r.text
-
-BASE_PYTORCH_LINK = "https://download.pytorch.org/whl/"
-
-def get_torch_options(driver_cuda_version=None, torch_max="", torch_min="",
-                      compute_cap=None, allow_experimental=False, min_cuda=(12, 6)):
-    """
-    Returns (options, preferred_index).
-
-    options: list of (label, index_url) tuples, e.g.
-        [('CPU', '.../cpu'), ('CUDA 12.6 (NVIDIA GPU)', '.../cu126'), ('CUDA 13.0 (NVIDIA GPU)', '.../cu130')]
-    index_url is None where the default PyPI install applies (macOS).
-    preferred_index: the option that fits this machine (highest CUDA build the driver
-        and GPU support, else CPU).
-
-    torch_min / torch_max : inclusive bounds like '2.9' or '2.12'; builds without a release
-                            in that range are not listed.
-    compute_cap           : (major, minor) of the weakest GPU; < (7, 5) caps the preference at cu126.
-    min_cuda              : oldest CUDA build to list (hides ancient indexes still on the server).
-    """
-    EXPERIMENTAL = {"cu132"}  # only offered if allow_experimental=True
-
-    if sys.platform == "darwin":          # no CUDA wheels, default PyPI wheel has MPS
-        return [("Default (CPU / Apple GPU)", None)], 0
-
-    def _cuda_tags():
-        """CUDA builds on the server as {(12, 6): 'cu126', ...}."""
-        return {(int(d[:-1]), int(d[-1])): f"cu{d}"
-                for d in set(re.findall(r"\bcu(\d{3})\b", _get(BASE_PYTORCH_LINK)))}
-
-
-    def _torch_versions(tag):
-        """Torch versions on this index with a wheel for the current Python + OS/arch."""
-        py = f"cp{sys.version_info.major}{sys.version_info.minor}"
-        plat = "win_amd64" if sys.platform == "win32" else platform.machine()
-        wheels = re.findall(r"torch-(\d+(?:\.\d+)*)(?:%2B|\+)[\w.]+-(cp\d+)-\w+-([\w.]+?)\.whl",
-                            _get(f"{BASE_PYTORCH_LINK}{tag}/torch/"))
-        return {tuple(map(int, v.split(".")))
-                for v, cp, p in wheels if cp == py and plat in p}
-
-    driver = driver_cuda_version or get_driver_cuda_version()
-    lo = tuple(map(int, torch_min.split("."))) if torch_min else ()
-    hi = tuple(map(int, torch_max.split("."))) if torch_max else None
-    limit = (12, 6) if compute_cap and compute_cap < (7, 5) else driver  # Pascal/Volta
-
-    def has_release(tag):
-        return any(v[:len(lo)] >= lo and (hi is None or v[:len(hi)] <= hi)
-                   for v in _torch_versions(tag))
-
-    options = [("CPU", f"{BASE_PYTORCH_LINK}cpu")]
-    preferred = 0
-    for cuda, tag in sorted(_cuda_tags().items()):            # ascending, like your example
-        if cuda < min_cuda or (tag in EXPERIMENTAL and not allow_experimental):
-            continue
-        if not has_release(tag):
-            continue
-        extra = ", experimental" if tag in EXPERIMENTAL else ""
-        options.append((f"CUDA {cuda[0]}.{cuda[1]} (NVIDIA GPU{extra})", f"{BASE_PYTORCH_LINK}{tag}"))
-        if driver and cuda <= driver and cuda <= limit and tag not in EXPERIMENTAL:
-            preferred = len(options) - 1                       # last match = highest
-
-    return options, preferred
-
-def resolve_torch_link(*args, **kwargs):
-    """Index URL of the preferred option (None -> default PyPI install)."""
-    options, preferred = get_torch_options(*args, **kwargs)
-    return options[preferred][1]
-
-def _safe_torch_options(options_kwargs):
-    options_kwargs = dict(options_kwargs)
-    options_kwargs.setdefault('compute_cap', get_min_compute_cap())
-    try:
-        return get_torch_options(**options_kwargs)
-    except requests.RequestException:
-        # Offline / server unreachable: fall back to a plain CPU install
-        return [('CPU', f'{BASE_PYTORCH_LINK}cpu')], 0
-
-def get_pytorch_command(**options_kwargs):
-    """Get the pip commands to install PyTorch (CPU or CUDA) for this machine.
-
-    Parameters
-    ----------
-    **options_kwargs
-        Passed to `get_torch_options` (torch_min, torch_max, allow_experimental,
-        min_cuda, driver_cuda_version, compute_cap). `compute_cap` is detected
-        automatically if not given.
-
-    Returns
-    -------
-    dict
-        {os_name: {'Pip': {label: command}}} for the OS we are running on.
-        Labels are in display order (use `list(...)` for the combobox).
-        See `get_preferred_pytorch_platform` for the label to preselect.
-
-    Notes
-    -----
-    As of Oct 2024, the `pytorch` channel on Anaconda was deprecated.
-    See here https://github.com/pytorch/pytorch/issues/138506
-    Conda commands are therefore no longer generated.
-    """
-    
-    _, pip_prefix = get_pip_conda_prefix(exec_path=options_kwargs.get('exec_path'))
-    options, _ = _safe_torch_options(options_kwargs)
-
-    os_name = {'win32': 'Windows', 'darwin': 'Mac'}.get(sys.platform, 'Linux')
-    pip_commands = {}
-    for label, index_url in options:
-        command = f'{pip_prefix} torch torchvision'
-        if index_url is not None:   # None -> default PyPI install (macOS)
-            command += f' --index-url {index_url}'
-        pip_commands[label] = command
-
-    return {os_name: {'Pip': pip_commands}}
-    
-def get_torch_options_safe(**kwargs):
-    kwargs.setdefault('compute_cap', get_min_compute_cap())
-    try:
-        return get_torch_options(**kwargs)
-    except requests.RequestException:
-        return [('CPU', f'{BASE_PYTORCH_LINK}cpu')], 0   # offline: plain CPU install
-    
-def get_min_compute_cap():
-    try:
-        out = subprocess.run(
-            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
-            capture_output=True, text=True, check=True, timeout=15).stdout
-        caps = [tuple(int(x) for x in line.strip().split(".")) for line in out.splitlines() if line.strip()]
-        return min(caps) if caps else None
-    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
-        return None
-        
 def _install_tensorflow(max_version='', min_version='', python_exec=None):
     cpu = platform.processor()
     pkg_command = _get_pkg_command_pip_install(
@@ -3890,6 +3515,14 @@ def _check_package_version_constraints(spec: dict, installed_version: str):
     """Apply the version bounds used for external environment checks."""
     if not installed_version:
         return
+    if installed_version == 'not-installed':
+        import traceback
+        traceback.print_stack()
+        print(installed_version)
+        raise ModuleNotFoundError(
+            f"{spec['pkg_name']} is not installed"
+        )
+
     installed = packaging_version.parse(installed_version)
     if spec['exact_version']:
         if installed != packaging_version.parse(spec['exact_version']):
@@ -3937,7 +3570,9 @@ def _check_single_package(spec: dict, force_upgrade: bool, python_exec):
                 f"import {import_pkg_name}\n"
                 f"import importlib.metadata as m\n"
                 f"try:\n"
-                f"    v = getattr({import_pkg_name}, '__version__', None) or m.version('{pkg_name}')\n"
+                f"    v = getattr({import_pkg_name}, '__version__', None)\n"
+                f"    if not v or v == 'not-installed':\n"
+                f"        v = m.version('{pkg_name}')\n"
                 f"except Exception:\n"
                 f"    v = ''\n"
                 f"print(v)\n"
@@ -4176,12 +3811,14 @@ def check_install_package(
     # 3) Install: special packages individually, everything else in one go
     try:
         batch_commands = []
+        tensorflow_batched = False
         for spec, command in zip(missing_specs, pkg_commands):
             name = spec['pypi_name'] or spec['pkg_name']
             special_installer = _SPECIAL_INSTALLERS.get(name)
             if name == 'tensorflow' and python_exec not in (None, sys.executable):
                 # Resolve model and runtime constraints together in isolated envs.
                 special_installer = None
+                tensorflow_batched = installer == 'pip'
             if special_installer is None:
                 batch_commands.append(command)
             elif name == 'tensorflow':
@@ -4208,6 +3845,32 @@ def check_install_package(
                     batch_commands,
                     env_name=conda_env_name,
                     env_prefix=conda_env_prefix
+                )
+
+        if (installer == 'pip' and len(specs) > 1 and not tensorflow_batched
+                and python_exec not in (None, sys.executable)):
+            # A package installed above can pin a dependency of another
+            # requested package below its minimum (e.g. TF -> typing-extensions).
+            # Pip cannot resolve such conflicts, so force the requested
+            # version without touching dependencies.
+            for spec in specs:
+                satisfied, _ = _check_single_package(spec, False, python_exec)
+                if satisfied:
+                    continue
+                printl(spec)
+                command = _get_pkg_command_pip_install(
+                    spec['pypi_name'] or spec['pkg_name'],
+                    exact_version=spec['exact_version'],
+                    max_version=spec['max_version'],
+                    min_version=spec['min_version'],
+                    including_higher_version=spec['include_higher_version'],
+                    including_lower_version=spec['include_lower_version'],
+                )
+                _install_pip_package(
+                    command,
+                    install_dependencies=False,
+                    logger=logger_func,
+                    python_exec=python_exec
                 )
     except Exception:
         printl(traceback.format_exc())
@@ -4364,89 +4027,6 @@ def get_cli_multi_choice_question(question, choices):
     text = f'{question} {choices_format} q) Quit. ({choices_opts})?: '
     return text
 
-def _install_pytorch_cli(
-        caller_name='Cell-ACDC', action='install', logger_func=print,
-        python_exec=None
-    ):
-    separator = '-'*60
-    txt = (
-        f'{separator}\n{caller_name} needs to {action} PyTorch\n\n'
-        'You can choose to install it now or stop the process and install it '
-        'later. To install it correctly, we need to know your preferences.\n'
-    )
-    logger_func(txt)
-    questions = {
-        'Choose your OS:': ('Windows', 'Mac', 'Linux'), 
-        'Package manager:': ('Pip'), 
-        'Compute platform:': (
-            'CPU', 'CUDA 11.8 (NVIDIA GPU)', 'CUDA 12.1 (NVIDIA GPU)'
-        )
-    }
-    selected_command = get_pytorch_command()
-    selected_preferences = []
-    for question, choices in questions.items():
-        input_txt = get_cli_multi_choice_question(question, choices)
-        while True:
-            answer = input(input_txt)
-            if answer.lower() == 'q':
-                exit('Execution stopped by the user.')
-            
-            try:
-                idx = int(answer) - 1
-                if idx >= len(choices):
-                    raise TypeError('Not a valid answer')
-            except Exception as err:
-                print('-'*100)
-                logger_func(
-                    f'"{answer}" is not a valid answer.'
-                    'Choose one of the options or "q" to quit.'
-                )
-                print('^'*100)
-                continue
-            
-            preference = choices[idx]
-            selected_command = selected_command[preference]
-            selected_preferences.append(preference)
-            print('')
-            break
-    
-    print('-'*100)
-    selected_preferences = ', '.join(selected_preferences)
-    logger_func(f'Selected preferences: {selected_preferences}')
-    print('-'*100)
-    logger_func(f'Command:\n\n{selected_command}\n')
-    while True:
-        answer = input('Do you want to run the command now ([y]/n)?: ')
-        if answer.lower() == 'n':
-            exit('Execution stopped by the user.')
-        
-        if answer.lower() == 'y' or not answer:
-            break
-        
-        print('-'*100)
-        print(
-            f'"{answer}" is not a valid answer. '
-            'Choose "y" for yes or "n" for no.'
-        )
-        print('^'*100)
-    
-    if selected_command.startswith('conda'):
-        try:
-            subprocess.check_call([selected_command], shell=True)
-        except Exception as err:
-            cmd_list = shlex.split(selected_command)
-            cmd_list = [cmd.strip('"') for cmd in cmd_list]
-            cmd_list = [cmd.strip("'") for cmd in cmd_list]
-            cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
-            subprocess.check_call(cmd_list, shell=False)
-    else:
-        cmd_list = shlex.split(selected_command)
-        cmd_list = cmd_list[1:]
-        cmd_list = [cmd.strip('"') for cmd in cmd_list]
-        cmd_list = [cmd.strip("'") for cmd in cmd_list]
-        cmd_list = [cmd.lstrip(".") for cmd in cmd_list]
-        py_exec = python_exec or sys.executable
-        subprocess.check_call([py_exec, *cmd_list], shell=False)
 
 def _get_pkg_command_pip_install(
         pkg_command, 
@@ -4713,22 +4293,8 @@ def run_fiji_command(command=None, logger_func=print):
     return False
 
 def import_promptable_segment_module(model_name):
-    try:
-        acdcPromptSegment = import_module(
-            f'cellacdc.promptable_models.{model_name}.acdcPromptSegment'
-        )
-    except ModuleNotFoundError as e:
-        # Check if custom model
-        cp = config.ConfigParser()
-        cp.read(promptable_models_list_file_path)
-        model_path = cp[model_name]['path']
-        spec = importlib.util.spec_from_file_location(
-            'acdcPromptSegment', model_path
-        )
-        acdcPromptSegment = importlib.util.module_from_spec(spec)
-        sys.modules['acdcPromptSegment'] = acdcPromptSegment
-        spec.loader.exec_module(acdcPromptSegment)
-    return acdcPromptSegment
+    return myutils_models.import_promptable_segment_module(model_name)
+    
 
 def init_tracker(
         posData, trackerName, realTime=False, qparent=None, 
@@ -4834,36 +4400,7 @@ def init_tracker(
         return tracker, track_params
 
 def import_segment_module(model_name, parent=None):
-    original_model_name = model_name
-    if model_name == 'Automatic thresholding':
-        model_name = 'thresholding'
-
-    try:
-        acdcSegment = import_module(f'cellacdc.models.{model_name}.acdcSegment')
-    except ModuleNotFoundError as e:
-        # Do not mask missing dependencies imported by the module itself.
-        expected_missing_module = f'cellacdc.models.{model_name}'
-        if e.name != expected_missing_module:
-            raise
-
-        # Check if custom model
-        cp = config.ConfigParser()
-        cp.read(models_list_file_path)
-        model_key = None
-        for key in (original_model_name, model_name):
-            if key in cp:
-                model_key = key
-                break
-
-        if model_key is None:
-            raise
-
-        model_path = cp[model_key]['path']
-        spec = importlib.util.spec_from_file_location('acdcSegment', model_path)
-        acdcSegment = importlib.util.module_from_spec(spec)
-        sys.modules['acdcSegment'] = acdcSegment
-        spec.loader.exec_module(acdcSegment)
-    return acdcSegment
+    return myutils_models.import_segment_module(model_name, parent=parent)
 
 def get_pip_conda_prefix(list_return=False, exec_path=None):
     from .config import parser_args
@@ -5350,7 +4887,9 @@ def _download_cellpose_germlineNuclei_model():
 def _download_omnipose_models():
     urls, file_sizes = _model_url('omnipose')
     temp_model_path = tempfile.mkdtemp()
-    final_model_path = os.path.expanduser(r'~\.cellpose\models')
+    final_model_path = os.path.expanduser(
+        os.path.join("~", ".cellpose", "models")
+    )
     for url, file_size in zip(urls, file_sizes):
         filename = url.split('/')[-1]
         final_dst = os.path.join(final_model_path, filename)
@@ -5362,7 +4901,6 @@ def _download_omnipose_models():
             url, temp_dst, file_size=file_size, desc='omnipose',
             verbose=False
         )
-        
         shutil.move(temp_dst, final_dst)
 
 def format_cca_manual_changes(changes: dict):
@@ -5412,9 +4950,7 @@ def resolve_segm_model_init_data(posData, init_kwargs):
     return segm_data
 
 def model_init_requires_segm_data(acdcSegment):
-    argspec = inspect.getfullargspec(acdcSegment.Model.__init__)
-    num_kwargs = len(argspec.defaults or ())
-    return len(argspec.args) - num_kwargs > 1
+    return myutils_models.model_init_requires_segm_data(acdcSegment)
 
 def init_segm_model(acdcSegment, posData, init_kwargs):
     segm_data = resolve_segm_model_init_data(posData, init_kwargs)
@@ -5451,15 +4987,6 @@ def check_install_trackastra():
         pypi_name='trackastra'
     )
 
-def get_torch_device(gpu=False):
-    import torch
-    if torch.cuda.is_available() and gpu:
-        device = torch.device('cuda')
-    elif torch.backends.mps.is_available():
-        device = torch.device('mps')
-    else:
-        device = torch.device('cpu')
-    return device
 
 def parse_model_params(model_argspecs, model_params):
     parsed_model_params = {}
@@ -6466,10 +5993,12 @@ def download_3d_renderer_demo_data():
     
     return exp_folderpath
     
-def get_recent_paths(self):
+def get_recent_paths(*args, only_existing=True):
     """Return existing unique paths and their aligned most recent dates."""
     if os.path.exists(recentPaths_path):
         df = pd.read_csv(recentPaths_path, index_col='index')
+        if only_existing:
+            df = df[df['path'].apply(os.path.exists)]
         if 'opened_last_on' in df.columns:
             df = df.sort_values('opened_last_on', ascending=False)
         df['path'] = df['path'].map(str)
@@ -6486,15 +6015,6 @@ def get_recent_paths(self):
     else:
         recent_paths = []
         dates = None
-        
-    # if not recent_paths:
-    # this can cause crashes and is not necessary
-    #     msg = widgets.myMessageBox(wrapText=False)
-    #     msg.information(
-    #         self,
-    #         'No recent paths',
-    #         'There are no recent paths to add.',
-    #     )
 
     return recent_paths, dates
     
@@ -6542,3 +6062,82 @@ def addToRecentPaths(exp_path, logger=None):
     )
     df.index.name = 'index'
     df.to_csv(recentPaths_path)
+
+def add_to_export_current_view_gui_recent_paths(folderpath):
+    if not os.path.exists(folderpath):
+        return
+
+    folderpath = folderpath.replace('\\', '/')
+    if os.path.exists(export_current_view_gui_recent_paths_csv_path):
+        try:
+            df = pd.read_csv(
+                export_current_view_gui_recent_paths_csv_path, 
+                index_col='index'
+            )
+            recent_paths = df['path'].to_list()
+            if 'opened_last_on' in df.columns:
+                openedOn = df['opened_last_on'].to_list()
+            else:
+                openedOn = [np.nan]*len(recent_paths)
+            if folderpath in recent_paths:
+                pop_idx = recent_paths.index(folderpath)
+                recent_paths.pop(pop_idx)
+                openedOn.pop(pop_idx)
+            recent_paths.insert(0, folderpath)
+            openedOn.insert(0, datetime.datetime.now())
+        except Exception as e:
+            recent_paths = [folderpath]
+            openedOn = [datetime.datetime.now()]
+    else:
+        recent_paths = [folderpath]
+        openedOn = [datetime.datetime.now()]
+    df = pd.DataFrame({
+        'path': recent_paths,
+        'opened_last_on': pd.Series(openedOn, dtype='datetime64[ns]')}
+    )
+    df.index.name = 'index'
+    df.to_csv(export_current_view_gui_recent_paths_csv_path)
+
+def get_export_current_view_gui_most_recent_path():
+    if os.path.exists(export_current_view_gui_recent_paths_csv_path):
+        df = pd.read_csv(
+            export_current_view_gui_recent_paths_csv_path, 
+            index_col='index'
+        )
+        df = df[df['path'].apply(os.path.exists)]
+        if 'opened_last_on' in df.columns:
+            df = df.sort_values('opened_last_on', ascending=False)
+        most_recent_path = ''
+        for path in df['path']:
+            if os.path.exists(path):
+                most_recent_path = path
+                break
+    else:
+        most_recent_path = ''
+    return most_recent_path
+
+def get_export_current_view_gui_recent_paths(self):
+    """Return existing unique paths and their aligned most recent dates."""
+    if os.path.exists(export_current_view_gui_recent_paths_csv_path):
+        df = pd.read_csv(
+            export_current_view_gui_recent_paths_csv_path, index_col='index'
+        )
+        if 'opened_last_on' in df.columns:
+            df = df.sort_values('opened_last_on', ascending=False)
+        df['path'] = df['path'].map(str)
+        df = df[df['path'].apply(os.path.exists)]
+        df = df.loc[df['path'].map(os.path.isdir).astype(bool)].copy()
+        df['path'] = df['path'].str.replace('\\', '/')
+        df = df.drop_duplicates(subset='path', keep='first')
+        recent_paths = df['path'].to_list()
+        
+        dates = (
+            df['opened_last_on'].to_list()
+            if 'opened_last_on' in df.columns else None
+        )
+        
+    else:
+        recent_paths = []
+        dates = None
+
+    return recent_paths, dates

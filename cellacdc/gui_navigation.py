@@ -11,6 +11,7 @@ They expect the host window to define:
     - `self.openRecentMenu`: `QMenu` populated with the recent paths
     - `self.openRecentFile(path)`: method called to load a recent path
 """
+import os
 from functools import partial
 
 import numpy as np
@@ -21,6 +22,7 @@ from qtpy.QtGui import QFont
 from qtpy.QtWidgets import QLabel, QCheckBox, QHBoxLayout, QAction
 
 from . import widgets, apps, myutils
+from . import path as acdc_path
 
 _font = QFont()
 _font.setPixelSize(11)
@@ -129,7 +131,13 @@ class ZsliceNavigationGuiElements:
     def setZsliceNavigationRange(self, SizeZ):
         self.zSliceScrollBar.setMaximum(SizeZ-1)
         self.zSliceSpinbox.setMaximum(SizeZ)
-        self.SizeZlabel.setText(f'/{SizeZ}')
+        # Displayed z-slice numbers may start at 0 ("Show z-slice index")
+        start_value = self.zSliceSpinbox.startValue()
+        if start_value is None:
+            start_value = 1
+        correction = start_value - self.zSliceSpinbox.minimum()
+        maximum = self.zSliceSpinbox.maximum()
+        self.SizeZlabel.setText(f'/{maximum + correction}')
     
     def onZsliceSpinboxValueChange(self, value):
         self.zSliceScrollBar.setSliderPosition(value-1)
@@ -197,12 +205,13 @@ class RecentPathsGuiElements:
     def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()        
-        recentPaths, dates = myutils.get_recent_paths(self)
+        recentPaths, dates = myutils.get_recent_paths()
         
         # Step 2. Dynamically create 20 actions
         actions = []
         for path in recentPaths[:20]:
-            action = QAction(path, self)
+            path_text = acdc_path.unexpanduser(path)
+            action = QAction(path_text, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
 
@@ -226,11 +235,14 @@ class RecentPathsGuiElements:
         self.openRecentMenu.addAction(self.openRecentMoreAction)
     
     def addPathToOpenRecentMenu(self, path):
+        path = os.path.normpath(path)
         for action in self.openRecentMenu.actions():
-            if path == action.text():
+            action_path = os.path.expanduser(os.path.normpath(action.text()))
+            if path == action_path:
                 return
         else:
-            action = QAction(path, self)
+            path_text = acdc_path.unexpanduser(path)
+            action = QAction(path_text, self)
             action.triggered.connect(partial(self.openRecentFile, path))
         
         try:
