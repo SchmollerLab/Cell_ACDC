@@ -1,4 +1,5 @@
 from qtpy.QtWidgets import QDialog
+from . import _window_stacking
 from . import printl
 from qtpy.QtCore import (
     Qt, QEventLoop
@@ -15,7 +16,7 @@ class QBaseDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
 
         try:

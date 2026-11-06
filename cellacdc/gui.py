@@ -67,6 +67,7 @@ from warnings import simplefilter
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
 # Custom modules
+from . import _window_stacking
 from . import exception_handler, disableWindow
 from . import base_cca_dict, lineage_tree_cols, lineage_tree_cols_std_val
 from . import graphLayoutBkgrColor, darkBkgrColor
@@ -35739,7 +35740,7 @@ When working with 3D segmentation masks:
                 exp_path = os.path.dirname(_posData.pos_path)
 
             dataPrepWin = dataPrep.dataPrepWin()
-            dataPrepWin.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+            _window_stacking.set_window_flags_on_top(dataPrepWin, Qt.Window)
             dataPrepWin.titleText = (
             """
             Select z-slice (or projection) for each frame/position.<br>
