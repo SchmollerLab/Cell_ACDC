@@ -29,7 +29,6 @@ from qtpy.QtWidgets import (
     QLabel,
     QLineEdit,
     QListWidget,
-    QPushButton,
     QScrollArea,
     QToolButton,
     QVBoxLayout,
@@ -373,7 +372,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
                 timepoint_predictors.CELL_FUNCTIONS.items()):
             if funcName in ('any', 'all', 'ANY', 'ALL'):
                 continue
-            button = QPushButton(funcName)
+            button = widgets.PushButton(funcName)
             button.setToolTip(description)
             button.clicked.connect(
                 partial(self.insertEquationText, f'{funcName}(')
@@ -1068,7 +1067,7 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
         for name, (_, description) in timepoint_predictors.CELL_FUNCTIONS.items():
             if name in ('any', 'all', 'ANY', 'ALL'):
                 continue
-            button = QPushButton(name)
+            button = widgets.PushButton(name)
             button.setToolTip(description)
             button.clicked.connect(
                 partial(self.insertEquationText, f'{name}(')
@@ -1525,7 +1524,7 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
                 'color': colorButton, 'edit': edit
             }
             if self.editCondition is not None:
-                row['editor'] = QPushButton('Edit...')
+                row['editor'] = widgets.editPushButton('Edit...')
                 row['editor'].setToolTip('Open the equation editor')
                 row['editor'].clicked.connect(partial(self.editRule, i))
             for name, text, tooltip, step in (
@@ -1769,8 +1768,10 @@ class PhaseTranslatorRuleDialog(QDialog):
             rowLayout = QHBoxLayout(row)
             rowLayout.setContentsMargins(0, 0, 0, 0)
             rowLayout.addWidget(QLabel(column[len(TIMEPOINT_PREFIX):]), stretch=1)
-            for label, offset in (('Up', -1), ('Down', 1)):
-                button = QPushButton(label)
+            for label, offset, buttonClass in (
+                    ('Up', -1, widgets.arrowUpPushButton),
+                    ('Down', 1, widgets.arrowDownPushButton)):
+                button = buttonClass(label)
                 button.setEnabled(0 <= index + offset < len(self.boundaries))
                 button.clicked.connect(
                     partial(self.moveBoundary, column, offset)
@@ -1837,12 +1838,14 @@ class PhaseTranslatorDialog(QDialog):
         self.rulesList = QListWidget()
         self.rulesList.itemDoubleClicked.connect(lambda *_: self.editRule())
         controls = QHBoxLayout()
-        for text, callback in (
-            ('Add...', self.addRule), ('Edit...', self.editRule),
-            ('Remove...', self.removeRule), ('Up', partial(self.moveRule, -1)),
-            ('Down', partial(self.moveRule, 1))
+        for text, callback, buttonClass in (
+            ('Add...', self.addRule, widgets.addPushButton),
+            ('Edit...', self.editRule, widgets.editPushButton),
+            ('Remove...', self.removeRule, widgets.delPushButton),
+            ('Up', partial(self.moveRule, -1), widgets.arrowUpPushButton),
+            ('Down', partial(self.moveRule, 1), widgets.arrowDownPushButton)
         ):
-            button = QPushButton(text)
+            button = buttonClass(text)
             button.clicked.connect(callback)
             controls.addWidget(button)
         self.autoApplyCheckbox = QCheckBox(
@@ -1856,8 +1859,14 @@ class PhaseTranslatorDialog(QDialog):
             'viewer configuration to keep this option.'
         )
         applyButtons = QHBoxLayout()
-        self.applyCellButton = QPushButton('Apply phase evaluation on displayed cell')
-        self.applyAllButton = QPushButton('Apply phase evaluation on all cells')
+        # Same icons as the "Apply" / "Apply to all Positions..." buttons
+        # of the post-processing dialog in apps.py
+        self.applyCellButton = widgets.okPushButton(
+            'Apply phase evaluation on displayed cell', isDefault=False
+        )
+        self.applyAllButton = widgets.futurePushButton(
+            'Apply phase evaluation on all cells'
+        )
         for button, allCells in (
             (self.applyCellButton, False), (self.applyAllButton, True)
         ):
@@ -2446,6 +2455,15 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
         if text.strip():
             self.listSelector.expandAll()
         self.listSelector.viewport().update()
+
+    def warnChannelSelectionEmpty(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'No measurement selected', html_utils.paragraph(
+                'You did <b>not select any measurement</b>.<br><br>'
+                'Select at least one measurement to process.'
+            )
+        )
 
     def ok_cb(self):
         warn, display, full_list = self.get_new_colnames()

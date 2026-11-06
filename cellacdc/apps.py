@@ -14246,19 +14246,16 @@ class _CombineMetricsDialog(QBaseDialog):
             ('log10', 'log10('),
         ]
         for name, text in self.operators:
-            button = QPushButton()
-            button.setIcon(QIcon(f':{name}.svg'))
+            button = widgets.PushButton(icon=QIcon(f':{name}.svg'))
             button.setIconSize(QSize(iconSize, iconSize))
             button.setToolTip(text)
             button.clicked.connect(partial(self.insertEquationText, text))
             operatorsLayout.addWidget(button)
             self.operatorButtons.append(button)
 
-        clearButton = QPushButton()
-        clearButton.setIcon(QIcon(':clear.svg'))
+        clearButton = widgets.PushButton(icon=QIcon(':clear.svg'))
         clearButton.setIconSize(QSize(iconSize, iconSize))
-        clearEntryButton = QPushButton()
-        clearEntryButton.setIcon(QIcon(':backspace.svg'))
+        clearEntryButton = widgets.PushButton(icon=QIcon(':backspace.svg'))
         clearEntryButton.setIconSize(QSize(iconSize, iconSize))
         operatorsLayout.addWidget(clearButton)
         operatorsLayout.addWidget(clearEntryButton)
@@ -14286,7 +14283,7 @@ class _CombineMetricsDialog(QBaseDialog):
                 ('ALL', 'all(', 'True on every frame only if the condition is true in every frame of the cell'),
             ))
         for label, text, tooltip in categoricalOperators:
-            button = QPushButton(label)
+            button = widgets.PushButton(label)
             button.setToolTip(tooltip)
             button.clicked.connect(partial(self.insertEquationText, text))
             categoricalOperatorsLayout.addWidget(button)
@@ -14340,7 +14337,7 @@ class _CombineMetricsDialog(QBaseDialog):
         buttonsLayout.addWidget(self.statusLabel)
         buttonsLayout.addStretch(1)
         if debug:
-            debugButton = QPushButton('Debug')
+            debugButton = widgets.PushButton('Debug')
             debugButton.clicked.connect(self._debug)
             buttonsLayout.addWidget(debugButton)
         for button in (cancelButton, helpButton, testButton, self.okButton):
@@ -20327,11 +20324,14 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             <b>Channel selection cannot be empty</b>.<br><br>
             Thank you for your patience!
         """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'No channel selected', txt)
     
     def ok_cb(self):
         selectedChannelItems = self.listSelector.selectedIndexes()
         if not selectedChannelItems:
             self.warnChannelSelectionEmpty()
+            return
         
         recipe = self.recipe()
         if recipe is None:

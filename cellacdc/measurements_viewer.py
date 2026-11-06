@@ -667,13 +667,12 @@ class MeasurementsViewerWin(
                     paths[f'{prefix}{filename}'] = filepath
                     types[f'{prefix}{filename}'] = kind
 
-        def browse():
-            return QFileDialog.getOpenFileName(
-                self, 'Load measurements viewer configuration',
-                MEASUREMENTS_CONFIGURATIONS_PATH, 'JSON (*.json)'
-            )[0]
-
-        browseButton =  widgets.browseFileButton('Browse configuration...', self)
+        browseButton = widgets.browseFileButton(
+            'Browse configuration...', self,
+            ext={'JSON': ['.json']},
+            title='Load measurements viewer configuration',
+            start_dir=MEASUREMENTS_CONFIGURATIONS_PATH,
+        )
         skipButton = widgets.SkipPushButton('Skip/New configuration', self)
         dialog = QTreeDialog(
             [
@@ -697,7 +696,7 @@ class MeasurementsViewerWin(
                 browsed.append(path)
                 dialog.close()
 
-        browseButton.clicked.connect(selected)
+        browseButton.sigPathSelected.connect(selected)
         skipButton.clicked.connect(lambda: setattr(dialog, 'cancel', True) or dialog.close())
         dialog.exec_()
         if browsed:

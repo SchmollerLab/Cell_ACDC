@@ -5900,36 +5900,15 @@ class MeasurementProcessingWorkerGUI(CustomPreprocessWorkerGUI):
         finally:
             self.signals.finished.emit(self)
         
-    @worker_exception_handler
     def run(self):
-        while True:
-            if self.exit:
-                self.logger.log('Closing measurement processing worker...')
-                break
-            elif self.wait:
-                self.logger.log('Measurement processing worker paused.')
-                self.pause()
-            elif len(self.dataQ) > 0:
-                func, image, recipe, key = self.dataQ.pop()
-                processed_data = self.applyRecipe(func, image, recipe, self._new_colnames)
-                self.sigPreviewDone.emit(processed_data, key)
-                if len(self.dataQ) == 0:
-                    self.wait = True
-                    self.sigIsQueueEmpty.emit(True)
-            else:
-                self.logger.log('Measurement processing worker resumed.')
-                processed_data = self.runJob()
-                self.sigDone.emit(processed_data)
-                self.wait = True
-
-        self.signals.finished.emit(self)
-        
-    def enqueue(self, df, cols, recipe, new_colnames):
-        self.dataQ.append((df, cols, recipe, new_colnames))
-        if len(self.dataQ) == 1:
-            self.sigIsQueueEmpty.emit(False)
-            # Wake up worker upon inserting first element
-            self.wakeUp()
+        # One-shot job (no preview queue): the result is emitted by runJob 
+        # through `sigDone`, errors through `signals.critical`.
+        self.runJob()
+    
+    def enqueue(self, *args, **kwargs):
+        raise NotImplementedError(
+            'MeasurementProcessingWorkerGUI runs a single job, use setupJob'
+        )
 
 
 class CombineChannelsWorkerGUI(CustomPreprocessWorkerGUI):

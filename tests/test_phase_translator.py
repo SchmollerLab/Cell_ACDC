@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pandas as pd
 import pytest
+from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QPushButton
 
 from cellacdc import apps, apps_measurements_viewer, measurements_viewer, phase_translator, widgets
@@ -547,6 +548,67 @@ def test_manager_phase_color_buttons(app):
     dialog.removeRule()
     assert list(dialog.phaseColorButtons) == ['Other']
     dialog.deleteLater()
+
+
+def _open_color_dialog(button, color):
+    """Click a myColorButton (non-blocking ``open()``) and pick ``color``."""
+    button.click()
+    colorDialog = button.colorDialog
+    assert colorDialog.isVisible()
+    colorDialog.setCurrentColor(QColor(color))
+    # Live preview while the dialog is open
+    assert button.color().name() == color
+    return colorDialog
+
+
+def test_manager_phase_color_dialog_accept_commits_color(app):
+    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+        [rule(), fallback()], [], [], {}, phaseColors={'S': '#ff0000'}
+    )
+    dialog.show()
+    button = dialog.phaseColorButtons['G1']
+    changed, changing = Mock(), Mock()
+    button.sigColorChanged.connect(changed)
+    button.sigColorChanging.connect(changing)
+    colorDialog = _open_color_dialog(button, '#0000ff')
+    assert changing.called
+    # Previewing alone must not commit the phase color
+    assert not changed.called
+    assert 'G1' not in dialog.phaseColors
+    colorDialog.accept()
+    app.processEvents()
+    changed.assert_called_once_with(button)
+    assert button.color().name() == '#0000ff'
+    assert dialog.phaseColors == {'S': '#ff0000', 'G1': '#0000ff'}
+    assert dialog.currentPhaseColors()['G1'] == '#0000ff'
+    dialog.close()
+    dialog.deleteLater()
+    app.processEvents()
+
+
+def test_manager_phase_color_dialog_reject_restores_color(app):
+    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+        [rule(), fallback()], [], [], {}, phaseColors={'S': '#ff0000'}
+    )
+    dialog.show()
+    button = dialog.phaseColorButtons['S']
+    changed = Mock()
+    button.sigColorChanged.connect(changed)
+    colorDialog = _open_color_dialog(button, '#00ff00')
+    colorDialog.reject()
+    app.processEvents()
+    assert button.color().name() == '#ff0000'
+    assert not changed.called
+    assert dialog.phaseColors == {'S': '#ff0000'}
+    # The dialog is reused and still commits on a later accept
+    colorDialog = _open_color_dialog(button, '#00ff00')
+    colorDialog.accept()
+    app.processEvents()
+    changed.assert_called_once_with(button)
+    assert dialog.phaseColors == {'S': '#00ff00'}
+    dialog.close()
+    dialog.deleteLater()
+    app.processEvents()
 
 
 def test_phase_runs():

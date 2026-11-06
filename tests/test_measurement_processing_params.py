@@ -1,13 +1,42 @@
 import pytest
-from qtpy.QtCore import QItemSelectionModel
+from qtpy.QtCore import QItemSelectionModel, QModelIndex
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import apps, measurement_processing, myutils, widgets
+from cellacdc import (
+    apps, apps_measurements_viewer, measurement_processing, myutils, widgets
+)
 
 
 @pytest.fixture(scope='module')
 def app():
     return QApplication.instance() or QApplication([])
+
+
+def leaf_indexes(model, parent=QModelIndex()):
+    """Measurement (leaf) indexes of the hierarchical measurement tree."""
+    for row in range(model.rowCount(parent)):
+        index = model.index(row, 0, parent)
+        if model.hasChildren(index):
+            yield from leaf_indexes(model, index)
+        else:
+            yield index
+
+
+def flat_search_reference(names):
+    """Viewer search proxy over a flat model of the measurement names."""
+    flat = widgets.QStandardItemModel()
+    for name in names:
+        item = widgets.QStandardItem(name)
+        item.setData(name, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE)
+        flat.appendRow(item)
+    reference = widgets.ButtonSearchCompleter(
+        searchRoles=(widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,),
+        tooltipRole=None,
+    )
+    reference.setSourceModel(flat)
+    reference.setDynamicSortFilter(True)
+    reference.sort(0)
+    return flat, reference
 
 
 def test_processor_signature_provides_typed_parameter_help():
@@ -21,9 +50,8 @@ def test_processor_signature_provides_typed_parameter_help():
     assert 'Positive number of observations' in window.desc
     assert 'Missing input' in window.desc
     assert window.docstring == processor['function'].__doc__
-    assert myutils.get_function_argspec(
-        measurement_processing.Dummy.run
-    ) == []
+    dummy = measurement_processing.MEASUREMENT_PROCESSING_MAPPER['Dummy']
+    assert myutils.get_function_argspec(dummy['function']) == []
 
 
 def test_processing_window_uses_integer_control_and_docstring_help(app, monkeypatch):
@@ -51,12 +79,12 @@ def test_processing_window_uses_integer_control_and_docstring_help(app, monkeypa
 
 
 def test_processing_recipe_roundtrips_typed_parameters(app):
-    original = apps.SignalProcessingParamsWidget()
+    original = apps_measurements_viewer.MeasurementProcessingParamsWidget()
     original.stepsWidgets[1]['step_kwargs'] = {'window': 7}
     original.addStep()
     original.stepsWidgets[2]['selector'].setCurrentText('Dummy')
     saved = original.recipeConfigPars('acdc')
-    loaded = apps.SignalProcessingParamsWidget()
+    loaded = apps_measurements_viewer.MeasurementProcessingParamsWidget()
     loaded.loadRecipe({section: saved[section] for section in saved.sections()})
     assert loaded.recipe() == original.recipe()
     assert loaded.recipe()[0]['kwargs'] == {'window': 7}
@@ -75,20 +103,16 @@ def test_image_processing_keeps_its_own_registry(app):
 
 def test_measurement_selection_search_matches_viewer_search(app):
     names = ['area', 'nuclear_area', 'volume', 'mean_intensity']
-    dialog = apps.SignalProcessingRecipeDialog(names)
-    reference = widgets.ButtonSearchCompleter(
-        searchRoles=(widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,),
-        tooltipRole=None,
-    )
-    reference.setSourceModel(dialog.measurementsModel)
-    reference.setDynamicSortFilter(True)
-    reference.sort(0)
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(names)
+    # The dialog's model is a tree (group headings with measurement leaves):
+    # compare its leaves with the viewer search over a flat list of names.
+    flat, reference = flat_search_reference(names)  # keep flat model alive
     for query in ('AREA', 'vol', 'intensitty', 'zzzzzzzzzz', ''):
         dialog.measurementsSearchLineEdit.setText(query)
         reference.setFilterText(query)
         actual = [
-            dialog.measurementsSearchProxy.index(row, 0).data()
-            for row in range(dialog.measurementsSearchProxy.rowCount())
+            index.data()
+            for index in leaf_indexes(dialog.measurementsSearchProxy)
         ]
         expected = [
             reference.index(row, 0).data()
@@ -101,21 +125,26 @@ def test_measurement_selection_search_matches_viewer_search(app):
 
 
 def test_measurement_search_clear_and_multiple_selection(app):
-    dialog = apps.SignalProcessingRecipeDialog(['area', 'volume', 'intensity'])
+    names = ['area', 'volume', 'intensity']
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(names)
+    proxy = dialog.measurementsSearchProxy
     dialog.measurementsSearchLineEdit.setText('zzzzzzzzzz')
-    assert dialog.measurementsSearchProxy.rowCount() == 0
+    assert proxy.rowCount() == 0
+    assert list(leaf_indexes(proxy)) == []
     dialog.measurementsSearchLineEdit.clear()
-    assert dialog.measurementsSearchProxy.rowCount() == 3
+    assert sorted(index.data() for index in leaf_indexes(proxy)) == sorted(names)
     dialog.listSelector.clearSelection()
     selection = dialog.listSelector.selectionModel()
-    for row in (0, 2):
-        selection.select(
-            dialog.measurementsSearchProxy.index(row, 0),
-            QItemSelectionModel.Select
-        )
+    for index in leaf_indexes(proxy):
+        if index.data() in ('area', 'intensity'):
+            selection.select(index, QItemSelectionModel.Select)
+    # Processed measurements are appended as new columns, so a suffix that
+    # does not overwrite an existing measurement is required.
+    dialog.append_new_colname.setText('smooth')
     dialog.ok_cb()
     assert not dialog.cancel
-    assert dialog.selectedChannels == ['area', 'intensity']
+    assert sorted(dialog.selectedChannels) == ['area', 'intensity']
+    assert sorted(dialog.saveNames) == ['area_smooth', 'intensity_smooth']
     dialog.deleteLater()
 
 

@@ -26,8 +26,9 @@ def app():
 
 @pytest.fixture
 def viewer(app, monkeypatch):
-    monkeypatch.setattr(MeasurementsViewerWin, 'askLoadConfiguration', Mock())
     window = MeasurementsViewerWin()
+    # Skip the startup configuration picker that showEvent would schedule
+    window._startupConfigurationPrompted = True
     labels = np.zeros((3, 30, 30), dtype=np.uint16)
     labels[:2, 2:5, 3:7] = 1
     labels[1:, 15:19, 20:25] = 2
@@ -58,6 +59,29 @@ def viewer(app, monkeypatch):
     app.processEvents()
 
 
+def column(viewer, name):
+    """Column leaf of the grouped measurements tree."""
+    item, = [
+        item for item in viewer.columnsModel.measurementItems()
+        if item.text() == name
+    ]
+    return item
+
+
+def column_items(viewer):
+    return list(viewer.columnsModel.measurementItems())
+
+
+def proxy_index(viewer, name):
+    """Visible (search proxy) index of the column leaf `name`."""
+    proxy = viewer.columnsSearchProxy
+    index, = proxy.match(
+        proxy.index(0, 0), Qt.DisplayRole, name, -1,
+        Qt.MatchExactly | Qt.MatchRecursive
+    )
+    return index
+
+
 def wait_navigation():
     # Navigation after clicking a point is deferred with a QTimer
     QTest.qWait(300)
@@ -65,8 +89,8 @@ def wait_navigation():
 
 def comparison(viewer):
     viewer.measurementsModeCombobox.setCurrentIndex(1)
-    viewer.columnsModel.item(0).setCheckState(Qt.Checked)
-    viewer.columnsModel.item(1).setCheckState(Qt.Checked)
+    column(viewer, 'area').setCheckState(Qt.Checked)
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
     return viewer.measurementsPlot.listDataItems()[0]
 
 
@@ -81,9 +105,9 @@ def test_comparison_plots_every_cell_and_frame(viewer):
     assert item.opts['pen'] is None
     assert not viewer.currentFrameLine.isVisible()
     assert not viewer.timeCourseColumnsWidget.isHidden()
-    assert viewer.columnsModel.item(0).data(Qt.AccessibleDescriptionRole) == 'X'
-    assert viewer.columnsModel.item(1).data(Qt.AccessibleDescriptionRole) == 'Y'
-    assert viewer.columnsModel.item(0).isCheckable()
+    assert column(viewer, 'area').data(Qt.AccessibleDescriptionRole) == 'X'
+    assert column(viewer, 'intensity').data(Qt.AccessibleDescriptionRole) == 'Y'
+    assert column(viewer, 'area').isCheckable()
     assert viewer.checkedColumns() == ['area', 'intensity']
     assert viewer.measurementsPlot.getAxis('bottom').labelText == 'area'
     assert viewer.measurementsPlot.getAxis('left').labelText == 'intensity'
@@ -100,9 +124,9 @@ def test_switching_modes_preserves_time_course_selection(viewer):
     assert viewer.measurementsPlot.getAxis('bottom').labelText == 'Frame n.'
     assert viewer.measurementsPlot.getAxis('left').labelText == 'Value'
     assert not viewer.timeCourseColumnsWidget.isHidden()
-    assert viewer.columnsModel.item(0).isCheckable()
-    assert not viewer.columnsModel.item(0).icon().isNull()
-    assert viewer.columnsModel.item(1).icon().isNull()
+    assert column(viewer, 'area').isCheckable()
+    assert not column(viewer, 'area').icon().isNull()
+    assert column(viewer, 'intensity').icon().isNull()
 
 
 @pytest.mark.parametrize('mode', [0, 1])
@@ -247,17 +271,17 @@ def test_comparison_filters_unplottable_pairs_without_losing_identity(viewer):
 
 def test_axes_refresh_preserves_choices_and_clears_missing_columns(viewer):
     comparison(viewer)
-    viewer.columnsModel.item(0).setCheckState(Qt.Unchecked)
-    viewer.columnsModel.item(1).setCheckState(Qt.Unchecked)
-    viewer.columnsModel.item(1).setCheckState(Qt.Checked)
-    viewer.columnsModel.item(0).setCheckState(Qt.Checked)
+    column(viewer, 'area').setCheckState(Qt.Unchecked)
+    column(viewer, 'intensity').setCheckState(Qt.Unchecked)
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
+    column(viewer, 'area').setCheckState(Qt.Checked)
     viewer.updateColumnsList()
     assert viewer.measurementsAxes == {'X': 'intensity', 'Y': 'area'}
     viewer.acdc_df = viewer.acdc_df.drop(columns='area')
     viewer.updateColumnsList()
     viewer.plotMeasurements()
     assert viewer.measurementsAxes == {'X': 'intensity', 'Y': ''}
-    assert viewer.columnsModel.item(0).data(Qt.AccessibleDescriptionRole) == 'X'
+    assert column(viewer, 'intensity').data(Qt.AccessibleDescriptionRole) == 'X'
     assert viewer.checkedColumns() == ['intensity']
     assert not viewer.measurementsPlot.listDataItems()
     viewer.acdc_df = None
@@ -272,7 +296,7 @@ def test_filtered_checkbox_toggles_axis_and_preserves_time_course(viewer, app):
     viewer.show()
     viewer.columnsSearchLineEdit.setText('intensity')
     app.processEvents()
-    index = viewer.columnsSearchProxy.index(0, 0)
+    index = proxy_index(viewer, 'intensity')
     assert index.data() == 'intensity'
     rect = viewer.columnsListWidget.visualRect(index)
     pos = rect.center()
@@ -299,7 +323,7 @@ def test_comparison_context_menu_toggles_check(viewer, app):
     viewer.show()
     viewer.columnsSearchLineEdit.setText('intensity')
     app.processEvents()
-    index = viewer.columnsSearchProxy.index(0, 0)
+    index = proxy_index(viewer, 'intensity')
     pos = viewer.columnsListWidget.visualRect(index).center()
     viewer.showColumnsContextMenu(pos)
     menu = QApplication.activePopupWidget()
@@ -310,7 +334,7 @@ def test_comparison_context_menu_toggles_check(viewer, app):
     actions[0].trigger()
     menu.hide()
     assert viewer.measurementsAxes == {'X': 'area', 'Y': ''}
-    assert viewer.columnsModel.item(1).icon().isNull()
+    assert column(viewer, 'intensity').icon().isNull()
     assert viewer.checkedColumns() == ['area']
 
 
@@ -318,22 +342,19 @@ def test_modes_have_independent_checks(viewer):
     viewer.measurementsModeCombobox.setCurrentIndex(1)
     assert viewer.checkedColumns() == []
     assert viewer.measurementsAxes == {'X': '', 'Y': ''}
-    assert all(
-        viewer.columnsModel.item(i).icon().isNull()
-        for i in range(viewer.columnsModel.rowCount())
-    )
-    viewer.columnsModel.item(1).setCheckState(Qt.Checked)
+    assert all(item.icon().isNull() for item in column_items(viewer))
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
     assert viewer.measurementsAxes == {'X': 'intensity', 'Y': ''}
     viewer.measurementsModeCombobox.setCurrentIndex(0)
     assert viewer.checkedColumns() == ['area']
     viewer.measurementsModeCombobox.setCurrentIndex(1)
     assert viewer.checkedColumns() == ['intensity']
-    assert viewer.columnsModel.item(1).data(Qt.AccessibleDescriptionRole) == 'X'
+    assert column(viewer, 'intensity').data(Qt.AccessibleDescriptionRole) == 'X'
 
 
 def test_mode_change_repaints_indicators(viewer, monkeypatch):
     viewer.measurementsModeCombobox.setCurrentIndex(1)
-    viewer.columnsModel.item(1).setCheckState(Qt.Checked)
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
     viewport = viewer.columnsListWidget.viewport()
     repaint = Mock()
     monkeypatch.setattr(viewport, 'update', repaint)
@@ -344,9 +365,8 @@ def test_mode_change_repaints_indicators(viewer, monkeypatch):
         viewer.measurementsModeCombobox.setCurrentIndex(mode)
         repaint.assert_called()
         assert {
-            viewer.columnsModel.item(i).text()
-            for i in range(viewer.columnsModel.rowCount())
-            if not viewer.columnsModel.item(i).icon().isNull()
+            item.text() for item in column_items(viewer)
+            if not item.icon().isNull()
         } == icons
     itemChanged.assert_not_called()
     assert viewer.measurementsAxes == {'X': 'intensity', 'Y': ''}
@@ -356,13 +376,13 @@ def test_comparison_requires_unchecking_before_replacing_axis(viewer):
     viewer.acdc_df['third'] = [1, 2, 3, 4]
     viewer.updateColumnsList()
     comparison(viewer)
-    viewer.columnsModel.item(2).setCheckState(Qt.Checked)
-    assert viewer.columnsModel.item(2).checkState() == Qt.Unchecked
+    column(viewer, 'third').setCheckState(Qt.Checked)
+    assert column(viewer, 'third').checkState() == Qt.Unchecked
     assert 'Two measurements are already selected' in viewer.statusBar().currentMessage()
-    viewer.columnsModel.item(0).setCheckState(Qt.Unchecked)
-    viewer.columnsModel.item(2).setCheckState(Qt.Checked)
+    column(viewer, 'area').setCheckState(Qt.Unchecked)
+    column(viewer, 'third').setCheckState(Qt.Checked)
     assert viewer.measurementsAxes == {'X': 'third', 'Y': 'intensity'}
-    assert viewer.columnsModel.item(2).data(Qt.AccessibleDescriptionRole) == 'X'
+    assert column(viewer, 'third').data(Qt.AccessibleDescriptionRole) == 'X'
 
 
 @pytest.mark.parametrize('mode', [0, 1])
@@ -373,8 +393,7 @@ def test_indicator_replaces_tick_without_shifting_text(viewer, app, mode, filter
     if filtered:
         viewer.columnsSearchLineEdit.setText('intensity')
     app.processEvents()
-    row = 0 if filtered else 1
-    index = viewer.columnsSearchProxy.index(row, 0)
+    index = proxy_index(viewer, 'intensity')
     delegate = viewer.columnsHighlightDelegate
 
     def text_rect():
@@ -407,8 +426,8 @@ def test_clicking_column_name_toggles_selection(viewer, app):
     viewer.show()
     app.processEvents()
 
-    def click_name(row):
-        index = viewer.columnsSearchProxy.index(row, 0)
+    def click_name(name):
+        index = proxy_index(viewer, name)
         rect = viewer.columnsListWidget.visualRect(index)
         pos = rect.center()
         # Well to the right of the fixed-width indicator, on the name
@@ -417,20 +436,20 @@ def test_clicking_column_name_toggles_selection(viewer, app):
         app.processEvents()
 
     # Time course: add/remove plotted columns
-    click_name(1)
+    click_name('intensity')
     assert viewer.checkedColumns() == ['area', 'intensity']
     assert len(viewer.measurementsPlot.listDataItems()) == 2
-    click_name(0)
+    click_name('area')
     assert viewer.checkedColumns() == ['intensity']
 
     # Comparison: set X then Y, clicking again frees the axis
     viewer.measurementsModeCombobox.setCurrentIndex(1)
-    click_name(1)
+    click_name('intensity')
     assert viewer.measurementsAxes == {'X': 'intensity', 'Y': ''}
-    click_name(0)
+    click_name('area')
     assert viewer.measurementsAxes == {'X': 'intensity', 'Y': 'area'}
     assert len(viewer.measurementsPlot.listDataItems()) == 1
-    click_name(1)
+    click_name('intensity')
     assert viewer.measurementsAxes == {'X': '', 'Y': 'area'}
 
     viewer.measurementsModeCombobox.setCurrentIndex(0)
@@ -441,9 +460,9 @@ def test_column_names_cannot_be_edited(viewer, app):
     viewer.show()
     app.processEvents()
     assert viewer.columnsListWidget.editTriggers() == QAbstractItemView.NoEditTriggers
-    for i in range(viewer.columnsModel.rowCount()):
-        assert not viewer.columnsModel.item(i).isEditable()
-    index = viewer.columnsSearchProxy.index(0, 0)
+    for item in column_items(viewer):
+        assert not item.isEditable()
+    index = proxy_index(viewer, 'area')
     name = index.data()
     rect = viewer.columnsListWidget.visualRect(index)
     QTest.mouseDClick(
@@ -485,6 +504,26 @@ def configuration_data(viewer, tmp_path):
     return images
 
 
+def mock_filename_dialog(monkeypatch, folder, *filenames):
+    """Answer the save dialogs with `filenames` (None cancels) in `folder`,
+    which replaces the configurations folder of the settings."""
+    monkeypatch.setattr(
+        measurements_viewer, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(folder)
+    )
+    answers = iter(filenames)
+
+    def create_dialog(*args, **kwargs):
+        filename = next(answers)
+        return SimpleNamespace(
+            exec_=lambda: None, cancel=filename is None, doNotSave=False,
+            filename=filename or ''
+        )
+
+    dialog = Mock(side_effect=create_dialog)
+    monkeypatch.setattr(measurements_viewer.apps, 'filenameDialog', dialog)
+    return dialog
+
+
 @pytest.mark.parametrize('mode', [0, 1])
 def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
     images = configuration_data(viewer, tmp_path)
@@ -494,10 +533,7 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
     viewer.measurementsModeCombobox.setCurrentIndex(mode)
     viewer.normalizeCheckbox.setChecked(True)
     filepath = str(tmp_path / 'state.json')
-    monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
-        Mock(return_value=(filepath, 'JSON (*.json)'))
-    )
+    mock_filename_dialog(monkeypatch, tmp_path, 'state.json')
     assert viewer.saveConfiguration()
     saved = json.loads((tmp_path / 'state.json').read_text())
     assert saved['images_paths'] == [os.path.abspath(images)]
@@ -507,8 +543,8 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
     assert saved['measurements_axes'] == {'X': 'intensity', 'Y': 'area'}
 
     viewer.measurementsModeCombobox.setCurrentIndex(0)
-    viewer.columnsModel.item(0).setCheckState(Qt.Unchecked)
-    viewer.columnsModel.item(1).setCheckState(Qt.Checked)
+    column(viewer, 'area').setCheckState(Qt.Unchecked)
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
     viewer.measurementsAxes = {'X': '', 'Y': ''}
     viewer.normalizeCheckbox.setChecked(False)
     load_position = Mock(return_value=viewer.data[0])
@@ -516,6 +552,10 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
     monkeypatch.setattr(
         measurements_viewer, 'get_channels_and_segm_endnames',
         Mock(return_value=(['phase'], ['segm_custom']))
+    )
+    monkeypatch.setattr(
+        viewer, 'selectConfigurationInput',
+        lambda config: viewer.configurationInputOptions(config)[0]
     )
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())
@@ -537,8 +577,7 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
 def test_save_as_and_save_reuse_filepath(viewer, tmp_path, monkeypatch):
     configuration_data(viewer, tmp_path)
     first, second = tmp_path / 'first.json', tmp_path / 'second.json'
-    dialog = Mock(side_effect=[(str(first), ''), (str(second), '')])
-    monkeypatch.setattr(measurements_viewer.QFileDialog, 'getSaveFileName', dialog)
+    dialog = mock_filename_dialog(monkeypatch, tmp_path, 'first', 'second.json')
     assert viewer.saveConfiguration()
     viewer.normalizeCheckbox.setChecked(True)
     assert viewer.saveConfiguration()
@@ -573,6 +612,10 @@ def test_loading_failure_preserves_current_data(
     set_data = Mock()
     monkeypatch.setattr(viewer, 'configurationError', error)
     monkeypatch.setattr(viewer, 'setData', set_data)
+    monkeypatch.setattr(
+        viewer, 'selectConfigurationInput',
+        lambda config: viewer.configurationInputOptions(config)[0]
+    )
     path = tmp_path / 'invalid.json'
     path.write_text(json.dumps(configuration))
     viewer.configurationFilepath = 'previous.json'
@@ -584,10 +627,7 @@ def test_loading_failure_preserves_current_data(
 
 def test_save_cancel_and_write_failure(viewer, tmp_path, monkeypatch):
     configuration_data(viewer, tmp_path)
-    monkeypatch.setattr(
-        measurements_viewer.QFileDialog, 'getSaveFileName',
-        Mock(return_value=('', ''))
-    )
+    mock_filename_dialog(monkeypatch, tmp_path, None)
     assert not viewer.saveConfiguration()
     assert viewer.configurationFilepath is None
     viewer.configurationFilepath = str(tmp_path / 'missing' / 'state.json')
@@ -599,24 +639,27 @@ def test_save_cancel_and_write_failure(viewer, tmp_path, monkeypatch):
 
 def test_startup_prompt_only_once(app, monkeypatch):
     prompt = Mock()
-    monkeypatch.setattr(MeasurementsViewerWin, 'askLoadConfiguration', prompt)
+    monkeypatch.setattr(MeasurementsViewerWin, 'loadConfiguration', prompt)
     window = MeasurementsViewerWin()
     window.show()
-    app.processEvents()
+    QTest.qWait(50)
     window.hide()
     window.show()
-    app.processEvents()
-    prompt.assert_called_once()
+    QTest.qWait(50)
+    prompt.assert_called_once_with()
     window.deleteLater()
     app.processEvents()
 
 
 def test_startup_opens_configuration_picker_directly(app, monkeypatch):
     window = MeasurementsViewerWin()
-    load = Mock()
-    monkeypatch.setattr(window, 'loadConfiguration', load)
-    window.askLoadConfiguration()
-    load.assert_called_once_with()
+    picker = Mock(return_value=None)
+    monkeypatch.setattr(window, 'selectConfigurationFilepath', picker)
+    window.show()
+    QTest.qWait(50)
+    # Skipping the picker starts the viewer without data
+    picker.assert_called_once_with()
+    assert not window.isDataLoaded
     window.deleteLater()
     app.processEvents()
 
@@ -628,7 +671,14 @@ def test_configuration_picker_buttons(
     from cellacdc import apps
     from qtpy.QtWidgets import QPushButton
 
-    viewer.configurationsPath = str(tmp_path)
+    premade = tmp_path / 'premade'
+    premade.mkdir()
+    monkeypatch.setattr(
+        measurements_viewer, 'MEASUREMENTS_CONFIGURATIONS_PATH', str(tmp_path)
+    )
+    monkeypatch.setattr(
+        measurements_viewer, 'PREMADE_CONFIGURATIONS_PATH', str(premade)
+    )
     path = tmp_path / 'saved.json'
     if has_configuration:
         path.write_text('{}')
@@ -642,11 +692,17 @@ def test_configuration_picker_buttons(
     def create_dialog(*args, **kwargs):
         dialog = original_dialog(*args, **kwargs)
         buttons = dialog.findChildren(QPushButton)
-        skip, = [button for button in buttons if button.text() == 'Skip loading']
+        skip, = [
+            button for button in buttons
+            if button.text() == 'Skip/New configuration'
+        ]
         browse, = [
             button for button in buttons if button.text() == 'Browse configuration...'
         ]
-        ok, = [button for button in buttons if button.text().lower().strip('&') == 'ok']
+        ok, = [
+            button for button in buttons
+            if button.text().replace('&', '').strip().lower() == 'ok'
+        ]
 
         def interact():
             assert ok.isEnabled() == has_configuration
@@ -670,11 +726,16 @@ def test_configuration_picker_buttons(
 
 @pytest.mark.parametrize('choice', ['cancel', 'dismiss', 'discard', 'save'])
 @pytest.mark.parametrize('saved', [False, True])
-def test_close_prompts_and_respects_cancel(viewer, monkeypatch, choice, saved):
-    viewer.isDataLoaded = True
+def test_close_prompts_and_respects_cancel(
+        viewer, tmp_path, monkeypatch, choice, saved):
+    # Loaded data with a configuration that was never saved
+    configuration_data(viewer, tmp_path)
+    assert viewer.hasUnsavedConfiguration()
+    # Cancel, Don't save, Save configuration...
     buttons = [object(), object(), object()]
     msg = Mock()
-    msg.question.return_value = buttons
+    msg.warning.return_value = buttons
+    msg.cancel = choice in ('cancel', 'dismiss')
     msg.clickedButton = {
         'cancel': buttons[0], 'dismiss': None,
         'discard': buttons[1], 'save': buttons[2]
@@ -688,6 +749,7 @@ def test_close_prompts_and_respects_cancel(viewer, monkeypatch, choice, saved):
     event = QCloseEvent()
     viewer.closeEvent(event)
     accepted = choice == 'discard' or (choice == 'save' and saved)
+    msg.warning.assert_called_once()
     assert event.isAccepted() == accepted
     assert cleanup.called == accepted
     assert save.called == (choice == 'save')
@@ -707,10 +769,14 @@ def test_configuration_restores_real_images_and_overlay(app, tmp_path, monkeypat
     pd.DataFrame({
         'frame_i': [0], 'Cell_ID': [1], 'area': [12.0], 'intensity': [20.0]
     }).to_csv(images / 'test_acdc_output_custom.csv', index=False)
-    monkeypatch.setattr(MeasurementsViewerWin, 'askLoadConfiguration', Mock())
     window = MeasurementsViewerWin()
+    window._startupConfigurationPrompted = True
     errors = []
     monkeypatch.setattr(window, 'configurationError', lambda *args: errors.append(args))
+    monkeypatch.setattr(
+        window, 'selectConfigurationInput',
+        lambda config: window.configurationInputOptions(config)[0]
+    )
     configuration = {
         'version': 1, 'images_paths': [str(images)], 'channel': 'phase',
         'segm_endname': 'segm_custom', 'overlay_channels': ['GFP'],
@@ -730,9 +796,18 @@ def test_configuration_restores_real_images_and_overlay(app, tmp_path, monkeypat
         assert not window.allOverlayToolbuttons['phase'].isChecked()
         np.testing.assert_array_equal(window.posData().img_data[0], image)
         np.testing.assert_array_equal(window.posData().segm_data[0], labels)
-        assert window.configuration() == configuration
+        # Version 1 files are upgraded to version 2 on saving
+        restored = window.configuration()
+        assert restored['version'] == 2
+        assert {
+            key: value for key, value in restored.items()
+            if key in configuration and key != 'version'
+        } == {
+            key: value for key, value in configuration.items()
+            if key != 'version'
+        }
         assert window.saveConfiguration()
-        assert json.loads(path.read_text()) == configuration
+        assert json.loads(path.read_text()) == restored
         assert len(window.measurementsPlot.listDataItems()) == 1
     finally:
         window.deleteLater()

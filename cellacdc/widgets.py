@@ -7138,6 +7138,11 @@ class myColorButton(pg.ColorButton):
         self.update()
         
     def _make_dialog(self):
+        # Replaces pyqtgraph's parentless dialog so that it opens window-modal
+        # on top of the enclosing window (e.g. a modal dialog). It must keep
+        # the same connections as pg.ColorButton.__init__: live preview
+        # (sigColorChanging), restore on reject and commit on accept
+        # (colorSelected -> sigColorChanged).
         dlg = QColorDialog(self.window())  # parent = enclosing dialog
         dlg.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
         dlg.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
@@ -7145,6 +7150,7 @@ class myColorButton(pg.ColorButton):
         dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         dlg.currentColorChanged.connect(self.dialogColorChanged)
         dlg.rejected.connect(self.colorRejected)
+        dlg.colorSelected.connect(self.colorSelected)
         return dlg
         
     # edit show color dialog on click

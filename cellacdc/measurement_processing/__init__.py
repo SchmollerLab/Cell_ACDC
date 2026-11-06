@@ -51,6 +51,25 @@ def _load_processors():
 MEASUREMENT_PROCESSING_MAPPER = _load_processors()
 
 
+def _group_row_positions(index, is_timelapse):
+    """Return the row positions of each group processed by a non-bulk step.
+
+    Per-frame steps group rows by ``frame_i`` and keep their row order;
+    timelapse steps group rows by ``Cell_ID`` and sort each cell's positions
+    by frame (stable, so ties keep row order). Computed once per step and
+    reused for every column.
+    """
+    level = 'Cell_ID' if is_timelapse else 'frame_i'
+    groups = pd.Series(0, index=index).groupby(level=level, sort=False).indices
+    if not is_timelapse:
+        return list(groups.values())
+    frames = index.get_level_values('frame_i').to_numpy()
+    return [
+        indices[np.argsort(frames[indices], kind='stable')]
+        for indices in groups.values()
+    ]
+
+
 def apply_recipe(df, cols, recipe, new_colnames):
     """Apply a recipe to selected numeric columns without modifying the input."""
     if not isinstance(df, pd.DataFrame):
@@ -63,6 +82,21 @@ def apply_recipe(df, cols, recipe, new_colnames):
         raise ValueError('Select at least one measurement with data.')
     if not recipe:
         raise ValueError('The measurement-processing recipe cannot be empty.')
+    cols = list(cols)
+    new_colnames = list(new_colnames)
+    if not cols:
+        raise ValueError('Select at least one measurement with data.')
+    if len(new_colnames) != len(cols):
+        raise ValueError(
+            'Provide one output column name per selected measurement.'
+        )
+    if len(set(new_colnames)) != len(new_colnames):
+        raise ValueError('Output column names must be unique.')
+    existing = [name for name in new_colnames if name in df.columns]
+    if existing:
+        raise ValueError(
+            f'Output columns already exist: {", ".join(map(str, existing))}'
+        )
 
     result = df[cols].copy()
     new_col_name_dict = dict(zip(cols, new_colnames))
@@ -83,14 +117,10 @@ def apply_recipe(df, cols, recipe, new_colnames):
             result = processed
             continue
 
-        level = 'Cell_ID' if processor.is_timelapse else 'frame_i'
-        groups = result.groupby(level=level, sort=False).indices.values()
+        groups = _group_row_positions(result.index, processor.is_timelapse)
         for column in result.columns:
             values = result[column].to_numpy(dtype=float, na_value=np.nan).copy()
             for indices in groups:
-                if processor.is_timelapse:
-                    frames = result.index.get_level_values('frame_i')
-                    indices = indices[np.argsort(frames.take(indices), kind='stable')]
                 processed = np.asarray(processor.run(values[indices].copy(), **kwargs))
                 if processed.shape != indices.shape:
                     raise ValueError('Measurement processing must preserve the number of values.')

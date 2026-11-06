@@ -29,6 +29,29 @@ def _keep_long_runs(mask, min_length):
     return result
 
 
+_ZERO_SCALE = 1e-10
+
+
+def _relative_scale(values):
+    """Return the nonzero denominators of the relative changes of `values`.
+
+    The change from observation i to i + 1 is divided by the absolute value
+    of observation i + 1. When that value is (close to) zero, the larger
+    absolute value of the two observations is used instead, and 1 (i.e. the
+    absolute change) when both are (close to) zero. The denominator is
+    therefore never zero and the sign of every change is preserved, also for
+    changes towards or away from zero. NaN values propagate to the change.
+    """
+    previous = np.abs(values[:-1])
+    following = np.abs(values[1:])
+    with np.errstate(invalid='ignore'):
+        scale = np.where(
+            following > _ZERO_SCALE, following, np.fmax(previous, following)
+        )
+        scale = np.where(scale > _ZERO_SCALE, scale, 1.0)
+    return scale
+
+
 def _check_int(value, argname, minimum):
     if (isinstance(value, bool) or not isinstance(value, numbers.Integral)
             or value < minimum):
@@ -82,9 +105,12 @@ class Model:
             falling runs are set to 0 (e.g. 40 frames = 3.3 h at 5 min per
             frame).
         relative : bool, optional
-            If True, the change is divided by the absolute value of the
-            measurement (relative change), so the threshold is a fraction
-            per observation. If False, the absolute change is used.
+            If True, the change is divided by the absolute value of the next
+            observation (relative change), so the threshold is a fraction
+            per observation. If the next value is zero, the change is
+            divided by the absolute value of the current observation
+            instead (0 to 0 is no change), so changes towards or away from
+            zero keep their sign. If False, the absolute change is used.
 
         Returns
         -------
@@ -102,11 +128,7 @@ class Model:
         if values.size > 1:
             change = np.diff(values)
             if relative:
-                scale = np.abs(values[1:])
-                change = np.divide(
-                    change, scale, out=np.zeros_like(change),
-                    where=scale > 1e-10
-                )
+                change = change / _relative_scale(values)
             change = np.nan_to_num(change, nan=0.0)
             up = change > threshold
             down = change < -threshold

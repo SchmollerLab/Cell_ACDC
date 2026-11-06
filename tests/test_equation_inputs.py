@@ -11,6 +11,14 @@ from cellacdc import timepoint_predictors as tp
 from cellacdc._equations import equation_variable_spans
 
 
+@pytest.fixture(scope='module')
+def qapp():
+    # Module-scoped so the QApplication exists (and stays alive) before the
+    # function-scoped dialog watchdog of conftest.py creates its QTimer
+    from qtpy.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
 def test_timepoint_debug_disabled_is_silent(monkeypatch, capsys):
     monkeypatch.setattr(tp, 'DEBUG', False)
     monkeypatch.delenv('CELLACDC_TIMEPOINT_DEBUG', raising=False)
@@ -54,12 +62,13 @@ def test_timepoint_debug_dumps_blocked_stack_and_stops(monkeypatch, capsys):
 
 
 @pytest.mark.parametrize('debug', [False, True])
-def test_timepoint_debug_trace_accepts_qt_clicked_slot(monkeypatch, debug):
+def test_timepoint_debug_trace_accepts_qt_clicked_slot(
+        qapp, monkeypatch, debug
+    ):
     monkeypatch.setattr(tp, 'DEBUG', debug)
     monkeypatch.delenv('CELLACDC_TIMEPOINT_DEBUG', raising=False)
-    from qtpy.QtWidgets import QApplication, QPushButton
+    from qtpy.QtWidgets import QPushButton
 
-    app = QApplication.instance() or QApplication([])
     calls = []
 
     class Target:
@@ -74,7 +83,7 @@ def test_timepoint_debug_trace_accepts_qt_clicked_slot(monkeypatch, debug):
     target.test_cb(True)
     assert calls == [target, target]
     button.deleteLater()
-    app.processEvents()
+    qapp.processEvents()
 
 
 def test_evaluate_passes_only_referenced_columns_to_eval(monkeypatch):

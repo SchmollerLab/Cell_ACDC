@@ -41,13 +41,30 @@ def viewer(app, monkeypatch):
     app.processEvents()
 
 
-def accept_formula(monkeypatch, formula, name='combined', before_accept=None):
+def offer_channel_less_input(dialog, variable):
+    """Offer a channel-less input (e.g. ``_mean``) in the equation editor.
+
+    With a loaded table the editor only lists the table's columns, so the
+    channel-less entries of the "All channels measurements" group are hidden.
+    Registering one here exercises the viewer's per-channel expansion
+    (``CombineMetricsEquationDialog.getEquationsDict``) end to end.
+    """
+    dialog.channelLessVariables.add(variable)
+    dialog.formulaEditWidget.setVariableNames([*dialog.variableNames, variable])
+
+
+def accept_formula(
+        monkeypatch, formula, name='combined', before_accept=None,
+        channel_less=()
+    ):
     dialogs = []
 
     def accept(dialog):
         dialogs.append(dialog)
         assert isinstance(dialog, apps.CombineMetricsEquationDialog)
         assert not dialog.saveToConfig
+        for variable in channel_less:
+            offer_channel_less_input(dialog, variable)
         dialog.newColNameLineEdit.setText(name)
         dialog.formulaEditWidget.setText(formula)
         dialog.test_cb()
@@ -76,8 +93,11 @@ def test_button_opens_dialog_and_adds_numeric_column(viewer, monkeypatch):
 
 
 def test_channel_less_equation_adds_one_column_per_channel(viewer, monkeypatch):
-    accept_formula(monkeypatch, '_mean / GFP_mean', 'ratio')
+    dialogs = accept_formula(
+        monkeypatch, '_mean / GFP_mean', 'ratio', channel_less=['_mean']
+    )
     viewer.combineMeasurements()
+    assert dialogs[0].channelLessColnames == ['_mean']
     assert viewer.acdc_df['GFP_ratio'].tolist() == [1., 1., 1.]
     assert viewer.acdc_df['RFP_ratio'].tolist() == [0.5, 0.5, 0.5]
 
@@ -96,7 +116,7 @@ def test_categorical_comparison_is_available_for_plotting(viewer, monkeypatch):
 ])
 def test_existing_columns_are_not_overwritten(viewer, monkeypatch, formula, name):
     original = viewer.acdc_df
-    dialogs = accept_formula(monkeypatch, formula, name)
+    dialogs = accept_formula(monkeypatch, formula, name, channel_less=['_mean'])
     viewer.combineMeasurements()
     assert viewer.acdc_df is original
     assert viewer.posData().acdc_df is original
@@ -110,7 +130,9 @@ def test_failed_channel_expansion_is_atomic(viewer, monkeypatch):
     viewer.acdc_df = viewer.acdc_df.drop(columns='RFP_mean')
     viewer.posData().acdc_df = viewer.acdc_df
     original = viewer.acdc_df
-    accept_formula(monkeypatch, '_mean / GFP_mean', 'ratio')
+    accept_formula(
+        monkeypatch, '_mean / GFP_mean', 'ratio', channel_less=['_mean']
+    )
     viewer.combineMeasurements()
     assert viewer.acdc_df is original
     assert 'GFP_ratio' not in original
@@ -196,9 +218,10 @@ def test_combined_columns_stay_with_their_position(viewer, monkeypatch):
 
 def test_failed_processing_restores_combine_button(viewer):
     original = viewer.acdc_df
-    viewer.startSignalProcessing(
+    viewer.startMeasurementsProcessing(
         ['GFP_mean'],
-        [{'method': 'Smooth measurement', 'kwargs': {'window': 0}}], 'copy'
+        [{'method': 'Smooth measurement', 'kwargs': {'window': 0}}],
+        ['GFP_mean_copy']
     )
     assert not viewer.combineMeasurementsButton.isEnabled()
     deadline = time.monotonic() + 10

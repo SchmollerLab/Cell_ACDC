@@ -19,7 +19,8 @@ from cellacdc.measurements_viewer import (
     MeasurementsViewerWin, PREMADE_CONFIGURATIONS_PATH
 )
 from cellacdc.timepoint_predictors import (
-    PredictorDependencies, TimepointPredictor, TIMEPOINT_PREFIX
+    PREDICTOR_NONE, PredictorDependencies, TimepointPredictor,
+    TIMEPOINT_PREFIX
 )
 
 FUCCI_TEMPLATE = os.path.join(
@@ -63,8 +64,10 @@ def run_fucci_pipeline(acdc_df, mapping, SizeT=None, overrides=None):
         f'{TIMEPOINT_PREFIX}{identifier["name"]}': identifier['predictor']
         for identifier in configuration['timepoint_identifiers']
     }
+    # Manual annotations (e.g. "Excluded") have no predictor, like in
+    # `MeasurementsViewerWin.validateConfiguration`
     annotations = {
-        state['name']: state['predictor']
+        state['name']: state.get('predictor') or {'type': PREDICTOR_NONE}
         for state in configuration['custom_annotations']
     }
     predictors = {**timepoints, **annotations}
@@ -172,6 +175,44 @@ def test_ramp_detection_threshold_relative_and_missing_values():
     assert RampDetection.run(
         signal, threshold=0.5, min_length=1, relative=False
     )[0] == 1
+
+
+@pytest.mark.parametrize('signal, expected', [
+    # Changes towards and away from zero keep their sign (regression: the
+    # step to 0 was replaced with no change and the ramp was discarded)
+    ([3, 2, 1, 0], [-1, -1, -1, 0]),
+    ([0, 1, 2, 3], [1, 1, 1, 0]),
+    ([-2, -1, 0, 1], [1, 1, 1, 0]),
+    ([1, 0, -1, -2], [-1, -1, -1, 0]),
+])
+def test_ramp_detection_relative_change_through_zero(signal, expected):
+    signal = np.array(signal, dtype=float)
+    result = RampDetection.run(signal, gap_frames=0, min_length=3)
+    assert list(result) == expected
+    # Same direction as the absolute change
+    assert list(RampDetection.run(
+        signal, gap_frames=0, min_length=3, relative=False
+    )) == expected
+
+
+def test_ramp_detection_relative_change_zero_and_missing_values():
+    # 0 -> 0 is no change and interrupts the ramps
+    signal = np.array([2, 1, 0, 0, 1, 2], dtype=float)
+    assert list(RampDetection.run(signal, gap_frames=0, min_length=1)) == (
+        [-1, -1, 0, 1, 1, 0]
+    )
+    # The step to 0 is a full (100%) relative decrease
+    assert RampDetection.run(
+        np.array([1, 0], dtype=float), threshold=0.99, min_length=1
+    )[0] == -1
+    # Ordinary nonzero data: relative to the next value (1 -> 2 is +50%)
+    rising = np.array([1, 2], dtype=float)
+    assert RampDetection.run(rising, threshold=0.49, min_length=1)[0] == 1
+    assert RampDetection.run(rising, threshold=0.51, min_length=1)[0] == 0
+    # Changes from or to a missing value are no change
+    signal = np.array([0, np.nan, 0, 1], dtype=float)
+    result = RampDetection.run(signal, gap_frames=0, min_length=1)
+    assert result[0] == 0 and np.isnan(result[1]) and result[2] == 1
 
 
 @pytest.mark.parametrize('kwargs', [

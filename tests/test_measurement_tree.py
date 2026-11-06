@@ -116,9 +116,13 @@ def test_recipe_selects_only_measurement_leaves_across_groups(app, dataframe):
                 dialog.measurementsSearchProxy.mapFromSource(item.index()),
                 QItemSelectionModel.Select
             )
+    # Without a suffix the output names equal the inputs, which the dialog
+    # rejects as a name collision; enter a noncolliding suffix first.
+    dialog.append_new_colname.setText('processed')
     dialog.ok_cb()
     assert not dialog.cancel
     assert set(dialog.selectedChannels) == selected
+    assert set(dialog.saveNames) == {f'{name}_processed' for name in selected}
     dialog.deleteLater()
 
 
@@ -147,9 +151,14 @@ def test_recipe_group_heading_cannot_be_processed(app, dataframe, monkeypatch):
     )
     dialog.listSelector.clearSelection()
     group_index = dialog.measurementsSearchProxy.index(0, 0)
+    assert dialog.measurementsSearchProxy.hasChildren(group_index)
     dialog.listSelector.selectionModel().select(
         group_index, QItemSelectionModel.Select
     )
+    # Group headings are not selectable, so nothing is selected to process.
+    assert dialog.listSelector.selectedIndexes() == []
+    # A noncolliding suffix so only the empty selection can block accepting.
+    dialog.append_new_colname.setText('processed')
     warning = Mock()
     monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
     dialog.ok_cb()
@@ -165,8 +174,12 @@ def test_recipe_name_only_api_and_image_channel_selector_remain_supported(app):
     }
     selected, = dialog.listSelector.selectedIndexes()
     assert selected.data() in {'area', 'volume', 'intensity'}
+    # Default output names equal the inputs (rejected); use a suffix.
+    dialog.append_new_colname.setText('smooth')
     dialog.ok_cb()
+    assert not dialog.cancel
     assert dialog.selectedChannels == [selected.data()]
+    assert dialog.saveNames == [f'{selected.data()}_smooth']
     dialog.deleteLater()
     image = apps.PreProcessRecipeDialogUtil(['phase', 'GFP'])
     assert isinstance(image.listSelector, widgets.listWidget)
@@ -191,7 +204,8 @@ def viewer(app, dataframe, monkeypatch):
 
 def test_viewer_tree_retains_checks_axes_and_colors_on_refresh(viewer):
     assert isinstance(viewer.columnsListWidget, QTreeView)
-    assert viewer.columnsListWidget.indentation() == 12
+    # Compact indentation of the measurements tree (set in the viewer UI).
+    assert viewer.columnsListWidget.indentation() == 6
     items = {item.text(): item for item in viewer.columnsModel.measurementItems()}
     assert 'stage' not in items
     assert 'known' in items
