@@ -14445,11 +14445,12 @@ When working with 3D segmentation masks:
     def fontSizeChangedContextMenu(self, font_size: int):
         self.labelsGrad.setFontSize(font_size, blockSignal=True)
         self.imgGrad.setFontSize(font_size, blockSignal=True)
-
         self.fontSizeSpinBox.blockSignals(True)
         self.fontSizeSpinBox.setValue(font_size)
         self.fontSizeSpinBox.blockSignals(False)
-
+        font_size = self.fontSizeSpinBox.value()
+        self.labelsGrad.setFontSize(font_size, blockSignal=True)
+        self.imgGrad.setFontSize(font_size, blockSignal=True)
         self.changeFontSize()
 
     @exception_handler
