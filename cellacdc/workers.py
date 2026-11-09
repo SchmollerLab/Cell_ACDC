@@ -4442,7 +4442,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             
             self.signals.initProgressBar.emit(0)
             
-            self.logger.log('Saving concantenated files...')
+            self.logger.log('Saving concatenated files...')
             
             allpos_folderpath = os.path.join(exp_path, 'spotMAX_multipos_output')
             os.makedirs(allpos_folderpath, exist_ok=True)
