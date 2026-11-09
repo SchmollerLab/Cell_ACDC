@@ -314,6 +314,11 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
     basename = (selectedOptions.get('basename') or '').strip().rstrip('_')
     filenamePrefix = f'{basename}_' if basename else ''
 
+    # User-provided metadata (PhysicalSizeX/Y/Z in μm, TimeIncrement in
+    # seconds) from the setup dialogue as a Cell-ACDC metadata DataFrame
+    metadataDf = selectedOptions.get('metadata_df')
+    alreadyWrittenMetadata = {'basename', 'SizeT', 'SizeZ'}
+
     createdFiles = []
     positionFolders = {}
     posNumberShift = 0
@@ -489,7 +494,7 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
             createdFiles.append(str(outputPath))
 
         SizeT, SizeZ = output.shape[:2]
-        metadataPath = imagesFolder / f'{basename}_metadata.csv'
+        metadataPath = imagesFolder / f'{filenamePrefix}metadata.csv'
         with metadataPath.open('w', newline='', encoding='utf-8') as stream:
             writer = csv.writer(stream)
             writer.writerow(('Description', 'values'))
@@ -498,7 +503,14 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
             writer.writerow(('SizeZ', str(SizeZ)))
             for c, channel in enumerate(channelNames):
                 writer.writerow((f'channel_{c}_name', channel))
-        
+            if metadataDf is not None:
+                for description, value in metadataDf['values'].items():
+                    if description in alreadyWrittenMetadata:
+                        continue
+                    if description.startswith('channel_'):
+                        continue
+                    writer.writerow((description, str(value)))
+
         if signals is not None:
             signals.progressBar.emit(1)
 

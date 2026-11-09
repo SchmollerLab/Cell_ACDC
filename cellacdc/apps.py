@@ -23177,6 +23177,8 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             )
             mainLayout.addWidget(group)
 
+        mainLayout.addWidget(self._make_metadata_group())
+
         mainLayout.addStretch()
 
         self.sourceFolderPathControl.sigValueChanged.connect(
@@ -23283,6 +23285,133 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         detailLE.textChanged.connect(self.updatePositionNamePreview)
         self._update_dimension_control(key, 'not_present')
         return groupBox
+
+    def _make_metadata_group(self):
+        groupBox = QGroupBox('Metadata')
+        groupLayout = QGridLayout(groupBox)
+
+        row = 0
+        self.PhysicalSizeX_DSB = QDoubleSpinBox()
+        self.PhysicalSizeX_DSB.setAlignment(Qt.AlignCenter)
+        self.PhysicalSizeX_DSB.setMaximum(2147483647.0)
+        self.PhysicalSizeX_DSB.setSingleStep(0.001)
+        self.PhysicalSizeX_DSB.setDecimals(7)
+        self.PhysicalSizeX_DSB.setValue(1.0)
+        groupLayout.addWidget(
+            QLabel('Pixel width (X):  '), row, 0, alignment=Qt.AlignRight
+        )
+        groupLayout.addWidget(self.PhysicalSizeX_DSB, row, 1)
+        groupLayout.addWidget(QLabel('μm'), row, 2)
+
+        row += 1
+        self.PhysicalSizeY_DSB = QDoubleSpinBox()
+        self.PhysicalSizeY_DSB.setAlignment(Qt.AlignCenter)
+        self.PhysicalSizeY_DSB.setMaximum(2147483647.0)
+        self.PhysicalSizeY_DSB.setSingleStep(0.001)
+        self.PhysicalSizeY_DSB.setDecimals(7)
+        self.PhysicalSizeY_DSB.setValue(1.0)
+        groupLayout.addWidget(
+            QLabel('Pixel height (Y):  '), row, 0, alignment=Qt.AlignRight
+        )
+        groupLayout.addWidget(self.PhysicalSizeY_DSB, row, 1)
+        groupLayout.addWidget(QLabel('μm'), row, 2)
+
+        row += 1
+        self.PhysicalSizeZ_DSB = QDoubleSpinBox()
+        self.PhysicalSizeZ_DSB.setAlignment(Qt.AlignCenter)
+        self.PhysicalSizeZ_DSB.setMaximum(2147483647.0)
+        self.PhysicalSizeZ_DSB.setSingleStep(0.001)
+        self.PhysicalSizeZ_DSB.setDecimals(7)
+        self.PhysicalSizeZ_DSB.setValue(1.0)
+        groupLayout.addWidget(
+            QLabel('Voxel depth (Z):  '), row, 0, alignment=Qt.AlignRight
+        )
+        groupLayout.addWidget(self.PhysicalSizeZ_DSB, row, 1)
+        groupLayout.addWidget(QLabel('μm'), row, 2)
+
+        row += 1
+        self.TimeIncrement_DSB = widgets.FloatLineEdit(
+            allowNegative=False, warningValues={1.0}
+        )
+        self.TimeIncrement_DSB.setValue(1.0)
+        self.TimeIncrement_DSB.setMinimum(0.0)
+        groupLayout.addWidget(
+            QLabel('Frame interval:  '), row, 0, alignment=Qt.AlignRight
+        )
+        groupLayout.addWidget(self.TimeIncrement_DSB, row, 1)
+
+        self.TimeIncrementUnit_CB = QComboBox()
+        self.TimeIncrementUnit_CB.addItems(
+            ['ms', 'seconds', 'minutes', 'hours']
+        )
+        self.TimeIncrementUnit_CB.setCurrentText('seconds')
+        groupLayout.addWidget(
+            self.TimeIncrementUnit_CB, row, 2, alignment=Qt.AlignLeft
+        )
+
+        groupLayout.setColumnStretch(1, 1)
+        return groupBox
+
+    def metadata(self):
+        """Return the metadata entered by the user.
+
+        Physical sizes are in μm, while the time increment is in the unit
+        returned in `TimeIncrementUnit`.
+        """
+        return {
+            'PhysicalSizeX': self.PhysicalSizeX_DSB.value(),
+            'PhysicalSizeY': self.PhysicalSizeY_DSB.value(),
+            'PhysicalSizeZ': self.PhysicalSizeZ_DSB.value(),
+            'TimeIncrement': self.TimeIncrement_DSB.value(),
+            'TimeIncrementUnit': self.TimeIncrementUnit_CB.currentText(),
+        }
+
+    def setMetadata(self, metadata):
+        if not metadata:
+            return
+
+        for key in ('PhysicalSizeX', 'PhysicalSizeY', 'PhysicalSizeZ'):
+            value = metadata.get(key)
+            if value is not None:
+                getattr(self, f'{key}_DSB').setValue(float(value))
+
+        TimeIncrement = metadata.get('TimeIncrement')
+        if TimeIncrement is not None:
+            self.TimeIncrement_DSB.setValue(float(TimeIncrement))
+
+        TimeIncrementUnit = metadata.get('TimeIncrementUnit')
+        if TimeIncrementUnit is not None:
+            self.TimeIncrementUnit_CB.setCurrentText(TimeIncrementUnit)
+
+    def metadataDataFrame(self):
+        """Return the metadata as a Cell-ACDC metadata DataFrame.
+
+        The DataFrame has index named 'Description' and a single column
+        'values', like the `metadata.csv` files saved by Cell-ACDC.
+        `TimeIncrement` is converted to seconds (Cell-ACDC convention).
+        """
+        metadata = self.metadata()
+        TimeIncrementUnit = metadata['TimeIncrementUnit']
+        toSecondsFactor = {
+            'ms': 1e-3, 'seconds': 1.0, 'minutes': 60.0, 'hours': 3600.0
+        }[TimeIncrementUnit]
+        TimeIncrement = metadata['TimeIncrement']*toSecondsFactor
+
+        values = {
+            'TimeIncrement': TimeIncrement,
+            'PhysicalSizeZ': metadata['PhysicalSizeZ'],
+            'PhysicalSizeY': metadata['PhysicalSizeY'],
+            'PhysicalSizeX': metadata['PhysicalSizeX'],
+        }
+        for c, (nameLE, _) in enumerate(self.channelEntries):
+            values[f'channel_{c}_name'] = nameLE.text().strip()
+
+        df = pd.DataFrame({
+            'Description': list(values.keys()),
+            'values': list(values.values())
+        }).set_index('Description')
+
+        return df
 
     def _get_dimension_mode(self, key):
         controls = self.dimensionControls[key]
@@ -23515,6 +23644,8 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             self.baseNameLE.text().strip() or None
         )
         self.selectedOptions['dimensions'] = dimensionOptions
+        self.selectedOptions['metadata'] = self.metadata()
+        self.selectedOptions['metadata_df'] = self.metadataDataFrame()
 
         self.cancel = False
         self.close()
@@ -23690,9 +23821,10 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         dimensionOptions = self.dimensionOptions()
         if dimensionOptions is None:
             return
-            
+
+        recipe = {**dimensionOptions, 'metadata': self.metadata()}
         with open(json_filepath, 'w') as f:
-            json.dump(dimensionOptions, f, indent=2)
+            json.dump(recipe, f, indent=2)
         
         self.saveRecipeButton.confirmAction()
     
@@ -23795,8 +23927,9 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
     def saveLastParameters(self, dimensionOptions):
         os.makedirs(restruct_files_recipes_path, exist_ok=True)
         filepath = os.path.join(restruct_files_recipes_path, '_last_setup.json')
+        recipe = {**dimensionOptions, 'metadata': self.metadata()}
         with open(filepath, 'w') as f:
-            json.dump(dimensionOptions, f, indent=2)
+            json.dump(recipe, f, indent=2)
 
     def dimensionOptions(self):
         dimensionOptions = {}
@@ -23896,5 +24029,7 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             ):
             nameLE.setText(channel.get('name', ''))
             tokenLE.setText(channel.get('filename_identifier', ''))
+
+        self.setMetadata(options.get('metadata'))
 
         self.updatePositionNamePreview()
