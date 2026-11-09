@@ -23263,7 +23263,8 @@ class askZPlaneView(QDialog):
             posData.img_data, 
             lut='gray',
             figure_title=posData.relPath,
-            block=False
+            block=False,
+            parent=self
         )
         self.visualizeWindows.append(win)
 
