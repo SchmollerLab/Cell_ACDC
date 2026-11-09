@@ -5,6 +5,7 @@ Moved out of `apps.py` and `measurements_viewer.py`; shared dialogs
 (e.g. the custom annotation and combine-measurements equation editors)
 stay in `apps.py`.
 """
+import configparser
 import copy
 import html
 import numpy as np
@@ -81,7 +82,6 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         self.autoApplyCheckBox = widgets.Toggle(
             label_text='Auto apply on unvisited cells', parent=self
         )
-        self.autoApplyCheckBox.setChecked(autoApply)
         self.autoApplyCheckBox.setToolTip(
             'Evaluate the predictor on each cell when it is displayed for '
             'the first time.'
@@ -108,11 +108,6 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         self.consolidationCombobox = QComboBox()
         for mode in custom_annotation_predictors.CONSOLIDATION_MODES:
             self.consolidationCombobox.addItem(mode.capitalize(), mode)
-        self.consolidationCombobox.setCurrentIndex(max(
-            self.consolidationCombobox.findData(
-                predictor.get('consolidation', 'all')
-            ), 0
-        ))
         self.consolidationCombobox.setToolTip(
             'All: every result is True (default).\n'
             'None: no result is True.\n'
@@ -167,21 +162,39 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
         testLayout.addWidget(self.statusLabel, stretch=1)
         testLayout.addWidget(self.testButton)
         layout.addRow(testLayout)
-        
-        index = self.predictorCombobox.findData(predictor.get('type'))
-        self.predictorCombobox.setCurrentIndex(max(index, 0))
-        self.predictorChanged()
-        
+
+        self.setPredictor(predictor, autoApply)
+
         self.predictorCombobox.currentIndexChanged.connect(self.predictorChanged)
         self.consolidationCombobox.currentIndexChanged.connect(self.statusLabel.clear)
         self.editEquationButton.clicked.connect(self.editEquation)
         self.browseFileButton.sigPathSelected.connect(self.fileLineEdit.setText)
         self.saveTemplateButton.clicked.connect(self.saveTemplate)
         self.testButton.clicked.connect(self.testPredictor)
-    
+
+    def setPredictor(self, predictor=None, autoApply=False):
+        """Show a saved `predictor` dict (None: manual annotation) and the
+        auto-apply option (used at init and by 'Load annotation...')."""
+        if predictor is None:
+            predictor = {'type': self._predictors.PREDICTOR_NONE}
+        self.equation = predictor.get('equation', '')
+        self.otherCells = predictor.get('other_cells')
+        self.mainCellFilter = predictor.get('main_cell_filter')
+        self.equationLineEdit.setText(self.equation)
+        self.fileLineEdit.setText(predictor.get('filepath', ''))
+        self.consolidationCombobox.setCurrentIndex(max(
+            self.consolidationCombobox.findData(
+                predictor.get('consolidation', 'all')
+            ), 0
+        ))
+        index = self.predictorCombobox.findData(predictor.get('type'))
+        self.predictorCombobox.setCurrentIndex(max(index, 0))
+        self.predictorChanged()
+        self.autoApplyCheckBox.setChecked(bool(autoApply))
+
     def predictorType(self):
         return self.predictorCombobox.currentData()
-    
+
     def predictorChanged(self, *args):
         kind = self.predictorType()
         self.equationWidget.setVisible(
@@ -291,8 +304,15 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
 
 
 class TimepointPredictorEquationDialog(_CombineMetricsDialog):
-    """Equation editor (as in `CombineMetricsEquationDialog`) to predict 
-    the time points of each cell from the columns of `acdc_df`."""
+    """Equation editor (as in `CombineMetricsEquationDialog`) to predict
+    the time points of each cell from the columns of `acdc_df`.
+
+    A saved other-cell relation source (mother, sister or daughter) is
+    converted into the equivalent same-frame candidate filter. When the
+    loaded data lack the lineage tree or budding annotations of that
+    source, the dialog still opens: the saved relation is kept unchanged
+    as a read-only "<source> (annotations missing)" entry with a warning,
+    and Test reports the prediction error."""
     def __init__(
             self, allChNames, isZstack, isSegm3D, acdc_df=None, name='',
             equation='', mode='first_true', parent=None,
@@ -318,13 +338,16 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         self.otherCellFilterPresets = timepoint_predictors.CellFilter.other_presets(
             self.acdcDf
         )
+        # Saved relation source (mother/sister/daughter) whose lineage tree
+        # or budding annotations are missing in the loaded data: it is kept
+        # unchanged (read-only, with a warning) instead of being converted.
+        self._unavailableOtherSource = None
         source = self._otherCells['source']
-        if source != timepoint_predictors.SOURCE_SAME_FRAME:
-            if source not in self.otherCellFilterPresets:
-                raise ValueError(
-                    'The selected other-cell source requires lineage tree or '
-                    'budding relationship annotations.'
-                )
+        if source == timepoint_predictors.SOURCE_SAME_FRAME:
+            pass
+        elif source not in self.otherCellFilterPresets:
+            self._unavailableOtherSource = source
+        else:
             sourceCondition = self.otherCellFilterPresets[source][0]
             condition = self._otherCells['condition'].strip()
             self._otherCells['condition'] = (
@@ -491,6 +514,15 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             ):
             if key in self.otherCellFilterPresets:
                 self.otherCellsSourceCombobox.addItem(label, key)
+        missingSourceLabel = ''
+        if self._unavailableOtherSource is not None:
+            missingSourceLabel = timepoint_predictors.SOURCE_CELLS[
+                self._unavailableOtherSource
+            ]
+            self.otherCellsSourceCombobox.addItem(
+                f'{missingSourceLabel} (annotations missing)',
+                self._unavailableOtherSource
+            )
         self.otherCellsSourceCombobox.addItem(
             'Custom equation', timepoint_predictors.SOURCE_CUSTOM
         )
@@ -499,6 +531,21 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             if (condition == self._otherCells['condition']
                     and (start, end) == self._otherCellsCustomRange):
                 otherCellsPreset = key
+        if self._unavailableOtherSource is not None:
+            otherCellsPreset = self._unavailableOtherSource
+        self.otherCellsMissingSourceLabel = QLabel(html_utils.paragraph(
+            '<font color="red">The loaded measurements lack the lineage tree '
+            '(<code>parent_ID_tree</code>) or budding '
+            '(<code>relative_ID</code>, <code>relationship</code>) '
+            f'annotations required by "{html.escape(missingSourceLabel)}". '
+            'The saved relation is kept unchanged, but it cannot be '
+            'evaluated on these data. Select another source or "Custom '
+            'equation" to replace it.</font>'
+        ))
+        self.otherCellsMissingSourceLabel.setWordWrap(True)
+        self.otherCellsMissingSourceLabel.setVisible(
+            otherCellsPreset == self._unavailableOtherSource
+        )
         self.otherCellsSourceCombobox.setCurrentIndex(
             self.otherCellsSourceCombobox.findData(otherCellsPreset)
         )
@@ -545,6 +592,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         rangeLayout.addWidget(QLabel('to'))
         rangeLayout.addWidget(self.otherCellsRangeEndEdit)
         otherCellsLayout.addLayout(rangeLayout, 3, 1, 1, 2)
+        otherCellsLayout.addWidget(self.otherCellsMissingSourceLabel, 4, 0, 1, 3)
         mainLayout = self.layout()
         mainLayout.insertWidget(mainLayout.count()-3, self.mainCellGroup)
         mainLayout.insertWidget(mainLayout.count()-3, self.otherCellsGroup)
@@ -589,7 +637,12 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             self.formulaEditWidget.setText(equation)
 
     def updateOtherCellsControls(self, enabled):
-        custom = self.otherCellsSourceCombobox.currentData() == 'custom'
+        preset = self.otherCellsSourceCombobox.currentData()
+        custom = preset == 'custom'
+        self.otherCellsMissingSourceLabel.setVisible(
+            self._unavailableOtherSource is not None
+            and preset == self._unavailableOtherSource
+        )
         self.otherCellsSourceCombobox.setEnabled(enabled)
         for widget in (
                 self.otherCellsConditionEdit,
@@ -644,6 +697,10 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         if preset == 'custom':
             condition = self._otherCellsCustomCondition
             start, end = self._otherCellsCustomRange
+        elif preset == self._unavailableOtherSource:
+            condition = self._otherCells['condition']
+            start = self._otherCells['range_start']
+            end = self._otherCells['range_end']
         else:
             condition, start, end = self.otherCellFilterPresets[preset]
         self.otherCellsConditionEdit.setText(condition)
@@ -660,6 +717,13 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
     def currentOtherCells(self):
         if not self.otherCellsGroup.isChecked():
             return None
+        preset = self.otherCellsSourceCombobox.currentData()
+        if (self._unavailableOtherSource is not None
+                and preset == self._unavailableOtherSource):
+            # Keep the saved relation (and its source) unchanged
+            return self._predictors.CellFilter.validate_other(
+                dict(self._otherCells)
+            )
         settings = {
             'source': self._predictors.SOURCE_SAME_FRAME,
             'condition': self.otherCellsConditionEdit.text().strip(),
@@ -683,11 +747,13 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         return self._predictors.CellFilter.validate_main(settings)
 
     def editOtherCellsCondition(self, checked=False):
-        settings = self.currentOtherCells()
+        # The candidate filter does not depend on the frame window, so the
+        # editor opens even while the window is incomplete or invalid
         dialog = _TimepointCellFilterEquationDialog(
             self.allChNames, self.isZstack, self.isSegm3D,
             acdc_df=self.acdcDf, SizeT=self.SizeT,
-            condition=settings['condition'], includeEnquiringCell=True,
+            condition=self.otherCellsConditionEdit.text().strip(),
+            includeEnquiringCell=True,
             parent=self
         )
         dialog.formulaEditWidget._edit.setToolTip(
@@ -698,11 +764,16 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             self.otherCellsConditionEdit.setText(dialog.equation)
 
     def editMainCellCondition(self, checked=False):
+        try:
+            otherCells = self.currentOtherCells()
+        except ValueError as err:
+            self._showTestError(f'Invalid other-cell settings: {err}')
+            return
         dialog = _TimepointCellFilterEquationDialog(
             self.allChNames, self.isZstack, self.isSegm3D,
             acdc_df=self.acdcDf, SizeT=self.SizeT,
             condition=self.mainCellConditionEdit.text(),
-            otherCells=self.currentOtherCells(),
+            otherCells=otherCells,
             parent=self
         )
         dialog.formulaEditWidget._edit.setToolTip(
@@ -720,7 +791,16 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         try:
             if not formula.strip():
                 return False, 'Equation cannot be empty'
-            if not self.formulaEditWidget.referencedVariableNames():
+            # frame_i and Cell_ID are index levels (not listed in the
+            # trees) but are valid per-cell inputs; SizeT is a constant.
+            usesIndexInputs = bool(
+                {'frame_i', 'Cell_ID'}
+                & self._predictors.CellEquation.names(formula)
+            )
+            if (
+                    not self.formulaEditWidget.referencedVariableNames()
+                    and not usesIndexInputs
+                ):
                 return False, 'No measurement inputs used'
             settings = self.currentOtherCells()
             if self._predictors._OTHER_FUNCTION_PATTERN.search(formula):
@@ -863,7 +943,8 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             rules based on "true", or numerical expressions with the 
             "maximum"/"minimum" rules.<br><br>
             <b>Per-cell functions</b> are computed over all frames of the 
-            cell (NaNs are ignored) and can be combined with the other 
+            cell (aggregates ignore NaNs; SHIFT/DIFF use the cell's
+            observed rows) and can be combined with the other
             inputs, e.g. <code>cell_area_pxl &gt; 0.5 * MAX(cell_area_pxl)</code> 
             or <code>DIFF(cell_area_pxl) &gt; 50</code>. <code>any(...)</code>
             and <code>all(...)</code> reduce a condition over all frames of
@@ -885,15 +966,22 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             <b>Other-cell measurements</b> are listed in the second tree with
             an <code>_other</code> suffix. Aggregate one in the equation with
             the usual functions, e.g. <code>area &gt; MEAN(area_other)</code>.
-            A direct input such as <code>area_other</code> is also allowed
-            when the selected nonmissing values are all identical (including
-            a single value). Multiple different values require an explicit
-            aggregate. No selected rows produce 0 for other-cell inputs and
+            A direct input such as <code>area_other</code> uses the selected
+            value. With several different values, the equation is evaluated
+            once per distinct value (a warning is printed): a condition is
+            true if any value makes it true, and the Max/Min rules use the
+            extreme result. Use an aggregate such as
+            <code>MEAN(area_other)</code> to combine the values into one
+            instead. No selected rows produce 0 for other-cell inputs and
             aggregates; a direct input with only missing values also gives 0.
             The aggregation uses selected source cells in the configured
             inclusive frame window around t. Select a source preset or
             "Custom equation" to edit the displayed filter, match mode and
             frame window. Preset settings are read-only.
+            Mother, sister and daughter sources need lineage tree or budding
+            annotations; if the loaded data lack them, a saved source is
+            shown as "(annotations missing)" and kept unchanged until
+            you select another source.
             Candidate inputs use normal names; <code>this_</code>-prefixed
             names refer to the enquiring cell at t. Budding relatives use
             frame t; symmetric mothers use the shifted bounds
@@ -1006,7 +1094,8 @@ class CustomAnnotationPredictorEquationDialog(TimepointPredictorEquationDialog):
             A single boolean is broadcast before consolidation. Numerical results
             (including 0/1) are not allowed.<br><br>
             <b>Per-cell functions</b> are computed over all frames of the 
-            cell (NaNs are ignored):<br>{functions}<br><br>
+            cell (aggregates ignore NaNs; SHIFT/DIFF use the cell's
+            observed rows):<br>{functions}<br><br>
             <b>Main-cell filter</b> limits which cells are evaluated, and 
             <b>Other-cell measurements</b> (<code>_other</code> suffix) work 
             as in the time point predictors. With multiple other-cell values,
@@ -1024,6 +1113,17 @@ class CustomAnnotationPredictorEquationDialog(TimepointPredictorEquationDialog):
 
 
 class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
+    """Equation editor for the main-cell or other-cell filter of a
+    predictor (and base of the conditional formatting condition editor).
+
+    Test checks a preview and then the whole table; OK only re-tests when
+    the OK button is not already enabled by a passing Test of the current
+    equation (every edit disables it again).
+    """
+    # Offer the 'Other-cell measurements' tree (*_other inputs) in the
+    # main-cell filter. Subclasses evaluated without other cells disable it.
+    OTHER_CELL_INPUTS = True
+
     def __init__(
             self, allChNames, isZstack, isSegm3D, acdc_df=None, SizeT=None,
             condition='', includeEnquiringCell=False, parent=None,
@@ -1034,7 +1134,10 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
         self.SizeT = SizeT
         self.includeEnquiringCell = includeEnquiringCell
         self.otherCells = otherCells
-        self.includeOtherMeasurements = not includeEnquiringCell
+        # Must be set before super().__init__, which builds the trees
+        self.includeOtherMeasurements = (
+            self.OTHER_CELL_INPUTS and not includeEnquiringCell
+        )
         if includeEnquiringCell:
             df = (
                 timepoint_predictors.CellTable.flatten(acdc_df)
@@ -1139,9 +1242,9 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
                 candidate[variable] = 1
                 if name.startswith('this_'):
                     enquiring[variable] = 1
-        for name in enquiring.columns:
-            candidate[f'this_{name}'] = enquiring[name].to_numpy()
-        return candidate
+        # Both tables share the same RangeIndex: add all this_ columns at
+        # once (column-wise inserts fragment the frame)
+        return pd.concat([candidate, enquiring.add_prefix('this_')], axis=1)
 
     @timepoint_debug_trace
     def evaluateEquation(
@@ -1216,9 +1319,12 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
         self.okButton.setEnabled(success)
 
     def ok_cb(self):
-        self.test_cb()
+        # A passing Test already evaluated the current equation on the whole
+        # table (edits disable OK again): do not evaluate it twice
         if not self.okButton.isEnabled():
-            return
+            self.test_cb()
+            if not self.okButton.isEnabled():
+                return
         self.equation = self.formulaEditWidget.text().strip()
         self.cancel = False
         self.close()
@@ -1251,15 +1357,22 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
     available channel names. `inputs` are the template's validated
     `input_placeholders` (see `MeasurementsViewerWin.validateInputPlaceholders`),
     each shown with its default value and an info button for its `info` text.
+    `validate(mapping, values)` (optional, e.g. resolving the template)
+    may raise ValueError to refuse a selection: its message is shown and
+    the dialog stays open.
     After `exec_`, `mapping` is `{placeholder: channel}` and `values` is
     `{input name: typed value}` unless `cancel` is True.
     """
 
-    def __init__(self, placeholders, channels, parent=None, inputs=None):
+    def __init__(
+            self, placeholders, channels, parent=None, inputs=None,
+            validate=None
+        ):
         super().__init__(parent)
         self.cancel = True
         self.mapping = None
         self.values = None
+        self.validate = validate
         self.inputs = dict(inputs or {})
         self.setWindowTitle('Set up premade configuration')
         channels = sorted(channels)
@@ -1357,8 +1470,8 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
                 values[name] = self.parseInput(lineEdit.text(), kind)
             except ValueError:
                 raise ValueError(
-                    f'"{lineEdit.text()}" is not a valid {kind} for '
-                    f'<b>{name}</b>.'
+                    f'"{html.escape(lineEdit.text())}" is not a valid {kind} '
+                    f'for <b>{html.escape(name)}</b>.'
                 )
         return values
 
@@ -1380,10 +1493,21 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
                 self, 'Channel used twice',
                 html_utils.paragraph(
                     'Each placeholder must be mapped to a different channel. '
-                    f'Used more than once: <b>{", ".join(duplicated)}</b>'
+                    'Used more than once: '
+                    f'<b>{html.escape(", ".join(duplicated))}</b>'
                 )
             )
             return
+        if self.validate is not None:
+            try:
+                self.validate(mapping, inputValues)
+            except ValueError as err:
+                msg = widgets.myMessageBox(wrapText=False)
+                msg.warning(
+                    self, 'Invalid selection',
+                    html_utils.paragraph(html.escape(str(err)))
+                )
+                return
         self.mapping = mapping
         self.values = inputValues
         self.cancel = False
@@ -1587,8 +1711,8 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
             msg = widgets.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Invalid condition', html_utils.paragraph(
-                    f'Rule {i+1} (<code>{rule["condition"]}</code>) cannot '
-                    f'be evaluated:<br><br>{error}'
+                    f'Rule {i+1} (<code>{html.escape(rule["condition"])}'
+                    f'</code>) cannot be evaluated:<br><br>{html.escape(error)}'
                 )
             )
             return
@@ -1597,13 +1721,57 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
 
 
 class _FormattingConditionDialog(_TimepointCellFilterEquationDialog):
-    """Equation editor for one conditional formatting condition."""
+    """Equation editor for one conditional formatting condition.
+
+    Conditions see only the selected cell's rows (see the
+    `measurements_viewer` module docstring), so other-cell inputs
+    (``*_other``, ``*_OTHER(...)``) are neither offered nor accepted.
+    Missing values count as False, as in
+    `MeasurementsViewerWin.evaluateConditionalFormatting`.
+    """
+
+    OTHER_CELL_INPUTS = False
 
     INFO = (
         'Return bool or 0/1, either a scalar or one value per frame. The '
         'condition is evaluated on the selected cell across its frames; '
-        'frames where it is true are colored.'
+        'frames where it is true are colored. Missing values count as '
+        'False.'
     )
+
+    @staticmethod
+    def conditionMask(values, n):
+        """Boolean mask of length ``n`` from a condition result; missing
+        values are False. Single conversion shared by this editor and
+        `MeasurementsViewerWin.evaluateConditionalFormatting`, so both
+        accept and reject the same conditions."""
+        from . import timepoint_predictors
+        try:
+            if isinstance(values, (pd.Series, pd.Index)):
+                values = values.to_numpy(dtype=float, na_value=np.nan)
+            elif values is None or values is pd.NA:
+                values = np.nan
+            values = np.nan_to_num(np.asarray(values, dtype=float), nan=0.0)
+        except (TypeError, ValueError):
+            raise ValueError(
+                'The condition must return bool or 0/1 values.'
+            ) from None
+        return timepoint_predictors.CellFilter.boolean_values(values, n)
+
+    def evaluateEquation(
+            self, df, formula, *, enforce_dtype_output=None, preview=False
+        ):
+        if enforce_dtype_output is not bool:
+            return super().evaluateEquation(
+                df, formula, enforce_dtype_output=enforce_dtype_output,
+                preview=preview
+            )
+        values = super().evaluateEquation(df, formula, preview=preview)
+        if isinstance(values, pd.Series):
+            return pd.Series(
+                self.conditionMask(values, len(values)), index=values.index
+            )
+        return self.conditionMask(values, len(df))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1614,6 +1782,21 @@ class _FormattingConditionDialog(_TimepointCellFilterEquationDialog):
         intro = self.layout().itemAt(0).widget()
         if isinstance(intro, QLabel):
             intro.setText(html_utils.paragraph(self.INFO))
+
+    def validateEquation(self, formula):
+        usesOtherCells = (
+            any(
+                name.endswith('_other')
+                for name in self._predictors.CellEquation.names(formula)
+            )
+            or re.search(r'_OTHER\s*\(', formula, re.IGNORECASE) is not None
+        )
+        if usesOtherCells:
+            return False, (
+                'Other-cell inputs (*_other, *_OTHER(...)) are not available '
+                'in conditional formatting.'
+            )
+        return super().validateEquation(formula)
 
     def showHelp(self):
         txt = html_utils.paragraph(
@@ -1809,7 +1992,8 @@ class PhaseTranslatorRuleDialog(QDialog):
         except Exception as err:
             traceback.print_exc()
             widgets.myMessageBox(wrapText=False).warning(
-                self, 'Invalid phase rule', str(err)
+                self, 'Invalid phase rule',
+                html_utils.paragraph(html.escape(str(err)))
             )
             return
         self.cancel = False
@@ -1999,8 +2183,8 @@ class PhaseTranslatorDialog(QDialog):
 class TimepointIdentifierDialog(QBaseDialog):
     """Set name, color, shortcut and predictor of a time point identifier.
 
-    After closing, `cancel` is False if accepted and `identifier` is a dict 
-    with keys 'name', 'color', 'shortcut' and 'predictor'.
+    After closing, `cancel` is False if accepted and `identifier` is a dict
+    with keys 'name', 'color', 'shortcut', 'predictor' and 'autoApply'.
     """
     def __init__(
             self, name, color, shortcut, predictor=None, 
@@ -2048,6 +2232,10 @@ class TimepointIdentifierDialog(QBaseDialog):
         # auto apply on new cells 
         self.autoApplyCheckBox = widgets.Toggle(label_text='Auto apply on unvisited cells',
                                                 parent=self)
+        self.autoApplyCheckBox.setToolTip(
+            'Evaluate the predictor on each cell when it is displayed for '
+            'the first time.'
+        )
         formLayout.addRow('', self.autoApplyCheckBox)
         
         self.predictorCombobox = QComboBox()
@@ -2062,8 +2250,13 @@ class TimepointIdentifierDialog(QBaseDialog):
             timepoint_predictors.PREDICTOR_FILE
         )
         self.predictorCombobox.setToolTip(
-            'Predict the time points of each cell when the identifier is '
-            'added (and when other positions are loaded).\n'
+            'Predict the time points of each cell.\n\n'
+            'With "Auto apply on unvisited cells", each cell is predicted '
+            'when it is displayed for the first time; cells that were '
+            'already viewed are not predicted.\n'
+            'To predict all cells, right-click the identifier action and '
+            're-evaluate its predictor, or use "Re-evaluate predictors on '
+            'all cells" in the toolbar (Shift+shortcut: displayed cell).\n\n'
             'Predicted time points can be moved or removed afterwards.'
         )
         formLayout.addRow('Predictor:', self.predictorCombobox)
@@ -2192,7 +2385,7 @@ class TimepointIdentifierDialog(QBaseDialog):
             with open(filepath, 'w', encoding='utf-8') as file:
                 file.write(self._predictors.PREDICTOR_FILE_TEMPLATE)
         except OSError as err:
-            self.warn('Saving template failed', str(err))
+            self.warn('Saving template failed', html.escape(str(err)))
             return
         self.fileLineEdit.setText(filepath)
     
@@ -2260,7 +2453,8 @@ class TimepointIdentifierDialog(QBaseDialog):
         if name in self.existingNames:
             self.warn(
                 'Name already used', 
-                f'A time point identifier called "{name}" already exists.'
+                'A time point identifier called '
+                f'"{html.escape(name)}" already exists.'
             )
             return
         shortcut = self.shortcutLineEdit.text().strip()
@@ -2273,8 +2467,8 @@ class TimepointIdentifierDialog(QBaseDialog):
             if usedBy is not None:
                 self.warn(
                     'Shortcut already used', 
-                    f'The shortcut "{shortcut}" is already used by '
-                    f'"{usedBy}". Choose a different shortcut.'
+                    f'The shortcut "{html.escape(shortcut)}" is already used '
+                    f'by "{html.escape(usedBy)}". Choose a different shortcut.'
                 )
                 return
         try:
@@ -2302,6 +2496,30 @@ class MeasurementProcessingParamsWidget(PreProcessParamsWidget):
     def createSelector(self):
         return widgets.SignalProcessingSelector()
 
+    @staticmethod
+    def castRecipeValue(param, value):
+        """Convert a recipe value (e.g. a string read from a saved INI
+        recipe) to the type of the ``run()`` parameter ``param``.
+
+        Booleans are parsed with ``configparser.ConfigParser.BOOLEAN_STATES``
+        because ``bool('False')`` is True. Raises ``ValueError`` for values
+        that cannot be converted.
+        """
+        if not isinstance(value, str):
+            return param.type(value)
+        if param.type is bool:
+            try:
+                return configparser.ConfigParser.BOOLEAN_STATES[
+                    value.strip().lower()
+                ]
+            except KeyError:
+                raise ValueError(
+                    f'Invalid boolean value {value!r} for "{param.name}".'
+                ) from None
+        if hasattr(param.type, 'cast_dtype'):
+            return param.type.cast_dtype(value)
+        return param.type(value)
+
     def recipe(self, warn=True):
         recipe = []
         for step in self.stepsWidgets.values():
@@ -2310,7 +2528,9 @@ class MeasurementProcessingParamsWidget(PreProcessParamsWidget):
             function = selector.preprocessMapper[method]['function']
             saved = selector.methodToDefaultValuesMapper.get(method, {})
             kwargs = {
-                param.name: param.type(saved.get(param.name, param.default))
+                param.name: self.castRecipeValue(
+                    param, saved.get(param.name, param.default)
+                )
                 for param in myutils.get_function_argspec(function)
             }
             kwargs.update(step.get('step_kwargs', {}))
@@ -2328,7 +2548,34 @@ class MeasurementProcessingParamsWidget(PreProcessParamsWidget):
                 'This recipe contains unsupported measurement-processing steps.'
             )
             return
-        super().loadRecipe(configPars)
+        # Saved INI recipes store every value as a string: convert them to
+        # the run() parameter types so that both recipe() and the parameters
+        # dialog (askSetParams) get typed values (e.g. 'False' -> False).
+        typedConfigPars = {}
+        try:
+            for section, section_items in configPars.items():
+                method = section_items.get('method')
+                function = MEASUREMENT_PROCESSING_MAPPER[method]['function']
+                params = {
+                    param.name: param
+                    for param in myutils.get_function_argspec(function)
+                }
+                typedItems = {}
+                for option, value in section_items.items():
+                    param = params.get(option)
+                    if option != 'method' and param is not None:
+                        value = self.castRecipeValue(param, value)
+                    typedItems[option] = value
+                typedConfigPars[section] = typedItems
+        except (TypeError, ValueError) as err:
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.warning(
+                self, 'Invalid measurement recipe',
+                'This recipe contains invalid parameter values:<br><br>'
+                f'{html.escape(str(err))}'
+            )
+            return
+        super().loadRecipe(typedConfigPars)
         for step in self.stepsWidgets.values():
             step.pop('step_kwargs', None)
 
@@ -2337,6 +2584,7 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
     """Select measurement leaves by channel/type, with recursive fuzzy search."""
     paramsWidgetClass = MeasurementProcessingParamsWidget
     selectionLabel = 'Select measurement(s) to process:'
+    emptySuffixMessage = 'Enter a suffix for the output column(s).'
 
     def __init__(
             self, measurement_names, parent=None,
@@ -2383,6 +2631,13 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
                 widget.hide()
                 
     def get_new_colnames(self):
+        """Return ``(warn, display, full_list)`` for the output column names.
+
+        ``warn`` is True when the names cannot be used: no suffix was
+        entered for the selected measurement(s) (outputs would overwrite
+        the inputs) or an output column already exists. ``display`` is
+        then the message to show to the user.
+        """
         warn, display = False, ''
         text = self.append_new_colname.text()
         
@@ -2396,7 +2651,7 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
                 display = f'{selected_channels[0]}_{text}'
         elif selected_channels:
             full_list = selected_channels
-            display = ', '.join(selected_channels)
+            return True, self.emptySuffixMessage, full_list
         elif text:
             full_list = [text]
             display = text
@@ -2406,17 +2661,21 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
                     
         forbidden_names = [file_name for file_name in full_list if file_name in self.measurement_names]
         if forbidden_names:
-            display = 'This name is forbidden: ' + ', '.join(forbidden_names)
+            display = (
+                'Output column(s) already exist: '
+                + ', '.join(forbidden_names) + '. Choose another suffix.'
+            )
             warn = True
             return warn, display, full_list
-        
+
         warn = False
         return warn, display, full_list
 
     def append_new_colname_changed(self, text):
         warn, tip, _ = self.get_new_colnames()
         self.append_new_colname_tip.setText(tip)
-        if warn:
+        # A missing suffix is a neutral hint, not an error
+        if warn and tip != self.emptySuffixMessage:
             self.append_new_colname_tip.setStyleSheet("color: red;")
         else:
             self.append_new_colname_tip.setStyleSheet("")
@@ -2469,10 +2728,7 @@ class MeasurementProcessingRecipeDialog(PreProcessRecipeDialogUtil):
         warn, display, full_list = self.get_new_colnames()
         if warn:
             msg = widgets.myMessageBox(wrapText=False)
-            msg.warning(
-                self, 'Invalid column name',
-                f'The column name "{display}" is not allowed.'
-            )
+            msg.warning(self, 'Invalid output column name', display)
             return
         self.saveNames = full_list
         super().ok_cb()

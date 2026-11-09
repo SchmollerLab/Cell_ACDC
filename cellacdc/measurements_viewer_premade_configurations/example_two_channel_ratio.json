@@ -13,7 +13,7 @@
     {
       "order": 0,
       "equations": {
-        "{GREEN}_over_{RED}_mean": "{GREEN}_mean / {RED}_mean"
+        "{GREEN}_over_{RED}_mean": "`{GREEN}_mean` / `{RED}_mean`"
       }
     }
   ],

@@ -1,7 +1,12 @@
-"""Overlay channels and overlay labels mixins shared by guiWin and the signals viewer.
+"""Overlay channels and overlay labels mixins shared by the main GUI
+(`gui.guiWin`) and the measurements viewer
+(`measurements_viewer.MeasurementsViewerWin`).
 
-The methods were moved verbatim from `guiWin`. The host window is responsible 
-for creating the widgets and attributes the methods use.
+The methods were moved verbatim from `guiWin`. The host window is responsible
+for creating the widgets and attributes the methods use. The host may define
+an optional `bottomLayoutFont` (`QFont`) used for the alpha scrollbar labels
+(the main GUI sets it in `resizeSlidersArea` to follow the bottom layout
+zoom); without it an 11 px font is used.
 """
 import os
 from functools import partial
@@ -786,7 +791,7 @@ class OverlayChannelsGuiElements:
         alphaScrollBar.channelName = channelName
         
         label = QLabel(f'Alpha {channelName}')
-        label.setFont(_font)
+        label.setFont(getattr(self, 'bottomLayoutFont', _font))
         label.hide()
         alphaScrollBar.imageItem = imageItem
         alphaScrollBar.label = label

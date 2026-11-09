@@ -3,12 +3,13 @@ import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import numpy as np
 import pandas as pd
 import pytest
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QPushButton
 
-from cellacdc import apps, apps_measurements_viewer, measurements_viewer, phase_translator, widgets
+from cellacdc import apps_measurements_viewer, measurements_viewer, phase_translator, widgets
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TimepointIdentifier
@@ -46,6 +47,19 @@ def fallback():
     return rule(
         name='Fallback', timepoints=[], annotations=[], phases=['Other']
     )
+
+
+def test_boundaries_and_annotations_stored_as_strings(table):
+    """Inputs read back from CSV may be 'True'/'False'/'0' strings (e.g.
+    after the main GUI added cells); 'False' must not count as marked."""
+    expected = phase_translator.evaluate(table, [rule()]).table['phase']
+    as_strings = table.copy()
+    for column in (f'{TIMEPOINT_PREFIX}Start', f'{TIMEPOINT_PREFIX}End'):
+        as_strings[column] = table[column].map({True: 'True', False: 'False'})
+    as_strings['Flag'] = ['1', '0', '0', '0'] * 2
+    result = phase_translator.evaluate(as_strings, [rule()])
+    assert result.table['phase'].tolist() == expected.tolist()
+    assert result.warnings == []
 
 
 def test_intervals_and_boolean_columns(table):
@@ -173,6 +187,268 @@ def test_reapply_exported_table_including_never_used_phases(table, tmp_path):
     loaded = pd.read_csv(path, index_col=['frame_i', 'Cell_ID'])
     result = phase_translator.evaluate(loaded, [rule(), fallback()])
     pd.testing.assert_frame_equal(result.table, first.table)
+
+
+def test_reapply_table_reloaded_by_acdc_output_loader(table, tmp_path):
+    # With cell cycle columns, the loader fills empty phases ('') with 0.
+    from cellacdc import base_cca_dict, load
+    table.loc[(3, 2), f'{TIMEPOINT_PREFIX}End'] = False
+    for column, value in base_cca_dict.items():
+        table[column] = value
+    first = phase_translator.evaluate(table, [rule()])
+    assert first.table.xs(2, level='Cell_ID')['phase'].eq('').all()
+    expected = first.table['phase'].sort_index()
+    loaded = first.table
+    for cycle in range(2):
+        path = tmp_path / f'acdc_output_{cycle}.csv'
+        loaded.to_csv(path)
+        loaded = load._load_acdc_df_file(path)
+        assert not loaded.xs(2, level='Cell_ID')['phase'].eq('').any()
+        assert phase_translator.existing_output_columns(loaded) == first.columns
+        for IDs in (None, [1]):
+            result = phase_translator.evaluate(loaded, [rule()], IDs=IDs)
+            assert result.columns == first.columns
+            assert 'phase_0' not in result.table
+            pd.testing.assert_series_equal(
+                result.table['phase'].sort_index(), expected
+            )
+    # Normalizing in place restores '' and avoids saving '0' again.
+    assert phase_translator.normalize_loaded_outputs(loaded) == first.columns
+    pd.testing.assert_series_equal(loaded['phase'].sort_index(), expected)
+
+
+def test_phase_named_zero_survives_reload(table, tmp_path):
+    from cellacdc import base_cca_dict, load
+    table.loc[(3, 2), f'{TIMEPOINT_PREFIX}End'] = False
+    for column, value in base_cca_dict.items():
+        table[column] = value
+    first = phase_translator.evaluate(table, [rule(phases=['0', 'S', 'G2'])])
+    path = tmp_path / 'acdc_output.csv'
+    first.table.to_csv(path)
+    loaded = load._load_acdc_df_file(path)
+    assert phase_translator.normalize_loaded_outputs(loaded) == first.columns
+    pd.testing.assert_series_equal(
+        loaded['phase'].sort_index(), first.table['phase'].sort_index()
+    )
+
+
+@pytest.mark.parametrize('cell_cycle', [False, True])
+def test_markers_saved_by_main_gui_after_adding_cells(table, tmp_path, cell_cycle):
+    # The main GUI reindexes a frame with fill_value=0 when a cell is added
+    # (guiWin.store_data), so the phase_<name> columns hold True/False/0 and
+    # come back from file as strings; they must still be recognized.
+    from cellacdc import base_cca_dict, load
+    if cell_cycle:
+        for column, value in base_cca_dict.items():
+            table[column] = value
+    rules = [rule()]
+    first = phase_translator.evaluate(table, rules)
+    frames = []
+    for frame_i, frame in first.table.groupby(level='frame_i'):
+        frame = frame.droplevel('frame_i')
+        if frame_i == 2:
+            frame = frame.reindex([1, 2, 3], fill_value=0)  # new cell 3
+        frames.append(frame)
+    saved = pd.concat(frames, keys=sorted(set(table.index.get_level_values(0))),
+                      names=['frame_i'])
+    assert saved['phase_G1'].dtype == object
+    path = tmp_path / 'acdc_output.csv'
+    saved.to_csv(path)
+    loaded = load._load_acdc_df_file(path)
+    assert loaded['phase_G1'].dtype == object
+    assert phase_translator.existing_output_columns(loaded) == first.columns
+    # Viewer load: timepoint columns and phase outputs are normalized.
+    measurements_viewer.normalize_loaded_acdc_df(SimpleNamespace(acdc_df=loaded))
+    for column in first.columns.difference({'phase'}):
+        assert loaded[column].dtype == bool
+    assert loaded.loc[(2, 3), 'phase'] == ''
+    assert not loaded.loc[(2, 3), ['phase_G1', 'phase_S', 'phase_G2']].any()
+    expected = first.table['phase'].sort_index()
+    pd.testing.assert_series_equal(
+        loaded['phase'].drop(index=(2, 3)).sort_index(), expected
+    )
+    for IDs in (None, [1]):
+        result = phase_translator.evaluate(loaded, rules, IDs=IDs)
+        assert result.columns == first.columns
+        assert 'phase_0' not in result.table
+        pd.testing.assert_series_equal(
+            result.table['phase'].drop(index=(2, 3)).sort_index(), expected
+        )
+        assert result.table.loc[(2, 3), 'phase'] == ''
+
+
+@pytest.mark.parametrize('cell_cycle', [False, True])
+@pytest.mark.parametrize('phases', [
+    ['1', '2', '3'], ['NA', 'S', 'G2'], ['None', 'S', 'G2'],
+    ['0', '1', '2'], ['True', 'False', 'True'], ['nan', '1', 'G2'],
+])
+def test_phase_names_changed_by_csv_reading_survive_reload(
+        table, tmp_path, phases, cell_cycle):
+    # read_csv turns these names into numbers, booleans or missing values
+    # (and the loader fills missing values with 0 when cell cycle columns
+    # exist); they are recovered from the boolean phase_<name> columns.
+    from cellacdc import base_cca_dict, load
+    table.loc[(3, 2), f'{TIMEPOINT_PREFIX}End'] = False
+    if cell_cycle:
+        for column, value in base_cca_dict.items():
+            table[column] = value
+    rules = [rule(phases=phases)]
+    first = phase_translator.evaluate(table, rules)
+    expected = first.table['phase'].sort_index()
+    path = tmp_path / 'acdc_output.csv'
+    first.table.to_csv(path)
+    loaded = load._load_acdc_df_file(path)
+    raw = loaded.copy()
+    # Re-evaluation works on the raw table and after normalizing it.
+    for IDs in (None, [1]):
+        result = phase_translator.evaluate(raw, rules, IDs=IDs)
+        assert result.columns == first.columns
+        pd.testing.assert_series_equal(
+            result.table['phase'].sort_index(), expected
+        )
+    assert phase_translator.normalize_loaded_outputs(loaded) == first.columns
+    pd.testing.assert_series_equal(loaded['phase'].sort_index(), expected)
+    result = phase_translator.evaluate(
+        loaded, rules, IDs=[1], owned_columns=first.columns
+    )
+    assert result.columns == first.columns
+    pd.testing.assert_series_equal(result.table['phase'].sort_index(), expected)
+
+
+def _reference_phase_strings(df):
+    """Per-value reference of the phase_0-only normalization (round 1)."""
+    values = df['phase']
+    missing = values.isna().to_numpy()
+
+    def is_zero(value):
+        if isinstance(value, str):
+            return value == '0'
+        if isinstance(value, bool):
+            return False
+        return isinstance(value, (int, float)) and value == 0
+
+    zero = values.map(is_zero).to_numpy(dtype=bool) & ~missing
+    is_str = values.map(lambda value: isinstance(value, str)).to_numpy(dtype=bool)
+    if not (missing | zero | is_str).all():
+        return None
+    named_zero = np.zeros(len(values), dtype=bool)
+    if 'phase_0' in df and pd.api.types.is_bool_dtype(df['phase_0']):
+        named_zero = df['phase_0'].to_numpy(dtype=bool)
+    strings = values.astype(object).to_numpy(copy=True)
+    strings[missing | (zero & ~named_zero)] = ''
+    strings[zero & named_zero] = '0'
+    return pd.Series(strings, index=values.index, name='phase', dtype=object)
+
+
+@pytest.mark.parametrize('phase, marker', [
+    (['G1', '', 'S', 'G1'], None),
+    (['0', '', 'S', float('nan')], None),
+    (['0', '', 'S', float('nan')], [True, False, False, False]),
+    ([0., float('nan'), 0., 0.], None),
+    ([0, 0, 0, 0], [False, True, False, False]),
+    (['S', 0, float('nan'), '0'], None),
+    (['S', 0, float('nan'), '0'], [False, True, False, True]),
+    ([float('nan')] * 4, None),
+    ([0.5, 0., 0., 0.], None),
+    (['S', 2, '', ''], None),
+])
+def test_phase_strings_fast_paths_match_reference(phase, marker):
+    df = pd.DataFrame({'phase': phase})
+    if marker is not None:
+        df['phase_0'] = marker
+    expected = _reference_phase_strings(df)
+    actual = phase_translator._phase_strings(df)
+    if expected is None:
+        assert actual is None
+    else:
+        pd.testing.assert_series_equal(actual, expected)
+
+
+def test_normalize_loaded_outputs_ignores_unrelated_phase_column(table):
+    table['phase'] = [0., 1., 0., 2.] * 2
+    table['phase_S'] = [False, True, False, False] * 2
+    original = table.copy()
+    assert phase_translator.normalize_loaded_outputs(table) == set()
+    pd.testing.assert_frame_equal(table, original)
+    with pytest.raises(ValueError, match='overwrite existing measurements'):
+        phase_translator.evaluate(table, [rule()])
+
+
+def _reference_phases(df, rules, IDs=None):
+    """Straightforward per-cell evaluation of predictor-free rules."""
+    flat = df.reset_index()
+    target = set(flat['Cell_ID']) if IDs is None else set(IDs)
+    phases, duplicates = {}, set()
+    for ID, cell in flat.groupby('Cell_ID'):
+        if ID not in target:
+            continue
+        cell = cell.sort_values('frame_i')
+        for current in rules:
+            marked = [
+                cell.loc[cell[col].astype(bool), 'frame_i'].tolist()
+                for col in current['timepoints']
+            ]
+            if any(len(frames) > 1 for frames in marked):
+                duplicates.add(ID)
+                continue
+            if any(len(frames) != 1 for frames in marked):
+                continue
+            bounds = [frames[0] for frames in marked]
+            if any(a >= b for a, b in zip(bounds, bounds[1:])):
+                continue
+            if not all(cell[col].astype(bool).any() for col in current['annotations']):
+                continue
+            for index, frame in zip(cell.index, cell['frame_i']):
+                phases[index] = current['phases'][sum(b <= frame for b in bounds)]
+            duplicates.discard(ID)
+            break
+    expected = [phases.get(index, '') for index in range(len(flat))]
+    return expected, sorted(duplicates)
+
+
+@pytest.mark.parametrize('IDs', [None, list(range(1, 201, 3))])
+def test_vectorized_eligibility_matches_per_cell_reference(IDs):
+    import numpy as np
+    rng = np.random.default_rng(7)
+    n_cells, n_frames = 200, 12
+    tp = lambda name: f'{TIMEPOINT_PREFIX}{name}'
+    data = {
+        'frame_i': np.tile(np.arange(n_frames), n_cells),
+        'Cell_ID': np.repeat(np.arange(1, n_cells + 1), n_frames),
+    }
+    # Sparse random marks give complete, partial, duplicate and out-of-order
+    # boundaries; annotations are present only on some cells.
+    for name in ('A', 'B', 'C'):
+        data[tp(name)] = rng.random(n_cells * n_frames) < 1.5 / n_frames
+    data['Flag'] = (rng.random(n_cells * n_frames) < 0.05).astype(int)
+    # Complete, ordered boundaries on the first cells, flagged on half.
+    complete = data['Cell_ID'] <= 30
+    for name, frame in (('A', 2), ('B', 5), ('C', 8)):
+        data[tp(name)][complete] = data['frame_i'][complete] == frame
+    data['Flag'][complete] = data['Cell_ID'][complete] % 2
+    table = pd.DataFrame(data).sample(frac=1, random_state=3)
+    table = table.set_index(['frame_i', 'Cell_ID'])
+    rules = [
+        rule(name='ABC', timepoints=[tp('A'), tp('B'), tp('C')],
+             phases=['p0', 'p1', '', 'p3']),
+        rule(name='AB', timepoints=[tp('A'), tp('B')], annotations=[],
+             phases=['p0', 'q1', 'q2']),
+        rule(name='BA', timepoints=[tp('B'), tp('A')], phases=['r0', 'r1', '']),
+        rule(name='C', timepoints=[tp('C')], annotations=[], phases=['', 'c1']),
+    ]
+    result = phase_translator.evaluate(table, rules, IDs=IDs)
+    expected, duplicates = _reference_phases(table, rules, IDs)
+    assert result.table['phase'].tolist() == expected
+    assert result.warnings == [
+        'No phase rule could be applied to cells with duplicate time points: '
+        + ', '.join(str(ID) for ID in duplicates) + '.'
+    ] if duplicates else not result.warnings
+    if IDs is None:
+        # Every rule matches some cells and some cells stay unmatched.
+        assert set(expected) == {
+            '', 'p0', 'p1', 'p3', 'q1', 'q2', 'r0', 'r1', 'c1'
+        }
+        assert duplicates
 
 
 @pytest.mark.parametrize('column, value', [('phase', 'measurement'), ('phase_S', 7)])
@@ -493,6 +769,7 @@ def test_configuration_save_load_and_legacy(viewer, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())
+    monkeypatch.setattr(viewer, 'askSaveBeforeLoading', Mock(return_value=True))
     viewer.phaseTranslatorRules = []
     viewer.phaseColors = {}
     viewer.autoApplyPhases = False
@@ -681,6 +958,61 @@ def test_auto_apply_phases_on_timepoint_change(viewer, app, monkeypatch):
     viewer.replaceTimepoints(identifier.uid, {1: [1]}, [1])
     app.processEvents()
     viewer.measurementProcessingWarning.assert_not_called()
+
+
+def test_postponed_auto_apply_phases_stay_with_their_position(viewer, app):
+    first = viewer.posData()
+    second = SimpleNamespace(
+        acdc_df=viewer.acdc_df.copy(), SizeT=4, SizeZ=1, chNames=['GFP'],
+        pos_path=r'C:\experiment\Position_2'
+    )
+    viewer.data.append(second)
+    viewer.phaseTranslatorRules = [rule()]
+    viewer.autoApplyPhases = True
+    # Time points of cell 1 change on Position_1 while processing runs
+    viewer.measurementProcessingThread = Mock()
+    viewer.schedulePhaseAutoApply([1])
+    app.processEvents()
+    assert 'phase' not in first.acdc_df
+    # Switch to Position_2 before processing finishes
+    viewer.pos_i = 1
+    viewer.acdc_df = second.acdc_df
+    viewer.measurementProcessingFinished()
+    app.processEvents()
+    assert 'phase' not in second.acdc_df
+    # Cell 1 of Position_1 is evaluated when Position_1 is displayed again
+    viewer.pos_i = 0
+    viewer.acdc_df = first.acdc_df
+    viewer.schedulePendingPhaseAutoApply()
+    app.processEvents()
+    assert viewer.posData().acdc_df.xs(1, level='Cell_ID')['phase'].ne('').all()
+    assert viewer.posData().acdc_df.xs(2, level='Cell_ID')['phase'].eq('').all()
+    assert 'phase' not in second.acdc_df
+    assert not viewer._pendingPhaseIDs
+
+
+def test_loading_other_data_drops_pending_phase_cells(viewer, app):
+    first = viewer.posData()
+    second = SimpleNamespace(
+        acdc_df=viewer.acdc_df.copy(), SizeT=4, SizeZ=1, chNames=['GFP'],
+        pos_path=r'C:\experiment\Position_2'
+    )
+    viewer.data.append(second)
+    viewer.phaseTranslatorRules = [rule()]
+    viewer.autoApplyPhases = True
+    # Cells of both positions stay pending while processing runs
+    viewer.measurementProcessingThread = Mock()
+    viewer.schedulePhaseAutoApply([1], posData=first)
+    viewer.schedulePhaseAutoApply([1], posData=second)
+    app.processEvents()
+    assert set(viewer._pendingPhaseIDs) == {id(first), id(second)}
+    viewer.measurementProcessingThread = None
+    # Unloading a position frees its posData without a later auto-apply
+    viewer.data = [first]
+    viewer.prunePendingPhaseIDs()
+    assert set(viewer._pendingPhaseIDs) == {id(first)}
+    viewer.setData([])
+    assert viewer._pendingPhaseIDs == {}
 
 
 def test_auto_apply_phases_when_missing(viewer, app, monkeypatch):

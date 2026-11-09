@@ -203,20 +203,14 @@ def addCustomPromptModelMessages(QParent=None):
 class QBaseDialog(_base_widgets.QBaseDialog):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        
-
-
-
-
-
 
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = Signal(object)
 
     def __init__(
             self, savedCustomAnnot, parent=None, state=None, 
-            predictorOptions=None, reservedShortcuts=None, existingNames=()
+            predictorOptions=None, reservedShortcuts=None, existingNames=(),
+            allowDeleteSaved=True
         ):
         """Dialog to set the parameters of a custom annotation.
 
@@ -234,11 +228,16 @@ class customAnnotationDialog(QDialog):
             {key sequence text: used by} of shortcuts that cannot be used.
         existingNames : iterable of str, optional
             Names of other annotations that cannot be used.
+        allowDeleteSaved : bool, optional
+            If True (default), the dialog listing the saved annotations has
+            a button to delete them (`sigDeleteSelecAnnot`). False when the
+            host cannot persist the deletion (measurements viewer).
         """
         self.cancel = True
         self.loop = None
         self.clickedButton = None
         self.savedCustomAnnot = savedCustomAnnot
+        self.allowDeleteSaved = allowDeleteSaved
         self.reservedShortcuts = dict(reservedShortcuts or {})
         self.existingNames = set(existingNames)
         self.hasPredictor = predictorOptions is not None
@@ -478,13 +477,17 @@ class customAnnotationDialog(QDialog):
 
     def loadSavedAnnot(self):
         items = list(self.savedCustomAnnot.keys())
+        additionalButtons = (
+            ('Delete selected annnotations', ) if self.allowDeleteSaved
+            else ()
+        )
         self.selectAnnotWin = widgets.QDialogListbox(
             'Load annotation parameters',
             'Select annotation to load:', items,
-            additionalButtons=('Delete selected annnotations', ),
+            additionalButtons=additionalButtons,
             parent=self, multiSelection=False
         )
-        for button in self.selectAnnotWin._additionalButtons:
+        for button in getattr(self.selectAnnotWin, '_additionalButtons', ()):
             button.disconnect()
             button.clicked.connect(self.deleteSelectedAnnot)
         self.selectAnnotWin.exec_()
@@ -505,6 +508,16 @@ class customAnnotationDialog(QDialog):
         keySequence = widgets.macShortcutToWindows(selectedAnnot['shortcut'])
         if keySequence:
             self.shortcutWidget.widget.keySequence = widgets.KeySequenceFromText(keySequence)
+        # Same options as restored from `state` in __init__
+        self.keepActiveToggle.setChecked(selectedAnnot.get('keepActive', True))
+        self.hideAnnotTooggle.setChecked(
+            selectedAnnot.get('isHideChecked', True)
+        )
+        if self.predictorGroupbox is not None:
+            self.predictorGroupbox.setPredictor(
+                selectedAnnot.get('predictor'),
+                selectedAnnot.get('autoApply', False)
+            )
 
     def warnNoItemsSelected(self):
         msg = widgets.myMessageBox(parent=self)
@@ -14191,22 +14204,29 @@ class downloadModel:
         #     self.loop.exit()
 
 class _CombineMetricsDialog(QBaseDialog):
+    # Rows of `acdc_df` used by "Test equation" for row-wise equations
+    TEST_DATA_MAX_ROWS = 1000
+
     def __init__(
             self, allChNames, isZstack, isSegm3D, parent=None, debug=False,
             closeOnOk=True, acdcDfs=None, acdc_df=None,
-            allowCellAggregations=False
+            allowCellAggregations=False, limitToLoadedColumns=True
         ):
         super().__init__(parent)
 
         self.setWindowTitle('Add combined measurement')
 
         self.initAttributes()
-        
+
         self.allChNames = allChNames
         self.acdcDfs = acdcDfs
         self.acdcDf = acdc_df
+        # See `populateMeasurementCatalog`
+        self.limitToLoadedColumns = limitToLoadedColumns
         self.allowCellAggregations = allowCellAggregations
         self.variableNames = []
+        # Names added by `addTreeItems` (fast duplicate check)
+        self._listedVariables = set()
         self.channelLessVariables = set()
         self.metricsTreeWidgets = []
 
@@ -14493,7 +14513,18 @@ class _CombineMetricsDialog(QBaseDialog):
         return metricsTreeWidget
 
     def populateMeasurementCatalog(self, root, isZstack, isSegm3D):
-        """Keep catalog groups, limiting loaded data to actual columns."""
+        """Fill the measurement catalog, keeping its groups.
+
+        With an ``acdc_df`` and ``limitToLoadedColumns=True`` (measurements
+        viewer) only catalog entries that are columns of the loaded table
+        are listed, so the channel-less "All channels measurements" groups
+        stay empty. With ``limitToLoadedColumns=False`` (main GUI and
+        compute utility, which define measurements computed later) the
+        full catalog is listed, including channel-less entries and
+        measurements not saved yet. In both cases the table's remaining
+        columns are added under "Other" and non-numerical columns go to
+        "Categorical inputs"; the table also provides the test rows.
+        """
         for chName in self.allChNames:
             channelTreeItem = QTreeWidgetItem(root)
             channelTreeItem.setText(0, f'{chName} measurements')
@@ -14573,6 +14604,14 @@ class _CombineMetricsDialog(QBaseDialog):
         custom_metrics_desc = measurements.custom_metrics_desc(
             isZstack, '', isSegm3D=isSegm3D
         )
+        # With an empty channel name the catalog also returns every saved
+        # per-channel equation (e.g. `GFP_ratio`), which is already listed
+        # under its channel. Channel-less names are `_<name>` (inserted
+        # after each channel name), so keep only those.
+        metrics_desc, bkgr_val_desc, custom_metrics_desc = (
+            [name for name in desc if name.startswith('_')]
+            for desc in (metrics_desc, bkgr_val_desc, custom_metrics_desc)
+        )
 
         foregrMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)
         foregrMetricsTreeItem.setText(0, 'Cell signal measurements')
@@ -14588,17 +14627,17 @@ class _CombineMetricsDialog(QBaseDialog):
             allChannelsTreeItem.addChild(customMetricsTreeItem)
 
         self.addTreeItems(
-            foregrMetricsTreeItem, metrics_desc.keys(), isCol=True,
+            foregrMetricsTreeItem, metrics_desc, isCol=True,
             isChannelLess=True
         )
         self.addTreeItems(
-            bkgrMetricsTreeItem, bkgr_val_desc.keys(), isCol=True,
+            bkgrMetricsTreeItem, bkgr_val_desc, isCol=True,
             isChannelLess=True
         )
 
         if custom_metrics_desc:
             self.addTreeItems(
-                customMetricsTreeItem, custom_metrics_desc.keys(),
+                customMetricsTreeItem, custom_metrics_desc,
                 isCol=True, isChannelLess=True
             )
 
@@ -14622,7 +14661,8 @@ class _CombineMetricsDialog(QBaseDialog):
         for text in itemsText:
             parent = parentItem
             if (
-                isCol and self.acdcDfs is None and self.acdcDf is not None
+                isCol and self.limitToLoadedColumns
+                and self.acdcDfs is None and self.acdcDf is not None
                 and text not in self.acdcDf
             ):
                 continue
@@ -14642,9 +14682,15 @@ class _CombineMetricsDialog(QBaseDialog):
                 )
                 variable = text if index is None else f'{text}_table{index+1}'
                 _item.variableName = variable
-                self.variableNames.append(variable)
-                if isChannelLess:
-                    self.channelLessVariables.add(variable)
+                # A name listed in more than one group is one variable;
+                # a channel item always wins over a channel-less one.
+                if variable not in self._listedVariables:
+                    self._listedVariables.add(variable)
+                    self.variableNames.append(variable)
+                    if isChannelLess:
+                        self.channelLessVariables.add(variable)
+                elif not isChannelLess:
+                    self.channelLessVariables.discard(variable)
             _item.isChannelLess = isChannelLess
 
 
@@ -14681,10 +14727,18 @@ class _CombineMetricsDialog(QBaseDialog):
         names = self.formulaEditWidget.referencedVariableNames()
         if self.acdcDf is None:
             sample = pd.DataFrame(index=[0])
-        else:
+        elif self.allowCellAggregations:
+            # Per-cell functions need the whole table (all rows/columns)
             sample = (
                 self.acdcDf.head(10) if preview else self.acdcDf
             ).copy()
+        else:
+            # Row-wise equations: copy only the referenced columns of a
+            # limited number of rows (the test shows only 10 results and
+            # the equation is evaluated again on the full table at save)
+            nrows = 10 if preview else self.TEST_DATA_MAX_ROWS
+            cols = [name for name in names if name in self.acdcDf.columns]
+            sample = self.acdcDf[cols].head(nrows).copy()
         for name in names:
             if name not in sample and name not in sample.index.names:
                 sample[name] = np.random.uniform(1, 5, len(sample))
@@ -14732,11 +14786,23 @@ class _CombineMetricsDialog(QBaseDialog):
         )
 
     @staticmethod
+    def isRowWiseFormula(formula):
+        """See ``timepoint_predictors.CellEquation.is_row_wise``."""
+        from . import timepoint_predictors
+        return timepoint_predictors.CellEquation.is_row_wise(formula)
+
+    @staticmethod
     def evaluateCellEquation(
             df, formula, *, SizeT=None, enforce_dtype_output=None,
             alternatives=None
         ):
-        """Evaluate viewer equations without requiring an equation editor."""
+        """Evaluate viewer equations without requiring an equation editor.
+
+        Formulas with per-cell functions (``CELL_FUNCTIONS``) or other-cell
+        ``alternatives`` are evaluated cell by cell (rows sorted by
+        frame_i). Purely row-wise formulas give the same result evaluated
+        once on the whole table, so they take a vectorised fast path.
+        """
         from . import timepoint_predictors
         variables = {'SizeT': SizeT} if SizeT is not None else None
         flat = timepoint_predictors.CellTable.flatten(df)
@@ -14745,6 +14811,25 @@ class _CombineMetricsDialog(QBaseDialog):
                 flat, formula, variables,
                 enforce_dtype_output=enforce_dtype_output
             )
+        if (
+            not alternatives and not flat['Cell_ID'].isna().any()
+            and _CombineMetricsDialog.isRowWiseFormula(formula)
+        ):
+            try:
+                values = timepoint_predictors.CellEquation.evaluate(
+                    flat, formula, variables,
+                    enforce_dtype_output=enforce_dtype_output
+                )
+            except Exception as err:
+                raise ValueError(
+                    f'Evaluating the equation failed: {err}'
+                ) from err
+            # Same conversion as the per-cell path below
+            result = pd.Series(
+                np.broadcast_to(np.asarray(values), len(flat)).copy(),
+                index=df.index
+            )
+            return result
         results = []
         for ID, cell in flat.groupby('Cell_ID', sort=False):
             if 'frame_i' in cell:
@@ -14825,13 +14910,14 @@ class CombineMetricsEquationDialog(_CombineMetricsDialog):
     def __init__(
             self, allChNames, isZstack, isSegm3D, parent=None, debug=False,
             closeOnOk=True, acdc_df=None, *, saveToConfig=True,
-            allowCellAggregations=False
+            allowCellAggregations=False, limitToLoadedColumns=False
         ):
         self.saveToConfig = saveToConfig
         super().__init__(
             allChNames, isZstack, isSegm3D, parent=parent, debug=debug,
             closeOnOk=closeOnOk, acdc_df=acdc_df,
-            allowCellAggregations=allowCellAggregations
+            allowCellAggregations=allowCellAggregations,
+            limitToLoadedColumns=limitToLoadedColumns
         )
 
     def getEquationsDict(self):
@@ -15493,7 +15579,11 @@ class ShortcutEditorDialog(QBaseDialog):
             highlighted_shortcut: str=None,
             show_delete_object_shortcut: bool=True
         ):
+        # When show_delete_object_shortcut is False the "Delete object"
+        # row is hidden and `delObjAction` stays None after Ok (callers
+        # keep their own delete-object action)
         self.show_delete_object_shortcut = show_delete_object_shortcut
+        self.delObjAction = None
         self.cancel = True
         super().__init__(parent)
 
@@ -15896,8 +15986,10 @@ class ShortcutEditorDialog(QBaseDialog):
                 self.warnInvalidKeySequenceDelObjWithLeftClick()
                 return
         
-        self.shortcutLineEdits.pop('Zoom out')
-        self.shortcutLineEdits.pop('Delete object')
+        self.shortcutLineEdits.pop('Zoom out', None)
+        # 'Delete object' row is missing when show_delete_object_shortcut
+        # is False
+        self.shortcutLineEdits.pop('Delete object', None)
         self.cancel = False
         self.mouseBindings = dict()
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
@@ -15917,11 +16009,12 @@ class ShortcutEditorDialog(QBaseDialog):
                     text, shortcutLineEdit.keySequence
                 )
         
-        delObjQtButton = (
-            Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
-            else Qt.MouseButton.MiddleButton
-        )
-        self.delObjAction = delObjKeySequence, delObjQtButton
+        if self.show_delete_object_shortcut:
+            delObjQtButton = (
+                Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
+                else Qt.MouseButton.MiddleButton
+            )
+            self.delObjAction = delObjKeySequence, delObjQtButton
         self.zoomOutKeyValue = self.zoomShortcutLineEdit.key
         
         self.close()
@@ -21934,7 +22027,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.againstPrevLineWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
         self.againstPrevContourColorButton.sigColorChanging.connect(self.emitValuesChanged)
         self.againstPrevContourWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
-        self.showOnlyVisible3DCheckBox.stateChanged.connect(self.emitValuesChanged)
+        self.showOnlyVisible3DCheckBox.toggled.connect(self.emitValuesChanged)
 
         self._historyTrackWidgets = (
             self.lengthWidget,
@@ -21979,7 +22072,9 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.againstPrevContourWidthSpinBox.setValue(
             int(settings['against_prev_contour_width'])
         )
-        self.showOnlyVisible3DCheckBox.stateChanged.connect(self.emitValuesChanged)
+        self.showOnlyVisible3DCheckBox.setChecked(
+            bool(settings.get('3D_show_only_visible', False))
+        )
         self._syncRanges()
         self._updateRelevantOptionsState()
 

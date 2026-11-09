@@ -98,8 +98,8 @@
     {
       "order": 3,
       "equations": {
-        "fucci_ramp_pattern": "{GEMININ}_ramp - {CDT1}_ramp",
-        "fucci_rel_diff": "abs({GEMININ}_fucci - {CDT1}_fucci) / ({GEMININ}_fucci + {CDT1}_fucci)"
+        "fucci_ramp_pattern": "`{GEMININ}_ramp` - `{CDT1}_ramp`",
+        "fucci_rel_diff": "abs(`{GEMININ}_fucci` - `{CDT1}_fucci`) / (`{GEMININ}_fucci` + `{CDT1}_fucci`)"
       }
     },
     {
@@ -117,12 +117,12 @@
   "normalize_measurements": false,
   "conditional_formatting": {
     "{GEMININ}_fucci": [
-      {"condition": "{GEMININ}_ramp == 1", "color": "lighter"},
-      {"condition": "{GEMININ}_ramp == -1", "color": "darker"}
+      {"condition": "`{GEMININ}_ramp` == 1", "color": "lighter"},
+      {"condition": "`{GEMININ}_ramp` == -1", "color": "darker"}
     ],
     "{CDT1}_fucci": [
-      {"condition": "{CDT1}_ramp == 1", "color": "lighter"},
-      {"condition": "{CDT1}_ramp == -1", "color": "darker"}
+      {"condition": "`{CDT1}_ramp` == 1", "color": "lighter"},
+      {"condition": "`{CDT1}_ramp` == -1", "color": "darker"}
     ]
   },
   "timepoint_identifiers": [
@@ -133,7 +133,7 @@
       "autoApply": true,
       "predictor": {
         "type": "equation",
-        "equation": "({CDT1}_fucci == MAX({CDT1}_fucci)) & ((MIN(frame_i) > 0) | (any({CDT1}_ramp == 1) & any({CDT1}_ramp == -1))) & ((MAX(frame_i) < SizeT - 1) | any(fucci_crossing == 1) | (any({CDT1}_ramp == 1) & any({CDT1}_ramp == -1)))",
+        "equation": "(`{CDT1}_fucci` == MAX(`{CDT1}_fucci`)) & ((MIN(frame_i) > 0) | (any(`{CDT1}_ramp` == 1) & any(`{CDT1}_ramp` == -1))) & ((MAX(frame_i) < SizeT - 1) | any(fucci_crossing == 1) | (any(`{CDT1}_ramp` == 1) & any(`{CDT1}_ramp` == -1)))",
         "mode": "last_true"
       }
     },
@@ -144,7 +144,7 @@
       "autoApply": true,
       "predictor": {
         "type": "equation",
-        "equation": "({GEMININ}_fucci <= MIN({GEMININ}_fucci) + 0.1 * (MAX({GEMININ}_fucci) - MIN({GEMININ}_fucci))) & (frame_i < MAX(frame_i * timepoint_Cdt1_peak) + (any(timepoint_Cdt1_peak) == 0) * MAX(frame_i * timepoint_Crossing))",
+        "equation": "(`{GEMININ}_fucci` <= MIN(`{GEMININ}_fucci`) + 0.1 * (MAX(`{GEMININ}_fucci`) - MIN(`{GEMININ}_fucci`))) & (frame_i < MAX(frame_i * timepoint_Cdt1_peak) + (any(timepoint_Cdt1_peak) == 0) * MAX(frame_i * timepoint_Crossing))",
         "mode": "last_true"
       }
     },
@@ -166,7 +166,7 @@
       "autoApply": true,
       "predictor": {
         "type": "equation",
-        "equation": "({CDT1}_fucci <= MIN({CDT1}_fucci) + 0.1 * (MAX({CDT1}_fucci) - MIN({CDT1}_fucci))) & any(timepoint_Crossing) & (frame_i > MAX(frame_i * timepoint_Crossing))",
+        "equation": "(`{CDT1}_fucci` <= MIN(`{CDT1}_fucci`) + 0.1 * (MAX(`{CDT1}_fucci`) - MIN(`{CDT1}_fucci`))) & any(timepoint_Crossing) & (frame_i > MAX(frame_i * timepoint_Crossing))",
         "mode": "first_true"
       }
     },
@@ -202,7 +202,7 @@
       "autoApply": true,
       "predictor": {
         "type": "equation",
-        "equation": "(COUNT({GEMININ}_fucci) >= 180) & (STD({GEMININ}_fucci) < 0.0008 * COUNT({GEMININ}_fucci) * abs(MEAN({GEMININ}_fucci)))",
+        "equation": "(COUNT(`{GEMININ}_fucci`) >= 180) & (STD(`{GEMININ}_fucci`) < 0.0008 * COUNT(`{GEMININ}_fucci`) * abs(MEAN(`{GEMININ}_fucci`)))",
         "consolidation": "all",
         "other_cells": {
           "source": "daughter", "condition": "", "condition_mode": "where_true",
@@ -218,7 +218,7 @@
       "type": "Single time-point",
       "symbol": "'s' square",
       "symbolColor": [255, 0, 0, 255],
-      "shortcut": "S",
+      "shortcut": "D",
       "description": "Cell to be excluded from analysis.",
       "keepActive": true,
       "isHideChecked": true,

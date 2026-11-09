@@ -1,5 +1,8 @@
-from . import printl
+import logging
+
 from qtpy.QtCore import QSettings
+
+_logger = logging.getLogger(__name__)
 
 class GUICoreElements():
     # settings helper
@@ -12,7 +15,10 @@ class GUICoreElements():
         try:
             return cast(value)
         except Exception:
-            printl(f"Warning: Could not cast setting '{index_name}' value '{value}' to {cast}. Using default '{default}'.")
+            _logger.warning(
+                "Could not cast setting '%s' value '%s' to %s. "
+                "Using default '%s'.", index_name, value, cast, default
+            )
             return default
 
     def _set_setting_value(self, index_name, value):
@@ -62,7 +68,7 @@ class GUICoreElements():
 
         if rp is None:
             self.logger.warning(
-                f"[WARNING] rp for displaying contours was requested before being set properly"
+                "[WARNING] rp for displaying contours was requested before being set properly"
             )
             if frame_i == posData.frame_i:
                 lab = posData.lab

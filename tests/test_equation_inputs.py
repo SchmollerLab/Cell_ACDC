@@ -102,8 +102,9 @@ def test_evaluate_passes_only_referenced_columns_to_eval(monkeypatch):
     values = tp.CellEquation.evaluate(df, 'area > MEAN(area) + frame_i')
     assert seen == [['area']]
     assert values.tolist() == [False, False]
+    # Backtick-quoted names are narrowed as well.
     assert tp.CellEquation.evaluate(df, '`area` > 2').tolist() == [False, True]
-    assert len(seen[-1]) == 51
+    assert seen[-1] == ['area']
 
 
 def test_timepoint_debug_logs_failure_and_preserves_exception(monkeypatch, capsys):
@@ -454,6 +455,8 @@ def test_direct_other_input_comparisons_evaluate_unique_values_together(
     'area_other + MEAN(SHIFT(area))',
     'MEAN(area) + MEAN(area)',
     '(area_other > MEAN(area)) & (stage_other == "S")',
+    '(`area` > MEAN(`area`)) & (`area_other` > 0)',
+    '`area_other` - SHIFT(`area`)',
 ])
 @pytest.mark.parametrize('combine', ['any', 'max', 'min'])
 @pytest.mark.parametrize('indexed', [False, True])
@@ -547,6 +550,171 @@ def test_direct_function_alternatives_keep_expanded_scope():
     assert result.tolist() == [12., 14.]
 
 
+@pytest.mark.parametrize('equation,expected', [
+    ('(area > MEAN(area)) & (area_other > 0)', [True, True, False, False]),
+    ('(area > MEAN(area)) & any(area_other > 0)', [True, True, False, False]),
+    ('(`area` > MEAN(`area`)) & (`area_other` > 0)', [True, True, False, False]),
+    (
+        '(`cell area` > MEAN(`cell area`)) & (`area_other` > 0)',
+        [True, True, False, False]
+    ),
+    ('(COUNT(`area`) == 4) & (`area_other` > 0)', [True] * 4),
+    ('(COUNT(`cell area`) == 4) & any(`area_other` > MEAN(area) - 5)', [True] * 4),
+])
+def test_own_calls_use_original_timeline_in_mixed_and_quoted_equations(
+        equation, expected
+    ):
+    # Five alternatives at frame 0: evaluating MEAN/COUNT on the expanded
+    # rows would weight frame 0 five times (MEAN 6.25, COUNT 8).
+    df = pd.DataFrame({
+        'frame_i': [0, 1, 2, 3], 'Cell_ID': [1] * 4,
+        'area': [8., 5., 4., 1.], 'area_other': [1.] * 4,
+    })
+    df['cell area'] = df['area']
+    alternatives = {
+        'columns': ('area_other',),
+        'by_target': {
+            (0, 1): [(1.,), (2.,), (3.,), (4.,), (5.,)],
+            **{(t, 1): [(1.,)] for t in (1, 2, 3)},
+        },
+    }
+    result = tp.OtherCellMeasurements.evaluate_with_alternatives(
+        df, equation, alternatives
+    )
+    assert result.tolist() == expected
+
+
+def test_quoted_mask_round_trip_keeps_strings_and_names():
+    equation = '(`GFP mean` > MEAN(`GFP mean`)) & (stage == "`x`") & (`area` > 0)'
+    masked, quoted = tp.CellEquation.mask_quoted(equation)
+    ast.parse(masked, mode='eval')
+    assert '"`x`"' in masked and 'area > 0' in masked
+    assert set(quoted.values()) == {'GFP mean'}
+    assert tp.CellEquation.unmask_quoted(
+        ast.unparse(ast.parse(masked, mode='eval')), quoted
+    ).count('`GFP mean`') == 2
+
+
+# Python binds & and | tighter than comparisons, pandas looser: rewritten
+# equations must keep the parentheses of ``(dead | excl) == 0`` (ast.unparse
+# drops them, so pandas would read ``dead | (excl == 0)``).
+@pytest.mark.parametrize('equation,expected', [
+    ('((dead | excl) == 0) & (area_other > MEAN(area))',
+     [False, True, False, False]),
+    ('((`dead` | excl) == 0) & (`area_other` > MEAN(area))',
+     [False, True, False, False]),
+    # Own-cell call nested in a call reading a direct input.
+    ('any(((dead | excl) == 0) & (area_other > MEAN(area)))', [True] * 4),
+    # Cached call keeps its inner parentheses: MEAN([0, 2, 0, 0]) = 0.5,
+    # with dead | (excl == 0) MEAN([1, 2, 0, 4]) = 1.75.
+    ('area_other > 4 * MEAN(((dead | excl) == 0) * area)', [True] * 4),
+    ('area_other < 4 * MEAN(((dead | excl) == 0) * area)', [False] * 4),
+])
+def test_alternatives_keep_pandas_bitwise_precedence(equation, expected):
+    df = pd.DataFrame({
+        'frame_i': [0, 1, 2, 3], 'Cell_ID': [1] * 4,
+        'dead': [1, 0, 0, 1], 'excl': [1, 0, 1, 0],
+        'area': [1., 2., 3., 4.], 'area_other': [5.] * 4,
+    })
+    alternatives = {
+        'columns': ('area_other',),
+        'by_target': {(t, 1): [(5.,), (6.,)] for t in range(4)},
+    }
+    result = tp.OtherCellMeasurements.evaluate_with_alternatives(
+        df, equation, alternatives
+    )
+    assert result.tolist() == expected
+    # Same as evaluating the unchanged equation on the table.
+    assert result.tolist() == np.broadcast_to(
+        tp.CellEquation.evaluate(df, equation), len(df)
+    ).astype(bool).tolist()
+
+
+def test_source_span_counts_characters_on_multiple_lines():
+    # ast column offsets count UTF-8 bytes ("µm" has 2 bytes for µ).
+    source = '(("µm" == unit_x) |\n  MEAN(`ä b`))'
+    masked, quoted = tp.CellEquation.mask_quoted(source)
+    call = ast.parse(masked, mode='eval').body.right
+    start, end = tp.CellEquation.source_span(masked, call)
+    assert tp.CellEquation.unmask_quoted(
+        masked[start:end], quoted
+    ) == 'MEAN(`ä b`)'
+
+
+def bitwise_precedence_cells():
+    # Cell 1 is dead and excluded, so ((dead | excl) == 0) is False; pandas
+    # reading dead | (excl == 0) would make it True.
+    return pd.DataFrame({
+        'frame_i': [0, 1, 0, 1],
+        'Cell_ID': [1, 1, 2, 2],
+        'dead': [1, 1, 0, 0], 'excl': [1, 1, 0, 0],
+        'area': [6., 6., 10., 10.],
+    }).set_index(['frame_i', 'Cell_ID'])
+
+
+@pytest.mark.parametrize('equation,expected', [
+    ('any(((dead | excl) == 0) & (area_other > 5))', [2]),
+    ('any(((dead | excl) == 0) & (`area_other` > 5))', [2]),
+    ('any(((dead | excl) == 0) & (area_other > MEAN(area)))', []),
+])
+@pytest.mark.parametrize('fast_path', [True, False])
+def test_main_cell_filter_keeps_pandas_bitwise_precedence(
+        monkeypatch, equation, expected, fast_path
+    ):
+    df = bitwise_precedence_cells()
+    if not fast_path:
+        monkeypatch.setattr(
+            tp.OtherCellMeasurements, 'constant_main_any', lambda *args: None
+        )
+    elif 'MEAN' not in equation:
+        # The fast path handles these filters itself.
+        assert tp.OtherCellMeasurements.constant_main_any(
+            df, equation, tp.CellFilter.default_other(), 2, None
+        ) == expected
+    assert tp.TimepointPredictor.main_cell_filter_IDs(
+        df, {'condition': equation, 'condition_mode': 'any'},
+        tp.CellFilter.default_other(), 2
+    ) == expected
+
+
+@pytest.mark.parametrize('equation', [
+    '((dead | excl) == 0) & (area_other > MEAN(area))',
+    '((`dead` | excl) == 0) & (area_other > MEAN(`area`))',
+])
+def test_predictor_keeps_pandas_bitwise_precedence(equation):
+    df = bitwise_precedence_cells()
+    # Cell 1: excluded in every frame. Cell 2: area_other 6 > MEAN 10 is
+    # False. dead | (excl == 0) would predict frame 0 for cell 1.
+    assert tp.TimepointPredictor.from_equation(
+        df, equation, 'first_true', SizeT=2,
+        other_cells=tp.CellFilter.default_other()
+    ) == {1: [], 2: []}
+
+
+@pytest.mark.parametrize('mode', ['where_true', 'any'])
+@pytest.mark.parametrize('condition', [
+    '((dead | excl) == 0) & (area >= MEAN(area))',
+    '((dead | excl) == 0) & (area > 0)',
+])
+def test_other_cell_condition_keeps_pandas_bitwise_precedence(mode, condition):
+    df = pd.DataFrame({
+        'frame_i': np.repeat([0, 1], 3),
+        'Cell_ID': np.tile([1, 2, 3], 2),
+        'dead': [0, 1, 0] * 2, 'excl': [0, 1, 1] * 2,
+        'area': [5., 7., 9.] * 2,
+    })
+    prepared, rewritten = tp.OtherCellMeasurements.prepare_inputs(
+        df, 'COUNT(area_other)',
+        dict(tp.CellFilter.default_other(), condition=condition,
+             condition_mode=mode),
+        2
+    )
+    # Only cell 1 passes; dead | (excl == 0) would also select cell 2.
+    np.testing.assert_array_equal(
+        tp.CellEquation.evaluate(prepared, rewritten), [0, 1, 1] * 2
+    )
+
+
 def test_direct_other_alternatives_are_returned_not_stored_in_attrs():
     df = pd.DataFrame({
         'frame_i': [0, 0, 0], 'Cell_ID': [1, 2, 3], 'area': [10., 4., 12.]
@@ -612,6 +780,55 @@ def test_direct_daughter_input_in_reported_equation():
         df, '(cell_vol_fl_other>0) & cell_vol_fl>AVERAGE(cell_vol_fl)*1.5',
         'first_true', SizeT=5, other_cells=settings
     ) == {12: [2], 13: [], 14: []}
+
+
+def tree_tracked_frame(parent_IDs):
+    """acdc_df as written by tree trackers (default cca + tree columns)."""
+    from cellacdc import myutils_models
+    frames = []
+    for frame_i, IDs in enumerate([[1, 2], [1, 2, 3, 4]]):
+        frame = myutils_models.getBaseCca_df(IDs, with_tree_cols=True)
+        frame['frame_i'] = frame_i
+        frame['area'] = 10.
+        frames.append(frame.reset_index())
+    df = pd.concat(frames, ignore_index=True)
+    df['parent_ID_tree'] = parent_IDs
+    return df.set_index(['frame_i', 'Cell_ID'])
+
+
+def test_other_presets_prefer_valid_tree_over_default_budding_columns():
+    df = tree_tracked_frame([-1, -1, -1, -1, 1, 1])
+    assert {'relative_ID', 'relationship'}.issubset(df.columns)
+    presets = tp.CellFilter.other_presets(df)
+    assert presets['daughter'] == ('parent_ID_tree == this_Cell_ID', 't + 1', 't + 1')
+    assert 'sister' in presets
+    condition, start, end = presets['daughter']
+    assert tp.TimepointPredictor.from_equation(
+        df, 'COUNT(Cell_ID_other) > 0', 'first_true', SizeT=2, IDs=[1, 2],
+        other_cells=dict(
+            tp.CellFilter.default_other(), condition=condition,
+            range_start=start, range_end=end
+        )
+    ) == {1: [0], 2: []}
+
+
+def test_other_presets_use_budding_columns_without_valid_tree():
+    df = tree_tracked_frame(-1)
+    flat = tp.CellTable.flatten(df)
+    flat.loc[flat['Cell_ID'] == 3, ['relationship', 'relative_ID']] = ['bud', 1]
+    presets = tp.CellFilter.other_presets(flat)
+    assert presets['daughter'][1:] == ('t', 't')
+    assert 'relationship == "bud"' in presets['daughter'][0]
+    assert 'sister' not in presets
+
+
+def test_other_presets_prefer_bud_annotations_over_tree():
+    df = tree_tracked_frame([-1, -1, -1, -1, 1, 1])
+    flat = tp.CellTable.flatten(df)
+    flat.loc[flat['Cell_ID'] == 3, ['relationship', 'relative_ID']] = ['bud', 1]
+    presets = tp.CellFilter.other_presets(flat)
+    assert presets['daughter'][1:] == ('t', 't')
+    assert 'sister' not in presets
 
 
 @pytest.mark.parametrize('column', ['area', 'cell area'])
@@ -682,10 +899,53 @@ def test_batched_filters_match_per_candidate_evaluation(
 
 @pytest.mark.parametrize('condition', [
     'area > MEAN(area)', 'DIFF(area) > 0', 'any(area > this_area)',
-    'index > 0', '`area` > this_area',
+    'index > 0', '`a b` > MAX(x)', '`index` > 0',
 ])
 def test_non_rowwise_filters_keep_general_evaluation(condition):
     assert not tp.OtherCellMeasurements._is_rowwise_condition(condition)
+
+
+@pytest.mark.parametrize('condition', [
+    '`area` > this_area', '`a b` > 1', '(`a b` > this_area) & (stage == "a`b")',
+])
+def test_backticked_rowwise_filters_are_batched(condition):
+    assert tp.OtherCellMeasurements._is_rowwise_condition(condition)
+
+
+@pytest.mark.parametrize('mode', ['where_true', 'any', 'all'])
+@pytest.mark.parametrize('quoted,plain', [
+    ('`GFP mean` > 0.5', 'GFPmean > 0.5'),
+    ('`GFP mean` > this_GFPmean', 'GFPmean > this_GFPmean'),
+    ('(`GFP mean` > 0.2) & (`GFPmean` < 0.9)', '(GFPmean > 0.2) & (GFPmean < 0.9)'),
+])
+def test_backticked_filters_match_plain_filters_without_per_target_eval(
+        monkeypatch, mode, quoted, plain
+    ):
+    rng = np.random.default_rng(0)
+    df = pd.DataFrame({
+        'frame_i': np.repeat(np.arange(4), 6),
+        'Cell_ID': np.tile(np.arange(1, 7), 4),
+        'GFPmean': rng.random(24),
+        'area': rng.random(24),
+    })
+    df['GFP mean'] = df['GFPmean']
+    equation = 'MEAN(area_other) + COUNT(area_other) + MAX(GFPmean_other)'
+
+    def prepare(condition):
+        return tp.OtherCellMeasurements.prepare_inputs(
+            df, equation,
+            dict(tp.CellFilter.default_other(), condition=condition,
+                 condition_mode=mode, range_start='t - 1', range_end='t'),
+            4
+        )
+
+    expected, expectedEquation = prepare(plain)
+    select = Mock(wraps=tp.OtherCellMeasurements._select_candidates)
+    monkeypatch.setattr(tp.OtherCellMeasurements, '_select_candidates', select)
+    actual, actualEquation = prepare(quoted)
+    select.assert_not_called()  # Batched once per frame window.
+    assert actualEquation == expectedEquation
+    pd.testing.assert_frame_equal(actual, expected)
 
 
 def test_daughter_equality_avoids_per_candidate_pandas_evaluation(
@@ -714,16 +974,19 @@ def test_daughter_equality_index_limits_candidate_rows(measurements, monkeypatch
         'parent_ID_tree': [-1, 1, 1] + [-1] * 98,
         'area': [1.] * 101,
     })
-    windowSizes = []
-    select = tp.OtherCellMeasurements._select_candidates
+    candidateSizes = []
+    indexed = tp.OtherCellMeasurements._equality_candidates
 
-    def record_window_size(window, *args, **kwargs):
-        windowSizes.append(len(window))
-        return select(window, *args, **kwargs)
+    def record_candidate_sizes(*args, **kwargs):
+        for positions, frames, counts, rows in indexed(*args, **kwargs):
+            candidateSizes.extend(counts.tolist())
+            yield positions, frames, counts, rows
 
     monkeypatch.setattr(
-        tp.OtherCellMeasurements, '_select_candidates', record_window_size
+        tp.OtherCellMeasurements, '_equality_candidates', record_candidate_sizes
     )
+    select = Mock(wraps=tp.OtherCellMeasurements._select_candidates)
+    monkeypatch.setattr(tp.OtherCellMeasurements, '_select_candidates', select)
     settings = dict(
         tp.CellFilter.default_other(), source=tp.SOURCE_DAUGHTER,
         range_start='t + 1', range_end='t + 1'
@@ -733,7 +996,8 @@ def test_daughter_equality_index_limits_candidate_rows(measurements, monkeypatch
         flat, 'COUNT(area_other)', settings, SizeT=2, IDs=[1]
     )
 
-    assert windowSizes == [2]
+    assert candidateSizes == [2]
+    select.assert_not_called()
     assert prepared['_acdc_other_count_0'].tolist() == [2]
 
 
@@ -772,7 +1036,176 @@ def test_equality_windows_match_full_scan_without_between(monkeypatch, mode, sta
     between.assert_not_called()
 
 
-def test_budding_filter_is_evaluated_once_per_nonempty_frame_window(
+@pytest.mark.parametrize('condition,expected', [
+    ('Cell_ID == this_parent_ID_tree', ('Cell_ID', 'parent_ID_tree', [], 0)),
+    ('(this_relative_ID == Cell_ID) & (this_relationship == "bud")',
+     ('Cell_ID', 'relative_ID', [], 1)),
+    ('((parent_ID_tree > 0) & (parent_ID_tree == this_parent_ID_tree)) '
+     '& (area > 1)',
+     ('parent_ID_tree', 'parent_ID_tree', ['parent_ID_tree > 0', 'area > 1'], 0)),
+    ('(`GFP mean` == this_x) & (`GFP mean` > SizeT)',
+     ('GFP mean', 'x', ['`GFP mean` > SizeT'], 0)),
+    ('(a == this_b) | (c > 1)', None),
+    # Python parses a == (this_b & c), pandas (a == this_b) & c: no index.
+    ('a == this_b & c', None),
+    ('a == b', None),
+    ('a > this_b', None),
+])
+def test_equality_conjunct_detection(condition, expected):
+    assert tp.OtherCellMeasurements._equality_conjunct(condition) == expected
+
+
+def lineage_frame(kind, seed):
+    """Small random tree- or budding-tracked table with gaps and NaN."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for t in range(6):
+        for ID in range(1, 13):
+            if rng.random() < 0.2:
+                continue  # tracking gaps
+            rows.append((t, ID))
+    df = pd.DataFrame(rows, columns=['frame_i', 'Cell_ID'])
+    n = len(df)
+    df['area'] = np.where(rng.random(n) < 0.1, np.nan, rng.random(n))
+    df['stage'] = rng.choice(['G1', 'S', 'G2'], n)
+    if kind == 'tree':
+        parents = {ID: (rng.integers(1, ID) if ID > 3 else -1) for ID in range(1, 13)}
+        parents[7] = np.nan
+        df['parent_ID_tree'] = df['Cell_ID'].map(parents).astype(float)
+    else:
+        df['relative_ID'] = rng.choice([-1, *range(1, 13)], n)
+        df['relationship'] = rng.choice(['mother', 'bud'], n)
+    return df.sample(frac=1, random_state=seed).set_index(['frame_i', 'Cell_ID'])
+
+
+@pytest.mark.parametrize('kind,source', [
+    ('tree', tp.SOURCE_MOTHER), ('tree', tp.SOURCE_SISTER),
+    ('tree', tp.SOURCE_DAUGHTER), ('budding', tp.SOURCE_MOTHER),
+    ('budding', tp.SOURCE_DAUGHTER),
+])
+@pytest.mark.parametrize('condition', [
+    '', 'area > this_area', '(area > 0.3) & (stage == this_stage)',
+])
+# Preset windows with one pair chunk, and wider windows split into several
+# small chunks.
+@pytest.mark.parametrize('seed,frames,chunk', [
+    (0, None, None), (1, ('t - 1', 't + 1'), 3),
+])
+def test_indexed_lineage_sources_match_window_scan(
+        monkeypatch, kind, source, condition, seed, frames, chunk
+    ):
+    df = lineage_frame(kind, seed)
+    presets = tp.CellFilter.other_presets(df)
+    _, start, end = presets[source]
+    start, end = frames or (start, end)
+    settings = dict(
+        tp.CellFilter.default_other(), source=source, condition=condition,
+        range_start=start, range_end=end
+    )
+    if chunk is not None:
+        monkeypatch.setattr(
+            tp.OtherCellMeasurements, '_EQUALITY_PAIR_CHUNK', chunk
+        )
+    aggregates = (
+        'MEAN(area_other) + FIRST(area_other) + LAST(area_other) '
+        '+ COUNT(area_other) + NUNIQUE(stage_other)'
+    )
+
+    def prepare():
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            results = [
+                tp.OtherCellMeasurements.prepare_inputs(
+                    df, aggregates, settings, 6, IDs=[2, 5, 7, 9, 12]
+                ),
+                tp.OtherCellMeasurements.prepare_inputs(
+                    df, 'area > area_other', settings, 6,
+                    return_alternatives=True
+                ),
+            ]
+        return results, [str(warning.message) for warning in caught]
+
+    indexed = Mock(wraps=tp.OtherCellMeasurements._equality_candidates)
+    with monkeypatch.context() as patch:
+        patch.setattr(tp.OtherCellMeasurements, '_equality_candidates', indexed)
+        actual, actualWarnings = prepare()
+    assert indexed.call_count == 2
+    # Reference: the per-frame window scan without the equality index.
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            tp.OtherCellMeasurements, '_equality_conjunct',
+            staticmethod(lambda condition: None)
+        )
+        expected, expectedWarnings = prepare()
+    for (actualDf, actualEquation, *actualRest), (
+            expectedDf, expectedEquation, *expectedRest) in zip(actual, expected):
+        pd.testing.assert_frame_equal(actualDf, expectedDf)
+        assert actualEquation == expectedEquation
+        assert actualRest == expectedRest
+    assert actualWarnings == expectedWarnings
+    # Independent reference for COUNT and FIRST: the full-table scan.
+    combined = dict(
+        settings, source=tp.SOURCE_SAME_FRAME,
+        condition=tp.OtherCellMeasurements._candidate_condition(settings, df)
+    )
+    flat = tp.CellTable.flatten(df)
+    targets = tp.CellTable.flatten(tp.CellTable.subset(df, [2, 5, 7, 9, 12]))
+    rows = [
+        full_scan_rows(flat, target, combined, 6)
+        for _, target in targets.iterrows()
+    ]
+    prepared = actual[0][0]
+    assert prepared['_acdc_other_count_3'].tolist() == [
+        int(selected['area'].notna().sum()) for selected in rows
+    ]
+    np.testing.assert_array_equal(prepared['_acdc_other_first_1'], [
+        tp.CELL_FUNCTIONS['FIRST'][0](selected['area']) if len(selected) else 0
+        for selected in rows
+    ])
+
+
+@pytest.mark.parametrize('kind,source', [
+    ('tree', tp.SOURCE_MOTHER), ('tree', tp.SOURCE_SISTER),
+    ('tree', tp.SOURCE_DAUGHTER), ('budding', tp.SOURCE_MOTHER),
+    ('budding', tp.SOURCE_DAUGHTER),
+])
+def test_lineage_sources_do_not_evaluate_target_candidate_products(
+        monkeypatch, kind, source
+    ):
+    # 80 cells x 4 frames: a window scan would evaluate 80 x 80 pairs per
+    # frame (or call pandas once per target); the index needs no more
+    # than one call over at most all rows.
+    nCells, nFrames = 80, 4
+    IDs = np.arange(1, nCells + 1)
+    df = pd.DataFrame({
+        'frame_i': np.repeat(np.arange(nFrames), nCells),
+        'Cell_ID': np.tile(IDs, nFrames),
+        'area': np.arange(nCells * nFrames, dtype=float),
+    })
+    if kind == 'tree':
+        df['parent_ID_tree'] = np.tile(np.where(IDs > 4, IDs // 2, -1), nFrames)
+    else:
+        df['relative_ID'] = np.tile(np.where(IDs % 2, IDs + 1, IDs - 1), nFrames)
+        df['relationship'] = np.tile(np.where(IDs % 2, 'mother', 'bud'), nFrames)
+    _, start, end = tp.CellFilter.other_presets(df)[source]
+    settings = dict(
+        tp.CellFilter.default_other(), source=source,
+        range_start=start, range_end=end
+    )
+    evaluate = Mock(wraps=tp.CellEquation.evaluate)
+    monkeypatch.setattr(tp.CellEquation, 'evaluate', evaluate)
+    select = Mock(wraps=tp.OtherCellMeasurements._select_candidates)
+    monkeypatch.setattr(tp.OtherCellMeasurements, '_select_candidates', select)
+    prepared, _ = tp.OtherCellMeasurements.prepare_inputs(
+        df, 'COUNT(area_other)', settings, nFrames
+    )
+    select.assert_not_called()
+    assert evaluate.call_count <= 1
+    assert all(len(call.args[0]) <= len(df) for call in evaluate.call_args_list)
+    assert prepared['_acdc_other_count_0'].sum() > 0
+
+
+def test_budding_daughter_filter_is_evaluated_once_on_candidate_rows(
         measurements, monkeypatch
     ):
     flat = tp.CellTable.flatten(measurements)
@@ -787,12 +1220,11 @@ def test_budding_filter_is_evaluated_once_per_nonempty_frame_window(
              range_start=start, range_end=end),
         5
     )
-    frames = set(flat['frame_i'])
-    nonemptyWindows = 0
-    for t in frames:
-        lower, upper = tp.FrameRange.bounds(start, end, t, 5)
-        nonemptyWindows += any(lower <= frame <= upper for frame in frames)
-    assert evaluate.call_count == nonemptyWindows < len(flat)
+    # Only the candidate-only conjunct ``relationship == "bud"`` is
+    # evaluated (once, on all candidate rows); the equality is indexed.
+    assert [call.args[1] for call in evaluate.call_args_list] == [
+        'relationship == "bud"'
+    ]
 
 
 def test_batched_filter_errors_identify_frame_and_condition(measurements):

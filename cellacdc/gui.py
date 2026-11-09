@@ -31975,6 +31975,9 @@ When working with 3D segmentation masks:
         newFont = QFont()
         newFont.setPixelSize(newFontSize)
         _font = newFont
+        # Read by mixin methods in other modules (e.g.
+        # gui_overlay.addAlphaScrollbar) that cannot see gui.py's _font
+        self.bottomLayoutFont = newFont
         self.zProjComboBox.setFont(newFont)
         self.t_label.setFont(newFont)
         self.zProjOverlay_CB.setFont(newFont)

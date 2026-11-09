@@ -2,8 +2,8 @@
 segmentation masks (contours, segm. masks overlay, IDs, cell cycle and lineage 
 info, mother-daughter lines and object tracks) on the image axes.
 
-It is shared by the main GUI (`gui.guiWin`) and the signals viewer 
-(`measurements_viewer.SignalsViewerWin`).
+It is shared by the main GUI (`gui.guiWin`) and the measurements viewer
+(`measurements_viewer.MeasurementsViewerWin`).
 
 Requirements on the inheriting class
 ------------------------------------
@@ -28,7 +28,7 @@ from qtpy.QtWidgets import QWidget, QGridLayout
 
 import pyqtgraph as pg
 
-from . import widgets, html_utils, annotate, core, colors, apps, printl
+from . import widgets, html_utils, annotate, core, colors, apps
 
 # (row, col, rowSpan, colSpan, slot)
 CHECKBOX_OPTION_NAME_TO_LAYOUT_LOC_MAPPER = {

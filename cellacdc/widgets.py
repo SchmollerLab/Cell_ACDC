@@ -2597,6 +2597,10 @@ class alphaNumericLineEdit(QLineEdit):
         super().__init__(parent)
         self.validPattern = fr'^[a-zA-Z0-9{additionalChars}_\-]+$'
         self.invalidPattern = fr'[^a-zA-Z0-9{additionalChars}_\-]'
+        # Typed spaces become underscores only when spaces are not allowed
+        self._replaceTypedSpace = (
+            re.search(self.invalidPattern, ' ') is not None
+        )
         self.formatter = formatter
         self.ignore_file_ext = ignore_file_ext
 
@@ -2638,8 +2642,9 @@ class alphaNumericLineEdit(QLineEdit):
         if not text.isprintable():
             return super().keyPressEvent(event)
 
-        if text == ' ':
-            # replace the space with an underscore before QLineEdit processes it
+        if text == ' ' and self._replaceTypedSpace:
+            # replace the invalid space with an underscore before QLineEdit
+            # processes it (spaces allowed by `additionalChars` are kept)
             event = QKeyEvent(
                 event.type(),
                 Qt.Key.Key_Underscore,

@@ -1,6 +1,8 @@
 import copy
 import json
 import os
+import sys
+from functools import partial
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -15,6 +17,9 @@ from cellacdc import apps, measurements_viewer
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 from cellacdc.measurements_viewer import MeasurementsViewerWin, VISITED_COLUMN
 from cellacdc.timepoint_predictors import TimepointIdentifier
+
+# The configurations below use the test-only identity processor 'Dummy'
+pytestmark = pytest.mark.usefixtures('dummy_processor')
 
 
 @pytest.fixture(scope='module')
@@ -296,6 +301,8 @@ def test_table_changes_are_tracked_and_saved(viewer, tmp_path):
     assert viewer.unsavedAcdcDfPositions() == viewer.data
     assert viewer.saveAcdcDfs(viewer.data)
     assert not viewer.unsavedAcdcDfPositions()
+    # The saved column name is part of the file format
+    assert VISITED_COLUMN == 'measurements_viewer_visited'
     for images in paths:
         saved = pd.read_csv(f'{images}/test_acdc_output.csv')
         assert saved['final'].tolist() == [25., 49.]
@@ -384,6 +391,392 @@ def test_close_without_changes_does_not_prompt(viewer, tmp_path, monkeypatch):
     monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', box)
     assert viewer.askSaveBeforeClosing()
     box.assert_not_called()
+
+
+@pytest.mark.parametrize('answer', ['reload', 'overwrite', None])
+@pytest.mark.parametrize('reloaded', [False, True])
+def test_saving_table_changed_on_disk_asks_first(
+        viewer, tmp_path, monkeypatch, answer, reloaded
+    ):
+    load_clean_workflow(viewer, tmp_path, steps=False)
+    if reloaded:
+        # The stamp of the file is also updated by Reload table
+        viewer.reloadButtonClicked()
+    viewer.setSelectedID(2)
+    pos = viewer.posData()
+    csvPath = pos.acdc_output_csv_path
+    # E.g., saved in the main GUI after the viewer loaded the table
+    external = pd.read_csv(csvPath)
+    external['external'] = [1., 2.]
+    external.to_csv(csvPath, index=False)
+    ask = Mock(return_value=answer)
+    monkeypatch.setattr(viewer, 'askAcdcDfChangedOnDisk', ask)
+    saved = viewer.saveAcdcDfs([pos])
+    ask.assert_called_once_with(pos)
+    table = pd.read_csv(csvPath)
+    if answer is None:
+        assert not saved
+        assert 'external' in table and VISITED_COLUMN not in table
+        return
+    assert saved
+    assert table[VISITED_COLUMN].all()
+    assert ('external' in table) == (answer == 'reload')
+    # The previous file is backed up like in the main GUI
+    assert os.path.exists(pos.acdc_output_backup_zip_path)
+    ask.reset_mock()
+    assert viewer.saveAcdcDfs([pos])
+    ask.assert_not_called()
+
+
+def test_flag_columns_saved_by_main_gui_are_parsed_on_load(tmp_path):
+    """The main GUI reindexes a frame's table with fill_value=0 when a cell
+    is added (`guiWin.store_data`), turning the viewer's bool columns into
+    object columns saved as True/False/0: only true values are marked."""
+    images, = make_experiment(tmp_path, positions=1)
+    csvPath = f'{images}/test_acdc_output.csv'
+    table = pd.read_csv(csvPath).set_index('Cell_ID')
+    table[f'{TIMEPOINT_PREFIX}Start'] = [True, False]
+    table[VISITED_COLUMN] = [False, True]
+    table['annot'] = [0, 1]
+    table = table.reindex([1, 2, 3], fill_value=0)  # new cell 3 (like main GUI)
+    table['frame_i'] = 0
+    table.reset_index().to_csv(csvPath, index=False)
+    assert pd.read_csv(csvPath)[VISITED_COLUMN].dtype == object
+
+    pos = measurements_viewer.load_position(images, 'phase')
+    acdc_df = MeasurementsViewerWin._standardizeAcdcDf(pos.acdc_df).sort_index()
+    timepoints = acdc_df[f'{TIMEPOINT_PREFIX}Start']
+    assert timepoints.dtype == bool and timepoints.tolist() == [True, False, False]
+    visited = acdc_df[VISITED_COLUMN]
+    assert visited.dtype == bool and visited.tolist() == [False, True, False]
+
+
+def test_visited_ids_and_custom_annotations_parse_string_flags(viewer):
+    table = pd.DataFrame(
+        {VISITED_COLUMN: ['True', 'False', '0'], 'annot': ['True', '0', 'False']},
+        index=pd.MultiIndex.from_tuples(
+            [(0, 1), (0, 2), (0, 3)], names=['frame_i', 'Cell_ID']
+        ), dtype=object
+    )
+    pos = SimpleNamespace(acdc_df=table)
+    assert viewer.visitedCellIDs(pos) == {1}
+    viewer.ensureCustomAnnotColumn(table, 'annot')
+    assert table['annot'].tolist() == [1, 0, 0]
+
+
+def phase_workflow(paths, autoApplyPhases=False):
+    """Configuration with a 'Start' time point (predicted automatically on
+    viewed cells) and a phase rule ('' before, 'Active' from 'Start')."""
+    configuration = config(paths[0])
+    configuration['images_paths'] = paths
+    configuration['input_options'][0]['images_paths'] = paths
+    configuration.update(
+        measurement_processing=[], combined_measurements=[],
+        time_course_columns=['area'], auto_apply_phases=autoApplyPhases
+    )
+    identifier = TimepointIdentifier(
+        'Start', (255, 0, 0), 'Q',
+        {'type': 'equation', 'equation': 'area > 0', 'mode': 'first_true'},
+        autoApply=True
+    )
+    configuration['timepoint_identifiers'] = [identifier.to_dict()]
+    configuration['phase_translator_rules'] = [{
+        'name': 'Cycle', 'predictor': {'type': 'none'},
+        'timepoints': [f'{TIMEPOINT_PREFIX}Start'], 'annotations': [],
+        'phases': ['', 'Active']
+    }]
+    return configuration
+
+
+def test_empty_phases_survive_save_and_reload_with_cca_columns(
+        viewer, tmp_path, app
+    ):
+    from cellacdc import cca_df_colnames, base_cca_dict
+    paths = make_experiment(tmp_path, positions=1)
+    csvPath = f'{paths[0]}/test_acdc_output.csv'
+    table = pd.read_csv(csvPath)
+    for column in cca_df_colnames:
+        table[column] = base_cca_dict[column]
+    table.to_csv(csvPath, index=False)
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(phase_workflow(paths)))
+    assert viewer.loadConfiguration(filepath=str(path))
+    # Only the displayed cell 1 gets the predicted time point and a phase
+    assert viewer.applyPhaseTranslator(allCells=False)
+    assert viewer.acdc_df['phase'].tolist() == ['Active', '']
+    for _ in range(2):
+        assert viewer.saveAcdcDfs(viewer.data)
+        viewer.reloadButtonClicked()
+        assert viewer.acdc_df['phase'].tolist() == ['Active', '']
+        assert not viewer.unsavedAcdcDfPositions()
+    pos = measurements_viewer.load_position(paths[0], 'phase')
+    assert pos.acdc_df['phase'].tolist() == ['Active', '']
+    # The reloaded phases are recognized as translator outputs
+    assert viewer.applyPhaseTranslator()
+
+
+def test_reload_and_save_keeps_phases_evaluated_in_memory(
+        viewer, tmp_path, monkeypatch
+    ):
+    paths = make_experiment(tmp_path, positions=1)
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(phase_workflow(paths)))
+    assert viewer.loadConfiguration(filepath=str(path))
+    assert viewer.applyPhaseTranslator(allCells=True)
+    assert viewer.acdc_df['phase'].tolist() == ['Active', '']
+    pos = viewer.posData()
+    assert viewer.saveAcdcDfs([pos])
+    # E.g., saved in the main GUI after the viewer saved the table
+    csvPath = pos.acdc_output_csv_path
+    external = pd.read_csv(csvPath)
+    external['external'] = [1., 2.]
+    external.to_csv(csvPath, index=False)
+    # Time point predicted on the newly viewed cell, phases evaluated
+    viewer.setSelectedID(2)
+    assert viewer.applyPhaseTranslator(allCells=True)
+    assert viewer.acdc_df['phase'].tolist() == ['Active', 'Active']
+    monkeypatch.setattr(
+        viewer, 'askAcdcDfChangedOnDisk', Mock(return_value='reload')
+    )
+    assert viewer.saveAcdcDfs([pos])
+    table = pd.read_csv(csvPath)
+    assert table['external'].tolist() == [1., 2.]
+    assert table[f'{TIMEPOINT_PREFIX}Start'].tolist() == [True, True]
+    assert table['phase'].fillna('').tolist() == ['Active', 'Active']
+    assert table['phase_Active'].tolist() == [True, True]
+
+
+def test_phase_evaluation_rebuilds_columns_only_when_they_change(
+        viewer, tmp_path, monkeypatch
+    ):
+    paths = make_experiment(tmp_path, positions=1)
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(phase_workflow(paths)))
+    assert viewer.loadConfiguration(filepath=str(path))
+    calls = []
+    updateColumnsList = viewer.updateColumnsList
+    def countingUpdateColumnsList(*args, **kwargs):
+        calls.append(1)
+        return updateColumnsList(*args, **kwargs)
+    monkeypatch.setattr(viewer, 'updateColumnsList', countingUpdateColumnsList)
+    assert 'phase' not in viewer.acdc_df
+    # First evaluation adds the phase outputs
+    assert viewer.applyPhaseTranslator(allCells=False)
+    assert len(calls) == 1
+    previous = viewer.acdc_df
+    # Re-evaluation with the same outputs keeps the columns tree
+    assert viewer.applyPhaseTranslator(allCells=False)
+    assert len(calls) == 1
+    assert viewer.acdc_df['phase'].tolist() == ['Active', '']
+    # The evaluated table is a new object; the previous one is unchanged
+    assert viewer.acdc_df is not previous
+    assert previous['phase'].tolist() == ['Active', '']
+
+
+def test_loading_configuration_auto_applies_phases_to_displayed_cell(
+        viewer, tmp_path, app
+    ):
+    paths = make_experiment(tmp_path, positions=1)
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(phase_workflow(paths, autoApplyPhases=True)))
+    assert viewer.loadConfiguration(filepath=str(path))
+    app.processEvents()
+    assert viewer.selectedID == 1
+    phases = viewer.acdc_df['phase']
+    assert phases.xs(1, level='Cell_ID').tolist() == ['Active']
+
+
+def test_navigation_toggles_are_persisted(viewer, app):
+    for checkbox, name in (
+            (viewer.rescalePlotCheckbox, 'rescalePlot'),
+            (viewer.restrictFramesCheckbox, 'restrictFrames')):
+        checkbox.setChecked(True)
+        checkbox.setChecked(False)
+        assert not viewer._get_setting_value(name, default=True, cast=bool)
+    # Restored by a new window (from the isolated settings CSV)
+    other = MeasurementsViewerWin()
+    try:
+        assert not other.rescalePlotCheckbox.isChecked()
+        assert not other.restrictFramesCheckbox.isChecked()
+    finally:
+        other.deleteLater()
+        app.processEvents()
+
+
+def test_configuration_shows_base_channel_without_visible_layers(
+        viewer, tmp_path
+    ):
+    load_clean_workflow(viewer, tmp_path, steps=False)
+    for button in viewer.allOverlayToolbuttons.values():
+        button.setChecked(False)
+    assert viewer.configuration()['visible_channels'] == ['phase']
+    assert viewer.saveConfiguration()
+    viewer.configurationError.assert_not_called()
+
+
+def test_new_experiment_without_visible_overlays_shows_base_channel(
+        viewer, tmp_path, monkeypatch
+    ):
+    paths = make_experiment(tmp_path / 'old', positions=1)
+    add_channel(paths[0], 'GFP')
+    configuration = config(paths[0])
+    configuration.update(
+        measurement_processing=[], combined_measurements=[],
+        time_course_columns=['area'], overlay_channels=['GFP'],
+        visible_channels=['GFP']
+    )
+    configuration['input_options'] = []
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(configuration))
+    # The new experiment has no GFP channel: Continue without the overlay
+    newPaths = make_experiment(tmp_path / 'new', positions=1)
+    monkeypatch.setattr(
+        viewer, 'selectConfigurationInput',
+        lambda config: viewer.newExperimentInput(config, newPaths)
+    )
+    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    FakeCloseBox.click = 'Continue'
+    assert viewer.loadConfiguration(filepath=str(path))
+    viewer.configurationError.assert_not_called()
+    assert viewer.allOverlayToolbuttons['phase'].isChecked()
+    assert viewer.configuration()['visible_channels'] == ['phase']
+    assert viewer.saveConfiguration()
+    viewer.configurationError.assert_not_called()
+
+
+def test_invalid_selected_input_is_reported(viewer, tmp_path, monkeypatch):
+    paths = make_experiment(tmp_path, positions=1)
+    configuration = config(paths[0])
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(configuration))
+    monkeypatch.setattr(
+        viewer, 'selectConfigurationInput',
+        lambda config: dict(input_option(paths[0]), visible_channels=[])
+    )
+    before = viewer.data
+    assert not viewer.loadConfiguration(filepath=str(path))
+    viewer.configurationError.assert_called_once()
+    assert viewer.data is before
+
+
+def load_other_data(viewer, loader, root):
+    """Load another experiment with a configuration or as a folder."""
+    paths = make_experiment(root, positions=1)
+    if loader == 'configuration':
+        configuration = config(paths[0])
+        configuration['measurement_processing'] = []
+        configuration['combined_measurements'] = []
+        configuration['time_course_columns'] = ['area']
+        path = root / 'workflow.json'
+        path.write_text(json.dumps(configuration))
+        return viewer.loadConfiguration(filepath=str(path))
+    # openFolder/openFile/openRecentFile all load through loadImagesPaths
+    # (called directly so that no recent paths are written to the settings).
+    return viewer.loadImagesPaths(paths)
+
+
+@pytest.mark.parametrize('loader', ['configuration', 'folder'])
+@pytest.mark.parametrize('click', ['Cancel', "Don't save", 'Save tables'])
+def test_loading_other_data_asks_to_save_changes(
+        viewer, tmp_path, monkeypatch, loader, click
+    ):
+    paths, _ = load_clean_workflow(viewer, tmp_path / 'first', steps=False)
+    assert viewer.saveAcdcDfs(viewer.data)
+    viewer.setSelectedID(2)
+    edited = viewer.posData()
+    assert viewer.unsavedAcdcDfPositions() == [edited]
+    before = viewer.data
+    texts = []
+
+    class FakeLoadBox(FakeCloseBox):
+        def warning(self, parent, title, txt, **kwargs):
+            texts.append(txt)
+            return super().warning(parent, title, txt, **kwargs)
+
+    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeLoadBox)
+    FakeCloseBox.click = click
+    loaded = load_other_data(viewer, loader, tmp_path / 'second')
+    if loader == 'configuration':
+        assert loaded == (click != 'Cancel')
+    text, = texts
+    assert 'before loading other data' in text
+    saved = pd.read_csv(f'{paths[0]}/test_acdc_output.csv')
+    if click == 'Cancel':
+        assert viewer.data is before
+        assert edited.acdc_df[VISITED_COLUMN].all()
+        assert not saved[VISITED_COLUMN].all()
+        return
+    assert viewer.data is not before
+    assert saved[VISITED_COLUMN].all() == (click == 'Save tables')
+
+
+def test_loading_other_data_offers_unsaved_configuration(
+        viewer, tmp_path, monkeypatch
+    ):
+    load_clean_workflow(viewer, tmp_path / 'first', steps=False)
+    assert viewer.saveAcdcDfs(viewer.data)
+    identifier = TimepointIdentifier('Added', (0, 255, 0), '', {'type': 'none'})
+    viewer.addTimepointIdentifierItem(identifier)
+    assert viewer.hasUnsavedConfiguration()
+    before = viewer.data
+    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    FakeCloseBox.click = 'Cancel'
+    viewer.loadImagesPaths(make_experiment(tmp_path / 'second', positions=1))
+    assert any('configuration' in text for text in FakeCloseBox.offered)
+    # Cancel keeps the data and the unsaved identifier.
+    assert viewer.data is before
+    assert identifier in viewer.timepointIdentifiers
+    assert viewer.hasUnsavedConfiguration()
+
+
+def test_loading_other_data_without_changes_does_not_prompt(
+        viewer, tmp_path, monkeypatch
+    ):
+    load_clean_workflow(viewer, tmp_path / 'first', steps=False)
+    assert viewer.saveAcdcDfs(viewer.data)
+    before = viewer.data
+    box = Mock()
+    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', box)
+    viewer.loadImagesPaths(make_experiment(tmp_path / 'second', positions=1))
+    box.assert_not_called()
+    assert viewer.data is not before
+
+
+def test_reopening_unsaved_data_predicts_unvisited_cells_again(
+        viewer, tmp_path, monkeypatch
+    ):
+    paths, _ = load_clean_workflow(viewer, tmp_path / 'first', steps=False)
+    assert viewer.saveAcdcDfs(viewer.data)
+    identifier = TimepointIdentifier(
+        'Big', (0, 255, 0), '',
+        {'type': 'equation', 'equation': 'area > 20', 'mode': 'first_true'},
+        autoApply=True
+    )
+    viewer.addTimepointIdentifierItem(identifier)
+    viewer.setCustomAnnotations([{
+        'name': 'Large', 'symbol': "'o' circle",
+        'symbolColor': [255, 0, 0, 255], 'shortcut': '',
+        'predictor': {'type': 'equation', 'equation': 'area > 20'},
+        'autoApply': True,
+    }])
+
+    def predicted():
+        viewer.setSelectedID(2)
+        return (
+            viewer.cellTimepoints(identifier.uid, 2),
+            viewer.acdc_df.xs(2, level='Cell_ID')['Large'].tolist()
+        )
+
+    assert predicted() == ([0], [1])
+    # Reopen the same experiment discarding the session's table changes:
+    # cell 2 is unvisited in the reloaded table and is predicted again.
+    monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
+    FakeCloseBox.click = "Don't save"
+    viewer.loadImagesPaths(paths)
+    assert not viewer.acdc_df.xs(2, level='Cell_ID').get(
+        VISITED_COLUMN, pd.Series([False])
+    ).astype(bool).any()
+    assert predicted() == ([0], [1])
 
 
 def test_loading_failure_and_cancel_preserve_window(viewer, tmp_path, monkeypatch):
@@ -488,7 +881,8 @@ def test_new_experiment_missing_overlays_prompt(
         assert option is None
     else:
         assert option['overlay_channels'] == expected
-        assert option['visible_channels'] == []
+        # No configured visible channel remains: the base channel is shown
+        assert option['visible_channels'] == ['phase']
 
 
 def test_configuration_actions_in_menu_and_toolbar(viewer):
@@ -547,6 +941,201 @@ def test_duplicate_orders_are_rejected():
     configuration['measurement_processing'][0]['order'] = 0
     with pytest.raises(ValueError, match='order'):
         MeasurementsViewerWin.validateConfiguration(configuration)
+
+
+@pytest.mark.parametrize('second', [
+    {'order': 3, 'columns': ['area'], 'output_columns': ['copied'],
+     'recipe': [{'method': 'Dummy', 'kwargs': {'other': 1}}]},
+    {'order': 3, 'equations': {'copied': 'area + 1'}},
+])
+def test_duplicate_outputs_across_steps_are_rejected(second):
+    configuration = config('unused')
+    section = (
+        'combined_measurements' if 'equations' in second
+        else 'measurement_processing'
+    )
+    configuration[section].append(second)
+    with pytest.raises(ValueError, match='Duplicate measurement output.*copied'):
+        MeasurementsViewerWin.validateConfiguration(configuration)
+
+
+def smooth_step(repeats, outputs=('area_s',), columns=('area',)):
+    """Processing step; different `repeats` give different recipes."""
+    return {
+        'columns': list(columns), 'output_columns': list(outputs),
+        'recipe': [{'method': 'Dummy', 'kwargs': {}}] * repeats
+    }
+
+
+def test_reapplying_output_names_replaces_recorded_step(viewer):
+    viewer.recordMeasurementStep(viewer.measurementProcessingSteps, smooth_step(3))
+    viewer.recordMeasurementStep(
+        viewer.combinedMeasurementSteps, {'equations': {'ratio': 'area_s / 2'}}
+    )
+    note = viewer.recordMeasurementStep(
+        viewer.measurementProcessingSteps, smooth_step(5)
+    )
+    assert 'new parameters' in note and 'area_s' in note
+    assert viewer.measurementProcessingSteps == [{'order': 0, **smooth_step(5)}]
+    assert viewer.combinedMeasurementSteps == [
+        {'order': 1, 'equations': {'ratio': 'area_s / 2'}}
+    ]
+    # Re-applying identical steps (e.g. at another position) changes nothing
+    assert viewer.recordMeasurementStep(
+        viewer.measurementProcessingSteps, smooth_step(5)
+    ) == ''
+    assert len(viewer.measurementProcessingSteps) == 1
+
+    configuration = {
+        'measurement_processing': viewer.measurementProcessingSteps,
+        'combined_measurements': viewer.combinedMeasurementSteps,
+    }
+    MeasurementsViewerWin.validateMeasurementSteps(configuration)
+    table = pd.DataFrame(
+        {'area': [2., 4.]},
+        index=pd.MultiIndex.from_tuples([(0, 1), (1, 1)], names=['frame_i', 'Cell_ID'])
+    )
+    pos = SimpleNamespace(acdc_df=table, SizeT=2)
+    MeasurementsViewerWin.replayMeasurementSteps(pos, configuration)
+    assert pos.acdc_df['ratio'].tolist() == [1., 2.]
+
+
+def ratio_table():
+    return pd.DataFrame(
+        {'GFP': [2., 4.], 'mCherry': [1., 2.], 'area': [1., 2.]},
+        index=pd.MultiIndex.from_tuples([(0, 1), (1, 1)], names=['frame_i', 'Cell_ID'])
+    )
+
+
+def test_replacement_reading_later_outputs_moves_after_them(viewer):
+    combined = viewer.combinedMeasurementSteps
+    viewer.recordMeasurementStep(combined, {'equations': {'norm': 'GFP / area'}})
+    viewer.recordMeasurementStep(combined, {'equations': {'ratio': 'GFP / mCherry'}})
+    # At another position: ratio again (identical), then norm from ratio
+    viewer.recordMeasurementStep(combined, {'equations': {'ratio': 'GFP / mCherry'}})
+    note = viewer.recordMeasurementStep(
+        combined, {'equations': {'norm': 'ratio / area'}}
+    )
+    assert 'new parameters' in note
+    assert combined == [
+        {'order': 1, 'equations': {'ratio': 'GFP / mCherry'}},
+        {'order': 2, 'equations': {'norm': 'ratio / area'}},
+    ]
+    configuration = {
+        'measurement_processing': [], 'combined_measurements': combined
+    }
+    MeasurementsViewerWin.validateMeasurementSteps(configuration)
+    pos = SimpleNamespace(acdc_df=ratio_table(), SizeT=2)
+    MeasurementsViewerWin.replayMeasurementSteps(
+        pos, configuration, overwrite=True
+    )
+    assert pos.acdc_df['norm'].tolist() == [2., 1.]
+
+
+def test_replacement_reading_later_outputs_is_refused_when_read(
+        viewer, monkeypatch
+    ):
+    combined = viewer.combinedMeasurementSteps
+    viewer.recordMeasurementStep(combined, {'equations': {'norm': 'GFP / area'}})
+    viewer.recordMeasurementStep(combined, {'equations': {'ratio': 'GFP / mCherry'}})
+    viewer.recordMeasurementStep(combined, {'equations': {'twice': 'norm * 2'}})
+    recorded = copy.deepcopy(combined)
+    assert viewer.measurementStepReplacementOrder(
+        {'equations': {'norm': 'ratio / area'}}
+    ) == (0, ['ratio'])
+    table = ratio_table()
+    table['ratio'] = table['GFP'] / table['mCherry']
+    pos = SimpleNamespace(acdc_df=table)
+    viewer.data = [pos]
+    viewer.acdc_df = table
+    monkeypatch.setattr(viewer, 'posData', lambda: pos)
+    dialog = SimpleNamespace(
+        getEquationsDict=lambda: ({'norm': 'ratio / area'}, {}),
+        evaluateEquation=Mock(), close=Mock()
+    )
+    viewer.measurementProcessingWarning.reset_mock()
+    viewer.applyCombinedMeasurements(
+        dialog, posData=pos, source=table, equationSource=table.copy()
+    )
+    viewer.measurementProcessingWarning.assert_called_once()
+    dialog.evaluateEquation.assert_not_called()
+    assert 'norm' not in viewer.acdc_df
+    assert combined == recorded
+    # Defensive: recording it anyway keeps the configuration replayable
+    assert viewer.recordMeasurementStep(
+        combined, {'equations': {'norm': 'ratio / area'}}
+    ) == ''
+    assert combined == recorded
+
+
+@pytest.mark.parametrize('section, step', [
+    ('combined_measurements', {'order': 0, 'equations': {'early': 'final + 1'}}),
+    ('measurement_processing', {
+        'order': 0, 'columns': ['final'], 'output_columns': ['early'],
+        'recipe': [{'method': 'Dummy', 'kwargs': {}}]
+    }),
+])
+def test_steps_reading_later_outputs_are_rejected(section, step):
+    configuration = config('unused')
+    for existing in (
+            configuration['measurement_processing']
+            + configuration['combined_measurements']):
+        existing['order'] += 1
+    configuration[section].append(step)
+    with pytest.raises(ValueError, match='later step: final'):
+        MeasurementsViewerWin.validateMeasurementSteps(configuration)
+
+
+def test_partially_overlapping_outputs_are_refused(viewer, monkeypatch):
+    viewer.recordMeasurementStep(
+        viewer.measurementProcessingSteps,
+        smooth_step(3, outputs=['a_s', 'b_s'], columns=['a', 'b'])
+    )
+    assert viewer.recordedOutputConflicts(['a_s']) == ['a_s']
+    assert viewer.recordedOutputConflicts(['a_s', 'b_s']) == []
+    assert viewer.recordedOutputConflicts(['c_s']) == []
+
+    table = pd.DataFrame(
+        {'area': [2., 4.]},
+        index=pd.MultiIndex.from_tuples([(0, 1), (1, 1)], names=['frame_i', 'Cell_ID'])
+    )
+    pos = SimpleNamespace(acdc_df=table)
+    viewer.data = [pos]
+    viewer.acdc_df = table
+    monkeypatch.setattr(viewer, 'posData', lambda: pos)
+    dialog = SimpleNamespace(
+        getEquationsDict=lambda: ({'a_s': 'area + 1'}, {}),
+        evaluateEquation=Mock(), close=Mock()
+    )
+    viewer.measurementProcessingWarning.reset_mock()
+    viewer.applyCombinedMeasurements(
+        dialog, posData=pos, source=table, equationSource=table.copy()
+    )
+    viewer.measurementProcessingWarning.assert_called_once()
+    dialog.evaluateEquation.assert_not_called()
+    assert 'a_s' not in viewer.acdc_df
+    assert viewer.combinedMeasurementSteps == []
+
+    # Processing is refused before it starts
+    class Dialog:
+        def __init__(self, *args, **kwargs):
+            self.cancel = False
+            self.selectedChannels = ['area']
+            self.selectedRecipe = [{'method': 'Dummy', 'kwargs': {}}]
+            self.saveNames = ['b_s']
+        def exec_(self):
+            pass
+    monkeypatch.setattr(
+        measurements_viewer.apps_measurements_viewer,
+        'MeasurementProcessingRecipeDialog', Dialog
+    )
+    pos.chNames = ['phase']
+    start = Mock()
+    monkeypatch.setattr(viewer, 'startMeasurementsProcessing', start)
+    viewer.measurementProcessingWarning.reset_mock()
+    viewer.processMeasurements()
+    viewer.measurementProcessingWarning.assert_called_once()
+    start.assert_not_called()
 
 
 def test_successful_processing_and_combining_are_recorded(viewer, monkeypatch):
@@ -651,6 +1240,12 @@ def test_new_experiment_input_is_retained_on_save(viewer, tmp_path, monkeypatch)
 
 
 def test_saved_input_restores_channels_and_overlays(viewer, tmp_path, monkeypatch):
+    # Exceptions raised inside Qt slots (e.g. `overlay_cb` when reloading
+    # with overlays active) only reach sys.excepthook
+    slotErrors = []
+    monkeypatch.setattr(
+        sys, 'excepthook', lambda *exc_info: slotErrors.append(exc_info)
+    )
     paths = make_experiment(tmp_path, positions=1)
     images = tmp_path / 'Position_1' / 'Images'
     tifffile.imwrite(
@@ -675,12 +1270,167 @@ def test_saved_input_restores_channels_and_overlays(viewer, tmp_path, monkeypatc
     assert viewer.allOverlayToolbuttons['GFP'].isChecked()
     assert not viewer.allOverlayToolbuttons['phase'].isChecked()
     monkeypatch.setattr(viewer, 'selectConfigurationInput', lambda config: second)
+    # Discard the unsaved replayed columns of the first load.
+    monkeypatch.setattr(viewer, 'askSaveBeforeLoading', Mock(return_value=True))
     assert viewer.loadConfiguration(filepath=str(path))
+    assert not slotErrors
     assert viewer.user_ch_name == 'GFP'
     assert not viewer.checkedOverlayChannels
     assert viewer.allOverlayToolbuttons['GFP'].isChecked()
     assert viewer.saveConfiguration()
     assert json.loads(path.read_text())['input_options'] == configuration['input_options']
+
+
+def test_saving_unsorted_overlays_does_not_duplicate_input(viewer, tmp_path):
+    paths = make_experiment(tmp_path, positions=1)
+    images = tmp_path / 'Position_1' / 'Images'
+    for factor, name in enumerate(('mCherry', 'GFP'), start=2):
+        tifffile.imwrite(
+            images / f'test_{name}.tif',
+            np.arange(900, dtype=np.uint16).reshape(30, 30) * factor
+        )
+    configuration = config(paths[0])
+    # Not in alphabetical (nor toolbutton) order
+    channels = {
+        'overlay_channels': ['mCherry', 'GFP'],
+        'visible_channels': ['mCherry', 'phase', 'GFP'],
+    }
+    configuration.update(channels)
+    configuration['input_options'][0].update(copy.deepcopy(channels))
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(configuration))
+    assert viewer.loadConfiguration(filepath=str(path))
+    assert viewer.checkedOverlayChannels == {'mCherry', 'GFP'}
+    assert len(viewer.configuration()['input_options']) == 1
+    assert viewer.saveConfiguration()
+    saved = json.loads(path.read_text())
+    assert len(saved['input_options']) == 1
+    option = saved['input_options'][0]
+    assert sorted(option['overlay_channels']) == ['GFP', 'mCherry']
+    assert sorted(option['visible_channels']) == ['GFP', 'mCherry', 'phase']
+    assert len(MeasurementsViewerWin.configurationInputOptions(saved)) == 1
+
+
+def test_toggling_layer_visibility_updates_input_in_place(viewer, tmp_path):
+    paths = make_experiment(tmp_path, positions=1)
+    images = tmp_path / 'Position_1' / 'Images'
+    tifffile.imwrite(
+        images / 'test_GFP.tif',
+        np.arange(900, dtype=np.uint16).reshape(30, 30) * 2
+    )
+    configuration = config(paths[0])
+    channels = {
+        'overlay_channels': ['GFP'], 'visible_channels': ['phase', 'GFP']
+    }
+    configuration.update(channels)
+    configuration['input_options'][0].update(copy.deepcopy(channels))
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(configuration))
+    assert viewer.loadConfiguration(filepath=str(path))
+    viewer.allOverlayToolbuttons['GFP'].setChecked(False)
+    assert viewer.saveConfiguration()
+    viewer.allOverlayToolbuttons['GFP'].setChecked(True)
+    viewer.allOverlayToolbuttons['phase'].setChecked(False)
+    assert viewer.saveConfiguration()
+    saved = json.loads(path.read_text())
+    assert len(saved['input_options']) == 1
+    option = saved['input_options'][0]
+    assert option['overlay_channels'] == ['GFP']
+    assert option['visible_channels'] == ['GFP']
+    assert len(MeasurementsViewerWin.configurationInputOptions(saved)) == 1
+
+
+def test_layer_change_updates_loaded_input_not_first_same_experiment(
+        viewer, tmp_path):
+    paths = make_experiment(tmp_path, positions=1)
+    images = tmp_path / 'Position_1' / 'Images'
+    tifffile.imwrite(
+        images / 'test_GFP.tif',
+        np.arange(900, dtype=np.uint16).reshape(30, 30) * 2
+    )
+    configuration = config(paths[0])
+    channels = {
+        'overlay_channels': ['GFP'], 'visible_channels': ['phase', 'GFP']
+    }
+    configuration.update(channels)
+    configuration['input_options'][0].update(copy.deepcopy(channels))
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(configuration))
+    assert viewer.loadConfiguration(filepath=str(path))
+    loaded = copy.deepcopy(viewer.configurationInputs[0])
+    # Another saved option of the same experiment listed before the loaded one
+    other = {**copy.deepcopy(loaded), 'visible_channels': ['GFP']}
+    viewer.configurationInputs = [other, loaded]
+    viewer.allOverlayToolbuttons['GFP'].setChecked(False)
+    options = viewer.configuration()['input_options']
+    assert len(options) == 2
+    assert options[0] == other
+    assert options[1]['overlay_channels'] == ['GFP']
+    assert options[1]['visible_channels'] == ['phase']
+    # Later saves keep tracking the updated option
+    assert viewer.saveConfiguration()
+    viewer.allOverlayToolbuttons['GFP'].setChecked(True)
+    options = viewer.configuration()['input_options']
+    assert len(options) == 2
+    assert options[0] == other
+    assert options[1]['visible_channels'] == ['phase', 'GFP']
+
+
+def test_input_labels_show_overlays(viewer, tmp_path, monkeypatch):
+    paths = make_experiment(tmp_path, positions=1)
+    configuration = config(paths[0])
+    configuration['input_options'].append({
+        **input_option(paths[0]), 'overlay_channels': ['GFP'],
+        'visible_channels': ['GFP']
+    })
+    select = Mock(return_value=None)
+    monkeypatch.setattr(viewer, 'selectItem', select)
+    MeasurementsViewerWin.selectConfigurationInput(viewer, configuration)
+    labels = select.call_args.args[2][:-1]
+    assert len(labels) == 2 and len(set(labels)) == 2
+    assert 'overlays' not in labels[0]
+    assert labels[1].endswith('; overlays: GFP)')
+
+
+def test_loading_configuration_removes_previous_custom_annotations(
+        viewer, tmp_path, monkeypatch):
+    first = make_experiment(tmp_path / 'first', positions=1)
+    second = make_experiment(tmp_path / 'second')
+    configuration = config(first[0])
+    configuration['measurement_processing'] = []
+    configuration['combined_measurements'] = []
+    configuration['time_course_columns'] = ['area']
+    configuration['custom_annotations'] = [{
+        'name': 'Dead', 'symbolColor': [255, 0, 0, 255], 'shortcut': 'Q',
+        'predictor': {'type': 'equation', 'equation': 'area < 0'},
+    }]
+    path = tmp_path / 'first.json'
+    path.write_text(json.dumps(configuration))
+    assert viewer.loadConfiguration(filepath=str(path))
+    assert 'Dead' in viewer.customAnnotNames()
+    assert viewer.saveAcdcDfs(viewer.unsavedAcdcDfPositions())
+
+    other = copy.deepcopy(configuration)
+    other.pop('custom_annotations')
+    other['images_paths'] = second
+    other['input_options'] = [{**input_option(second[0]), 'images_paths': second}]
+    identifier = TimepointIdentifier('Start', (255, 0, 0), 'Q')
+    other['timepoint_identifiers'] = [identifier.to_dict()]
+    path = tmp_path / 'second.json'
+    path.write_text(json.dumps(other))
+    assert viewer.loadConfiguration(filepath=str(path))
+    viewer.configurationError.assert_not_called()
+    assert not viewer.customAnnotNames()
+    for posData in viewer.data:
+        assert 'Dead' not in posData.acdc_df.columns
+    assert 'Dead' not in viewer.acdc_df.columns
+    assert viewer.saveAcdcDfs(viewer.unsavedAcdcDfPositions())
+    for images in second:
+        saved = pd.read_csv(os.path.join(images, 'test_acdc_output.csv'))
+        assert 'Dead' not in saved.columns
+    loaded, = viewer.timepointIdentifiers
+    autoAction = viewer.timepointAutoActions[loaded.uid]
+    assert autoAction.shortcut().toString() == 'Shift+Q'
 
 
 def test_exported_manual_assignments_are_not_predicted_again(viewer, tmp_path):
@@ -748,6 +1498,57 @@ def test_substitute_channel_placeholders():
     ) == ['RED']
 
 
+def test_quoted_placeholders_keep_backticks_only_if_needed():
+    equation = '`{RED}_mean` / `{GREEN}_mean` + `other col` + {RED}_x'
+    quoted = set()
+    result = MeasurementsViewerWin.substituteChannelPlaceholders(
+        {'eq': equation}, {'RED': 'mKO2-hCdt1', 'GREEN': 'GFP'},
+        quotedNames=quoted
+    )
+    # Unrelated quoted names and unquoted tokens are left as written
+    assert result == {
+        'eq': '`mKO2-hCdt1_mean` / GFP_mean + `other col` + mKO2-hCdt1_x'
+    }
+    assert quoted == {'mKO2-hCdt1_mean'}
+
+
+@pytest.mark.parametrize('name, valid', [
+    ('GFP_mean', True), ('mKO2-hCdt1_mean', True), ('_561_mean', True),
+    ('561_mean', False), ('GFP-488_mean', False), ('GFP.488_mean', False),
+    ('', False), ('a`b', False),
+])
+def test_is_equation_name_rule(name, valid):
+    # Explicit rule, independent of the interpreter's tokenizer (Python
+    # 3.10/3.11 split `561_mean` silently, 3.12+ reject it)
+    assert MeasurementsViewerWin.isEquationName(name) is valid
+
+
+@pytest.mark.parametrize('channel, valid', [
+    ('GFP', True), ('mKO2-hCdt1', True), ('_561', True),
+    ('561', False), ('GFP-488', False),
+])
+def test_premade_equation_channel_names(channel, valid):
+    template = premade_config()
+    template['combined_measurements'].append({
+        'order': 1, 'equations': {'final': '`{OTHER}_double` + 1'}
+    })
+    mapping = {'MAIN': 'phase', 'OTHER': channel}
+    if not valid:
+        with pytest.raises(ValueError, match='must start with a letter'):
+            MeasurementsViewerWin.resolvePremadeTemplate(template, mapping)
+        return
+    result = MeasurementsViewerWin.resolvePremadeTemplate(template, mapping)
+    posData = SimpleNamespace(SizeT=1, acdc_df=pd.DataFrame(
+        {'frame_i': [0, 0], 'Cell_ID': [1, 2], 'area': [1., 2.]}
+    ).set_index(['frame_i', 'Cell_ID']))
+    MeasurementsViewerWin.replayMeasurementSteps(posData, result)
+    assert posData.acdc_df['final'].tolist() == [3., 5.]
+    assert result['combined_measurements'][1]['equations']['final'] == (
+        f'`{channel}_double` + 1' if channel == 'mKO2-hCdt1'
+        else f'{channel}_double + 1'
+    )
+
+
 @pytest.mark.parametrize('bad', [
     None, {}, [], {'': 'x'}, {'RE D': 'x'}, {'{RED}': 'x'}, {'RED': 1}
 ])
@@ -764,9 +1565,13 @@ def patch_premade_dialogs(viewer, monkeypatch, folder, saved, mapping):
     )
     offered = []
 
-    def select(placeholders, channels, inputs=None):
+    def select(placeholders, channels, inputs=None, validate=None):
         offered.append(channels)
-        return None if mapping is None else (mapping, {})
+        if mapping is None:
+            return None
+        if validate is not None:
+            validate(mapping, {})
+        return mapping, {}
 
     monkeypatch.setattr(viewer, 'selectChannelMapping', select)
     monkeypatch.setattr(
@@ -911,14 +1716,22 @@ def test_shipped_premade_configurations_are_valid():
             template = json.load(file)
         placeholders = template['channel_placeholders']
         MeasurementsViewerWin.validateChannelPlaceholders(placeholders)
-        mapping = {name: f'ch{i}' for i, name in enumerate(placeholders)}
-        result = MeasurementsViewerWin.resolvePremadeTemplate(template, mapping)
-        if not result['channel']:
-            # Asked when instantiating: e.g. a phase contrast channel
-            MeasurementsViewerWin.setConfigurationBaseChannel(result, 'phase')
-        result['segm_endname'] = 'segm'
-        result['images_paths'] = ['unused']
-        MeasurementsViewerWin.validateConfiguration(result)
+        # Dashed channel names (e.g. 'mKO2-hCdt1') are valid in equations
+        for prefix in ('ch', 'ch-x'):
+            mapping = {
+                name: f'{prefix}{i}' for i, name in enumerate(placeholders)
+            }
+            result = MeasurementsViewerWin.resolvePremadeTemplate(
+                template, mapping
+            )
+            if not result['channel']:
+                # Asked when instantiating: e.g. a phase contrast channel
+                MeasurementsViewerWin.setConfigurationBaseChannel(
+                    result, 'phase'
+                )
+            result['segm_endname'] = 'segm'
+            result['images_paths'] = ['unused']
+            MeasurementsViewerWin.validateConfiguration(result)
 
 
 def test_channel_mapping_dialog(app, monkeypatch):
@@ -939,6 +1752,36 @@ def test_channel_mapping_dialog(app, monkeypatch):
     dialog.ok_cb()
     assert not dialog.cancel
     assert dialog.mapping == {'RED': 'mCherry_red', 'GREEN': 'phase'}
+
+
+def test_channel_mapping_dialog_rejects_invalid_equation_channels(
+        app, monkeypatch
+    ):
+    with open(os.path.join(
+            measurements_viewer.PREMADE_CONFIGURATIONS_PATH,
+            'fucci_cell_cycle.json'), encoding='utf-8') as file:
+        template = json.load(file)
+    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+        template['channel_placeholders'], ['488', 'mKO2-hCdt1', 'phase'],
+        inputs=template['input_placeholders'],
+        validate=partial(MeasurementsViewerWin.resolvePremadeTemplate, template)
+    )
+    warnings = []
+    monkeypatch.setattr(
+        measurements_viewer.widgets, 'myMessageBox',
+        lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
+    )
+    dialog.comboboxes['GEMININ'].setCurrentText('488')
+    dialog.comboboxes['CDT1'].setCurrentText('mKO2-hCdt1')
+    dialog.ok_cb()
+    assert dialog.cancel and dialog.mapping is None
+    assert '488_ramp' in warnings[0][2]
+    # The selection is kept so that the user can fix it
+    assert dialog.comboboxes['CDT1'].currentText() == 'mKO2-hCdt1'
+    dialog.comboboxes['GEMININ'].setCurrentText('phase')
+    dialog.ok_cb()
+    assert not dialog.cancel
+    assert dialog.mapping == {'GEMININ': 'phase', 'CDT1': 'mKO2-hCdt1'}
 
 
 # --- Conditional formatting ---------------------------------------------------
@@ -1039,7 +1882,7 @@ def pg_color_name(color):
     return pg.mkColor(color).name()
 
 
-def test_conditional_formatting_is_saved_and_loaded(viewer, tmp_path):
+def test_conditional_formatting_is_saved_and_loaded(viewer, tmp_path, monkeypatch):
     _, path = load_clean_workflow(viewer, tmp_path)
     rules = [{'condition': 'area > 20', 'color': '#123456'}]
     viewer.setConditionalFormatting('final', rules)
@@ -1048,6 +1891,8 @@ def test_conditional_formatting_is_saved_and_loaded(viewer, tmp_path):
         'final': rules
     }
     viewer.conditionalFormatting = {}
+    # Discard the unsaved changes when reloading the saved configuration.
+    monkeypatch.setattr(viewer, 'askSaveBeforeLoading', Mock(return_value=True))
     assert viewer.loadConfiguration(filepath=str(path))
     assert viewer.conditionalFormatting == {'final': rules}
     assert not viewer.hasUnsavedConfiguration()
@@ -1109,8 +1954,47 @@ def test_formatting_condition_editor(app):
         condition='area > MEAN(area)'
     )
     assert dialog.windowTitle() == 'Conditional formatting condition'
+    # Conditions see only the selected cell: no other-cell inputs
+    assert not hasattr(dialog, 'otherMeasurementsTreeWidget')
+    assert not any(
+        name.endswith('_other') for name in dialog.variableNames
+    )
+    for condition in ('area_other > 0', 'MAX_OTHER(area) > 0'):
+        success, message = dialog.validateEquation(condition)
+        assert not success
+        assert 'not available in conditional formatting' in message
     dialog.ok_cb()
     assert not dialog.cancel and dialog.equation == 'area > MEAN(area)'
+
+
+def test_formatting_condition_editor_missing_values_are_false(app):
+    """The condition editor accepts conditions with missing values like
+    the viewer does (missing values are False; regression)."""
+    acdc_df = pd.DataFrame({
+        'frame_i': [0, 1, 2, 3, 0, 1], 'Cell_ID': [1, 1, 1, 1, 2, 2],
+        'flag': [0., 0., 1., 1., 1., np.nan],
+    }).set_index(['frame_i', 'Cell_ID'])
+    dialog = measurements_viewer._FormattingConditionDialog(
+        ['phase'], False, False, acdc_df=acdc_df, SizeT=4,
+        condition='SHIFT(flag, 1)'
+    )
+    dialog.test_cb()
+    assert dialog.okButton.isEnabled()
+    mask = dialog.evaluateEquation(
+        dialog.getTestData(), 'SHIFT(flag, 1)', enforce_dtype_output=bool
+    )
+    cell = acdc_df.loc[pd.IndexSlice[:, 1], :].droplevel('Cell_ID')
+    expected = MeasurementsViewerWin.evaluateConditionalFormatting(
+        cell, [{'condition': 'SHIFT(flag, 1)'}], ID=1, SizeT=4
+    ) == 0
+    assert mask.tolist()[:4] == expected.tolist()
+    assert mask.tolist() == [False, False, False, True, False, True]
+    # Values other than 0/1 are still rejected
+    dialog.formulaEditWidget.setText('flag + 2')
+    dialog.test_cb()
+    assert not dialog.okButton.isEnabled()
+    assert '0/1' in dialog.statusLabel.text()
+    dialog.deleteLater()
 
 
 def test_relative_formatting_colors(app, viewer, tmp_path):
@@ -1262,7 +2146,7 @@ def test_premade_input_values_are_written(viewer, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         viewer, 'selectChannelMapping',
-        lambda placeholders, channels, inputs=None: (
+        lambda placeholders, channels, inputs=None, validate=None: (
             {'MAIN': 'phase', 'OTHER': 'GFP'}, {'BG': 0.5, 'N': 5, 'LABEL': 'x'}
         )
     )

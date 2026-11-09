@@ -3,10 +3,10 @@ import pandas as pd
 import pytest
 
 from cellacdc import measurement_processing
-from cellacdc.measurement_processing.Dummy.acdcProcess import Model as Dummy
 from cellacdc.measurement_processing.SmoothMeasurement.acdcProcess import (
     Model as SmoothMeasurement
 )
+from tests.utils.measurement_processing import Dummy
 
 SUFFIX = 'processed'
 
@@ -29,18 +29,16 @@ def process(df, steps, cols=None):
 
 def test_registry_loads_processors_from_model_style_packages():
     registry = measurement_processing.MEASUREMENT_PROCESSING_MAPPER
+    # The identity 'Dummy' processor is test-only (tests/utils), not shipped
     assert list(registry) == [
-        'Smooth measurement', 'Dummy', 'Min-max normalization',
-        'Ramp detection'
+        'Smooth measurement', 'Min-max normalization', 'Ramp detection'
     ]
     assert registry['Smooth measurement']['class'] is SmoothMeasurement
-    assert registry['Dummy']['class'] is Dummy
     assert registry['Smooth measurement']['function'] is SmoothMeasurement.run
     assert registry['Smooth measurement']['function_name'] == 'SmoothMeasurement'
     assert registry['Smooth measurement']['docstring'] == SmoothMeasurement.__doc__
     # Processor folders are subpackages; their Model is the registered class
     assert measurement_processing.SmoothMeasurement.acdcProcess.Model is SmoothMeasurement
-    assert measurement_processing.Dummy.acdcProcess.Model is Dummy
     for entry in registry.values():
         processor = entry['class']
         assert entry['function'] is processor.run
@@ -106,7 +104,7 @@ def test_invalid_smoothing_window(measurements, window):
         process(measurements, recipe(window=window))
 
 
-def test_recipe_steps_are_sequential(measurements):
+def test_recipe_steps_are_sequential(measurements, dummy_processor):
     steps = recipe(window=3) + recipe('Dummy') + recipe(window=3)
     result = process(measurements, steps)
     np.testing.assert_allclose(
@@ -182,3 +180,53 @@ def test_processors_must_preserve_shape(measurements, monkeypatch, bulk):
 def test_empty_recipe_is_rejected(measurements):
     with pytest.raises(ValueError, match='cannot be empty'):
         process(measurements, [])
+
+
+def test_registry_skips_broken_and_duplicate_processors(tmp_path, monkeypatch):
+    """Broken or duplicate-named plugins are skipped with a warning instead
+    of raising (they used to stop Cell-ACDC from starting)."""
+    package = 'acdc_test_fake_processors'
+    root = tmp_path / package
+    static_run = (
+        "class Model:\n    @staticmethod\n    def run(x):\n        return x\n"
+    )
+    plugin_sources = {
+        'Good': "name = 'Good'\n" + static_run,
+        'Good - Copy': "name = 'Good'\n" + static_run,
+        'Broken': "import acdc_missing_dependency_xyz\nname = 'Broken'\n",
+        'NoName': static_run,
+        'EmptyName': "name = ''\n" + static_run,
+        'NoModel': "name = 'NoModel'\n",
+        # apply_recipe calls run on the class, so an instance method would
+        # load but fail with a TypeError when applied
+        'NotStatic': "name = 'NotStatic'\nclass Model:\n"
+                     "    def run(self, x):\n        return x\n",
+        'SyntaxErr': "name = 'SyntaxErr'\nclass Model(:\n",
+        '_Private': "raise RuntimeError('must not be imported')\n",
+    }
+    for folder_name, source in plugin_sources.items():
+        folder = root / folder_name
+        folder.mkdir(parents=True)
+        (folder / '__init__.py').write_text('')
+        (folder / 'acdcProcess.py').write_text(source)
+    (root / '__init__.py').write_text('')
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    with pytest.warns(RuntimeWarning) as record:
+        registry = measurement_processing._load_processors(root, package)
+
+    assert list(registry) == ['Good']
+    assert registry['Good']['function_name'] == 'Good'
+    messages = [str(warning.message) for warning in record]
+    for skipped in (
+            'Good - Copy', 'Broken', 'NoName', 'EmptyName', 'NoModel',
+            'NotStatic', 'SyntaxErr'):
+        assert any(f'"{skipped}"' in message for message in messages), (
+            skipped, messages
+        )
+    assert not any('_Private' in message for message in messages)
+    assert any('duplicate name "Good"' in message for message in messages)
+    assert any(
+        '"NotStatic"' in message and '@staticmethod' in message
+        for message in messages
+    ), messages

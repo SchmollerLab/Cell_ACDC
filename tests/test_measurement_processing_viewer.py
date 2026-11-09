@@ -19,7 +19,7 @@ def app():
 
 
 @pytest.fixture
-def viewer(app, monkeypatch):
+def viewer(app, monkeypatch, dummy_processor):
     monkeypatch.setattr(MeasurementsViewerWin, 'loadConfiguration', Mock())
     window = MeasurementsViewerWin()
     window.acdc_df = pd.DataFrame({
@@ -71,7 +71,7 @@ def test_measurement_recipe_ui_uses_separate_registry_and_defaults(app):
     ]
     selector = params.stepsWidgets[1]['selector']
     assert [selector.itemText(i) for i in range(selector.count())] == [
-        'Smooth measurement', 'Dummy', 'Min-max normalization', 'Ramp detection'
+        'Smooth measurement', 'Min-max normalization', 'Ramp detection'
     ]
     imageSelector = widgets.PreProcessingSelector()
     assert imageSelector.preprocessMapper is not selector.preprocessMapper
@@ -94,7 +94,7 @@ def test_measurement_recipe_ui_uses_separate_registry_and_defaults(app):
     dialog.deleteLater()
 
 
-def test_recipe_parameters_roundtrip(app):
+def test_recipe_parameters_roundtrip(app, dummy_processor):
     original = apps_measurements_viewer.MeasurementProcessingParamsWidget()
     original.stepsWidgets[1]['step_kwargs'] = {'window': 7}
     original.addStep()
@@ -241,6 +241,10 @@ def test_worker_error_is_reported_once_and_controls_reenabled(viewer):
     wait_for_worker(viewer)
     viewer.measurementProcessingWarning.assert_called_once()
     assert viewer.measurementProcessingWarning.call_args.args[0] == 'Measurement processing failed'
+    details = viewer.measurementProcessingWarning.call_args.kwargs['details']
+    assert 'Traceback' in details
+    assert 'SmoothMeasurement' in details
+    assert 'ValueError' in details
     pd.testing.assert_frame_equal(viewer.acdc_df, original)
     assert viewer.processMeasurementsButton.isEnabled()
     assert viewer.refreshButton.isEnabled()
@@ -314,10 +318,111 @@ def test_changed_source_does_not_receive_stale_results(viewer):
     viewer.startMeasurementsProcessing(
         ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_copy']
     )
-    viewer.posData().acdc_df = viewer.acdc_df.copy()
+    # An input column changed while processing was running.
+    viewer.acdc_df.loc[(0, 1), 'area'] = 55
     wait_for_worker(viewer)
     assert 'area_copy' not in viewer.posData().acdc_df
+    assert 'area_copy' not in viewer.acdc_df
     viewer.measurementProcessingWarning.assert_called_once()
+
+
+def test_edits_during_processing_are_kept(viewer):
+    viewer.startMeasurementsProcessing(
+        ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_copy']
+    )
+    # In-place edits of other columns (time points, visited cells) ...
+    viewer.acdc_df['timepoint_Bud'] = False
+    viewer.acdc_df.loc[(2, 1), 'timepoint_Bud'] = True
+    viewer.acdc_df[measurements_viewer.VISITED_COLUMN] = [
+        True, True, True, False, False, False
+    ]
+    edited = viewer.acdc_df.copy()
+    wait_for_worker(viewer)
+    viewer.measurementProcessingWarning.assert_not_called()
+    # ... survive, and the output column is added next to them.
+    pd.testing.assert_frame_equal(viewer.acdc_df[edited.columns], edited)
+    np.testing.assert_array_equal(
+        viewer.acdc_df['area_copy'], viewer.acdc_df['area']
+    )
+    assert viewer.posData().acdc_df is viewer.acdc_df
+
+
+def test_output_added_during_processing_is_not_overwritten(viewer):
+    viewer.startMeasurementsProcessing(
+        ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_copy']
+    )
+    viewer.acdc_df['area_copy'] = -1.0
+    wait_for_worker(viewer)
+    assert (viewer.acdc_df['area_copy'] == -1.0).all()
+    viewer.measurementProcessingWarning.assert_called_once()
+    assert viewer.measurementProcessingWarning.call_args.args[0] == (
+        'Invalid measurement name'
+    )
+
+
+def test_new_table_object_with_same_inputs_keeps_results(viewer):
+    # Replacing the table with an equal copy (e.g. standardization on a
+    # position switch) is not a change of the inputs.
+    viewer.startMeasurementsProcessing(
+        ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_copy']
+    )
+    viewer.acdc_df = viewer.acdc_df.copy()
+    viewer.posData().acdc_df = viewer.acdc_df
+    wait_for_worker(viewer)
+    viewer.measurementProcessingWarning.assert_not_called()
+    assert 'area_copy' in viewer.acdc_df
+
+
+def test_reload_during_processing_discards_results(viewer, tmp_path):
+    posData = viewer.posData()
+    path = tmp_path / 'acdc_output.csv'
+    viewer.acdc_df.to_csv(path)
+    posData.acdc_output_csv_path = str(path)
+
+    def loadAcdcDf(filepath):
+        posData.acdc_df = pd.read_csv(filepath).set_index(['frame_i', 'Cell_ID'])
+
+    posData.loadAcdcDf = loadAcdcDf
+    viewer.startMeasurementsProcessing(
+        ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_copy']
+    )
+    # Same values on disk: only the reload counter detects the reload.
+    viewer.reloadAcdcDfFile()
+    viewer.acdc_df = viewer.getAcdcDf()
+    wait_for_worker(viewer)
+    assert 'area_copy' not in viewer.acdc_df
+    assert 'area_copy' not in posData.acdc_df
+    viewer.measurementProcessingWarning.assert_called_once()
+    assert viewer.measurementProcessingWarning.call_args.args[0] == (
+        'Measurements changed'
+    )
+
+
+def test_processing_failure_shows_traceback_details(viewer, monkeypatch):
+    # Use the real warning with a fake message box.
+    monkeypatch.delattr(viewer, 'measurementProcessingWarning')
+    boxes = []
+
+    class FakeMessageBox:
+        def __init__(self, *args, **kwargs):
+            self.detailedText = None
+            boxes.append(self)
+
+        def setDetailedText(self, text, visible=False, wrap=True):
+            self.detailedText = text
+
+        def warning(self, parent, title, text, **kwargs):
+            self.title = title
+
+    monkeypatch.setattr(widgets, 'myMessageBox', FakeMessageBox)
+    viewer.startMeasurementsProcessing(
+        ['area'], [{'method': 'Smooth measurement', 'kwargs': {'window': 0}}], ['area_bad']
+    )
+    wait_for_worker(viewer)
+    box, = boxes
+    assert box.title == 'Measurement processing failed'
+    assert 'Traceback' in box.detailedText
+    assert 'SmoothMeasurement' in box.detailedText
 
 
 def test_recipe_dialog_rejects_output_name_collisions(app, monkeypatch):
@@ -328,15 +433,25 @@ def test_recipe_dialog_rejects_output_name_collisions(app, monkeypatch):
     select_measurements(dialog, ['area'])
     warning = Mock()
     monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
-    for suffix in ('', 'taken'):
-        # No suffix overwrites the input; 'taken' overwrites area_taken.
+    tip = dialog.append_new_colname_tip
+    expected = {
+        # No suffix would overwrite the input: neutral hint, not an error
+        '': ('Enter a suffix for the output column(s).', ''),
+        # 'taken' overwrites area_taken
+        'taken': (
+            'Output column(s) already exist: area_taken. '
+            'Choose another suffix.',
+            'color: red;'
+        ),
+    }
+    for suffix, (text, style) in expected.items():
         dialog.append_new_colname.setText(suffix)
-        assert dialog.append_new_colname_tip.text().startswith(
-            'This name is forbidden'
-        )
+        assert tip.text() == text
+        assert tip.styleSheet() == style
         dialog.ok_cb()
         assert dialog.cancel
         assert not hasattr(dialog, 'saveNames')
+        assert warning.call_args.args[2] == text
     assert warning.call_count == 2
     dialog.append_new_colname.setText('new')
     assert dialog.append_new_colname_tip.text() == 'area_new'
@@ -344,6 +459,18 @@ def test_recipe_dialog_rejects_output_name_collisions(app, monkeypatch):
     assert not dialog.cancel
     assert dialog.selectedChannels == ['area']
     assert dialog.saveNames == ['area_new']
+    dialog.deleteLater()
+
+
+def test_recipe_dialog_opens_without_error_tip(app):
+    # The first measurement is preselected; with no suffix typed yet the
+    # dialog shows a neutral hint instead of a red "forbidden" error.
+    dialog = apps_measurements_viewer.MeasurementProcessingRecipeDialog(
+        ['area', 'volume']
+    )
+    tip = dialog.append_new_colname_tip
+    assert tip.text() == 'Enter a suffix for the output column(s).'
+    assert tip.styleSheet() == ''
     dialog.deleteLater()
 
 

@@ -5,6 +5,9 @@ frames of the current position. Hover over a point for measurement details;
 click a point to navigate to its frame and zoom to its cell.
 In comparison mode, check two columns to select X and Y. X/Y markers replace
 the color swatches; comparison and time-course selections are independent.
+The comparison scatter does not depend on the selected cell: navigating to
+another cell (or clicking a point) keeps the plot and its zoom, and redraws
+it only if the cell's automatic predictions changed the X or Y values.
 Column names are read-only, and the fixed-width selection indicator displays
 the color or axis instead of a separate checkbox tick. Clicking anywhere on a
 column (indicator or name) toggles its selection.
@@ -29,24 +32,47 @@ the main GUI (`gui.guiWin`) through the mixins in:
 - `gui_overlay`: overlay of other channels and of other segmentation files.
 - `gui_custom_annotations`: custom annotations of the objects.
 
-Run it with `python -m cellacdc.measurements_viewer [folder_path]`.
+Open it from the launcher (Utilities > Measurements > Measurements viewer...)
+or run it with `python -m cellacdc.measurements_viewer [folder_path]`.
 
-At startup, load a saved configuration or skip to start normally. The File
+At startup, load a saved configuration or skip to start normally (unless
+started with a folder path, which is loaded directly). The File
 menu and the file toolbar can load, save or save a copy of a configuration. On closing, if any
 position's table or the configuration changed since it was loaded/saved, a
 prompt offers to save the tables (overwriting each position's acdc_output
 file), the configuration (or save it as a new file), both, or neither.
+Before a table is overwritten, the previous file is backed up in the
+Position's ``recovery`` folder (like in the main GUI). If the file was
+modified on disk since the viewer loaded, reloaded or saved it (e.g., saved
+in the main GUI), a warning offers to reload it and save (keeping the
+viewer's time points, custom annotations, visited cells and the phases
+evaluated in this session, like Reload table), to overwrite it, or to cancel.
+The same prompt appears before loading a configuration or opening a folder,
+file or recent folder replaces loaded data; Cancel aborts the load and keeps
+the loaded data and their edits.
 Configurations are JSON files in the settings folder
 and retain multiple experiment inputs (Images folders, image/overlay channels
 and segmentation), both plot modes' selections, predictor/annotation definitions,
-phase rules, and separate processing recipes and combine equations. Loading
+phase rules, and separate processing recipes and combine equations. Saving
+updates the loaded input (same Images folders, channel and segmentation) in
+place with the current overlay and visible channels (the loaded option if
+several options share that experiment). Loading
 prompts for a saved input or a new experiment (which reuses the configured
 channel, segmentation and overlays when every position has them, asks for
-replacements otherwise, and offers unused channels as extra overlays), then asks whether to calculate
+replacements otherwise, and offers unused channels as extra overlays; the base
+channel is shown when no configured visible channel remains), then asks whether to calculate
 the measurement steps. Calculating replays them in their original order on all
 positions (overwriting their previous outputs) before lazy per-cell
 prediction; using existing values requires every output column to be present
-in every position. Version 1 files remain
+in every position. Each output column is produced by exactly one recorded
+step (validation rejects duplicate output names across steps, and steps that
+read outputs of a step with a higher order): re-applying a
+recipe or equations that write exactly the same outputs as a recorded step
+replaces that step (keeping its order; the log and status bar say that the
+configuration now records the new parameters), and outputs that only partly
+overlap a recorded step's outputs are refused before running. A replacement
+that reads outputs of later steps moves after all steps, or is refused
+before running when other recorded steps read its outputs. Version 1 files remain
 loadable; their viewed-cell lists are migrated to the table's visited column.
 
 Premade configurations are templates shipped in
@@ -57,6 +83,16 @@ treated as premade). They use the normal configuration schema without
 `"channel_placeholders": {"RED": "description", ...}`. Channels are written
 as braced tokens such as `{RED}` anywhere in the file (channel fields, column
 names like `{RED}_mean`, equations, predictors, phase rules; keys and values).
+In equations, predictors and formatting conditions, column names built from
+channel tokens are quoted in backticks (`` `{RED}_mean` / `{GREEN}_mean` ``):
+the backticks are dropped when the resolved name is a plain identifier and
+kept otherwise, so channels with dashes (`mKO2-hCdt1`) work. Quoted names
+whose first character, or the first character after a dash or other
+non-word character, is a digit (`561_mean`, `GFP-488_mean`) cannot be
+parsed reliably (Python >= 3.12 fails, older versions split them), so the
+rule is checked explicitly on every Python version (`isEquationName`) and
+such channels are rejected for placeholders used inside backticks (`resolvePremadeTemplate`; the setup
+dialog shows the message and keeps its selection).
 Templates can also declare
 `"input_placeholders": {"NAME": {"type": "float"|"int"|"str", "default": v,
 "description": "...", "info": "..."}}` for values to enter during setup (e.g.
@@ -85,9 +121,19 @@ removed from the overlays. The choice becomes the loaded configuration's
 
 Use ``Process measurements...`` to apply a recipe to selected measurements of the
 current position. Smooth measurement uses a centered moving average independently
-for each cell; Dummy leaves values unchanged. Accepting prompts for an output
+for each cell; Min-max normalization rescales with fixed constants shared by
+all cells; Ramp detection marks sustained rising (+1) and falling (-1) ramps
+of each cell's measurement. Accepting prompts for an output
 name and adds ``<measurement>_<name>`` columns without changing the originals.
 Results stay in memory across position switches; Reload table discards them.
+Processing runs in the background: on completion only the new output columns
+are merged into the position's current table (aligned on frame_i, Cell_ID),
+so time point/annotation edits made meanwhile are kept. The results are
+discarded with a warning when the position is no longer loaded, its table was
+reloaded from file, the processed input columns changed, or columns with the
+output names were added meanwhile. A failed recipe
+leaves the table unchanged and shows a warning with the traceback as details
+(also logged).
 ``Combine measurements...`` opens the combined-measurement equation editor.
 Equations are evaluated on the current position's raw table, including
 categorical inputs, and add columns without overwriting existing measurements.
@@ -112,7 +158,9 @@ on the selected cell's raw rows (per-cell functions and ``SizeT``; bool or
 colors a point and the line segment to the next point; other frames keep the
 column color. Hovering shows the matching condition. Evaluation errors are
 shown in the status bar and the column is drawn unformatted. Formatting
-applies to the time course only, not to the comparison mode.
+applies to the time course only, not to the comparison mode. Editing time
+points or custom annotations (manually or by a predictor) replots when an
+edited column is plotted or read by a condition of a plotted column.
 
 The ``Time points`` toolbar has ``Add time point identifier...`` to define a
 named time point (e.g., "Bud emergence") with a color, a keyboard shortcut
@@ -121,12 +169,27 @@ the table columns or ``predictor(df)`` from a Python file, see
 ``timepoint_predictors``). Each identifier gets its own toolbar action: hover
 over the time-course plot and press its shortcut to add a time point for the
 selected cell at the hovered frame (clicking the action adds it at the
-current frame). Time point lines can be dragged like the current frame line;
+current frame), while ``Shift+shortcut`` re-evaluates its predictor on the
+selected cell. Shortcuts that already contain Shift get no such auto
+shortcut, and an auto shortcut already used by another action (e.g., from an
+older configuration) is left unset with a warning. A key is not available as
+shortcut (in the dialogs and for the defaults) when it or its ``Shift+key``
+is already used (e.g., S, because Shift+S shuffles the colormap); the same
+rules apply to custom annotations. A custom annotation whose own shortcut is
+already used by another action (possible with 'Load annotation...' or a
+configuration, which skip the dialog checks) gets neither shortcut, with a
+warning and a tool tip note, because Qt triggers neither of two actions
+sharing a key. Time point lines can be dragged like the
+current frame line;
 right-click a line to remove it, or right-click an identifier action to edit,
 re-evaluate its predictor, clear or remove it. Automatic predictions require
 the identifier's ``autoApply`` flag and run only when a cell is first viewed.
-Viewed Cell_IDs are tracked in the boolean ``measuremnets_viewer_visited``
-column of each position's table and saved with Export measurements. Revisiting
+Viewed Cell_IDs are tracked in the boolean ``measurements_viewer_visited``
+column of each position's table and saved with Export measurements. The
+visited, ``timepoint_*`` and custom annotation columns are parsed robustly
+when a table is loaded or reloaded (`timepoint_predictors.parse_flags`): the
+main GUI may save them as True/False/0 strings after adding cells, and only
+true-like values ('True', non-zero numbers) count as marked. Revisiting
 a cell does not retry failed predictions; use explicit re-evaluation to retry.
 The toolbar's ``Re-evaluate predictors on all cells`` and ``... on displayed
 cell`` re-run all predictors; cells with manual edits (added, moved or removed
@@ -137,9 +200,12 @@ frames where the cell is marked), so they are part of any exported or processed
 table.
 
 The ``Custom annotations`` toolbar shares the custom annotations of the main 
-GUI (``gui_custom_annotations``): add, load, modify or remove annotations, 
-each saved as a 0/1 column ``<name>`` of the acdc_df. Each annotation has a 
-keyboard shortcut (defaults A, S, D, F, ...) that annotates/un-annotates the 
+GUI (``gui_custom_annotations``): add, load, modify or remove annotations,
+each saved as a 0/1 column ``<name>`` of the acdc_df (removing an annotation
+together with its column warns about predictors, phase rules, formatting
+conditions and recorded steps that read it, and drops the column's color
+and conditional formatting). Each annotation has a
+keyboard shortcut (defaults A, D, F, ...) that annotates/un-annotates the
 selected cell across its entire video history, while ``Shift+shortcut``
 re-evaluates its predictor on the selected cell. Alternatively, activate the 
 toolbar button and RIGHT-click on a cell. Like time points, annotations can 
@@ -150,11 +216,18 @@ consolidates the results into one boolean for the entire Cell_ID history.
 Most requires strictly more than half True; ties are False. Existing
 frame-specific assignments are expanded to all frames if any frame is marked.
 Definitions and predictor settings are saved in viewer configurations; the
-main GUI's global saved definitions can be loaded, but are not overwritten.
+main GUI's global saved definitions can be loaded, but are not overwritten
+or deleted (the load dialogs have no delete button in the viewer).
 Cell assignments are saved with Export measurements, not in configurations.
 Automatic predictions (``autoApply``), the warning
-before overwriting manually edited cells and the re-evaluation (right-click 
-on the annotation button) work as for the time points. The toolbar also has
+before overwriting manually edited cells and the re-evaluation (right-click
+on the annotation button) work as for the time points. In particular,
+changing an annotation's predictor or enabling its auto apply, or
+adding/loading an annotation whose
+column already exists in a table, does not re-predict visited cells (their
+saved or manual assignments are kept); only a brand-new column is also
+predicted on visited cells. Use explicit re-evaluation to apply a changed
+predictor to visited cells. The toolbar also has
 actions to re-evaluate all annotation predictors on the displayed cell or on
 all cells. Annotation definitions are stored in configurations.
 
@@ -163,9 +236,32 @@ Predictor equations and their filters can use other identifiers' boolean
 are evaluated first, across both kinds of predictor. Explicit re-evaluation
 also re-runs prerequisite predictors (with the same manual-edit protection);
 automatic prediction still requires autoApply. Other-cell inputs evaluate
-prerequisites on all cells. Circular equation dependencies prevent accepting
+prerequisites on all cells. Automatic predictions never overwrite manually
+edited cells (including those of prerequisites) and never show the
+overwrite warning; cells already predicted are not recomputed. Cells visited
+in an earlier session (visited column of a loaded table) count as predicted,
+so a prerequisite predicted on all cells keeps their saved time points and
+annotations; the same holds after changing a time point predictor or adding
+an identifier whose column already exists in a table. Loading data or a
+configuration resets this session state and rebuilds it from the visited
+column of the loaded tables (e.g., reopening a position after 'Don't save'
+predicts cells that are unvisited in the reloaded table). Circular
+equation dependencies prevent accepting
 the customization, with a warning showing the cycle. Python-file predictors
 can read these columns, but their dependencies cannot be inferred.
+Renaming a time point identifier or annotation is refused (with the list of
+dependents) while other predictors, phase rule formulas, conditional
+formatting conditions or recorded combine equations/processing steps read
+its column, because references are not rewritten; edit those first. A
+rename onto a name that is already a column of a loaded table (e.g., a
+measurement, ``phase`` or a column kept by 'Remove only button') is refused,
+because it would duplicate the column. On rename, the plot selection, color and
+conditional formatting of the column follow the new name, and phase rule
+boundaries/required annotations are renamed. Removing a time point
+identifier or an annotation warns about such dependents and also about phase
+rules that use its column as a boundary or required annotation (they are
+skipped with 'missing inputs' afterwards); the column's own color and
+conditional formatting are removed with it.
 
 ``Time point to phase translator...`` opens an ordered list of phase rules.
 Each rule reuses the custom annotation formula editor (including filters,
@@ -186,11 +282,18 @@ points change or phases are missing`` (saved in the configuration as
 affected cells once the change is complete, and a displayed cell without
 evaluated phases (no ``phase`` column or only empty phases) is evaluated once
 per session (after its automatic predictors); errors and warnings then go to
-the status bar. Export measurements prompts to evaluate all cells
+the status bar. While measurement processing runs, these evaluations are
+postponed until it finishes; cells of a position that is no longer displayed
+by then are evaluated when that position is displayed again. Export measurements prompts to evaluate all cells
 when rules are configured, and exports ``phase`` (string, empty if unassigned)
 and ``phase_<name>`` (boolean) columns. These output names are reserved by the
 translator; existing unrelated measurements are not overwritten. Rule
 definitions, but not evaluated table values, are saved in viewer configurations.
+Empty phases read back from a saved acdc_output file (which the loader fills
+with 0 when the table has cell cycle columns) are restored to ``''``, and
+``phase_<name>`` columns that the main GUI saved as True/False/0 strings after
+adding cells are parsed back to bool, when the table is loaded or reloaded
+(``phase_translator.normalize_loaded_outputs``).
 
 When the table has a ``phase`` column, the selected cell's phases are drawn as
 a solid colored band (one bar per run of consecutive frames, labeled with the
@@ -198,7 +301,13 @@ phase; hover for frame ranges) in a separate x-linked plot directly below the
 time course, and Measurement vs Measurement colors each point by its phase
 (gray for unassigned, with a legend). Hover tips show the phase. The
 ``Show phases`` checkbox toggles both; its state is stored in the settings CSV
-(``measurements_viewer_show_phases``). Phase colors are edited in the
+(``measurements_viewer_show_phases``), like the navigation toggles ``Rescale
+plot`` (``rescalePlot``) and ``Only frames with selected cell``
+(``restrictFrames``). The time course x range is set to frames 1..SizeT
+when a position is loaded and when switching back from Measurement vs
+Measurement; replots after changing cell or editing the table (time points,
+annotations) keep the current zoom, unless ``Rescale plot`` is checked, which
+rescales the plot to the data when changing cell. Phase colors are edited in the
 translator dialog's ``Phase colors`` box (committed on Apply or OK) and saved
 in the configuration's ``phase_colors`` ``{name: "#rrggbb"}``; phases without a
 color get evenly spaced default hues (``phase_translator.phase_colors``).
@@ -207,8 +316,10 @@ import os
 import sys
 import copy
 import json
+import keyword
 import re
 import logging
+import traceback
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -226,11 +337,11 @@ from qtpy.QtCore import (
 )
 from qtpy.QtGui import (
     QFont, QIcon, QGuiApplication, QPixmap, QPainter, QCursor, QKeySequence,
-    QColor
+    QColor, QMouseEvent
 )
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QHBoxLayout,
-    QGroupBox, QSplitter, QListView, QLineEdit,
+    QGroupBox, QSplitter, QLineEdit,
     QCheckBox, QComboBox, QAbstractItemView, QFileDialog, QAction,
     QApplication, QToolButton, QPushButton, QActionGroup, QAbstractSlider,
     QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem, QTreeView,
@@ -250,7 +361,6 @@ from .config import STANDARD_MOUSE_BUTTONS
 from . import gui_core
 from . import apps
 from . import html_utils
-from . import printl
 from . import workers
 from . import timepoint_predictors
 from . import custom_annotation_predictors
@@ -258,8 +368,6 @@ from . import apps_measurements_viewer
 from .apps_measurements_viewer import (
     ChannelPlaceholderMappingDialog,
     ConditionalFormattingDialog,
-    RELATIVE_COLOR_FACTORS,
-    RELATIVE_COLOR_PATTERN,
     _FormattingConditionDialog,
     formatting_color,
     is_formatting_color,
@@ -270,8 +378,10 @@ from .gui_custom_annotations import (
     custom_annot_state_to_save, custom_annot_symbol
 )
 from .custom_annotation_predictors import CustomAnnotationPredictor
-from .timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
-from . import exception_handler, disableWindow
+from .timepoint_predictors import (
+    TimepointIdentifier, TIMEPOINT_PREFIX, parse_flags
+)
+from . import disableWindow
 
 
 RESCALE_INTENS_HOW_TEXTS = (
@@ -288,7 +398,7 @@ _font.setPixelSize(11)
 
 DEFAULT_MEASUREMENTS_COLUMNS = ('cell_area_pxl', 'cell_vol_vox', 'cell_area_um2')
 INDEX_COLUMNS = ('frame_i', 'Cell_ID', 'time_seconds')
-VISITED_COLUMN = 'measuremnets_viewer_visited' # for tracking which cells have been visited in the measurements viewer
+VISITED_COLUMN = 'measurements_viewer_visited' # for tracking which cells have been visited in the measurements viewer
 CCA_DF_INT_COLS = [
     col for col in cca_df_colnames if type(base_cca_dict[col]) == int
 ]
@@ -300,6 +410,22 @@ PREMADE_CONFIGURATIONS_PATH = os.path.join(
     'measurements_viewer_premade_configurations'
 )
 PREMADE_TAG = '[Premade] '
+
+
+def auto_shortcut_text(shortcut):
+    """Key sequence (text) of the ``Shift+<shortcut>`` action that
+    re-evaluates the predictor of a time point identifier or custom
+    annotation with `shortcut`.
+
+    Empty when `shortcut` is empty or already contains Shift (it would
+    collide with the shortcut itself).
+    """
+    if isinstance(shortcut, QKeySequence):
+        shortcut = shortcut.toString()
+    text = QKeySequence(shortcut or '').toString()
+    if not text or 'Shift' in text:
+        return ''
+    return QKeySequence(f'Shift+{text}').toString()
 
 
 class _TimepointLine(pg.InfiniteLine):
@@ -478,8 +604,41 @@ def load_position(images_path, channel, segm_endname='segm'):
         posData.segm_data = posData.segm_data[np.newaxis]
     
     posData.SizeT = min(len(posData.img_data), len(posData.segm_data))
+    normalize_loaded_acdc_df(posData)
     posData.savedAcdcDf = acdc_df_snapshot(getattr(posData, 'acdc_df', None))
+    posData.acdcDfFileStamp = acdc_df_file_stamp(
+        getattr(posData, 'acdc_output_csv_path', None)
+    )
     return posData
+
+def normalize_loaded_acdc_df(posData):
+    """Restore the viewer-owned columns of a table read from file (in place):
+    parse the boolean ``timepoint_*`` and visited columns with `parse_flags`
+    (the main GUI may save them as True/False/0 strings after adding cells)
+    and restore
+    unassigned phases (which the loader fills with 0 when the table has cell
+    cycle columns) to '' and recognized ``phase_<name>`` markers to bool
+    (`phase_translator.normalize_loaded_outputs`)."""
+    acdc_df = getattr(posData, 'acdc_df', None)
+    if acdc_df is None:
+        return
+    for column in acdc_df.columns:
+        if column == VISITED_COLUMN or (
+                isinstance(column, str) and column.startswith(TIMEPOINT_PREFIX)):
+            acdc_df[column] = parse_flags(acdc_df[column])
+    phase_translator.normalize_loaded_outputs(acdc_df)
+
+def acdc_df_file_stamp(filepath):
+    """(modification time, size) of an acdc_output file, None if missing.
+    Used to detect files changed on disk (e.g., by the main GUI) since they
+    were loaded or saved by the viewer."""
+    if not filepath:
+        return None
+    try:
+        stat = os.stat(filepath)
+    except OSError:
+        return None
+    return (stat.st_mtime_ns, stat.st_size)
 
 def acdc_df_snapshot(acdc_df):
     """Copy of a table as it is on disk, used to detect unsaved changes."""
@@ -570,6 +729,8 @@ class MeasurementsViewerWin(
     sigClosed = Signal(object)
     # The bottom layout is different from guiWin's --> separate setting
     bottomLayoutHeightSettingKey = 'measurements_viewer_bottomLayoutHeight'
+    # No delete-object tool --> hide its row in the shortcut editor
+    showDeleteObjectShortcut = False
 
     def __init__(
             self, data=None, pos_i=0, frame_i=None, ID=None, isSegm3D=None,
@@ -592,6 +753,7 @@ class MeasurementsViewerWin(
         self.configurationFilepath = None
         self.savedConfiguration = None
         self._startupConfigurationPrompted = False
+        self._geometryRestored = False
         self.measurementProcessingThread = None
         self.measurementProcessingWorker = None
         self.rescaleIntensChannelHowMapper = {}
@@ -604,6 +766,9 @@ class MeasurementsViewerWin(
         self.timepointLines = []
         self.timepointAutoPredictions = defaultdict(set)
         self.configurationInputs = []
+        # inputOptionKey of the loaded (or last saved) input option, which
+        # `configuration()` updates in place
+        self.loadedInputKey = None
         self.measurementProcessingSteps = []
         self.combinedMeasurementSteps = []
         # Per-cell constants [{'name': str, 'equation': str}]
@@ -613,7 +778,9 @@ class MeasurementsViewerWin(
         # Re-evaluate phases of cells whose time points change or whose
         # phases are missing (saved in the configuration)
         self.autoApplyPhases = False
-        self._pendingPhaseIDs = set()
+        # {id(posData): (posData, set of Cell_IDs)} awaiting phase auto-apply
+        self._pendingPhaseIDs = {}
+        self._phaseAutoApplyScheduled = False
         self.initAnnotationsAttributes()
         self.initViewerToolsAttributes()
         self.initCustomAnnotationsAttributes()
@@ -648,8 +815,12 @@ class MeasurementsViewerWin(
         if not self._startupConfigurationPrompted:
             self._startupConfigurationPrompted = True
             QTimer.singleShot(0, self.loadConfiguration)
-        self.readSettings(setting_suffix='_measurements_viewer')
-        
+        # Restore the geometry saved on close only once: Qt also sends
+        # (spontaneous) show events when the window is restored from minimized
+        if not self._geometryRestored:
+            self._geometryRestored = True
+            self.readSettings(setting_suffix='_measurements_viewer')
+
 
     def selectConfigurationFilepath(self):
         from .apps import QTreeDialog
@@ -719,7 +890,7 @@ class MeasurementsViewerWin(
             channel for channel, button in self.allOverlayToolbuttons.items()
             if button.isChecked()
             and (channel == self.user_ch_name or channel in overlay_channels)
-        ]
+        ] or [self.user_ch_name]
         currentInput = {
             'images_paths': [
                 os.path.abspath(pos.images_path) for pos in self.data
@@ -730,7 +901,29 @@ class MeasurementsViewerWin(
             'visible_channels': visible_channels,
         }
         inputs = copy.deepcopy(self.configurationInputs)
-        if currentInput not in inputs:
+        # Same experiment (same Images folders, channel and segmentation),
+        # possibly with another channel order or other overlay/visible
+        # channels: update that option in place instead of adding a
+        # duplicate. An option equal up to channel order is preferred, then
+        # the loaded option (several options may share the experiment).
+        currentKey = self.inputOptionKey(currentInput)
+        currentIdentity = self.inputIdentityKey(currentInput)
+        loadedKey = self.loadedInputKey
+        matches = [
+            i for i, option in enumerate(inputs)
+            if self.inputOptionKey(option) == currentKey
+        ] or [
+            i for i, option in enumerate(inputs)
+            if loadedKey is not None
+            and self.inputOptionKey(option) == loadedKey
+            and self.inputIdentityKey(option) == currentIdentity
+        ] or [
+            i for i, option in enumerate(inputs)
+            if self.inputIdentityKey(option) == currentIdentity
+        ]
+        if matches:
+            inputs[matches[0]] = copy.deepcopy(currentInput)
+        else:
             inputs.append(currentInput)
         return {
             'version': 2,
@@ -864,21 +1057,7 @@ class MeasurementsViewerWin(
             values = timepoint_predictors.CellEquation.evaluate(
                 cell, rule['condition'], variables
             )
-            try:
-                if isinstance(values, (pd.Series, pd.Index)):
-                    values = values.to_numpy(dtype=float, na_value=np.nan)
-                elif values is None or values is pd.NA:
-                    values = np.nan
-                values = np.nan_to_num(
-                    np.asarray(values, dtype=float), nan=0.0
-                )
-            except (TypeError, ValueError):
-                raise ValueError(
-                    'The condition must return bool or 0/1 values.'
-                ) from None
-            mask = timepoint_predictors.CellFilter.boolean_values(
-                values, len(cell)
-            )
+            mask = _FormattingConditionDialog.conditionMask(values, len(cell))
             matched[(matched < 0) & mask] = i
         return matched
 
@@ -945,6 +1124,66 @@ class MeasurementsViewerWin(
                             or item.get('method') not in measurement_processing.MEASUREMENT_PROCESSING_MAPPER
                             or not isinstance(item.get('kwargs'), dict)):
                         raise ValueError('Invalid measurement recipe step.')
+        # Each output column is produced by exactly one step, otherwise
+        # replaying the steps would overwrite a previous step's output
+        outputs = [
+            column
+            for section in ('measurement_processing', 'combined_measurements')
+            for step in configuration.get(section, [])
+            for column in MeasurementsViewerWin.measurementStepOutputColumns(step)
+        ]
+        duplicates = sorted({col for col in outputs if outputs.count(col) > 1})
+        if duplicates:
+            raise ValueError(
+                'Duplicate measurement output name across steps: '
+                + ', '.join(duplicates)
+            )
+        # Steps are replayed in their order after dropping all outputs, so
+        # a step must not read the output of a step with a higher order
+        steps = sorted(
+            (
+                step
+                for section in ('measurement_processing', 'combined_measurements')
+                for step in configuration.get(section, [])
+            ),
+            key=lambda step: step['order']
+        )
+        later = set()
+        for step in reversed(steps):
+            outputs = set(MeasurementsViewerWin.measurementStepOutputColumns(step))
+            reads = (
+                set(MeasurementsViewerWin.measurementStepInputColumns(step))
+                - outputs
+            ) & later
+            if reads:
+                raise ValueError(
+                    'A measurement step reads outputs of a later step: '
+                    + ', '.join(sorted(reads))
+                )
+            later.update(outputs)
+
+    @staticmethod
+    def measurementStepOutputColumns(step):
+        """Output columns written by one measurement step (the processing
+        `output_columns` or the names of the combined `equations`)."""
+        if 'equations' in step:
+            return list(step['equations'])
+        return list(step['output_columns'])
+
+    @staticmethod
+    def measurementStepInputColumns(step):
+        """Columns read by one measurement step (the processing `columns`
+        or the inputs of the combined `equations`, as in
+        `columnDependents`)."""
+        if 'equations' not in step:
+            return list(step['columns'])
+        inputs = {}
+        for expression in step['equations'].values():
+            inputs.update(timepoint_predictors.PredictorDependencies.inputs({
+                'type': timepoint_predictors.PREDICTOR_EQUATION,
+                'equation': expression
+            }))
+        return list(inputs)
 
     def configurationError(self, operation, error):
         self.logger.error('Could not %s configuration: %s', operation, error)
@@ -1000,6 +1239,7 @@ class MeasurementsViewerWin(
             return False
         self.configurationFilepath = filepath
         self.configurationInputs = copy.deepcopy(configuration['input_options'])
+        self.loadedInputKey = self.inputOptionKey(configuration)
         self.savedConfiguration = configuration
         self.statusBar().showMessage(f'Configuration saved to "{filepath}".', 5000)
         return True
@@ -1067,7 +1307,8 @@ class MeasurementsViewerWin(
         """Return the configuration of a premade `template` (not modified)
         with channel tokens replaced by `mapping` and input tokens by
         `values` (defaults for missing inputs). Raises ValueError if a token
-        remains unresolved."""
+        remains unresolved or a backtick-quoted name built from a token
+        cannot be parsed in equations (see `isEquationName`)."""
         placeholders = template.get('channel_placeholders', {})
         inputs = template.get('input_placeholders', {})
         cls.validateInputPlaceholders(inputs, placeholders)
@@ -1078,7 +1319,21 @@ class MeasurementsViewerWin(
             key: value for key, value in template.items()
             if key not in ('channel_placeholders', 'input_placeholders')
         }
-        result = cls.substituteChannelPlaceholders(result, replacements)
+        quotedNames = set()
+        result = cls.substituteChannelPlaceholders(
+            result, replacements, quotedNames=quotedNames
+        )
+        invalid = sorted(
+            name for name in quotedNames if not cls.isEquationName(name)
+        )
+        if invalid:
+            raise ValueError(
+                'These channels cannot be used in the equations of this '
+                'configuration: a channel name must start with a letter or '
+                'an underscore, also after a dash (e.g. "GFP" or '
+                '"mKO2-hCdt1", not "561" or "GFP-488"). Rename the channel. '
+                f'Invalid column names: {", ".join(invalid)}.'
+            )
         unresolved = cls.unresolvedPlaceholders(
             result, [*placeholders, *inputs]
         )
@@ -1089,24 +1344,65 @@ class MeasurementsViewerWin(
         return result
 
     @staticmethod
-    def substituteChannelPlaceholders(obj, mapping):
+    def isEquationName(name):
+        """True if `name` can be used quoted in backticks in an equation
+        (e.g. `mKO2-hCdt1_mean`).
+
+        Rejected explicitly, the same on every Python version: empty names,
+        names containing a backtick, and names with a digit as first
+        character or right after a non-word character such as a dash
+        (`561_mean`, `GFP-488_mean`). Python >= 3.12 cannot tokenize these
+        inside backticks, while older tokenizers silently split them, so
+        they are refused everywhere. Names passing this rule must also be
+        parseable by pandas `eval` (extra guard)."""
+        if not name or '`' in name:
+            return False
+        if re.search(r'(^|[^\w])\d', name):
+            return False
+        try:
+            pd.DataFrame({name: [0]}).eval(f'`{name}`')
+        except Exception:
+            return False
+        return True
+
+    @staticmethod
+    def substituteChannelPlaceholders(obj, mapping, quotedNames=None):
         """Return a copy of `obj` with every `{NAME}` token replaced by
         `mapping[NAME]` in strings, dict keys and dict values (recursive).
 
         A string that is exactly one token becomes the mapped value itself
         (e.g. a number for input placeholders); tokens within longer strings
-        and dict keys are replaced by the value's text."""
+        and dict keys are replaced by the value's text. A backtick-quoted
+        name containing tokens (`` `{RED}_mean` `` in an equation) loses its
+        backticks if the result is a plain identifier (`mCherry_mean`) and
+        keeps them otherwise (`` `mKO2-hCdt1_mean` ``); such quoted results
+        are added to the `quotedNames` set if given."""
         def text(value):
             return value if isinstance(value, str) else repr(value)
+
+        def replaceTokens(value):
+            for name, replacement in mapping.items():
+                value = value.replace(f'{{{name}}}', text(replacement))
+            return value
+
+        def unquote(match):
+            inner = match.group(1)
+            if not re.search(r'\{[A-Za-z0-9_]+\}', inner):
+                return match.group(0)
+            inner = replaceTokens(inner)
+            if inner.isidentifier() and not keyword.iskeyword(inner):
+                return inner
+            if quotedNames is not None:
+                quotedNames.add(inner)
+            return f'`{inner}`'
 
         def substitute(value, isKey=False):
             if isinstance(value, str):
                 match = re.fullmatch(r'\{([A-Za-z0-9_]+)\}', value)
                 if match and match.group(1) in mapping and not isKey:
                     return copy.deepcopy(mapping[match.group(1)])
-                for name, replacement in mapping.items():
-                    value = value.replace(f'{{{name}}}', text(replacement))
-                return value
+                value = re.sub(r'`([^`]*)`', unquote, value)
+                return replaceTokens(value)
             if isinstance(value, dict):
                 return {
                     substitute(key, isKey=True): substitute(item)
@@ -1123,10 +1419,15 @@ class MeasurementsViewerWin(
         text = json.dumps(obj)
         return sorted(name for name in names if f'{{{name}}}' in text)
 
-    def selectChannelMapping(self, placeholders, channels, inputs=None):
-        """Return `(channel mapping, input values)` or None if cancelled."""
+    def selectChannelMapping(
+            self, placeholders, channels, inputs=None, validate=None
+        ):
+        """Return `(channel mapping, input values)` or None if cancelled.
+        `validate(mapping, values)` may raise ValueError to refuse a
+        selection (message shown, dialog stays open)."""
         dialog = ChannelPlaceholderMappingDialog(
-            placeholders, channels, parent=self, inputs=inputs
+            placeholders, channels, parent=self, inputs=inputs,
+            validate=validate
         )
         dialog.exec_()
         if dialog.cancel:
@@ -1219,7 +1520,8 @@ class MeasurementsViewerWin(
                 'channels in common.'
             )
         selection = self.selectChannelMapping(
-            placeholders, sorted(channels), inputs=inputs
+            placeholders, sorted(channels), inputs=inputs,
+            validate=partial(self.resolvePremadeTemplate, configuration)
         )
         if selection is None:
             return None
@@ -1323,9 +1625,56 @@ class MeasurementsViewerWin(
             if self.hasUnsavedAcdcDf(posData)
         ]
 
+    def isAcdcDfChangedOnDisk(self, posData):
+        """True if the acdc_output file of `posData` was modified (e.g., saved
+        by the main GUI) since the viewer loaded, reloaded or saved it."""
+        if not hasattr(posData, 'acdcDfFileStamp'):
+            return False
+        filepath = getattr(posData, 'acdc_output_csv_path', None)
+        return acdc_df_file_stamp(filepath) != posData.acdcDfFileStamp
+
+    def askAcdcDfChangedOnDisk(self, posData):
+        """Ask what to do with a table whose file changed on disk since it
+        was loaded. Return 'reload', 'overwrite' or None (cancel)."""
+        filepath = getattr(posData, 'acdc_output_csv_path', '')
+        posName = getattr(posData, 'pos_foldername', filepath)
+        txt = html_utils.paragraph(
+            f'The acdc_output file of <b>{posName}</b> was modified on disk '
+            '(e.g., saved in the main GUI) after the measurements viewer '
+            'loaded it.<br><br>'
+            '<b>Reload and save</b> reads the file again, keeps the time '
+            'points, custom annotations, visited cells and evaluated phases '
+            'of the viewer and saves them (other in-memory changes, such as '
+            'processed or combined measurements, are discarded).<br><br>'
+            '<b>Overwrite</b> replaces the file with the viewer\'s table '
+            '(changes saved by other programs are lost).<br><br>'
+            '<i>The previous file is backed up in the "recovery" folder in '
+            'both cases.</i>'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        _, overwrite, reload = msg.warning(
+            self, 'Table changed on disk', txt, detailsText=filepath or None,
+            buttonsTexts=('Cancel', 'Overwrite', 'Reload and save')
+        )
+        if msg.cancel:
+            return None
+        if msg.clickedButton == reload:
+            return 'reload'
+        if msg.clickedButton == overwrite:
+            return 'overwrite'
+        return None
+
     def saveAcdcDfs(self, positions):
         for posData in positions:
             filepath = getattr(posData, 'acdc_output_csv_path', None)
+            if filepath and self.isAcdcDfChangedOnDisk(posData):
+                answer = self.askAcdcDfChangedOnDisk(posData)
+                if answer is None:
+                    return False
+                if answer == 'reload':
+                    self.reloadAcdcDfFile(posData)
+                    if self.data and posData is self.posData():
+                        self.refreshAcdcDf()
             try:
                 if not filepath:
                     raise OSError('No acdc_output file path for this position.')
@@ -1336,6 +1685,10 @@ class MeasurementsViewerWin(
                 if VISITED_COLUMN not in acdc_df:
                     acdc_df[VISITED_COLUMN] = False
                 payload = acdc_df.to_csv().encode('utf-8')
+                # Back up the previous file (restorable from the main GUI)
+                load.store_copy_acdc_df(
+                    posData, filepath, log_func=self.logger.warning
+                )
                 output = QSaveFile(filepath)
                 if not output.open(QIODevice.WriteOnly):
                     raise OSError(output.errorString())
@@ -1353,6 +1706,7 @@ class MeasurementsViewerWin(
                 )
                 return False
             posData.savedAcdcDf = acdc_df.copy()
+            posData.acdcDfFileStamp = acdc_df_file_stamp(filepath)
         if positions:
             self.statusBar().showMessage(
                 f'Saved {len(positions)} acdc_output table(s).', 5000
@@ -1361,6 +1715,19 @@ class MeasurementsViewerWin(
 
     def askSaveBeforeClosing(self):
         """Prompt for unsaved tables/configuration. Return False to cancel."""
+        return self.askSaveChanges('closing')
+
+    def askSaveBeforeLoading(self):
+        """Prompt for unsaved tables/configuration before other data (a
+        configuration, folder or file) replaces the loaded data. Return False
+        to cancel the load (no prompt and True when nothing is loaded)."""
+        if not self.isDataLoaded:
+            return True
+        return self.askSaveChanges('loading other data')
+
+    def askSaveChanges(self, action='closing'):
+        """Prompt for unsaved tables/configuration before `action` (text of
+        the prompt). Return False to cancel."""
         positions = self.unsavedAcdcDfPositions()
         configChanged = self.hasUnsavedConfiguration()
         if not positions and not configChanged:
@@ -1379,9 +1746,11 @@ class MeasurementsViewerWin(
             changes.append('the <b>configuration</b>')
         txt = html_utils.paragraph(
             f'There are unsaved changes to {" and ".join(changes)}.<br><br>'
-            'Do you want to save them before closing?<br><br>'
+            f'Do you want to save them before {action}?<br><br>'
             '<i>Saving the tables overwrites each position\'s acdc_output '
-            'file.</i>'
+            'file (the previous file is backed up in the "recovery" '
+            'folder; files modified on disk since loading are reported '
+            'first).</i>'
         )
         details = '\n'.join(
             getattr(posData, 'acdc_output_csv_path', '') for posData in positions
@@ -1421,23 +1790,64 @@ class MeasurementsViewerWin(
         return True
 
     @staticmethod
-    def configurationInputOptions(configuration):
+    def inputOptionKey(option):
+        """Comparison key of an input option that ignores channel order.
+
+        Two options with the same Images folders, channel, segmentation and
+        overlay/visible channel sets are equal, even if the channels are
+        listed in a different order (e.g. configured order vs. the sorted
+        order written by `configuration()`). See `inputIdentityKey` for the
+        key that ignores the overlay/visible channels.
+        """
+        return (
+            *MeasurementsViewerWin.inputIdentityKey(option),
+            tuple(sorted(option.get('overlay_channels', []))),
+            tuple(sorted(option.get('visible_channels', []))),
+        )
+
+    @staticmethod
+    def inputIdentityKey(option):
+        """Key of the experiment an input option loads.
+
+        Options with the same Images folders, channel and segmentation load
+        the same data and only differ in the displayed layers (overlay and
+        visible channels). `configuration()` updates such an option in place
+        with the current layers instead of adding another one (the loaded
+        option, `loadedInputKey`, if several options share the experiment).
+        """
+        return (
+            tuple(
+                os.path.normcase(os.path.abspath(path))
+                for path in option.get('images_paths', [])
+            ),
+            option.get('channel'),
+            option.get('segm_endname'),
+        )
+
+    @classmethod
+    def configurationInputOptions(cls, configuration):
         keys = (
             'images_paths', 'channel', 'segm_endname',
             'overlay_channels', 'visible_channels'
         )
         options = copy.deepcopy(configuration.get('input_options', []))
         current = {key: copy.deepcopy(configuration[key]) for key in keys}
-        if current not in options:
+        currentKey = cls.inputOptionKey(current)
+        if all(cls.inputOptionKey(option) != currentKey for option in options):
             options.append(current)
         return options
 
     def selectConfigurationInput(self, configuration):
         options = self.configurationInputOptions(configuration)
+        def overlaysLabel(option):
+            overlays = option.get('overlay_channels', [])
+            return f'; overlays: {", ".join(overlays)}' if overlays else ''
+
         labels = [
             f'{i + 1}. {option["images_paths"][0]} '
             f'({len(option["images_paths"])} positions; '
-            f'{option["channel"]}; {option["segm_endname"]})'
+            f'{option["channel"]}; {option["segm_endname"]}'
+            f'{overlaysLabel(option)})'
             for i, option in enumerate(options)
         ]
         new = 'Load a new experiment...'
@@ -1467,7 +1877,8 @@ class MeasurementsViewerWin(
         every position has them; otherwise the user picks a replacement
         (channel/segmentation) or confirms dropping them (overlays). Channels
         of the new experiment that the configuration does not use are then
-        offered as optional extra overlays.
+        offered as optional extra overlays. The base channel becomes visible
+        when none of the configured visible channels remains.
         """
         available = [get_channels_and_segm_endnames(path) for path in paths]
         channels = set(available[0][0]).intersection(*(set(item[0]) for item in available))
@@ -1533,6 +1944,9 @@ class MeasurementsViewerWin(
         if channel != configuration['channel'] and channel not in visible:
             visible.insert(0, channel)
         visible += [c for c in added if c not in visible]
+        if not visible:
+            # E.g., base hidden and every visible overlay missing
+            visible = [channel]
         return {
             'images_paths': [os.path.abspath(path) for path in paths],
             'channel': channel, 'segm_endname': segm,
@@ -1706,6 +2120,11 @@ class MeasurementsViewerWin(
             filepath = self.selectConfigurationFilepath()
         if not filepath:
             return False
+        # Ask before anything is replaced (setTimepointIdentifiers removes the
+        # old tables' time point columns) and before reading the file, so a
+        # configuration saved over the same file is the one that is loaded.
+        if not self.askSaveBeforeLoading():
+            return False
         try:
             with open(filepath, encoding='utf-8') as file:
                 configuration = json.load(file)
@@ -1722,10 +2141,16 @@ class MeasurementsViewerWin(
                 selectedInput = self.selectConfigurationInput(configuration)
                 if selectedInput is not None:
                     selectedInput = self.resolveInputChannel(selectedInput)
+                if selectedInput is not None:
+                    # Report a bad input instead of applying it (it would
+                    # also block saving the configuration later)
+                    self.validateConfigurationInput(selectedInput)
             if selectedInput is None:
                 return False
             inputs = self.configurationInputOptions(configuration)
-            if selectedInput not in inputs:
+            selectedKey = self.inputOptionKey(selectedInput)
+            if all(self.inputOptionKey(option) != selectedKey
+                   for option in inputs):
                 inputs.append(copy.deepcopy(selectedInput))
             configuration.update(selectedInput)
             for path in configuration['images_paths']:
@@ -1782,38 +2207,45 @@ class MeasurementsViewerWin(
             return False
 
         self.isSegm3D = None
+        # Remove the previous custom annotations while their data are still
+        # loaded: setData (getAcdcDf) adds a column to the new tables for
+        # every registered annotation, and setTimepointIdentifiers checks
+        # the new auto shortcuts against the registered annotation actions.
+        self.setUncheckedAllCustomAnnotButtons()
+        self.reinitCustomAnnot()
         # self.setCellConstants(configuration.get('cell_constants', []))
         self.setTimepointIdentifiers([
             TimepointIdentifier.from_dict(identifier)
             for identifier in configuration.get('timepoint_identifiers', [])
         ])
         self.configurationInputs = inputs
+        self.loadedInputKey = selectedKey
         self.measurementProcessingSteps = copy.deepcopy(
             configuration.get('measurement_processing', [])
         )
         self.combinedMeasurementSteps = copy.deepcopy(
             configuration.get('combined_measurements', [])
         )
-        with self.deferPredictorPredictions():
-            self.setData(data)
-            self.setCustomAnnotations(configuration.get('custom_annotations', []))
-            # Exported assignments of visited cells must survive auto-prediction.
-            for posData in data:
-                table = getattr(posData, 'acdc_df', None)
-                if table is None or VISITED_COLUMN not in table:
-                    continue
-                IDs = set(table.index.get_level_values('Cell_ID')[
-                    table[VISITED_COLUMN].fillna(False).to_numpy(bool)
-                ])
-                for name in self.customAnnotNames():
-                    self.customAnnotAutoPredictions[
-                        self.customAnnotPredictionKey(posData, name)
-                    ].update(IDs)
+        # Before the deferred predictions of the displayed cell run (on exit
+        # of the block below), so they auto-apply the new phase rules.
         self.phaseTranslatorRules = copy.deepcopy(
             configuration.get('phase_translator_rules', [])
         )
         self.phaseColors = dict(configuration.get('phase_colors', {}))
         self.autoApplyPhases = configuration.get('auto_apply_phases', False)
+        with self.deferPredictorPredictions():
+            # Session prediction state of the replaced data is rebuilt from
+            # the visited column of the loaded tables (as in
+            # `loadImagesPaths`).
+            self.resetAutoPredictionTracking()
+            self.setData(data)
+            self.setCustomAnnotations(configuration.get('custom_annotations', []))
+            # Exported assignments and time points of visited cells must
+            # survive auto-prediction.
+            self.seedVisitedCustomAnnotPredictions(
+                self.customAnnotNames(), data
+            )
+            self.seedVisitedTimepointPredictions(data=data)
         self.configurationFilepath = None
         overlays = configuration['overlay_channels']
         if overlays:
@@ -1957,7 +2389,9 @@ class MeasurementsViewerWin(
         self.customAnnotShortcutActions = {}
         # Cells already predicted {(normcase pos_path, name): set of IDs}
         self.customAnnotAutoPredictions = defaultdict(set)
-    
+        # {name: positions whose table had the column before it was added}
+        self.customAnnotPreexistingColumns = {}
+
     def initAnnotationsAttributes(self):
         """Initialize the attributes required by 
         `gui_annotations.AnnotationsGuiElements`"""
@@ -2121,8 +2555,11 @@ class MeasurementsViewerWin(
             'Add custom annotation\n\n'
             'Define an annotation (saved as a 0/1 column) with a symbol, a '
             'keyboard shortcut and an optional predictor.\n'
-            'Select a cell and press the shortcut to annotate it at the '
-            'current frame.'
+            'Select a cell and press the shortcut to annotate/un-annotate it '
+            'across its entire video history (Shift+shortcut re-evaluates '
+            'its predictor on the selected cell).\n'
+            'Alternatively, activate the toolbar button and right-click on '
+            'a cell.'
         )
         
         # Annotations actions (same as in the main GUI)
@@ -2235,6 +2672,8 @@ class MeasurementsViewerWin(
         self.zoomOutAction = QAction(
             'Zoom out  (Shortcut: double press H key)', self
         )
+        # Required by ZoomGuiElements.zoomToCells, but not shown in the
+        # viewer (it never zooms automatically on Next/Previous)
         self.enableAutoZoomToCellsAction = QAction(
             'Automatic zoom to all cells when pressing "Next/Previous"', self
         )
@@ -2286,7 +2725,8 @@ class MeasurementsViewerWin(
             self.shuffleCmapAction, self.greedyShuffleCmapAction,
             self.saveLabColormapAction, self.zoomToObjsAction, 
             self.zoomOutAction, self.searchAction, self.focusOnSearchAction,
-            self.launch3dViewerAction, *self.normalizeQActionGroup.actions()
+            self.launch3dViewerAction, self.MaxProjToggleAction,
+            *self.normalizeQActionGroup.actions()
         )
     
     def gui_createMenuBar(self):
@@ -2308,8 +2748,9 @@ class MeasurementsViewerWin(
         editMenu = self.menuBar().addMenu('&Edit')
         editMenu.addAction(self.editShortcutsAction)
         editMenu.addAction(self.editOverlayColorAction)
-        editMenu.addAction(self.enableAutoZoomToCellsAction)
-        
+        # enableAutoZoomToCellsAction is not in the menu: the viewer always
+        # zooms with enforce=True (the action exists only for the mixin)
+
         viewMenu = self.menuBar().addMenu('&View')
         viewMenu.addAction(self.viewCcaTableAction)
         viewMenu.addSeparator()
@@ -2693,8 +3134,15 @@ class MeasurementsViewerWin(
             for posData in self.data
         )
     
+    def isZsliceNavigationActive(self):
+        """Next/Previous step z-slices instead of frames (z-stacks only)."""
+        return (
+            bool(self.data) and self.posData().SizeZ > 1
+            and self.zSliceCheckbox.isChecked()
+        )
+
     def nextActionTriggered(self):
-        if self.zSliceCheckbox.isChecked():
+        if self.isZsliceNavigationActive():
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
@@ -2702,9 +3150,9 @@ class MeasurementsViewerWin(
             self.navigateScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepAdd
             )
-    
+
     def prevActionTriggered(self):
-        if self.zSliceCheckbox.isChecked():
+        if self.isZsliceNavigationActive():
             self.zSliceScrollBar.triggerAction(
                 QAbstractSlider.SliderAction.SliderSingleStepSub
             )
@@ -2726,6 +3174,9 @@ class MeasurementsViewerWin(
         self.updateImageValueFormatter()
     
     def getHardcodedShortcuts(self):
+        """Shortcuts displayed (not editable) in the shortcuts editor, as
+        {key sequence: (name, widget)}, the same format as
+        `guiWin.getHardcodedShortcuts`."""
         hard_shortcuts = {}
         actions = (
             self.openFolderAction, self.reloadAction, 
@@ -2740,7 +3191,10 @@ class MeasurementsViewerWin(
             if shortcut.isEmpty():
                 continue
             text = widget.text() or widget.toolTip().split('\n')[0]
-            hard_shortcuts[text] = shortcut.toString()
+            name = text.replace('&', '').strip()
+            if name.endswith('...'):
+                name = name[:-3]
+            hard_shortcuts[shortcut.toString()] = (name, widget)
         return hard_shortcuts
     
     def showInExplorer_cb(self):
@@ -2748,7 +3202,7 @@ class MeasurementsViewerWin(
         myutils.showInExplorer(posData.images_path)
     
     def openRecentFile(self, path):
-        print(f'Opening recent folder: {path}')
+        self.logger.info(f'Opening recent folder: {path}')
         self.addToRecentPaths(path)
         self.openFolder(folderpath=path)
     
@@ -2825,7 +3279,10 @@ class MeasurementsViewerWin(
         )
         if segm_endname is None:
             return
-        
+
+        if not self.askSaveBeforeLoading():
+            return
+
         self.setCursor(Qt.WaitCursor)
         try:
             data = load_positions(
@@ -2842,7 +3299,19 @@ class MeasurementsViewerWin(
             return
         
         self.isSegm3D = None
-        self.setData(data)
+        with self.deferPredictorPredictions():
+            # The session prediction state belongs to the replaced data
+            # (e.g. reopened after "Don't save"): rebuild it from the
+            # visited column of the loaded tables.
+            self.resetAutoPredictionTracking()
+            self.setData(data)
+            # The annotations and time point identifiers persist across
+            # loading: saved assignments and time points of visited cells
+            # must survive auto-prediction (as in `loadConfiguration`).
+            self.seedVisitedCustomAnnotPredictions(
+                self.customAnnotNames(), data
+            )
+            self.seedVisitedTimepointPredictions(data=data)
         self.markConfigurationSaved()
     
     def selectItem(self, title, text, items):
@@ -2862,8 +3331,16 @@ class MeasurementsViewerWin(
         msg.warning(self, 'Loading data failed', text)
     
     def setData(self, data, pos_i=0, frame_i=None, ID=None):
+        if self.data:
+            # Turn the tools off while the previous data is still loaded,
+            # so that their slots (e.g. `overlay_cb`) can tear down normally
+            self.uncheckViewerTools()
         self.data = list(data) if data else []
+        self.prunePendingPhaseIDs()
         hasData = len(self.data) > 0
+        # `pos_i` of previously loaded data might be out of range
+        pos_i = min(max(pos_i, 0), len(self.data)-1) if hasData else 0
+        self.pos_i = pos_i
         self.centralWidget().setEnabled(hasData)
         self.setEnabledFileToolbar(hasData)
         
@@ -2913,11 +3390,12 @@ class MeasurementsViewerWin(
                 if not hasattr(posData, name):
                     setattr(posData, name, {})
     
-    def resetViewerToolsWidgets(self):
-        """Uncheck the tools and remove the overlay items of previously 
-        loaded data"""
+    def uncheckViewerTools(self):
+        """Uncheck the viewer tools (with signals, so that their slots run
+        their teardown). Called by `setData` while the previous data is
+        still loaded."""
         for button in (
-                self.overlayButton, self.overlayLabelsButton, 
+                self.overlayButton, self.overlayLabelsButton,
                 self.rulerButton, self.zoomRectButton, self.countObjsButton,
                 self.slideshowButton
             ):
@@ -2925,6 +3403,12 @@ class MeasurementsViewerWin(
                 button.setChecked(False)
         if self.launch3dViewerAction.isChecked():
             self.launch3dViewerAction.setChecked(False)
+
+    def resetViewerToolsWidgets(self):
+        """Uncheck the tools and remove the overlay items of previously
+        loaded data. The tools are normally already unchecked by `setData`
+        while the previous data was still loaded (`uncheckViewerTools`)."""
+        self.uncheckViewerTools()
         self.overlayToolbar.setVisible(False)
         for widget in self.overlayZsliceWidgets():
             widget.hide()
@@ -3119,7 +3603,19 @@ class MeasurementsViewerWin(
             size=16, tip=None
         )
         self.ax1.addItem(self.ax1_cursor)
-        
+
+        # Overlay channel layers (z-value 0) are added later, when data is
+        # loaded, and annotation layers are at 0.5-0.6: keep the ruler and
+        # the mirrored cursor above both, below the text IDs (z-value 1).
+        # Items created on demand get the same z-value in
+        # `raiseOnDemandAx1Items`.
+        topItems = (
+            self.ax1_rulerPlotItem, self.ax1_rulerPlotItem.labelItem,
+            self.ax1_rulerAnchorsItem, self.ax1_cursor,
+        )
+        for item in topItems:
+            item.setZValue(0.9)
+
         self.img1.hoverEvent = self.gui_hoverEventImg1
         self.img1.mousePressEvent = self.gui_mousePressEventImg1
         self.img1.mouseMoveEvent = self.gui_mouseDragEventImg1
@@ -3225,7 +3721,9 @@ class MeasurementsViewerWin(
         # Overlay channel layers are added later (when data is loaded) with
         # the default z-value 0, which would draw them above these items.
         # Keep annotations above every image layer and below the text IDs
-        # (z-value 1, see `gui_annotations`).
+        # (z-value 1, see `gui_annotations`). Custom annotation symbols are
+        # at 0.6 (see `addCustomAnnnotScatterPlot`), the ruler and the
+        # mirrored slideshow cursor at 0.9 (see `gui_createGraphicsPlots`).
         annotationItems = (
             self.labelsLayerImg1, self.ax1_contoursImageItem,
             self.ax1_oldMothBudLinesItem, self.ax1_newMothBudLinesItem,
@@ -3856,8 +4354,9 @@ class MeasurementsViewerWin(
         
         self.idScrollBar.valueChanged.connect(self.idScrollBarValueChanged)
         self.idSpinBox.editingFinished.connect(self.idSpinBoxEditingFinished)
-        self.idSpinBox.sigUpClicked.connect(self.idSpinBoxEditingFinished)
-        self.idSpinBox.sigDownClicked.connect(self.idSpinBoxEditingFinished)
+        # Arrows step to the next/previous existing ID (IDs can have gaps)
+        self.idSpinBox.sigUpClicked.connect(partial(self.stepID, 1))
+        self.idSpinBox.sigDownClicked.connect(partial(self.stepID, -1))
         self.followIDcheckbox.toggled.connect(self.followIDtoggled)
         self.restrictFramesCheckbox.toggled.connect(self.restrictFramesToggled)
         self.rescalePlotCheckbox.toggled.connect(self.rescalePlotToggled)
@@ -3910,12 +4409,16 @@ class MeasurementsViewerWin(
         isMultiPos = len(self.data) > 1
         self.posLabel.setVisible(isMultiPos)
         self.posCombobox.setVisible(isMultiPos)
-        
-        self.initFramesNavigation()
-        self.initZsliceNavigation()
+
+        # Initialize the position before the navigation widgets, whose
+        # range changes must never act on a partially loaded position
         allIDs = self.initPosAnnotData(posData)
         self._IDframesCache = {}
         self.refreshAcdcDf(plot=False)
+        # Cells of this position whose phase evaluation was postponed
+        self.schedulePendingPhaseAutoApply()
+        self.initFramesNavigation()
+        self.initZsliceNavigation()
         self.initIDsNavigation(ID=ID)
         self.updateFramesRange()
         
@@ -3925,8 +4428,9 @@ class MeasurementsViewerWin(
         self.updateImages()
         self.ax1.autoRange()
         self.zoomToSelectedID()
+        self._timecourseXRangeKey = None
         self.plotMeasurements()
-        
+
         if self.rescalePlotCheckbox.isChecked():
             self.measurementsPlot.autoRange()
                 
@@ -3995,8 +4499,36 @@ class MeasurementsViewerWin(
                     pass
         return df
     
+    def getBaseCca_df(self, with_tree_cols=False):
+        """Read-only stand-in for `gui.guiWin.getBaseCca_df`: an empty cell
+        cycle table (no default annotations are invented for frames that
+        were not annotated)."""
+        return pd.DataFrame(columns=self.cca_df_colnames).rename_axis(
+            'Cell_ID'
+        )
+
+    def updateCcaTableWin(self):
+        """Show the cell cycle annotations of the current frame in the open
+        `ccaTableWin`. Frames without annotations show an empty table and
+        only the zoomed IDs that are annotated are shown."""
+        posData = self.posData()
+        cca_df = posData.cca_df
+        if cca_df is None:
+            self.ccaTableWin.updateTable(self.getBaseCca_df(), IDs=None)
+            return
+
+        zoomIDs = self.getZoomIDs()
+        if zoomIDs is not None:
+            zoomIDs = [ID for ID in zoomIDs if ID in cca_df.index]
+        self.ccaTableWin.updateTable(cca_df, IDs=zoomIDs)
+
+    def onSigUpdateCcaTableWindow(self, *args):
+        if not self.isDataLoaded or self.ccaTableWin is None:
+            return
+        self.updateCcaTableWin()
+
     def get_data(self):
-        """Load data of the current frame into `posData` as in 
+        """Load data of the current frame into `posData` as in
         `gui.guiWin.get_data` (read-only)"""
         posData = self.posData()
         frame_i = posData.frame_i
@@ -4021,9 +4553,15 @@ class MeasurementsViewerWin(
     def initFramesNavigation(self):
         posData = self.posData()
         SizeT = posData.SizeT
+        # A smaller maximum clamps the current value and would emit
+        # `valueChanged` (-> `setFrame`). The values are set below.
+        self.navigateScrollBar.blockSignals(True)
+        self.navSpinBox.blockSignals(True)
         self.navigateScrollBar.setMaximum(SizeT)
         self.navigateScrollBar.setAbsoluteMaximum(SizeT)
         self.navSpinBox.setMaximum(SizeT)
+        self.navigateScrollBar.blockSignals(False)
+        self.navSpinBox.blockSignals(False)
         self.navSizeLabel.setText(f'/{SizeT}')
         self.navigateScrollBar.setDisabled(SizeT == 1)
         self.navSpinBox.setDisabled(SizeT == 1)
@@ -4036,18 +4574,28 @@ class MeasurementsViewerWin(
         self.imgGrad.rescaleAcrossZstackAction.setDisabled(not isZstack)
         for widget in self.zSliceNavigationWidgets():
             widget.setVisible(isZstack)
-        
-        if not isZstack:
-            return
-        
+
+        # Reset the plane also for 2D data: a zy/zx plane left from a
+        # previously loaded z-stack would otherwise stay active (hidden),
+        # disabling custom annotations and projections.
         self.switchPlaneCombobox.blockSignals(True)
         self.switchPlaneCombobox.setPlane('xy')
         self.switchPlaneCombobox.blockSignals(False)
+        self.zProjComboBox.setDisabled(False)
+
+        if not isZstack:
+            return
+
         # 2D segmentation masks cannot be displayed on planes other than xy
         self.switchPlaneCombobox.setDisabled(not self.isSegm3D)
-        self.zProjComboBox.setDisabled(False)
+        # A smaller maximum clamps the current z-slice and would emit
+        # `valueChanged` (-> `update_z_slice`). The values are set below.
+        self.zSliceScrollBar.blockSignals(True)
+        self.zSliceSpinbox.blockSignals(True)
         self.setZsliceNavigationRange(posData.SizeZ)
-        
+        self.zSliceScrollBar.blockSignals(False)
+        self.zSliceSpinbox.blockSignals(False)
+
         z = posData.SizeZ // 2
         zProjHow = 'single z-slice'
         segmInfo_df = getattr(posData, 'segmInfo_df', None)
@@ -4095,7 +4643,7 @@ class MeasurementsViewerWin(
         if VISITED_COLUMN not in acdc_df:
             acdc_df[VISITED_COLUMN] = False
         else:
-            acdc_df[VISITED_COLUMN] = acdc_df[VISITED_COLUMN].fillna(False).astype(bool)
+            acdc_df[VISITED_COLUMN] = parse_flags(acdc_df[VISITED_COLUMN])
         # The acdc_df of the position is the only store of the time points
         posData.acdc_df = acdc_df
         return acdc_df
@@ -4117,7 +4665,7 @@ class MeasurementsViewerWin(
             if column not in acdc_df.columns:
                 acdc_df[column] = False
             elif acdc_df[column].dtype != bool:
-                acdc_df[column] = acdc_df[column].fillna(False).astype(bool)
+                acdc_df[column] = parse_flags(acdc_df[column])
     
     def timepointsDf(self, posData=None):
         """The acdc_df holding the time points of a position (or None)."""
@@ -4245,23 +4793,66 @@ class MeasurementsViewerWin(
             return
         self.schedulePhaseAutoApply([ID])
 
-    def schedulePhaseAutoApply(self, IDs):
+    def schedulePhaseAutoApply(self, IDs, posData=None):
         """Collect cells with changed time points and re-evaluate their
         phases once control returns to the event loop, so that batch
         updates (e.g., predictors on all cells) trigger one evaluation and
-        callers holding a reference to the table are not disrupted."""
+        callers holding a reference to the table are not disrupted.
+
+        Pending cells are tracked per position (`posData`, default: the
+        displayed one). Only the displayed position's cells are evaluated;
+        those of another position (e.g., after switching position while
+        measurement processing postponed the evaluation) stay pending
+        until that position is displayed again, or are dropped when that
+        position is no longer loaded (`prunePendingPhaseIDs`)."""
         if not self.autoApplyPhases or not self.phaseTranslatorRules:
             return
-        if not self._pendingPhaseIDs:
-            QTimer.singleShot(0, self.autoApplyPhaseTranslator)
-        self._pendingPhaseIDs.update(IDs)
+        if posData is None:
+            if not self.data:
+                return
+            posData = self.posData()
+        _, pending = self._pendingPhaseIDs.setdefault(
+            id(posData), (posData, set())
+        )
+        pending.update(IDs)
+        self.schedulePendingPhaseAutoApply()
+
+    def prunePendingPhaseIDs(self):
+        """Forget pending cells of positions that are no longer loaded (e.g.
+        after loading other data), so their `posData` can be freed."""
+        loaded = {id(posData): posData for posData in self.data or []}
+        self._pendingPhaseIDs = {
+            key: entry for key, entry in self._pendingPhaseIDs.items()
+            if loaded.get(key) is entry[0]
+        }
+
+    def schedulePendingPhaseAutoApply(self):
+        """Start the (single) deferred phase auto-apply if the displayed
+        position has pending cells."""
+        if self._phaseAutoApplyScheduled or not self.data:
+            return
+        if id(self.posData()) not in self._pendingPhaseIDs:
+            return
+        self._phaseAutoApplyScheduled = True
+        QTimer.singleShot(0, self.autoApplyPhaseTranslator)
 
     def autoApplyPhaseTranslator(self):
-        IDs, self._pendingPhaseIDs = self._pendingPhaseIDs, set()
-        if (not self.autoApplyPhases or not self.phaseTranslatorRules
-                or not self.data or self.acdc_df is None):
+        self._phaseAutoApplyScheduled = False
+        if self.measurementProcessingThread is not None:
+            # Re-evaluated when measurement processing finishes
             return False
-        IDs = IDs.intersection(self.acdc_df.index.get_level_values('Cell_ID'))
+        if not self.autoApplyPhases or not self.phaseTranslatorRules:
+            self._pendingPhaseIDs = {}
+            return False
+        self.prunePendingPhaseIDs()
+        if not self.data or self.acdc_df is None:
+            return False
+        entry = self._pendingPhaseIDs.pop(id(self.posData()), None)
+        if entry is None:
+            return False
+        IDs = entry[1].intersection(
+            self.acdc_df.index.get_level_values('Cell_ID')
+        )
         if not IDs:
             return False
         return self.applyPhaseTranslator(IDs=IDs, quiet=True)
@@ -4284,17 +4875,32 @@ class MeasurementsViewerWin(
         
         acdc_df_path = getattr(posData, 'acdc_output_csv_path', None)
         if not acdc_df_path or not os.path.exists(acdc_df_path):
-            print(f"ACDC output CSV path not found: {acdc_df_path}")
+            self.logger.warning(
+                f'acdc_output CSV file not found: {acdc_df_path}'
+            )
+            self.statusBar().showMessage(
+                f'acdc_output CSV file not found: {acdc_df_path}', 8000
+            )
             return
         
         previous = getattr(posData, 'acdc_df', None)
         posData.loadAcdcDf(acdc_df_path)
+        # Results of measurement processing started before are stale.
+        posData.acdcDfReloadCount = getattr(posData, 'acdcDfReloadCount', 0) + 1
+        normalize_loaded_acdc_df(posData)
         posData.savedAcdcDf = acdc_df_snapshot(getattr(posData, 'acdc_df', None))
+        posData.acdcDfFileStamp = acdc_df_file_stamp(acdc_df_path)
         self.restoreTimepointColumns(posData, previous)
     
     def restoreTimepointColumns(self, posData, previous):
-        """Keep the time points and the custom annotations (which are not in 
-        the file on disk) after the acdc_df of the position was reloaded."""
+        """Keep the time points, the custom annotations, the visited cells
+        and the phases evaluated in this session (which may differ from the
+        file on disk) after the acdc_df of the position was reloaded.
+
+        Phases (``posData.phaseTranslatorColumns``) are carried over only
+        when they were evaluated in memory, so that they stay consistent
+        with the kept time points: rows missing from `previous` get ``''``
+        and translator outputs of the file dropped in memory are removed."""
         acdc_df = getattr(posData, 'acdc_df', None)
         if previous is None or acdc_df is None or acdc_df.empty:
             return
@@ -4304,18 +4910,29 @@ class MeasurementsViewerWin(
             column = self.timepointColumn(identifier)
             if column not in previous.columns:
                 continue
-            marked = previous.index[previous[column].fillna(False).to_numpy(bool)]
+            marked = previous.index[parse_flags(previous[column]).to_numpy()]
             acdc_df[column] = acdc_df.index.isin(marked)
         for name in self.customAnnotNames():
             if name not in previous.columns:
                 continue
-            values = pd.to_numeric(previous[name], errors='coerce').fillna(0)
-            marked = previous.index[values.to_numpy() != 0]
+            marked = previous.index[parse_flags(previous[name]).to_numpy()]
             acdc_df[name] = acdc_df.index.isin(marked).astype(int)
             self.ensureCustomAnnotColumn(acdc_df, name)
         if VISITED_COLUMN in previous:
-            marked = previous.index[previous[VISITED_COLUMN].fillna(False).to_numpy(bool)]
+            marked = previous.index[parse_flags(previous[VISITED_COLUMN]).to_numpy()]
             acdc_df[VISITED_COLUMN] = acdc_df.index.isin(marked)
+        owned = set(getattr(posData, 'phaseTranslatorColumns', ()) or ())
+        if 'phase' in owned and 'phase' in previous.columns:
+            stale = {
+                column for column in
+                phase_translator.existing_output_columns(acdc_df)
+                if column.startswith('phase_') and column not in owned
+            }
+            acdc_df = acdc_df.drop(columns=sorted(stale))
+            phases = previous['phase'].reindex(acdc_df.index)
+            acdc_df['phase'] = phases.where(phases.notna(), '').astype(object)
+            for column in sorted(owned.difference({'phase'})):
+                acdc_df[column] = acdc_df['phase'].eq(column[len('phase_'):])
         posData.acdc_df = acdc_df
     
     @disableWindow
@@ -4323,9 +4940,14 @@ class MeasurementsViewerWin(
         self.reloadAcdcDfFile()
         self.refreshAcdcDf()
 
-    def measurementProcessingWarning(self, title, text):
-        self.logger.warning('%s: %s', title, text)
+    def measurementProcessingWarning(self, title, text, details=None):
+        if details:
+            self.logger.warning('%s: %s\n%s', title, text, details)
+        else:
+            self.logger.warning('%s: %s', title, text)
         msg = widgets.myMessageBox(wrapText=False)
+        if details:
+            msg.setDetailedText(details, wrap=False)
         msg.warning(self, title, text)
 
     def combineMeasurements(self, checked=False):
@@ -4344,7 +4966,8 @@ class MeasurementsViewerWin(
         dialog = apps.CombineMetricsEquationDialog(
             posData.chNames, posData.SizeZ > 1, self.isSegm3D,
             parent=self, closeOnOk=False, acdc_df=equationSource,
-            saveToConfig=False, allowCellAggregations=True
+            saveToConfig=False, allowCellAggregations=True,
+            limitToLoadedColumns=True
         )
         dialog.setToolTip(
             'Results are added to the current position in memory. '
@@ -4383,6 +5006,16 @@ class MeasurementsViewerWin(
                 + ', '.join(sorted(collisions))
             )
             return
+        conflicts = self.recordedOutputConflicts(equations)
+        if conflicts:
+            self.recordedOutputConflictWarning(conflicts)
+            return
+        _, conflicts = self.measurementStepReplacementOrder(
+            {'equations': equations}
+        )
+        if conflicts:
+            self.recordedOrderConflictWarning(conflicts)
+            return
         try:
             result = source.copy()
             for name, expression in equations.items():
@@ -4396,7 +5029,7 @@ class MeasurementsViewerWin(
             return
         posData.acdc_df = result
         self.acdc_df = result
-        self.recordMeasurementStep(
+        note = self.recordMeasurementStep(
             self.combinedMeasurementSteps, {'equations': equations}
         )
         self.updateColumnsList()
@@ -4404,8 +5037,9 @@ class MeasurementsViewerWin(
         dialog.cancel = False
         dialog.close()
         self.statusBar().showMessage(
-            'Combined measurements added. Use Export measurements to save them.',
-            5000
+            'Combined measurements added. Use Export measurements to save them.'
+            + (f' {note}' if note else ''),
+            10000 if note else 5000
         )
 
     def processMeasurements(self, checked=False):
@@ -4429,8 +5063,19 @@ class MeasurementsViewerWin(
         )
         dialog.exec_()
         if dialog.cancel:
-            return       
+            return
 
+        conflicts = self.recordedOutputConflicts(dialog.saveNames)
+        if conflicts:
+            self.recordedOutputConflictWarning(conflicts)
+            return
+        _, conflicts = self.measurementStepReplacementOrder({
+            'columns': list(dialog.selectedChannels),
+            'output_columns': list(dialog.saveNames)
+        })
+        if conflicts:
+            self.recordedOrderConflictWarning(conflicts)
+            return
         self.startMeasurementsProcessing(
             dialog.selectedChannels, dialog.selectedRecipe, dialog.saveNames
         )
@@ -4441,8 +5086,11 @@ class MeasurementsViewerWin(
             'columns': list(columns), 'recipe': recipe,
             'output_columns': list(saveNames)
         })
+        # Results are merged into the position's table at completion unless
+        # the table was reloaded from file or the input columns changed.
         self._measurementProcessingTarget = (
-            posData, self.acdc_df, getattr(posData, 'acdc_df', None)
+            posData, getattr(posData, 'acdcDfReloadCount', 0),
+            self.acdc_df[list(columns)].copy(), list(saveNames)
         )
         self.measurementProcessingThread = QThread(self)
         self.measurementProcessingWorker = workers.MeasurementProcessingWorkerGUI(
@@ -4467,43 +5115,189 @@ class MeasurementsViewerWin(
         self.refreshButton.setEnabled(False)
         self.measurementProcessingThread.start()
 
+    def measurementProcessingTargetTable(self, posData):
+        """Current table of the position processed in the background, or
+        None when the results are stale (position no longer loaded or table
+        reloaded from file since processing started)."""
+        target, reloadCount, inputs, outputs = self._measurementProcessingTarget
+        if posData is not target or not any(pos is posData for pos in self.data):
+            return
+        if getattr(posData, 'acdcDfReloadCount', 0) != reloadCount:
+            return
+        return self.timepointsDf(posData)
+
     def measurementProcessingDone(self, processed):
-        posData, source, original = self._measurementProcessingTarget
-        if (not any(pos is posData for pos in self.data)
-                or getattr(posData, 'acdc_df', None) is not original
-                or (self.posData() is posData
-                    and (self.acdc_df is None or not self.acdc_df.sort_index().equals(
-                        source.sort_index()
-                    )))):
+        posData, _, inputs, outputs = self._measurementProcessingTarget
+        current = self.measurementProcessingTargetTable(posData)
+        stale = current is None
+        if not stale:
+            columns = list(inputs.columns)
+            stale = (
+                not set(columns).issubset(current.columns)
+                or not current[columns].sort_index().equals(inputs.sort_index())
+            )
+        if stale:
             self.measurementProcessingWarning(
                 'Measurements changed',
                 'The source table changed during processing. Results were not applied.'
             )
             return
+        collisions = [col for col in outputs if col in current.columns]
+        if collisions:
+            # e.g. added meanwhile by a predictor or custom annotation
+            self.measurementProcessingWarning(
+                'Invalid measurement name',
+                'Columns with the output names were added during processing. '
+                'Results were not applied: ' + ', '.join(collisions)
+            )
+            return
 
-        posData.acdc_df = processed
-        self.recordMeasurementStep(
+        # Merge only the new columns, so that edits made meanwhile to the
+        # other columns (time points, annotations, visited cells) are kept.
+        for col in outputs:
+            current[col] = processed[col].reindex(current.index)
+        posData.acdc_df = current
+        note = self.recordMeasurementStep(
             self.measurementProcessingSteps, self._pendingMeasurementStep
         )
+        if note:
+            self.statusBar().showMessage(note, 10000)
         if self.posData() is posData:
-            self.acdc_df = processed
+            self.acdc_df = current
             self.updateColumnsList()
             self.plotMeasurements()
 
     def measurementProcessingFailed(self, out):
         worker, error = out
-        self.measurementProcessingWarning('Measurement processing failed', str(error))
+        details = ''.join(traceback.format_exception(
+            type(error), error, error.__traceback__
+        ))
+        self.measurementProcessingWarning(
+            'Measurement processing failed', str(error), details=details
+        )
+
+    def recordedOutputConflicts(self, outputs):
+        """Output names in `outputs` already written by a recorded step that
+        does not write exactly the same outputs (such a partial overlap
+        cannot be recorded, since each output column must be produced by
+        exactly one step, see `validateMeasurementSteps`)."""
+        outputs = set(outputs)
+        conflicts = set()
+        for saved in self.measurementProcessingSteps + self.combinedMeasurementSteps:
+            savedOutputs = set(self.measurementStepOutputColumns(saved))
+            if savedOutputs != outputs:
+                conflicts.update(savedOutputs & outputs)
+        return sorted(conflicts)
+
+    def measurementStepReplacementOrder(self, step):
+        """Order of `step` when it replaces the recorded step writing the
+        same outputs, and the columns that prevent recording it.
+
+        The replacement keeps the replaced step's order unless it reads
+        outputs of recorded steps with a higher order: then it moves after
+        all steps (max order + 1) when no other recorded step reads its
+        outputs, otherwise it cannot be recorded and the conflicting input
+        columns are returned. Returns (None, []) when `step` replaces no
+        recorded step."""
+        outputs = set(self.measurementStepOutputColumns(step))
+        recorded = self.measurementProcessingSteps + self.combinedMeasurementSteps
+        replaced = next((
+            saved for saved in recorded
+            if set(self.measurementStepOutputColumns(saved)) == outputs
+        ), None)
+        if replaced is None:
+            return None, []
+        others = [saved for saved in recorded if saved is not replaced]
+        later = {
+            column for saved in others if saved['order'] > replaced['order']
+            for column in self.measurementStepOutputColumns(saved)
+        }
+        reads = (set(self.measurementStepInputColumns(step)) - outputs) & later
+        if not reads:
+            return replaced['order'], []
+        if any(outputs.intersection(self.measurementStepInputColumns(saved))
+               for saved in others):
+            return replaced['order'], sorted(reads)
+        return max(saved['order'] for saved in recorded) + 1, []
+
+    def recordedOrderConflictWarning(self, conflicts):
+        self.measurementProcessingWarning(
+            'Invalid measurement step',
+            'This step replaces a recorded step of the configuration whose '
+            'outputs are read by other steps, but it reads outputs of steps '
+            'recorded later, so the configuration could not be recalculated '
+            'in order. Choose other output names or inputs: '
+            + ', '.join(conflicts)
+        )
 
     def recordMeasurementStep(self, steps, step):
+        """Record an applied measurement step in the configuration.
+
+        Returns a note for the user when the step replaced a recorded step
+        writing the same outputs (keeping its order, or moving it after all
+        steps when it reads outputs of later steps, see
+        `measurementStepReplacementOrder`), otherwise ''.
+        """
         # Applying the same operation at another position is not a new recipe.
         if any({key: value for key, value in saved.items() if key != 'order'} == step
                for saved in steps):
-            return
+            return ''
+        outputs = set(self.measurementStepOutputColumns(step))
+        allSteps = (self.measurementProcessingSteps, self.combinedMeasurementSteps)
+        for savedSteps in allSteps:
+            for i, saved in enumerate(savedSteps):
+                if set(self.measurementStepOutputColumns(saved)) != outputs:
+                    continue
+                order, orderConflicts = self.measurementStepReplacementOrder(
+                    step
+                )
+                if orderConflicts:
+                    # Prevented before applying (see above)
+                    self.logger.warning(
+                        'Measurement step not recorded in the configuration: '
+                        'it reads outputs of later steps: %s',
+                        ', '.join(orderConflicts)
+                    )
+                    return ''
+                # Same outputs with different parameters: the configuration
+                # records the new parameters (keeping the order, so that later
+                # steps reading these columns still run after it, unless the
+                # new parameters read outputs of later steps).
+                del savedSteps[i]
+                steps.append({'order': order, **copy.deepcopy(step)})
+                steps.sort(key=lambda item: item['order'])
+                note = (
+                    'The configuration now records the new parameters for '
+                    + ', '.join(sorted(outputs)) + ' (replacing the previous '
+                    'step; positions processed before keep their values '
+                    'until recalculated).'
+                )
+                self.logger.info(note)
+                return note
+        conflicts = self.recordedOutputConflicts(outputs)
+        if conflicts:
+            # Prevented before applying; recording would make the
+            # configuration impossible to replay.
+            self.logger.warning(
+                'Measurement step not recorded in the configuration: outputs '
+                'already written by other steps: %s', ', '.join(conflicts)
+            )
+            return ''
         orders = [
             saved['order']
             for saved in self.measurementProcessingSteps + self.combinedMeasurementSteps
         ]
         steps.append({'order': max(orders, default=-1) + 1, **copy.deepcopy(step)})
+        return ''
+
+    def recordedOutputConflictWarning(self, conflicts):
+        self.measurementProcessingWarning(
+            'Invalid measurement name',
+            'These output names are already written by a different measurement '
+            'step of the configuration (each output must come from exactly one '
+            'step). Choose other names or re-apply that step with all of its '
+            'outputs: ' + ', '.join(conflicts)
+        )
 
     def measurementProcessingFinished(self):
         self.measurementProcessingThread.deleteLater()
@@ -4512,6 +5306,8 @@ class MeasurementsViewerWin(
         self.processMeasurementsButton.setEnabled(True)
         self.combineMeasurementsButton.setEnabled(True)
         self.refreshButton.setEnabled(True)
+        # Phase auto-apply was postponed while processing was running
+        self.schedulePendingPhaseAutoApply()
 
     def configurePhaseTranslator(self, checked=False):
         posData = self.posData() if self.data else None
@@ -4577,7 +5373,10 @@ class MeasurementsViewerWin(
             rules = self.phaseTranslatorRules
         posData = self.posData()
         try:
-            source = self.acdc_df.copy()
+            # Shallow copy: the ensure* methods only (re)assign whole columns,
+            # which never writes into self.acdc_df, and evaluate copies its
+            # input. Avoids a full copy of the table on every time point edit.
+            source = self.acdc_df.copy(deep=False)
             self.ensureTimepointColumns(source)
             self.ensureCustomAnnotColumns(source)
             evaluation = phase_translator.evaluate(
@@ -4591,9 +5390,16 @@ class MeasurementsViewerWin(
             return False
         self.phaseTranslatorRules = copy.deepcopy(rules)
         posData.phaseTranslatorColumns = evaluation.columns
+        # Rebuilding the columns tree is slow on large tables: only do it
+        # when the evaluation added, removed or retyped columns
+        columnsChanged = (
+            list(evaluation.table.dtypes.items())
+            != list(self.acdc_df.dtypes.items())
+        )
         posData.acdc_df = evaluation.table
         self.acdc_df = evaluation.table
-        self.updateColumnsList()
+        if columnsChanged:
+            self.updateColumnsList()
         self.plotMeasurements()
         if evaluation.warnings:
             warn('Phase evaluation warnings', '\n'.join(evaluation.warnings))
@@ -4722,8 +5528,13 @@ class MeasurementsViewerWin(
         posData.allData_li[frame_i]['acdc_df'] = df
         return True
     
-    def updateColumnsList(self):
-        checkedColumns = set(self.checkedColumns())
+    def updateColumnsList(self, renamed=None):
+        """Repopulate the columns list keeping the checked columns.
+        `renamed` ({old: new}) keeps renamed columns checked."""
+        renamed = renamed or {}
+        checkedColumns = {
+            renamed.get(column, column) for column in self.checkedColumns()
+        }
         isFirstInit = self.columnsModel.rowCount() == 0
         
         # Do not block the model signals: the search proxy and the view must 
@@ -4906,8 +5717,7 @@ class MeasurementsViewerWin(
             self.drawAllLineageTreeLines()
         
         if self.ccaTableWin is not None:
-            zoomIDs = self.getZoomIDs()
-            self.ccaTableWin.updateTable(posData.cca_df, IDs=zoomIDs)
+            self.updateCcaTableWin()
         
         self.highlightSelectedID()
         self.doCustomAnnotation(0)
@@ -5065,6 +5875,7 @@ class MeasurementsViewerWin(
     def rescalePlotToggled(self, checked):
         if checked:
             self.measurementsPlot.autoRange()
+        self._set_setting_value('rescalePlot', checked)
     
     def idSpinBoxEditingFinished(self):
         ID = self.idSpinBox.value()
@@ -5080,11 +5891,29 @@ class MeasurementsViewerWin(
     
     def setSelectedID(self, ID):
         self.selectedID = ID
+        comparisonData = self.comparisonPlotData()
         self.ensureTimepointPredictions()
         self.updateFramesRange()
         self.zoomToSelectedID(goToZslice=True)
         self.updateImages()
+        if (comparisonData is not None
+                and comparisonData.equals(self.comparisonPlotData())):
+            # The comparison scatter shows all cells: replotting it is slow
+            # on large tables and would reset the zoom
+            return
         self.plotMeasurements()
+
+    def comparisonPlotData(self):
+        """X and Y columns of the plotted comparison scatter (copy), or None
+        if not in comparison mode or nothing is plotted."""
+        if self.measurementsModeCombobox.currentIndex() != 1:
+            return
+        if self.acdc_df is None or not self.measurementsPlot.listDataItems():
+            return
+        columns = [self.measurementsAxes['X'], self.measurementsAxes['Y']]
+        if not all(col in self.acdc_df.columns for col in columns):
+            return
+        return self.acdc_df[columns].copy()
     
     def getIDframes(self, ID):
         """Get the sorted frame indices where `ID` is present."""
@@ -5161,6 +5990,7 @@ class MeasurementsViewerWin(
         return isFrameChanged
     
     def restrictFramesToggled(self, checked):
+        self._set_setting_value('restrictFrames', checked)
         if not self.data:
             return
         isFrameChanged = self.updateFramesRange()
@@ -5169,9 +5999,7 @@ class MeasurementsViewerWin(
         self.updateImages()
         if self.followIDcheckbox.isChecked():
             self.zoomToSelectedID()
-            
-        self._set_setting_value('restrictFrames', checked)
-    
+
     def followIDtoggled(self, checked):
         if checked:
             self.zoomToSelectedID()
@@ -5262,8 +6090,7 @@ class MeasurementsViewerWin(
         themselves are stored in the acdc_df."""
         if posData is None:
             posData = self.posData()
-        if getattr(posData, 'timepointsPredicted', None) is None:
-            posData.timepointsPredicted = set()
+        if getattr(posData, 'timepointsEdited', None) is None:
             # Cells with manual edits {uid: set of Cell_IDs}
             posData.timepointsEdited = defaultdict(set)
             # Per-cell constants values {name: {Cell_ID: value}}
@@ -5396,12 +6223,18 @@ class MeasurementsViewerWin(
     def markTimepointEdited(self, uid, ID):
         self.editedTimepointCells()[uid].add(ID)
     
-    def reservedShortcuts(self, excludeUid=None, excludeCustomAnnot=None):
-        """Key sequences already used in the viewer {sequence: used by}. 
-        
-        The shortcut of the time point identifier `excludeUid` and the 
-        shortcuts of the custom annotation button `excludeCustomAnnot` are 
-        not included (e.g., when editing them)."""
+    def reservedShortcuts(
+            self, excludeUid=None, excludeCustomAnnot=None, shiftDerived=True
+        ):
+        """Key sequences already used in the viewer {sequence: used by}.
+
+        The shortcuts (including the Shift+ auto shortcut) of the time
+        point identifier `excludeUid` and of the custom annotation button
+        `excludeCustomAnnot` are not included (e.g., when editing them).
+
+        If `shiftDerived` is True, a key K is also reserved when ``Shift+K``
+        is used, because K would get ``Shift+K`` as auto shortcut (see
+        `auto_shortcut_text`)."""
         reserved = {}
         for name in ('Left', 'Right', 'Up', 'Down', 'Space', 'Z', 'Esc'):
             reserved[name] = 'Viewer navigation'
@@ -5412,6 +6245,9 @@ class MeasurementsViewerWin(
         timepointActions = {
             action: uid for uid, action in self.timepointActions.items()
         }
+        timepointActions.update({
+            action: uid for uid, action in self.timepointAutoActions.items()
+        })
         excludedActions = set(
             self.customAnnotShortcutActions.get(excludeCustomAnnot, ())
         )
@@ -5430,7 +6266,29 @@ class MeasurementsViewerWin(
             shortcut = getattr(widget, 'keyPressShortcut', None)
             if isinstance(shortcut, QKeySequence) and not shortcut.isEmpty():
                 reserved[shortcut.toString()] = name
+        if not shiftDerived:
+            return reserved
+        for shortcut, usedBy in list(reserved.items()):
+            if 'Shift+' not in shortcut:
+                continue
+            base = QKeySequence(shortcut.replace('Shift+', '', 1)).toString()
+            if not base or base in reserved:
+                continue
+            if auto_shortcut_text(base) == shortcut:
+                reserved[base] = f'{usedBy} ({shortcut})'
         return reserved
+
+    def autoShortcutConflict(self, shortcut, excludeUid=None,
+            excludeCustomAnnot=None):
+        """Return (auto shortcut text, used by) of `shortcut`. `used by` is
+        None if the auto shortcut is free (or empty)."""
+        autoText = auto_shortcut_text(shortcut)
+        if not autoText:
+            return autoText, None
+        reserved = self.reservedShortcuts(
+            excludeUid=excludeUid, excludeCustomAnnot=excludeCustomAnnot
+        )
+        return autoText, reserved.get(autoText)
     
     def defaultTimepointIdentifier(self):
         names = {identifier.name for identifier in self.timepointIdentifiers}
@@ -5490,8 +6348,18 @@ class MeasurementsViewerWin(
         if values is None:
             return
         identifier = TimepointIdentifier(**values)
+        column = self.timepointColumn(identifier)
+        preexisting = [
+            posData for posData in self.data or []
+            if any(column in table for table in self.positionTables(posData))
+        ]
         self.addTimepointIdentifierItem(identifier)
+        # Saved time points of visited cells in an existing column are kept
+        # (a brand-new column has none to keep).
+        self.seedVisitedTimepointPredictions([identifier.uid], preexisting)
         self.ensureTimepointPredictions()
+        self.updateColumnsList()
+        self.plotMeasurements()
         self.updateTimepointLines()
         return identifier
     
@@ -5542,10 +6410,29 @@ class MeasurementsViewerWin(
         action.setIcon(QIcon(pixmap))
         action.setText(identifier.name)
         action.setShortcut(QKeySequence(identifier.shortcut))
-        shortcutText = (
-            f'Shortcut: "{identifier.shortcut}", Auto: "Shift+{identifier.shortcut}"' 
-            if identifier.shortcut else 'No shortcut'
+        autoText, autoUsedBy = self.autoShortcutConflict(
+            identifier.shortcut, excludeUid=identifier.uid
         )
+        if autoUsedBy is not None:
+            self.logger.warning(
+                f'[WARNING]: Auto shortcut "{autoText}" of time point '
+                f'"{identifier.name}" is not set because it is already used '
+                f'by "{autoUsedBy}".'
+            )
+        if not identifier.shortcut:
+            shortcutText = 'No shortcut'
+        elif autoUsedBy is not None:
+            shortcutText = (
+                f'Shortcut: "{identifier.shortcut}", Auto: none '
+                f'("{autoText}" is used by "{autoUsedBy}")'
+            )
+        elif autoText:
+            shortcutText = (
+                f'Shortcut: "{identifier.shortcut}", Auto: "{autoText}" '
+                '(re-evaluate the predictor on the selected cell)'
+            )
+        else:
+            shortcutText = f'Shortcut: "{identifier.shortcut}", Auto: none'
         predictorText = timepoint_predictors.TimepointPredictor.describe(
             identifier.predictor
         )
@@ -5560,7 +6447,10 @@ class MeasurementsViewerWin(
         
         # update AutoAction
         autoAction = self.timepointAutoActions[identifier.uid]
-        autoAction.setShortcut(QKeySequence(f'Shift+{identifier.shortcut}'))
+        autoAction.setText(f'Re-evaluate "{identifier.name}" predictor')
+        autoAction.setShortcut(
+            QKeySequence(autoText if autoUsedBy is None else '')
+        )
 
     
     def showTimepointActionContextMenu(self, uid, pos):
@@ -5611,6 +6501,8 @@ class MeasurementsViewerWin(
                     continue
                 acdc_df.drop(columns=newColumn, inplace=True, errors='ignore')
                 acdc_df.rename(columns={oldColumn: newColumn}, inplace=True)
+            self.renameMeasurementColumnReferences(oldColumn, newColumn)
+            self.plotMeasurements()
         identifier.color = values['color']
         identifier.shortcut = values['shortcut']
         identifier.predictor = values['predictor']
@@ -5621,24 +6513,39 @@ class MeasurementsViewerWin(
             for key in list(self.timepointAutoPredictions):
                 if key[1] == uid:
                     del self.timepointAutoPredictions[key]
-            for posData in self.data:
-                if posData is not self.posData():
-                    getattr(posData, 'timepointsPredicted', set()).discard(uid)
+            # Visited cells keep their time points (as for annotations).
+            self.seedVisitedTimepointPredictions([uid])
         self.updateTimepointLines()
     
-    def removeTimepointIdentifier(self, uid, ask=True):
+    def removeTimepointIdentifier(self, uid, ask=True, updateColumns=True):
         identifier = self.timepointIdentifier(uid)
         if ask:
+            column = self.timepointColumn(identifier)
+            # The column's own formatting is removed with it
+            ownFormatting = f'conditional formatting of "{column}"'
+            dependents = [
+                dependent
+                for dependent in self.columnDependents(
+                    column, excludeOutput=column, includePhaseInputs=True
+                )
+                if dependent != ownFormatting
+            ]
+            note = (
+                f'\n\nNote: "{column}" is used by {", ".join(dependents)}, '
+                'which will fail until edited.' if dependents else ''
+            )
             msg = widgets.myMessageBox(wrapText=False)
             _, yes = msg.question(
                 self, 'Remove time point identifier?',
                 f'Remove "{identifier.name}" and its time points of all '
-                'positions?', buttonsTexts=('Cancel', 'Remove')
+                f'positions?{note}', buttonsTexts=('Cancel', 'Remove')
             )
             if msg.clickedButton != yes:
                 return
         action = self.timepointActions.pop(uid)
         self.timepointsToolBar.removeAction(action)
+        # Still a child until deleted: free its key for `reservedShortcuts`
+        action.setShortcut(QKeySequence())
         action.deleteLater()
         self.timepointIdentifiers.remove(identifier)
         for key in list(self.timepointAutoPredictions):
@@ -5647,33 +6554,47 @@ class MeasurementsViewerWin(
         column = self.timepointColumn(identifier)
         for acdc_df in self.allAcdcDfs():
             acdc_df.drop(columns=column, inplace=True, errors='ignore')
+        # The column's own plot settings go with it (as for custom
+        # annotations). On load, the configuration's formatting is assigned
+        # after `setTimepointIdentifiers`, so it is not wiped here.
+        self.measurementsColors.pop(column, None)
+        self.conditionalFormatting.pop(column, None)
         for posData in self.data:
-            getattr(posData, 'timepointsPredicted', set()).discard(uid)
             getattr(posData, 'timepointsEdited', {}).pop(uid, None)
             
         autoAction = self.timepointAutoActions.pop(uid)
         self.removeAction(autoAction)
+        autoAction.setShortcut(QKeySequence())
         autoAction.deleteLater()
-        
+
         self.updateReevaluateTimepointsActions()
+        if updateColumns:
+            self.updateColumnsList()
+            self.plotMeasurements()
         self.updateTimepointLines()
-    
+
     def clearTimepoints(self, uid):
         if not self.data:
             return
         self.replaceTimepoints(uid, {}, self.timepointCellIDs(uid))
         self.editedTimepointCells()[uid] = set()
-        self.updateTimepointLines()
+        self.refreshPlotForColumns(
+            [self.timepointColumn(self.timepointIdentifier(uid))]
+        )
     
     def setTimepointIdentifiers(self, identifiers):
         for identifier in list(self.timepointIdentifiers):
-            self.removeTimepointIdentifier(identifier.uid, ask=False)
+            self.removeTimepointIdentifier(
+                identifier.uid, ask=False, updateColumns=False
+            )
         for identifier in identifiers:
             self.addTimepointIdentifierItem(identifier)
-    
+        self.updateColumnsList()
+        self.plotMeasurements()
+
     def runTimepointPredictor(
             self, uid, posData=None, replot=False, IDs=None, skipIDs=(),
-            force=False, autoAction_cb=False, checked=False
+            force=False
         ):
         """Predict the time points of `uid` for the cells of `posData` 
         (default current position), replacing the existing ones.
@@ -5701,8 +6622,6 @@ class MeasurementsViewerWin(
         predictionKey = (os.path.normcase(os.path.abspath(posData.pos_path)), uid)
         alreadyPredicted = self.timepointAutoPredictions[predictionKey]
         skipIDs = set(skipIDs)
-        if autoAction_cb:
-            IDs = [self.currID()]
         if IDs is not None:
             IDs = set(IDs) - skipIDs
         if not force:
@@ -5714,7 +6633,6 @@ class MeasurementsViewerWin(
             IDs -= alreadyPredicted | skipIDs
         if IDs is not None and not IDs:
             return True
-        acdc_df = self.acdc_df if posData is self.posData() else self.getAcdcDf(posData)
         try:
             # All cells are passed since predictors can use other cells
             predicted = timepoint_predictors.TimepointPredictor.predict(
@@ -5747,8 +6665,7 @@ class MeasurementsViewerWin(
         if IDs is not None:
             completedIDs.intersection_update(IDs)
         alreadyPredicted.update(completedIDs - skipIDs)
-        posData.timepointsPredicted.add(uid)
-        
+
         numCells = sum(1 for ID in replacedIDs if ID in predicted)
         numTimepoints = sum(len(predicted[ID]) for ID in replacedIDs if ID in predicted)
         self.statusBar().showMessage(
@@ -5756,7 +6673,7 @@ class MeasurementsViewerWin(
             f'for {numCells} cell(s).', 5000
         )
         if replot:
-            self.updateTimepointLines()
+            self.refreshPlotForColumns([self.timepointColumn(identifier)])
         return True
     
     def predictorTimepointUids(self, uids=None):
@@ -5881,10 +6798,100 @@ class MeasurementsViewerWin(
         if not previous:
             self.ensurePredictorPredictions()
 
+    def columnDependents(
+            self, column, excludeOutput=None, includePhaseInputs=False
+        ):
+        """Descriptions of the predictors, phase rule formulas, conditional
+        formatting conditions and recorded combine/processing steps that
+        read `column` (references are not rewritten on rename, so renaming
+        is refused while any exist). The predictor of output
+        `excludeOutput` is ignored. With `includePhaseInputs` (removal
+        warnings), phase rules using `column` as a boundary or required
+        annotation are listed too (renaming rewrites those)."""
+        Dependencies = timepoint_predictors.PredictorDependencies
+        dependents = []
+        for output, definition in self.predictorDefinitions().items():
+            if output == excludeOutput:
+                continue
+            if column in Dependencies.inputs(definition[2]):
+                kind, key = definition[:2]
+                dependents.append(
+                    f'time point "{self.timepointIdentifier(key).name}"'
+                    if kind == 'timepoint' else f'custom annotation "{output}"'
+                )
+        for rule in self.phaseTranslatorRules:
+            usesColumn = column in Dependencies.inputs(
+                rule.get('predictor') or {}
+            )
+            if includePhaseInputs and not usesColumn:
+                usesColumn = (
+                    column in rule.get('timepoints', [])
+                    or column in rule.get('annotations', [])
+                )
+            if usesColumn:
+                dependents.append(f'phase rule "{rule.get("name", "")}"')
+        for formatted, rules in self.conditionalFormatting.items():
+            if any(
+                column in Dependencies.inputs({
+                    'type': timepoint_predictors.PREDICTOR_EQUATION,
+                    'equation': rule.get('condition', '')
+                })
+                for rule in rules
+            ):
+                dependents.append(f'conditional formatting of "{formatted}"')
+        # Recorded steps are replayed on (re)load with the original column
+        # names, so they also depend on the column keeping its name.
+        for step in self.combinedMeasurementSteps:
+            for name, expression in step.get('equations', {}).items():
+                if column in Dependencies.inputs({
+                    'type': timepoint_predictors.PREDICTOR_EQUATION,
+                    'equation': expression
+                }):
+                    dependents.append(f'combined measurement "{name}"')
+        for step in self.measurementProcessingSteps:
+            if column in step.get('columns', []):
+                outputs = ', '.join(step.get('output_columns', []))
+                dependents.append(f'measurement processing step "{outputs}"')
+        return dependents
+
+    def renameMeasurementColumnReferences(self, oldColumn, newColumn):
+        """Move the plot selection, axes, color and conditional formatting
+        of the renamed table column `oldColumn` to `newColumn` and update
+        the columns list."""
+        if oldColumn == newColumn:
+            return
+        if oldColumn in self._timeCourseColumns:
+            self._timeCourseColumns.discard(oldColumn)
+            self._timeCourseColumns.add(newColumn)
+        for axis, column in self.measurementsAxes.items():
+            if column == oldColumn:
+                self.measurementsAxes[axis] = newColumn
+        for mapping in (self.measurementsColors, self.conditionalFormatting):
+            if oldColumn in mapping:
+                mapping[newColumn] = mapping.pop(oldColumn)
+        self.updateColumnsList(renamed={oldColumn: newColumn})
+
     def validatePredictorDependencies(self, oldColumn, newColumn, predictor):
         definitions = self.predictorDefinitions()
         if newColumn != oldColumn and newColumn in definitions:
             raise ValueError(f'The predictor output "{newColumn}" already exists.')
+        isRename = oldColumn in definitions and newColumn != oldColumn
+        if isRename and any(
+                newColumn in acdc_df.columns for acdc_df in self.allAcdcDfs()):
+            # Renaming would duplicate the column. New identifiers and
+            # annotations may reuse an existing (e.g., exported) column.
+            raise ValueError(
+                f'"{newColumn}" is already a column of the table. Choose a '
+                'different name.'
+            )
+        if isRename:
+            dependents = self.columnDependents(oldColumn, excludeOutput=oldColumn)
+            if dependents:
+                raise ValueError(
+                    f'Cannot rename "{oldColumn}" because it is used by '
+                    f'{", ".join(dependents)}. Edit them first (or keep the '
+                    'name).'
+                )
         predictors = {
             column: definition[2] for column, definition in definitions.items()
             if column != oldColumn
@@ -5935,8 +6942,10 @@ class MeasurementsViewerWin(
                     if kind == 'timepoint' else column
                 )
                 editedCells[name] = sorted(edited[column])
-        skip = False
-        if editedCells:
+        # Automatic predictions never overwrite manual edits (no prompt):
+        # edited cells, including those of prerequisites, are skipped
+        skip = automatic
+        if editedCells and not automatic:
             allEdited = set().union(*editedCells.values())
             scope = (
                 f'the displayed cell (ID {next(iter(IDs))})'
@@ -5980,7 +6989,7 @@ class MeasurementsViewerWin(
             if not run(
                     key, posData=posData, IDs=scopes[column],
                     skipIDs=edited[column] if skip else (),
-                    force=not automatic or bool(edited[column])
+                    force=not automatic
                 ):
                 failed.add(column)
             if kind == 'annotation':
@@ -6004,8 +7013,9 @@ class MeasurementsViewerWin(
                     scopeIDs
                 )
         if names:
-            self.refreshCustomAnnotations(names)
-        self.updateTimepointLines()
+            # Redraw the annotations, the plot is refreshed below
+            self.doCustomAnnotation(0)
+        self.refreshPlotForColumns(ordered)
         return not failed
 
     def ensurePredictorPredictions(self, posData=None):
@@ -6024,7 +7034,7 @@ class MeasurementsViewerWin(
         if VISITED_COLUMN not in acdc_df:
             acdc_df[VISITED_COLUMN] = False
         rows = acdc_df.index.get_level_values('Cell_ID') == ID
-        newCell = not acdc_df.loc[rows, VISITED_COLUMN].fillna(False).any()
+        newCell = not parse_flags(acdc_df.loc[rows, VISITED_COLUMN]).any()
         acdc_df.loc[rows, VISITED_COLUMN] = True
         posData.acdc_df = acdc_df
         self.initPositionTimepointState(posData)
@@ -6079,9 +7089,9 @@ class MeasurementsViewerWin(
         if name not in acdc_df.columns:
             acdc_df[name] = 0
             return
-        values = pd.to_numeric(acdc_df[name], errors='coerce').fillna(0)
+        values = parse_flags(acdc_df[name])
         acdc_df[name] = (
-            (values != 0).groupby(level='Cell_ID').transform('any').astype(int)
+            values.groupby(level='Cell_ID').transform('any').astype(int)
         )
     
     def ensureCustomAnnotColumns(self, acdc_df):
@@ -6099,7 +7109,11 @@ class MeasurementsViewerWin(
     def saveCustomAnnot(self, only_temp=False):
         """Viewer definitions are saved by saveConfiguration, not globally."""
         pass
-    
+
+    def canDeleteSavedCustomAnnot(self):
+        # saveCustomAnnot does not write the global file
+        return False
+
     def defaultCustomAnnotShortcut(self, reservedShortcuts):
         for key in custom_annotation_predictors.DEFAULT_SHORTCUTS:
             if QKeySequence(key).toString() not in reservedShortcuts:
@@ -6145,12 +7159,15 @@ class MeasurementsViewerWin(
     
     def customAnnotToolTip(self, state):
         shortcut = state.get('shortcut') or ''
+        autoText = auto_shortcut_text(shortcut)
         if shortcut:
+            autoDescr = (
+                f'Auto: "{autoText}" (re-evaluate the predictor on the '
+                'selected cell)' if autoText else 'Auto: none'
+            )
             shortcutText = (
                 f'Shortcut: "{shortcut}" (annotate/un-annotate the selected '
-                f'cell across its entire video history)\n'
-                f'Auto: "Shift+{shortcut}" (re-evaluate the predictor on the '
-                'selected cell)'
+                f'cell across its entire video history)\n{autoDescr}'
             )
         else:
             shortcutText = 'No shortcut'
@@ -6174,8 +7191,17 @@ class MeasurementsViewerWin(
     
     def setCustomAnnotShortcut(self, button, shortcut):
         """The shortcut annotates the selected cell across its entire history
-        (instead of activating the button) and Shift+shortcut re-evaluates 
-        the predictor on the selected cell."""
+        (instead of activating the button) and Shift+shortcut re-evaluates
+        the predictor on the selected cell.
+
+        The Shift+shortcut is not set if `shortcut` contains Shift or if it
+        is already used (e.g., by a configuration created before it was
+        reserved). Neither shortcut is set if `shortcut` itself is already
+        used by another action (e.g., an annotation from 'Load
+        annotation...' or a configuration, which skip the dialog checks),
+        because Qt would trigger neither of two actions sharing a key. In
+        both cases a warning is logged and a note is appended to the button
+        tool tip, which must be set before calling this method."""
         button.setShortcut(QKeySequence())
         actions = self.customAnnotShortcutActions.get(button)
         if actions is None:
@@ -6197,31 +7223,163 @@ class MeasurementsViewerWin(
         if isinstance(shortcut, QKeySequence):
             shortcut = shortcut.toString()
         keySequence = QKeySequence(shortcut or '')
-        autoKeySequence = QKeySequence()
-        if not keySequence.isEmpty() and 'Shift' not in keySequence.toString():
-            autoKeySequence = QKeySequence(f'Shift+{keySequence.toString()}')
-        toggleAction.setShortcut(keySequence)
-        autoAction.setShortcut(autoKeySequence)
         name = getattr(button, 'name', '')
+        keyText = keySequence.toString()
+        usedBy = None
+        if keyText:
+            usedBy = self.reservedShortcuts(
+                excludeCustomAnnot=button, shiftDerived=False
+            ).get(keyText)
+        if usedBy is not None:
+            self.logger.warning(
+                f'[WARNING]: Shortcut "{keyText}" of custom annotation '
+                f'"{name}" is not set because it is already used by '
+                f'"{usedBy}".'
+            )
+            button.setToolTip(
+                f'{button.toolTip()}\n\nNote: the shortcut "{keyText}" '
+                f'(and its auto shortcut) is not set because it is already '
+                f'used by "{usedBy}".'
+            )
+            shortcut = ''
+            keySequence = QKeySequence()
+        autoText, autoUsedBy = self.autoShortcutConflict(
+            shortcut, excludeCustomAnnot=button
+        )
+        if autoUsedBy is not None:
+            self.logger.warning(
+                f'[WARNING]: Auto shortcut "{autoText}" of custom annotation '
+                f'"{name}" is not set because it is already used by '
+                f'"{autoUsedBy}".'
+            )
+            button.setToolTip(
+                f'{button.toolTip()}\n\nNote: the auto shortcut "{autoText}" '
+                f'is not set because it is already used by "{autoUsedBy}".'
+            )
+            autoText = ''
+        toggleAction.setShortcut(keySequence)
+        autoAction.setShortcut(QKeySequence(autoText))
         toggleAction.setText(f'Annotate "{name}"')
         autoAction.setText(f'Re-evaluate "{name}" predictor')
-    
+
+    def addCustomAnnnotScatterPlot(self, symbolColor, symbol, toolButton):
+        super().addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
+        # Overlay layers are re-added at z-value 0 on every load: keep the
+        # symbols above them (annotation items 0.5-0.57) and below the
+        # text IDs (1)
+        scatterPlotItem = self.customAnnotDict[toolButton]['scatterPlotItem']
+        scatterPlotItem.setZValue(0.6)
+
     def initCustomAnnotColumn(self, button, name):
+        # Positions whose table already holds assignments of `name` (e.g.,
+        # exported by an earlier session): their visited cells are not
+        # auto-predicted (see `onCustomAnnotationChanged`)
+        self.customAnnotPreexistingColumns[name] = [
+            posData for posData in self.data or []
+            if any(
+                name in table.columns
+                for table in self.positionTables(posData)
+            )
+        ]
         for acdc_df in self.allAcdcDfs():
             self.ensureCustomAnnotColumn(acdc_df, name)
         self.updateColumnsList()
-    
+
+    def positionTables(self, posData):
+        """The tables of `posData` (its acdc_df and, for the displayed
+        position, the working table)."""
+        tables = [getattr(posData, 'acdc_df', None)]
+        if self.data and posData is self.posData():
+            tables.append(self.acdc_df)
+        unique = {id(table): table for table in tables if table is not None}
+        return list(unique.values())
+
+    def visitedCellIDs(self, posData):
+        """Cell_IDs of `posData` already viewed (`VISITED_COLUMN`)."""
+        IDs = set()
+        for table in self.positionTables(posData):
+            if VISITED_COLUMN not in table:
+                continue
+            IDs.update(int(ID) for ID in table.index.get_level_values(
+                'Cell_ID'
+            )[parse_flags(table[VISITED_COLUMN]).to_numpy()])
+        return IDs
+
+    def resetAutoPredictionTracking(self):
+        """Forget which cells were automatically predicted in this session
+        (called when data is (re)loaded: the loaded tables' visited column
+        is the only record of viewed cells, see the `seedVisited*`
+        methods)."""
+        self.timepointAutoPredictions.clear()
+        self.customAnnotAutoPredictions.clear()
+
+    def seedVisitedCustomAnnotPredictions(self, names, data=None):
+        """Mark the visited cells of `data` (default all positions) as
+        predicted for the annotations `names` so that automatic prediction
+        keeps their assignments (explicit re-evaluation still applies)."""
+        if data is None:
+            data = self.data or []
+        for posData in data:
+            IDs = self.visitedCellIDs(posData)
+            if not IDs:
+                continue
+            for name in names:
+                self.customAnnotAutoPredictions[
+                    self.customAnnotPredictionKey(posData, name)
+                ].update(IDs)
+
+    def seedVisitedTimepointPredictions(self, uids=None, data=None):
+        """Mark the visited cells of `data` (default all positions) as
+        predicted for the time point identifiers `uids` (default all) so
+        that automatic prediction keeps their (saved or manual) time points,
+        also when a dependent's other-cell inputs predict a prerequisite on
+        all cells (explicit re-evaluation still applies)."""
+        if uids is None:
+            uids = [identifier.uid for identifier in self.timepointIdentifiers]
+        if not uids:
+            return
+        if data is None:
+            data = self.data or []
+        for posData in data:
+            IDs = self.visitedCellIDs(posData)
+            if not IDs:
+                continue
+            path = os.path.normcase(os.path.abspath(posData.pos_path))
+            for uid in uids:
+                self.timepointAutoPredictions[(path, uid)].update(IDs)
+
     def renameCustomAnnotColumn(self, oldName, newName):
         self.renamePhaseTranslatorInput(oldName, newName)
         for acdc_df in self.allAcdcDfs():
             if oldName in acdc_df.columns:
                 acdc_df.rename(columns={oldName: newName}, inplace=True)
-        self.updateColumnsList()
+        self.renameMeasurementColumnReferences(oldName, newName)
         self.plotMeasurements()
     
+    def customAnnotColumnRemovalNote(self, name):
+        # The column's own formatting is removed with it
+        ownFormatting = f'conditional formatting of "{name}"'
+        dependents = [
+            dependent
+            for dependent in self.columnDependents(
+                name, excludeOutput=name, includePhaseInputs=True
+            )
+            if dependent != ownFormatting
+        ]
+        if not dependents:
+            return ''
+        return (
+            f'Note: "{name}" is used by {", ".join(dependents)}, which will '
+            'fail until edited if the column is removed.'
+        )
+
     def removeCustomAnnotColumn(self, name):
         for acdc_df in self.allAcdcDfs():
             acdc_df.drop(columns=name, errors='ignore', inplace=True)
+        # The column's own plot settings go with it (`updateColumnsList`
+        # drops it from the plotted columns and comparison axes)
+        self.measurementsColors.pop(name, None)
+        self.conditionalFormatting.pop(name, None)
         self.updateColumnsList()
         self.plotMeasurements()
     
@@ -6243,9 +7401,25 @@ class MeasurementsViewerWin(
             oldState is None 
             or oldState.get('predictor') != state.get('predictor')
         )
+        preexisting = self.customAnnotPreexistingColumns.pop(name, [])
         if predictorChanged:
             self.clearCustomAnnotPredictionsTracking(name)
-        
+            # Like time points, automatic prediction only runs on cells not
+            # viewed yet: a new or edited predictor keeps the (saved or
+            # manual) assignments of visited cells. Only a brand-new column
+            # is predicted on visited cells.
+            if oldState is not None:
+                self.seedVisitedCustomAnnotPredictions([name])
+            elif preexisting:
+                self.seedVisitedCustomAnnotPredictions([name], preexisting)
+        elif (
+            not oldState.get('autoApply', False)
+            and state.get('autoApply', False)
+        ):
+            # Cells viewed while auto apply was off were never recorded as
+            # predicted: enabling it keeps their assignments too.
+            self.seedVisitedCustomAnnotPredictions([name])
+
         button.extraContextMenuActions = []
         if self.customAnnotHasPredictor(button):
             button.extraContextMenuActions.extend([
@@ -6270,6 +7444,9 @@ class MeasurementsViewerWin(
     def onCustomAnnotationRemoved(self, button, state):
         for action in self.customAnnotShortcutActions.pop(button, ()):
             self.removeAction(action)
+            # Still a child until deleted: free its key for the
+            # `reservedShortcuts` check of annotations added right after
+            action.setShortcut(QKeySequence())
             action.deleteLater()
         name = state['name']
         self.clearCustomAnnotPredictionsTracking(name)
@@ -6314,7 +7491,7 @@ class MeasurementsViewerWin(
             values = acdc_df[name].xs(frame_i, level='frame_i')
         except KeyError:
             return []
-        return [int(ID) for ID in values.index[values.to_numpy() != 0]]
+        return [int(ID) for ID in values.index[parse_flags(values).to_numpy()]]
     
     def replaceCustomAnnotations(self, name, annotated, IDs, posData=None):
         """Replace the cell-wide assignments of IDs from predictor results."""
@@ -6322,8 +7499,7 @@ class MeasurementsViewerWin(
         if acdc_df is None:
             return False
         if name in acdc_df.columns:
-            values = pd.to_numeric(acdc_df[name], errors='coerce').fillna(0)
-            values = (values.to_numpy() != 0).astype(int)
+            values = parse_flags(acdc_df[name]).to_numpy().astype(int)
         else:
             values = np.zeros(len(acdc_df), dtype=int)
         values[acdc_df.index.get_level_values('Cell_ID').isin(list(IDs))] = 0
@@ -6335,31 +7511,33 @@ class MeasurementsViewerWin(
         return True
     
     def refreshCustomAnnotations(self, names=None):
-        """Redraw the annotations and the plot if it shows one of `names`."""
+        """Redraw the annotations and the plot if it (or its conditional
+        formatting) reads one of `names`."""
         self.doCustomAnnotation(0)
         if names is None:
             names = self.customAnnotNames()
-        plotted = set(self.checkedColumns()) | set(self.measurementsAxes.values())
-        if plotted.intersection(names):
+        if self.plotReadsColumns(names):
             self.plotMeasurements()
     
-    def toggleCustomAnnotation(self, button, ID, frame_i=None):
-        """Toggle one Cell_ID across its entire history in this position."""
-        if frame_i is None:
-            frame_i = self.frame_i
+    def toggleCustomAnnotation(self, button, ID):
+        """Toggle one Cell_ID across its entire history in this position.
+
+        Works on any frame, also where the cell is absent: the annotation is
+        one value for the whole cell, so only a cell without any row in the
+        measurements table is refused."""
         name = self.customAnnotDict[button]['state']['name']
-        if not self.cellHasRow(ID, frame_i):
+        acdc_df = self.acdc_df
+        if acdc_df is None:
+            return False
+        mask = acdc_df.index.get_level_values('Cell_ID') == ID
+        if not mask.any():
             self.statusBar().showMessage(
-                f'Cell ID {ID} is not in the measurements table at frame n. '
-                f'{frame_i+1}.', 5000
+                f'Cell ID {ID} is not in the measurements table.', 5000
             )
             return False
-        acdc_df = self.acdc_df
         self.ensureCustomAnnotColumn(acdc_df, name)
-        annotated = acdc_df.at[(frame_i, ID), name] != 0
-        acdc_df.loc[
-            acdc_df.index.get_level_values('Cell_ID') == ID, name
-        ] = 0 if annotated else 1
+        annotated = bool(parse_flags(acdc_df.loc[mask, name]).any())
+        acdc_df.loc[mask, name] = 0 if annotated else 1
         self.editedCustomAnnotCells()[name].add(int(ID))
         action = 'Removed' if annotated else 'Added'
         self.statusBar().showMessage(
@@ -6409,11 +7587,7 @@ class MeasurementsViewerWin(
         if ID > 0 and self.customAnnotButton in self.customAnnotDict:
             button = self.customAnnotButton
             if self.toggleCustomAnnotation(button, ID):
-                plotted = (
-                    set(self.checkedColumns()) 
-                    | set(self.measurementsAxes.values())
-                )
-                if button.name in plotted:
+                if self.plotReadsColumns([button.name]):
                     self.plotMeasurements()
         
         buttons = self.customAnnotButtonsToDraw()
@@ -6623,7 +7797,7 @@ class MeasurementsViewerWin(
         """Frame index under the mouse cursor in the measurements plot or 
         None if the cursor is not over the plot."""
         plot = self.measurementsPlot
-        if not plot.isVisible():
+        if not self.data or not plot.isVisible():
             return
         pos = plot.mapFromGlobal(QCursor.pos())
         if not plot.rect().contains(pos):
@@ -6632,6 +7806,9 @@ class MeasurementsViewerWin(
         return self.clipFrame(int(round(viewPos.x())) - 1)
     
     def timepointActionTriggered(self, uid, checked=False):
+        if not self.data:
+            self.statusBar().showMessage('Load data to add time points.', 5000)
+            return
         identifier = self.timepointIdentifier(uid)
         frame_i = self.hoveredMeasurementsPlotFrame()
         if frame_i is None:
@@ -6677,7 +7854,7 @@ class MeasurementsViewerWin(
             return False
         self.replaceTimepoints(uid, {ID: cellTimepoints + [frame_i]}, [ID])
         self.markTimepointEdited(uid, ID)
-        self.updateTimepointLines()
+        self.refreshPlotForColumns([self.timepointColumn(identifier)])
         self.statusBar().showMessage(
             f'Added "{identifier.name}" at frame n. {frame_i+1} for '
             f'Cell ID {ID}.', 5000
@@ -6691,12 +7868,15 @@ class MeasurementsViewerWin(
     def timepointLineRemoveRequested(self, line):
         self.removeTimepoint(line.uid, line.ID, line.frame_i)
         self.markTimepointEdited(line.uid, line.ID)
-        self.updateTimepointLines()
-    
+        self.refreshPlotForColumns(
+            [self.timepointColumn(self.timepointIdentifier(line.uid))]
+        )
+
     def timepointLineMoved(self, line):
         new_frame_i = self.clipFrame(int(round(line.value())) - 1)
+        editedColumns = []
         # A time point can only sit on a frame where the cell has a row
-        if (new_frame_i != line.frame_i 
+        if (new_frame_i != line.frame_i
                 and self.cellHasRow(line.ID, new_frame_i)):
             self.removeTimepoint(line.uid, line.ID, line.frame_i)
             frames = self.cellTimepoints(line.uid, line.ID)
@@ -6704,8 +7884,13 @@ class MeasurementsViewerWin(
                 line.uid, {line.ID: frames + [new_frame_i]}, [line.ID]
             )
             self.markTimepointEdited(line.uid, line.ID)
+            editedColumns.append(
+                self.timepointColumn(self.timepointIdentifier(line.uid))
+            )
         # Rebuild the lines after the drag event has been fully handled
-        QTimer.singleShot(0, self.updateTimepointLines)
+        QTimer.singleShot(
+            0, partial(self.refreshPlotForColumns, editedColumns)
+        )
     
     def updateTimepointLines(self):
         for line in self.timepointLines:
@@ -6724,7 +7909,36 @@ class MeasurementsViewerWin(
                 )
                 self.measurementsPlot.addItem(line, ignoreBounds=True)
                 self.timepointLines.append(line)
-    
+
+    def plotReadsColumns(self, columns):
+        """True if one of the table `columns` is plotted or is read by a
+        conditional formatting condition of a plotted column."""
+        columns = set(columns)
+        if not columns:
+            return False
+        plotted = set(self.checkedColumns()) | set(self.measurementsAxes.values())
+        if plotted & columns:
+            return True
+        Dependencies = timepoint_predictors.PredictorDependencies
+        for formatted in plotted:
+            for rule in self.conditionalFormatting.get(formatted, ()):
+                inputs = Dependencies.inputs({
+                    'type': timepoint_predictors.PREDICTOR_EQUATION,
+                    'equation': rule.get('condition', '')
+                })
+                if columns.intersection(inputs):
+                    return True
+        return False
+
+    def refreshPlotForColumns(self, columns):
+        """After editing the table `columns` (time points or annotations),
+        replot if the plot or its conditional formatting reads one of them,
+        otherwise only redraw the time point lines."""
+        if self.data and self.plotReadsColumns(columns):
+            self.plotMeasurements()
+        else:
+            self.updateTimepointLines()
+
     def getMeasurementsDf(self):
         """Get the subset of acdc_df for the selected ID (index is frame_i)"""
         if self.acdc_df is None or self.selectedID is None:
@@ -6762,8 +7976,16 @@ class MeasurementsViewerWin(
         )
         
         posData = self.posData()
-        self.measurementsPlot.setXRange(1, max(posData.SizeT, 2), padding=0.02)
-        
+        # Frame range only on the first time course plot of a position
+        # (or after comparison mode): replots after cell changes and table
+        # edits keep the user's x zoom
+        xRangeKey = (self.pos_i, posData.SizeT)
+        if getattr(self, '_timecourseXRangeKey', None) != xRangeKey:
+            self.measurementsPlot.setXRange(
+                1, max(posData.SizeT, 2), padding=0.02
+            )
+            self._timecourseXRangeKey = xRangeKey
+
         df_ID = self.getMeasurementsDf()
         columns = self.checkedColumns()
         if self.selectedID is None:
@@ -6895,10 +8117,14 @@ class MeasurementsViewerWin(
         self.measurementsPlot.setLabel('left', f'{yCol}{suffix}')
         self.measurementsPlot.setTitle('All cells, all frames (current position)')
         self.measurementsPlot.enableAutoRange()
+        self._timecourseXRangeKey = None
         if self.acdc_df is None:
             self.measurementsPlot.setTitle('No measurements available')
             return
-        if not xCol or not yCol:
+        # A column removed from the table (e.g., time point identifier) is
+        # an unset axis until the columns list is updated
+        if (not xCol or not yCol or xCol not in self.acdc_df.columns
+                or yCol not in self.acdc_df.columns):
             self.measurementsPlot.setTitle('Select X and Y measurements from the column list')
             return
 
@@ -7212,8 +8438,7 @@ class MeasurementsViewerWin(
     def changeSignalColor(self, col):
         initialColor = pg.mkColor(self.getSignalColor(col))
         color = QColorDialog.getColor(
-            initialColor, self, f'Select color of "{col}"',
-            parent=self
+            initialColor, self, f'Select color of "{col}"'
         )
         if not color.isValid():
             return
@@ -7318,7 +8543,9 @@ class MeasurementsViewerWin(
             self.idScrollBar.value() + step, 0, len(self.IDs)-1
         ))
         self.idScrollBar.setValue(idx)
-        
+        # The spinbox arrows already changed its value by +-1
+        self.idSpinBox.setValueNoEmit(self.currID())
+
     def currID(self):
         if not self.IDs:
             return None
@@ -7381,7 +8608,7 @@ class MeasurementsViewerWin(
     
     def goToLostObjectID(self, ID, color=None):
         self.goToObjectID(ID)
-    
+
     def goToAcceptedLostObjectID(self, ID):
         self.goToObjectID(ID)
     
@@ -7422,8 +8649,34 @@ class MeasurementsViewerWin(
         while self.app.overrideCursor() is not None:
             self.app.restoreOverrideCursor()
     
+    def raiseOnDemandAx1Items(self):
+        """Keep the ax1 items created on demand (object tracks, scale bar,
+        timestamp) above the overlay channel layers, which are re-added
+        (z-value 0) on every load, at the same z-value as the ruler."""
+        items = []
+        tracksPlotItem = getattr(self, 'tracksPlotItems', {}).get(0)
+        if tracksPlotItem is not None:
+            items.append(tracksPlotItem)
+        scaleBar = getattr(self, 'scaleBar', None)
+        if scaleBar is not None:
+            items.extend((scaleBar.plotItem, scaleBar.labelItem))
+        timestamp = getattr(self, 'timestamp', None)
+        if timestamp is not None:
+            items.append(timestamp)
+        for item in items:
+            item.setZValue(0.9)
+
+    def annotateAllObjectTracks(self, settings=None):
+        super().annotateAllObjectTracks(settings=settings)
+        self.raiseOnDemandAx1Items()
+
+    def addTimestamp(self, checked):
+        super().addTimestamp(checked)
+        self.raiseOnDemandAx1Items()
+
     def addScaleBar(self, checked):
         super().addScaleBar(checked)
+        self.raiseOnDemandAx1Items()
         # Rescale once the scale bar items and the dialog are settled
         QTimer.singleShot(0, self.autoRange)
 
@@ -7505,14 +8758,19 @@ class MeasurementsViewerWin(
             return
         
         if event.button() not in STANDARD_MOUSE_BUTTONS:
-            self.mousePressEvent(event)
+            # As in guiWin: only bound buttons are forwarded (the window's
+            # `QMainWindow.mousePressEvent` does not accept scene events)
+            if event.button() in self.mouseBindings.values():
+                self.mousePressEvent(event)
+            else:
+                event.ignore()
             return
-        
+
         left_click = event.button() == Qt.MouseButton.LeftButton
         right_click = event.button() == Qt.MouseButton.RightButton
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        
+
         isZoomRectActive = self.zoomRectButton.isChecked()
         if isZoomRectActive and self.isHoveringRoiHandle(self.zoomRectItem):
             event.ignore()
@@ -7676,6 +8934,13 @@ class MeasurementsViewerWin(
                 widget.click()
             else:
                 widget.trigger()
+            # Handled: a forwarded scene event must not propagate to the
+            # window again (triggering the action twice)
+            event.accept()
+            return
+        if not isinstance(event, QMouseEvent):
+            # Scene events forwarded by `gui_mousePressEventImg1`
+            event.ignore()
             return
         super().mousePressEvent(event)
     
@@ -7744,11 +9009,13 @@ class MeasurementsViewerWin(
             else:
                 self.uncheckLeftClickButtons(None)
         elif key == Qt.Key_Z:
-            self.zSliceCheckbox.setChecked(not self.zSliceCheckbox.isChecked())
+            if self.posData().SizeZ > 1:
+                self.zSliceCheckbox.setChecked(
+                    not self.zSliceCheckbox.isChecked()
+                )
         elif key in (Qt.Key_Left, Qt.Key_Right):
             step = 1 if key == Qt.Key_Right else -1
-            isZstack = self.posData().SizeZ > 1
-            if isZstack and self.zSliceCheckbox.isChecked():
+            if self.isZsliceNavigationActive():
                 z = self.zSliceScrollBar.sliderPosition() + step
                 self.zSliceScrollBar.setSliderPosition(z)
             else:
@@ -7761,7 +9028,7 @@ class MeasurementsViewerWin(
     def closeEvent(self, event):
         if self.measurementProcessingThread is not None:
             self.measurementProcessingWarning(
-                'Signal processing running',
+                'Measurement processing running',
                 'Wait for measurement processing to finish before closing the viewer.'
             )
             event.ignore()
@@ -7792,6 +9059,10 @@ def run(folderpath=None):
     from ._run import _setup_app
     app, _ = _setup_app()
     win = MeasurementsViewerWin()
+    if folderpath:
+        # The folder is loaded directly: the startup configuration prompt
+        # would open on top of the folder loading dialogs.
+        win._startupConfigurationPrompted = True
     win.show()
     if folderpath:
         win.openFolder(folderpath=folderpath)

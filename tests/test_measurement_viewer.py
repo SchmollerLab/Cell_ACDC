@@ -171,6 +171,46 @@ def test_comparison_click_selects_frame_and_forces_zoom(viewer, app):
     )
 
 
+def test_comparison_keeps_scatter_and_zoom_when_selecting_cell(viewer):
+    item = comparison(viewer)
+    viewer.measurementsPlot.setXRange(12, 18, padding=0)
+    xRange = viewer.measurementsPlot.viewRange()[0]
+    viewer.setSelectedID(2)
+    assert viewer.measurementsPlot.listDataItems() == [item]
+    assert viewer.measurementsPlot.viewRange()[0] == xRange
+
+    # Values changed while selecting (e.g., automatic predictions) replot
+    def ensureTimepointPredictions():
+        viewer.acdc_df.loc[(2, 2), 'area'] = 50.0
+    viewer.ensureTimepointPredictions = ensureTimepointPredictions
+    viewer.setSelectedID(1)
+    newItem, = viewer.measurementsPlot.listDataItems()
+    assert newItem is not item
+    np.testing.assert_array_equal(newItem.xData, [10, 20, 30, 50])
+
+
+def test_time_course_replots_keep_x_zoom(viewer):
+    viewer.rescalePlotCheckbox.setChecked(False)
+    column(viewer, 'area').setCheckState(Qt.Checked)
+    viewer.measurementsPlot.setXRange(1.5, 2.5, padding=0)
+    xRange = viewer.measurementsPlot.viewRange()[0]
+
+    viewer.setSelectedID(2)
+    item, = viewer.measurementsPlot.listDataItems()
+    np.testing.assert_array_equal(item.xData, [2, 3])
+    assert viewer.measurementsPlot.viewRange()[0] == xRange
+
+    # Replot after a table edit read by the plot (e.g., time point added)
+    viewer.refreshPlotForColumns(['area'])
+    assert viewer.measurementsPlot.viewRange()[0] == xRange
+
+    # Switching back from comparison mode resets the frame range
+    viewer.measurementsModeCombobox.setCurrentIndex(1)
+    viewer.measurementsModeCombobox.setCurrentIndex(0)
+    xMin, xMax = viewer.measurementsPlot.viewRange()[0]
+    assert xMin < 1 and xMax > 3
+
+
 def test_time_course_click_navigates_to_measurement(viewer, app):
     item, = viewer.measurementsPlot.listDataItems()
     item.scatter.sigClicked.emit(
@@ -195,6 +235,123 @@ def test_right_click_does_not_navigate(viewer, app):
     assert viewer.selectedID == 1
     assert viewer.frame_i == 0
     viewer.setViewRangeToObjBbox.assert_not_called()
+
+
+def test_hardcoded_shortcuts_are_listed_and_conflict_in_editor(viewer):
+    from cellacdc import apps
+    hardShortcuts = viewer.getHardcodedShortcuts()
+    # Same format as guiWin: {key sequence: (name, widget)}
+    name, widget = hardShortcuts['Ctrl+O']
+    assert widget is viewer.openFolderAction
+    assert name == 'Load Folder'
+    dialog = apps.ShortcutEditorDialog(
+        viewer.widgetsWithShortcut, zoomOutKeyValue=viewer.zoomOutKeyValue,
+        mouseBindings=viewer.mouseBindings, hard_shortcuts=hardShortcuts,
+        show_delete_object_shortcut=False, parent=viewer
+    )
+    hardTexts = [
+        shortcut for shortcuts in dialog.new_hard_shortcuts.values()
+        for shortcut in shortcuts.values()
+    ]
+    assert 'Ctrl+O' in hardTexts
+    lineEdit = dialog.shortcutLineEdits['Next']
+    lineEdit.setText('Ctrl+O')
+    assert 'Conflict with' in lineEdit.warnConflictLabel.text()
+    dialog.deleteLater()
+
+
+def test_change_and_reset_signal_color(viewer, monkeypatch):
+    from qtpy.QtGui import QColor
+    import pyqtgraph as pg
+    calls = []
+    returned = [QColor('#123456')]
+
+    # Same signature as QColorDialog.getColor (catches a duplicated parent)
+    def getColor(initial=None, parent=None, title='', options=None):
+        calls.append(parent)
+        return returned[0]
+
+    monkeypatch.setattr(
+        measurements_viewer, 'QColorDialog', SimpleNamespace(getColor=getColor)
+    )
+    col, = viewer.checkedColumns()
+
+    def penColor():
+        item, = viewer.measurementsPlot.listDataItems()
+        return pg.mkPen(item.opts['pen']).color().name()
+
+    viewer.changeSignalColor(col)
+    assert calls == [viewer]
+    assert viewer.measurementsColors[col].name() == '#123456'
+    assert penColor() == '#123456'
+    # Cancel keeps the color
+    returned[0] = QColor()
+    viewer.changeSignalColor(col)
+    assert viewer.measurementsColors[col].name() == '#123456'
+    viewer.resetSignalColor(col)
+    assert col not in viewer.measurementsColors
+    assert penColor() != '#123456'
+
+
+def test_id_spinbox_arrows_step_to_existing_ids(viewer):
+    viewer.acdc_df = pd.DataFrame(
+        {'frame_i': [0, 0, 1], 'Cell_ID': [1, 2, 5], 'area': [1.0, 2.0, 3.0]}
+    ).set_index(['frame_i', 'Cell_ID'])
+    viewer.initIDsNavigation(ID=2)
+    # The arrow first changes the value by +1, then emits sigUpClicked
+    viewer.idSpinBox.setValueNoEmit(3)
+    viewer.idSpinBox.sigUpClicked.emit()
+    assert viewer.selectedID == 5
+    assert viewer.idSpinBox.value() == 5
+    viewer.idSpinBox.setValueNoEmit(4)
+    viewer.idSpinBox.sigDownClicked.emit()
+    assert viewer.selectedID == 2
+    assert viewer.idSpinBox.value() == 2
+    viewer.idSpinBox.sigDownClicked.emit()
+    assert viewer.selectedID == 1
+    # Down from the first ID stays on it (spinbox resynced)
+    viewer.idSpinBox.setValueNoEmit(0)
+    viewer.idSpinBox.sigDownClicked.emit()
+    assert viewer.selectedID == 1
+    assert viewer.idSpinBox.value() == 1
+
+
+def test_next_previous_step_frames_on_2d_data(viewer, app):
+    # The z-slice checkbox is hidden for 2D data: the Z key does nothing
+    QTest.keyClick(viewer, Qt.Key_Z)
+    assert not viewer.zSliceCheckbox.isChecked()
+    # Even if checked (e.g., from a z-stack loaded before), frames are stepped
+    viewer.zSliceCheckbox.setChecked(True)
+    viewer.nextAction.trigger()
+    app.processEvents()
+    assert viewer.frame_i == 1
+    viewer.prevAction.trigger()
+    app.processEvents()
+    assert viewer.frame_i == 0
+
+
+def test_auto_zoom_toggle_not_in_edit_menu(viewer):
+    from qtpy.QtWidgets import QMenu
+    menuActions = [
+        action for menu in viewer.menuBar().findChildren(QMenu)
+        for action in menu.actions()
+    ]
+    assert viewer.enableAutoZoomToCellsAction not in menuActions
+
+
+def test_max_projection_toggle_disabled_without_data(app, monkeypatch):
+    window = MeasurementsViewerWin()
+    window._startupConfigurationPrompted = True
+    errors = []
+    monkeypatch.setattr(sys, 'excepthook', lambda *args: errors.append(args))
+    try:
+        assert not window.MaxProjToggleAction.isEnabled()
+        window.MaxProjToggleAction.trigger()
+        app.processEvents()
+        assert not errors
+    finally:
+        window.deleteLater()
+        app.processEvents()
 
 
 def test_mode_switching_without_data(app):
@@ -559,6 +716,8 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
     )
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())
+    # Discard the unsaved changes made above
+    monkeypatch.setattr(viewer, 'askSaveBeforeLoading', Mock(return_value=True))
     assert viewer.loadConfiguration(filepath=filepath)
     load_position.assert_called_once_with(str(images), 'phase', 'segm_custom')
     assert viewer.configurationFilepath == filepath
@@ -616,6 +775,7 @@ def test_loading_failure_preserves_current_data(
         viewer, 'selectConfigurationInput',
         lambda config: viewer.configurationInputOptions(config)[0]
     )
+    monkeypatch.setattr(viewer, 'askSaveBeforeLoading', Mock(return_value=True))
     path = tmp_path / 'invalid.json'
     path.write_text(json.dumps(configuration))
     viewer.configurationFilepath = 'previous.json'
@@ -664,6 +824,53 @@ def test_startup_opens_configuration_picker_directly(app, monkeypatch):
     app.processEvents()
 
 
+def test_geometry_is_restored_only_on_first_show(app, monkeypatch):
+    window = MeasurementsViewerWin()
+    window._startupConfigurationPrompted = True
+    readSettings = Mock()
+    monkeypatch.setattr(window, 'readSettings', readSettings)
+    window.show()
+    QTest.qWait(20)
+    # E.g., restoring the window from minimized sends another show event
+    window.hide()
+    window.show()
+    QTest.qWait(20)
+    readSettings.assert_called_once_with(setting_suffix='_measurements_viewer')
+    window.deleteLater()
+    app.processEvents()
+
+
+@pytest.mark.parametrize('folder', [True, False])
+def test_run_with_folder_skips_startup_prompt(app, tmp_path, monkeypatch, folder):
+    from cellacdc import _run
+    fakeApp = SimpleNamespace(exec_=lambda: None)
+    monkeypatch.setattr(_run, '_setup_app', lambda *args, **kwargs: (fakeApp, None))
+    openFolder = Mock()
+    prompt = Mock()
+    monkeypatch.setattr(MeasurementsViewerWin, 'openFolder', openFolder)
+    monkeypatch.setattr(MeasurementsViewerWin, 'loadConfiguration', prompt)
+    created = []
+    init = MeasurementsViewerWin.__init__
+
+    def recordInit(self, *args, **kwargs):
+        init(self, *args, **kwargs)
+        created.append(self)
+
+    monkeypatch.setattr(MeasurementsViewerWin, '__init__', recordInit)
+    measurements_viewer.run(str(tmp_path) if folder else None)
+    QTest.qWait(20)
+    if folder:
+        openFolder.assert_called_once_with(folderpath=str(tmp_path))
+        prompt.assert_not_called()
+    else:
+        openFolder.assert_not_called()
+        prompt.assert_called_once_with()
+    for window in created:
+        window.hide()
+        window.deleteLater()
+    app.processEvents()
+
+
 @pytest.mark.parametrize('has_configuration', [False, True])
 @pytest.mark.parametrize('choice', ['skip', 'select', 'browse'])
 def test_configuration_picker_buttons(
@@ -688,6 +895,10 @@ def test_configuration_picker_buttons(
         Mock(return_value=(external, ''))
     )
     original_dialog = apps.QTreeDialog
+    # OK-button state seen while the dialog is open. Asserted after it
+    # returns: an AssertionError raised inside the Qt slot would abort the
+    # whole pytest process instead of failing this test
+    seen = []
 
     def create_dialog(*args, **kwargs):
         dialog = original_dialog(*args, **kwargs)
@@ -705,7 +916,7 @@ def test_configuration_picker_buttons(
         ]
 
         def interact():
-            assert ok.isEnabled() == has_configuration
+            seen.append(ok.isEnabled())
             if choice == 'browse':
                 browse.click()
             elif choice == 'select' and has_configuration:
@@ -722,6 +933,7 @@ def test_configuration_picker_buttons(
         else str(path) if choice == 'select' and has_configuration else None
     )
     assert viewer.selectConfigurationFilepath() == expected
+    assert seen == [has_configuration]
 
 
 @pytest.mark.parametrize('choice', ['cancel', 'dismiss', 'discard', 'save'])
@@ -796,6 +1008,19 @@ def test_configuration_restores_real_images_and_overlay(app, tmp_path, monkeypat
         assert not window.allOverlayToolbuttons['phase'].isChecked()
         np.testing.assert_array_equal(window.posData().img_data[0], image)
         np.testing.assert_array_equal(window.posData().segm_data[0], labels)
+        # The ruler and the mirrored cursor stay above the overlay layers
+        # (added when loading) and the annotation layers
+        below = [
+            window.rgbaImg1, window.labelsLayerImg1,
+            window.ax1_contoursImageItem, window.searchedIDitemLeft,
+            *(items[0] for items in window.overlayLayersItems.values()),
+        ]
+        topItems = (
+            window.ax1_rulerPlotItem, window.ax1_rulerPlotItem.labelItem,
+            window.ax1_rulerAnchorsItem, window.ax1_cursor,
+        )
+        for item in topItems:
+            assert item.zValue() > max(other.zValue() for other in below)
         # Version 1 files are upgraded to version 2 on saving
         restored = window.configuration()
         assert restored['version'] == 2
@@ -812,3 +1037,386 @@ def test_configuration_restores_real_images_and_overlay(app, tmp_path, monkeypat
     finally:
         window.deleteLater()
         app.processEvents()
+
+
+def make_timelapse_position(
+        root, pos=1, SizeT=3, SizeZ=1, extra_cells=(), cca_frames=None
+    ):
+    """Write a real time-lapse position (cell 1 in every frame, plus the 
+    `(frame_i, ID)` of `extra_cells`). Cell cycle annotations are written 
+    for the frames in `cca_frames` and are NaN in the others."""
+    import tifffile
+
+    images = root / f'Position_{pos}' / 'Images'
+    images.mkdir(parents=True)
+    shape = (SizeT, SizeZ, 30, 30) if SizeZ > 1 else (SizeT, 30, 30)
+    image = np.arange(np.prod(shape), dtype=np.uint16).reshape(shape)
+    tifffile.imwrite(images / 'test_phase.tif', image)
+    labels = np.zeros((SizeT, 30, 30), dtype=np.uint16)
+    labels[:, 2:5, 3:7] = 1
+    rows = [(frame_i, 1) for frame_i in range(SizeT)]
+    for frame_i, ID in extra_cells:
+        labels[frame_i, 15:19, 20:25] = ID
+        rows.append((frame_i, ID))
+    np.savez_compressed(images / 'test_segm.npz', labels)
+    df = pd.DataFrame(rows, columns=['frame_i', 'Cell_ID'])
+    df['area'] = 12.0
+    if cca_frames is not None:
+        isAnnotated = df['frame_i'].isin(cca_frames)
+        df['cell_cycle_stage'] = np.where(isAnnotated, 'G1', None)
+        for col in ('generation_num', 'relative_ID', 'emerg_frame_i', 
+                'division_frame_i', 'corrected_on_frame_i', 'will_divide'):
+            df[col] = np.where(isAnnotated, 1, np.nan)
+        df['relationship'] = np.where(isAnnotated, 'mother', None)
+        df['is_history_known'] = np.where(isAnnotated, True, None)
+    df.to_csv(images / 'test_acdc_output.csv', index=False)
+    pd.DataFrame({
+        'Description': ['SizeT', 'SizeZ', 'basename'],
+        'values': [str(SizeT), str(SizeZ), 'test_']
+    }).to_csv(images / 'test_metadata.csv', index=False)
+    return str(images)
+
+
+@pytest.fixture
+def real_viewer(app, monkeypatch):
+    """Viewer that fails on exceptions raised inside Qt slots"""
+    errors = []
+    monkeypatch.setattr(
+        sys, 'excepthook', lambda *exc_info: errors.append(exc_info)
+    )
+    window = MeasurementsViewerWin()
+    window._startupConfigurationPrompted = True
+    window.slotErrors = errors
+    yield window
+    window.deleteLater()
+    app.processEvents()
+
+
+def load_real(window, paths, **kwargs):
+    window.setData(
+        measurements_viewer.load_positions(paths, 'phase'), **kwargs
+    )
+
+
+def test_loading_shorter_timelapse_resets_navigation(real_viewer, tmp_path):
+    longer = make_timelapse_position(tmp_path / 'A', SizeT=10)
+    shorter = make_timelapse_position(tmp_path / 'B', SizeT=3)
+    load_real(real_viewer, [longer])
+    real_viewer.setFrame(9)
+    assert real_viewer.navigateScrollBar.value() == 10
+    load_real(real_viewer, [shorter])
+    assert not real_viewer.slotErrors
+    assert real_viewer.frame_i == real_viewer.posData().frame_i == 0
+    assert real_viewer.navigateScrollBar.value() == 1
+    assert real_viewer.navigateScrollBar.maximum() == 3
+
+
+def test_loading_smaller_zstack_resets_z_navigation(real_viewer, tmp_path):
+    larger = make_timelapse_position(tmp_path / 'A', SizeT=2, SizeZ=10)
+    smaller = make_timelapse_position(tmp_path / 'B', SizeT=2, SizeZ=4)
+    load_real(real_viewer, [larger])
+    assert real_viewer.posData().SizeZ == 10
+    real_viewer.zSliceScrollBar.setSliderPosition(9)
+    load_real(real_viewer, [smaller])
+    assert not real_viewer.slotErrors
+    assert real_viewer.zSliceScrollBar.maximum() == 3
+    assert real_viewer.zSliceScrollBar.value() == 2
+
+
+def test_loading_2d_data_resets_viewed_plane(real_viewer, tmp_path):
+    # A zy/zx plane left from a z-stack must not stay active (hidden) for
+    # 2D data, where it would silently disable custom annotations.
+    zstack = make_timelapse_position(tmp_path / 'A', SizeT=2, SizeZ=4)
+    flat = make_timelapse_position(tmp_path / 'B', SizeT=2)
+    load_real(real_viewer, [zstack])
+    real_viewer.switchPlaneCombobox.blockSignals(True)
+    real_viewer.switchPlaneCombobox.setPlane('zy')
+    real_viewer.switchPlaneCombobox.blockSignals(False)
+    real_viewer.zProjComboBox.setDisabled(True)
+    assert real_viewer.switchPlaneCombobox.depthAxes() == 'x'
+    load_real(real_viewer, [flat])
+    assert not real_viewer.slotErrors
+    assert real_viewer.posData().SizeZ == 1
+    assert real_viewer.switchPlaneCombobox.depthAxes() == 'z'
+    assert real_viewer.zProjComboBox.isEnabled()
+
+
+def test_loading_fewer_positions_resets_position(real_viewer, tmp_path):
+    paths = [
+        make_timelapse_position(tmp_path / 'A', pos=pos) for pos in (1, 2)
+    ]
+    load_real(real_viewer, paths)
+    real_viewer.posCombobox.setCurrentIndex(1)
+    assert real_viewer.pos_i == 1
+    single = make_timelapse_position(tmp_path / 'B')
+    load_real(real_viewer, [single], pos_i=1)
+    assert not real_viewer.slotErrors
+    assert real_viewer.pos_i == 0
+    assert real_viewer.posData().images_path == single
+
+
+def test_cca_table_on_frames_without_annotations(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    from cellacdc import widgets
+
+    path = make_timelapse_position(tmp_path, cca_frames=[0])
+    load_real(real_viewer, [path])
+    assert real_viewer.viewCcaTableAction.isEnabled()
+    real_viewer.viewCcaTable()
+    assert real_viewer.ccaTableWin is not None
+    real_viewer.setFrame(1)
+    assert real_viewer.posData().cca_df is None
+    assert real_viewer.ccaTableWin.tableView.model().rowCount() == 0
+    real_viewer.onSigUpdateCcaTableWindow()
+    real_viewer.ccaTableWin.close()
+    real_viewer.ccaTableWin = None
+    
+    warnings = []
+    monkeypatch.setattr(
+        widgets.myMessageBox, 'warning', 
+        lambda self, *args, **kwargs: warnings.append(args)
+    )
+    real_viewer.viewCcaTable()
+    assert len(warnings) == 1
+    assert real_viewer.ccaTableWin is None
+    assert not real_viewer.slotErrors
+
+
+def test_search_id_in_later_frame_with_unvisited_positions(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    paths = [
+        make_timelapse_position(tmp_path, pos=1, extra_cells=[(2, 3)]),
+        make_timelapse_position(tmp_path, pos=2),
+    ]
+    load_real(real_viewer, paths)
+    assert not hasattr(real_viewer.data[1], 'allData_li')
+    critical, notFound, found = [], [], []
+    monkeypatch.setattr(real_viewer, 'workerCritical', critical.append)
+    monkeypatch.setattr(real_viewer, 'warnIDnotFound', notFound.append)
+    monkeypatch.setattr(
+        real_viewer, 'askGoToFrameFoundID', 
+        lambda ID, frame_i: found.append(frame_i) or True
+    )
+    real_viewer.onSearchId(3)
+    assert not critical
+    assert not notFound
+    assert found == [2]
+    assert real_viewer.posData().frame_i == 2
+    assert not real_viewer.slotErrors
+
+
+def annotation_state(name, predictor=None):
+    state = {
+        'name': name, 'symbolColor': [255, 0, 0, 255], 'autoApply': True
+    }
+    if predictor is not None:
+        state['predictor'] = predictor
+    return state
+
+
+def test_opening_folder_keeps_saved_annotations_of_visited_cells(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    monkeypatch.setattr(
+        real_viewer, 'askSaveBeforeLoading', Mock(return_value=True)
+    )
+    first = make_timelapse_position(tmp_path / 'A')
+    second = make_timelapse_position(
+        tmp_path / 'B', extra_cells=[(1, 2), (2, 2)]
+    )
+    tablepath = os.path.join(second, 'test_acdc_output.csv')
+    table = pd.read_csv(tablepath)
+    table['Flag'] = 0
+    table[measurements_viewer.VISITED_COLUMN] = table['Cell_ID'] == 1
+    table.to_csv(tablepath, index=False)
+    real_viewer.loadImagesPaths([first], channel='phase')
+    real_viewer.setCustomAnnotations([annotation_state(
+        'Flag', {'type': 'equation', 'equation': 'area > 0'}
+    )])
+    assert real_viewer.acdc_df['Flag'].all()
+    real_viewer.loadImagesPaths([second], channel='phase')
+    acdc_df = real_viewer.acdc_df
+    isCell1 = acdc_df.index.get_level_values('Cell_ID') == 1
+    # The saved assignment of the visited cell is not predicted again ...
+    assert not acdc_df.loc[isCell1, 'Flag'].any()
+    # ... while a cell viewed for the first time is
+    real_viewer.setSelectedID(2)
+    acdc_df = real_viewer.acdc_df
+    assert not acdc_df.loc[isCell1, 'Flag'].any()
+    assert acdc_df.loc[~isCell1, 'Flag'].all()
+    assert not real_viewer.slotErrors
+
+
+def test_unbound_mouse_side_button_over_image(real_viewer, tmp_path, app):
+    load_real(real_viewer, [make_timelapse_position(tmp_path, SizeT=3)])
+    assert real_viewer.isDataLoaded
+    real_viewer.show()
+    app.processEvents()
+    view = real_viewer.graphLayout
+    scenePos = real_viewer.img1.mapToScene(QPointF(15, 15))
+    viewportPos = view.mapFromScene(scenePos)
+    assert view.viewport().rect().contains(viewportPos)
+
+    def sideButtonPress():
+        QTest.mousePress(
+            view.viewport(), Qt.MouseButton.XButton1,
+            Qt.KeyboardModifier.NoModifier, viewportPos
+        )
+        QTest.mouseRelease(
+            view.viewport(), Qt.MouseButton.XButton1,
+            Qt.KeyboardModifier.NoModifier, viewportPos
+        )
+        app.processEvents()
+
+    # No binding: ignored (the window's mousePressEvent does not accept
+    # scene events)
+    sideButtonPress()
+    assert not real_viewer.slotErrors
+    assert real_viewer.frame_i == 0
+    # Bound buttons trigger the action
+    real_viewer.mouseBindings['Next'] = Qt.MouseButton.XButton1
+    sideButtonPress()
+    assert real_viewer.frame_i == 1
+    assert not real_viewer.slotErrors
+    real_viewer.hide()
+
+
+def test_on_demand_ax1_items_stay_above_overlays_after_reload(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    import tifffile
+    from cellacdc import apps
+
+    monkeypatch.setattr(apps.ScaleBarPropertiesDialog, 'exec_', Mock())
+    monkeypatch.setattr(apps.TimestampPropertiesDialog, 'exec_', Mock())
+    paths = []
+    for folder in ('A', 'B'):
+        path = make_timelapse_position(tmp_path / folder, SizeT=3)
+        tifffile.imwrite(
+            os.path.join(path, 'test_GFP.tif'),
+            np.ones((3, 30, 30), dtype=np.uint16)
+        )
+        paths.append(path)
+    load_real(real_viewer, [paths[0]])
+    real_viewer.addScaleBar(True)
+    real_viewer.addTimestamp(True)
+    tracksCheckbox = real_viewer.annotObjectTracksCheckbox(0)
+    tracksCheckbox.blockSignals(True)
+    tracksCheckbox.setChecked(True)
+    tracksCheckbox.blockSignals(False)
+    real_viewer.setFrame(2)
+    real_viewer.annotateAllObjectTracks()
+    # The overlay layers are re-added (z-value 0) on every load
+    load_real(real_viewer, [paths[1]])
+    assert not real_viewer.slotErrors
+    below = [
+        real_viewer.rgbaImg1,
+        *(items[0] for items in real_viewer.overlayLayersItems.values()),
+    ]
+    assert len(below) > 1
+    onDemandItems = (
+        real_viewer.tracksPlotItems[0], real_viewer.scaleBar.plotItem,
+        real_viewer.scaleBar.labelItem, real_viewer.timestamp,
+    )
+    for item in onDemandItems:
+        assert item.zValue() > max(other.zValue() for other in below)
+
+
+def formatted_brushes(window, column):
+    item = next(
+        item for item in window.measurementsPlot.listDataItems()
+        if item.name() == column
+    )
+    return [brush.color().name() for brush in item.scatter.data['brush']]
+
+
+def test_time_point_and_annotation_edits_refresh_formatting(
+        real_viewer, tmp_path
+    ):
+    import pyqtgraph as pg
+    from cellacdc.timepoint_predictors import TimepointIdentifier
+
+    load_real(real_viewer, [make_timelapse_position(tmp_path, SizeT=3)])
+    identifier = TimepointIdentifier('Bud', (255, 0, 0), 'Q')
+    real_viewer.addTimepointIdentifierItem(identifier)
+    real_viewer.updateColumnsList()
+    column(real_viewer, 'area').setCheckState(Qt.Checked)
+    green = '#00ff00'
+    real_viewer.setConditionalFormatting(
+        'area', [{'condition': 'timepoint_Bud == 1', 'color': green}]
+    )
+    default = pg.mkColor(real_viewer.getSignalColor('area')).name()
+    assert formatted_brushes(real_viewer, 'area') == [default]*3
+
+    assert real_viewer.addTimepoint(identifier.uid, 1)
+    assert formatted_brushes(real_viewer, 'area') == [default, green, default]
+
+    line, = real_viewer.timepointLines
+    line.setValue(3)  # frame numbers are 1-based
+    real_viewer.timepointLineMoved(line)
+    QTest.qWait(50)
+    assert formatted_brushes(real_viewer, 'area') == [default, default, green]
+
+    line, = real_viewer.timepointLines
+    real_viewer.timepointLineRemoveRequested(line)
+    assert formatted_brushes(real_viewer, 'area') == [default]*3
+
+    real_viewer.setCustomAnnotations([annotation_state('Mitotic')])
+    real_viewer.setConditionalFormatting(
+        'area', [{'condition': 'Mitotic == 1', 'color': green}]
+    )
+    assert formatted_brushes(real_viewer, 'area') == [default]*3
+    button, = real_viewer.customAnnotDict
+    real_viewer.customAnnotShortcutTriggered(button)
+    assert formatted_brushes(real_viewer, 'area') == [green]*3
+    assert not real_viewer.slotErrors
+
+
+def test_time_point_shortcut_over_plot_without_data(app, monkeypatch):
+    window = MeasurementsViewerWin()
+    window._startupConfigurationPrompted = True
+    try:
+        window.show()
+        app.processEvents()
+        identifier = window.defaultTimepointIdentifier()
+        window.addTimepointIdentifierItem(identifier)
+        plot = window.measurementsPlot
+        assert plot.isVisible()
+        center = plot.mapToGlobal(plot.rect().center())
+        monkeypatch.setattr(measurements_viewer.QCursor, 'pos', lambda: center)
+        window.timepointActionTriggered(identifier.uid)
+        assert window.statusBar().currentMessage() == (
+            'Load data to add time points.'
+        )
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
+
+
+def test_formatting_dialog_warning_escapes_condition_and_error(
+        app, monkeypatch
+    ):
+    # Threshold conditions contain '<': the rich-text warning must escape the
+    # condition and the error so that neither is cut off as a fake tag.
+    from cellacdc import widgets
+
+    def validateCondition(condition):
+        raise TypeError("'<' not supported between 'str' and 'int'")
+
+    warning = Mock()
+    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
+    dialog = measurements_viewer.ConditionalFormattingDialog(
+        'area', [{'condition': 'area < 500', 'color': '#ff0000'}],
+        validateCondition=validateCondition
+    )
+    try:
+        dialog.ok_cb()
+        assert dialog.cancel
+        text = warning.call_args.args[2]
+        assert '<code>area &lt; 500</code>' in text
+        assert '&lt;&#x27; not supported' in text
+    finally:
+        dialog.deleteLater()

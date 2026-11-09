@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 from types import SimpleNamespace
@@ -191,8 +192,7 @@ def test_categorical_and_numerical_groups_follow_dtype(dialog):
     }
 
 
-@pytest.mark.parametrize('loaded', [False, True])
-def test_catalog_uses_loaded_columns_and_preserves_groups(app, monkeypatch, loaded):
+def _patch_small_catalog(monkeypatch):
     monkeypatch.setattr(
         measurements, 'standard_metrics_desc',
         lambda isZstack, channel, **kwargs: (
@@ -211,11 +211,15 @@ def test_catalog_uses_loaded_columns_and_preserves_groups(app, monkeypatch, load
     monkeypatch.setattr(
         measurements, 'get_props_names', lambda: ['solidity', 'missing_prop']
     )
+
+
+@pytest.mark.parametrize('mode', ['no_table', 'viewer', 'main_gui'])
+def test_catalog_uses_loaded_columns_and_preserves_groups(app, monkeypatch, mode):
+    _patch_small_catalog(monkeypatch)
     df = pd.DataFrame({
         'GFP_mean': [2.],
         'GFP_background': [1.],
         'GFP_custom': [3.],
-        '_mean': [4.],
         'cell_area_pxl': [10.],
         'solidity': [0.9],
         'unlisted measurement': [7.],
@@ -223,17 +227,30 @@ def test_catalog_uses_loaded_columns_and_preserves_groups(app, monkeypatch, load
         'known': [True],
     })
     dialog = apps.CombineMetricsEquationDialog(
-        ['GFP'], False, False, acdc_df=df if loaded else None
+        ['GFP'], False, False, acdc_df=None if mode == 'no_table' else df,
+        # Only the measurements viewer limits the catalog to loaded columns
+        limitToLoadedColumns=(mode == 'viewer')
     )
     items = list(tree_items(dialog.metricsTreeWidgets[0].invisibleRootItem()))
     leaves = {
         item.variableName: item for item in items
         if getattr(item, 'isCol', False)
     }
-    if loaded:
+    if mode == 'viewer':
         assert set(leaves) == set(df.columns)
         assert set(dialog.variableNames) == set(df.columns)
         assert len(dialog.variableNames) == len(df.columns)
+        assert not dialog.channelLessVariables
+    else:
+        # Full catalog: not yet saved and channel-less inputs are offered
+        assert {
+            'GFP_missing', 'missing_size', 'missing_prop', '_mean'
+        } <= set(leaves)
+        assert '_mean' in dialog.channelLessVariables
+        assert leaves['_mean'].parent().text(0) == 'Cell signal measurements'
+    if mode == 'no_table':
+        assert 'unlisted measurement' not in leaves
+    else:
         for name in ('unlisted measurement', 'stage', 'known'):
             assert leaves[name].parent().text(0) == 'Other'
         assert leaves['unlisted measurement'].parent().parent().text(0) == (
@@ -241,14 +258,10 @@ def test_catalog_uses_loaded_columns_and_preserves_groups(app, monkeypatch, load
         )
         for name in ('stage', 'known'):
             assert leaves[name].parent().parent().text(0) == 'Categorical inputs'
-    else:
-        assert {'GFP_missing', 'missing_size', 'missing_prop'} <= set(leaves)
-        assert 'unlisted measurement' not in leaves
     for name, group in (
             ('GFP_mean', 'Cell measurements'),
             ('GFP_background', 'Background values'),
             ('GFP_custom', 'Custom measurements'),
-            ('_mean', 'Cell signal measurements'),
             ('cell_area_pxl', 'Size measurements'),
             ('solidity', 'Region properties')
         ):
@@ -256,9 +269,74 @@ def test_catalog_uses_loaded_columns_and_preserves_groups(app, monkeypatch, load
     dialog.deleteLater()
 
 
+def test_main_gui_catalog_keeps_unsaved_and_channel_less_inputs(
+        app, monkeypatch
+    ):
+    """Main GUI/compute utility pass the saved acdc_df but define
+    measurements computed later: inputs missing from the table must stay
+    available (regression)."""
+    _patch_small_catalog(monkeypatch)
+    df = pd.DataFrame({
+        'GFP_mean': [2., 4.],
+        'cell_area_pxl': [10., 20.],
+        'cell_cycle_stage': ['G1', 'S'],
+    })
+    dialog = apps.CombineMetricsEquationDialog(
+        ['GFP', 'RFP'], False, False, acdc_df=df, saveToConfig=False
+    )
+    assert not dialog.limitToLoadedColumns
+    assert {'RFP_mean', '_mean', 'solidity'} <= set(dialog.variableNames)
+    assert 'cell_cycle_stage' in leaf_names(dialog.categoricalRoot)
+    dialog.newColNameLineEdit.setText('ratio')
+    dialog.formulaEditWidget.setText('_mean / cell_area_pxl')
+    dialog.test_cb()
+    assert dialog.okButton.isEnabled()
+    assert dialog.getEquationsDict() == ({
+        'GFP_ratio': 'GFP_mean / cell_area_pxl',
+        'RFP_ratio': 'RFP_mean / cell_area_pxl',
+    }, False)
+    dialog.formulaEditWidget.setText('RFP_mean / GFP_mean')
+    dialog.test_cb()
+    assert dialog.okButton.isEnabled()
+    dialog.deleteLater()
+
+
+def test_row_wise_test_data_copies_only_referenced_columns(app, monkeypatch):
+    """Main GUI/compute utility: "Test equation" must not copy the whole
+    acdc_df, only the referenced columns of a limited number of rows
+    (regression)."""
+    _patch_small_catalog(monkeypatch)
+    monkeypatch.setattr(apps._CombineMetricsDialog, 'TEST_DATA_MAX_ROWS', 50)
+    nrows = 200
+    df = pd.DataFrame({
+        'GFP_mean': np.arange(nrows, dtype=float) + 1,
+        'cell_area_pxl': np.full(nrows, 10.),
+        'unrelated': np.zeros(nrows),
+        'unrelated_obj': ['x'] * nrows,
+    })
+    dialog = apps.CombineMetricsEquationDialog(
+        ['GFP', 'RFP'], False, False, acdc_df=df, saveToConfig=False
+    )
+    dialog.newColNameLineEdit.setText('ratio')
+    # RFP_mean is not in the table yet: random inputs are added for it
+    dialog.formulaEditWidget.setText('GFP_mean / cell_area_pxl + RFP_mean')
+    sample = dialog.getTestData()
+    assert set(sample.columns) == {'GFP_mean', 'cell_area_pxl', 'RFP_mean'}
+    assert len(sample) == 50
+    assert sample['GFP_mean'].tolist() == df['GFP_mean'].head(50).tolist()
+    assert sample['RFP_mean'].notna().all()
+    preview = dialog.getTestData(preview=True)
+    assert len(preview) == 10
+    assert 'RFP_mean' not in df
+    dialog.test_cb()
+    assert dialog.okButton.isEnabled()
+    dialog.deleteLater()
+
+
 def test_catalog_with_empty_dataframe_has_no_measurements(app):
     dialog = apps.CombineMetricsEquationDialog(
-        ['GFP'], False, False, acdc_df=pd.DataFrame()
+        ['GFP'], False, False, acdc_df=pd.DataFrame(),
+        limitToLoadedColumns=True
     )
     assert dialog.variableNames == []
     assert not any(
@@ -420,6 +498,60 @@ def test_evaluate_equation_matches_per_cell_runtime(app, formula, indexed):
     dialog.deleteLater()
 
 
+def _per_cell_reference(df, formula, enforce_dtype_output=None):
+    flat = timepoint_predictors.CellTable.flatten(df)
+    expected = []
+    for _, cell in flat.groupby('Cell_ID', sort=False):
+        cell = cell.sort_values('frame_i')
+        values = timepoint_predictors.CellEquation.evaluate(
+            cell.reset_index(drop=True), formula,
+            enforce_dtype_output=enforce_dtype_output
+        )
+        expected.append(pd.Series(
+            np.broadcast_to(np.asarray(values), len(cell)), index=cell.index
+        ))
+    expected = pd.concat(expected).reindex(flat.index)
+    expected.index = df.index
+    return expected
+
+
+@pytest.mark.parametrize('formula, row_wise', [
+    ('a / b', True),
+    ('`cell area` * 2 + a', True),
+    ('log10(a) > 0', True),
+    ('stage == "G1"', True),
+    ('a - MAX(a)', False),
+    ('DIFF(`cell area`)', False),
+    ('a / a.sum()', False),
+])
+@pytest.mark.parametrize('indexed', [True, False])
+@pytest.mark.parametrize('dtype', [None, bool])
+def test_evaluate_cell_equation_fast_path_matches_per_cell(
+        formula, row_wise, indexed, dtype
+    ):
+    df = pd.DataFrame({
+        'frame_i': [2, 0, 1, 0, 1, 2],
+        'Cell_ID': [1, 2, 1, 1, 2, 3],
+        'a': [6., 10., 4., 2., 20., 1.],
+        'b': [2., 5., 1., 4., 10., 1.],
+        'cell area': [3., 1., 2., 5., 4., 1.],
+        'stage': pd.Categorical(['G1', 'S', 'G1', 'S', 'G1', 'G1']),
+    }, index=[10, 11, 12, 13, 14, 15])
+    if indexed:
+        df = df.set_index(['frame_i', 'Cell_ID'])
+    evaluate = apps.CombineMetricsEquationDialog.evaluateCellEquation
+    assert apps._CombineMetricsDialog.isRowWiseFormula(formula) == row_wise
+    if dtype is bool and not formula.endswith('"G1"') and '>' not in formula:
+        # Non-boolean results must be rejected by both paths
+        with pytest.raises(ValueError):
+            evaluate(df, formula, enforce_dtype_output=dtype)
+        return
+    actual = evaluate(df, formula, enforce_dtype_output=dtype)
+    expected = _per_cell_reference(df, formula, enforce_dtype_output=dtype)
+    pd.testing.assert_series_equal(actual, expected)
+    assert actual.index.equals(df.index)
+
+
 @pytest.mark.parametrize('cell_functions', [False, True])
 @pytest.mark.parametrize('formula,dtype,valid', [
     ('value > 0', bool, True),
@@ -574,6 +706,46 @@ def test_single_channel_and_channel_less_equations_use_exact_tokens(app):
     )
     dialog.test_cb()
     assert dialog.okButton.isEnabled()
+    dialog.deleteLater()
+
+
+def test_saved_channel_equation_is_one_channel_variable(app, monkeypatch):
+    """A saved per-channel combined measurement (e.g. `GFP_ratio`) must be
+    listed once and stay a channel input, so it can be reused in a new
+    equation (regression: it was duplicated as a channel-less input)."""
+    saved = config.ConfigParser()
+    saved['equations'] = {'GFP_ratio': 'GFP_mean / GFP_sum'}
+    saved['mixed_channels_equations'] = {}
+    saved['channelLess_equations'] = {'norm': '_mean / cell_area_pxl;_mean'}
+    monkeypatch.setattr(
+        measurements, 'read_saved_user_combine_config', lambda: saved
+    )
+    dialog = apps.CombineMetricsEquationDialog(['GFP', 'RFP'], False, False)
+    assert dialog.variableNames.count('GFP_ratio') == 1
+    assert 'GFP_ratio' not in dialog.channelLessVariables
+    # Saved channel-less equations stay channel-less inputs
+    assert '_norm' in dialog.channelLessVariables
+    assert {'GFP_norm', 'RFP_norm'} <= set(dialog.variableNames)
+    leaves = [
+        item for item in tree_items(
+            dialog.metricsTreeWidgets[0].invisibleRootItem()
+        )
+        if getattr(item, 'isCol', False)
+    ]
+    ratioItems = [item for item in leaves if item.variableName == 'GFP_ratio']
+    assert len(ratioItems) == 1
+    assert not ratioItems[0].isChannelLess
+    assert all(
+        item.variableName.startswith('_')
+        for item in leaves if item.isChannelLess
+    )
+
+    dialog.newColNameLineEdit.setText('double')
+    dialog.formulaEditWidget.setText('GFP_ratio * 2')
+    assert dialog.formulaEditWidget.referencedVariableNames() == ['GFP_ratio']
+    dialog.test_cb()
+    assert dialog.okButton.isEnabled()
+    assert dialog.getEquationsDict() == ({'GFP_double': 'GFP_ratio * 2'}, False)
     dialog.deleteLater()
 
 

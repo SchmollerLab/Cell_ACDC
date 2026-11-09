@@ -271,6 +271,54 @@ def test_annotation_dialog_loads_legacy_saved_annotation(app, monkeypatch):
         app.processEvents()
 
 
+def test_load_saved_annotation_restores_predictor_and_options(
+        app, monkeypatch
+    ):
+    """'Load annotation...' restores the predictor, auto-apply and toggle
+    options, like editing a saved state does (regression)."""
+    saved = annot_state(
+        predictor=equation('area > 12', consolidation='most'), autoApply=True
+    )
+    saved['keepActive'] = False
+    saved['isHideChecked'] = False
+    selection = Mock(
+        cancel=False, selectedItemsText=['Big'], _additionalButtons=[]
+    )
+    selection.listBox.count.return_value = 1
+    monkeypatch.setattr(
+        apps.widgets, 'QDialogListbox', Mock(return_value=selection)
+    )
+    dialog = apps.customAnnotationDialog({'Big': saved}, predictorOptions={})
+    try:
+        group = dialog.predictorGroupbox
+        assert group.predictorType() != 'equation'
+        assert not group.autoApplyCheckBox.isChecked()
+        dialog.loadSavedAnnot()
+        assert group.predictorType() == 'equation'
+        assert group.equationLineEdit.text() == 'area > 12'
+        assert group.autoApplyCheckBox.isChecked()
+        assert not dialog.keepActiveToggle.isChecked()
+        assert not dialog.hideAnnotTooggle.isChecked()
+        dialog.nameWidget.widget.setText('Big2')
+        dialog.cancel = False
+        dialog.clickedButton = dialog.okButton
+        event = Mock()
+        dialog.closeEvent(event)
+        event.ignore.assert_not_called()
+        assert not dialog.cancel
+        state = dialog.state
+        assert state['name'] == 'Big2'
+        assert state['predictor'] == equation(
+            'area > 12', consolidation='most'
+        )
+        assert state['autoApply'] is True
+        assert state['keepActive'] is False
+        assert state['isHideChecked'] is False
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
 def test_predictor_dialog_consolidation_roundtrip(app):
     dialog = apps.customAnnotationDialog(
         {}, state=annot_state(predictor=equation('area > 12', consolidation='most')),
@@ -393,7 +441,9 @@ def test_switching_annotation_tools_keeps_nonhidden_annotations(viewer, monkeypa
 def test_default_shortcut_skips_reserved(viewer):
     viewer.setCustomAnnotations([annot_state()])
     kwargs = viewer.customAnnotationDialogKwargs()
-    assert kwargs['state']['shortcut'] == 'S'
+    # 'S' is skipped: its auto shortcut Shift+S shuffles the colormap
+    assert 'S' in kwargs['reservedShortcuts']
+    assert kwargs['state']['shortcut'] == 'D'
     assert kwargs['existingNames'] == ['Big']
     assert kwargs['predictorOptions']['SizeT'] == 4
     button = viewer.customAnnotButtonByName('Big')
@@ -403,6 +453,93 @@ def test_default_shortcut_skips_reserved(viewer):
     assert 'state' not in kwargs
     assert kwargs['existingNames'] == []
     assert 'A' not in kwargs['reservedShortcuts']
+
+
+def test_auto_shortcut_never_duplicates_another_shortcut(viewer):
+    # 'S' (e.g., from an older configuration): Shift+S shuffles the colormap
+    # --> no auto shortcut instead of an ambiguous one
+    viewer.setCustomAnnotations([
+        annot_state(), annot_state('Small', 'S'),
+        annot_state('Tiny', 'Shift+Q')
+    ])
+    button = viewer.customAnnotButtonByName('Small')
+    toggleAction, autoAction = viewer.customAnnotShortcutActions[button]
+    assert toggleAction.shortcut() == QKeySequence('S')
+    assert autoAction.shortcut().isEmpty()
+    assert 'Randomly shuffle colormap' in button.toolTip()
+    # A Shift shortcut gets no auto shortcut (it would be the same)
+    button = viewer.customAnnotButtonByName('Tiny')
+    toggleAction, autoAction = viewer.customAnnotShortcutActions[button]
+    assert toggleAction.shortcut() == QKeySequence('Shift+Q')
+    assert autoAction.shortcut().isEmpty()
+    assert 'Auto: none' in button.toolTip()
+    shortcuts = [
+        action.shortcut().toString() for action in viewer.actions()
+        if not action.shortcut().isEmpty()
+    ]
+    assert len(shortcuts) == len(set(shortcuts))
+    # Q is reserved because Shift+Q is used by "Tiny"
+    assert 'Q' in viewer.reservedShortcuts()
+    assert 'Q' not in viewer.reservedShortcuts(excludeCustomAnnot=button)
+
+
+def test_annotation_shortcut_already_used_is_not_set(viewer):
+    # Configurations and 'Load annotation...' skip the dialog checks: two
+    # actions sharing a key would make Qt trigger neither of them
+    identifier = viewer.defaultTimepointIdentifier()
+    identifier.shortcut = 'Q'
+    timepointAction = viewer.addTimepointIdentifierItem(identifier)
+    states = [annot_state(), annot_state('Small', 'Q')]
+    viewer.setCustomAnnotations(states)
+    button = viewer.customAnnotButtonByName('Small')
+    toggleAction, autoAction = viewer.customAnnotShortcutActions[button]
+    assert toggleAction.shortcut().isEmpty()
+    assert autoAction.shortcut().isEmpty()
+    assert 'the shortcut "Q" (and its auto shortcut) is not set' in (
+        button.toolTip()
+    )
+    assert f'used by "{identifier.name}"' in button.toolTip()
+    assert timepointAction.shortcut() == QKeySequence('Q')
+    # Reloading frees the keys of the removed annotations first
+    viewer.setCustomAnnotations(states)
+    button = viewer.customAnnotButtonByName('Big')
+    toggleAction, autoAction = viewer.customAnnotShortcutActions[button]
+    assert toggleAction.shortcut() == QKeySequence('A')
+    assert autoAction.shortcut() == QKeySequence('Shift+A')
+    assert 'is not set' not in button.toolTip()
+
+
+@pytest.mark.parametrize('filename', sorted(
+    name for name in os.listdir(measurements_viewer.PREMADE_CONFIGURATIONS_PATH)
+    if name.endswith('.json')
+))
+def test_premade_shortcuts_do_not_collide(viewer, filename):
+    path = os.path.join(measurements_viewer.PREMADE_CONFIGURATIONS_PATH, filename)
+    with open(path) as file:
+        template = json.load(file)
+    items = (
+        template.get('timepoint_identifiers', [])
+        + template.get('custom_annotations', [])
+    )
+    shortcuts = []
+    for item in items:
+        shortcut = item.get('shortcut') or ''
+        if not shortcut:
+            continue
+        shortcuts.append(QKeySequence(shortcut).toString())
+        autoText = measurements_viewer.auto_shortcut_text(shortcut)
+        if autoText:
+            shortcuts.append(autoText)
+    reserved = viewer.reservedShortcuts()
+    assert not [shortcut for shortcut in shortcuts if shortcut in reserved]
+    assert len(shortcuts) == len(set(shortcuts))
+
+
+def test_annotation_symbols_are_above_image_layers(viewer):
+    viewer.setCustomAnnotations([annot_state()])
+    button = viewer.customAnnotButtonByName('Big')
+    item = viewer.customAnnotDict[button]['scatterPlotItem']
+    assert 0.57 < item.zValue() < 1
 
 
 def test_shortcut_toggles_selected_cell_for_entire_video(viewer):
@@ -428,6 +565,20 @@ def test_right_click_annotation_with_active_button(viewer):
     assert annotated(viewer, 'Big') == [(frame, 2) for frame in range(4)]
     viewer.setUncheckedAllCustomAnnotButtons()
     assert viewer.customAnnotButton is None
+
+
+def test_shortcut_annotates_cell_absent_from_current_frame(viewer):
+    # Cell 1 has no row at frame 3, but stays selected there
+    viewer.acdc_df = viewer.acdc_df.drop(index=(3, 1))
+    viewer.setCustomAnnotations([annot_state()])
+    button = viewer.customAnnotButtonByName('Big')
+    viewer.setSelectedID(1)
+    viewer.frame_i = 3
+    viewer.customAnnotShortcutTriggered(button)
+    assert annotated(viewer, 'Big') == [(frame, 1) for frame in range(3)]
+    assert viewer.editedCustomAnnotCells()['Big'] == {1}
+    viewer.customAnnotShortcutTriggered(button)
+    assert annotated(viewer, 'Big') == []
 
 
 def test_predictor_reevaluation_and_overwrite_warning(viewer, monkeypatch):
@@ -537,6 +688,189 @@ def test_modify_rename_and_remove(viewer, monkeypatch):
     assert 'Large' in viewer.acdc_df.columns
 
 
+def test_removing_annotation_column_warns_about_dependents(viewer, monkeypatch):
+    viewer.setCustomAnnotations([annot_state()])
+    button = viewer.customAnnotButtonByName('Big')
+    viewer.customAnnotShortcutTriggered(button)
+    assert 'Big' in viewer.acdc_df.columns
+    viewer.conditionalFormatting = {
+        'area': [{'condition': 'Big > 0', 'color': '#ff0000'}],
+        'Big': [{'condition': 'Big > 0', 'color': '#00ff00'}],
+    }
+    viewer.measurementsColors['Big'] = '#0000ff'
+    texts = []
+
+    class FakeMessageBox:
+        def __init__(self, *args, **kwargs):
+            self.cancel = False
+
+        def question(self, parent, title, text, buttonsTexts=()):
+            texts.append(text)
+            buttons = tuple(object() for _ in buttonsTexts)
+            # 'Remove also column with annotations'
+            self.clickedButton = buttons[-1]
+            return buttons
+
+    monkeypatch.setattr(
+        gui_custom_annotations.widgets, 'myMessageBox', FakeMessageBox
+    )
+    viewer.removeCustomAnnotButton(button)
+    assert len(texts) == 1
+    assert 'conditional formatting of "area"' in texts[0]
+    assert 'will fail until edited' in texts[0]
+    # The column's own formatting is removed with it, not reported
+    assert 'conditional formatting of "Big"' not in texts[0]
+    assert 'Big' not in viewer.acdc_df.columns
+    assert 'Big' not in viewer.conditionalFormatting
+    assert 'Big' not in viewer.measurementsColors
+    assert 'area' in viewer.conditionalFormatting
+
+
+def modify_annotation(viewer, monkeypatch, button, state):
+    state = dict(state)
+    state['symbolColor'] = measurements_viewer.QColor(*state['symbolColor'])
+    dialog = SimpleNamespace(
+        cancel=False, state=state, symbol='o', exec_=Mock(),
+        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock())
+    )
+    monkeypatch.setattr(
+        gui_custom_annotations.apps, 'customAnnotationDialog',
+        Mock(return_value=dialog)
+    )
+    viewer.customAnnotModify(button)
+
+
+def test_predictor_edit_keeps_assignments_of_visited_cells(viewer, monkeypatch):
+    ask = Mock(return_value='overwrite')
+    monkeypatch.setattr(viewer, 'askOverwriteManualTimepoints', ask)
+    viewer.setCustomAnnotations([annot_state(
+        predictor=equation('area < 8'), autoApply=True
+    )])
+    button = viewer.customAnnotButtonByName('Big')
+    viewer.setSelectedID(2)
+    viewer.setSelectedID(1)
+    viewer.customAnnotShortcutTriggered(button)
+    expected = [(frame, ID) for ID in (1, 2) for frame in range(4)]
+    assert sorted(annotated(viewer, 'Big')) == sorted(expected)
+    # Assignments saved in an earlier session: edits are not tracked
+    viewer.editedCustomAnnotCells()['Big'].clear()
+
+    modify_annotation(viewer, monkeypatch, button, annot_state(
+        predictor=equation('area > 100'), autoApply=True
+    ))
+    viewer.setSelectedID(2)
+    viewer.setSelectedID(1)
+    assert sorted(annotated(viewer, 'Big')) == sorted(expected)
+    ask.assert_not_called()
+    # Explicit re-evaluation applies the new predictor to visited cells
+    assert viewer.reevaluateAllCellsCustomAnnot(button)
+    assert annotated(viewer, 'Big') == []
+
+
+def test_enabling_auto_apply_keeps_assignments_of_visited_cells(
+        viewer, monkeypatch
+    ):
+    viewer.setCustomAnnotations([annot_state(
+        predictor=equation('area < 8'), autoApply=False
+    )])
+    button = viewer.customAnnotButtonByName('Big')
+    viewer.setSelectedID(2)
+    viewer.setSelectedID(1)
+    modify_annotation(viewer, monkeypatch, button, annot_state(
+        predictor=equation('area < 8'), autoApply=True
+    ))
+    viewer.setSelectedID(2)
+    viewer.setSelectedID(1)
+    assert annotated(viewer, 'Big') == []
+    # Explicit re-evaluation still applies the predictor
+    assert viewer.reevaluateAllCellsCustomAnnot(button)
+    assert annotated(viewer, 'Big') == [(frame, 2) for frame in range(4)]
+
+
+def test_removal_note_lists_phase_rules_using_column_as_input(viewer):
+    viewer.setCustomAnnotations([annot_state()])
+    viewer.phaseTranslatorRules = [
+        {'name': 'Boundary', 'timepoints': ['timepoint_A'],
+         'annotations': [], 'predictor': None},
+        {'name': 'Required', 'timepoints': [], 'annotations': ['Big'],
+         'predictor': None},
+    ]
+    assert 'phase rule "Required"' in viewer.customAnnotColumnRemovalNote('Big')
+    assert viewer.columnDependents(
+        'timepoint_A', includePhaseInputs=True
+    ) == ['phase rule "Boundary"']
+    # Renaming rewrites boundaries/required annotations: not a dependent
+    assert viewer.columnDependents('timepoint_A') == []
+    assert viewer.columnDependents('Big', excludeOutput='Big') == []
+
+
+def test_loading_existing_column_keeps_assignments_of_visited_cells(viewer):
+    viewer.acdc_df['Big'] = [0, 0, 0, 0, 1, 1, 1, 1]
+    viewer.acdc_df[measurements_viewer.VISITED_COLUMN] = True
+    viewer.setCustomAnnotations([annot_state(
+        predictor=equation('area > 100'), autoApply=True
+    )])
+    viewer.setSelectedID(2)
+    viewer.setSelectedID(1)
+    assert annotated(viewer, 'Big') == [(frame, 2) for frame in range(4)]
+
+
+def test_rename_is_refused_while_other_predictors_use_the_column(viewer):
+    viewer.setCustomAnnotations([
+        annot_state(),
+        annot_state('NotBig', 'D', predictor=equation('Big == 0')),
+    ])
+    viewer.conditionalFormatting['area'] = [
+        {'condition': 'Big == 1', 'color': '#ff0000'}
+    ]
+    validate = viewer.customAnnotationDialogKwargs(
+        state=viewer.customAnnotDict[viewer.customAnnotButtonByName('Big')]['state']
+    )['predictorOptions']['validateDependencies']
+    with pytest.raises(ValueError) as error:
+        validate('Large', {'type': 'none'})
+    assert 'custom annotation "NotBig"' in str(error.value)
+    assert 'conditional formatting of "area"' in str(error.value)
+    # Keeping the name (or editing the dependent itself) is allowed
+    validate('Big', {'type': 'none'})
+    viewer.validatePredictorDependencies('NotBig', 'NotLarge', equation('Big == 0'))
+
+
+def test_rename_onto_existing_table_column_is_refused(viewer):
+    # e.g., a column kept by 'Remove only button' or a measurement
+    viewer.acdc_df['mitotic'] = 0
+    viewer.setCustomAnnotations([annot_state()])
+    validate = viewer.customAnnotationDialogKwargs(
+        state=viewer.customAnnotDict[viewer.customAnnotButtonByName('Big')]['state']
+    )['predictorOptions']['validateDependencies']
+    for name in ('mitotic', 'area'):
+        with pytest.raises(ValueError, match='already a column of the table'):
+            validate(name, {'type': 'none'})
+    validate('Big', {'type': 'none'})
+    # A new annotation may reuse an existing (e.g., exported) column
+    validate = viewer.customAnnotationDialogKwargs()['predictorOptions'][
+        'validateDependencies'
+    ]
+    validate('mitotic', {'type': 'none'})
+    assert list(viewer.acdc_df.columns).count('mitotic') == 1
+
+
+def test_rename_moves_selection_and_formatting(viewer, monkeypatch):
+    viewer.setCustomAnnotations([annot_state()])
+    button = viewer.customAnnotButtonByName('Big')
+    for item in viewer.columnsModel.measurementItems():
+        if item.text() == 'Big':
+            item.setCheckState(measurements_viewer.Qt.Checked)
+    rules = [{'condition': 'area > 12', 'color': '#ff0000'}]
+    viewer.conditionalFormatting['Big'] = rules
+    color = measurements_viewer.QColor(0, 255, 0)
+    viewer.measurementsColors['Big'] = color
+    modify_annotation(viewer, monkeypatch, button, annot_state(name='Large'))
+    assert 'Large' in viewer.checkedColumns()
+    assert 'Big' not in viewer.checkedColumns()
+    assert viewer.conditionalFormatting == {'Large': rules}
+    assert viewer.measurementsColors == {'Large': color}
+
+
 def test_reload_keeps_annotations(viewer, monkeypatch):
     viewer.setCustomAnnotations([annot_state()])
     button = viewer.customAnnotButtonByName('Big')
@@ -635,6 +969,10 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())
+    monkeypatch.setattr(
+        viewer, 'selectConfigurationInput',
+        lambda config: viewer.configurationInputOptions(config)[0]
+    )
     assert load_configuration(viewer, filepath=str(filepath))
     assert viewer.customAnnotNames() == ['Big', 'Small']
     button = viewer.customAnnotButtonByName('Small')

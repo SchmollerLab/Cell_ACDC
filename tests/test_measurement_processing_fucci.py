@@ -163,6 +163,43 @@ def test_ramp_detection_segments_gaps_and_min_length():
     assert not RampDetection.run(bumpy, gap_frames=0, min_length=6).any()
 
 
+def test_ramp_detection_does_not_bridge_long_opposite_ramp():
+    # Regression: with min_length <= gap_frames, a falling run long enough
+    # by itself was bridged by the rise and also kept as a fall, giving 0
+    rise = np.arange(21, dtype=float)
+    fall = rise[-1] - np.arange(1, 7, dtype=float)
+    rise2 = fall[-1] + np.arange(1, 21, dtype=float)
+    signal = np.concatenate([rise, fall, rise2])
+    result = RampDetection.run(
+        signal, gap_frames=10, min_length=5, relative=False
+    )
+    assert list(result[:20]) == [1] * 20
+    assert list(result[20:26]) == [-1] * 6
+    assert list(result[26:46]) == [1] * 20
+    assert result[-1] == 0
+    assert list(result) == list(RampDetection.run(
+        signal, gap_frames=3, min_length=5, relative=False
+    ))
+
+    # The pieces of a bridged ramp left after removing the opposite ramp
+    # must still be long enough
+    signal = np.array(
+        [0, 1, 2, 3, 2, 1, 0, -1, -2, -3, -2, -1, 0], dtype=float
+    )
+    assert list(RampDetection.run(
+        signal, gap_frames=10, min_length=5, relative=False
+    )) == [0, 0, 0, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0]
+
+    # Short runs that bridge in both directions still cancel out where they
+    # overlap (only the first rise and the last fall are not overlapped)
+    oscillation = np.tile(np.r_[np.arange(8.0), np.arange(8.0, 0, -1)], 6)
+    result = RampDetection.run(
+        oscillation, gap_frames=10, min_length=40, relative=False
+    )
+    assert list(result[:8]) == [1] * 8 and list(result[-8:-1]) == [-1] * 7
+    assert not result[8:-8].any()
+
+
 def test_ramp_detection_threshold_relative_and_missing_values():
     signal = np.array([100, 101, 102, 103, np.nan, 104], dtype=float)
     result = RampDetection.run(signal, gap_frames=0, min_length=1)
@@ -217,7 +254,7 @@ def test_ramp_detection_relative_change_zero_and_missing_values():
 
 @pytest.mark.parametrize('kwargs', [
     {'threshold': -1.0}, {'gap_frames': -1}, {'min_length': 0},
-    {'min_length': 2.5}, {'gap_frames': True}
+    {'min_length': 2.5}, {'gap_frames': True}, {'relative': 'False'}
 ])
 def test_ramp_detection_rejects_invalid_options(kwargs):
     with pytest.raises(ValueError):
@@ -275,6 +312,39 @@ def test_fucci_pipeline_on_synthetic_cell():
     # Daughters have no full cycle and no daughters themselves
     assert timepoint_frame(table, 2, 'M_start') is None
     assert table.xs(2, level='Cell_ID')['Arrested'].eq(0).all()
+
+
+def test_fucci_pipeline_with_dashed_channel_names():
+    """Channel names that are not identifiers stay quoted in the equations
+    of the resolved template and give the same result."""
+    expected, _ = run_fucci_pipeline(
+        synthetic_fucci_table(), {'GEMININ': 'GFP', 'CDT1': 'mCherry'},
+        SizeT=170
+    )
+    df = synthetic_fucci_table().rename(columns={
+        'GFP_mean': 'mAG-hGem_mean', 'mCherry_mean': 'mKO2-hCdt1_mean'
+    })
+    table, configuration = run_fucci_pipeline(
+        df, {'GEMININ': 'mAG-hGem', 'CDT1': 'mKO2-hCdt1'}, SizeT=170
+    )
+    assert configuration['combined_measurements'][0]['equations'][
+        'fucci_ramp_pattern'
+    ] == '`mAG-hGem_ramp` - `mKO2-hCdt1_ramp`'
+    assert 'mKO2-hCdt1_fucci' in table
+    pd.testing.assert_series_equal(table['phase'], expected['phase'])
+    for column in ('fucci_crossing', 'Arrested', *(
+            f'{TIMEPOINT_PREFIX}{name}' for name in
+            ('G1_S', 'Cdt1_peak', 'Crossing', 'G2_start', 'M_start'))):
+        pd.testing.assert_series_equal(table[column], expected[column])
+    rules = configuration['conditional_formatting']['mKO2-hCdt1_fucci']
+    cell = table.xs(1, level='Cell_ID')
+    matched = MeasurementsViewerWin.evaluateConditionalFormatting(
+        cell, rules, ID=1, SizeT=170
+    )
+    assert matched.tolist() == np.select(
+        [cell['mKO2-hCdt1_ramp'] == 1, cell['mKO2-hCdt1_ramp'] == -1],
+        [0, 1], -1
+    ).tolist()
 
 
 def test_fucci_pipeline_matches_original_classifier():

@@ -1,6 +1,6 @@
 """Mixin classes with the 'Viewer' mode tools of `cellacdc.gui.guiWin` 
-shared with other windows (e.g., `cellacdc.measurements_viewer.SignalsViewerWin`): 
-zoom, ruler, scale bar and timestamp, color scheme, labels colormap, image 
+shared with other windows (e.g.,
+`cellacdc.measurements_viewer.MeasurementsViewerWin`): zoom, ruler, scale bar and timestamp, color scheme, labels colormap, image 
 properties, cell cycle table, objects count, search ID, hover info, keyboard 
 shortcuts, default settings, slideshow, 3D viewer and region properties 
 dock widget.
@@ -546,8 +546,26 @@ class CcaTableGuiElements:
         posData = self.data[self.pos_i]
         zoomIDs = self.getZoomIDs()
         
-        df = posData.allData_li[posData.frame_i]['acdc_df']        
+        df = posData.allData_li[posData.frame_i]['acdc_df']
         current_cca_df = posData.cca_df
+        if current_cca_df is None:
+            # E.g., measurements viewer on a frame without annotations
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'There are <b>no cell cycle annotations</b> on frame '
+                f'number {posData.frame_i+1}.'
+            )
+            msg.warning(self, 'No cell cycle annotations', txt)
+            return
+
+        if current_cca_df.empty:
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'Cell cycle annotations\' table is <b>empty</b>.<br>'
+            )
+            msg.warning(self, 'Table empty', txt)
+            return
+
         if zoomIDs is not None:
             df = df.loc[zoomIDs]
             current_cca_df = current_cca_df.loc[zoomIDs]
@@ -584,16 +602,7 @@ class CcaTableGuiElements:
             cca_df = None
             self.logger.info(cca_df)
         self.logger.info('========================')
-        if current_cca_df is None:
-            return
-        if current_cca_df.empty:
-            msg = widgets.myMessageBox()
-            txt = html_utils.paragraph(
-                'Cell cycle annotations\' table is <b>empty</b>.<br>'
-            )
-            msg.warning(self, 'Table empty', txt)
-            return
-        
+
         df = posData.add_tree_cols_to_cca_df(
             current_cca_df, frame_i=posData.frame_i
         )
@@ -993,12 +1002,21 @@ class SearchIDGuiElements:
         return msg.clickedButton == yesButton
 
     def setAllIDs(self, onlyVisited=False):
+        """Collect the IDs of all frames into `posData.allIDs`.
+
+        Positions without stored data (`allData_li` missing or None) are
+        skipped and keep their current `allIDs`: in the measurements viewer
+        `allData_li` is created lazily by `initPosAnnotData` when a
+        position is first displayed (which also sets its `allIDs`).
+        """
         for posData in self.data:
+            if getattr(posData, 'allData_li', None) is None:
+                continue
             posData.allIDs = set()
             for frame_i in range(len(posData.segm_data)):
                 if frame_i >= len(posData.allData_li):
                     break
-                
+
                 lab = posData.allData_li[frame_i]['labels']
                 if lab is None and onlyVisited:
                     break
@@ -1174,6 +1192,11 @@ class HoverInfoGuiElements:
         return rawImg
 
 class ShortcutsGuiElements:
+    # Host hook: windows without a delete-object tool (e.g. the
+    # measurements viewer) set this to False to hide the "Delete object"
+    # row of the shortcut editor and keep their `delObjAction` unchanged
+    showDeleteObjectShortcut = True
+
     def initShortcuts(self):
         from . import config
         cp = config.ConfigParser()
@@ -1350,7 +1373,7 @@ class ShortcutsGuiElements:
             mouseBindings=self.mouseBindings,
             hard_shortcuts=hard_shortcuts,
             highlighted_shortcut=highlighted_shortcut,
-            show_delete_object_shortcut=False
+            show_delete_object_shortcut=self.showDeleteObjectShortcut
         )
         win.exec_()
         if win.cancel:
@@ -1358,7 +1381,8 @@ class ShortcutsGuiElements:
             return
 
         self.mouseBindings = win.mouseBindings
-        self.delObjAction = win.delObjAction
+        if self.showDeleteObjectShortcut:
+            self.delObjAction = win.delObjAction
         self.zoomOutKeyValue = win.zoomOutKeyValue
         self.setShortcuts(win.customShortcuts)
         self.showingShortcutEditorDialog = False
@@ -1934,8 +1958,13 @@ class DefaultSettingsGuiElements:
         df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
         
         if df.at['is_bw_inverted', 'value'] == 'Yes':
-            self.invertBw(update=False)
-        
+            self.invertBw(False, update=False)
+            # invertBw does not touch the window's own menu action: sync it
+            # without re-triggering invertBw (updateAllImages runs below)
+            self.invertBwAction.blockSignals(True)
+            self.invertBwAction.setChecked(False)
+            self.invertBwAction.blockSignals(False)
+
         df = df[~df.index.str.contains('lab_cmap')]
         df.to_csv(self.settings_csv_path)
         self.imgGrad.restoreState(df)

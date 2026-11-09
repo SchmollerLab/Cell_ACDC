@@ -80,5 +80,17 @@ utilsInfo = {
         Not documented yet. You can ask help about utilities 
         on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
+    """),
+
+    'Measurements viewer...': ("""
+        Open the <b>measurements viewer</b>, a window to plot per-cell
+        time courses of the measurements in the <code>acdc_output</code>
+        tables next to the images, or measurements vs measurements in scatter 
+        plots.<br><br>
+
+        It can also compare and combine measurements, apply measurement
+        processing steps, identify time points, translate them into
+        phases and annotate cells. Configurations can be saved and
+        loaded again.
     """)
 }

@@ -250,6 +250,7 @@ class mainWin(QMainWindow):
         self.guiWins = []
         self.spotmaxWins = []
         self.dataPrepWins = []
+        self.measurementsViewerWins = []
         self._version = None
         self.progressWin = None
         self.forceClose = False
@@ -441,6 +442,7 @@ class mainWin(QMainWindow):
         measurementsMenu.addAction(self.countObjectsInSegmAction)
         measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
         measurementsMenu.addAction(self.generateMothBudTotTableAction) 
+        measurementsMenu.addAction(self.launchMeasurementsViewerAction)
         
         concatMenu = utilsMenu.addMenu('Concatenate')
         concatMenu.addAction(self.concatAcdcDfsAction)    
@@ -836,6 +838,9 @@ class mainWin(QMainWindow):
         self.generateMothBudTotTableAction = QAction(
             'Generate mothers, buds, and total cell table...'
         )
+        self.launchMeasurementsViewerAction = QAction(
+            'Measurements viewer...'
+        )
         self.toSymDivAction = QAction(
             'Add lineage tree table to one or more experiments...'
         )
@@ -938,6 +943,9 @@ class mainWin(QMainWindow):
         self.generateMothBudTotTableAction.triggered.connect(
             self.launchGenerateMothBudTotTableUtil
         )        
+        self.launchMeasurementsViewerAction.triggered.connect(
+            self.launchMeasurementsViewer
+        )
         
         self.batchConverterAction.triggered.connect(
             self.launchImageBatchConverter
@@ -2073,6 +2081,22 @@ class mainWin(QMainWindow):
         except ValueError:
             pass
         self._gc_collect()
+
+    def launchMeasurementsViewer(self, checked=False):
+        self.logger.info('Opening measurements viewer...')
+        # Imported lazily: the viewer module is large and only needed here
+        from . import measurements_viewer
+        win = measurements_viewer.MeasurementsViewerWin()
+        self.measurementsViewerWins.append(win)
+        win.sigClosed.connect(self.measurementsViewerClosed)
+        win.show()
+
+    def measurementsViewerClosed(self, win):
+        try:
+            self.measurementsViewerWins.remove(win)
+        except ValueError:
+            pass
+        self._gc_collect()
         
     def _gc_collect(self):
         QTimer.singleShot(100, gc.collect)
@@ -2245,6 +2269,8 @@ class mainWin(QMainWindow):
             openModules.extend(self.guiWins)
         if self.spotmaxWins:
             openModules.extend(self.spotmaxWins)
+        if self.measurementsViewerWins:
+            openModules.extend(self.measurementsViewerWins)
         return openModules
 
 

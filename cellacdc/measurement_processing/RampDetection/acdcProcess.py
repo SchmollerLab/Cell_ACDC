@@ -65,7 +65,12 @@ class Model:
     The output is +1 where the measurement rises, -1 where it falls and 0
     elsewhere (no sustained trend). A ramp is a run of consecutive
     observations whose (relative) change has the same sign, after short
-    interruptions are bridged and short runs are discarded. Use it on a
+    interruptions are bridged and short runs are discarded. A run of the
+    opposite direction that is at least `min_length` observations long by
+    itself is not bridged (it can only fit in a bridged interruption when
+    `min_length` <= `gap_frames`). Where rising and falling ramps still
+    overlap (e.g. an oscillation of short runs that bridges in both
+    directions), the output is 0. Use it on a
     smoothed measurement (e.g. after "Smooth measurement"), since noise
     otherwise breaks ramps into short pieces.
 
@@ -99,7 +104,9 @@ class Model:
             With 0, only the sign of the change matters.
         gap_frames : int, optional
             Interruptions of at most this many observations inside a ramp
-            are bridged (e.g. 10 frames = 50 min at 5 min per frame).
+            are bridged (e.g. 10 frames = 50 min at 5 min per frame). A run
+            of the opposite direction with at least `min_length`
+            observations is never bridged.
         min_length : int, optional
             Minimum number of observations of a ramp. Shorter rising or
             falling runs are set to 0 (e.g. 40 frames = 3.3 h at 5 min per
@@ -121,6 +128,8 @@ class Model:
         if (isinstance(threshold, bool)
                 or not isinstance(threshold, numbers.Real) or threshold < 0):
             raise ValueError('threshold must be a number >= 0.')
+        if not isinstance(relative, (bool, np.bool_)):
+            raise ValueError('relative must be a boolean.')
         gap_frames = _check_int(gap_frames, 'gap_frames', 0)
         min_length = _check_int(min_length, 'min_length', 1)
         values = np.asarray(measurement, dtype=float)
@@ -130,10 +139,22 @@ class Model:
             if relative:
                 change = change / _relative_scale(values)
             change = np.nan_to_num(change, nan=0.0)
-            up = change > threshold
-            down = change < -threshold
-            up = _keep_long_runs(_fill_gaps(up, gap_frames), min_length)
-            down = _keep_long_runs(_fill_gaps(down, gap_frames), min_length)
+            raw_up = change > threshold
+            raw_down = change < -threshold
+            up = _keep_long_runs(_fill_gaps(raw_up, gap_frames), min_length)
+            down = _keep_long_runs(
+                _fill_gaps(raw_down, gap_frames), min_length
+            )
+            # A run that is long enough without bridging is never bridged
+            # over by the opposite direction (only possible when
+            # min_length <= gap_frames); the remaining pieces of the
+            # bridged ramp must still be long enough.
+            up = _keep_long_runs(
+                up & ~_keep_long_runs(raw_down, min_length), min_length
+            )
+            down = _keep_long_runs(
+                down & ~_keep_long_runs(raw_up, min_length), min_length
+            )
             result[:-1] = up.astype(float) - down.astype(float)
         result[np.isnan(values)] = np.nan
         return result

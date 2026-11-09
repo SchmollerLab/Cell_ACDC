@@ -1,3 +1,5 @@
+import configparser
+
 import pytest
 from qtpy.QtCore import QItemSelectionModel, QModelIndex
 from qtpy.QtWidgets import QApplication
@@ -39,7 +41,7 @@ def flat_search_reference(names):
     return flat, reference
 
 
-def test_processor_signature_provides_typed_parameter_help():
+def test_processor_signature_provides_typed_parameter_help(dummy_processor):
     processor = measurement_processing.MEASUREMENT_PROCESSING_MAPPER[
         'Smooth measurement'
     ]
@@ -78,7 +80,7 @@ def test_processing_window_uses_integer_control_and_docstring_help(app, monkeypa
     selector.deleteLater()
 
 
-def test_processing_recipe_roundtrips_typed_parameters(app):
+def test_processing_recipe_roundtrips_typed_parameters(app, dummy_processor):
     original = apps_measurements_viewer.MeasurementProcessingParamsWidget()
     original.stepsWidgets[1]['step_kwargs'] = {'window': 7}
     original.addStep()
@@ -92,10 +94,68 @@ def test_processing_recipe_roundtrips_typed_parameters(app):
     loaded.deleteLater()
 
 
-def test_image_processing_keeps_its_own_registry(app):
+def test_processing_recipe_roundtrips_bool_parameters(app, tmp_path, monkeypatch):
+    """INI recipes store strings: 'False' must not be loaded as True."""
+    original = apps_measurements_viewer.MeasurementProcessingParamsWidget()
+    selector = original.stepsWidgets[1]['selector']
+    selector.setCurrentText('Ramp detection')
+    selector.setParams('Ramp detection', {
+        'threshold': 0.5, 'gap_frames': 3, 'min_length': 2, 'relative': False
+    })
+    expected = [{'method': 'Ramp detection', 'kwargs': {
+        'threshold': 0.5, 'gap_frames': 3, 'min_length': 2, 'relative': False
+    }}]
+    assert original.recipe() == expected
+
+    ini_path = tmp_path / 'recipe.ini'
+    with open(ini_path, 'w') as ini_file:
+        original.recipeConfigPars('acdc').write(ini_file)
+    cp = configparser.ConfigParser()
+    cp.read(ini_path)
+    loaded = apps_measurements_viewer.MeasurementProcessingParamsWidget()
+    loaded.loadRecipe({section: cp[section] for section in cp.sections()})
+    loaded_recipe = loaded.recipe()
+    assert loaded_recipe == expected
+    kwargs = loaded_recipe[0]['kwargs']
+    assert kwargs['relative'] is False
+    assert type(kwargs['threshold']) is float
+    assert type(kwargs['gap_frames']) is int
+
+    shown = {}
+
+    def accept(dialog):
+        for control in dialog.argsWidgets:
+            shown[control.name] = control.valueGetter(control.widget)
+        dialog.ok_cb()
+
+    monkeypatch.setattr(apps.FunctionParamsDialog, 'exec_', accept)
+    loaded.stepsWidgets[1]['selector'].askSetParams()
+    assert shown['relative'] is False
+    assert shown['threshold'] == 0.5
+    original.deleteLater()
+    loaded.deleteLater()
+
+
+def test_processing_recipe_rejects_invalid_bool_value(app, monkeypatch):
+    warnings = []
+    monkeypatch.setattr(
+        widgets.myMessageBox, 'warning',
+        lambda self, parent, title, text, *args, **kwargs: warnings.append(title)
+    )
+    widget = apps_measurements_viewer.MeasurementProcessingParamsWidget()
+    widget.loadRecipe({'acdc.preprocess.step1': {
+        'method': 'Ramp detection', 'relative': 'maybe'
+    }})
+    assert warnings == ['Invalid measurement recipe']
+    assert widget.recipe()[0]['method'] != 'Ramp detection'
+    widget.deleteLater()
+
+
+def test_image_processing_keeps_its_own_registry(app, dummy_processor):
     image_selector = widgets.PreProcessingSelector()
     signal_selector = widgets.SignalProcessingSelector()
     assert image_selector.preprocessMapper is not signal_selector.preprocessMapper
+    assert 'Dummy' in signal_selector.preprocessMapper
     assert 'Dummy' not in image_selector.preprocessMapper
     image_selector.deleteLater()
     signal_selector.deleteLater()

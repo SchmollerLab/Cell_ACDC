@@ -1,6 +1,6 @@
 """Navigation GUI elements (frames, z-slices, objects, recent paths, LUT) 
 shared between the main GUI (`gui.guiWin`) and other windows (e.g., 
-`measurements_viewer.SignalsViewerWin`).
+`measurements_viewer.MeasurementsViewerWin`).
 
 The classes are mixins meant to be inherited together with `QMainWindow`. 
 They expect the host window to define:

@@ -10,7 +10,9 @@ from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
 from cellacdc import widgets
-from tests.conftest import AutoAnsweredDialogWarning, _DialogWatchdog
+from tests.conftest import (
+    MAX_ATTEMPTS, AutoAnsweredDialogWarning, _DialogWatchdog
+)
 
 SAFETY_TIMEOUT_MS = 5000
 
@@ -126,3 +128,107 @@ def test_dialog_whose_answer_raises_is_rejected(app, safety_net):
         result = dialog.exec()
     assert not safety_net
     assert result == 0  # QDialog.Rejected
+
+
+class _ValidatingDialog(QDialog):
+    """Dialog whose ``ok_cb`` always fails validation with a warning box."""
+
+    def __init__(self, useMyMessageBox):
+        super().__init__()
+        self.useMyMessageBox = useMyMessageBox
+        self.warnings = []
+
+    def ok_cb(self):
+        if self.useMyMessageBox:
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.warning(self, 'Invalid input', 'Name is empty')
+        else:
+            msg = QMessageBox(self)
+            msg.setWindowTitle('Invalid input')
+            msg.setText('Name is empty')
+            msg.exec()
+        self.warnings.append(msg)
+
+
+@pytest.mark.parametrize('useMyMessageBox', [False, True])
+def test_dialog_opened_by_answer_is_answered(
+        app, safety_net, _auto_answer_blocking_dialogs, useMyMessageBox
+    ):
+    # The answer used to run inside the watchdog's timer slot, which Qt does
+    # not fire again while it runs: the validation warning opened by ok_cb
+    # stayed open forever
+    watchdog = _auto_answer_blocking_dialogs
+    dialog = _ValidatingDialog(useMyMessageBox)
+    dialog.setWindowTitle('Validating dialog')
+    with pytest.warns(AutoAnsweredDialogWarning, match='Invalid input'):
+        result = dialog.exec()
+    assert not safety_net
+    assert result == 0  # QDialog.Rejected
+    # Answered (validation failed) MAX_ATTEMPTS times, then closed
+    assert len(dialog.warnings) == MAX_ATTEMPTS
+    outer = [
+        entry[2] for entry in watchdog.answered
+        if entry[1] == 'Validating dialog'
+    ]
+    assert outer[:-1] == ['called ok_cb()'] * MAX_ATTEMPTS
+    assert outer[-1].startswith('closed')
+    inner = [
+        entry for entry in watchdog.answered if entry[1] == 'Invalid input'
+    ]
+    assert len(inner) == MAX_ATTEMPTS
+    assert not [entry for entry in inner if 'closed' in entry[2]]
+    assert not watchdog.pending
+
+
+def test_sequential_dialogs_get_fresh_state(
+        app, safety_net, _auto_answer_blocking_dialogs
+    ):
+    # Freed dialogs give their id() to the next one: state keyed by a stale
+    # id skipped the grace period and, from the third dialog on, exceeded
+    # MAX_ATTEMPTS so the dialog was closed (cancelled) instead of OK'd
+    watchdog = _auto_answer_blocking_dialogs
+    for i in range(4):
+        msg = QMessageBox()
+        msg.setWindowTitle(f'Sequential {i}')
+        msg.setStandardButtons(_standard('Ok') | _standard('Cancel'))
+        msg.setDefaultButton(_standard('Ok'))
+        with pytest.warns(AutoAnsweredDialogWarning, match=f'Sequential {i}'):
+            msg.exec()
+        assert msg.clickedButton() is msg.button(_standard('Ok'))
+        del msg
+    for i in range(4):
+        msg = widgets.myMessageBox(wrapText=False)
+        with pytest.warns(AutoAnsweredDialogWarning, match=f'Custom seq {i}'):
+            msg.warning(
+                None, f'Custom seq {i}', 'Proceed?',
+                buttonsTexts=('Cancel', 'Ok')
+            )
+        assert not msg.cancel
+        del msg
+    assert not safety_net
+    assert not [entry for entry in watchdog.answered if 'closed' in entry[2]]
+    # Nothing visible is left, so no state may linger for reused ids
+    assert not watchdog.firstSeen and not watchdog.attempts
+
+
+def test_stale_state_is_dropped_for_reused_id(app):
+    watchdog = _DialogWatchdog()
+    try:
+        dialog = QDialog()
+        dialog.show()
+        key = id(dialog)
+        # Pretend a freed dialog with the same id was seen long ago and
+        # already answered MAX_ATTEMPTS times
+        watchdog.firstSeen[key] = 0.0
+        watchdog.attempts[key] = 99
+        dialog.hide()
+        watchdog.visibleDialogs()
+        assert key not in watchdog.firstSeen
+        assert key not in watchdog.attempts
+        dialog.show()
+        watchdog.visibleDialogs()
+        assert watchdog.firstSeen[key] > 0.0
+        assert key not in watchdog.attempts
+        dialog.hide()
+    finally:
+        watchdog.stop()

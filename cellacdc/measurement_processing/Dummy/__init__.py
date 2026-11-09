@@ -1,1 +1,0 @@
-"""Identity measurement processor."""

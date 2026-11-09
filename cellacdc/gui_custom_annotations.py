@@ -115,7 +115,19 @@ class CustomAnnotationsGuiElements:
     
     def customAnnotationDialogKwargs(self, state=None):
         return {}
-    
+
+    def canDeleteSavedCustomAnnot(self):
+        """Whether the dialogs listing the saved (global) custom annotations
+        offer to delete them. Hosts whose `saveCustomAnnot` does not write
+        the global file (measurements viewer) return False, otherwise the
+        deletion would not persist."""
+        return True
+
+    def customAnnotColumnRemovalNote(self, name):
+        """Extra text for the removal question of custom annotation `name`
+        (e.g. what reads its column). Empty in the main GUI."""
+        return ''
+
     def customAnnotToolTip(self, state):
         return myutils.getCustomAnnotTooltip(state)
     
@@ -393,13 +405,17 @@ class CustomAnnotationsGuiElements:
             msg.warning(self, 'No annotations saved', txt)
             return
         
+        additionalButtons = (
+            ('Delete selected annnotations', )
+            if self.canDeleteSavedCustomAnnot() else ()
+        )
         self.selectAnnotWin = widgets.QDialogListbox(
             'Load previously used custom annotation(s)',
             'Select annotations to load:', items,
-            additionalButtons=('Delete selected annnotations', ),
+            additionalButtons=additionalButtons,
             parent=self, multiSelection=True
         )
-        for button in self.selectAnnotWin._additionalButtons:
+        for button in getattr(self.selectAnnotWin, '_additionalButtons', ()):
             button.disconnect()
             button.clicked.connect(self.deleteSavedAnnotation)
         self.selectAnnotWin.exec_()
@@ -449,7 +465,8 @@ class CustomAnnotationsGuiElements:
         self.readSavedCustomAnnot()
 
         self.addAnnotWin = apps.customAnnotationDialog(
-            self.savedCustomAnnot, parent=self, 
+            self.savedCustomAnnot, parent=self,
+            allowDeleteSaved=self.canDeleteSavedCustomAnnot(),
             **self.customAnnotationDialogKwargs()
         )
         self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
@@ -573,6 +590,7 @@ class CustomAnnotationsGuiElements:
         oldState = self.customAnnotDict[button]['state']
         self.addAnnotWin = apps.customAnnotationDialog(
             self.savedCustomAnnot, parent=self, state=oldState,
+            allowDeleteSaved=self.canDeleteSavedCustomAnnot(),
             **self.customAnnotationDialogKwargs(state=oldState)
         )
         self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
@@ -702,9 +720,14 @@ class CustomAnnotationsGuiElements:
         if askHow:
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph("""
-                Do you want to <b>remove also the column with annotations</b> or 
+                Do you want to <b>remove also the column with annotations</b> or
                 only the annotation button?<br>
             """)
+            note = self.customAnnotColumnRemovalNote(
+                self.customAnnotDict[button]['state']['name']
+            )
+            if note:
+                txt = f'{txt}{html_utils.paragraph(note)}'
             _, removeOnlyButton, removeColButton = msg.question(
                 self, 'Remove only button?', txt, 
                 buttonsTexts=(

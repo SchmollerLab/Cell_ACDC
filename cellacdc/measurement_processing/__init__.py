@@ -10,9 +10,17 @@ time windows count observations, not elapsed time or absent frames.
 Like segmentation models, each processor lives in its own package containing
 an ``acdcProcess.py`` module with a ``Model`` class. The module's ``name`` is
 the label stored in recipes. Public processor folders are discovered locally;
-no model server or separate environment is needed.
+no model server or separate environment is needed. A processor folder that
+fails to import, lacks a non-empty string ``name`` or a ``Model`` with a
+static ``run``, or reuses the ``name`` of a processor loaded earlier
+(``SmoothMeasurement`` first, then folder name order) is skipped with a
+``RuntimeWarning`` and never blocks startup; recipes and configurations that
+reference it are rejected as unknown methods.
 
-``Model.run`` takes the measurement as its required first argument. Annotate
+Unlike segmentation models, ``Model`` is never instantiated: ``Model.run``
+must be a ``@staticmethod`` (it is called on the class; a ``run(self, ...)``
+instance method is skipped at load time). It takes the measurement as its
+required first argument. Annotate
 optional parameters and document them in a NumPy-style ``Parameters`` section:
 the processing window uses the same argument parser as models to build typed
 controls and parameter help buttons. Class docstrings provide step-level help.
@@ -20,28 +28,71 @@ Per-frame and timelapse processors receive a one-dimensional NumPy array;
 bulk processors receive a DataFrame. Return the same shape (and, for bulk
 processing, the same index and columns).
 """
+import inspect
+import warnings
 from importlib import import_module
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-def _load_processors():
+def _warn_skipped_processor(folder_name, reason):
+    warnings.warn(
+        f'Skipping measurement processor "{folder_name}": {reason}',
+        RuntimeWarning, stacklevel=3
+    )
+
+
+def _load_processors(folder=None, package=None):
+    """Discover processor packages in ``folder`` (default: this package).
+
+    ``package`` is the importable name of ``folder`` (default: this
+    package). ``SmoothMeasurement`` is loaded first, then the other folders
+    in name order. A processor that fails to import, has no non-empty string
+    ``name`` or lacks a ``@staticmethod`` ``Model.run`` (``apply_recipe``
+    calls it on the class) is skipped with a ``RuntimeWarning``, as
+    is one that reuses the ``name`` of a processor loaded before it (the
+    first one wins), so a broken user plugin never blocks Cell-ACDC startup.
+    """
+    root = Path(__file__).parent if folder is None else Path(folder)
+    package = __name__ if package is None else package
     mapper = {}
+    loaded_from = {}
     folders = sorted(
-        Path(__file__).parent.iterdir(),
+        root.iterdir(),
         key=lambda folder: (folder.name != 'SmoothMeasurement', folder.name)
     )
     for folder in folders:
         if folder.name.startswith('_') or not (folder / 'acdcProcess.py').is_file():
             continue
-        module = import_module(f'.{folder.name}.acdcProcess', package=__name__)
-        if module.name in mapper:
-            raise ValueError(f'Duplicate measurement processor name: {module.name}')
-        processor = module.Model
-        mapper[module.name] = {
+        try:
+            module = import_module(
+                f'.{folder.name}.acdcProcess', package=package
+            )
+            name = module.name
+            if not isinstance(name, str) or not name:
+                raise TypeError('`name` must be a non-empty string')
+            processor = module.Model
+            function = processor.run
+            if not isinstance(
+                    inspect.getattr_static(processor, 'run'), staticmethod):
+                raise TypeError('`Model.run` must be a @staticmethod')
+        except Exception as err:
+            _warn_skipped_processor(
+                folder.name, f'{type(err).__name__}: {err}'
+            )
+            continue
+        if name in mapper:
+            _warn_skipped_processor(
+                folder.name,
+                f'duplicate name "{name}" (already used by '
+                f'"{loaded_from[name]}")'
+            )
+            continue
+        loaded_from[name] = folder.name
+        mapper[name] = {
             'class': processor,
-            'function': processor.run,
+            'function': function,
             'function_name': folder.name,
             'docstring': processor.__doc__,
         }

@@ -150,6 +150,9 @@ class CustomAnnotationPredictor:
         ``MAX`` can be used). The result must be strictly boolean. With 
         multiple other-cell alternatives, each row's result is True if any
         alternative is True, before cell-wide consolidation.
+        Row-wise equations (no per-cell functions) are evaluated once for
+        all cells and split per cell, with the same results (see
+        TimepointPredictor._evaluate_all_cells).
         Unlike predict(), empty lists are retained
         and frames are not clipped to SizeT.
         """
@@ -163,6 +166,24 @@ class CustomAnnotationPredictor:
         )
         variables = {'SizeT': SizeT} if SizeT is not None else None
         annotated = {}
+        batch = TimepointPredictor._evaluate_all_cells(
+            acdc_df, equation, alternatives, variables, combine='any',
+            enforce_dtype_output=STRICT_BOOL
+        )
+        if batch is not None:
+            table, cells, values = batch
+            for ID, start, stop in cells:
+                try:
+                    annotated[ID] = CustomAnnotationPredictor._annotated_frames(
+                        table.iloc[start:stop],
+                        TimepointPredictor._cell_values(values, start, stop),
+                        consolidation
+                    )
+                except Exception as err:
+                    raise ValueError(
+                        f'Evaluating the equation failed for Cell_ID {ID}: {err}'
+                    ) from err
+            return annotated
         for ID, df_ID in CellTable.iter_cells(acdc_df):
             try:
                 values = OtherCellMeasurements.evaluate_with_alternatives(
