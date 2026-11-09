@@ -686,7 +686,7 @@ def standard_metrics_desc(
                     of the pixels from the pixels inside the rectangular
                     <b>background ROIs</b> that you selected in the
                     data prep module (module 1.).<br><br>
-                    Note taht this metric is <b>grayed out</b> and it cannot be selected 
+                    Note that this metric is <b>grayed out</b> and it cannot be selected 
                     if the <b>selection of the background ROIs was not performed</b>.
                 """)
             elif func_name.find('_manualBkgr') != -1:
@@ -739,7 +739,7 @@ def standard_metrics_desc(
                     is computed from the pixels inside the rectangular
                     <b>background ROIs</b> that you selected in the
                     data prep module (module 1.).<br><br>
-                    Note taht this metric is <b>grayed out</b> and it cannot be selected 
+                    Note that this metric is <b>grayed out</b> and it cannot be selected 
                     if the <b>selection of the background ROIs was not performed</b>.
                     <br><br>
                 """)
