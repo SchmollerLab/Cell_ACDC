@@ -1,6 +1,7 @@
 import os
 import re
 import csv
+import shutil
 import traceback
 import tifffile
 
@@ -216,14 +217,23 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
             'one channel name.'
         )
 
+    selectedFilenames = selectedOptions.get('files')
+    if selectedFilenames is not None:
+        selectedFilenames = set(selectedFilenames)
+
     tiffFiles = sorted(
         (
             path for path in sourceFolder.iterdir()
             if path.is_file()
             and path.name.lower().endswith(('.tif', '.tiff'))
+            and (
+                selectedFilenames is None
+                or path.name in selectedFilenames
+            )
         ),
         key=lambda path: natural_key(path.name),
     )
+
     if not tiffFiles:
         raise ValueError(f'No TIFF files found in {sourceFolder}.')
 
@@ -332,6 +342,12 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
             )
 
         imagesFolder = positionFolder / 'Images'
+        if overwrite:
+            try:
+                shutil.rmtree(imagesFolder)
+            except Exception as err:
+                pass
+
         positionFolder.mkdir(parents=True, exist_ok=overwrite)
         imagesFolder.mkdir(parents=True, exist_ok=overwrite)
         positionFolders[positionIdentifier] = str(positionFolder)
@@ -473,13 +489,15 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
             createdFiles.append(str(outputPath))
 
         SizeT, SizeZ = output.shape[:2]
-        metadataPath = imagesFolder / f'{filenamePrefix}_metadata.csv'
+        metadataPath = imagesFolder / f'{basename}_metadata.csv'
         with metadataPath.open('w', newline='', encoding='utf-8') as stream:
             writer = csv.writer(stream)
             writer.writerow(('Description', 'values'))
             writer.writerow(('basename', filenamePrefix))
             writer.writerow(('SizeT', str(SizeT)))
             writer.writerow(('SizeZ', str(SizeZ)))
+            for c, channel in enumerate(channelNames):
+                writer.writerow((f'channel_{c}_name', channel))
         
         if signals is not None:
             signals.progressBar.emit(1)

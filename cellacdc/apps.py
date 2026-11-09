@@ -23331,11 +23331,9 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             )
             if key == 'channels':
                 detailLE.textChanged.connect(self.updateNumberOfChannels)
-                self.numberChannelsSpinBox.setReadOnly(True)
-            else:
-                self.numberChannelsSpinBox.setReadOnly(False)
 
         if key == 'channels':
+            self.numberChannelsSpinBox.setReadOnly(mode == 'in_file')
             channelsPresent = mode != 'not_present'
             self.numberChannelsSpinBox.setEnabled(channelsPresent)
             if not channelsPresent:
@@ -23504,6 +23502,8 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             return
 
         dimensionOptions = self.dimensionOptions()
+        if dimensionOptions is None:
+            return
         self.saveLastParameters(dimensionOptions)
 
         self.selectedOptions['source_folder'] = sourceFolder
@@ -23593,6 +23593,15 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             shape = tuple(series.shape)
         
         self.shapeLE.setText(str(shape))
+
+        if self._get_dimension_mode('channels') == 'in_file':
+            axis_text = self.dimensionControls['channels']['detailLE'].text()
+            try:
+                channel_axis = int(axis_text)
+            except ValueError:
+                return
+            if 0 <= channel_axis < len(shape):
+                self.updateNumberOfChannels(axis_text)
     
     def dstFolderPathSelected(self, dstFolderPath):
         self.selectedOptions['overwrite_destination'] = False
@@ -23652,6 +23661,9 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         except Exception as err:
             return 
 
+        if not 0 <= axis_index < len(shape):
+            return
+
         num_channels = shape[axis_index]
         self.numberChannelsSpinBox.setValue(num_channels)
     
@@ -23676,6 +23688,9 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
 
         json_filepath = os.path.join(restruct_files_recipes_path, win.filename)
         dimensionOptions = self.dimensionOptions()
+        if dimensionOptions is None:
+            return
+            
         with open(json_filepath, 'w') as f:
             json.dump(dimensionOptions, f, indent=2)
         
@@ -23778,6 +23793,7 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         self.loadLastParametersButton.confirmAction()
     
     def saveLastParameters(self, dimensionOptions):
+        os.makedirs(restruct_files_recipes_path, exist_ok=True)
         filepath = os.path.join(restruct_files_recipes_path, '_last_setup.json')
         with open(filepath, 'w') as f:
             json.dump(dimensionOptions, f, indent=2)
