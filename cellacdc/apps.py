@@ -10874,10 +10874,20 @@ class QtSelectItems(QDialog):
         listBox.hide()
         self.ListBox = listBox
 
+        self.numSelectedLabel = None
+        if addSelectByInfoCheckboxes:
+            self.numSelectedLabel = QLabel()
+            listBox.itemSelectionChanged.connect(self.updateNumSelectedLabel)
+
         mainLayout.addLayout(topLayout)
         if selectByInfoLayout is not None:
             mainLayout.addSpacing(10)
             mainLayout.addLayout(selectByInfoLayout)
+        if self.numSelectedLabel is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addWidget(
+                self.numSelectedLabel, alignment=Qt.AlignRight
+            )
         mainLayout.addSpacing(20)
         mainLayout.addLayout(bottomLayout)
 
@@ -10891,10 +10901,28 @@ class QtSelectItems(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         multiPosButton.toggled.connect(self.toggleMultiSelection)
+        if self.numSelectedLabel is not None:
+            multiPosButton.toggled.connect(self.updateNumSelectedLabel)
         if showInFileManagerPath is not None:
             showInFileManagerButton.clicked.connect(self.showInFileManager)
 
         self.setFont(fonts.font)
+        self.updateNumSelectedLabel()
+
+    def updateNumSelectedLabel(self, *args):
+        if self.numSelectedLabel is None:
+            return
+
+        if self.multiPosButton.isChecked():
+            numSelected = len(self.ListBox.selectedItems())
+        else:
+            # In single selection mode the combobox has always one item
+            numSelected = 1 if self.ComboBox.count() > 0 else 0
+
+        numTotal = self.ListBox.count()
+        self.numSelectedLabel.setText(
+            f'<i>Number of selected Positions</i>: <b>{numSelected}/{numTotal}</b>'
+        )
 
     # (regex pattern searched in the item text, checkbox text)
     # The info text is added to the Position folder names by methods like
