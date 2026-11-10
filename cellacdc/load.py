@@ -3900,7 +3900,7 @@ class select_exp_folder:
             title, values, informativeText, CbLabel=CbLabel, 
             parent=parentQWidget,
             showInFileManagerPath=self.exp_path,
-            addSelectByInfoButtons=allowMultiSelection
+            addSelectByInfoCheckboxes=allowMultiSelection
         )
         win.setFont(font)
         self.doNotAskAgain = False

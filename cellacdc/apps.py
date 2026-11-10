@@ -10811,7 +10811,7 @@ class QtSelectItems(QDialog):
             self, title, items, informativeText,
             CbLabel='Select value:  ', parent=None,
             showInFileManagerPath=None,
-            addSelectByInfoButtons=False
+            addSelectByInfoCheckboxes=False
         ):
         self.cancel = True
         self.selectedItemsText = ''
@@ -10860,10 +10860,10 @@ class QtSelectItems(QDialog):
         
         self.buttonsLayout = bottomLayout
 
-        self.selectByInfoButtons = []
+        self.selectByInfoCheckboxes = []
         selectByInfoLayout = None
-        if addSelectByInfoButtons:
-            selectByInfoLayout = self._createSelectByInfoButtons(items)
+        if addSelectByInfoCheckboxes:
+            selectByInfoLayout = self._createSelectByInfoCheckboxes(items)
 
         listBox = widgets.listWidget()
         listBox.addItems(items)
@@ -10896,7 +10896,7 @@ class QtSelectItems(QDialog):
 
         self.setFont(fonts.font)
 
-    # (regex pattern searched in the item text, button text)
+    # (regex pattern searched in the item text, checkbox text)
     # The info text is added to the Position folder names by methods like
     # `load.select_exp_folder.get_values_acdc_and_spotmax`,
     # `load.select_exp_folder.get_values_segmGUI`, and
@@ -10936,17 +10936,19 @@ class QtSelectItems(QDialog):
         ),
     )
 
-    def _createSelectByInfoButtons(self, items):
-        """Add one button for each type of info found in the items text
-        (e.g., 'last tracked frame' or 'SpotMAX output exists'). Clicking
-        the button selects all the items with that info.
+    def _createSelectByInfoCheckboxes(self, items):
+        """Add one checkbox for each type of info found in the items text
+        (e.g., 'last tracked frame' or 'SpotMAX output exists'). Every time
+        a checkbox is toggled, the selection is set to the items that match
+        ALL the checked checkboxes (AND). If no checkbox is checked, all
+        the items are deselected.
         """
         if len(items) < 2:
             return
 
         layout = QGridLayout()
         n_cols = 2
-        for pattern, buttonText in self.SELECT_BY_INFO_RULES:
+        for pattern, checkboxText in self.SELECT_BY_INFO_RULES:
             regex = re.compile(pattern, flags=re.IGNORECASE)
             isMatch = [
                 regex.search(self._getItemInfoText(item)) is not None
@@ -10955,16 +10957,17 @@ class QtSelectItems(QDialog):
             if not any(isMatch):
                 continue
 
-            button = widgets.PushButton(
-                buttonText, icon=QIcon(':select_all.svg')
+            checkbox = QCheckBox(checkboxText)
+            checkbox.isMatch = isMatch
+            checkbox.toggled.connect(
+                partial(self.selectItemsByInfoToggled, checkbox)
             )
-            button.clicked.connect(partial(self.selectItemsByInfo, isMatch))
-            idx = len(self.selectByInfoButtons)
+            idx = len(self.selectByInfoCheckboxes)
             row, col = divmod(idx, n_cols)
-            layout.addWidget(button, row, col)
-            self.selectByInfoButtons.append(button)
+            layout.addWidget(checkbox, row, col)
+            self.selectByInfoCheckboxes.append(checkbox)
 
-        if not self.selectByInfoButtons:
+        if not self.selectByInfoCheckboxes:
             return
 
         hLayout = QHBoxLayout()
@@ -10980,26 +10983,45 @@ class QtSelectItems(QDialog):
             return ''
         return item[idx:]
 
-    def selectItemsByInfo(self, isMatch, *args):
+    def selectItemsByInfoToggled(self, checkbox, checked):
         if not self.multiPosButton.isChecked():
+            if not checked:
+                return
+            if not self.multiPosButton.isEnabled():
+                self._setCheckedSilently(checkbox, False)
+                return
             self.multiPosButton.setChecked(True)
 
-        self.ListBox.clearSelection()
+        # Select only the items that match ALL the checked checkboxes
+        checkedCheckboxes = [
+            cb for cb in self.selectByInfoCheckboxes if cb.isChecked()
+        ]
         firstSelectedItem = None
-        for i, selected in enumerate(isMatch):
-            if not selected:
-                continue
+        for i in range(self.ListBox.count()):
             item = self.ListBox.item(i)
-            item.setSelected(True)
-            if firstSelectedItem is None:
+            isSelected = (
+                len(checkedCheckboxes) > 0
+                and all(cb.isMatch[i] for cb in checkedCheckboxes)
+            )
+            item.setSelected(isSelected)
+            if isSelected and firstSelectedItem is None:
                 firstSelectedItem = item
 
         if firstSelectedItem is not None:
             self.ListBox.scrollToItem(firstSelectedItem)
+    
+    def _setCheckedSilently(self, checkbox, checked):
+        checkbox.blockSignals(True)
+        checkbox.setChecked(checked)
+        checkbox.blockSignals(False)
+    
+    def uncheckSelectByInfoCheckboxes(self):
+        for checkbox in self.selectByInfoCheckboxes:
+            self._setCheckedSilently(checkbox, False)
 
-    def setSelectByInfoButtonsDisabled(self, disabled: bool):
-        for button in self.selectByInfoButtons:
-            button.setDisabled(disabled)
+    def setSelectByInfoCheckboxesDisabled(self, disabled: bool):
+        for checkbox in self.selectByInfoCheckboxes:
+            checkbox.setDisabled(disabled)
 
     def setAllSelected(self, selected: bool):
         for i in range(self.ListBox.count()):
@@ -11058,6 +11080,7 @@ class QtSelectItems(QDialog):
             self.mainLayout.setStretchFactor(self.topLayout, 2)
         else:
             self.multiPosButton.setText('Multiple selection')
+            self.uncheckSelectByInfoCheckboxes()
             self.ListBox.hide()
             self.ComboBox.show()
             self.resize(self.width(), self.singleSelectionHeight)
