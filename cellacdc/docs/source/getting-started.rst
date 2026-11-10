@@ -11,7 +11,6 @@ During several points during the usage of Cell-ACDC, the program may become unre
 
 .. contents::
 
-
 Running Cell-ACDC
 -----------------
 
@@ -21,16 +20,8 @@ Running Cell-ACDC
 
 The Main Menu
 -------------
-The main menu is a **hub** through which you can access all relevant modules.
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/MainMenu.png?raw=true
-    :alt: Overview of the main menu
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/MainMenu.png?raw=true
-
-    Overview of the main menu
-
-Module buttons
-~~~~~~~~~~~~~~
+The main menu is a **hub** through which you can access Module buttons
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Through the main menu, all modules of Cell-ACDC can be accessed:
 
 1. Create data structure from microscopy/image file(s)...
@@ -86,9 +77,9 @@ Creating Data Structure
 -----------------------
 **0. Create data structure from microscopy/image file(s)...**
 
-The first step in analysing data with Cell-ACDC is creating a 
-**suitable data structure** from raw microscopy files. This can be done c
-ompletely automated using module 0.
+The first step in analysing data with Cell-ACDC is creating a
+**suitable data structure** from raw microscopy files. Module 0 can convert
+supported microscopy files into this structure.
 
 .. warning:: 
 
@@ -100,71 +91,46 @@ ompletely automated using module 0.
     We are working on alternatives, but in the meantime the Fiji macros will 
     work just fine. Thank you for you patience.
 
-To start off, launch the module by pressing on the corresponding button in 
-the main menu.
+Click **0. Create data structure from microscopy/image file(s)…** in the
+main menu. The **Data conversion setup** form configures the BioIO-based
+conversion for supported microscopy files and presents the options together.
 
-This will open a window in which you can choose how you want to proceed.
+In **Raw data structure**, choose the option that describes how the raw files
+are organized:
 
-.. note::
+* **Single microscopy file with multiple positions**: one file contains all
+  positions or fields of view.
+* **One or more microscopy files, one for each position**: each file contains
+  a separate position or field of view.
+* **One or more microscopy files, one for each channel**: each file contains
+  a separate imaging channel.
+* **NONE of the above**: the data layout is not currently supported by these
+  options.
 
-    Cell-ACDC can use `Bio-Formats <https://www.openmicroscopy.org/bio-formats/>`__ or the AICSlmagelO libraries to read microscopy files.
+Select the **Source folder with raw files** and the **Destination folder**.
+The source folder should contain only the microscopy files to convert, with
+no unrelated files or folders. If the destination already contains
+``Position_n`` folders, use the destination folder's settings button to
+choose how to handle them.
 
-    `Bio-Formats <https://www.openmicroscopy.org/bio-formats/>`__ requires Java and a python package called `Javabridge <hhttps://pypi.org/project/javabridge/>`__, that will be automatically installed if missing. We recommend using Bio-Formats, since it can read the metadata of the file, such as pixel size, numerical aperture etc.
+You can also configure these optional settings:
 
-    If Bio-Formats fails, try using AICSlmagelO.
+* **Load entire field of view in RAM at once** can speed up processing, but
+  uses more memory.
+* **Use symbolic links** avoids copying the source image data. Keep the source
+  files at their current location so the links remain valid.
+* **Move raw microscopy files** moves the source files into a
+  ``raw_microscopy_files`` subfolder inside the destination folder before
+  conversion.
 
-    Alternatively, if you already pre-processed your microscopy files into TIF files, you could choose to simply re-structure them into the Cell-ACDC compatible format.
+Click **OK** to start the conversion. Cell-ACDC creates a folder for each
+position and stores the channel images in its ``Images`` subfolder.
 
-After choosing an option, another window will open prompting you to select **what kind of data** you want to extract from the raw microscopy file:
+If your images are already TIFF files that need to be reorganized, open
+**0. Create data structure from microscopy/image file(s)…**, choose
+**Re-structure image files**, and follow the separate
+:doc:`restructure-loose-tiff-files` guide.
 
-* Single microscopy file with multiple positions
-* One or more microscopy files, one for each position
-* One or more microscopy files, one for each channel
-* NONE of the above
-
-Please select the appropriate option. Afterwards, you are prompted to **create an empty folder** in which only the microscopy file(s) are present. After doing so, select "Done". Next, you will be prompted to select this folder. After selecting the **destination folder**, which by default is the folder you selected in the step before, Cell-ACDC will attempt to load OEM metadata.
-
-.. |eyeplusicon| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/eye-plus.svg
-    :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/eye-plus.svg
-    :alt: eye-plus icon
-    :height: 16px
-    :width: 16px
-
-A window with the extracted metadata should appear, which may **take a few seconds to load**. To visualise **few frames of a specific channel**, select the eye icon (|eyeplusicon|) next to the respective channel and use the scrollbars to go through the z-coordinate and time-coordinate. Once all values are in order, press "Ok". If the values are the same for all positions, feel free to click "Use the above metadata for all the next positions".
-
-.. note:: 
-    that if you have several files, and you press "Ok" and not one of the two other options, the process will stop after each file, and you need to confirm the metadata again.
-
-Each position is saved in a separate folder. The metadata are stored both in a TXT and SCV file, while the channels are stored in separate TIF files.
-
-.. note:: 
-    A computer with sufficient RAM is needed in this step! The required amount is heavily reliant on the size of the project.
-
-    It is good practice to keep the original files for future reference, even though they are not needed in future steps.
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc1.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc1.png?raw=true
-    :alt: Creating Data Structures: Menu for selecting original file structure
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc2.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc2.png?raw=true
-    :alt: Creating Data Structures: Second menu for selecting original file structure
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc3.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc3.png?raw=true
-    :alt: Creating Data Structures: Prompt for creating a empty folder and putting microscopy files inside
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc4.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc4.png?raw=true
-    :alt: Creating Data Structures: Folder selection
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc5.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc5.png?raw=true
-    :alt: Creating Data Structures: Metadata menu
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc6.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataStruc6.png?raw=true
-    :alt: Creating Data Structures: Window for checking order of dimensions
 
 Data-structure created by Cell-ACDC
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -187,7 +153,6 @@ Data-structure created by Cell-ACDC
         └── Images
             ├── basename_s0n_metadataXML.txt
             ...
-
 
 Preparing data for further analysis (Data-prep)
 -----------------------------------------------
@@ -274,7 +239,6 @@ Next, select **"start"** (|starticon|) from the buttons bar. This will **start t
 
     For time-lapse microscopy you can load only one position at a time. Select multiple positions only if you have single 3D z-stacks or single 2D images.
 
-
 Afterwards, the **region of interest (ROI)** as well as the **background ROI 
 (Bkgr. ROI)** can be adjusted. This is done through drag and drop on the edges 
 and resizing on the turquoise rhombuses. Make sure that the ROI covers all cells 
@@ -310,19 +274,6 @@ To save the cropped data, click on the **"Save cropped data"** (|save|) button.
 
 Data such as the selected frame is stored in segmInfo.csv, while aligned.npz stores the alignment data.
 
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataPrep1.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataPrep1.png?raw=true
-    :alt: Data preparation: Selection menu for channel
-    :width: 300
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataPrep2.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/DataPrep2.png?raw=true
-    :alt: Data preparation: Image properties
-    :width: 300
-
-.. figure:: images/dataprep_window_screenshot.svg
-    :alt: Data preparation: Window for data preparation
-
 Segmentation and tracking
 -------------------------
 **2. Launch segmentation module…**
@@ -334,31 +285,6 @@ Upon launching the module, you first will be prompted to **select a folder**. Th
 After a short wait, you are prompted to **select the model** you want to use for **segmentation**, after which one needs to confirm the parameters for segmentation as well as post processing.
 
 Next, you can **select a stop frame** if you don't want to segment and track the entire experiment. Lastly, you need to **select the model** which should be used for **tracking**. The process now begins, and you can lay back and watch the computer work for you.
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/Seg1.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/Seg1.png?raw=true
-    :alt: Segmentation and Tracking: Segmentation model
-    :width: 300
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/Seg2.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/Seg2.png?raw=true
-    :alt: Segmentation and Tracking: Parameters for model and post processing parameters
-
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/Seg3.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/Seg3.png?raw=true
-    :alt: Segmentation and Tracking: Stop frame
-    :width: 300
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/Seg4.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/Seg4.png?raw=true
-    :alt: Segmentation and Tracking: Tracking model
-    :width: 300
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI5.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI5.png?raw=true
-    :alt: Segmentation and Tracking: File structure
-    :width: 500
 
 Correcting Tracking and Segmentation Mistakes, Cell Cycle Annotation
 --------------------------------------------------------------------
@@ -542,29 +468,7 @@ After correcting all errors, change the mode to "Cell Cycle Analysis". You will 
 * **"Right click on mother/bud pair"** will **break the bond**. Right click **again** to **rebind** them. This needs to be done manually whenever a mother and bud separate.
   
 After finishing annotating the first frame, you will be prompted to accept the current annotation. This is only to make sure that the initial annotations are correct.
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI1.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI1.png?raw=true
-    :alt: GUI: Select displayed channel
-    :width: 300
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI2.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI2.png?raw=true
-    :alt: GUI: Metadata
-    :width: 300
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI3.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI3.png?raw=true
-    :alt: GUI: GUI for segmentation and tracking
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI4.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI4.png?raw=true
-    :alt: GUI: GUI for cell cycle annotation
-
-.. figure:: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI5.png?raw=true
-    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/docs/source/images/GUI5.png?raw=true
-    :alt: GUI: File Structure
-    :width: 500
+entation and tracking
 
 All functions
 ~~~~~~~~~~~~~
