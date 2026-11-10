@@ -310,7 +310,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
     def addCombineMetric(self):
         isZstack = self.posData.SizeZ > 1
         self.combineMetricWindow = apps.combineMetricsEquationDialog(
-            self.posData.chNames, isZstack, self.posData.isSegm3D,
+            self.allChNames, isZstack, self.posData.isSegm3D,
             parent=self.measurementsWin, closeOnOk=False
         )
         self.combineMetricWindow.sigOk.connect(self.saveCombineMetricsToPosData)
@@ -331,10 +331,22 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.initAddMetricsWorker(self.posData, self.allPosDataInputs)
         self.measurementsWin.restoreState(self.measurementsWinState)
 
+    @staticmethod
+    def _getAllChNames(posData, allPosDataInputs):
+        """Ordered union of the channel names found in all positions
+        (order of first appearance, starting from `posData`)."""
+        allChNames = list(posData.chNames)
+        for posDataInputs in allPosDataInputs:
+            for chName in posDataInputs.get('chNames', []):
+                if chName not in allChNames:
+                    allChNames.append(chName)
+        return allChNames
+
     def initAddMetricsWorker(self, posData, allPosDataInputs):
+        allChNames = self._getAllChNames(posData, allPosDataInputs)
         if (
                 self.doNotAskAgain
-                and set(posData.chNames) == set(self.worker.kernel.ch_names)
+                and set(allChNames) == set(self.worker.kernel.ch_names)
             ):
             self.worker.waitCond.wakeAll()
             return
@@ -348,6 +360,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
 
         self.posData = posData
         self.allPosDataInputs = allPosDataInputs
+        self.allChNames = allChNames
 
         if not hasattr(self, 'allPosData'):
             self.allPosData = []
@@ -365,7 +378,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
                 self.allPosData.append(_posData)
 
         self.measurementsWin = apps.SetMeasurementsDialog(
-            posData.chNames, [], posData.SizeZ > 1, posData.isSegm3D,
+            allChNames, [], posData.SizeZ > 1, posData.isSegm3D,
             favourite_funcs=favourite_funcs, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
             allPosData=self.allPosData,
@@ -403,7 +416,7 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             self.worker.doInitKernel = False
             
         self.worker.kernel.init_args(
-            self.posData.chNames, self.endFilenameSegm
+            self.allChNames, self.endFilenameSegm
         )
         self.worker.kernel.set_metrics_from_set_measurements_dialog(
             self.measurementsWin

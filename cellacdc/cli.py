@@ -1712,6 +1712,16 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # df = df.loc[:, ~df.columns.duplicated()].copy()
         df = df.combine_first(acdc_df)
 
+        # Channels selected (e.g., found in other Positions) but not present
+        # in this Position --> NaN instead of 0
+        missing_ch_columns = [
+            col for channel, metrics in all_channels_metrics.items()
+            if channel not in posData.chNames
+            for col in metrics
+        ]
+        if missing_ch_columns:
+            df[missing_ch_columns] = np.nan
+
         # Check if z-slice is present for 3D z-stack data
         proceed = self._check_zSlice(
             posData, frame_i, saveDataWorker=saveDataWorker
