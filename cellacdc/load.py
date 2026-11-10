@@ -1,6 +1,7 @@
 import os
 import sys
 
+from io import StringIO
 from typing import List
 import traceback
 import tempfile
@@ -1293,10 +1294,11 @@ def pd_bool_and_float_to_int_to_str(
         
     return acdc_df
 
-def parse_metadata_csv_file(csv_filepath):
-    with open(csv_filepath, 'r') as file:
-        txt = file.read()
-    
+def _normalize_metadata_csv_text(txt):
+    """Quote the values of the `basename` and `channel_N_name` lines that
+    contain commas (legacy metadata.csv files) so that pandas can parse them.
+    The text is processed in memory, nothing is written to disk.
+    """
     lines = txt.split('\n')
     for l, line in enumerate(lines.copy()):
         is_channel_name_line = re.search(r'channel_\d+_name', line)
@@ -1311,9 +1313,17 @@ def parse_metadata_csv_file(csv_filepath):
             quoted_value = f'"{"".join(parts[1:])}"'
             parsed_line = f'{parts[0]},{quoted_value}'
             lines[l] = parsed_line
-    
+
+    return '\n'.join(lines)
+
+def parse_metadata_csv_file(csv_filepath):
+    with open(csv_filepath, 'r') as file:
+        txt = file.read()
+
+    txt = _normalize_metadata_csv_text(txt)
+
     with open(csv_filepath, 'w') as file:
-        file.write('\n'.join(lines))
+        file.write(txt)
 
 def get_posData_metadata(images_path, basename):
     # First check if metadata.csv already has the channel names
@@ -1348,8 +1358,13 @@ def get_metadata_csv_filepath(images_path):
     return None
 
 def read_metadata_csv(metadata_csv_path):
-    parse_metadata_csv_file(metadata_csv_path)
-    return pd.read_csv(metadata_csv_path).set_index('Description')
+    """Read metadata.csv file without modifying it on disk (legacy
+    formatting is normalized in memory)."""
+    with open(metadata_csv_path, 'r') as file:
+        txt = file.read()
+
+    txt = _normalize_metadata_csv_text(txt)
+    return pd.read_csv(StringIO(txt)).set_index('Description')
 
 def get_editable_metadata_values(df_metadata):
     """Get the values from metadata DataFrame that can be edited by the user,
