@@ -3876,8 +3876,7 @@ class select_exp_folder:
     def doNotAskAgainCallback(self, selectWindow):
         self.doNotAskAgain = True
         selectWindow.setAllSelected(True)
-        selectWindow.cancel = False
-        selectWindow.close()
+        selectWindow.ok_cb(None)
     
     def QtPrompt(
             self, parentQWidget, values,
@@ -3893,14 +3892,17 @@ class select_exp_folder:
             selectedValues=None,
             addDoNotAskAgain=False
         ):
+        # NOTE: `toggleMulti` is kept for backward compatibility but it is
+        # not used anymore since the items are always shown in a list widget
         from . import apps
         font = QtGui.QFont()
         font.setPixelSize(13)
-        win = apps.QtSelectItems(
-            title, values, informativeText, CbLabel=CbLabel, 
+        win = apps.SelectPositionFoldersDialogue(
+            title, values, informativeText, CbLabel=CbLabel,
             parent=parentQWidget,
             showInFileManagerPath=self.exp_path,
-            addSelectByInfoCheckboxes=allowMultiSelection
+            addSelectByInfoCheckboxes=allowMultiSelection,
+            allowMultiSelection=allowMultiSelection
         )
         win.setFont(font)
         self.doNotAskAgain = False
@@ -3916,11 +3918,6 @@ class select_exp_folder:
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
         win.setWindowState(toFront)
         win.activateWindow()
-        if not allowMultiSelection:
-            win.multiPosButton.setChecked(False)
-            win.multiPosButton.setDisabled(True)
-        if toggleMulti:
-            win.multiPosButton.setChecked(True)
         if selectedValues is not None:
             win.setSelectedItems(selectedValues)
         win.exec_()
