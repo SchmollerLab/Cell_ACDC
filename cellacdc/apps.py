@@ -503,7 +503,7 @@ class customAnnotationDialog(QDialog):
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
         _window_stacking.set_window_flags_on_top(
-            self.colorButton.colorDialog, Qt.Window
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
         self.colorButton.colorDialog.open()
         w = self.width()
@@ -791,7 +791,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
         _window_stacking.set_window_flags_on_top(
-            self.colorButton.colorDialog, Qt.Window
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
         self.colorButton.colorDialog.open()    
         w = self.width()
@@ -16346,9 +16346,8 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
         _window_stacking.set_window_flags_on_top(
-            self.colorButton.colorDialog, Qt.Window
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
-        self.colorButton.colorDialog.setParent(self)
         self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
@@ -17452,9 +17451,8 @@ class TimestampPropertiesDialog(QBaseDialog):
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
         _window_stacking.set_window_flags_on_top(
-            self.colorButton.colorDialog, Qt.Window
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
-        self.colorButton.colorDialog.setParent(self)
         self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
@@ -21211,7 +21209,7 @@ class OverlayLabelsAppearanceDialog(QBaseDialog):
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
         _window_stacking.set_window_flags_on_top(
-            self.colorButton.colorDialog, Qt.Window
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
         self.colorButton.colorDialog.open()
         w = self.width()
@@ -21802,7 +21800,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         colorButton.origColor = color
         colorButton.colorDialog.setCurrentColor(color)
         _window_stacking.set_window_flags_on_top(
-            colorButton.colorDialog, Qt.Window
+            colorButton.colorDialog, Qt.Window, parent=self
         )
         colorButton.colorDialog.open()
         w = self.width()

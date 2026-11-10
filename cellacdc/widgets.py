@@ -6103,9 +6103,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         self.name = name
 
         _window_stacking.set_window_flags_on_top(
-
-            self.gradient.colorDialog, Qt.Dialog
-
+            self.gradient.colorDialog, Qt.Dialog, parent=parent
         )
         self.gradient.colorDialog.accepted.disconnect()
         self.gradient.colorDialog.accepted.connect(self.tickColorAccepted)

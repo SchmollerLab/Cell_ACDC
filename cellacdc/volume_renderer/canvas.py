@@ -436,7 +436,7 @@ class VolumeRendererWindow(QMainWindow):
             self._set_labels_text_color
         )
         _window_stacking.set_window_flags_on_top(
-            text_color_colorbutton.colorDialog, Qt.Window
+            text_color_colorbutton.colorDialog, Qt.Window, parent=self
         )
         text_settings_layout.addFormWidget(text_color_form_widget, row=row)
 
