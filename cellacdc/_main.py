@@ -57,6 +57,7 @@ from .utils import generateMothBudTotalTable as utilsGenerateMothBudTotTable
 from .utils import splitVideoIntoFrameTiffs as utilSplitVideoTiffs
 from .utils import acdcOutputToCtcTable as utilAcdcToCtc
 from .utils import toTrackastraInputData as ultilToTrackastra
+from .utils import editMetadata as utilsEditMetadata
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -466,6 +467,7 @@ class mainWin(QMainWindow):
         dataPrepMenu.addAction(self.combineChannelsAction)
         
         utilsMenu.addAction(self.renameAction)
+        utilsMenu.addAction(self.editMetadataAction)
 
         self.utilsMenu = utilsMenu
 
@@ -845,6 +847,9 @@ class mainWin(QMainWindow):
             'Add lineage tree table to one or more experiments...'
         )
         self.renameAction = QAction('Rename files by appending additional text...')
+        self.editMetadataAction = QAction(
+            'Edit metadata of one or more experiments...'
+        )
         self.alignAction = QAction('Align or revert alignment...')
 
         self.arboretumAction = QAction(
@@ -962,6 +967,7 @@ class mainWin(QMainWindow):
         self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
+        self.editMetadataAction.triggered.connect(self.launchEditMetadataUtil)
         if SPOTMAX_INSTALLED:
             self.aboutSmaxAction.triggered.connect(self.showAboutSmax)
 
@@ -1702,6 +1708,21 @@ class mainWin(QMainWindow):
         )
         self.calcMeasWin.show()
     
+    def launchEditMetadataUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths('Edit metadata utility')
+        if selectedExpPaths is None:
+            return
+
+        title = 'Edit metadata utility'
+        infoText = 'Editing metadata routine running...'
+        progressDialogueTitle = 'Editing metadata'
+        self.editMetadataWin = utilsEditMetadata.EditMetadataUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.editMetadataWin.show()
+
     def launchToSymDicUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths('Lineage tree utility')
@@ -1978,10 +1999,16 @@ class mainWin(QMainWindow):
         self.restoreDefaultButtons()
     
     @exception_handler
-    def workerCritical(self, error):
+    def workerCritical(self, out):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+
+        try:
+            worker, error = out
+        except TypeError as err:
+            error = out
+
         raise error        
     
     def workerUpdateProgressbar(self, step):

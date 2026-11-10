@@ -77,20 +77,38 @@ utilsInfo = {
     """),
 
     'Add lineage tree table to one or more experiments...': (f"""
-        Not documented yet. You can ask help about utilities 
+        Not documented yet. You can ask help about utilities
         on our {forum_href}.<br><br>
-        Thank you <b>for your patience</b>! 
+        Thank you <b>for your patience</b>!
     """),
 
     'Measurements viewer...': ("""
         Open the <b>measurements viewer</b>, a window to plot per-cell
         time courses of the measurements in the <code>acdc_output</code>
-        tables next to the images, or measurements vs measurements in scatter 
+        tables next to the images, or measurements vs measurements in scatter
         plots.<br><br>
 
         It can also compare and combine measurements, apply measurement
         processing steps, identify time points, translate them into
         phases and annotate cells. Configurations can be saved and
         loaded again.
+    """),
+
+    'Edit metadata of one or more experiments...': (f"""
+        This utility is used to <b>edit the <code>metadata.csv</code> file</b>
+        of multiple Positions and experiments at once.<br><br>
+
+        After selecting the experiment folders (and Positions), Cell-ACDC
+        will scan the metadata files and <b>warn you if the metadata is not
+        the same</b> in all of them.<br><br>
+
+        You can then edit the number of frames (SizeT), number of z-slices
+        (SizeZ), time interval, physical sizes, and custom fields.
+        The <b>same values will be applied to all</b> the selected
+        Positions.<br><br>
+
+        Note that measurements already saved in the
+        <code>acdc_output.csv</code> tables are not updated.
+        Run the "Compute measurements" utility to update them.
     """)
 }

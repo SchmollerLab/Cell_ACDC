@@ -45,7 +45,7 @@ from qtpy.QtGui import (
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
     QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument,
-    QValidator
+    QValidator, QIntValidator
 )
 from qtpy.QtWidgets import (
     QColorDialog, QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -66,6 +66,7 @@ import qtpy.compat
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
+from . import _window_stacking
 from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
 from . import printl, settings_folderpath
 from . import colors, config
@@ -1634,7 +1635,7 @@ class QDialogListbox(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
 
         horizontal_sb = self.listBox.horizontalScrollBar()
@@ -1732,7 +1733,8 @@ class filePathControl(QFrame):
             validExtensions=None, 
             startFolder='', 
             elide=False,
-            add_browse_recent=False
+            add_browse_recent=False,
+            add_open_in_file_manager=False
         ):
         super().__init__(parent)
 
@@ -1763,12 +1765,37 @@ class filePathControl(QFrame):
             self.recentPathsButton = recentPathsButton
             self.recentPathsButton.clicked.connect(self.browseRecentPaths)
 
+        if add_open_in_file_manager:
+            openInFileManagerButton = showInFileManagerButton()
+            openInFileManagerButton.setToolTip(
+                'Open the current path in file manager...'
+            )
+            layout.addWidget(openInFileManagerButton)
+            self.openInFileManagerButton = openInFileManagerButton
+            self.openInFileManagerButton.clicked.connect(self.showInFileManager)
+
         self.setLayout(layout)
 
         self.le.editingFinished.connect(self.setTextTooltip)
         self.browseButton.sigPathSelected.connect(self.setText)
     
         self.setFrameStyle(QFrame.Shape.StyledPanel)
+    
+    def showInFileManager(self):
+        path = self.path()
+        if not path or not os.path.exists(path):
+            print(f'WARNING: {path} is not a valid path')
+            msg = myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                f'{path} is not a valid path :(.'
+            )
+            msg.warning(self, 'Not a valid path', txt)
+            return
+
+        if not os.path.isdir(path):
+            path = os.path.dirname(path)
+        
+        myutils.showInExplorer(path)      
 
     def browseRecentPaths(self):
         recent_paths, dates = myutils.get_recent_paths(self)
@@ -3019,7 +3046,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
     def show(self, block=False):
         self.endOfScrollableRow = self.currentRow
         
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         # spacer
         spacer = QSpacerItem(10, 10)
         self._layout.addItem(spacer, self.currentRow, 1)
@@ -6129,8 +6156,8 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         self._parent = parent
         self.name = name
 
-        self.gradient.colorDialog.setWindowFlags(
-            Qt.Dialog | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            self.gradient.colorDialog, Qt.Dialog, parent=parent
         )
         self.gradient.colorDialog.accepted.disconnect()
         self.gradient.colorDialog.accepted.connect(self.tickColorAccepted)
@@ -6664,6 +6691,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     sigTickColorAccepted = Signal(object)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
+    sigFontSizeChanged = Signal(int)
 
     def __init__(
             self, parent=None, name='image', axisLabel='', isViewer=False, 
@@ -6701,7 +6729,10 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.gradient.menu.addAction(self.invertBwAction)
 
         # Font size menu action
-        self.fontSizeMenu =  QMenu('Text font size')
+        self.fontSizeMenu = FontSizeQMenu(prefix='Text ')
+        self.fontSizeMenu.sigFontSizeChanged.connect(
+            self.sigFontSizeChanged.emit
+        )
         self.gradient.menu.addMenu(self.fontSizeMenu) 
 
         # Text color button
@@ -6806,6 +6837,15 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.gradient.menu.installEventFilter(self.filterObject)
         self.highlightedAction = None
         self.lastHoveredAction = None
+    
+    def setFontSize(self, font_size: int, blockSignal=False):
+        if blockSignal:
+            self.fontSizeMenu.blockSignals(True)
+        
+        self.fontSizeMenu.setFontSize(font_size)
+
+        if blockSignal:
+            self.fontSizeMenu.blockSignals(False)
     
     def setChildLutItem(self, childLutItem):
         self.childLutItem = childLutItem
@@ -7413,13 +7453,17 @@ class labelsGradientWidget(BaseLabelsGradientWidget):
     sigShowRightImgToggled = Signal(bool)
     sigShowLabelsImgToggled = Signal(bool)
     sigShowNextFrameToggled = Signal(bool)
+    sigFontSizeChanged = Signal(int)
 
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         super().__init__(
             *args, parent=parent, orientation=orientation, **kargs)
 
         # Font size menu action
-        self.fontSizeMenu =  QMenu('Text font size', self)
+        self.fontSizeMenu = FontSizeQMenu(prefix='Text ')
+        self.fontSizeMenu.sigFontSizeChanged.connect(
+            self.sigFontSizeChanged.emit
+        )
         self.menu.addMenu(self.fontSizeMenu)   
 
         # IDs color button
@@ -7472,6 +7516,15 @@ class labelsGradientWidget(BaseLabelsGradientWidget):
         self.showRightImgAction.toggled.connect(self.showRightImageToggled)
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
         self.showNextFrameAction.toggled.connect(self.showNextFrameToggled)
+    
+    def setFontSize(self, font_size: int, blockSignal=False):
+        if blockSignal:
+            self.fontSizeMenu.blockSignals(True)
+        
+        self.fontSizeMenu.setFontSize(font_size)
+
+        if blockSignal:
+            self.fontSizeMenu.blockSignals(False)
     
     def removeCustomGradient(self):
         button = self.sender()
@@ -8965,7 +9018,10 @@ class QBaseWindow(QMainWindow):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window)
+        _window_stacking.keep_on_top_of_parents(
+            self, getattr(self, '_keepOnTopOfParents', True)
+        )
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -9321,8 +9377,7 @@ class ImShow(QBaseWindow):
 
         self.textItems = []
         self.group_to_idx_mapper = {'': 0}
-        if not win_stay_on_top:
-            self.setWindowFlag(Qt.WindowStaysOnTopHint, False)
+        self._keepOnTopOfParents = win_stay_on_top
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)
@@ -15553,3 +15608,69 @@ class PathTreeWidgetItem(QTreeWidgetItem):
             return path
             
         return super().text(column)
+
+class TypableComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.NoInsert)
+        self.lineEdit().editingFinished.connect(self.commit_text)
+
+    def commit_text(self):
+        text = self.currentText()
+        index = self.findText(text, Qt.MatchExactly)
+
+        if index < 0:
+            self.addItem(text)
+            index = self.count() - 1
+
+        self.setCurrentIndex(index)
+
+class FontSizeCombobox(TypableComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.addItems([
+            *[str(i) for i in range(8, 13)],
+            *[str(i*2) for i in range(6, 16)],
+            *['36', '48', '72']
+        ])
+
+        self.lineEdit().setValidator(QIntValidator(1, 9999, self.lineEdit()))
+
+class FontSizeQMenu(QMenu):
+    sigFontSizeChanged = Signal(int)
+
+    def __init__(self, prefix='', parent=None):
+        super().__init__(parent)
+
+        title = f'{prefix}font size'.capitalize()
+        self.setTitle(title)
+
+        self.fontSizeCombobox = FontSizeCombobox(self)
+        self.fontSizeAction = QWidgetAction(self)
+        self.fontSizeAction.setDefaultWidget(self.fontSizeCombobox)
+        self.addAction(self.fontSizeAction)
+
+        self.fontSizeCombobox.currentTextChanged.connect(
+            self.emitSigFontSizeChanged
+        )
+    
+    def emitSigFontSizeChanged(self, font_size_str):
+        try:
+            font_size = int(font_size_str)
+        except (TypeError, ValueError):
+            return
+
+        self.sigFontSizeChanged.emit(font_size)
+
+    def setFontSize(self, font_size: int):
+        text = str(int(font_size))
+        combo = self.fontSizeCombobox
+
+        index = combo.findText(text)
+        if index < 0:
+            combo.addItem(text)
+            index = combo.count() - 1
+
+        combo.setCurrentIndex(index)

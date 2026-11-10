@@ -2868,260 +2868,6 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
-class RestructMultiPosWorker(BaseWorkerUtil):
-    sigSaveTiff = Signal(str, object, object)
-
-    def __init__(self, rootFolderPath, dstFolderPath, action='copy'):
-        super().__init__(None)
-        self.rootFolderPath = rootFolderPath
-        self.dstFolderPath = dstFolderPath
-        self.mutex = QMutex()
-        self.waitCond = QWaitCondition()
-        self.action = action
-
-    @worker_exception_handler
-    def run(self):
-        load._restructure_multi_files_multi_pos(
-            self.rootFolderPath, self.dstFolderPath, signals=self.signals, 
-            logger=self.logger.log, action=self.action
-        )
-        self.signals.finished.emit(self)
-
-
-class RestructMultiTimepointsWorker(BaseWorkerUtil):
-    sigSaveTiff = Signal(str, object, object)
-
-    def __init__(
-            self, allChannels, frame_name_pattern, basename, validFilenames,
-            rootFolderPath, dstFolderPath, segmFolderPath=''
-        ):
-        super().__init__(None)
-        self.allChannels = allChannels
-        self.frame_name_pattern = frame_name_pattern
-        self.basename = basename
-        self.validFilenames = validFilenames
-        self.rootFolderPath = rootFolderPath
-        self.dstFolderPath = dstFolderPath
-        self.segmFolderPath = segmFolderPath
-        self.mutex = QMutex()
-        self.waitCond = QWaitCondition()
-
-    @worker_exception_handler
-    def run(self):
-        allChannels = self.allChannels
-        frame_name_pattern = self.frame_name_pattern
-        rootFolderPath = self.rootFolderPath
-        dstFolderPath = self.dstFolderPath
-        segmFolderPath = self.segmFolderPath
-        filesInfo = {}
-        self.signals.initProgressBar.emit(len(self.validFilenames)+1)
-        for file in self.validFilenames:
-            try:
-                # Determine which channel is this file
-                for ch in allChannels:
-                    m = re.findall(rf'(.*)_{ch}{frame_name_pattern}', file)
-                    if m:
-                        break
-                else:
-                    raise FileNotFoundError(
-                        f'The file name "{file}" does not contain any channel name'
-                    )
-                posName, _, frameName = m[0]
-                frameNumber = int(frameName)
-                if posName not in filesInfo:
-                    filesInfo[posName] = {ch: [(file, frameNumber)]}
-                elif ch not in filesInfo[posName]:
-                    filesInfo[posName][ch] = [(file, frameNumber)]
-                else:
-                    filesInfo[posName][ch].append((file, frameNumber))
-            except Exception as e:
-                self.logger.log(traceback.format_exc())
-                self.logger.log(
-                    f'WARNING: File "{file}" does not contain valid pattern. '
-                    'Skipping it.'
-                )
-                continue
-        
-        self.signals.progressBar.emit(1)
-
-        df_metadata = None
-        partial_basename = self.basename
-        allPosDataInfo = []
-        for p, (posName, channelInfo) in enumerate(filesInfo.items()):
-            self.logger.log(f'='*40)
-            self.logger.log(f'Processing position "{posName}"...')
-
-            for _, filesList in channelInfo.items():
-                # Get info from first file
-                filePath = os.path.join(rootFolderPath, filesList[0][0])
-                try:
-                    img = load.imread(filePath)
-                    break
-                except Exception as e:
-                    self.logger.log(traceback.format_exc())
-                    continue
-            else:
-                self.logger.log(
-                    f'WARNING: No valid image files found for position {posName}'
-                )
-                continue
-
-            # Get basename
-            if partial_basename:
-                basename = f'{partial_basename}_{posName}_'
-            else:
-                basename = f'{posName}_'
-
-            # Get SizeT from first file
-            SizeT = len(filesList)
-            
-            # Save metadata.csv      
-            df_metadata = pd.DataFrame({
-                'SizeT': SizeT,
-                'basename': basename
-            }, index=['values'])
-
-            # Iterate channels
-            for c, (channelName, filesList) in enumerate(channelInfo.items()):
-                self.logger.log(
-                    f'  Processing channel "{channelName}"...'
-                )
-                # Sort by frame number
-                sortedFilesList = sorted(filesList, key=lambda t:t[1])
-
-                df_metadata[f'channel_{c}_name'] = [channelName]
-
-                imagesPath = os.path.join(dstFolderPath, f'Position_{p+1}', 'Images')
-                if not os.path.exists(imagesPath):
-                    os.makedirs(imagesPath, exist_ok=True)
-
-                # Iterate frames
-                videoData = None
-                srcSegmPaths = ['']*SizeT
-                frameNumbers = []
-                for frame_i, fileInfo in enumerate(sortedFilesList):
-                    file, _ = fileInfo
-                    ext = os.path.splitext(file)[1]
-                    srcImgFilePath = os.path.join(rootFolderPath, file)
-                    try:
-                        img = load.imread(srcImgFilePath)
-                        if videoData is None:
-                            shape = (SizeT, *img.shape)
-                            videoData = np.zeros(shape, dtype=img.dtype)
-                        videoData[frame_i] = img
-                        pattern = self.frame_name_pattern
-                        frameNumberMatch = re.findall(pattern, file)[0][1]
-                        frameNumber = int(frameNumberMatch)
-                        frameNumbers.append(frameNumber)
-                    except Exception as e:
-                        self.logger.log(traceback.format_exc())
-                        continue
-
-                    if segmFolderPath and c==0:
-                        srcSegmFilePath = os.path.join(segmFolderPath, file)
-                        srcSegmPaths[frame_i] = srcSegmFilePath
-
-                    SizeZ = 1
-                    if img.ndim == 3:
-                        SizeZ = len(img)
-                    
-                    df_metadata['SizeZ'] = [SizeZ]                 
-
-                    self.signals.progressBar.emit(1)
-                
-                if videoData is None:
-                    self.logger.log(
-                        f'WARNING: No valid image files found for position '
-                        f'"{posName}", channel "{channelName}"'
-                    )
-                    continue
-                else:
-                    imgFileName = f'{basename}{channelName}.tif'
-                    dstImgFilePath = os.path.join(imagesPath, imgFileName)
-                    dstSegmFileName = f'{basename}segm_{channelName}.npz'
-                    dstSegmPath = os.path.join(imagesPath, dstSegmFileName)
-                    imgDataInfo = {
-                        'path': dstImgFilePath, 'SizeT': SizeT, 'SizeZ': SizeZ,
-                        'data': videoData, 'frameNumbers': frameNumbers,
-                        'dst_segm_path': dstSegmPath, 
-                        'src_segm_paths': srcSegmPaths
-                    }
-                    allPosDataInfo.append(imgDataInfo)
-
-            if df_metadata is not None:
-                metadata_csv_path = os.path.join(
-                    imagesPath, f'{basename}metadata.csv'
-                )
-                df_metadata = df_metadata.T
-                df_metadata.index.name = 'Description'
-                df_metadata.to_csv(metadata_csv_path)
-
-            self.logger.log(f'*'*40)
-        
-        if not allPosDataInfo:
-            self.signals.finished.emit(self)
-            return
-        
-        self.signals.initProgressBar.emit(len(allPosDataInfo))
-        self.logger.log('Saving image files...')
-        maxSizeT = max([d['SizeT'] for d in allPosDataInfo])
-        minFrameNumber = min([d['frameNumbers'][0] for d in allPosDataInfo])
-        # Pad missing frames in video files according to frame number
-        for p, imgDataInfo in enumerate(allPosDataInfo):
-            SizeT = imgDataInfo['SizeT']
-            SizeZ = imgDataInfo['SizeZ']
-            dstImgFilePath = imgDataInfo['path']
-            videoData = imgDataInfo['data']
-            frameNumbers = imgDataInfo['frameNumbers']
-            paddedShape = (maxSizeT, *videoData.shape[1:])
-            imgDataInfo['paddedShape'] = paddedShape
-            dtype = videoData.dtype
-            paddedVideoData = np.zeros(paddedShape, dtype=dtype)
-            for n, img in zip(frameNumbers, videoData):
-                frame_i = n - minFrameNumber
-                paddedVideoData[frame_i] = img
-
-            del videoData
-            imgDataInfo['data'] = None
-
-            self.mutex.lock()        
-            self.sigSaveTiff.emit(dstImgFilePath, paddedVideoData, self.waitCond)
-            self.waitCond.wait(self.mutex)
-            self.mutex.unlock()        
-
-            self.signals.progressBar.emit(1)      
-
-        if not segmFolderPath:
-            self.signals.finished.emit(self)
-            return
-
-        self.signals.initProgressBar.emit(len(allPosDataInfo))
-        self.logger.log('Saving segmentation files...')
-        for p, imgDataInfo in enumerate(allPosDataInfo):
-            SizeT = imgDataInfo['SizeT']
-            frameNumbers = imgDataInfo['frameNumbers']
-            SizeT = imgDataInfo['SizeT']
-            SizeZ = imgDataInfo['SizeZ']
-            frameNumbers = imgDataInfo['frameNumbers']
-            paddedShape = imgDataInfo['paddedShape']
-            segmData = np.zeros(paddedShape, dtype=np.uint32)
-            for n, segmFilePath in zip(frameNumbers, imgDataInfo['src_segm_paths']):
-                frame_i = n - minFrameNumber
-                try:
-                    lab = load.imread(segmFilePath).astype(np.uint32)
-                    segmData[frame_i] = lab
-                except Exception as e:
-                    self.logger.log(traceback.format_exc())
-                    self.logger.log(
-                        'WARNING: The following segmentation file does not '
-                        f'exist, saving empty masks: "{srcSegmFilePath}"'
-                    ) 
-
-            io.savez_compressed(imgDataInfo['dst_segm_path'], segmData)
-            del segmData 
-
-        self.signals.finished.emit(self)
-
 class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str, list, list)
     sigCriticalNotEnoughSegmFiles = Signal(str)
@@ -4158,7 +3904,114 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                 
                 self.signals.initProgressBar.emit(0)
                 df.to_csv(df_filepath)
-                        
+
+        self.signals.finished.emit(self)
+
+class EditMetadataWorker(BaseWorkerUtil):
+    sigAskEditMetadata = Signal(object, object)
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+        # Set by the main thread in the slot connected to sigAskEditMetadata
+        self.newMetadata = None
+        self.numEditedFiles = 0
+
+    def _scanMetadata(self, expPaths):
+        scannedMetadata = {}
+        missingMetadataPaths = []
+        tot_pos = sum(len(pos_foldernames) for pos_foldernames in expPaths.values())
+        self.signals.initProgressBar.emit(tot_pos)
+        self.signals.sigUpdatePbarDesc.emit('Scanning metadata files...')
+        for exp_path, pos_foldernames in expPaths.items():
+            for pos in pos_foldernames:
+                if self.abort:
+                    return None, None
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                metadata_csv_path = load.get_metadata_csv_filepath(images_path)
+                if metadata_csv_path is None:
+                    self.logger.log(
+                        f'[WARNING]: metadata.csv file not found in '
+                        f'"{images_path}"'
+                    )
+                    missingMetadataPaths.append(images_path)
+                    self.signals.progressBar.emit(1)
+                    continue
+
+                self.logger.log(f'Reading "{metadata_csv_path}"...')
+                df_metadata = load.read_metadata_csv(metadata_csv_path)
+                scannedMetadata[metadata_csv_path] = (
+                    load.get_editable_metadata_values(df_metadata)
+                )
+                self.signals.progressBar.emit(1)
+
+        return scannedMetadata, missingMetadataPaths
+
+    def _saveMetadataCsv(self, df_metadata, metadata_csv_path):
+        while True:
+            try:
+                df_metadata.to_csv(metadata_csv_path)
+                return
+            except PermissionError:
+                traceback_str = traceback.format_exc()
+                self.mutex.lock()
+                self.signals.sigPermissionError.emit(
+                    traceback_str, metadata_csv_path
+                )
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+
+    def _updateMetadataCsv(self, metadata_csv_path, newMetadata):
+        df_metadata = load.read_metadata_csv(metadata_csv_path)
+        for key in load.EDITABLE_METADATA_KEYS:
+            df_metadata.at[key, 'values'] = newMetadata[key]
+
+        additionalValues = newMetadata['additionalValues']
+        for key, value in additionalValues.items():
+            df_metadata.at[key, 'values'] = value
+
+        # Remove custom fields that the user removed from the dialog
+        idx_to_drop = [
+            key for key in df_metadata.index
+            if key.startswith('__') and key not in additionalValues
+        ]
+        df_metadata = df_metadata.drop(idx_to_drop)
+
+        self._saveMetadataCsv(df_metadata, metadata_csv_path)
+
+    @worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+
+        # 1. Scan metadata files of all selected Positions
+        scannedMetadata, missingMetadataPaths = self._scanMetadata(expPaths)
+        if self.abort:
+            self.signals.finished.emit(self)
+            return
+
+        # 2. Ask (in main thread) the new metadata to apply
+        self.mutex.lock()
+        self.sigAskEditMetadata.emit(scannedMetadata, missingMetadataPaths)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort or self.newMetadata is None:
+            self.abort = True
+            self.signals.finished.emit(self)
+            return
+
+        # 3. Write new metadata to every metadata.csv file
+        self.signals.initProgressBar.emit(len(scannedMetadata))
+        self.signals.sigUpdatePbarDesc.emit('Saving metadata files...')
+        for metadata_csv_path in scannedMetadata.keys():
+            if self.abort:
+                self.signals.finished.emit(self)
+                return
+
+            self.logger.log(f'Updating "{metadata_csv_path}"...')
+            self._updateMetadataCsv(metadata_csv_path, self.newMetadata)
+            self.numEditedFiles += 1
+            self.signals.progressBar.emit(1)
+
         self.signals.finished.emit(self)
 
 class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
@@ -4697,7 +4550,7 @@ class ConcatSpotmaxDfsWorker(BaseWorkerUtil):
             
             self.signals.initProgressBar.emit(0)
             
-            self.logger.log('Saving concantenated files...')
+            self.logger.log('Saving concatenated files...')
             
             allpos_folderpath = os.path.join(exp_path, 'spotMAX_multipos_output')
             os.makedirs(allpos_folderpath, exist_ok=True)
@@ -5607,11 +5460,17 @@ class SimpleWorker(QObject):
         self.func_kwargs = func_kwargs
         self.posData = posData
     
+    def set_func_kwargs(self, func_kwargs: dict[str, Any]):
+        self.func_kwargs = func_kwargs
+    
     @worker_exception_handler
     def run(self):
-        self.result = self.func(
-            self.posData, *self.func_args, **self.func_kwargs
-        )
+        if self.posData is None:
+            self.output = self.func(*self.func_args, **self.func_kwargs)
+        else:
+            self.output = self.func(
+                self.posData, *self.func_args, **self.func_kwargs
+            )
         self.signals.finished.emit(self.output)
 
 class CopyAllLostObjectsWorker(QObject):
