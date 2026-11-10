@@ -45,7 +45,7 @@ from qtpy.QtGui import (
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
     QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument,
-    QValidator
+    QValidator, QIntValidator
 )
 from qtpy.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -6636,6 +6636,7 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     sigTickColorAccepted = Signal(object)
     sigAddScaleBar = Signal(bool)
     sigAddTimestamp = Signal(bool)
+    sigFontSizeChanged = Signal(int)
 
     def __init__(
             self, parent=None, name='image', axisLabel='', isViewer=False, 
@@ -6673,7 +6674,10 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.gradient.menu.addAction(self.invertBwAction)
 
         # Font size menu action
-        self.fontSizeMenu =  QMenu('Text font size')
+        self.fontSizeMenu = FontSizeQMenu(prefix='Text ')
+        self.fontSizeMenu.sigFontSizeChanged.connect(
+            self.sigFontSizeChanged.emit
+        )
         self.gradient.menu.addMenu(self.fontSizeMenu) 
 
         # Text color button
@@ -6778,6 +6782,15 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.gradient.menu.installEventFilter(self.filterObject)
         self.highlightedAction = None
         self.lastHoveredAction = None
+    
+    def setFontSize(self, font_size: int, blockSignal=False):
+        if blockSignal:
+            self.fontSizeMenu.blockSignals(True)
+        
+        self.fontSizeMenu.setFontSize(font_size)
+
+        if blockSignal:
+            self.fontSizeMenu.blockSignals(False)
     
     def setChildLutItem(self, childLutItem):
         self.childLutItem = childLutItem
@@ -7353,13 +7366,17 @@ class labelsGradientWidget(BaseLabelsGradientWidget):
     sigShowRightImgToggled = Signal(bool)
     sigShowLabelsImgToggled = Signal(bool)
     sigShowNextFrameToggled = Signal(bool)
+    sigFontSizeChanged = Signal(int)
 
     def __init__( self, *args, parent=None, orientation='right', **kargs):
         super().__init__(
             *args, parent=parent, orientation=orientation, **kargs)
 
         # Font size menu action
-        self.fontSizeMenu =  QMenu('Text font size', self)
+        self.fontSizeMenu = FontSizeQMenu(prefix='Text ')
+        self.fontSizeMenu.sigFontSizeChanged.connect(
+            self.sigFontSizeChanged.emit
+        )
         self.menu.addMenu(self.fontSizeMenu)   
 
         # IDs color button
@@ -7412,6 +7429,15 @@ class labelsGradientWidget(BaseLabelsGradientWidget):
         self.showRightImgAction.toggled.connect(self.showRightImageToggled)
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
         self.showNextFrameAction.toggled.connect(self.showNextFrameToggled)
+    
+    def setFontSize(self, font_size: int, blockSignal=False):
+        if blockSignal:
+            self.fontSizeMenu.blockSignals(True)
+        
+        self.fontSizeMenu.setFontSize(font_size)
+
+        if blockSignal:
+            self.fontSizeMenu.blockSignals(False)
     
     def removeCustomGradient(self):
         button = self.sender()
@@ -15423,3 +15449,69 @@ class PathTreeWidgetItem(QTreeWidgetItem):
             return path
             
         return super().text(column)
+
+class TypableComboBox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.NoInsert)
+        self.lineEdit().editingFinished.connect(self.commit_text)
+
+    def commit_text(self):
+        text = self.currentText()
+        index = self.findText(text, Qt.MatchExactly)
+
+        if index < 0:
+            self.addItem(text)
+            index = self.count() - 1
+
+        self.setCurrentIndex(index)
+
+class FontSizeCombobox(TypableComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.addItems([
+            *[str(i) for i in range(8, 13)],
+            *[str(i*2) for i in range(6, 16)],
+            *['36', '48', '72']
+        ])
+
+        self.lineEdit().setValidator(QIntValidator(1, 9999, self.lineEdit()))
+
+class FontSizeQMenu(QMenu):
+    sigFontSizeChanged = Signal(int)
+
+    def __init__(self, prefix='', parent=None):
+        super().__init__(parent)
+
+        title = f'{prefix}font size'.capitalize()
+        self.setTitle(title)
+
+        self.fontSizeCombobox = FontSizeCombobox(self)
+        self.fontSizeAction = QWidgetAction(self)
+        self.fontSizeAction.setDefaultWidget(self.fontSizeCombobox)
+        self.addAction(self.fontSizeAction)
+
+        self.fontSizeCombobox.currentTextChanged.connect(
+            self.emitSigFontSizeChanged
+        )
+    
+    def emitSigFontSizeChanged(self, font_size_str):
+        try:
+            font_size = int(font_size_str)
+        except (TypeError, ValueError):
+            return
+
+        self.sigFontSizeChanged.emit(font_size)
+
+    def setFontSize(self, font_size: int):
+        text = str(int(font_size))
+        combo = self.fontSizeCombobox
+
+        index = combo.findText(text)
+        if index < 0:
+            combo.addItem(text)
+            index = combo.count() - 1
+
+        combo.setCurrentIndex(index)
