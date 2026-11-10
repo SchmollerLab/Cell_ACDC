@@ -66,6 +66,7 @@ import qtpy.compat
 import pyqtgraph as pg
 pg.setConfigOption('imageAxisOrder', 'row-major')
 
+from . import _window_stacking
 from . import myutils, measurements, is_mac, is_win, html_utils, is_linux
 from . import printl, settings_folderpath
 from . import colors, config
@@ -1634,7 +1635,7 @@ class QDialogListbox(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
 
         horizontal_sb = self.listBox.horizontalScrollBar()
@@ -2999,7 +3000,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
     def show(self, block=False):
         self.endOfScrollableRow = self.currentRow
         
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         # spacer
         spacer = QSpacerItem(10, 10)
         self._layout.addItem(spacer, self.currentRow, 1)
@@ -6101,8 +6102,8 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         self._parent = parent
         self.name = name
 
-        self.gradient.colorDialog.setWindowFlags(
-            Qt.Dialog | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            self.gradient.colorDialog, Qt.Dialog, parent=parent
         )
         self.gradient.colorDialog.accepted.disconnect()
         self.gradient.colorDialog.accepted.connect(self.tickColorAccepted)
@@ -8931,7 +8932,10 @@ class QBaseWindow(QMainWindow):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window)
+        _window_stacking.keep_on_top_of_parents(
+            self, getattr(self, '_keepOnTopOfParents', True)
+        )
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -9287,8 +9291,7 @@ class ImShow(QBaseWindow):
 
         self.textItems = []
         self.group_to_idx_mapper = {'': 0}
-        if not win_stay_on_top:
-            self.setWindowFlag(Qt.WindowStaysOnTopHint, False)
+        self._keepOnTopOfParents = win_stay_on_top
     
     def _getGraphicsScrollbar(self, idx, image, imageItem, maximum):
         proxy = QGraphicsProxyWidget(imageItem)

@@ -70,6 +70,7 @@ from qtpy.QtWidgets import (
 )
 import qtpy.compat
 
+from . import _window_stacking
 from . import exception_handler
 from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, settings_folderpath, config
@@ -218,7 +219,7 @@ class customAnnotationDialog(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle('Custom annotation')
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
 
         layout = widgets.FormLayout()
 
@@ -501,8 +502,8 @@ class customAnnotationDialog(QDialog):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
         self.colorButton.colorDialog.open()
         w = self.width()
@@ -789,8 +790,8 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
         self.colorButton.colorDialog.open()    
         w = self.width()
@@ -840,7 +841,7 @@ class AddPointsLayerDialog(QBaseDialog):
         self.imagesPath = imagesPath
 
         self.setWindowTitle('Add points layer')
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
 
         mainLayout = QVBoxLayout()
 
@@ -1538,7 +1539,7 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
         self._hide_on_close = hide_on_close
 
         self.setWindowTitle(title)
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
 
         mainLayout = QVBoxLayout()
 
@@ -1696,7 +1697,7 @@ class filenameDialog(QDialog):
         self.ext = ext
 
         self.setWindowTitle(title)
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
 
         layout = QVBoxLayout()
         entryLayout = QGridLayout()
@@ -2067,7 +2068,7 @@ class SetMeasurementsDialog(QBaseDialog):
         self.checkBoxedGroup = QButtonGroup()
         self.checkBoxedGroup.setExclusive(isSingleSelection)
 
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
 
         self.cancel = True
 
@@ -4101,7 +4102,7 @@ class QDialogMetadataXML(QDialog):
         self.TimeIncrement_DSB.setMinimumHeight(h)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         self.setSize()
         if block:
@@ -4117,7 +4118,7 @@ class CellACDCTrackerParamsWin(QDialog):
         self.cancel = True
         super().__init__(parent)
 
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         self.setWindowTitle('Cell-ACDC tracker parameters')
 
         paramsLayout = QGridLayout()
@@ -4216,7 +4217,7 @@ class BayesianTrackerParamsWin(QDialog):
         self.channels = channels
         self.currentChannelName = currentChannelName
 
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         self.setWindowTitle('Bayesian tracker parameters')
 
         paramsLayout = QGridLayout()
@@ -4472,7 +4473,7 @@ class DeltaTrackerParamsWin(QDialog):
         self.cancel = True
         super().__init__(parent)
 
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Dialog)
         self.setWindowTitle('Delta tracker parameters')
 
         paramsLayout = QGridLayout()
@@ -4720,7 +4721,7 @@ class QDialogWorkerProgress(QDialog):
         self.logConsole.append(text)
 
     def show(self, app):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         QDialog.show(self)
         screen = app.primaryScreen()
         screenWidth = screen.size().width()
@@ -4808,7 +4809,7 @@ class QDialogCombobox(QDialog):
         cancelButton.clicked.connect(self.close)
         self.loop = None
 
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         self.setFont(fonts.font)
 
     def ok_cb(self, checked=False):
@@ -4821,7 +4822,7 @@ class QDialogCombobox(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         QDialog.show(self)
         if block:
             self.loop = QEventLoop()
@@ -6127,7 +6128,7 @@ class QDialogSelectModel(QDialog):
     def askSelectedModelsOrder(self, selected_models):
         dialog = QDialog(self)
         dialog.setWindowTitle('Order selected models')
-        dialog.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(dialog, Qt.Window)
 
         layout = QVBoxLayout(dialog)
         infoTxt = html_utils.paragraph(
@@ -6325,7 +6326,7 @@ class QDialogSelectModel(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
 
         horizontal_sb = self.listBox.horizontalScrollBar()
@@ -6494,7 +6495,7 @@ class QDialogAppendTextFilename(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -6561,7 +6562,7 @@ class QDialogEntriesWidget(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -7174,7 +7175,7 @@ class QDialogMetadata(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -7198,7 +7199,7 @@ class QCropZtool(QBaseDialog):
 
         self.cancel = True
 
-        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Tool)
 
         self.SizeZ = SizeZ
         self.numDigits = len(str(self.SizeZ))
@@ -7629,7 +7630,7 @@ class FutureFramesAction_QDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         for button in self.ButtonsGroup.buttons():
             button.setMinimumHeight(int(button.height()*1.2))
@@ -8009,7 +8010,7 @@ class PostProcessSegmDialog(QBaseDialog):
             self.isTimelapse = self.mainWin.data[self.mainWin.pos_i].SizeT > 1
 
         self.setWindowTitle('Post-processing segmentation parameters')
-        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Tool)
 
         mainLayout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
@@ -8905,7 +8906,7 @@ class imageViewer(QMainWindow):
         self.sigClosed.emit()
 
     def show(self, left=None, top=None):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         QMainWindow.show(self)
         try:
             self.framesScrollBar.setFixedHeight(self.parent.h)
@@ -9320,7 +9321,7 @@ class editCcaTableWidget(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
 
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
 
         # Layouts
         mainLayout = QVBoxLayout()
@@ -9867,7 +9868,7 @@ will be applied (see below).<br><br>
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         ncols = self.tableLayout.columnCount()
         maxLabelWidth = max([
@@ -10080,7 +10081,7 @@ class askStopFrameSegm(QDialog):
         if height > maxHeight:
             height = maxHeight
 
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         self.resize(width, height)
         self.move(25, 50)
@@ -10353,7 +10354,7 @@ class QLineEditDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         QTimer.singleShot(10, self.entryWidget.selectAll)
         if block:
@@ -10796,7 +10797,7 @@ class EditIDDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -10956,7 +10957,7 @@ class QtSelectItems(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         self.singleSelectionHeight = self.height()
         if block:
@@ -11928,7 +11929,7 @@ class pdDataFrameWidget(QMainWindow):
         self.parent = parent
         self.setWindowTitle('Cell cycle annotations')
 
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -12087,7 +12088,7 @@ class QDialogZsliceAbsent(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -12251,7 +12252,7 @@ class SelectSegmFileDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -13946,7 +13947,7 @@ class QDialogModelParams(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         if self.model_name == 'thresholding':
             self.segmentGroupBox.setDisabled(True)
@@ -16344,10 +16345,9 @@ class ScaleBarPropertiesDialog(QBaseDialog):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
-        self.colorButton.colorDialog.setParent(self)
         self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
@@ -17450,10 +17450,9 @@ class TimestampPropertiesDialog(QBaseDialog):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
-        self.colorButton.colorDialog.setParent(self)
         self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
@@ -20630,7 +20629,7 @@ class QCropTrangeTool(QBaseDialog):
 
         self.cancel = True
 
-        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Tool)
 
         self.SizeT = SizeT
         self.numDigits = len(str(self.SizeT))
@@ -21209,8 +21208,8 @@ class OverlayLabelsAppearanceDialog(QBaseDialog):
         color = self.colorButton.color()
         self.colorButton.origColor = color
         self.colorButton.colorDialog.setCurrentColor(color)
-        self.colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            self.colorButton.colorDialog, Qt.Window, parent=self
         )
         self.colorButton.colorDialog.open()
         w = self.width()
@@ -21800,8 +21799,8 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         color = colorButton.color()
         colorButton.origColor = color
         colorButton.colorDialog.setCurrentColor(color)
-        colorButton.colorDialog.setWindowFlags(
-            Qt.Window | Qt.WindowStaysOnTopHint
+        _window_stacking.set_window_flags_on_top(
+            colorButton.colorDialog, Qt.Window, parent=self
         )
         colorButton.colorDialog.open()
         w = self.width()
@@ -23323,7 +23322,7 @@ class askZPlaneView(QDialog):
         if height > maxHeight:
             height = maxHeight
 
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
         self.resize(width, height)
         self.move(25, 50)
