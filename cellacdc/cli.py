@@ -191,12 +191,8 @@ class _WorkflowKernel:
         if 'initialization' in workflow_params:
             ch_name = workflow_params['initialization']['user_ch_name']
         elif 'measurements' in workflow_params:
-            channels = workflow_params['measurements']['channels']
-            channel_names_to_skip = (
-                workflow_params['measurements']['channel_names_to_skip']
-            )
-            channels = [ch for ch in channels if ch not in channel_names_to_skip]
-            ch_name = channels[0]
+            # Channel file is picked per Position, see _get_any_ch_filepaths
+            ch_name = None
         else:
             printl(workflow_params, pretty=True)
             raise KeyError(
@@ -210,9 +206,31 @@ class _WorkflowKernel:
                 continue
             
             images_paths = load.get_images_paths(path)
-            ch_filepaths = load.get_user_ch_paths(images_paths, ch_name)
+            if 'measurements' in workflow_params:
+                # Positions can have different channels. The file path only
+                # identifies the Position (kernel.run reloads it), hence use
+                # the first channel found, as in ComputeMetricsWorker.run
+                ch_filepaths = self._get_any_ch_filepaths(images_paths)
+            else:
+                ch_filepaths = load.get_user_ch_paths(images_paths, ch_name)
             parsed_paths.extend(ch_filepaths)
         return parsed_paths
+
+    def _get_any_ch_filepaths(self, images_paths):
+        ch_filepaths = []
+        for images_path in images_paths:
+            _, chNames = myutils.getBasenameAndChNames(
+                images_path, useExt=('.tif', '.h5')
+            )
+            if not chNames:
+                raise FileNotFoundError(
+                    f'Could not find any channel file in images path '
+                    f'"{images_path}".'
+                )
+            ch_filepaths.append(
+                myutils.getChannelFilePath(images_path, chNames[0])
+            )
+        return ch_filepaths
 
     @exception_handler_cli
     def parse_stop_frame_numbers(self, workflow_params):
