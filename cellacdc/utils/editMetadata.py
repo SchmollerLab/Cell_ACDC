@@ -7,10 +7,17 @@ from .. import apps, myutils, workers, widgets, html_utils
 from .base import NewThreadMultipleExpBaseUtil
 
 MISSING_VALUE_TEXT = '<missing>'
+EMPTY_VALUE_TEXT = '<empty>'
+
+# Sentinel for keys that are absent from a metadata.csv file. It must be
+# different from the normalized empty value (None) so that a missing field
+# and a present-but-empty field are reported as a difference.
+_MISSING_KEY = object()
 
 def _normalize_metadata_value(value):
     """Normalize a value read from metadata.csv so that values like '1',
-    1.0, and '1.0' are considered equal when comparing positions."""
+    1.0, and '1.0' are considered equal when comparing positions.
+    Empty values (None, NaN, or blank strings) are normalized to None."""
     if value is None:
         return None
     try:
@@ -21,7 +28,20 @@ def _normalize_metadata_value(value):
     try:
         return float(value)
     except (TypeError, ValueError):
-        return str(value).strip()
+        value = str(value).strip()
+        return value if value else None
+
+def _get_normalized_value(values, key):
+    if key not in values:
+        return _MISSING_KEY
+    return _normalize_metadata_value(values[key])
+
+def _get_display_value(values, key):
+    if key not in values:
+        return MISSING_VALUE_TEXT
+    if _normalize_metadata_value(values[key]) is None:
+        return EMPTY_VALUE_TEXT
+    return values[key]
 
 def get_metadata_differences(scannedMetadata):
     """Find the metadata keys whose values are not the same in all files.
@@ -35,7 +55,9 @@ def get_metadata_differences(scannedMetadata):
     -------
     dict
         Mapping of {key: {metadata_csv_path: value}} only for the keys
-        whose values differ (or are missing) in at least one file.
+        whose values differ (or are missing) in at least one file. Missing
+        keys are reported as `MISSING_VALUE_TEXT` and empty values as
+        `EMPTY_VALUE_TEXT`.
     """
     allKeys = []
     for values in scannedMetadata.values():
@@ -46,14 +68,14 @@ def get_metadata_differences(scannedMetadata):
     differences = {}
     for key in allKeys:
         normalizedValues = {
-            _normalize_metadata_value(values.get(key))
+            _get_normalized_value(values, key)
             for values in scannedMetadata.values()
         }
         if len(normalizedValues) == 1:
             continue
 
         differences[key] = {
-            path: values.get(key, MISSING_VALUE_TEXT)
+            path: _get_display_value(values, key)
             for path, values in scannedMetadata.items()
         }
     return differences
@@ -192,8 +214,11 @@ class EditMetadataUtil(NewThreadMultipleExpBaseUtil):
         if 'SizeZ' in refValues:
             SizeZ_metadata = _to_int(refValues['SizeZ'])
 
+        # Empty custom fields are read as NaN by pandas --> show them as
+        # empty text instead of 'nan' in the dialog
         additionalValues = {
-            key: value for key, value in refValues.items()
+            key: '' if _normalize_metadata_value(value) is None else value
+            for key, value in refValues.items()
             if key.startswith('__')
         }
 
