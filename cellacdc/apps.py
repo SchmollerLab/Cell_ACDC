@@ -10810,7 +10810,8 @@ class QtSelectItems(QDialog):
     def __init__(
             self, title, items, informativeText,
             CbLabel='Select value:  ', parent=None,
-            showInFileManagerPath=None
+            showInFileManagerPath=None,
+            addSelectByInfoButtons=False
         ):
         self.cancel = True
         self.selectedItemsText = ''
@@ -10859,6 +10860,11 @@ class QtSelectItems(QDialog):
         
         self.buttonsLayout = bottomLayout
 
+        self.selectByInfoButtons = []
+        selectByInfoLayout = None
+        if addSelectByInfoButtons:
+            selectByInfoLayout = self._createSelectByInfoButtons(items)
+
         listBox = widgets.listWidget()
         listBox.addItems(items)
         listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -10868,7 +10874,10 @@ class QtSelectItems(QDialog):
         listBox.hide()
         self.ListBox = listBox
 
-        mainLayout.addLayout(topLayout)  
+        mainLayout.addLayout(topLayout)
+        if selectByInfoLayout is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addLayout(selectByInfoLayout)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(bottomLayout)
 
@@ -10887,11 +10896,130 @@ class QtSelectItems(QDialog):
 
         self.setFont(fonts.font)
 
+    # (regex pattern searched in the item text, button text)
+    # The info text is added to the Position folder names by methods like
+    # `load.select_exp_folder.get_values_acdc_and_spotmax`,
+    # `load.select_exp_folder.get_values_segmGUI`, and
+    # `load.select_exp_folder.get_values_dataprep`
+    SELECT_BY_INFO_RULES = (
+        (
+            r'last tracked frame',
+            'Select all Positions with at least one tracked frame'
+        ),
+        (
+            r'last (cc )?annotated frame',
+            'Select all Positions with cell cycle annotations'
+        ),
+        (
+            r'SpotMAX output exists',
+            'Select all Positions with SpotMAX output'
+        ),
+        (
+            r'z-slices selected',
+            'Select all Positions with z-slices selected'
+        ),
+        (
+            r'\baligned\b',
+            'Select all aligned Positions'
+        ),
+        (
+            r'(?<!bkgr )ROI info present',
+            'Select all Positions with ROI info'
+        ),
+        (
+            r'bkgr ROI info present',
+            'Select all Positions with background ROI info'
+        ),
+        (
+            r'\bcropped\b',
+            'Select all cropped Positions'
+        ),
+    )
+
+    def _createSelectByInfoButtons(self, items):
+        """Add one button for each type of info found in the items text
+        (e.g., 'last tracked frame' or 'SpotMAX output exists'). Clicking
+        the button selects all the items with that info.
+        """
+        if len(items) < 2:
+            return
+
+        layout = QGridLayout()
+        n_cols = 2
+        for pattern, buttonText in self.SELECT_BY_INFO_RULES:
+            regex = re.compile(pattern, flags=re.IGNORECASE)
+            isMatch = [
+                regex.search(self._getItemInfoText(item)) is not None
+                for item in items
+            ]
+            if not any(isMatch):
+                continue
+
+            button = widgets.PushButton(
+                buttonText, icon=QIcon(':select_all.svg')
+            )
+            button.clicked.connect(partial(self.selectItemsByInfo, isMatch))
+            idx = len(self.selectByInfoButtons)
+            row, col = divmod(idx, n_cols)
+            layout.addWidget(button, row, col)
+            self.selectByInfoButtons.append(button)
+
+        if not self.selectByInfoButtons:
+            return
+
+        hLayout = QHBoxLayout()
+        hLayout.addStretch(1)
+        hLayout.addLayout(layout)
+
+        return hLayout
+
+    def _getItemInfoText(self, item):
+        # Search only in the info part (after the Position folder name)
+        idx = item.find('(')
+        if idx == -1:
+            return ''
+        return item[idx:]
+
+    def selectItemsByInfo(self, isMatch, *args):
+        if not self.multiPosButton.isChecked():
+            self.multiPosButton.setChecked(True)
+
+        self.ListBox.clearSelection()
+        firstSelectedItem = None
+        for i, selected in enumerate(isMatch):
+            if not selected:
+                continue
+            item = self.ListBox.item(i)
+            item.setSelected(True)
+            if firstSelectedItem is None:
+                firstSelectedItem = item
+
+        if firstSelectedItem is not None:
+            self.ListBox.scrollToItem(firstSelectedItem)
+
+    def setSelectByInfoButtonsDisabled(self, disabled: bool):
+        for button in self.selectByInfoButtons:
+            button.setDisabled(disabled)
+
     def setAllSelected(self, selected: bool):
         for i in range(self.ListBox.count()):
             item = self.ListBox.item(i)
             item.setSelected(selected)
-    
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.StandardKey.SelectAll):
+            self.selectAllItems()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def selectAllItems(self):
+        if not self.multiPosButton.isChecked():
+            if not self.multiPosButton.isEnabled():
+                return
+            self.multiPosButton.setChecked(True)
+        self.setAllSelected(True)
+
     def setSelectedItems(self, selectedItemsText):
         if self.multiPosButton.isChecked():
             for i in range(self.ListBox.count()):

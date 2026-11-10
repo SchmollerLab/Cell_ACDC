@@ -3899,7 +3899,8 @@ class select_exp_folder:
         win = apps.QtSelectItems(
             title, values, informativeText, CbLabel=CbLabel, 
             parent=parentQWidget,
-            showInFileManagerPath=self.exp_path
+            showInFileManagerPath=self.exp_path,
+            addSelectByInfoButtons=allowMultiSelection
         )
         win.setFont(font)
         self.doNotAskAgain = False
@@ -4024,38 +4025,6 @@ class select_exp_folder:
                 values.append(pos)
             else:
                 values.append(f'{info_txt})')
-        self.values = values
-        return values
-
-    def get_values_cca(self, exp_path):
-        self.exp_path = exp_path
-        pos_foldernames = natsorted(myutils.listdir(exp_path))
-        pos_foldernames = [
-            pos for pos in pos_foldernames if re.match(r'^Position_(\d+)', pos)
-        ]
-        self.pos_foldernames = pos_foldernames
-        values = []
-        for pos in pos_foldernames:
-            cc_stage_found = False
-            pos_path = os.path.join(exp_path, pos)
-            if os.path.isdir(pos_path):
-                images_path = f'{exp_path}/{pos}/Images'
-                filenames = myutils.listdir(images_path)
-                for filename in filenames:
-                    if filename.find('cc_stage.csv') != -1:
-                        cc_stage_found = True
-                        cc_stage_path = f'{images_path}/{filename}'
-                        cca_df = pd.read_csv(
-                            cc_stage_path, index_col=['frame_i', 'Cell_ID']
-                        )
-                        last_analyzed_frame_i = (
-                            cca_df.index.get_level_values(0).max()
-                        )
-                if cc_stage_found:
-                    values.append(f'{pos} (Last analyzed frame: '
-                                  f'{last_analyzed_frame_i})')
-                else:
-                    values.append(pos)
         self.values = values
         return values
 
