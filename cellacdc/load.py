@@ -1334,6 +1334,41 @@ def get_posData_metadata(images_path, basename):
 
     return df_metadata, metadata_csv_path
 
+EDITABLE_METADATA_KEYS = (
+    'SizeT', 'SizeZ', 'TimeIncrement',
+    'PhysicalSizeZ', 'PhysicalSizeY', 'PhysicalSizeX'
+)
+
+def get_metadata_csv_filepath(images_path):
+    """Return the path of the metadata.csv file in `images_path` or None
+    if not found."""
+    for file in myutils.listdir(images_path):
+        if file.endswith('metadata.csv'):
+            return os.path.join(images_path, file)
+    return None
+
+def read_metadata_csv(metadata_csv_path):
+    parse_metadata_csv_file(metadata_csv_path)
+    return pd.read_csv(metadata_csv_path).set_index('Description')
+
+def get_editable_metadata_values(df_metadata):
+    """Get the values from metadata DataFrame that can be edited by the user,
+    i.e., the keys in `EDITABLE_METADATA_KEYS` plus the custom fields
+    (keys starting with '__').
+
+    Missing keys are not included in the returned dictionary.
+    """
+    values = {}
+    for key in EDITABLE_METADATA_KEYS:
+        if key in df_metadata.index:
+            values[key] = df_metadata.at[key, 'values']
+
+    for key in df_metadata.index:
+        if key.startswith('__') and len(key) > 2:
+            values[key] = df_metadata.at[key, 'values']
+
+    return values
+
 def is_pos_prepped(images_path):
     filenames = myutils.listdir(images_path)
     for filename in filenames:

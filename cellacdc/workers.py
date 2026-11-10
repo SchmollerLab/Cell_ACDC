@@ -4157,7 +4157,114 @@ class ToObjCoordsWorker(BaseWorkerUtil):
                 
                 self.signals.initProgressBar.emit(0)
                 df.to_csv(df_filepath)
-                        
+
+        self.signals.finished.emit(self)
+
+class EditMetadataWorker(BaseWorkerUtil):
+    sigAskEditMetadata = Signal(object, object)
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+        # Set by the main thread in the slot connected to sigAskEditMetadata
+        self.newMetadata = None
+        self.numEditedFiles = 0
+
+    def _scanMetadata(self, expPaths):
+        scannedMetadata = {}
+        missingMetadataPaths = []
+        tot_pos = sum(len(pos_foldernames) for pos_foldernames in expPaths.values())
+        self.signals.initProgressBar.emit(tot_pos)
+        self.signals.sigUpdatePbarDesc.emit('Scanning metadata files...')
+        for exp_path, pos_foldernames in expPaths.items():
+            for pos in pos_foldernames:
+                if self.abort:
+                    return None, None
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                metadata_csv_path = load.get_metadata_csv_filepath(images_path)
+                if metadata_csv_path is None:
+                    self.logger.log(
+                        f'[WARNING]: metadata.csv file not found in '
+                        f'"{images_path}"'
+                    )
+                    missingMetadataPaths.append(images_path)
+                    self.signals.progressBar.emit(1)
+                    continue
+
+                self.logger.log(f'Reading "{metadata_csv_path}"...')
+                df_metadata = load.read_metadata_csv(metadata_csv_path)
+                scannedMetadata[metadata_csv_path] = (
+                    load.get_editable_metadata_values(df_metadata)
+                )
+                self.signals.progressBar.emit(1)
+
+        return scannedMetadata, missingMetadataPaths
+
+    def _saveMetadataCsv(self, df_metadata, metadata_csv_path):
+        while True:
+            try:
+                df_metadata.to_csv(metadata_csv_path)
+                return
+            except PermissionError:
+                traceback_str = traceback.format_exc()
+                self.mutex.lock()
+                self.signals.sigPermissionError.emit(
+                    traceback_str, metadata_csv_path
+                )
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+
+    def _updateMetadataCsv(self, metadata_csv_path, newMetadata):
+        df_metadata = load.read_metadata_csv(metadata_csv_path)
+        for key in load.EDITABLE_METADATA_KEYS:
+            df_metadata.at[key, 'values'] = newMetadata[key]
+
+        additionalValues = newMetadata['additionalValues']
+        for key, value in additionalValues.items():
+            df_metadata.at[key, 'values'] = value
+
+        # Remove custom fields that the user removed from the dialog
+        idx_to_drop = [
+            key for key in df_metadata.index
+            if key.startswith('__') and key not in additionalValues
+        ]
+        df_metadata = df_metadata.drop(idx_to_drop)
+
+        self._saveMetadataCsv(df_metadata, metadata_csv_path)
+
+    @worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+
+        # 1. Scan metadata files of all selected Positions
+        scannedMetadata, missingMetadataPaths = self._scanMetadata(expPaths)
+        if self.abort:
+            self.signals.finished.emit(self)
+            return
+
+        # 2. Ask (in main thread) the new metadata to apply
+        self.mutex.lock()
+        self.sigAskEditMetadata.emit(scannedMetadata, missingMetadataPaths)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort or self.newMetadata is None:
+            self.abort = True
+            self.signals.finished.emit(self)
+            return
+
+        # 3. Write new metadata to every metadata.csv file
+        self.signals.initProgressBar.emit(len(scannedMetadata))
+        self.signals.sigUpdatePbarDesc.emit('Saving metadata files...')
+        for metadata_csv_path in scannedMetadata.keys():
+            if self.abort:
+                self.signals.finished.emit(self)
+                return
+
+            self.logger.log(f'Updating "{metadata_csv_path}"...')
+            self._updateMetadataCsv(metadata_csv_path, self.newMetadata)
+            self.numEditedFiles += 1
+            self.signals.progressBar.emit(1)
+
         self.signals.finished.emit(self)
 
 class Stack2DsegmTo3Dsegm(BaseWorkerUtil):
