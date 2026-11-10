@@ -6933,7 +6933,7 @@ class QDialogMetadata(QDialog):
         msg.exec_()
 
     def SizeZvalueChanged(self, val):
-        if len(self.imgDataShape) < 3:
+        if self.imgDataShape is not None and len(self.imgDataShape) < 3:
             return
         
         if val > 1 and self.imgDataShape is not None:

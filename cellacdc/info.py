@@ -77,8 +77,26 @@ utilsInfo = {
     """),
 
     'Add lineage tree table to one or more experiments...': (f"""
-        Not documented yet. You can ask help about utilities 
+        Not documented yet. You can ask help about utilities
         on our {forum_href}.<br><br>
-        Thank you <b>for your patience</b>! 
+        Thank you <b>for your patience</b>!
+    """),
+
+    'Edit metadata of one or more experiments...': (f"""
+        This utility is used to <b>edit the <code>metadata.csv</code> file</b>
+        of multiple Positions and experiments at once.<br><br>
+
+        After selecting the experiment folders (and Positions), Cell-ACDC
+        will scan the metadata files and <b>warn you if the metadata is not
+        the same</b> in all of them.<br><br>
+
+        You can then edit the number of frames (SizeT), number of z-slices
+        (SizeZ), time interval, physical sizes, and custom fields.
+        The <b>same values will be applied to all</b> the selected
+        Positions.<br><br>
+
+        Note that measurements already saved in the
+        <code>acdc_output.csv</code> tables are not updated.
+        Run the "Compute measurements" utility to update them.
     """)
 }
