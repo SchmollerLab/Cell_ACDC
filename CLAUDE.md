@@ -10,7 +10,7 @@ Guidance for Claude Code when working in this repository.
 %USERPROFILE%\miniforge3\envs\acdc\python.exe
 ```
 
-That is the `acdc` conda environment of the miniforge installation in the user's home folder (Python 3.13, PyQt6, pytest installed; no flake8/pyflakes, see Testing). Write it as `~/miniforge3/envs/acdc/python.exe` in Bash and `$env:USERPROFILE\miniforge3\envs\acdc\python.exe` in PowerShell. Do not use a bare `python`/`pytest` from PATH. Examples (Bash):
+That is the `acdc` conda environment of the miniforge installation in the user's home folder (Python 3.13, PyQt6, pytest installed; no flake8/pyflakes, see Testing). Its editable install points to a different checkout (`~/repos/Cell_ACDC`), so run Python/pytest from this repo's root (`python -m ...` puts the cwd first on `sys.path`); scripts run from elsewhere (e.g. the scratchpad) need `PYTHONPATH=<this repo>` or they import the other clone. Write it as `~/miniforge3/envs/acdc/python.exe` in Bash and `$env:USERPROFILE\miniforge3\envs\acdc\python.exe` in PowerShell. Do not use a bare `python`/`pytest` from PATH. Examples (Bash):
 
 ```bash
 ~/miniforge3/envs/acdc/python.exe -m pytest tests/test_phase_translator.py -q
