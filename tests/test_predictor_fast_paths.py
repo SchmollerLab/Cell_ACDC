@@ -7,6 +7,7 @@ all cells (``TimepointPredictor._evaluate_all_cells``). Both must give
 exactly the results of the target-by-target and cell-by-cell reference
 paths, which are forced here by disabling the fast paths.
 """
+import sys
 import warnings
 from unittest.mock import Mock
 
@@ -458,16 +459,42 @@ def test_quoted_equation_narrows_columns_like_unquoted(monkeypatch):
     assert seen == [['mKO2-hCdt1_fucci'], ['mCherry_fucci']]
 
 
+def test_quoted_equation_keeps_all_columns_if_names_are_missed(monkeypatch):
+    # Version independent: CellEquation.names misses a quoted name (as when
+    # tokenizing stops early), so the whole table is passed
+    df = pd.DataFrame({
+        'GFP mean': [1.0, 2.0], 'area': [3.0, 4.0], 'other': [0.0, 0.0],
+    })
+    monkeypatch.setattr(
+        tp.CellEquation, 'names', staticmethod(lambda equation: {'area'})
+    )
+    seen = spy_eval_columns(monkeypatch)
+    values = tp.CellEquation.evaluate(df, 'area + `GFP mean`')
+    assert list(values) == [4.0, 6.0]
+    assert seen == [list(df.columns)]
+
+
 def test_quoted_equation_keeps_all_columns_if_tokenizing_fails(monkeypatch):
     df = pd.DataFrame({
         "a'b": [1.0, 2.0], 'GFP mean': [1.0, 2.0], 'area': [3.0, 4.0],
         'other': [0.0, 0.0],
     })
-    # The apostrophe in the quoted name stops tokenizing after ``area``, so
-    # CellEquation.names misses both quoted names: the whole table is passed
-    # and pandas reports the same error as without narrowing.
     equation = "area + `a'b` + `GFP mean`"
-    assert tp.CellEquation.names(equation) == {'area'}
+    names = tp.CellEquation.names(equation)
+    if sys.version_info < (3, 12):
+        # The pure-Python tokenizer recovers from the apostrophe (error
+        # token), so all names are found; pandas (same tokenizer) evaluates
+        # the equation on the narrowed table
+        assert names == {'area', "a'b", 'GFP mean'}
+        seen = spy_eval_columns(monkeypatch)
+        values = tp.CellEquation.evaluate(df, equation)
+        assert list(values) == [5.0, 8.0]
+        assert seen == [["a'b", 'GFP mean', 'area']]
+        return
+    # Python 3.12+: the apostrophe in the quoted name stops tokenizing after
+    # ``area``, so CellEquation.names misses both quoted names: the whole
+    # table is passed and pandas reports the same error as without narrowing
+    assert names == {'area'}
     with pytest.raises(Exception) as expected:
         df.eval(equation)
     seen = spy_eval_columns(monkeypatch)

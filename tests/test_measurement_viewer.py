@@ -16,7 +16,7 @@ from qtpy.QtWidgets import (
 )
 
 from cellacdc.measurements_viewer import MeasurementsViewerWin
-from cellacdc import measurements_viewer
+from cellacdc import measurements_viewer, widgets
 
 
 @pytest.fixture(scope='module')
@@ -253,7 +253,8 @@ def test_hardcoded_shortcuts_are_listed_and_conflict_in_editor(viewer):
         shortcut for shortcuts in dialog.new_hard_shortcuts.values()
         for shortcut in shortcuts.values()
     ]
-    assert 'Ctrl+O' in hardTexts
+    # The editor shows macOS key names on macOS ('Command+O')
+    assert widgets.windowsShortcutToMac('Ctrl+O') in hardTexts
     lineEdit = dialog.shortcutLineEdits['Next']
     lineEdit.setText('Ctrl+O')
     assert 'Conflict with' in lineEdit.warnConflictLabel.text()

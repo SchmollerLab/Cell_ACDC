@@ -39,7 +39,11 @@ def _snapshot(path):
 def _isInside(path, folderpath):
     path = os.path.normcase(os.path.abspath(path))
     folderpath = os.path.normcase(os.path.abspath(folderpath))
-    return os.path.commonpath([path, folderpath]) == folderpath
+    try:
+        return os.path.commonpath([path, folderpath]) == folderpath
+    except ValueError:
+        # Different drives on Windows (CI checks out on D:, tmp is on C:)
+        return False
 
 
 def test_settings_paths_point_to_isolated_folder(_isolate_user_settings):

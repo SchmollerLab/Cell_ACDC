@@ -5,16 +5,28 @@ autouse watchdog fixture to answer it. A safety timer closes any dialog that
 is still open after a few seconds, so a broken watchdog fails the test instead
 of hanging the test session.
 """
+import sys
+
 import pytest
+import qtpy
 from qtpy.QtCore import QTimer
 from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
 from cellacdc import widgets
 from tests.conftest import (
-    MAX_ATTEMPTS, AutoAnsweredDialogWarning, _DialogWatchdog
+    MAX_ATTEMPTS, AutoAnsweredDialogWarning, _DialogWatchdog,
+    flushDeferredDeletes
 )
 
 SAFETY_TIMEOUT_MS = 5000
+
+# Showing a QMessageBox on the offscreen (or minimal) platform crashes the
+# interpreter (access violation) with Qt5 on Windows, killing the whole
+# pytest session. cellacdc itself uses myMessageBox (a QDialog).
+shows_qmessagebox = pytest.mark.skipif(
+    sys.platform.startswith('win') and qtpy.QT5,
+    reason='QMessageBox crashes on the offscreen platform with Qt5 on Windows'
+)
 
 
 @pytest.fixture(scope='module')
@@ -66,12 +78,14 @@ def test_dialog_buttons_normalizes_method_and_list(app):
     assert _DialogWatchdog.dialogButtons(dialog) == []
 
 
+@shows_qmessagebox
 def test_plain_qmessagebox_exec_is_auto_answered(
         app, safety_net, _auto_answer_blocking_dialogs
     ):
     msg = QMessageBox()
     msg.setWindowTitle('Plain message box')
-    msg.setText('Proceed?')
+    # macOS ignores QMessageBox titles: the watchdog then names it by its text
+    msg.setText('Plain message box: proceed?')
     msg.setStandardButtons(_standard('Ok') | _standard('Cancel'))
     with pytest.warns(AutoAnsweredDialogWarning, match='Plain message box'):
         msg.exec()
@@ -80,12 +94,13 @@ def test_plain_qmessagebox_exec_is_auto_answered(
     assert _auto_answer_blocking_dialogs.answered[-1][0] == 'QMessageBox'
 
 
+@shows_qmessagebox
 def test_qmessagebox_default_button_is_preferred(
         app, safety_net, _auto_answer_blocking_dialogs
     ):
     msg = QMessageBox()
     msg.setWindowTitle('Default button')
-    msg.setText('Overwrite?')
+    msg.setText('Default button: overwrite?')
     msg.setStandardButtons(_standard('Yes') | _standard('No'))
     msg.setDefaultButton(_standard('No'))
     with pytest.warns(AutoAnsweredDialogWarning, match='Default button'):
@@ -97,9 +112,14 @@ def test_qmessagebox_default_button_is_preferred(
     assert action.replace('&', '') == 'clicked "No"'  # '&' = mnemonic
 
 
+@shows_qmessagebox
 def test_static_qmessagebox_question_is_auto_answered(app, safety_net):
+    # Created by Qt: every topLevelWidgets() call may give a new Python
+    # wrapper (new id()), which kept the grace period from ever ending
     with pytest.warns(AutoAnsweredDialogWarning, match='Static question'):
-        answer = QMessageBox.question(None, 'Static question', 'Continue?')
+        answer = QMessageBox.question(
+            None, 'Static question', 'Static question: continue?'
+        )
     assert not safety_net
     assert answer == _standard('Yes')
 
@@ -145,12 +165,14 @@ class _ValidatingDialog(QDialog):
         else:
             msg = QMessageBox(self)
             msg.setWindowTitle('Invalid input')
-            msg.setText('Name is empty')
+            msg.setText('Invalid input: name is empty')
             msg.exec()
         self.warnings.append(msg)
 
 
-@pytest.mark.parametrize('useMyMessageBox', [False, True])
+@pytest.mark.parametrize(
+    'useMyMessageBox', [pytest.param(False, marks=shows_qmessagebox), True]
+)
 def test_dialog_opened_by_answer_is_answered(
         app, safety_net, _auto_answer_blocking_dialogs, useMyMessageBox
     ):
@@ -173,29 +195,46 @@ def test_dialog_opened_by_answer_is_answered(
     assert outer[:-1] == ['called ok_cb()'] * MAX_ATTEMPTS
     assert outer[-1].startswith('closed')
     inner = [
-        entry for entry in watchdog.answered if entry[1] == 'Invalid input'
+        entry for entry in watchdog.answered
+        if entry[1].startswith('Invalid input')
     ]
     assert len(inner) == MAX_ATTEMPTS
     assert not [entry for entry in inner if 'closed' in entry[2]]
     assert not watchdog.pending
 
 
-def test_sequential_dialogs_get_fresh_state(
+def _assertNoStateLeft(watchdog):
+    assert not [entry for entry in watchdog.answered if 'closed' in entry[2]]
+    # Nothing visible is left, so no state may linger
+    assert not watchdog.firstSeen and not watchdog.attempts
+
+
+# Freed dialogs give their id() to the next one: state keyed by id() skipped
+# the grace period and, from the third dialog on, exceeded MAX_ATTEMPTS so
+# the dialog was closed (cancelled) instead of OK'd
+@shows_qmessagebox
+def test_sequential_message_boxes_get_fresh_state(
         app, safety_net, _auto_answer_blocking_dialogs
     ):
-    # Freed dialogs give their id() to the next one: state keyed by a stale
-    # id skipped the grace period and, from the third dialog on, exceeded
-    # MAX_ATTEMPTS so the dialog was closed (cancelled) instead of OK'd
     watchdog = _auto_answer_blocking_dialogs
     for i in range(4):
         msg = QMessageBox()
         msg.setWindowTitle(f'Sequential {i}')
+        msg.setText(f'Sequential {i}: proceed?')
         msg.setStandardButtons(_standard('Ok') | _standard('Cancel'))
         msg.setDefaultButton(_standard('Ok'))
         with pytest.warns(AutoAnsweredDialogWarning, match=f'Sequential {i}'):
             msg.exec()
         assert msg.clickedButton() is msg.button(_standard('Ok'))
         del msg
+    assert not safety_net
+    _assertNoStateLeft(watchdog)
+
+
+def test_sequential_custom_message_boxes_get_fresh_state(
+        app, safety_net, _auto_answer_blocking_dialogs
+    ):
+    watchdog = _auto_answer_blocking_dialogs
     for i in range(4):
         msg = widgets.myMessageBox(wrapText=False)
         with pytest.warns(AutoAnsweredDialogWarning, match=f'Custom seq {i}'):
@@ -206,29 +245,48 @@ def test_sequential_dialogs_get_fresh_state(
         assert not msg.cancel
         del msg
     assert not safety_net
-    assert not [entry for entry in watchdog.answered if 'closed' in entry[2]]
-    # Nothing visible is left, so no state may linger for reused ids
-    assert not watchdog.firstSeen and not watchdog.attempts
+    _assertNoStateLeft(watchdog)
 
 
-def test_stale_state_is_dropped_for_reused_id(app):
+def test_dialog_keys_are_stable_and_never_reused(app):
     watchdog = _DialogWatchdog()
     try:
         dialog = QDialog()
         dialog.show()
-        key = id(dialog)
-        # Pretend a freed dialog with the same id was seen long ago and
-        # already answered MAX_ATTEMPTS times
+        key = watchdog.key(dialog)
+        # Stored on the C++ object, so every Python wrapper gives the same key
+        assert watchdog.key(dialog) == key
+        assert dialog.property(_DialogWatchdog.KEY_PROPERTY) == key
         watchdog.firstSeen[key] = 0.0
         watchdog.attempts[key] = 99
+        # State of dialogs that are no longer visible is dropped
         dialog.hide()
         watchdog.visibleDialogs()
         assert key not in watchdog.firstSeen
         assert key not in watchdog.attempts
         dialog.show()
-        watchdog.visibleDialogs()
+        assert watchdog.visibleDialogs() == [(dialog, key)]
         assert watchdog.firstSeen[key] > 0.0
         assert key not in watchdog.attempts
         dialog.hide()
+        dialog.deleteLater()
+        del dialog
+        flushDeferredDeletes()
+        # A new dialog (possibly at the freed address) gets a new key
+        other = QDialog()
+        assert watchdog.key(other) != key
+        other.deleteLater()
     finally:
         watchdog.stop()
+
+
+def test_message_box_without_title_is_named_by_its_text(app):
+    # As on macOS, where QMessageBox.setWindowTitle is ignored
+    msg = QMessageBox()
+    msg.setText('Body text')
+    assert _DialogWatchdog.label(msg) == 'Body text'
+    dialog = QDialog()
+    dialog.setWindowTitle('Title')
+    assert _DialogWatchdog.label(dialog) == 'Title'
+    msg.deleteLater()
+    dialog.deleteLater()

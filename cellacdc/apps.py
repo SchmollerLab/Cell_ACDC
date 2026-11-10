@@ -15932,7 +15932,11 @@ class ShortcutEditorDialog(QBaseDialog):
             
         if text == '':
             return
-            
+
+        # `text` (textChanged) is the displayed text, which uses macOS key
+        # names on macOS ('Command+O'), while ShortcutLineEdit.text() gives
+        # the portable form ('Ctrl+O'): compare portable forms
+        text = widgets.macShortcutToWindows(text)
         name = sender.name
         group_updated = self.exclusivity_groups_reverse.get(name, 'other')
         for name_other, shortcutLineEdit in self.shortcutLineEdits.items():
@@ -15958,7 +15962,7 @@ class ShortcutEditorDialog(QBaseDialog):
             break
         for shortcuts in self.new_hard_shortcuts.values():
             for name_other, shortcut_txt in shortcuts.items():
-                if shortcut_txt == text:
+                if widgets.macShortcutToWindows(shortcut_txt) == text:
                     warnConflictLabel = getattr(
                         sender, 'warnConflictLabel', None
                     )

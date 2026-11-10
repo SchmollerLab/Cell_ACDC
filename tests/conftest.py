@@ -16,8 +16,12 @@
   watchdog's timer slot, so a dialog opened while another one is being
   answered (e.g. a validation warning shown by ``ok_cb``) is answered too.
   Each answered dialog emits an
-  ``AutoAnsweredDialogWarning`` so it is listed in the pytest summary; tests
-  should still monkeypatch dialogs whose answer matters.
+  ``AutoAnsweredDialogWarning`` naming the dialog by its title (a
+  ``QMessageBox`` by its text when the title is empty: macOS ignores
+  message box titles), so it is listed in the pytest summary; tests
+  should still monkeypatch dialogs whose answer matters. Dialogs are tracked
+  by a key stored as a Qt property on the dialog, not by ``id()``, which is
+  unstable for dialogs created by Qt (e.g. static ``QMessageBox.question``).
 - Widgets released with ``deleteLater()`` are destroyed after each test
   (posted ``DeferredDelete`` events are flushed, then ``gc.collect()``):
   tests never run the main loop and ``processEvents()`` does not deliver
@@ -68,13 +72,17 @@ class AutoAnsweredDialogWarning(UserWarning):
 
 
 class _DialogWatchdog:
+    # Qt dynamic property holding the key of a dialog (see `key`)
+    KEY_PROPERTY = '_testWatchdogKey'
+
     def __init__(self):
         from qtpy.QtCore import QTimer
         self.firstSeen = {}
         self.attempts = {}
         self.answered = []
-        # ids of dialogs whose answer is scheduled or running
+        # keys of dialogs whose answer is scheduled or running
         self.pending = set()
+        self.lastKey = 0
         self.stopped = False
         self.timer = QTimer()
         self.timer.setInterval(CHECK_INTERVAL_MS)
@@ -93,31 +101,58 @@ class _DialogWatchdog:
         # i.e. code is waiting for a dialog to be answered
         return QThread.currentThread().loopLevel() > 0
 
-    def forget(self, keys):
-        """Drop the grace-period and attempt state of the dialog ids `keys`.
+    def key(self, dialog):
+        """Key of `dialog` in the watchdog state, unique per dialog.
 
-        State is keyed by ``id(dialog)``, which CPython reuses for a new
-        dialog once the old one is freed: stale entries would give the new
-        dialog no grace period and its predecessor's attempt count.
+        Stored as a Qt dynamic property on the C++ object. Not ``id()``:
+        dialogs created by Qt (e.g. static ``QMessageBox.question``) get a
+        new, short-lived Python wrapper from every ``topLevelWidgets()``
+        call, so their ``id()`` can change between checks (the grace period
+        then never ends), and a new dialog can reuse a freed one's ``id()``
+        (no grace period, predecessor's attempt count).
         """
+        key = dialog.property(self.KEY_PROPERTY)
+        if key is None:
+            self.lastKey += 1
+            key = self.lastKey
+            dialog.setProperty(self.KEY_PROPERTY, key)
+        return key
+
+    @staticmethod
+    def label(dialog):
+        """Title of `dialog`, else the text of a ``QMessageBox``.
+
+        macOS ignores ``QMessageBox.setWindowTitle`` (Qt follows the macOS
+        guidelines), so message boxes have no title there.
+        """
+        from qtpy.QtWidgets import QMessageBox
+        title = dialog.windowTitle()
+        if not title and isinstance(dialog, QMessageBox):
+            title = dialog.text()
+        return title
+
+    def forget(self, keys):
+        """Drop the grace-period and attempt state of the dialogs `keys`."""
         for key in keys:
             self.firstSeen.pop(key, None)
             self.attempts.pop(key, None)
 
     def visibleDialogs(self):
+        """Visible dialogs as ``(dialog, key)``, oldest first."""
         from qtpy.QtWidgets import QApplication, QDialog
         now = time.monotonic()
         dialogs = [
-            widget for widget in QApplication.topLevelWidgets()
+            (widget, self.key(widget))
+            for widget in QApplication.topLevelWidgets()
             if isinstance(widget, QDialog) and widget.isVisible()
         ]
-        visibleIds = {id(dialog) for dialog in dialogs}
+        visibleKeys = {key for _, key in dialogs}
         self.forget(
-            set(self.firstSeen).union(self.attempts).difference(visibleIds)
+            set(self.firstSeen).union(self.attempts).difference(visibleKeys)
         )
-        for dialog in dialogs:
-            self.firstSeen.setdefault(id(dialog), now)
-        return sorted(dialogs, key=lambda d: self.firstSeen[id(d)])
+        for _, key in dialogs:
+            self.firstSeen.setdefault(key, now)
+        return sorted(dialogs, key=lambda item: self.firstSeen[item[1]])
 
     def check(self):
         # An exception escaping a Qt slot can abort the interpreter (PyQt5)
@@ -129,8 +164,7 @@ class _DialogWatchdog:
             dialogs = self.visibleDialogs()
             if not dialogs:
                 return
-            dialog = dialogs[-1]
-            key = id(dialog)
+            dialog, key = dialogs[-1]
             if key in self.pending:
                 return
             if time.monotonic() - self.firstSeen[key] < GRACE_SECONDS:
@@ -151,7 +185,7 @@ class _DialogWatchdog:
         try:
             if self.stopped or not dialog.isVisible():
                 return
-            self.answer(dialog)
+            self.answer(dialog, key)
         except Exception as err:
             # Also a Qt slot: never let an exception leave it
             warnings.warn(
@@ -248,10 +282,9 @@ class _DialogWatchdog:
             except Exception:
                 pass
 
-    def answer(self, dialog):
-        key = id(dialog)
+    def answer(self, dialog, key):
         self.attempts[key] = self.attempts.get(key, 0) + 1
-        title = dialog.windowTitle()
+        title = self.label(dialog)
         name = type(dialog).__name__
         if self.attempts[key] > MAX_ATTEMPTS:
             action = 'closed (still open after answering)'

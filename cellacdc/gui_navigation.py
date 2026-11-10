@@ -113,6 +113,10 @@ class ZsliceNavigationGuiElements:
         return layout
     
     def maxProjToggleActionTriggered(self):
+        if not getattr(self, 'data', None):
+            # Nothing loaded: Qt5's QAction.trigger() emits `triggered`
+            # even when the action is disabled
+            return
         posData = self.data[self.pos_i]
         if posData.SizeZ <= 1:
             return

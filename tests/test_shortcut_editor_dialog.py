@@ -4,7 +4,7 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QAction, QKeySequence
 from qtpy.QtWidgets import QApplication, QWidget
 
-from cellacdc import apps
+from cellacdc import apps, widgets
 from cellacdc.gui_viewer_tools import ShortcutsGuiElements
 
 
@@ -39,6 +39,32 @@ def test_ok_works_with_and_without_delete_object_row(app, show):
         assert dialog.delObjAction == (None, Qt.MouseButton.MiddleButton)
     else:
         assert dialog.delObjAction is None
+    dialog.deleteLater()
+    parent.deleteLater()
+
+
+@pytest.mark.parametrize('isMac', [False, True])
+def test_conflicts_are_detected_with_mac_key_names(app, monkeypatch, isMac):
+    # On macOS the line edits display 'Command+O' (textChanged passes it)
+    # while ShortcutLineEdit.text() returns 'Ctrl+O': conflicts between
+    # two line edits were never detected there
+    monkeypatch.setattr(widgets, 'is_mac', isMac)
+    parent = QWidget()
+    dialog = apps.ShortcutEditorDialog(
+        make_actions(parent), zoomOutKeyValue=Qt.Key.Key_H,
+        hard_shortcuts={'Ctrl+F': 'Foo'}, show_delete_object_shortcut=False
+    )
+    nextEdit = dialog.shortcutLineEdits['Next']
+    prevEdit = dialog.shortcutLineEdits['Previous']
+    nextEdit.setText('Ctrl+O')
+    assert nextEdit.displayText() == ('Command+O' if isMac else 'Ctrl+O')
+    assert nextEdit.text() == 'Ctrl+O'
+    assert not prevEdit.warnConflictLabel.text()
+    prevEdit.setText('Ctrl+O')
+    assert 'Conflict with' in prevEdit.warnConflictLabel.text()
+    assert 'Next' in prevEdit.warnConflictLabel.text()
+    prevEdit.setText('Ctrl+F')
+    assert 'Foo' in prevEdit.warnConflictLabel.text()
     dialog.deleteLater()
     parent.deleteLater()
 
@@ -82,7 +108,9 @@ def test_edit_shortcuts_applies_changes_and_keeps_hidden_delete_action(
     if show:
         # Row shown: action comes from the dialog (pre-filled from host)
         keySequence, button = host.delObjAction
-        assert keySequence.toString() == 'Ctrl+D'
+        # Compare key combinations: KeySequenceFromText.toString() gives
+        # the macOS display text ('Command+D') on macOS
+        assert keySequence == QKeySequence('Ctrl+D')
         assert button == Qt.MouseButton.LeftButton
         assert host.delObjAction is not KEPT_DEL_OBJ_ACTION
     else:
