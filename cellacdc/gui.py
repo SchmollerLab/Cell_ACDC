@@ -4693,9 +4693,17 @@ When working with 3D segmentation masks:
 
     def onMotherDaughterLine(self, checked, checkbox, ax=0):
         if checked:
+            # Clear first since drawing adds points --> calling this slot
+            # when the lines are already drawn would duplicate them
+            self.getMothBudLineScatterItem(ax, True).clear()
+            self.getMothBudLineScatterItem(ax, False).clear()
             posData = self.data[self.pos_i]
             for obj in posData.rp:
                 self.drawObjMothBudLines(obj, posData, ax=ax)
+
+            mode = self.modeComboBox.currentText()
+            if mode == 'Normal division: Lineage tree':
+                self.drawAllLineageTreeLines()
         else:
             self.getMothBudLineScatterItem(ax, True).clear()
             self.getMothBudLineScatterItem(ax, False).clear()
@@ -12102,6 +12110,9 @@ When working with 3D segmentation masks:
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
+
+        if frame_i == 0:
+            return
 
         moth_bud_pairs_cca = (
             posData.allData_li[frame_i-1].get('moth_bud_pairs_cca')
@@ -26234,7 +26245,7 @@ When working with 3D segmentation masks:
             return 
 
         mode = str(self.modeComboBox.currentText())
-        if mode == 'Normal division: Lineage Tree':
+        if mode == 'Normal division: Lineage tree':
             return
 
         ID = obj.label
@@ -35333,25 +35344,44 @@ When working with 3D segmentation masks:
             self.annotIDsCheckbox(1).setChecked(False)
             return True
 
+    def storeAnnotOptionsBeforeModeSwitch(self):
+        """Store the current annotation options so that they can be restored
+        when leaving the mode (see `restorePrevAnnotOptions`), and uncheck
+        "Do not annotate" so the mode-specific options can be set.
+        """
+        self.storeCurrentAnnotationsOptions()
+        self.prevAnnotOptions = {
+            0: self.annotOptionsToRestore[0].copy(),
+            1: self.annotOptionsToRestore[1].copy(),
+        }
+
+        # The options are now stored in `prevAnnotOptions`. Clear the
+        # options to restore, otherwise unchecking "Do not annotate"
+        # (also when it happens because a mutually exclusive option is
+        # checked) would restore them while the mode-specific options
+        # are being set (see `onDoNotAnnotateChecked`)
+        self.annotOptionsToRestore[0] = {}
+        self.annotOptionsToRestore[1] = {}
+        self.annotDoNotAnntoateCheckbox(0).setChecked(False)
+        self.annotDoNotAnntoateCheckbox(1).setChecked(False)
+        self.doubleSpaceBarState = False
+
     def setAnnotOptionsCcaMode(self):
-        self.storeCurrentAnnotationsOptions()
-        self.prevAnnotOptions = {
-            0: self.annotOptionsToRestore[0].copy(),
-            1: self.annotOptionsToRestore[1].copy(),
-        }
-        self.annotCellCycleInfoCheckbox(0).setChecked(True)
-        self.annotIDsCheckbox(0).setChecked(False)
-        self.annotMotherDaughterLineCheckbox(0).setChecked(True)
-    
+        self.storeAnnotOptionsBeforeModeSwitch()
+        # Use `setCheckedAlwaysEmit` so that the slots are called (and the
+        # annotations updated) even if the checkboxes are already in the
+        # requested state. Uncheck first, because the slot of an unchecked
+        # text annotation option clears all the text annotations.
+        self.annotIDsCheckbox(0).setCheckedAlwaysEmit(False)
+        self.annotCellCycleInfoCheckbox(0).setCheckedAlwaysEmit(True)
+        self.annotMotherDaughterLineCheckbox(0).setCheckedAlwaysEmit(True)
+
     def setAnnotOptionsLin_treeMode(self):
-        self.storeCurrentAnnotationsOptions()
-        self.prevAnnotOptions = {
-            0: self.annotOptionsToRestore[0].copy(),
-            1: self.annotOptionsToRestore[1].copy(),
-        }
-        self.annotLineageInfoCheckbox(0).setChecked(True)
-        self.annotIDsCheckbox(0).setChecked(False)
-        self.annotMotherDaughterLineCheckbox(0).setChecked(True)
+        self.storeAnnotOptionsBeforeModeSwitch()
+        # See comment in `setAnnotOptionsCcaMode`
+        self.annotIDsCheckbox(0).setCheckedAlwaysEmit(False)
+        self.annotLineageInfoCheckbox(0).setCheckedAlwaysEmit(True)
+        self.annotMotherDaughterLineCheckbox(0).setCheckedAlwaysEmit(True)
         
     def getOverlayItems(self, channelName, index):
         imageItem = widgets.OverlayImageItem()
