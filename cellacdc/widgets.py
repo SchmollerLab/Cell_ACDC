@@ -799,6 +799,33 @@ class showDetailsButton(PushButton):
         pixmap = icon.pixmap(QSize(12, 8))
         self.iconLabel.setPixmap(pixmap)
 
+    def _widestTextExtraWidth(self):
+        # Extra width needed to fit the widest of the "Show" and "Hide"
+        # texts, so that the button does not change width when toggled
+        fm = self.textLabel.fontMetrics()
+        currentWidth = fm.horizontalAdvance(self.textLabel.text())
+        widestWidth = max(
+            fm.horizontalAdvance(self.txt),
+            fm.horizontalAdvance(self.checkedText)
+        )
+        return max(0, widestWidth - currentWidth)
+
+    def sizeHint(self):
+        # QPushButton.sizeHint ignores the internal layout (text is set on
+        # the child label) --> include the layout's size hint
+        layoutHint = self.layout().sizeHint()
+        layoutHint.setWidth(
+            layoutHint.width() + self._widestTextExtraWidth()
+        )
+        return super().sizeHint().expandedTo(layoutHint)
+
+    def minimumSizeHint(self):
+        layoutMinSize = self.layout().minimumSize()
+        layoutMinSize.setWidth(
+            layoutMinSize.width() + self._widestTextExtraWidth()
+        )
+        return super().minimumSizeHint().expandedTo(layoutMinSize)
+
     def onClicked(self, checked):
         if checked:
             self.textLabel.setText(self.checkedText)
@@ -807,6 +834,7 @@ class showDetailsButton(PushButton):
             self.textLabel.setText(self.txt)
             self._setIcon(self.uncheckedIcon)
 
+        self.updateGeometry()
         self.sigToggled.emit(checked)
 
 class cancelPushButton(PushButton):
@@ -2926,8 +2954,9 @@ class myMessageBox(_base_widgets.QBaseDialog):
             self.cancelButton = button
             self.cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
+        # NOTE: final position of the cancel button is set in
+        # `_arrangeButtonsLayout` when the dialog is shown
         self.buttonsLayout.insertWidget(0, self.cancelButton)
-        self.buttonsLayout.insertSpacing(1, 20)
         if connect:
             self.cancelButton.clicked.connect(self.buttonCallBack)
 
@@ -3035,8 +3064,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
         # buttons
         self.currentRow += 1
 
-        if self.detailsTextWidget is not None:
-            self.buttonsLayout.insertWidget(1, self.detailsButton)
+        self._arrangeButtonsLayout()
 
         # Do not show again checkbox
         if self.doNotShowAgainCheckbox is not None:
@@ -3100,6 +3128,47 @@ class myMessageBox(_base_widgets.QBaseDialog):
 
         if block:
             self._block()
+
+    def _arrangeButtonsLayout(self):
+        """Arrange buttons as: stretch, cancel button (if any), 20 px
+        spacing, show details button (if any), and then all the other
+        buttons in the order they were added.
+
+        The stretch on the left also prevents the show details button from
+        expanding (its internal layout has a stretch that makes it
+        horizontally expanding).
+        """
+        detailsButton = None
+        if self.detailsTextWidget is not None:
+            detailsButton = self.detailsButton
+
+        otherItems = []
+        while self.buttonsLayout.count() > 0:
+            item = self.buttonsLayout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                if widget is self.cancelButton or widget is detailsButton:
+                    continue
+                otherItems.append(widget)
+            elif item.layout() is not None:
+                otherItems.append(item.layout())
+            # Spacers and stretches are dropped and re-added below
+
+        self.buttonsLayout.addStretch(1)
+
+        if self.cancelButton is not None:
+            self.buttonsLayout.addWidget(self.cancelButton)
+            if detailsButton is not None or otherItems:
+                self.buttonsLayout.addSpacing(20)
+
+        if detailsButton is not None:
+            self.buttonsLayout.addWidget(detailsButton)
+
+        for item in otherItems:
+            if isinstance(item, QWidget):
+                self.buttonsLayout.addWidget(item)
+            else:
+                self.buttonsLayout.addLayout(item)
 
     def setDetailedText(self, text, visible=False, wrap=True):
         text = text.replace('\n', '<br>')
