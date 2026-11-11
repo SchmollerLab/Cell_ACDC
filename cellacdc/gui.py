@@ -3893,7 +3893,10 @@ When working with 3D segmentation masks:
         ) 
         
         self.addPointsLayersToVolumeViewer(self._volume_renderer)
-        
+
+        # Applied by the renderer once its camera is set up in `show`
+        self._update3DViewerViewRegion()
+
         self._volume_renderer.sigClose.connect(self.onClose3dViewer)
         self._volume_renderer.sigUpdate.connect(self.onUpdate3dViewer)
         self._volume_renderer.run(block=False)
@@ -4084,7 +4087,8 @@ When working with 3D segmentation masks:
     
     def clearCursors(self):
         self.ax1_cursor.setData([], [])
-        self.ax2_cursor.setData([], [])              
+        self.ax2_cursor.setData([], [])
+        self.update3DViewerCursor(None)
         self.setHoverToolSymbolData(
             [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
         )  
@@ -7253,6 +7257,15 @@ When working with 3D segmentation masks:
             
         if not event.isExit() and self.slideshowWin is not None:
             self.slideshowWin.setMirroredCursorPos(*event.pos())
+
+        setMirroredCursor3D = (
+            not event.isExit() and self.showMirroredCursorAction.isChecked()
+        )
+        if setMirroredCursor3D:
+            x, y = event.pos()
+            self.update3DViewerCursor((x, y))
+        else:
+            self.update3DViewerCursor(None)
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
@@ -15383,7 +15396,14 @@ When working with 3D segmentation masks:
 
             self.updateAllImages()
             self.updateScrollbars()
-            self.ax1.sigRangeChanged.disconnect()
+            # Disconnect only this slot, a bare `disconnect()` would also
+            # disconnect `viewRangeChanged`
+            try:
+                self.ax1.sigRangeChanged.disconnect(
+                    self.highlightManualAnnotMode
+                )
+            except (TypeError, RuntimeError):
+                pass
             self.ax1.setHighlighted(False)
             
             self.warnLostCellsAction.setChecked(
@@ -15477,7 +15497,14 @@ When working with 3D segmentation masks:
             self.get_data()
             self.updateAllImages()
             self.updateScrollbars()
-            self.ax1.sigRangeChanged.disconnect()
+            # Disconnect only this slot, a bare `disconnect()` would also
+            # disconnect `viewRangeChanged`
+            try:
+                self.ax1.sigRangeChanged.disconnect(
+                    self.highlightManualAnnotMode
+                )
+            except (TypeError, RuntimeError):
+                pass
             self.ax1.setHighlighted(False)
             QTimer.singleShot(150, self.autoRange)
         
@@ -21384,10 +21411,108 @@ When working with 3D segmentation masks:
         if volume_renderer is None:
             return
 
+        # The z-slice might be different in the new frame
+        self.update3DViewerViewRegion()
+
         if not volume_renderer.are_frames_synced():
-            return 
-        
+            return
+
         volume_renderer.set_frame_number(self.navigateScrollBar.value())
+
+    def update3DViewerViewRegion(self, *args):
+        """Send the region visible in ax1 to the 3D viewer (if open).
+
+        Calls are throttled because this is called at every view range
+        change (e.g., while panning).
+        """
+        if getattr(self, '_volume_renderer', None) is None:
+            return
+
+        timer = getattr(self, '_update3DViewerViewRegionTimer', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(30)
+            timer.timeout.connect(self._update3DViewerViewRegion)
+            self._update3DViewerViewRegionTimer = timer
+
+        # Do not restart an active timer, otherwise the 3D viewer would not
+        # be updated until the user stops panning/zooming. The current
+        # state is read when the timer fires.
+        if not timer.isActive():
+            timer.start()
+
+    def _get3DViewerPlaneDepthSlice(self):
+        """Return the plane displayed in ax1 ('xy', 'zy', or 'zx') and the
+        index of the displayed slice along the perpendicular axis (None for
+        z-projections).
+        """
+        plane = self.switchPlaneCombobox.plane()
+        isSingleSlice = (
+            plane != 'xy'
+            or self.zProjComboBox.currentText() == 'single z-slice'
+        )
+        depthSlice = None
+        if isSingleSlice:
+            depthSlice = self.zSliceScrollBar.sliderPosition()
+
+        return plane, depthSlice
+
+    def _update3DViewerViewRegion(self):
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is None:
+            return
+
+        xRange, yRange = self.ax1.viewRange()
+        plane, depthSlice = self._get3DViewerPlaneDepthSlice()
+
+        volume_renderer.set_parent_view_region(
+            xRange, yRange, plane=plane, depth_slice=depthSlice
+        )
+
+        # The slice (or plane) might have changed --> move the cursor too
+        self._update3DViewerCursor()
+
+    def update3DViewerCursor(self, xy=None):
+        """Show a mirrored cursor in the 3D viewer (if open) at the position
+        `xy` of the mouse cursor on the image. Pass None to hide it.
+
+        Calls are throttled because this is called at every mouse move.
+        """
+        # Store also when the 3D viewer is closed to avoid showing a stale
+        # position when it is opened
+        self._3DViewerCursorXY = xy
+
+        if getattr(self, '_volume_renderer', None) is None:
+            return
+
+        timer = getattr(self, '_update3DViewerCursorTimer', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(30)
+            timer.timeout.connect(self._update3DViewerCursor)
+            self._update3DViewerCursorTimer = timer
+
+        # Do not restart an active timer, the latest position is read when
+        # the timer fires
+        if not timer.isActive():
+            timer.start()
+
+    def _update3DViewerCursor(self):
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is None:
+            return
+
+        xy = getattr(self, '_3DViewerCursorXY', None)
+        if xy is None:
+            volume_renderer.set_parent_cursor_pos(None, None)
+            return
+
+        plane, depthSlice = self._get3DViewerPlaneDepthSlice()
+        volume_renderer.set_parent_cursor_pos(
+            *xy, plane=plane, depth_slice=depthSlice
+        )
 
     def applyAllDelROI(self):
         posData = self.data[self.pos_i]
@@ -23254,6 +23379,8 @@ When working with 3D segmentation masks:
             self.updateObjectCounts()
             self.editIDToolbar.setCurrentZslice(z, posData.SizeZ)
 
+        self.update3DViewerViewRegion()
+
     def updateOverlayZslice(self, z):
         self.setOverlayImages()
 
@@ -23284,6 +23411,8 @@ When working with 3D segmentation masks:
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
             self.updateAllImages()
+
+        self.update3DViewerViewRegion()
 
     def setZSliceWidgetsEnabled(self, how):
         posData = self.data[self.pos_i]
@@ -37923,8 +38052,10 @@ When working with 3D segmentation masks:
         )
         if doMoveTimestamp:
             self.timestamp.updatePosViewRangeChanged(viewRange)
-        
+
         self._viewRange = viewRange
+
+        self.update3DViewerViewRegion()
 
     def onSearchTriggerBlink(self, target):
         button = getattr(self, target, None) if isinstance(target, str) else target

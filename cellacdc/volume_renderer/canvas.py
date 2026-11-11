@@ -10,7 +10,7 @@ import pandas as pd
 import skimage
 
 from qtpy.QtCore import (
-    Signal, Qt, QCoreApplication, QEventLoop
+    Signal, Qt, QCoreApplication, QEventLoop, QTimer
 )
 from qtpy.QtWidgets import (
     QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, 
@@ -54,6 +54,39 @@ MarkerSymbols = plot.VisPyMarkerSymbols
 
 _SLIDER_NORMALIZE_FACTOR = 20
 _DEFAULT_LABELS_CMAP_NAME = 'viridis'
+
+# Default (home) camera orientation. It is the "2D view" orientation
+# (azimuth=180, elevation=90, roll=180, see `set_2d_view`), where left-right
+# and top-bottom are the same as in the Cell-ACDC GUI, tilted by 45 degrees
+# and turned by 20 degrees to give a 3D perspective without mirroring the
+# image compared to the GUI.
+_HOME_AZIMUTH = 160.0
+_HOME_ELEVATION = 45.0
+_HOME_ROLL = 180.0
+_HOME_FOV = 60.0
+
+# "2D view" camera orientation (looking perpendicular to the xy plane with
+# left-right and top-bottom as in the Cell-ACDC GUI)
+_TWO_D_VIEW_AZIMUTH = 180.0
+_TWO_D_VIEW_ELEVATION = 90.0
+_TWO_D_VIEW_ROLL = 180.0
+
+# Mirrored cursor of the mouse cursor on the parent GUI image (same
+# appearance as the mirrored cursor in the GUI)
+_PARENT_CURSOR_SYMBOL = 'diamond'
+_PARENT_CURSOR_SIZE = 16
+_PARENT_CURSOR_FACE_RGBA = (1.0, 1.0, 1.0, 70/255)
+_PARENT_CURSOR_EDGE_RGBA = (1.0, 1.0, 1.0, 1.0)
+
+ParentViewPlane = Literal['xy', 'zy', 'zx']
+
+# Plane displayed in the parent 2D GUI --> indices of the vispy (x, y, z)
+# coordinates displayed (horizontal, vertical, depth) in the parent GUI.
+_PARENT_VIEW_PLANE_AXES = {
+    'xy': (0, 1, 2),
+    'zy': (1, 2, 0),
+    'zx': (0, 2, 1),
+}
 
 @dataclass
 class _ChannelData:
@@ -150,7 +183,15 @@ class VolumeRendererWindow(QMainWindow):
         self._object_labels_list_buttongroup = None
         self._data_shape = None
         self._frames_scrollbar_connected = False
-        
+        self._is_camera_view_set = False
+        # Orientation (azimuth, elevation, roll) restored when syncing the
+        # camera with the parent GUI, i.e., the last selected view
+        # ("Home" or "2D view")
+        self._synced_camera_orientation = (
+            _HOME_AZIMUTH, _HOME_ELEVATION, _HOME_ROLL
+        )
+        self._parent_view_region = None
+
         if app is None:
             app = QCoreApplication.instance()
         
@@ -187,10 +228,10 @@ class VolumeRendererWindow(QMainWindow):
         # Keeps the "up" axis fixed, which suits microscopy z-stacks better than
         # a free arcball.
         self._view.camera = scene.cameras.TurntableCamera(
-            fov=45, 
-            elevation=30.0, 
-            azimuth=-60.0,
-            roll=180.0
+            fov=45,
+            elevation=_HOME_ELEVATION,
+            azimuth=_HOME_AZIMUTH,
+            roll=_HOME_ROLL
         )
 
         self._canvas.events.mouse_press.connect(
@@ -213,7 +254,12 @@ class VolumeRendererWindow(QMainWindow):
         # Scale and visibility are updated in update_volume on first load.
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
-    
+
+        # Mirrored cursor of the mouse cursor on the parent GUI image.
+        # Created at first use in `set_parent_cursor_pos` because an empty
+        # Markers visual breaks `camera.set_range()` (no bounds)
+        self._parent_cursor_marker = None
+
     def _on_camera_mouse_press(self, event):
         self._camera_mouse_interaction = True
         self._update_camera_indicators()
@@ -799,10 +845,10 @@ class VolumeRendererWindow(QMainWindow):
 
         if self._parent_gui is not None:
             self._sync_frames_scrollbar_main_gui_checkbox = QCheckBox(
-                'Sync with parent GUI'
+                'Sync frames with parent GUI'
             )
             self._scene_layout.addWidget(
-                self._sync_frames_scrollbar_main_gui_checkbox, 
+                self._sync_frames_scrollbar_main_gui_checkbox,
                 row, 2, 1, 2,
                 alignment=Qt.AlignLeft
             )
@@ -811,7 +857,10 @@ class VolumeRendererWindow(QMainWindow):
             self._sync_frames_scrollbar_main_gui_checkbox.toggled.connect(
                 self._sync_frames_toggled
             )
-            
+
+            row += 1
+            self._init_parent_view_ui_items(row)
+
         self._scene_layout.setColumnStretch(0, 0)
         self._scene_layout.setColumnStretch(1, 10)
         self._scene_layout.setColumnStretch(2, 0)
@@ -834,10 +883,40 @@ class VolumeRendererWindow(QMainWindow):
         
         self._ui_initialised = True
 
+    def _init_parent_view_ui_items(self, row: int):
+        self._sync_view_main_gui_checkbox = QCheckBox(
+            'Sync pan/zoom with parent GUI'
+        )
+        self._sync_view_main_gui_checkbox.setToolTip(
+            'When checked, panning and zooming in the parent GUI moves the '
+            'centre of rotation of the 3D camera to the centre of the region '
+            'visible in the parent GUI (at the current slice) and zooms '
+            'the camera to fit that region.\n\n'
+            'Any manual rotation of the 3D view is reset to the last '
+            'selected view ("Home" or "2D view").\n'
+            'Tip: use the "2D view" button to look at the volume from the '
+            'top, matching the parent GUI.'
+        )
+        self._sync_view_main_gui_checkbox.setChecked(True)
+        self._sync_view_main_gui_checkbox.toggled.connect(
+            self._sync_view_toggled
+        )
+
+        parent_view_layout = QHBoxLayout()
+        parent_view_layout.setContentsMargins(5, 0, 5, 0)
+        parent_view_layout.addWidget(self._sync_view_main_gui_checkbox)
+        parent_view_layout.addStretch(1)
+
+        self._scene_layout.addLayout(parent_view_layout, row, 0, 1, 4)
+
     def _sync_frames_toggled(self, checked):
         if checked:
             self._parent_gui.update3DViewer()
-    
+
+    def _sync_view_toggled(self, checked):
+        if checked:
+            self._sync_camera_to_parent_view_region()
+
     def _set_object_labels_checkboxes_disabled(self, disabled=True):
         if disabled:
             tooltip = (
@@ -1525,7 +1604,7 @@ class VolumeRendererWindow(QMainWindow):
         
         for points_layer in self._points_layers.values():
             points_layer.markers.transform = self._voxel_size_transform
-        
+
         if self._canvas is not None:
             self._canvas.update()
     
@@ -1744,8 +1823,13 @@ class VolumeRendererWindow(QMainWindow):
         self.resize(960, 720)
         _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
-        
+
         self.set_camera_view()
+
+        self._update_parent_view_region()
+        # The camera zoom fitting the parent view region depends on the
+        # canvas aspect ratio --> re-apply once the layout has settled
+        QTimer.singleShot(0, self._update_parent_view_region)
 
         try:
             self.setEnabled(True)
@@ -1792,13 +1876,21 @@ class VolumeRendererWindow(QMainWindow):
         camera.elevation = self._home_elevation
         camera.scale_factor = self._default_scale_factor
         camera.roll = self._home_roll
-    
+
+        self._synced_camera_orientation = (
+            self._home_azimuth, self._home_elevation, self._home_roll
+        )
+
     def set_2d_view(self):
         camera = self._view.camera
 
-        camera.azimuth = 180
-        camera.elevation = 90
-        camera.roll = 180
+        camera.azimuth = _TWO_D_VIEW_AZIMUTH
+        camera.elevation = _TWO_D_VIEW_ELEVATION
+        camera.roll = _TWO_D_VIEW_ROLL
+
+        self._synced_camera_orientation = (
+            _TWO_D_VIEW_AZIMUTH, _TWO_D_VIEW_ELEVATION, _TWO_D_VIEW_ROLL
+        )
 
         first_channel = list(self._channels_data.keys())[0]
         first_node = self._channels_data[first_channel].node
@@ -1815,7 +1907,11 @@ class VolumeRendererWindow(QMainWindow):
         camera.center = center_scene[:3]
 
         camera.distance = self._home_distance
-            
+
+        if self.is_view_synced():
+            # Centre and zoom on the region visible in the parent GUI
+            self._sync_camera_to_parent_view_region()
+
     def set_camera_view(self):
         """Reset the camera to the default orientation and fit the volume."""
         if not self._channels_data:
@@ -1837,21 +1933,26 @@ class VolumeRendererWindow(QMainWindow):
         diag = np.linalg.norm(world[1] - world[0])
         
         self._home_center = first_node.transform.map(xyz_center)[:3]
-        self._home_elevation = 30.0
-        self._home_azimuth = 45.0
-        self._home_fov = 60.0
-        self._home_roll = 180.0
+        self._home_elevation = _HOME_ELEVATION
+        self._home_azimuth = _HOME_AZIMUTH
+        self._home_fov = _HOME_FOV
+        self._home_roll = _HOME_ROLL
         self._home_distance = diag
-        
+
         self._view.camera.set_range()
         self._view.camera.center = first_node.transform.map(xyz_center)[:3]
-        self._view.camera.elevation = 30.0
-        self._view.camera.azimuth = 45.0
-        self._view.camera.fov = 60.0
+        self._view.camera.elevation = self._home_elevation
+        self._view.camera.azimuth = self._home_azimuth
+        self._view.camera.roll = self._home_roll
+        self._view.camera.fov = self._home_fov
         self._view.camera.distance = diag
         
         self._default_scale_factor = self._view.camera.scale_factor
-        
+        self._is_camera_view_set = True
+        self._synced_camera_orientation = (
+            self._home_azimuth, self._home_elevation, self._home_roll
+        )
+
         self._canvas.update()
     
     def save_screenshot(self):
@@ -1882,5 +1983,293 @@ class VolumeRendererWindow(QMainWindow):
     def are_frames_synced(self):
         if self._parent_gui is None:
             return False
-        
+
         return self._sync_frames_scrollbar_main_gui_checkbox.isChecked()
+
+    def set_parent_cursor_pos(
+            self,
+            x: float | None,
+            y: float | None,
+            plane: ParentViewPlane='xy',
+            depth_slice: int | None=None,
+        ):
+        """Show a mirrored cursor (diamond) at the position of the mouse
+        cursor on the parent 2D GUI image. Pass `x=None` to hide it.
+
+        Parameters
+        ----------
+        x, y : float or None
+            Position of the mouse cursor in full-resolution image
+            coordinates of the parent GUI (where pixel ``i`` spans
+            ``[i, i+1]``). If None, the cursor is hidden.
+        plane : {'xy', 'zy', 'zx'}, optional
+            Plane displayed in the parent GUI (see
+            `set_parent_view_region`). Default is 'xy'.
+        depth_slice : int or None, optional
+            Index of the displayed slice along the axis perpendicular to
+            `plane`. If None (the parent GUI displays a projection), the
+            cursor is placed at the centre of the volume along that axis.
+            Default is None.
+        """
+        is_hidden = (
+            x is None or y is None
+            or self._data_shape is None
+            or self._voxel_size_transform is None
+        )
+        if not is_hidden:
+            SizeZ, SizeY, SizeX = self._data_shape[-3:]
+            shape_xyz = np.array((SizeX, SizeY, SizeZ), dtype=float)
+            h_axis, v_axis, d_axis = _PARENT_VIEW_PLANE_AXES[plane]
+
+            # In pyqtgraph pixel i spans [i, i+1] while in vispy voxel i
+            # spans [i-0.5, i+0.5] --> subtract 0.5
+            pos = np.zeros(3)
+            pos[h_axis] = x - 0.5
+            pos[v_axis] = y - 0.5
+            if depth_slice is None:
+                pos[d_axis] = (shape_xyz[d_axis] - 1) / 2
+            else:
+                pos[d_axis] = depth_slice
+
+            is_hidden = np.any(pos < -0.5) or np.any(pos > shape_xyz - 0.5)
+
+        marker = self._parent_cursor_marker
+        if is_hidden:
+            if marker is not None and marker.visible:
+                marker.visible = False
+                self._canvas.update()
+            return
+
+        if marker is None:
+            # Fixed size in pixels and drawn last without depth test so
+            # that it is always visible
+            marker = vispy.scene.visuals.Markers(
+                parent=self._view.scene, scaling='fixed'
+            )
+            marker.set_gl_state('translucent', depth_test=False)
+            marker.order = 1000
+            self._parent_cursor_marker = marker
+
+        pos_scene = self._voxel_size_transform.map(pos)[:3]
+        marker.set_data(
+            pos_scene[np.newaxis].astype(np.float32),
+            symbol=_PARENT_CURSOR_SYMBOL,
+            size=_PARENT_CURSOR_SIZE,
+            face_color=_PARENT_CURSOR_FACE_RGBA,
+            edge_color=_PARENT_CURSOR_EDGE_RGBA,
+            edge_width=1,
+        )
+        marker.visible = True
+        self._canvas.update()
+
+    def is_view_synced(self):
+        if self._parent_gui is None:
+            return False
+
+        return self._sync_view_main_gui_checkbox.isChecked()
+
+    def set_parent_view_region(
+            self,
+            x_range: tuple[float, float],
+            y_range: tuple[float, float],
+            plane: ParentViewPlane='xy',
+            depth_slice: int | None=None,
+        ):
+        """Set the region currently visible in the parent 2D GUI.
+
+        If the "Sync pan/zoom with parent GUI" checkbox is checked, the
+        region is used to centre and zoom the camera (without changing its
+        orientation).
+
+        Parameters
+        ----------
+        x_range, y_range : tuple[float, float]
+            Horizontal and vertical range of the parent 2D view in
+            full-resolution image coordinates, i.e., the output of
+            ``pyqtgraph.ViewBox.viewRange()`` where pixel ``i`` spans
+            ``[i, i+1]``.
+        plane : {'xy', 'zy', 'zx'}, optional
+            Plane displayed in the parent GUI. The horizontal and vertical
+            axes are X and Y for 'xy', Y and Z for 'zy', and X and Z for
+            'zx'. Default is 'xy'.
+        depth_slice : int or None, optional
+            Index of the displayed slice along the axis perpendicular to
+            `plane` (e.g., the z-slice for 'xy'). Pass None when the parent
+            GUI displays a projection. Default is None.
+        """
+        if plane not in _PARENT_VIEW_PLANE_AXES:
+            raise ValueError(
+                f'Invalid plane "{plane}". '
+                f'Valid planes are {list(_PARENT_VIEW_PLANE_AXES.keys())}'
+            )
+
+        prev_region = self._parent_view_region
+        region = {
+            'x_range': (float(min(x_range)), float(max(x_range))),
+            'y_range': (float(min(y_range)), float(max(y_range))),
+            'plane': plane,
+            'depth_slice': depth_slice,
+        }
+        self._parent_view_region = region
+
+        # Move the camera only when the parent GUI was panned/zoomed (or the
+        # plane changed). Changing slice or frame only stores the new slice
+        # (used at the next sync) so that the user's 3D zoom/pan is not
+        # discarded.
+        is_pan_zoom = prev_region is None or any(
+            prev_region[key] != region[key]
+            for key in ('x_range', 'y_range', 'plane')
+        )
+        if is_pan_zoom:
+            self._update_parent_view_region()
+
+    def _update_parent_view_region(self):
+        if self._parent_view_region is None:
+            return
+
+        if self.is_view_synced():
+            self._sync_camera_to_parent_view_region()
+
+    def _get_parent_view_region_voxel_coords(self):
+        """Return the parent view region in full-resolution voxel
+        coordinates in vispy (x, y, z) order.
+
+        Returns
+        -------
+        None or tuple of (lower, upper, depth, axes)
+            `lower` and `upper` are the corners of the region, spanning
+            the entire volume along the depth axis. `depth` is the
+            coordinate of the displayed slice (centre of the volume for
+            projections) and `axes` is the tuple of indices (horizontal,
+            vertical, depth) of the displayed axes.
+        """
+        region = self._parent_view_region
+        if region is None or self._data_shape is None:
+            return
+
+        SizeZ, SizeY, SizeX = self._data_shape[-3:]
+        shape_xyz = np.array((SizeX, SizeY, SizeZ), dtype=float)
+        axes = _PARENT_VIEW_PLANE_AXES[region['plane']]
+        h_axis, v_axis, d_axis = axes
+
+        # In pyqtgraph pixel i spans [i, i+1] while in vispy voxel i spans
+        # [i-0.5, i+0.5] --> subtract 0.5
+        lower = np.zeros(3)
+        upper = np.zeros(3)
+        lower[h_axis], upper[h_axis] = np.array(region['x_range']) - 0.5
+        lower[v_axis], upper[v_axis] = np.array(region['y_range']) - 0.5
+        lower[d_axis], upper[d_axis] = -0.5, shape_xyz[d_axis] - 0.5
+
+        depth = region['depth_slice']
+        if depth is None:
+            depth = (shape_xyz[d_axis] - 1) / 2
+        depth = float(np.clip(depth, 0, shape_xyz[d_axis] - 1))
+
+        return lower, upper, depth, axes
+
+    def _scene_vectors_to_camera_axes(self, vectors: np.ndarray):
+        """Express scene vectors in the camera axes (right, up, towards the
+        camera). Only the current camera orientation is used.
+        """
+        transform = self._view.camera.transform # camera --> scene
+        origin = transform.imap(np.zeros(3))
+        mapped = transform.imap(vectors)
+        origin = origin[:3] / origin[3]
+        mapped = mapped[:, :3] / mapped[:, 3:4]
+        return mapped - origin
+
+    def _sync_camera_to_parent_view_region(self, update=True):
+        """Centre the camera on the region visible in the parent GUI (at
+        the depth of the displayed slice) and zoom so that the region fits
+        the canvas.
+
+        Any manual rotation is discarded: the camera orientation is reset
+        to the last selected view ("Home" or "2D view"). The fit accounts
+        for the orientation and perspective, therefore when looking
+        perpendicular to the parent GUI plane (e.g., "2D view" with the 'xy'
+        plane), the 3D view matches the parent GUI view.
+        """
+        if not self._is_camera_view_set:
+            return
+
+        if self._voxel_size_transform is None:
+            return
+
+        coords = self._get_parent_view_region_voxel_coords()
+        if coords is None:
+            return
+
+        # Restore the orientation before fitting (the fit depends on it)
+        camera = self._view.camera
+        azimuth, elevation, roll = self._synced_camera_orientation
+        camera.azimuth = azimuth
+        camera.elevation = elevation
+        camera.roll = roll
+
+        lower, upper, depth, axes = coords
+        h_axis, v_axis, d_axis = axes
+
+        # Corners of the region at the depth of the displayed slice
+        corners = np.zeros((4, 3))
+        corners[:, d_axis] = depth
+        corners[:, h_axis] = (
+            lower[h_axis], upper[h_axis], upper[h_axis], lower[h_axis]
+        )
+        corners[:, v_axis] = (
+            lower[v_axis], lower[v_axis], upper[v_axis], upper[v_axis]
+        )
+        corners_scene = self._voxel_size_transform.map(corners)[:, :3]
+        center = corners_scene.mean(axis=0)
+
+        # Corners relative to the centre in camera axes
+        offsets = self._scene_vectors_to_camera_axes(corners_scene - center)
+        offsets_right = np.abs(offsets[:, 0])
+        offsets_up = np.abs(offsets[:, 1])
+        offsets_towards_camera = offsets[:, 2]
+
+        canvas_width, canvas_height = self._view.size
+        if canvas_width > 0 and canvas_height > 0:
+            aspect_ratio = canvas_width / canvas_height
+        else:
+            aspect_ratio = 1.0
+
+        if camera.fov > 0:
+            # With the camera at `distance` from the centre, a point with
+            # camera-axes coordinates (x, y, z) is at depth (distance - z)
+            # and it is visible if |y| <= (distance - z)*tan(fov/2) and
+            # |x| <= (distance - z)*tan(fov/2)*aspect_ratio (fov is the
+            # vertical field of view).
+            tan_half_fov = np.tan(np.radians(camera.fov) / 2)
+            distance = np.max(
+                offsets_towards_camera + np.maximum(
+                    offsets_up / tan_half_fov,
+                    offsets_right / (tan_half_fov * aspect_ratio)
+                )
+            )
+            # Visible height at the centre
+            visible_height = 2 * distance * tan_half_fov
+        else:
+            distance = None
+            visible_height = 2 * max(
+                offsets_up.max(), offsets_right.max() / aspect_ratio
+            )
+
+        if not visible_height > 0:
+            return
+
+        camera.center = tuple(center)
+
+        # vispy applies `scale_factor` to the shorter side of the canvas,
+        # while the field of view (and hence the `distance`) is vertical.
+        # We set both to keep them consistent (as vispy does when zooming
+        # with the mouse wheel).
+        if aspect_ratio > 1:
+            camera.scale_factor = visible_height
+        else:
+            camera.scale_factor = visible_height * aspect_ratio
+
+        if distance is not None:
+            camera.distance = distance
+
+        if update:
+            self._canvas.update()
