@@ -11,6 +11,16 @@ it only if the cell's automatic predictions changed the X or Y values.
 Column names are read-only, and the fixed-width selection indicator displays
 the color or axis instead of a separate checkbox tick. Clicking anywhere on a
 column (indicator or name) toggles its selection.
+Plotted columns get default colors from the colorblind-friendly Okabe-Ito
+palette (``SIGNAL_COLORS``: without black, and with vermillion last because
+red is reserved for the current frame line; on the light background of
+`Invert black/white` black replaces the yellow; further columns get tab10
+colors and then evenly spaced hues, none of them red). The default colors are
+stable: plotting another column never recolors
+the plotted ones, a new column takes the first color no plotted column uses,
+and a column plotted again gets its previous color back unless another
+plotted column took it meanwhile. The comparison scatter uses the Y column's
+color. Right-click a column to set a custom color or reset it to the default.
 Measurement selectors use the equation editor's tree organization: numerical
 and categorical inputs, channel-specific cell/background/custom measurements,
 size measurements, region properties, and other numerical inputs. Plotting
@@ -34,13 +44,34 @@ the main GUI (`gui.guiWin`) through the mixins in:
 
 Open it from the launcher (Utilities > Measurements > Measurements viewer...)
 or run it with `python -m cellacdc.measurements_viewer [folder_path]`.
+After data is loaded (on the first event loop pass after `setData`, i.e.
+after the rest of the load such as the overlay channels), the Cell ID
+controls (label, spinbox and scrollbar at the bottom) blink and the status bar explains how to select the plotted
+cell. Ctrl+F focuses the search bar and blinks it, like the toolbar search
+button.
+The Help menu opens the online user guide (`urls.measurements_viewer_docs_url`,
+source ``docs/source/measurements-viewer.rst``) and the Cell-ACDC
+documentation, shows a quick start (``MEASUREMENTS_VIEWER_QUICK_START``, also
+shown by the info button next to the plot mode selector of the Measurements
+panel, with a button opening the user guide) and has the Ctrl+F search action.
+
+The "Cell-ACDC objects" dock (object properties, left side button) always
+shows the selected cell: whenever the images update (frame, z-slice, cell,
+position, dock shown) its values are recomputed for the current frame, or
+it reports that the cell does not exist in this frame (or, with 3D
+segmentation shown as a single z-slice, is not in this z-slice) with empty
+value fields (`clearPropsDockValues`). Typing an Object ID
+in the dock selects that cell (as clicking it) if it is in the table, while
+hover updates ("Highlight objects on mouse hover") never change the
+selection (`propsWidgetIDvalueChanged`, `syncPropsDockToSelectedID`).
 
 At startup, load a saved configuration or skip to start normally (unless
 started with a folder path, which is loaded directly). The File
 menu and the file toolbar can load, save or save a copy of a configuration. On closing, if any
 position's table or the configuration changed since it was loaded/saved, a
 prompt offers to save the tables (overwriting each position's acdc_output
-file), the configuration (or save it as a new file), both, or neither.
+file), the configuration (or save it as a new file), both, or neither
+(its buttons get the usual Cell-ACDC icons from `widgets.getPushButton`).
 Before a table is overwritten, the previous file is backed up in the
 Position's ``recovery`` folder (like in the main GUI). If the file was
 modified on disk since the viewer loaded, reloaded or saved it (e.g., saved
@@ -50,6 +81,21 @@ evaluated in this session, like Reload table), to overwrite it, or to cancel.
 The same prompt appears before loading a configuration or opening a folder,
 file or recent folder replaces loaded data; Cancel aborts the load and keeps
 the loaded data and their edits.
+Reading the positions (and the regionprops of the first displayed position,
+`precompute_position_regionprops`, and the overlay channel files of a loaded
+configuration, `preload_overlay_channels`, which `load_fluo_data` then
+takes), and recalculating the measurement steps of a loaded configuration,
+run in a worker thread (`runInThread`): the window keeps repainting with its
+input (and that of the other application windows, so that no dialog's
+event loop can nest in the wait) disabled and a wait cursor, while the
+status bar and the terminal report the progress (e.g. "Loading Position_1
+(1/3)...") and the elapsed time. Errors are reported as before. One load runs
+at a time: loading other data or closing the window while a load (including
+its dialogs) is in progress is refused with a status bar message, and so is
+loading while the "Save changes before closing?" prompt is open. Loading and
+measurement processing exclude each other (both directions, checked again
+after the non-blocking dialogs), so that results are never merged into
+replaced data.
 Configurations are JSON files in the settings folder
 and retain multiple experiment inputs (Images folders, image/overlay channels
 and segmentation), both plot modes' selections, predictor/annotation definitions,
@@ -150,7 +196,7 @@ first, for both saved and new experiment inputs; an overlay chosen as base is
 removed from the overlays. The choice becomes the loaded configuration's
 `channel` and is kept when the configuration is saved.
 
-Use ``Process measurements...`` to apply a recipe to selected measurements of the
+Use ``Process measurements...`` (its tooltip summarizes what it does) to apply a recipe to selected measurements of the
 current position. Smooth measurement uses a centered moving average independently
 for each cell; Min-max normalization rescales with fixed constants shared by
 all cells; Ramp detection marks sustained rising (+1) and falling (-1) ramps
@@ -294,7 +340,11 @@ rules that use its column as a boundary or required annotation (they are
 skipped with 'missing inputs' afterwards); the column's own color and
 conditional formatting are removed with it.
 
-``Time point to phase translator...`` opens an ordered list of phase rules.
+``Time point to phase translator...`` (icon-only button of the ``Phases``
+toolbar, icon drawn in code by `phase_translator_icon`, tooltip explaining the
+steps; also in the Annotations menu) opens an ordered list of phase rules.
+Its ``Help...`` button explains the steps and links to the user guide section
+(`urls.measurements_viewer_phase_translator_docs_url`).
 Each rule reuses the custom annotation formula editor (including filters,
 other-cell inputs and All/None/Most consolidation). A rule matches only if
 its formula passes, every checked annotation occurs in the cell history,
@@ -306,7 +356,11 @@ The right-hand list has phase names before, between and after its boundaries.
 Intervals include their start and exclude their end; blank names leave frames
 unassigned. Rules and boundaries can both be reordered.
 Apply phase evaluation updates either the displayed cell or all cells of the
-current position in memory. With ``Automatically evaluate phases when time
+current position in memory. The ``Phases`` toolbar (and the Annotations menu)
+also has ``Evaluate phases on displayed cell`` (icon `phase_apply_icon`,
+shortcut ``Alt+P``, editable in the shortcuts editor) to apply the configured
+rules to the displayed cell without opening the dialog (status bar hint when
+no rules are defined). With ``Automatically evaluate phases when time
 points change or phases are missing`` (saved in the configuration as
 ``auto_apply_phases``), every change of time points on the current position
 (added, moved, removed, cleared or predicted) re-evaluates the phases of the
@@ -336,12 +390,29 @@ time course, and Measurement vs Measurement colors each point by its phase
 plot`` (``rescalePlot``) and ``Only frames with selected cell``
 (``restrictFrames``). The time course x range is set to frames 1..SizeT
 when a position is loaded and when switching back from Measurement vs
-Measurement; replots after changing cell or editing the table (time points,
-annotations) keep the current zoom, unless ``Rescale plot`` is checked, which
-rescales the plot to the data when changing cell. Phase colors are edited in the
+Measurement. The y range is fitted once (``fitTimecourseYRange``) to the
+plotted values within the current x range whenever the set of plotted columns
+changes (column plotted or removed from the list or its context menu, a
+configuration loaded), normalization is toggled or the x range was reset; the
+x zoom is kept and nothing changes when the plotted values are all NaN.
+After the fit the y range keeps following the plotted values within the
+visible x range (pyqtgraph y autorange with ``setAutoVisible``), e.g. when
+changing cell or editing the table, until the user zooms or pans by hand;
+the x range is kept. ``Rescale plot`` (checked) rescales the whole plot to
+the data when changing cell. Measurement vs Measurement always
+autoranges the scatter plot (e.g., when X or Y changes). Phase colors are edited in the
 translator dialog's ``Phase colors`` box (committed on Apply or OK) and saved
 in the configuration's ``phase_colors`` ``{name: "#rrggbb"}``; phases without a
-color get evenly spaced default hues (``phase_translator.phase_colors``).
+color get the colorblind-friendly, red-free defaults of
+``phase_translator.phase_colors`` (red is reserved for the frame lines).
+
+User actions (loading/saving folders, files, configurations and tables, the
+button chosen in the ``Save changes?`` prompt, plotting/removing columns, plot
+mode, colors, conditional formatting, toggles, selected Cell ID, position,
+time point and custom annotation edits, re-evaluations, measurement
+processing/combining/export, phase translator) are logged to the terminal by
+the ``cellacdc-measurements-viewer`` logger (`get_logger`), to help debugging
+user issues. Frame scrolling and hovering are not logged.
 """
 import os
 import sys
@@ -350,6 +421,7 @@ import json
 import keyword
 import re
 import logging
+import time
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager
@@ -364,11 +436,12 @@ import skimage.measure
 
 from qtpy.QtCore import (
     Qt, Signal, QTimer, QPoint, QEvent, QRect, QSaveFile, QIODevice,
-    QThread, QMutex, QWaitCondition
+    QThread, QMutex, QWaitCondition, QObject, QEventLoop, QCoreApplication,
+    QPointF, QRectF
 )
 from qtpy.QtGui import (
     QFont, QIcon, QGuiApplication, QPixmap, QPainter, QCursor, QKeySequence,
-    QColor, QMouseEvent
+    QColor, QMouseEvent, QPen, QPolygonF
 )
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QHBoxLayout,
@@ -381,7 +454,8 @@ from qtpy.QtWidgets import (
 
 import pyqtgraph as pg
 
-from . import widgets, core, load, myutils, colors, transformation
+from . import widgets, core, load, myutils, colors, transformation, qutils
+from . import urls
 from . import (
     graphLayoutBkgrColor, darkBkgrColor, settings_csv_path, settings_folderpath
 )
@@ -447,6 +521,254 @@ PREMADE_CONFIGURATIONS_PATH = os.path.join(
     'measurements_viewer_premade_configurations'
 )
 PREMADE_TAG = '[Premade] '
+# Default colors of the plotted columns: the colorblind-friendly Okabe-Ito
+# palette without black (dark plot background) and with vermillion last,
+# because the current frame line is red.
+SIGNAL_COLORS = (
+    '#56B4E9', '#E69F00', '#009E73', '#F0E442', '#0072B2', '#CC79A7',
+    '#D55E00',
+)
+# On the light plot background (Invert black/white) the Okabe-Ito yellow is
+# nearly invisible: black takes its place (same index, so colors stay stable)
+LIGHT_BACKGROUND_SIGNAL_COLORS = tuple(
+    '#000000' if color == '#F0E442' else color for color in SIGNAL_COLORS
+)
+# Further columns: tab10 without its red and brown, then evenly spaced hues
+# that skip red (hues between 30 and 330 degrees)
+EXTRA_SIGNAL_COLORS = (
+    '#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd', '#e377c2', '#7f7f7f',
+    '#bcbd22', '#17becf',
+)
+_SIGNAL_FALLBACK_HUES = 9
+
+
+def signal_color(index, light_background=False):
+    """Default plotting color (QColor) number `index` of a plotted column.
+
+    No default color is red (reserved for the current frame line). Pass
+    `light_background=True` for the inverted (light) plot background.
+    """
+    palette = (
+        LIGHT_BACKGROUND_SIGNAL_COLORS if light_background else SIGNAL_COLORS
+    )
+    if index < len(palette):
+        return pg.mkColor(palette[index])
+    index -= len(palette)
+    if index < len(EXTRA_SIGNAL_COLORS):
+        return pg.mkColor(EXTRA_SIGNAL_COLORS[index])
+    index -= len(EXTRA_SIGNAL_COLORS)
+    hues = _SIGNAL_FALLBACK_HUES
+    # Each round of hues is shifted by a third of a step to stay distinct
+    step = (index % hues) + 0.5 + (index // hues % 3)/3
+    hue = (30 + 300*step/hues) / 360
+    value = 0.75 if light_background else 1.0
+    color = QColor()
+    color.setHsvF(min(hue, 330/360), 0.85, value)
+    return color
+
+
+# Phase colors of the phase translator icon (Okabe-Ito sky blue, bluish
+# green and orange: no red, readable on light and dark toolbars)
+PHASE_TRANSLATOR_ICON_COLORS = ('#56B4E9', '#009E73', '#E69F00')
+
+
+def phase_translator_icon(size=64):
+    """Icon of the time point to phase translator drawn in code (no resource
+    file): a phase band of three colored segments split by two time point
+    ticks with a marker on top. The ticks are mid-gray, visible on both the
+    light and the dark color scheme."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    margin = size / 16
+    width = size - 2*margin
+    bounds = (
+        margin, margin + width*0.36, margin + width*0.66, size - margin
+    )
+    bandTop, bandHeight = size*0.4, size*0.32
+    painter.setPen(QPen(Qt.PenStyle.NoPen))
+    for x0, x1, color in zip(
+            bounds[:-1], bounds[1:], PHASE_TRANSLATOR_ICON_COLORS
+        ):
+        painter.setBrush(QColor(color))
+        painter.drawRect(QRectF(x0, bandTop, x1 - x0, bandHeight))
+    tickColor = QColor(128, 128, 128)
+    tickPen = QPen(tickColor)
+    tickPen.setWidthF(size / 14)
+    tickPen.setCapStyle(Qt.PenCapStyle.RoundCap)
+    markerY, radius = size*0.2, size/9
+    for x in bounds[1:-1]:
+        painter.setPen(tickPen)
+        painter.drawLine(QPointF(x, markerY), QPointF(x, size*0.86))
+        painter.setPen(QPen(Qt.PenStyle.NoPen))
+        painter.setBrush(tickColor)
+        painter.drawEllipse(QPointF(x, markerY), radius, radius)
+    painter.end()
+    return QIcon(pixmap)
+
+
+def phase_apply_icon(size=64):
+    """Icon of "Evaluate phases on displayed cell" drawn in code: the phase
+    band of `phase_translator_icon` below a play triangle (mid-gray, visible
+    on both color schemes)."""
+    pixmap = QPixmap(size, size)
+    pixmap.fill(QColor(0, 0, 0, 0))
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    margin = size / 16
+    width = size - 2*margin
+    bounds = (
+        margin, margin + width*0.36, margin + width*0.66, size - margin
+    )
+    bandTop, bandHeight = size*0.62, size*0.28
+    painter.setPen(QPen(Qt.PenStyle.NoPen))
+    for x0, x1, color in zip(
+            bounds[:-1], bounds[1:], PHASE_TRANSLATOR_ICON_COLORS
+        ):
+        painter.setBrush(QColor(color))
+        painter.drawRect(QRectF(x0, bandTop, x1 - x0, bandHeight))
+    painter.setBrush(QColor(128, 128, 128))
+    painter.drawPolygon(QPolygonF([
+        QPointF(size*0.34, size*0.06), QPointF(size*0.34, size*0.52),
+        QPointF(size*0.70, size*0.29)
+    ]))
+    painter.end()
+    return QIcon(pixmap)
+
+
+APPLY_PHASES_CELL_SHORTCUT = 'Alt+P'
+
+
+PHASE_TRANSLATOR_TOOLTIP = (
+    'Time point to phase translator\n\n'
+    'Turn the time points of each cell into phases (e.g., "G1", '
+    '"S/G2/M"): the frames between two consecutive time points get the same '
+    'phase name.\n\n'
+    'How to use it:\n'
+    '1. Define time point identifiers ("Add time point identifier...") and '
+    'mark them on the cells (hover over the plot and press their shortcut, '
+    'or let their predictors find them).\n'
+    '2. Open the translator and add a rule: check the time points that '
+    'separate the phases, put them in their order and name the phases '
+    'before, between and after them (optionally add a formula and required '
+    'custom annotations).\n'
+    '3. Click "Apply phase evaluation" on the displayed cell or on all '
+    'cells (or let the phases be evaluated automatically). Later, the '
+    '"Evaluate phases on displayed cell" button next to this one (shortcut '
+    '"' + APPLY_PHASES_CELL_SHORTCUT + '") re-evaluates the displayed cell '
+    'without opening the translator.\n'
+    '4. The phases are drawn as a colored band below the time course plot '
+    'and color the Measurement vs Measurement points. "Export '
+    'measurements..." saves the "phase" and "phase_<name>" columns.\n\n'
+    'Rules are tried from top to bottom; the first one that matches a cell '
+    'supplies its phases. Save the configuration to keep the rules.\n'
+    'Details: Help --> Measurements viewer user guide.'
+)
+
+MEASUREMENTS_VIEWER_QUICK_START = (
+    'The measurements viewer plots the measurements (columns of the '
+    '<code>acdc_output</code> table) of the selected cell over time.'
+    '<br><br><b>How to use it:</b>'
+    + html_utils.to_list([
+        'Load data with <code>File --> Load Folder...</code> (or load a '
+        'saved configuration at startup).',
+        'Select the cell with the <b>Cell ID</b> controls at the bottom or '
+        'by clicking on it in the image; the frame scrollbar moves the '
+        'current frame (red line on the plot).',
+        'Click a column in <b>Columns to plot</b> to plot or remove its '
+        'time course; right-click it to change its color or add '
+        'conditional formatting. <b>Measurement vs Measurement</b> plots '
+        'two columns against each other for all cells.',
+        'Mark time points (<b>Time points</b> toolbar) and custom '
+        'annotations, and turn time points into phases with the '
+        '<b>Time point to phase translator</b>.',
+        '<b>Process measurements...</b> and <b>Combine measurements...</b> '
+        'add new columns; <b>Export measurements...</b> saves them. Save '
+        'the configuration (<code>File</code> menu) to reuse the setup on '
+        'other data.',
+    ], ordered=True)
+    + 'Press <code>Ctrl+F</code> to search for a Cell ID or a '
+    'functionality.'
+)
+
+
+LOGGER_NAME = 'cellacdc-measurements-viewer'
+
+
+class _StdoutLogHandler(logging.StreamHandler):
+    """Handler that always writes to the *current* ``sys.stdout``.
+
+    The stream is looked up at every record (assigning ``stream`` is
+    ignored), so redirections done after the handler was created (pytest
+    capture, the launcher's ``myutils.Logger``, which also writes the log
+    file) keep receiving the messages.
+    """
+    @property
+    def stream(self):
+        return sys.stdout
+
+    @stream.setter
+    def stream(self, value):
+        pass
+
+    def emit(self, record):
+        stream = self.stream
+        if stream is None:
+            # E.g., pythonw without a console
+            return
+        try:
+            text = self.format(record) + self.terminator
+            try:
+                stream.write(text)
+            except UnicodeEncodeError:
+                encoding = getattr(stream, 'encoding', None) or 'ascii'
+                stream.write(
+                    text.encode(encoding, errors='replace').decode(encoding)
+                )
+            self.flush()
+        except RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)
+
+
+class _LogFormatter(logging.Formatter):
+    """INFO records are printed as the bare message, other levels as
+    ``[LEVEL]: message`` (with the traceback of ``logger.exception``).
+    Messages that already start with ``[LEVEL]`` (e.g. of the mixins shared
+    with the main GUI) are printed as they are."""
+    def format(self, record):
+        text = super().format(record)
+        if record.levelno == logging.INFO:
+            return text
+        if text.lstrip().startswith(f'[{record.levelname}]'):
+            return text
+        return f'[{record.levelname}]: {text}'
+
+
+def get_logger():
+    """Logger of the measurements viewer, printing to the terminal.
+
+    The stdout handler is attached only once (several windows share the
+    logger) and the logger does not propagate to the root logger (whose
+    handlers, if configured by a third-party library, would print every
+    message twice), so use ``capsys``, not ``caplog``, in tests.
+    """
+    logger = logging.getLogger(LOGGER_NAME)
+    hasHandler = any(
+        getattr(handler, '_acdcMeasurementsViewerStdout', False)
+        for handler in logger.handlers
+    )
+    if not hasHandler:
+        handler = _StdoutLogHandler()
+        handler._acdcMeasurementsViewerStdout = True
+        handler.setFormatter(_LogFormatter('%(message)s'))
+        logger.addHandler(handler)
+        logger.propagate = False
+    if logger.level == logging.NOTSET:
+        logger.setLevel(logging.INFO)
+    return logger
 
 
 def auto_shortcut_text(shortcut):
@@ -683,14 +1005,143 @@ def acdc_df_snapshot(acdc_df):
         return None
     return MeasurementsViewerWin._standardizeAcdcDf(acdc_df).copy()
 
-def load_positions(images_paths, channel, segm_endname='segm', logger=print):
+def position_name(images_path):
+    """Name of the Position folder of an Images folder (for progress texts)."""
+    images_path = os.path.normpath(str(images_path))
+    if os.path.basename(images_path) == 'Images':
+        images_path = os.path.dirname(images_path)
+    return os.path.basename(images_path) or str(images_path)
+
+def load_positions(
+        images_paths, channel, segm_endname='segm', logger=print,
+        progress=None, skip_errors=True
+    ):
+    """Load the positions with `load_position`, skipping (and reporting with
+    `logger`) those that cannot be loaded, or raising the error if
+    `skip_errors` is False. `progress(text)` is called before each position.
+    """
     data = []
-    for images_path in images_paths:
+    for p, images_path in enumerate(images_paths):
+        if progress is not None:
+            progress(
+                f'Loading {position_name(images_path)} '
+                f'({p+1}/{len(images_paths)})...'
+            )
         try:
             data.append(load_position(images_path, channel, segm_endname))
         except Exception as err:
+            if not skip_errors:
+                raise
             logger(f'[WARNING]: Skipping "{images_path}". {err}')
     return data
+
+def precompute_position_regionprops(posData, logger_func=print):
+    """Compute the regionprops of every frame of `posData` (the slow part of
+    `MeasurementsViewerWin.initPosAnnotData`) and keep them in
+    ``posData._viewerPrecomputedRps`` for `initPosAnnotData`, which uses
+    them if the segmentation data is still the same object.
+
+    Thread-safe (no Qt): the viewer runs it in its loading worker thread for
+    the position displayed first. Positions already initialized by the
+    viewer are skipped.
+    """
+    if getattr(posData, '_isViewerAnnotDataInit', False):
+        return
+    segm_data = posData.segm_data
+    # `count_objects_and_init_rps` fills `allData_li` of the object it gets:
+    # use a holder, so that `posData` is changed only once all is computed
+    holder = SimpleNamespace(
+        segm_data=segm_data, allData_li=[None]*posData.SizeT
+    )
+    allIDs, _ = core.count_objects_and_init_rps(holder, logger_func)
+    posData._viewerPrecomputedRps = (segm_data, holder.allData_li, set(allIDs))
+
+def preload_overlay_channels(data, channels, progress=None):
+    """Read the image (and background data) files of the overlay `channels`
+    of every position in `data` into ``posData._viewerPreloadedFluo``
+    (``{file path: (image data, background data)}``), where the viewer's
+    `load_fluo_data` takes them instead of reading the files on the GUI
+    thread. Thread-safe (no Qt). Channels without a file are skipped (the
+    GUI thread reports them when loading the overlay)."""
+    for posData in data:
+        preloaded = {}
+        for channel in channels:
+            fluo_path = load.get_filename_from_channel(
+                posData.images_path, channel
+            )
+            if not fluo_path or fluo_path in preloaded:
+                continue
+            if progress is not None:
+                progress(
+                    f'Loading overlay channel "{channel}" of '
+                    f'{position_name(posData.images_path)}...'
+                )
+            preloaded[fluo_path] = load.load_image_and_bkgr_data(fluo_path)
+        posData._viewerPreloadedFluo = preloaded
+
+def load_display_positions(
+        images_paths, channel, segm_endname='segm', skip_errors=True,
+        progress=None, overlay_channels=()
+    ):
+    """Load the positions (`load_positions`), read their `overlay_channels`
+    (`preload_overlay_channels`) and precompute the regionprops of the first
+    one, which the viewer displays first (`precompute_position_regionprops`).
+    Run in a worker thread by the viewer
+    (`MeasurementsViewerWin.runInThread`)."""
+    data = load_positions(
+        images_paths, channel, segm_endname=segm_endname,
+        progress=progress, skip_errors=skip_errors
+    )
+    if data and overlay_channels:
+        preload_overlay_channels(data, overlay_channels, progress=progress)
+    if data:
+        posData = data[0]
+        if progress is not None:
+            progress(
+                f'Computing the objects of {position_name(posData.images_path)}...'
+                if hasattr(posData, 'images_path') else
+                'Computing the objects of the first position...'
+            )
+        try:
+            precompute_position_regionprops(
+                posData, logger_func=progress or print
+            )
+        except Exception as err:
+            # `initPosAnnotData` computes them again on the GUI thread
+            # (where errors are reported as without precomputing)
+            pass
+    return data
+
+class _ThreadTaskWorker(QObject):
+    """Run `func(*args, **kwargs)` in a worker `QThread` (see
+    `MeasurementsViewerWin.runInThread`). The return value or the raised
+    exception is stored in `result` / `error`, to be read once the thread
+    finished. With `reportProgress`, `func` also gets the keyword argument
+    ``progress``, a callable that emits `sigProgress` with a text."""
+    sigProgress = Signal(str)
+
+    def __init__(self, func, args, kwargs, reportProgress=False):
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = dict(kwargs)
+        if reportProgress:
+            self.kwargs['progress'] = self.sigProgress.emit
+        self.result = None
+        self.error = None
+
+    def run(self):
+        try:
+            self.result = self.func(*self.args, **self.kwargs)
+        except BaseException as err:
+            self.error = err
+        finally:
+            # Back to the GUI thread, so that `deleteLater` works after this
+            # thread stopped
+            app = QCoreApplication.instance()
+            if app is not None:
+                self.moveToThread(app.thread())
+            QThread.currentThread().quit()
 
 class _NoOpItem:
     """Placeholder for main GUI items that do not exist in the viewer 
@@ -793,6 +1244,12 @@ class MeasurementsViewerWin(
         self._geometryRestored = False
         self.measurementProcessingThread = None
         self.measurementProcessingWorker = None
+        # True while a load (`loadConfiguration`/`loadImagesPaths`, with
+        # their dialogs) runs: other loads and closing are refused
+        self._isLoadingData = False
+        # True while the "Save changes before closing?" prompt is open:
+        # loading is refused (`loadingInProgress`)
+        self._isClosingPrompt = False
         self.rescaleIntensChannelHowMapper = {}
         self.timepointIdentifiers = []
         self.phaseTranslatorRules = []
@@ -810,7 +1267,7 @@ class MeasurementsViewerWin(
         self.combinedMeasurementSteps = []
         # Per-cell constants [{'name': str, 'equation': str}]
         # self.cellConstants = []
-        self.logger = logging.getLogger('cellacdc-measurements-viewer')
+        self.logger = get_logger()
         self.loadSettings()
         # Re-evaluate phases of cells whose time points change or whose
         # phases are missing (saved in the configuration)
@@ -1278,6 +1735,7 @@ class MeasurementsViewerWin(
         self.configurationInputs = copy.deepcopy(configuration['input_options'])
         self.loadedInputKey = self.inputOptionKey(configuration)
         self.savedConfiguration = configuration
+        self.logger.info(f'Configuration saved to "{filepath}"')
         self.statusBar().showMessage(f'Configuration saved to "{filepath}".', 5000)
         return True
 
@@ -1898,6 +2356,7 @@ class MeasurementsViewerWin(
                 return False
             posData.savedAcdcDf = acdc_df.copy()
             posData.acdcDfFileStamp = acdc_df_file_stamp(filepath)
+            self.logger.info(f'Table saved to "{filepath}"')
         if positions:
             self.statusBar().showMessage(
                 f'Saved {len(positions)} acdc_output table(s).', 5000
@@ -1967,7 +2426,13 @@ class MeasurementsViewerWin(
             buttonsTexts=[text for text, _ in options]
         )
         if msg.cancel:
+            self.logger.info(f'Save changes before {action}: Cancel')
             return False
+        texts = dict(zip(buttons, (text for text, _ in options)))
+        self.logger.info(
+            f'Save changes before {action}: '
+            f'"{texts.get(msg.clickedButton, "Cancel")}"'
+        )
         actions = dict(zip(buttons, (action for _, action in options)))
         action = actions.get(msg.clickedButton)
         if action is None:
@@ -2303,9 +2768,64 @@ class MeasurementsViewerWin(
                     )
         posData.acdc_df = result
 
+    def loadingInProgress(self):
+        """Return True, and tell the user (status bar and log), while other
+        data is being loaded (`_isLoadingData`), to refuse a second load:
+        the dialogs of a load do not block the window, so a load could
+        otherwise start while another one is waiting for an answer.
+        Loading is also refused while the "Save changes before closing?"
+        prompt is open (`_isClosingPrompt`): it would save or close the
+        replaced data."""
+        if self._isClosingPrompt:
+            text = 'Answer the "Save changes before closing?" prompt first.'
+        elif self._isLoadingData:
+            text = (
+                'Wait for the data being loaded (or answer its dialog) first.'
+            )
+        else:
+            return False
+        self.logger.warning(f'Loading other data refused. {text}')
+        self.statusBar().showMessage(text, 8000)
+        return True
+
+    def refuseLoadingWhileProcessing(self):
+        """Return True, and tell the user, while measurement processing
+        runs: its results would be merged into (and its step recorded for)
+        the data being replaced."""
+        if self.measurementProcessingThread is None:
+            return False
+        self.configurationError(
+            'load', 'Wait for measurement processing to finish.'
+        )
+        return True
+
+    def refuseProcessingWhileLoading(self):
+        """Return True, and tell the user, while data is being loaded (see
+        `refuseLoadingWhileProcessing`) or the "Save changes before
+        closing?" prompt is open."""
+        if self._isClosingPrompt:
+            text = 'Answer the "Save changes before closing?" prompt first.'
+        elif self._isLoadingData:
+            text = (
+                'Wait for the data being loaded (or answer its dialog) first.'
+            )
+        else:
+            return False
+        self.logger.warning(f'Process measurements refused. {text}')
+        self.statusBar().showMessage(text, 8000)
+        return True
+
     def loadConfiguration(self, checked=False, filepath=None):
-        if self.measurementProcessingThread is not None:
-            self.configurationError('load', 'Wait for measurement processing to finish.')
+        if self.loadingInProgress():
+            return False
+        self._isLoadingData = True
+        try:
+            return self._loadConfiguration(filepath=filepath)
+        finally:
+            self._isLoadingData = False
+
+    def _loadConfiguration(self, filepath=None):
+        if self.refuseLoadingWhileProcessing():
             return False
         if filepath is None:
             filepath = self.selectConfigurationFilepath()
@@ -2316,6 +2836,10 @@ class MeasurementsViewerWin(
         # configuration saved over the same file is the one that is loaded.
         if not self.askSaveBeforeLoading():
             return False
+        # Processing may have been started from the non-blocking dialogs
+        if self.refuseLoadingWhileProcessing():
+            return False
+        self.logger.info(f'Loading configuration "{filepath}"...')
         try:
             with open(filepath, encoding='utf-8') as file:
                 configuration = json.load(file)
@@ -2356,42 +2880,54 @@ class MeasurementsViewerWin(
                     raise ValueError(f'Missing channels in "{path}": {sorted(missing)}.')
                 if configuration['segm_endname'] not in segmentations:
                     raise ValueError(f'Segmentation not found in "{path}".')
-            self.setCursor(Qt.WaitCursor)
-            try:
-                legacyViewed = {
-                    os.path.normcase(os.path.abspath(path)): IDs
-                    for path, IDs in configuration.get('viewed_cells', {}).items()
-                }
-                data = [
-                    load_position(
-                        path, configuration['channel'],
-                        configuration['segm_endname']
-                    )
-                    for path in configuration['images_paths']
-                ]
-                replay = None
-                outputs = self.measurementStepOutputs(configuration)
-                if outputs:
-                    self.unsetCursor()
-                    replay = self.askMeasurementReplay(outputs, data)
-                    if replay is None:
-                        return False
-                    self.setCursor(Qt.WaitCursor)
-                for posData in data:
-                    if replay == 'recalculate':
+            legacyViewed = {
+                os.path.normcase(os.path.abspath(path)): IDs
+                for path, IDs in configuration.get('viewed_cells', {}).items()
+            }
+            self.logger.info(
+                f'Loading channel "{configuration["channel"]}" of '
+                f'{len(configuration["images_paths"])} position(s): '
+                + ', '.join(
+                    f'"{path}"' for path in configuration['images_paths']
+                )
+            )
+            # In a worker thread (including the overlay channels, taken by
+            # `load_fluo_data`): the window stays responsive. Errors are
+            # re-raised here.
+            data = self.runInThread(
+                load_display_positions, configuration['images_paths'],
+                configuration['channel'], configuration['segm_endname'],
+                skip_errors=False, reportProgress=True,
+                overlay_channels=configuration['overlay_channels'],
+                text=(
+                    f'Loading {len(configuration["images_paths"])} '
+                    'position(s)...'
+                )
+            )
+            replay = None
+            outputs = self.measurementStepOutputs(configuration)
+            if outputs:
+                replay = self.askMeasurementReplay(outputs, data)
+                if replay is None:
+                    return False
+            if replay == 'recalculate':
+                def replaySteps():
+                    for posData in data:
                         self.replayMeasurementSteps(
                             posData, configuration, overwrite=True
                         )
-                    legacyIDs = legacyViewed.get(
-                        os.path.normcase(os.path.abspath(posData.pos_path)), []
-                    ) if legacyViewed else []
-                    if legacyIDs and posData.acdc_df is not None:
-                        if VISITED_COLUMN not in posData.acdc_df:
-                            posData.acdc_df[VISITED_COLUMN] = False
-                        rows = posData.acdc_df.index.get_level_values('Cell_ID').isin(legacyIDs)
-                        posData.acdc_df.loc[rows, VISITED_COLUMN] = True
-            finally:
-                self.unsetCursor()
+                self.runInThread(
+                    replaySteps, text='Calculating the measurement steps...'
+                )
+            for posData in data:
+                legacyIDs = legacyViewed.get(
+                    os.path.normcase(os.path.abspath(posData.pos_path)), []
+                ) if legacyViewed else []
+                if legacyIDs and posData.acdc_df is not None:
+                    if VISITED_COLUMN not in posData.acdc_df:
+                        posData.acdc_df[VISITED_COLUMN] = False
+                    rows = posData.acdc_df.index.get_level_values('Cell_ID').isin(legacyIDs)
+                    posData.acdc_df.loc[rows, VISITED_COLUMN] = True
         except Exception as err:
             self.logger.exception('Loading measurements viewer workflow failed')
             self.configurationError('load', err)
@@ -2440,7 +2976,11 @@ class MeasurementsViewerWin(
         self.configurationFilepath = None
         overlays = configuration['overlay_channels']
         if overlays:
-            if not self.loadOverlayData(overlays):
+            loaded = self.loadOverlayData(overlays)
+            # Release the preloaded data that `load_fluo_data` did not take
+            for posData in data:
+                posData.__dict__.pop('_viewerPreloadedFluo', None)
+            if not loaded:
                 self.configurationError('load', 'Could not load overlay channels.')
                 return False
             self.setCheckedOverlayContextMenusActions(overlays)
@@ -2469,6 +3009,7 @@ class MeasurementsViewerWin(
         self.normalizeCheckbox.setChecked(configuration['normalize_measurements'])
         self.configurationFilepath = filepath
         self.markConfigurationSaved()
+        self.logger.info(f'Configuration loaded: "{filepath}"')
         if missing:
             self.configurationError(
                 'restore all plot selections',
@@ -2537,6 +3078,10 @@ class MeasurementsViewerWin(
         self.isMouseDragImg1 = False
         self.invertBwAlreadyCalledOnce = False
         self.currentPropsID = -1
+        # True while the code (hover, sync with the selected cell) writes
+        # the Object ID of the "Cell-ACDC objects" dock: only user edits
+        # of the ID select a cell (see `propsWidgetIDvalueChanged`)
+        self._isUpdatingPropsDock = False
         self.xHoverImg, self.yHoverImg = None, None
         self.countKeyPress = 0
         self.doubleKeyTimeElapsed = False
@@ -2711,6 +3256,54 @@ class MeasurementsViewerWin(
             'displayed cell, replacing its time points.\n'
             'You will be warned if manual edits would be overwritten.'
         )
+        self.phaseTranslatorAction = QAction(
+            phase_translator_icon(), 'Time point to phase translator...',
+            self
+        )
+        self.phaseTranslatorAction.setToolTip(PHASE_TRANSLATOR_TOOLTIP)
+        self.phaseTranslatorAction.setStatusTip(
+            'Translate the time points of each cell into phases (colored '
+            'band below the plot, phase columns in the exported table)'
+        )
+        self.applyPhasesCellAction = QAction(
+            phase_apply_icon(), 'Evaluate phases on displayed cell', self
+        )
+        self.applyPhasesCellAction.setShortcut(APPLY_PHASES_CELL_SHORTCUT)
+        self.applyPhasesCellAction.setShortcutContext(
+            Qt.ShortcutContext.WindowShortcut
+        )
+        self.applyPhasesCellAction.setToolTip(
+            'Evaluate phases on displayed cell\n\n'
+            'Apply the rules of the time point to phase translator to the '
+            'displayed cell only, replacing its phases (like "Apply phase '
+            'evaluation" on the displayed cell in the translator).\n'
+            'Define the rules first with "Time point to phase translator...".'
+            '\n\nShortcut: "' + APPLY_PHASES_CELL_SHORTCUT + '"'
+        )
+        self.applyPhasesCellAction.setStatusTip(
+            'Evaluate the phases of the displayed cell with the phase '
+            'translator rules'
+        )
+        self.addAction(self.applyPhasesCellAction)
+        # Editable in the shortcuts editor (Edit > Edit keyboard shortcuts)
+        self.widgetsWithShortcut['Evaluate phases on displayed cell'] = (
+            self.applyPhasesCellAction
+        )
+
+        # Help menu
+        self.userGuideAction = QAction(
+            QIcon(':browser.svg'), 'Measurements viewer user guide...', self
+        )
+        self.userGuideAction.setToolTip(
+            'Open the measurements viewer documentation in the web browser'
+        )
+        self.quickStartAction = QAction(
+            QIcon(':info.svg'), 'Quick start...', self
+        )
+        self.quickStartAction.setToolTip(
+            'Show a short how-to of the measurements viewer'
+        )
+        self.acdcDocsAction = QAction('Cell-ACDC documentation...', self)
         # self.editCellConstantsAction = QAction(
         #     QIcon(":calc.svg"), 'Per-cell constants...', self
         # )
@@ -2982,6 +3575,17 @@ class MeasurementsViewerWin(
         annotMenu.addAction(self.annotObjTrackSettingsAction)
         annotMenu.addSeparator()
         annotMenu.addAction(self.resetAnnotOptionsAction)
+        annotMenu.addSeparator()
+        annotMenu.addAction(self.phaseTranslatorAction)
+        annotMenu.addAction(self.applyPhasesCellAction)
+        
+        helpMenu = self.menuBar().addMenu('&Help')
+        self.helpMenu = helpMenu
+        helpMenu.addAction(self.userGuideAction)
+        helpMenu.addAction(self.quickStartAction)
+        helpMenu.addAction(self.acdcDocsAction)
+        helpMenu.addSeparator()
+        helpMenu.addAction(self.focusOnSearchAction)
         
         self.searchWidget = widgets.ButtonSearchWidget(
             self, loadingType=None
@@ -3113,12 +3717,12 @@ class MeasurementsViewerWin(
         self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
         self.overlayToolbar.setVisible(False)
         
-        self.phaseTranslatorToolbar = widgets.ToolBar(parent=self)
-        self.phaseTranslatorAction = QAction(
-            'Time point to phase translator...', self
+        self.phaseTranslatorToolbar = widgets.ToolBar("Phases", self)
+        self.phaseTranslatorToolbar.setToolButtonStyle(
+            Qt.ToolButtonStyle.ToolButtonIconOnly
         )
-        self.phaseTranslatorAction.triggered.connect(self.configurePhaseTranslator)
         self.phaseTranslatorToolbar.addAction(self.phaseTranslatorAction)
+        self.phaseTranslatorToolbar.addAction(self.applyPhasesCellAction)
         self.addToolBar(Qt.TopToolBarArea, self.phaseTranslatorToolbar)
         
         self.setEnabledFileToolbar(False)
@@ -3128,6 +3732,15 @@ class MeasurementsViewerWin(
         self.openFileAction.triggered.connect(self.openFile)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.reloadAction.triggered.connect(self.reloadButtonClicked)
+        self.phaseTranslatorAction.triggered.connect(
+            self.configurePhaseTranslator
+        )
+        self.applyPhasesCellAction.triggered.connect(
+            self.applyPhasesOnDisplayedCell
+        )
+        self.userGuideAction.triggered.connect(self.openUserGuide)
+        self.quickStartAction.triggered.connect(self.showQuickStart)
+        self.acdcDocsAction.triggered.connect(self.openAcdcDocs)
         self.exitAction.triggered.connect(self.close)
         self.loadConfigurationAction.triggered.connect(self.loadConfiguration)
         self.saveConfigurationAction.triggered.connect(self.saveConfiguration)
@@ -3172,6 +3785,7 @@ class MeasurementsViewerWin(
         self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
         self.invertBwAction.toggled.connect(self.invertBw)
+        self.invertBwAction.toggled.connect(self.recolorSignalsForBackground)
         self.addScaleBarAction.toggled.connect(self.addScaleBar)
         self.addTimestampAction.toggled.connect(self.addTimestamp)
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
@@ -3188,7 +3802,10 @@ class MeasurementsViewerWin(
         self.searchAction.triggered.connect(
             partial(self.focusOnSearch, blinking=True)
         )
-        self.focusOnSearchAction.triggered.connect(self.focusOnSearch)
+        # Blink like the toolbar button: the focus alone is easy to miss
+        self.focusOnSearchAction.triggered.connect(
+            partial(self.focusOnSearch, blinking=True)
+        )
         self.addAction(self.focusOnSearchAction)
         self.searchWidget.sigTriggerBlink.connect(self.onSearchTriggerBlink)
         self.searchWidget.sigSearchId.connect(self.onSearchId)
@@ -3391,13 +4008,43 @@ class MeasurementsViewerWin(
     def showInExplorer_cb(self):
         posData = self.posData()
         myutils.showInExplorer(posData.images_path)
-    
+
+    def openUserGuide(self, checked=False):
+        """Open the measurements viewer documentation in the web browser."""
+        self.logger.info(
+            f'Opening the measurements viewer user guide '
+            f'({urls.measurements_viewer_docs_url})...'
+        )
+        myutils.browse_url(urls.measurements_viewer_docs_url)
+
+    def openAcdcDocs(self, checked=False):
+        self.logger.info(
+            f'Opening the Cell-ACDC documentation ({urls.docs_homepage})...'
+        )
+        myutils.browse_url(urls.docs_homepage)
+
+    def showQuickStart(self, checked=False):
+        """Short how-to (Help menu and info button of the measurements
+        panel) with a button that opens the user guide."""
+        self.logger.info('Showing the measurements viewer quick start')
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Measurements viewer: quick start',
+            html_utils.paragraph(MEASUREMENTS_VIEWER_QUICK_START),
+            url_to_open=urls.measurements_viewer_docs_url,
+            open_url_button_text='Open user guide'
+        )
+
     def openRecentFile(self, path):
+        if self.loadingInProgress():
+            return
         self.logger.info(f'Opening recent folder: {path}')
         self.addToRecentPaths(path)
         self.openFolder(folderpath=path)
     
     def openFolder(self, checked=False, folderpath=None):
+        if self.loadingInProgress():
+            return
         if not folderpath:
             folderpath = QFileDialog.getExistingDirectory(
                 self, 'Select experiment, Position or Images folder', 
@@ -3406,6 +4053,7 @@ class MeasurementsViewerWin(
         if not folderpath:
             return
         
+        self.logger.info(f'Opening folder "{folderpath}"...')
         self.addToRecentPaths(folderpath)
         self.addPathToOpenRecentMenu(folderpath)
         
@@ -3419,6 +4067,8 @@ class MeasurementsViewerWin(
         self.loadImagesPaths(images_paths)
     
     def openFile(self, checked=False, file_path=None):
+        if self.loadingInProgress():
+            return
         if not file_path:
             file_path, _ = QFileDialog.getOpenFileName(
                 self, 'Select image file from an Images folder', 
@@ -3428,6 +4078,7 @@ class MeasurementsViewerWin(
         if not file_path:
             return
         
+        self.logger.info(f'Opening file "{file_path}"...')
         images_path = os.path.dirname(file_path)
         if os.path.basename(images_path) != 'Images':
             self.warnLoading(
@@ -3443,6 +4094,17 @@ class MeasurementsViewerWin(
         self.loadImagesPaths([images_path], channel=channel)
     
     def loadImagesPaths(self, images_paths, channel=None):
+        if self.loadingInProgress():
+            return
+        self._isLoadingData = True
+        try:
+            self._loadImagesPaths(images_paths, channel=channel)
+        finally:
+            self._isLoadingData = False
+
+    def _loadImagesPaths(self, images_paths, channel=None):
+        if self.refuseLoadingWhileProcessing():
+            return
         try:
             chNames, segm_endnames = get_channels_and_segm_endnames(
                 images_paths[0]
@@ -3473,15 +4135,23 @@ class MeasurementsViewerWin(
 
         if not self.askSaveBeforeLoading():
             return
+        # Processing may have been started from the non-blocking dialogs
+        if self.refuseLoadingWhileProcessing():
+            return
 
-        self.setCursor(Qt.WaitCursor)
-        try:
-            data = load_positions(
-                images_paths, channel, segm_endname=segm_endname
-            )
-        finally:
-            self.unsetCursor()
-        
+        self.logger.info(
+            f'Loading channel "{channel}" and segmentation '
+            f'"{segm_endname}" of {len(images_paths)} position(s): '
+            + ', '.join(f'"{path}"' for path in images_paths)
+        )
+        # In a worker thread: the window stays responsive (Positions that
+        # cannot be loaded are skipped and reported in the terminal)
+        data = self.runInThread(
+            load_display_positions, images_paths, channel,
+            segm_endname=segm_endname, reportProgress=True,
+            text=f'Loading {len(images_paths)} position(s)...'
+        )
+
         if not data:
             self.warnLoading(
                 'None of the selected Positions could be loaded '
@@ -3504,7 +4174,80 @@ class MeasurementsViewerWin(
             )
             self.seedVisitedTimepointPredictions(data=data)
         self.markConfigurationSaved()
-    
+        self.logger.info(f'Loaded {len(data)} position(s)')
+
+    def runInThread(
+            self, func, *args, text='Working...', reportProgress=False,
+            **kwargs
+        ):
+        """Run `func(*args, **kwargs)` in a worker `QThread` and return its
+        result, or re-raise the exception it raised.
+
+        A local event loop keeps the window repainting meanwhile (a long
+        task on the GUI thread makes it "Not Responding", and Windows then
+        shows a frozen copy of it), with its input disabled and a wait
+        cursor. `text` is logged and shown in the status bar, followed by
+        the progress texts that `func` reports through its ``progress``
+        keyword argument (passed with `reportProgress`) and by the elapsed
+        time. `func` must not create or touch Qt widgets nor show dialogs.
+
+        The other windows of the application (launcher, main GUI, other
+        viewers) are disabled meanwhile too: a dialog opened from them would
+        run its own local event loop inside this one, and this call could
+        return (re-enabling the window) only once that dialog closed.
+        """
+        worker = _ThreadTaskWorker(func, args, kwargs, reportProgress)
+        thread = QThread()
+        worker.moveToThread(thread)
+        loop = QEventLoop()
+        thread.started.connect(worker.run)
+        # Queued to this (GUI) thread: received only while `loop` runs
+        thread.finished.connect(loop.quit)
+        worker.sigProgress.connect(self.showThreadTaskProgress)
+        wasEnabled = self.isEnabled()
+        self.setEnabled(False)
+        otherWindows = [
+            window for window in QApplication.topLevelWidgets()
+            if window is not self and window.isVisible()
+            and window.isEnabled() and not self.isAncestorOf(window)
+        ]
+        for window in otherWindows:
+            window.setEnabled(False)
+        self.setCursor(Qt.WaitCursor)
+        self.logger.info(text)
+        self.statusBar().showMessage(text)
+        t0 = time.perf_counter()
+        try:
+            thread.start()
+            loop.exec_()
+        finally:
+            thread.wait()
+            thread.deleteLater()
+            # `worker` moved back to this thread at the end of `run`
+            worker.deleteLater()
+            self.unsetCursor()
+            for window in otherWindows:
+                try:
+                    window.setEnabled(True)
+                except RuntimeError:
+                    # Deleted meanwhile
+                    pass
+            if wasEnabled:
+                self.setEnabled(True)
+            self.statusBar().clearMessage()
+        elapsed = time.perf_counter() - t0
+        action = text.rstrip('.').strip()
+        if worker.error is not None:
+            self.logger.info(f'{action} failed after {elapsed:.1f} s')
+            raise worker.error
+        self.logger.info(f'{action} done in {elapsed:.1f} s')
+        return worker.result
+
+    def showThreadTaskProgress(self, text):
+        """Show (and log) a progress text of a `runInThread` task."""
+        self.logger.info(text)
+        self.statusBar().showMessage(text)
+
     def selectItem(self, title, text, items):
         if len(items) == 1:
             return items[0]
@@ -3559,6 +4302,25 @@ class MeasurementsViewerWin(
         self.initViewerToolsAfterLoading()
         self.setEnabledFileToolbar(hasData)
         self.resizeBottomLayout()
+        # On the first pass of the event loop, i.e. once the load finished:
+        # the synchronous work after `setData` (e.g. `loadOverlayData` in
+        # `loadConfiguration`) would otherwise delay the blink's timers
+        # until it is over, hiding the blink.
+        QTimer.singleShot(0, self.blinkCellIdControls)
+
+    def blinkCellIdControls(self):
+        """Blink the Cell ID spinbox and scrollbar after loading data, to
+        show where the selected (highlighted) cell is changed."""
+        if not self.data:
+            return
+        blinker = qutils.QControlBlink(
+            [self.idLabel, self.idSpinBox, self.idScrollBar], qparent=self
+        )
+        blinker.start()
+        self.statusBar().showMessage(
+            'Select the cell to plot with the "Cell ID" controls (bottom) '
+            'or click on a cell in the image.', 10000
+        )
     
     def resizeBottomLayout(self):
         # As in `gui.guiWin.resizeGui`: fit the bottom layout to its 
@@ -3566,8 +4328,18 @@ class MeasurementsViewerWin(
         self.bottomScrollArea._resizeVertical()
         self.setBottomLayoutHeight()
     
+    def load_fluo_data(self, fluo_path, isGuiThread=True):
+        """Return the overlay channel data that the loading worker already
+        read (`preload_overlay_channels`), otherwise read the file (as in
+        `gui_overlay`)."""
+        for posData in self.data:
+            preloaded = getattr(posData, '_viewerPreloadedFluo', None)
+            if preloaded and fluo_path in preloaded:
+                return preloaded.pop(fluo_path)
+        return super().load_fluo_data(fluo_path, isGuiThread=isGuiThread)
+
     def setPosDataDefaults(self):
-        """Add the metadata attributes that `load.loadData` always sets, but 
+        """Add the metadata attributes that `load.loadData` always sets, but
         that minimal posData objects passed to `setData` might lack"""
         defaults = {
             'PhysicalSizeX': 1.0, 'PhysicalSizeY': 1.0, 'PhysicalSizeZ': 1.0,
@@ -4374,6 +5146,10 @@ class MeasurementsViewerWin(
         )
         # Custom plotting colors set by the user {column: QColor}
         self.measurementsColors = {}
+        # Index in SIGNAL_COLORS of the default color of each column that
+        # was plotted, so that plotting another column does not recolor
+        # the plotted ones {column: int}
+        self._defaultSignalColorIndices = {}
         # Ordered rules {column: [{'condition': str, 'color': '#rrggbb'}]}
         self.conditionalFormatting = {}
 
@@ -4386,6 +5162,13 @@ class MeasurementsViewerWin(
             'all frames of the current position. Hover for details; click '
             'a point to zoom to its cell.'
         )
+        # Short how-to with a link to the user guide (also Help menu)
+        self.measurementsHelpButton = widgets.infoPushButton()
+        self.measurementsHelpButton.setToolTip(
+            'How to use the measurements viewer (quick start and link to '
+            'the user guide)'
+        )
+        self.measurementsHelpButton.clicked.connect(self.showQuickStart)
         self.measurementsAxes = {'X': '', 'Y': ''}
         self._measurementsMode = 0
         self._timeCourseColumns = set()
@@ -4396,6 +5179,18 @@ class MeasurementsViewerWin(
             '(e.g., after saving in the main GUI)'
         )
         self.processMeasurementsButton = widgets.setPushButton('Process measurements...')
+        self.processMeasurementsButton.setToolTip(
+            'Apply a processing recipe (e.g., smoothing, min-max '
+            'normalization or ramp detection) to selected measurements of '
+            'the current position.\n\n'
+            'Each processed measurement is added as a new column (the '
+            'measurement name plus the output suffix chosen in the dialog; '
+            'the original columns are not changed), which can then be '
+            'plotted and used by predictors. The recipe is recorded in the '
+            'configuration and can be recalculated when the configuration '
+            'is loaded.\n\n'
+            'Use "Export measurements..." to save the new columns.'
+        )
         self.processMeasurementsButton.clicked.connect(self.processMeasurements)
         self.combineMeasurementsButton = widgets.calcPushButton(
             'Combine measurements...'
@@ -4419,7 +5214,11 @@ class MeasurementsViewerWin(
         self.timeCourseColumnsWidget.setLayout(timeCourseLayout)
 
         columnsLayout = QVBoxLayout()
-        columnsLayout.addWidget(self.measurementsModeCombobox)
+        modeLayout = QHBoxLayout()
+        modeLayout.setContentsMargins(0, 0, 0, 0)
+        modeLayout.addWidget(self.measurementsModeCombobox, 1)
+        modeLayout.addWidget(self.measurementsHelpButton)
+        columnsLayout.addLayout(modeLayout)
         columnsLayout.addWidget(self.timeCourseColumnsWidget)
         columnsLayout.addWidget(self.processMeasurementsButton)
         columnsLayout.addWidget(self.combineMeasurementsButton)
@@ -4560,6 +5359,7 @@ class MeasurementsViewerWin(
         self.columnsListWidget.customContextMenuRequested.connect(
             self.showColumnsContextMenu
         )
+        self.normalizeCheckbox.toggled.connect(self.normalizeToggled)
         self.normalizeCheckbox.toggled.connect(self.plotMeasurements)
         self.showPhasesCheckbox.toggled.connect(self.showPhasesToggled)
         self.measurementsModeCombobox.currentIndexChanged.connect(
@@ -4594,6 +5394,11 @@ class MeasurementsViewerWin(
         self.frame_i = min(frame_i, posData.SizeT-1)
         posData.frame_i = self.frame_i
         
+        self.logger.info(
+            f'Loading position {pos_i+1}/{len(self.data)} '
+            f'("{getattr(posData, "pos_foldername", "")}"), '
+            f'frame n. {self.frame_i+1}...'
+        )
         self.posCombobox.blockSignals(True)
         self.posCombobox.setCurrentIndex(pos_i)
         self.posCombobox.blockSignals(False)
@@ -4628,14 +5433,25 @@ class MeasurementsViewerWin(
     def initPosAnnotData(self, posData):
         """Initialize the per-frame stored data (`allData_li`) and the 
         attributes of `posData` required by the annotations as in 
-        `gui.guiWin` and return the set of all IDs."""
+        `gui.guiWin` and return the set of all IDs.
+
+        Uses the regionprops computed in the loading worker thread
+        (`precompute_position_regionprops`), if any. The rest runs on the
+        GUI thread (e.g. `loadTrackedLostCentroids` may show a dialog)."""
         if getattr(posData, '_isViewerAnnotDataInit', False):
             return posData.allIDs
-        
-        posData.allData_li = [None]*posData.SizeT
-        allIDs, posData = core.count_objects_and_init_rps(
-            posData, self.logger.info
-        )
+
+        precomputed = getattr(posData, '_viewerPrecomputedRps', None)
+        if precomputed is not None:
+            del posData._viewerPrecomputedRps
+        if (isinstance(precomputed, tuple)
+                and precomputed[0] is posData.segm_data):
+            _, posData.allData_li, allIDs = precomputed
+        else:
+            posData.allData_li = [None]*posData.SizeT
+            allIDs, posData = core.count_objects_and_init_rps(
+                posData, self.logger.info
+            )
         for i in range(posData.SizeT):
             if posData.allData_li[i] is None:
                 posData.allData_li[i] = myutils.get_empty_stored_data_dict()
@@ -5128,6 +5944,10 @@ class MeasurementsViewerWin(
     
     @disableWindow
     def reloadButtonClicked(self, checked=False):
+        self.logger.info(
+            'Reloading table "'
+            f'{getattr(self.posData(), "acdc_output_csv_path", "")}"...'
+        )
         self.reloadAcdcDfFile()
         self.refreshAcdcDf()
 
@@ -5154,6 +5974,7 @@ class MeasurementsViewerWin(
         posData = self.posData()
         source = self.acdc_df
         equationSource = source.copy()
+        self.logger.info('Opening "Combine measurements" dialog...')
         dialog = apps.CombineMetricsEquationDialog(
             posData.chNames, posData.SizeZ > 1, self.isSegm3D,
             parent=self, closeOnOk=False, acdc_df=equationSource,
@@ -5207,6 +6028,12 @@ class MeasurementsViewerWin(
         if conflicts:
             self.recordedOrderConflictWarning(conflicts)
             return
+        self.logger.info(
+            'Combining measurements: ' + ', '.join(
+                f'{name} = {expression}'
+                for name, expression in equations.items()
+            )
+        )
         try:
             result = source.copy()
             for name, expression in equations.items():
@@ -5227,6 +6054,9 @@ class MeasurementsViewerWin(
         self.plotMeasurements()
         dialog.cancel = False
         dialog.close()
+        self.logger.info(
+            f'Combined measurements added: {", ".join(equations)}'
+        )
         self.statusBar().showMessage(
             'Combined measurements added. Use Export measurements to save them.'
             + (f' {note}' if note else ''),
@@ -5235,6 +6065,8 @@ class MeasurementsViewerWin(
 
     def processMeasurements(self, checked=False):
         if self.measurementProcessingThread is not None:
+            return
+        if self.refuseProcessingWhileLoading():
             return
         if self.acdc_df is None or self.acdc_df.empty:
             self.measurementProcessingWarning('No measurements', 'Load measurements first.')
@@ -5252,8 +6084,22 @@ class MeasurementsViewerWin(
             columns, parent=self, acdc_df=self.acdc_df,
             allChNames=self.posData().chNames
         )
+        self.logger.info('Opening "Process measurements" dialog...')
+        posData = self.posData()
         dialog.exec_()
         if dialog.cancel:
+            self.logger.info('Process measurements cancelled')
+            return
+        # The dialog does not block the window: other data may have been
+        # loaded (or be loading) meanwhile
+        if self.refuseProcessingWhileLoading():
+            return
+        if not self.data or self.posData() is not posData:
+            self.measurementProcessingWarning(
+                'Data changed',
+                'Other data or another position was loaded while the '
+                'dialog was open: start "Process measurements" again.'
+            )
             return
 
         conflicts = self.recordedOutputConflicts(dialog.saveNames)
@@ -5273,6 +6119,14 @@ class MeasurementsViewerWin(
 
     def startMeasurementsProcessing(self, columns, recipe, saveNames):
         posData = self.posData()
+        self.logger.info(
+            f'Processing measurements {", ".join(columns)} '
+            '(recipe: ' + ', '.join(
+                str(step.get('method') if isinstance(step, dict) else step)
+                for step in recipe
+            ) + ') '
+            f'into {", ".join(saveNames)}...'
+        )
         self._pendingMeasurementStep = copy.deepcopy({
             'columns': list(columns), 'recipe': recipe,
             'output_columns': list(saveNames)
@@ -5348,6 +6202,9 @@ class MeasurementsViewerWin(
         for col in outputs:
             current[col] = processed[col].reindex(current.index)
         posData.acdc_df = current
+        self.logger.info(
+            f'Measurement processing done: added {", ".join(outputs)}'
+        )
         note = self.recordMeasurementStep(
             self.measurementProcessingSteps, self._pendingMeasurementStep
         )
@@ -5509,6 +6366,7 @@ class MeasurementsViewerWin(
             'isZstack': getattr(posData, 'SizeZ', 1) > 1,
             'isSegm3D': bool(self.isSegm3D),
         }
+        self.logger.info('Opening time point to phase translator...')
         dialog = apps_measurements_viewer.PhaseTranslatorDialog(
             self.phaseTranslatorRules,
             [self.timepointColumn(item) for item in self.timepointIdentifiers],
@@ -5530,8 +6388,32 @@ class MeasurementsViewerWin(
             self.phaseTranslatorRules = copy.deepcopy(dialog.rules)
             self.phaseColors = dialog.currentPhaseColors()
             self.setAutoApplyPhases(dialog.autoApplyCheckbox.isChecked())
+            self.logger.info(
+                f'Phase translator rules set: {len(dialog.rules)} rule(s), '
+                f'auto apply {"on" if self.autoApplyPhases else "off"}'
+            )
             self.plotMeasurements()
+        else:
+            self.logger.info('Phase translator closed without changes')
         dialog.deleteLater()
+
+    def applyPhasesOnDisplayedCell(self, checked=False):
+        """Evaluate the phases of the displayed cell with the configured
+        phase translator rules (toolbar action and its shortcut)."""
+        # Qt5 emits `triggered` also for a disabled action (shortcut)
+        if not self.isDataLoaded or self.acdc_df is None:
+            self.statusBar().showMessage('Load data first.', 5000)
+            return False
+        if not self.phaseTranslatorRules:
+            self.statusBar().showMessage(
+                'No phase rules: add them with "Time point to phase '
+                'translator..." first.', 8000
+            )
+            self.logger.info(
+                'Evaluate phases on displayed cell: no phase rules defined'
+            )
+            return False
+        return self.applyPhaseTranslator(allCells=False)
 
     def applyPhaseTranslator(
             self, rules=None, allCells=True, IDs=None, quiet=False
@@ -5563,6 +6445,12 @@ class MeasurementsViewerWin(
         if rules is None:
             rules = self.phaseTranslatorRules
         posData = self.posData()
+        if not quiet:
+            self.logger.info(
+                'Evaluating phases of '
+                + ('all cells' if IDs is None else f'Cell ID(s) {list(IDs)}')
+                + f' ({len(rules)} rule(s))...'
+            )
         try:
             # Shallow copy: the ensure* methods only (re)assign whole columns,
             # which never writes into self.acdc_df, and evaluate copies its
@@ -5596,6 +6484,8 @@ class MeasurementsViewerWin(
             warn('Phase evaluation warnings', '\n'.join(evaluation.warnings))
             if quiet:
                 return True
+        if not quiet:
+            self.logger.info('Phases evaluated')
         self.statusBar().showMessage(
             'Phases evaluated. Use Export measurements to save the table.', 5000
         )
@@ -5634,10 +6524,12 @@ class MeasurementsViewerWin(
             export_df = self.acdc_df.copy()
             self.ensureTimepointColumns(export_df)
             self.ensureCustomAnnotColumns(export_df)
+            self.logger.info(f'Exporting measurements to "{filepath}"...')
             export_df.to_csv(filepath)
         except (OSError, ValueError) as error:
             self.measurementProcessingWarning('Export failed', str(error))
             return
+        self.logger.info(f'Measurements exported to "{filepath}"')
         self.statusBarLabel.setText(f'Measurements exported to {filepath}')
     
     def refreshAcdcDf(self, plot=True):
@@ -5878,14 +6770,94 @@ class MeasurementsViewerWin(
         if not doHighlight:
             return 0
         return guiTabControl.propsQGBox.idSB.value()
-    
+
+    def updatePropsWidget(self, ID, fromHover=False):
+        # Writing the Object ID from code must not select the cell
+        wasUpdating = self._isUpdatingPropsDock
+        self._isUpdatingPropsDock = True
+        try:
+            super().updatePropsWidget(ID, fromHover=fromHover)
+        finally:
+            self._isUpdatingPropsDock = wasUpdating
+
+    def propsWidgetIDvalueChanged(self, ID):
+        """The Object ID of the "Cell-ACDC objects" dock changed: a user edit
+        selects that cell (as clicking it), code updates (hover, sync with
+        the selected cell) only show its properties."""
+        if self._isUpdatingPropsDock or not self.isDataLoaded:
+            return
+        ID = int(ID)
+        if ID != self.selectedID and ID in self.IDs:
+            self.logger.info(f'Selecting Cell ID {ID} from the objects dock')
+            # Selecting updates the images, which sync the dock
+            self.goToObjectID(ID)
+            return
+        super().propsWidgetIDvalueChanged(ID)
+
+    def syncPropsDockToSelectedID(self):
+        """Show the properties of the selected cell in the current frame in
+        the "Cell-ACDC objects" dock (if visible), so that the dock and the
+        viewer always refer to the same cell."""
+        if not self.propsDockWidget.isVisible() or not self.selectedID:
+            return
+        posData = self.posData()
+        if getattr(posData, 'rp', None) is None:
+            return
+
+        ID = int(self.selectedID)
+        propsQGBox = self.guiTabControl.propsQGBox
+        wasUpdating = self._isUpdatingPropsDock
+        self._isUpdatingPropsDock = True
+        try:
+            # Force refresh: the values change with frame/z-slice
+            self.currentPropsID = -1
+            obj = posData.rp.get_obj_from_ID(ID, warn=False)
+            propsQGBox.idSB.setValue(ID)
+            if obj is None:
+                # No values of another (previously shown) cell next to ID
+                self.clearPropsDockValues()
+                propsQGBox.notExistingIDLabel.setText(
+                    f'Object ID {ID:d} does not exist'
+                )
+            elif not self.isObjInCurrSlice(obj.bbox):
+                # 3D segmentation, single z-slice: the mixin's area of the
+                # displayed slice would index outside the object
+                self.clearPropsDockValues()
+                propsQGBox.notExistingIDLabel.setText(
+                    f'Object ID {ID:d} is not in this z-slice'
+                )
+            else:
+                self.updatePropsWidget(ID)
+        finally:
+            self._isUpdatingPropsDock = wasUpdating
+
+    def clearPropsDockValues(self):
+        """Empty the value fields of the "Cell-ACDC objects" dock (shown
+        when the selected cell has no values in the displayed frame or
+        z-slice)."""
+        propsQGBox = self.guiTabControl.propsQGBox
+        intensMeasurQGBox = self.guiTabControl.intensMeasurQGBox
+        fields = (
+            propsQGBox.cellAreaPxlSB, propsQGBox.cellAreaUm2DSB,
+            propsQGBox.cellVolVoxSB, propsQGBox.cellVolFlDSB,
+            propsQGBox.cellVolVox3D_SB, propsQGBox.cellVolFl3D_DSB,
+            propsQGBox.elongationDSB, propsQGBox.solidityDSB,
+            propsQGBox.additionalPropsCombobox.indicator,
+            intensMeasurQGBox.minimumDSB, intensMeasurQGBox.maximumDSB,
+            intensMeasurQGBox.meanDSB, intensMeasurQGBox.medianDSB,
+            intensMeasurQGBox.additionalMeasCombobox.indicator,
+        )
+        for field in fields:
+            field.setText('')
+
     def updateImages(self):
-        """Update image and annotations as `gui.guiWin.updateAllImages` in 
+        """Update image and annotations as `gui.guiWin.updateAllImages` in
         'Viewer' mode"""
         if not self.data:
             return
-        
+
         self.get_data()
+        self.syncPropsDockToSelectedID()
         self.highlightedID = (
             self.getHighlightedIDfromPropsDock() or self.selectedID or 0
         )
@@ -6064,6 +7036,7 @@ class MeasurementsViewerWin(
             self.measurementsPlot.autoRange()
             
     def rescalePlotToggled(self, checked):
+        self.logger.info(f'Rescale plot {"on" if checked else "off"}')
         if checked:
             self.measurementsPlot.autoRange()
         self._set_setting_value('rescalePlot', checked)
@@ -6081,6 +7054,8 @@ class MeasurementsViewerWin(
         self.idScrollBar.setValue(self.IDs.index(ID))
     
     def setSelectedID(self, ID):
+        if ID != self.selectedID:
+            self.logger.info(f'Selected Cell ID {ID}')
         self.selectedID = ID
         comparisonData = self.comparisonPlotData()
         self.ensureTimepointPredictions()
@@ -6181,6 +7156,9 @@ class MeasurementsViewerWin(
         return isFrameChanged
     
     def restrictFramesToggled(self, checked):
+        self.logger.info(
+            f'Only frames with selected cell {"on" if checked else "off"}'
+        )
         self._set_setting_value('restrictFrames', checked)
         if not self.data:
             return
@@ -6192,6 +7170,7 @@ class MeasurementsViewerWin(
             self.zoomToSelectedID()
 
     def followIDtoggled(self, checked):
+        self.logger.info(f'Follow cell {"on" if checked else "off"}')
         if checked:
             self.zoomToSelectedID()
             
@@ -6540,6 +7519,10 @@ class MeasurementsViewerWin(
             return
         identifier = TimepointIdentifier(**values)
         column = self.timepointColumn(identifier)
+        self.logger.info(
+            f'Adding time point identifier "{identifier.name}" '
+            f'(column "{column}")'
+        )
         preexisting = [
             posData for posData in self.data or []
             if any(column in table for table in self.positionTables(posData))
@@ -6606,7 +7589,7 @@ class MeasurementsViewerWin(
         )
         if autoUsedBy is not None:
             self.logger.warning(
-                f'[WARNING]: Auto shortcut "{autoText}" of time point '
+                f'Auto shortcut "{autoText}" of time point '
                 f'"{identifier.name}" is not set because it is already used '
                 f'by "{autoUsedBy}".'
             )
@@ -6683,6 +7666,12 @@ class MeasurementsViewerWin(
             return
         predictorChanged = values['predictor'] != identifier.predictor
         oldColumn = self.timepointColumn(identifier)
+        self.logger.info(
+            f'Editing time point identifier "{identifier.name}"'
+            + (f' (renamed to "{values["name"]}")'
+               if values['name'] != identifier.name else '')
+            + (' (predictor changed)' if predictorChanged else '')
+        )
         identifier.name = values['name']
         newColumn = self.timepointColumn(identifier)
         if newColumn != oldColumn:
@@ -6733,6 +7722,9 @@ class MeasurementsViewerWin(
             )
             if msg.clickedButton != yes:
                 return
+            self.logger.info(
+                f'Removing time point identifier "{identifier.name}"'
+            )
         action = self.timepointActions.pop(uid)
         self.timepointsToolBar.removeAction(action)
         # Still a child until deleted: free its key for `reservedShortcuts`
@@ -6749,6 +7741,7 @@ class MeasurementsViewerWin(
         # annotations). On load, the configuration's formatting is assigned
         # after `setTimepointIdentifiers`, so it is not wiped here.
         self.measurementsColors.pop(column, None)
+        self._defaultSignalColorIndices.pop(column, None)
         self.conditionalFormatting.pop(column, None)
         for posData in self.data:
             getattr(posData, 'timepointsEdited', {}).pop(uid, None)
@@ -6767,6 +7760,10 @@ class MeasurementsViewerWin(
     def clearTimepoints(self, uid):
         if not self.data:
             return
+        self.logger.info(
+            f'Clearing time points "{self.timepointIdentifier(uid).name}" '
+            'of all cells'
+        )
         self.replaceTimepoints(uid, {}, self.timepointCellIDs(uid))
         self.editedTimepointCells()[uid] = set()
         self.refreshPlotForColumns(
@@ -6945,6 +7942,10 @@ class MeasurementsViewerWin(
         columns = [
             self.timepointColumn(self.timepointIdentifier(uid)) for uid in uids
         ]
+        self.logger.info(
+            f'Re-evaluating time points {", ".join(columns)} of '
+            + ('all cells' if IDs is None else f'Cell ID(s) {list(IDs)}')
+        )
         return self.evaluatePredictorColumns(columns, IDs, posData)
     
     def reevaluateAllTimepoints(self, checked=False):
@@ -7057,7 +8058,9 @@ class MeasurementsViewerWin(
         for axis, column in self.measurementsAxes.items():
             if column == oldColumn:
                 self.measurementsAxes[axis] = newColumn
-        for mapping in (self.measurementsColors, self.conditionalFormatting):
+        for mapping in (
+                self.measurementsColors, self.conditionalFormatting,
+                self._defaultSignalColorIndices):
             if oldColumn in mapping:
                 mapping[newColumn] = mapping.pop(oldColumn)
         self.updateColumnsList(renamed={oldColumn: newColumn})
@@ -7423,7 +8426,7 @@ class MeasurementsViewerWin(
             ).get(keyText)
         if usedBy is not None:
             self.logger.warning(
-                f'[WARNING]: Shortcut "{keyText}" of custom annotation '
+                f'Shortcut "{keyText}" of custom annotation '
                 f'"{name}" is not set because it is already used by '
                 f'"{usedBy}".'
             )
@@ -7439,7 +8442,7 @@ class MeasurementsViewerWin(
         )
         if autoUsedBy is not None:
             self.logger.warning(
-                f'[WARNING]: Auto shortcut "{autoText}" of custom annotation '
+                f'Auto shortcut "{autoText}" of custom annotation '
                 f'"{name}" is not set because it is already used by '
                 f'"{autoUsedBy}".'
             )
@@ -7570,6 +8573,7 @@ class MeasurementsViewerWin(
         # The column's own plot settings go with it (`updateColumnsList`
         # drops it from the plotted columns and comparison axes)
         self.measurementsColors.pop(name, None)
+        self._defaultSignalColorIndices.pop(name, None)
         self.conditionalFormatting.pop(name, None)
         self.updateColumnsList()
         self.plotMeasurements()
@@ -7578,6 +8582,13 @@ class MeasurementsViewerWin(
         state = self.customAnnotDict[button]['state']
         name = state['name']
         oldName = name if oldState is None else oldState['name']
+        if oldState is None:
+            self.logger.info(f'Custom annotation "{name}" added')
+        else:
+            self.logger.info(
+                f'Custom annotation "{oldName}" edited'
+                + (f' (renamed to "{name}")' if oldName != name else '')
+            )
         if oldName != name:
             for key in list(self.customAnnotAutoPredictions.keys()):
                 if key[1] == oldName:
@@ -7640,6 +8651,7 @@ class MeasurementsViewerWin(
             action.setShortcut(QKeySequence())
             action.deleteLater()
         name = state['name']
+        self.logger.info(f'Custom annotation "{name}" removed')
         self.clearCustomAnnotPredictionsTracking(name)
         for posData in self.data or []:
             self.editedCustomAnnotCells(posData).pop(name, None)
@@ -7731,6 +8743,9 @@ class MeasurementsViewerWin(
         acdc_df.loc[mask, name] = 0 if annotated else 1
         self.editedCustomAnnotCells()[name].add(int(ID))
         action = 'Removed' if annotated else 'Added'
+        self.logger.info(
+            f'{action} custom annotation "{name}" for Cell ID {ID}'
+        )
         self.statusBar().showMessage(
             f'{action} "{name}" annotation for Cell ID {ID} across its '
             'entire video history.', 5000
@@ -7876,6 +8891,10 @@ class MeasurementsViewerWin(
             )
             return False
         columns = [self.customAnnotDict[button]['state']['name'] for button in buttons]
+        self.logger.info(
+            f'Re-evaluating custom annotations {", ".join(columns)} of '
+            + ('all cells' if IDs is None else f'Cell ID(s) {list(IDs)}')
+        )
         return self.evaluatePredictorColumns(columns, IDs, posData)
     
     def reevaluateAllCellsCustomAnnot(self, button=None, checked=False):
@@ -7907,6 +8926,9 @@ class MeasurementsViewerWin(
         if acdc_df is None:
             return
         name = self.customAnnotDict[button]['state']['name']
+        self.logger.info(
+            f'Clearing custom annotation "{name}" of all cells'
+        )
         IDs = set(acdc_df.index.get_level_values('Cell_ID'))
         self.replaceCustomAnnotations(name, {}, IDs)
         self.editedCustomAnnotCells()[name] = set()
@@ -8043,6 +9065,10 @@ class MeasurementsViewerWin(
                 f'{frame_i+1}.', 5000
             )
             return False
+        self.logger.info(
+            f'Adding time point "{identifier.name}" at frame n. {frame_i+1} '
+            f'for Cell ID {ID}'
+        )
         self.replaceTimepoints(uid, {ID: cellTimepoints + [frame_i]}, [ID])
         self.markTimepointEdited(uid, ID)
         self.refreshPlotForColumns([self.timepointColumn(identifier)])
@@ -8057,6 +9083,10 @@ class MeasurementsViewerWin(
         self.replaceTimepoints(uid, {ID: frames}, [ID])
     
     def timepointLineRemoveRequested(self, line):
+        self.logger.info(
+            f'Removing time point "{self.timepointIdentifier(line.uid).name}" '
+            f'at frame n. {line.frame_i+1} of Cell ID {line.ID}'
+        )
         self.removeTimepoint(line.uid, line.ID, line.frame_i)
         self.markTimepointEdited(line.uid, line.ID)
         self.refreshPlotForColumns(
@@ -8069,6 +9099,12 @@ class MeasurementsViewerWin(
         # A time point can only sit on a frame where the cell has a row
         if (new_frame_i != line.frame_i
                 and self.cellHasRow(line.ID, new_frame_i)):
+            self.logger.info(
+                'Moving time point '
+                f'"{self.timepointIdentifier(line.uid).name}" of Cell ID '
+                f'{line.ID} from frame n. {line.frame_i+1} to '
+                f'{new_frame_i+1}'
+            )
             self.removeTimepoint(line.uid, line.ID, line.frame_i)
             frames = self.cellTimepoints(line.uid, line.ID)
             self.replaceTimepoints(
@@ -8171,7 +9207,8 @@ class MeasurementsViewerWin(
         # (or after comparison mode): replots after cell changes and table
         # edits keep the user's x zoom
         xRangeKey = (self.pos_i, posData.SizeT)
-        if getattr(self, '_timecourseXRangeKey', None) != xRangeKey:
+        isNewXRange = getattr(self, '_timecourseXRangeKey', None) != xRangeKey
+        if isNewXRange:
             self.measurementsPlot.setXRange(
                 1, max(posData.SizeT, 2), padding=0.02
             )
@@ -8183,10 +9220,21 @@ class MeasurementsViewerWin(
             self.measurementsPlot.setTitle('')
         else:
             self.measurementsPlot.setTitle(f'Cell ID {self.selectedID}')
-        
+
+        # Fit y once when the plotted curves change (column plotted or
+        # removed, normalization toggled) or the x range was reset; then y
+        # follows the data (`fitTimecourseYRange`) until the user zooms.
+        # The key is stored only once a fit succeeded (cell with data).
+        yRangeKey = (frozenset(columns), isNormalized)
+        if isNewXRange or not columns:
+            self._timecourseYRangeKey = None
+        fitYRange = getattr(self, '_timecourseYRangeKey', None) != yRangeKey
+
         if df_ID is None or not columns:
             return
-        
+
+        plottedData = []
+
         frames_n = df_ID.index.get_level_values(0).to_numpy() + 1
         phases = self.phaseValues(df_ID)
         for c, col in enumerate(columns):
@@ -8197,7 +9245,7 @@ class MeasurementsViewerWin(
             values = rawValues
             if isNormalized:
                 values = self._normalize(values)
-            color = self.getSignalColor(col, c, len(columns))
+            color = self.getSignalColor(col)
             rules = self.conditionalFormatting.get(col, [])
             matched = self.cellConditionalFormatting(df_ID, col, rules)
             pointData = [
@@ -8246,9 +9294,55 @@ class MeasurementsViewerWin(
                 data=pointData
             )
             self.connectSignalPoints(item)
+            plottedData.append((frames_n, values))
+
+        if fitYRange and self.fitTimecourseYRange(plottedData):
+            self._timecourseYRangeKey = yRangeKey
+
+    def fitTimecourseYRange(self, plottedData):
+        """Set the time course y range to the finite values of the plotted
+        curves within the current x range (all frames if none are visible).
+
+        Then pyqtgraph's y autorange is enabled again, restricted to the
+        visible x range (`ViewBox.setAutoVisible`), so the y range keeps
+        following the data (e.g. of another cell, with ``Rescale plot``
+        unchecked) until the user zooms or pans by hand; the x range is
+        left as it is. Nothing changes when there are no finite values.
+
+        Parameters
+        ----------
+        plottedData : list of (np.ndarray, np.ndarray)
+            ``(frames_n, values)`` of each plotted curve.
+
+        Returns
+        -------
+        bool
+            True if the y range was set.
+        """
+        if not plottedData:
+            return False
+        frames_n = np.concatenate([frames for frames, _ in plottedData])
+        values = np.concatenate([vals for _, vals in plottedData])
+        finite = np.isfinite(values)
+        xMin, xMax = self.measurementsPlot.getViewBox().viewRange()[0]
+        visible = finite & (frames_n >= xMin) & (frames_n <= xMax)
+        if not visible.any():
+            visible = finite
+        if not visible.any():
+            return False
+        yMin = values[visible].min()
+        yMax = values[visible].max()
+        self.measurementsPlot.setYRange(yMin, yMax)
+        viewBox = self.measurementsPlot.getViewBox()
+        viewBox.setAutoVisible(y=True)
+        viewBox.enableAutoRange(axis=viewBox.YAxis, enable=True)
+        return True
 
     def measurementsModeChanged(self, *args):
         isComparison = self.measurementsModeCombobox.currentIndex() == 1
+        self.logger.info(
+            f'Plot mode: "{self.measurementsModeCombobox.currentText()}"'
+        )
         if self._measurementsMode == 0:
             self._timeCourseColumns = set(self.checkedColumns())
         self._measurementsMode = self.measurementsModeCombobox.currentIndex()
@@ -8282,6 +9376,7 @@ class MeasurementsViewerWin(
                 for axis, measurement in self.measurementsAxes.items():
                     if measurement == col:
                         self.measurementsAxes[axis] = ''
+                        self.logger.info(f'Removing "{col}" from the {axis} axis')
             elif col not in self.measurementsAxes.values():
                 axis = next(
                     (axis for axis, measurement in self.measurementsAxes.items()
@@ -8297,6 +9392,11 @@ class MeasurementsViewerWin(
                     )
                 else:
                     self.measurementsAxes[axis] = col
+                    self.logger.info(f'Plotting "{col}" on the {axis} axis')
+        elif item.checkState() == Qt.Checked:
+            self.logger.info(f'Plotting "{item.text()}"')
+        else:
+            self.logger.info(f'Removing "{item.text()}" from the plot')
         self.plotMeasurements()
 
     def plotMeasurementsComparison(self):
@@ -8363,7 +9463,11 @@ class MeasurementsViewerWin(
     def isShowingPhases(self):
         return self.showPhasesCheckbox.isChecked() and self.hasPhaseColumn()
 
+    def normalizeToggled(self, checked):
+        self.logger.info(f'Normalize measurements {"on" if checked else "off"}')
+
     def showPhasesToggled(self, checked):
+        self.logger.info(f'Show phases {"on" if checked else "off"}')
         self._set_setting_value(
             'measurements_viewer_show_phases', 'Yes' if checked else 'No'
         )
@@ -8515,20 +9619,42 @@ class MeasurementsViewerWin(
         self.setFrame(frame_i)
         self.zoomToSelectedID(goToZslice=True, force=True)
     
-    def getSignalColor(self, col, c=None, numColumns=None):
-        """Get the plotting color of column `col`: the custom color if set 
-        by the user, otherwise the default color based on the index `c` of 
-        the column among the plotted ones."""
+    def getSignalColor(self, col):
+        """Get the plotting color of column `col`: the custom color if set
+        by the user, otherwise its stable default color
+        (`defaultSignalColorIndex`)."""
         color = self.measurementsColors.get(col)
         if color is not None:
             return color
-        
-        columns = self.checkedColumns()
-        if c is None:
-            c = columns.index(col) if col in columns else len(columns)
-        if numColumns is None:
-            numColumns = len(columns)
-        return pg.intColor(c, hues=max(numColumns, 9))
+        return signal_color(
+            self.defaultSignalColorIndex(col),
+            light_background=self.invertBwAction.isChecked()
+        )
+
+    def defaultSignalColorIndex(self, col):
+        """Index of the default color of column `col` (see `signal_color`).
+
+        A column keeps its color while it is plotted, and gets it back when
+        plotted again unless another plotted column took it meanwhile. A
+        newly plotted column takes the first color that no other plotted
+        column uses. In comparison mode the columns plotted in the time
+        course count as plotted, so that the comparison (Y column color)
+        does not reassign their colors.
+        """
+        indices = self._defaultSignalColorIndices
+        if self._measurementsMode == 0:
+            plotted = set(self.checkedColumns())
+        else:
+            plotted = self._timeCourseColumns
+        used = {
+            index for column, index in indices.items()
+            if column != col and column in plotted
+        }
+        index = indices.get(col)
+        if index is None or index in used:
+            index = next(i for i in range(len(used)+1) if i not in used)
+            indices[col] = index
+        return index
     
     def updateColumnsIcons(self):
         """Show color swatches or comparison-axis markers beside columns."""
@@ -8634,10 +9760,12 @@ class MeasurementsViewerWin(
         if not color.isValid():
             return
         
+        self.logger.info(f'Changing color of "{col}" to {color.name()}')
         self.measurementsColors[col] = color
         self.plotMeasurements()
     
     def resetSignalColor(self, col):
+        self.logger.info(f'Resetting color of "{col}" to the default')
         self.measurementsColors.pop(col, None)
         self.plotMeasurements()
 
@@ -8708,8 +9836,12 @@ class MeasurementsViewerWin(
 
     def setConditionalFormatting(self, col, rules):
         if rules:
+            self.logger.info(
+                f'Conditional formatting of "{col}" set: {len(rules)} rule(s)'
+            )
             self.conditionalFormatting[col] = copy.deepcopy(rules)
         else:
+            self.logger.info(f'Conditional formatting of "{col}" cleared')
             self.conditionalFormatting.pop(col, None)
         self._lastFormattingError = None
         self.plotMeasurements()
@@ -8774,7 +9906,15 @@ class MeasurementsViewerWin(
         background = graphLayoutBkgrColor if checked else darkBkgrColor
         self.measurementsPlot.setBackground(background)
         self.phaseBandPlot.setBackground(background)
-    
+
+    def recolorSignalsForBackground(self, checked=False):
+        """Redraw the columns' default colors, which depend on the plot
+        background (`signal_color`), after `Invert black/white` toggled."""
+        if not self.isDataLoaded or self._isLoadingData:
+            return
+        self.updateColumnsIcons()
+        self.plotMeasurements()
+
     def highlightSearchedID(self, ID, force=False, greyOthers=True):
         self.highlightedID = ID
         self.highLightIDLayerImg1.clear()
@@ -9217,6 +10357,13 @@ class MeasurementsViewerWin(
             super().keyPressEvent(event)
     
     def closeEvent(self, event):
+        if self._isLoadingData:
+            # The load continues after its dialogs/worker thread return
+            text = 'Wait for the data being loaded before closing the viewer.'
+            self.logger.warning(text)
+            self.statusBar().showMessage(text, 8000)
+            event.ignore()
+            return
         if self.measurementProcessingThread is not None:
             self.measurementProcessingWarning(
                 'Measurement processing running',
@@ -9225,7 +10372,14 @@ class MeasurementsViewerWin(
             event.ignore()
             return
         if self.isDataLoaded:
-            if not self.askSaveBeforeClosing():
+            # The prompt does not block the window: no load may replace the
+            # data it saves (`loadingInProgress`) while it is open
+            self._isClosingPrompt = True
+            try:
+                proceed = self.askSaveBeforeClosing()
+            finally:
+                self._isClosingPrompt = False
+            if not proceed:
                 event.ignore()
                 return
             self.saveAnnotationOptions()
@@ -9240,6 +10394,7 @@ class MeasurementsViewerWin(
             self._volume_renderer = None
             volume_renderer.force_close()
         self.saveWindowGeometry(setting_suffix='_measurements_viewer')
+        self.logger.info('Measurements viewer closed')
         super().closeEvent(event)
         self.sigClosed.emit(self)
         

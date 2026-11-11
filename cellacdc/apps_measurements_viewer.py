@@ -44,6 +44,7 @@ from . import (
     phase_translator,
     settings_folderpath,
     timepoint_predictors,
+    urls,
     widgets,
 )
 from .timepoint_predictors import TIMEPOINT_PREFIX, debug_trace as timepoint_debug_trace
@@ -1861,7 +1862,9 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
     rules unless `cancel` is True.
     """
 
-    DEFAULT_COLORS = ('#2ca02c', '#d62728', '#1f77b4', '#ff7f0e', '#9467bd')
+    # Okabe-Ito colors (colorblind-friendly) without red, which is reserved
+    # for the current frame line
+    DEFAULT_COLORS = ('#009e73', '#0072b2', '#e69f00', '#cc79a7', '#56b4e9')
 
     def __init__(
             self, column, rules, validateCondition=None, editCondition=None,
@@ -2309,6 +2312,37 @@ class PhaseTranslatorRuleDialog(QDialog):
         self.accept()
 
 
+PHASE_TRANSLATOR_HELP = (
+    'The translator turns the time points of each cell into <b>phases</b>: '
+    'all frames between two consecutive time points get the same phase '
+    'name (e.g., "G1" between "Birth" and "S start").'
+    '<br><br><b>How to use it:</b>'
+    + html_utils.to_list([
+        'Define time point identifiers in the main window (<b>Add time point '
+        'identifier...</b>) and mark them on the cells (hover over the plot '
+        'and press their shortcut, or use their predictors).',
+        'Click <b>Add...</b> to create a rule: check the time points that '
+        'separate the phases, put them in their order (boundaries) and type '
+        'the phase names before, between and after them. A blank name '
+        'leaves those frames unassigned. Optionally add a formula and the '
+        'custom annotations that a cell must have for the rule to apply.',
+        'Add more rules for cells with other time points (e.g., cells '
+        'present only at the end) and order them with <b>Up</b>/<b>Down</b>: '
+        'for each cell the first rule (from the top) whose formula and '
+        'requirements pass supplies its phases. Each checked time point '
+        'must occur exactly once in the cell, in the boundary order.',
+        'Click <b>Apply phase evaluation</b> on the displayed cell or on all '
+        'cells, or check the automatic evaluation to update the phases '
+        'whenever time points change.',
+        'The phases are drawn as a colored band below the time course and '
+        'color the Measurement vs Measurement points (change the colors in '
+        '<b>Phase colors</b>). <b>Export measurements...</b> saves the '
+        '<code>phase</code> and <code>phase_&lt;name&gt;</code> columns.',
+    ], ordered=True)
+    + 'Save the viewer configuration to keep the rules and colors.'
+)
+
+
 class PhaseTranslatorDialog(QDialog):
     """Manage phase rules in descending priority, without editing the table."""
     sigApply = Signal(object, bool)
@@ -2366,8 +2400,15 @@ class PhaseTranslatorDialog(QDialog):
             button.clicked.connect(lambda checked=False, batch=allCells: self.apply(batch))
             applyButtons.addWidget(button)
         buttons = QHBoxLayout()
+        self.helpButton = widgets.infoPushButton('Help...')
+        self.helpButton.setToolTip(
+            'How to translate time points into phases (with a link to the '
+            'user guide)'
+        )
+        self.helpButton.clicked.connect(self.showHelp)
         cancelButton = widgets.cancelPushButton('Cancel')
         okButton = widgets.okPushButton('  OK  ')
+        buttons.addWidget(self.helpButton)
         buttons.addStretch(1)
         buttons.addWidget(cancelButton)
         buttons.addWidget(okButton)
@@ -2397,6 +2438,17 @@ class PhaseTranslatorDialog(QDialog):
         layout.addLayout(buttons)
         self.refreshRules()
         self.resize(800, 450)
+
+    def showHelp(self, checked=False):
+        """How-to of the translator with a link to its user guide section
+        (`urls.measurements_viewer_phase_translator_docs_url`)."""
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Time point to phase translator: help',
+            html_utils.paragraph(PHASE_TRANSLATOR_HELP),
+            url_to_open=urls.measurements_viewer_phase_translator_docs_url,
+            open_url_button_text='Open user guide'
+        )
 
     def currentPhaseColors(self):
         """Colors {name: '#rrggbb'} of the current rules' phases."""

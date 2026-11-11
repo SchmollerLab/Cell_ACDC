@@ -1353,7 +1353,7 @@ class guiWin(
         self.focusOnSearchAction = QAction("Search for ID or functionality", self)
         self.focusOnSearchAction.setShortcut('Ctrl+F')
         self.focusOnSearchAction.triggered.connect(
-            self.focusOnSearch
+            partial(self.focusOnSearch, blinking=True)
         )
         helpMenu.addAction(self.focusOnSearchAction)
         self.searchWidget.sigSearchId.connect(

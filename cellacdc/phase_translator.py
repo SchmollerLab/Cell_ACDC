@@ -58,7 +58,9 @@ recognized marker columns to bool.
 
 ``phase_names`` lists the distinct phase names of the rules and
 ``phase_colors`` resolves their display colors (``#rrggbb``): user overrides
-first, otherwise evenly spaced hues by name order.
+first, otherwise the colorblind-friendly Okabe-Ito palette by name order
+(``DEFAULT_PHASE_COLORS``: no black and vermillion last, because red is
+reserved for the current frame line), then evenly spaced hues that skip red.
 """
 import colorsys
 import re
@@ -142,14 +144,28 @@ def phase_names(rules: list[dict[str, Any]]) -> list[str]:
 HEX_COLOR = re.compile(r'#[0-9a-fA-F]{6}')
 
 
+# Okabe-Ito palette without black, vermillion last (the current frame line
+# drawn over the phase band is red)
+DEFAULT_PHASE_COLORS = (
+    '#56b4e9', '#e69f00', '#009e73', '#f0e442', '#0072b2', '#cc79a7',
+    '#d55e00',
+)
+
+
 def default_phase_color(index: int, count: int) -> str:
     """Return the default ``#rrggbb`` color of the index-th of count phases.
 
-    Hues are evenly spaced (at least 9 hues, like ``pyqtgraph.intColor``) so
-    adding a phase does not change the colors of the others much.
+    The first phases get the colorblind-friendly ``DEFAULT_PHASE_COLORS``,
+    further phases evenly spaced hues between 30 and 330 degrees (at least 9
+    hues), so no default is red and adding a phase does not change the
+    colors of the others.
     """
-    hues = max(count, 9)
-    r, g, b = colorsys.hsv_to_rgb((index % hues) / hues, 1.0, 1.0)
+    if index < len(DEFAULT_PHASE_COLORS):
+        return DEFAULT_PHASE_COLORS[index]
+    index -= len(DEFAULT_PHASE_COLORS)
+    hues = max(count - len(DEFAULT_PHASE_COLORS), 9)
+    hue = (30 + 300 * ((index % hues) + 0.5) / hues) / 360
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 1.0)
     return '#{:02x}{:02x}{:02x}'.format(
         round(r * 255), round(g * 255), round(b * 255)
     )

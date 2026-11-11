@@ -947,14 +947,18 @@ def getPushButton(buttonText, qparent=None):
     isSettingsButton = buttonText.lower().find('set') != -1
     isNoButton = (
         buttonText.replace(' ', '').lower() == 'no'
-        or buttonText.lower().find('Do not ') != -1
+        or buttonText.lower().find('do not ') != -1
+        or buttonText.lower().find("don't ") != -1
         or buttonText.lower().find('no, ') != -1
     )
     isDelButton = buttonText.lower().find('delete') != -1
     isAddButton = buttonText.lower().find('add ') != -1
     is3Dbutton = buttonText.find(' 3D ') != -1
     is2Dbutton = buttonText.find(' 2D ') != -1
-    isSaveButton = buttonText.lower().find('overwrite') != -1
+    isSaveButton = (
+        buttonText.lower().find('overwrite') != -1
+        or buttonText.lower().lstrip().startswith('save')
+    )
     isNewFileButton = buttonText.lower().find('rename') != -1
     isTryAgainButton = buttonText.lower().find('try again') != -1
 

@@ -128,6 +128,7 @@ Contents
    overview
    installation
    getting-started
+   measurements-viewer
    video-tutorials
    data-structure
    restructure-loose-tiff-files
