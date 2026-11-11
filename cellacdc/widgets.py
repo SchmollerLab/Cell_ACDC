@@ -2044,6 +2044,9 @@ class CheckBox(QCheckBox):
 
         self.sigToggled.emit(checked, self)
 
+    def isLinkedTo(self, checkbox: QCheckBox):
+        return self._linkedCheckboxes.get(checkbox.text()) is checkbox
+
     def setLinkedCheckbox(self, checkbox: QCheckBox, linked: bool):
         if linked:
             self._linkedCheckboxes[checkbox.text()] = checkbox

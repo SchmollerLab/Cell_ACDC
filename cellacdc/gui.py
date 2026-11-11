@@ -16953,17 +16953,22 @@ When working with 3D segmentation masks:
         self.storeCurrentAnnotOptions(0)
         self.storeCurrentAnnotOptions(1)
 
-    def storeCurrentAnnotOptions(self, ax: int):
-        if not hasattr(self, 'annotOptionsToRestore'):
-            return
-        
+    def getCurrentAnnotOptions(self, ax: int):
+        options = {}
         for name, checkbox in self.annotOptionsCheckboxes[ax].items():
             try:
                 isChecked = checkbox.isChecked()
             except AttributeError:
                 continue
 
-            self.annotOptionsToRestore[ax][name] = isChecked
+            options[name] = isChecked
+        return options
+
+    def storeCurrentAnnotOptions(self, ax: int):
+        if not hasattr(self, 'annotOptionsToRestore'):
+            return
+
+        self.annotOptionsToRestore[ax].update(self.getCurrentAnnotOptions(ax))
 
     def restoreAnnotOptions(self, ax: int, options=None):
         if options is None and not hasattr(self, 'annotOptionsToRestore'):
@@ -35349,11 +35354,17 @@ When working with 3D segmentation masks:
         when leaving the mode (see `restorePrevAnnotOptions`), and uncheck
         "Do not annotate" so the mode-specific options can be set.
         """
-        self.storeCurrentAnnotationsOptions()
-        self.prevAnnotOptions = {
-            0: self.annotOptionsToRestore[0].copy(),
-            1: self.annotOptionsToRestore[1].copy(),
-        }
+        # Only the left image options are set by the modes and restored by
+        # `restorePrevAnnotOptions`. The right image options are changed
+        # too only when they are linked to the left ones (i.e., right image
+        # controls are not independent), otherwise leave them untouched.
+        doNotAnnotLeftCheckbox = self.annotDoNotAnntoateCheckbox(0)
+        doNotAnnotRightCheckbox = self.annotDoNotAnntoateCheckbox(1)
+        isRightLinked = doNotAnnotLeftCheckbox.isLinkedTo(
+            doNotAnnotRightCheckbox
+        )
+
+        self.prevAnnotOptions = {0: self.getCurrentAnnotOptions(0)}
 
         # The options are now stored in `prevAnnotOptions`. Clear the
         # options to restore, otherwise unchecking "Do not annotate"
@@ -35361,10 +35372,18 @@ When working with 3D segmentation masks:
         # checked) would restore them while the mode-specific options
         # are being set (see `onDoNotAnnotateChecked`)
         self.annotOptionsToRestore[0] = {}
-        self.annotOptionsToRestore[1] = {}
-        self.annotDoNotAnntoateCheckbox(0).setChecked(False)
-        self.annotDoNotAnntoateCheckbox(1).setChecked(False)
-        self.doubleSpaceBarState = False
+        if isRightLinked:
+            self.annotOptionsToRestore[1] = {}
+
+        # If linked, this unchecks the right image checkbox too
+        doNotAnnotLeftCheckbox.setChecked(False)
+
+        # Keep the double space bar state only if the (independent) right
+        # image is still not annotated, so that the next double space bar
+        # press restores its options
+        self.doubleSpaceBarState = (
+            self.doubleSpaceBarState and doNotAnnotRightCheckbox.isChecked()
+        )
 
     def setAnnotOptionsCcaMode(self):
         self.storeAnnotOptionsBeforeModeSwitch()
