@@ -113,6 +113,37 @@ record) as a
 new configuration in the settings folder, which is then loaded. The template
 itself is never modified.
 
+Optional setup-only `"channel_hints": {"PLACEHOLDER": ["gfp", ...]}` lists
+name parts (case-insensitive, in order of preference) used to preselect the
+channel of each placeholder in the setup dialog when no channel contains the
+placeholder name (FUCCI: GFP/mAG/Venus... for Geminin, mCherry/mKO2/RFP...
+for Cdt1), so that "Calculate background values..." starts with the right
+channels.
+
+Templates can also link float inputs to the summary table of the "Compute
+background intensity" utility (`background_values`, launcher Utilities >
+Misc) with a setup-only section `"background_values": {"statistic":
+"median", "low_percentile": 5, "high_percentile": 95,
+"exclude_zero_pixels": true, "inputs": {"INPUT": {"channel":
+"CHANNEL_PLACEHOLDER", "value": "constant_min"}}}` (settings optional, values
+from `background_values.SUMMARY_VALUE_COLUMNS`; validated by
+`validateBackgroundValuesSpec`). The setup dialog then has two more buttons:
+"Calculate background values..." (runs the utility on the experiment
+selected for the configuration, `computeBackgroundSummary`: asks only its
+Positions, preselecting the ones of the selected folder, and shows the
+utility's parameters dialog prefilled with these settings and the channels
+selected for the linked placeholders) and "Load calculated background
+values..." (a `<name>_summary.csv` saved before, e.g. of another
+experiment). Each linked
+input gets the value of the table row of its placeholder's selected channel
+(the user picks another row when the table has none); missing values (NaN)
+are left unchanged and reported, as are table settings that differ from the
+section (statistic, percentiles, ignored zero pixels). Changing the channel
+of a linked placeholder afterwards refills its values from the same table.
+The utility window closes (and the computation returns) only once its
+worker has stopped, also after an error or a cancel. The FUCCI template links its background and min/max inputs to the
+`constant_*` values.
+
 Any configuration may have an empty `channel` (no display channel). Loading
 it asks for the channel to display (base layer), offering non-overlay channels
 first, for both saved and new experiment inputs; an overlay chosen as base is
@@ -372,7 +403,7 @@ from .apps_measurements_viewer import (
     formatting_color,
     is_formatting_color,
 )
-from . import phase_translator, measurement_processing
+from . import phase_translator, measurement_processing, background_values
 from . import gui_custom_annotations
 from .gui_custom_annotations import (
     custom_annot_state_to_save, custom_annot_symbol
@@ -404,6 +435,12 @@ CCA_DF_INT_COLS = [
 ]
 MEASUREMENTS_CONFIGURATIONS_PATH = os.path.join(
     settings_folderpath, 'measurements_viewer_configurations'
+)
+# Sections of a premade template that are used during setup only (not
+# written to the instantiated configuration)
+PREMADE_TEMPLATE_KEYS = (
+    'channel_placeholders', 'input_placeholders', 'background_values',
+    'channel_hints'
 )
 PREMADE_CONFIGURATIONS_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -1302,6 +1339,86 @@ class MeasurementsViewerWin(
                     f'Invalid type or default of input placeholder "{name}".'
                 )
 
+    @staticmethod
+    def validateChannelHints(hints, channelNames):
+        """Validate a template's optional `channel_hints`:
+        `{CHANNEL_PLACEHOLDER: [non-empty name part, ...]}`."""
+        if hints is None:
+            return {}
+        if not isinstance(hints, dict):
+            raise ValueError('Invalid channel_hints in configuration.')
+        for name, parts in hints.items():
+            if (name not in channelNames or not isinstance(parts, list)
+                    or not all(isinstance(part, str) and part.strip()
+                               for part in parts)):
+                raise ValueError(f'Invalid channel_hints of "{name}".')
+        return hints
+
+    @staticmethod
+    def validateBackgroundValuesSpec(spec, channelNames, inputs):
+        """Validate a template's optional `background_values` section and
+        return it with defaults:
+        `{"statistic": "mean"|"median" (default "median"),
+        "low_percentile": number (5), "high_percentile": number (95),
+        "exclude_zero_pixels": bool (true),
+        "inputs": {INPUT: {"channel": CHANNEL_PLACEHOLDER,
+        "value": one of background_values.SUMMARY_VALUE_COLUMNS}}}`.
+        Linked inputs must be float `input_placeholders`. Returns None
+        when `spec` is None.
+        """
+        if spec is None:
+            return None
+        allowed = {
+            'statistic', 'low_percentile', 'high_percentile',
+            'exclude_zero_pixels', 'inputs'
+        }
+        if (not isinstance(spec, dict) or 'inputs' not in spec
+                or not set(spec) <= allowed):
+            raise ValueError('Invalid background_values in configuration.')
+        result = {
+            'statistic': 'median', 'low_percentile': 5.0,
+            'high_percentile': 95.0, 'exclude_zero_pixels': True,
+        }
+        result.update({key: spec[key] for key in spec if key != 'inputs'})
+        if result['statistic'] not in background_values.STATISTICS:
+            raise ValueError(
+                'Invalid statistic in background_values: '
+                f'"{result["statistic"]}".'
+            )
+        if not isinstance(result['exclude_zero_pixels'], bool):
+            raise ValueError(
+                'Invalid exclude_zero_pixels in background_values.'
+            )
+        low, high = result['low_percentile'], result['high_percentile']
+        if (any(isinstance(v, bool) or not isinstance(v, (int, float))
+                for v in (low, high))
+                or not 0 <= low < high <= 100):
+            raise ValueError(
+                'Invalid percentiles in background_values (0 <= '
+                'low_percentile < high_percentile <= 100).'
+            )
+        result['low_percentile'] = float(low)
+        result['high_percentile'] = float(high)
+        links = spec['inputs']
+        if not isinstance(links, dict) or not links:
+            raise ValueError('Invalid background_values inputs.')
+        for name, link in links.items():
+            if name not in inputs or inputs[name].get('type') != 'float':
+                raise ValueError(
+                    f'background_values input "{name}" must be a float '
+                    'input placeholder.'
+                )
+            if (not isinstance(link, dict)
+                    or set(link) != {'channel', 'value'}
+                    or link['channel'] not in channelNames
+                    or link['value']
+                    not in background_values.SUMMARY_VALUE_COLUMNS):
+                raise ValueError(
+                    f'Invalid background_values link of input "{name}".'
+                )
+        result['inputs'] = {name: dict(link) for name, link in links.items()}
+        return result
+
     @classmethod
     def resolvePremadeTemplate(cls, template, mapping, values=None):
         """Return the configuration of a premade `template` (not modified)
@@ -1317,7 +1434,7 @@ class MeasurementsViewerWin(
         replacements.update(mapping)
         result = {
             key: value for key, value in template.items()
-            if key not in ('channel_placeholders', 'input_placeholders')
+            if key not in PREMADE_TEMPLATE_KEYS
         }
         quotedNames = set()
         result = cls.substituteChannelPlaceholders(
@@ -1420,19 +1537,77 @@ class MeasurementsViewerWin(
         return sorted(name for name in names if f'{{{name}}}' in text)
 
     def selectChannelMapping(
-            self, placeholders, channels, inputs=None, validate=None
+            self, placeholders, channels, inputs=None, validate=None,
+            backgroundValues=None, experimentPositions=None,
+            channelHints=None
         ):
         """Return `(channel mapping, input values)` or None if cancelled.
         `validate(mapping, values)` may raise ValueError to refuse a
-        selection (message shown, dialog stays open)."""
+        selection (message shown, dialog stays open). With the template's
+        validated `backgroundValues` section, the linked inputs can be
+        filled by running the background utility on the Positions of
+        `experimentPositions` (`{exp_path: [pos_foldername, ...]}`, see
+        `computeBackgroundSummary`) or from a saved summary table."""
+        experimentPositions = experimentPositions or {}
+        compute = None
+        if backgroundValues is not None:
+            compute = partial(
+                self.computeBackgroundSummary, experimentPositions
+            )
         dialog = ChannelPlaceholderMappingDialog(
             placeholders, channels, parent=self, inputs=inputs,
-            validate=validate
+            validate=validate, backgroundValues=backgroundValues,
+            computeBackgroundValues=compute,
+            tableStartDir=next(iter(experimentPositions), ''),
+            channelHints=channelHints
         )
         dialog.exec_()
         if dialog.cancel:
             return None
         return dialog.mapping, dialog.values
+
+    def computeBackgroundSummary(
+            self, experimentPositions, channels, settings, parent=None
+        ):
+        """Run the "Compute background intensity" utility on the
+        experiments of `experimentPositions` (`{exp_path: [preselected
+        Positions]}`, the experiment selected for the premade configuration)
+        with `channels` and `settings` (validated `background_values`
+        section of a premade template) preset in its parameters dialog,
+        which is still shown. Only the Positions are asked (not the
+        experiments). Returns the summary table (empty if no Position was
+        processed) or None if cancelled."""
+        from .utils import computeBackgroundValues as utilsBackground
+        parent = parent or self
+        expPaths = utilsBackground.select_positions(
+            parent, experimentPositions
+        )
+        if not expPaths:
+            return None
+        presetParams = {
+            'channels': list(channels),
+            'statistic': settings['statistic'],
+            'exclude_zero_pixels': settings['exclude_zero_pixels'],
+            'use_acdc_output': True,
+            'low_percentile': settings['low_percentile'],
+            'high_percentile': settings['high_percentile'],
+        }
+        win = utilsBackground.ComputeBackgroundValuesUtil(
+            expPaths, QApplication.instance(), 'Compute background intensity',
+            'Launching compute background intensity process...',
+            'Computing background intensity', parent=parent,
+            presetParams=presetParams,
+            presetNote=(
+                'The settings are preset by the configuration that is being '
+                'set up. After the computation, its normalization values '
+                'are filled in from the summary table.'
+            )
+        )
+        # Keep a reference: the worker thread may still be finishing when
+        # the dialog closes
+        self.backgroundValuesUtilWin = win
+        win.exec_()
+        return win.summaryDf
 
     def selectPremadeBaseChannel(self, channels, default=None):
         """Ask which channel to display as base layer (default listed first)."""
@@ -1500,6 +1675,12 @@ class MeasurementsViewerWin(
         self.validateChannelPlaceholders(placeholders)
         inputs = configuration.get('input_placeholders', {})
         self.validateInputPlaceholders(inputs, placeholders)
+        backgroundSpec = self.validateBackgroundValuesSpec(
+            configuration.get('background_values'), placeholders, inputs
+        )
+        channelHints = self.validateChannelHints(
+            configuration.get('channel_hints'), placeholders
+        )
         folder = QFileDialog.getExistingDirectory(
             self, 'Select experiment, Position or Images folder',
             self.getMostRecentPath()
@@ -1519,9 +1700,19 @@ class MeasurementsViewerWin(
                 f'channels, but the positions have only {len(channels)} '
                 'channels in common.'
             )
+        # Experiments and Positions of the selected folder (background
+        # values are computed from them)
+        experimentPositions = {}
+        for path in paths:
+            pos_path = os.path.dirname(path)
+            experimentPositions.setdefault(
+                os.path.dirname(pos_path), []
+            ).append(os.path.basename(pos_path))
         selection = self.selectChannelMapping(
             placeholders, sorted(channels), inputs=inputs,
-            validate=partial(self.resolvePremadeTemplate, configuration)
+            validate=partial(self.resolvePremadeTemplate, configuration),
+            backgroundValues=backgroundSpec,
+            experimentPositions=experimentPositions, channelHints=channelHints
         )
         if selection is None:
             return None

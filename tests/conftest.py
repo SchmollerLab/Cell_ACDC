@@ -90,6 +90,9 @@ class _DialogWatchdog:
         self.timer.start()
 
     def stop(self):
+        # Idempotent: tests that run a real worker thread may stop it early
+        if self.stopped:
+            return
         self.stopped = True
         self.timer.stop()
         self.timer.deleteLater()

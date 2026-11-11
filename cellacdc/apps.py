@@ -19647,7 +19647,219 @@ class FucciPreprocessDialog(FunctionParamsDialog):
         self.firstChannelName = self.firstChNameWidget.currentText()
         self.secondChannelName = self.secondChNameWidget.currentText()
         super().ok_cb()
-        
+
+
+class BackgroundValuesParamsDialog(QBaseDialog):
+    """Parameters of the "Compute background intensity" utility.
+
+    After `exec_`, `cancel` is False when the user pressed Ok and `params`
+    holds the keys documented in `workers.ComputeBackgroundValuesWorker`.
+
+    `findExistingFile(name)` returns the name of an existing file that the
+    background table `<basename><name>.csv` would collide with, or None.
+
+    `presetParams` (any subset of the `params` keys) prefill the widgets:
+    with `channels`, only these channels are checked. `presetNote` is shown
+    on top (e.g. why the values are preset).
+    """
+    def __init__(
+            self, channelNames, findExistingFile=None, parent=None,
+            presetParams=None, presetNote=''
+        ):
+        super().__init__(parent=parent)
+        self.setWindowTitle('Compute background intensity')
+        self.cancel = True
+        self.params = None
+        self.findExistingFile = findExistingFile
+
+        mainLayout = QVBoxLayout()
+        if presetNote:
+            noteLabel = QLabel(html_utils.paragraph(presetNote))
+            noteLabel.setWordWrap(True)
+            mainLayout.addWidget(noteLabel)
+        mainLayout.addWidget(QLabel(html_utils.paragraph(
+            'For every frame, the background of each selected channel is the '
+            '<b>intensity of the pixels outside of the segmented '
+            'objects</b>.<br>'
+            'You will select the segmentation file next: use one where '
+            '<b>(nearly) all cells are segmented</b>.'
+        )))
+
+        mainLayout.addWidget(QLabel(html_utils.paragraph(
+            '<b>Channels</b>:'
+        )))
+        self.channelsListWidget = QListWidget()
+        for channel in channelNames:
+            item = QListWidgetItem(channel)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            self.channelsListWidget.addItem(item)
+        self.channelsListWidget.setMaximumHeight(
+            max(60, min(160, 24*len(channelNames) + 8))
+        )
+        mainLayout.addWidget(self.channelsListWidget)
+
+        gridLayout = QGridLayout()
+        row = 0
+        gridLayout.addWidget(
+            QLabel('Background statistic subtracted from cells:'), row, 0
+        )
+        self.statisticCombobox = QComboBox()
+        self.statisticCombobox.addItems(['mean', 'median'])
+        gridLayout.addWidget(self.statisticCombobox, row, 1)
+        gridLayout.addWidget(widgets.infoPushButton(
+            info_title='Background statistic',
+            info_text=html_utils.paragraph(
+                'Both the mean and the median of the background pixels are '
+                'saved for every frame. This statistic is the one subtracted '
+                'from the mean intensity of the cells and used for the '
+                'normalization constants.'
+            )
+        ), row, 2)
+
+        row += 1
+        self.excludeZeroCheckbox = QCheckBox(
+            'Ignore pixels with intensity 0 (e.g., padding from alignment)'
+        )
+        self.excludeZeroCheckbox.setChecked(True)
+        gridLayout.addWidget(self.excludeZeroCheckbox, row, 0, 1, 3)
+
+        row += 1
+        gridLayout.addWidget(QLabel('Name of the background table:'), row, 0)
+        self.outputNameLineEdit = widgets.alphaNumericLineEdit()
+        self.outputNameLineEdit.setText('background_values')
+        gridLayout.addWidget(self.outputNameLineEdit, row, 1)
+        gridLayout.addWidget(widgets.infoPushButton(
+            info_title='Background table',
+            info_text=html_utils.paragraph(
+                'The per-frame background values of each Position are saved '
+                'in the Images folder as '
+                '<code>&lt;basename&gt;&lt;name&gt;.csv</code>, the pooled '
+                'summary in each experiment folder as '
+                '<code>&lt;name&gt;_summary.csv</code>. Existing files are '
+                'overwritten.'
+            )
+        ), row, 2)
+        gridLayout.setColumnStretch(1, 1)
+        mainLayout.addLayout(gridLayout)
+
+        self.normalizationGroupbox = QGroupBox(
+            'Compute normalization constants from an acdc_output table'
+        )
+        self.normalizationGroupbox.setCheckable(True)
+        self.normalizationGroupbox.setChecked(True)
+        groupLayout = QGridLayout()
+        groupLayout.addWidget(QLabel(html_utils.paragraph(
+            'Reads <code>&lt;channel&gt;_mean</code> of the cells from the '
+            'selected acdc_output table (the table is not modified).<br>'
+            'The percentiles below of these values minus the constant '
+            'background, pooled over all cells,<br>'
+            'frames and Positions, are the min/max values of the "Min-max '
+            'normalization" measurement processing.'
+        )), 0, 0, 1, 2)
+        groupLayout.addWidget(QLabel('Percentile mapped to 0:'), 1, 0)
+        self.lowPercentileSpinbox = widgets.DoubleSpinBox()
+        self.lowPercentileSpinbox.setMinimum(0)
+        self.lowPercentileSpinbox.setMaximum(100)
+        self.lowPercentileSpinbox.setValue(5)
+        groupLayout.addWidget(self.lowPercentileSpinbox, 1, 1)
+        groupLayout.addWidget(QLabel('Percentile mapped to 1:'), 2, 0)
+        self.highPercentileSpinbox = widgets.DoubleSpinBox()
+        self.highPercentileSpinbox.setMinimum(0)
+        self.highPercentileSpinbox.setMaximum(100)
+        self.highPercentileSpinbox.setValue(95)
+        groupLayout.addWidget(self.highPercentileSpinbox, 2, 1)
+        self.normalizationGroupbox.setLayout(groupLayout)
+        mainLayout.addWidget(self.normalizationGroupbox)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        mainLayout.addSpacing(10)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+        if presetParams:
+            self.setParams(presetParams)
+
+    def setParams(self, params):
+        """Prefill the widgets with `params` (any subset of the keys of
+        `self.params`)."""
+        if 'channels' in params:
+            selected = set(params['channels'])
+            for i in range(self.channelsListWidget.count()):
+                item = self.channelsListWidget.item(i)
+                checked = item.text() in selected
+                item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+        if params.get('statistic') in ('mean', 'median'):
+            self.statisticCombobox.setCurrentText(params['statistic'])
+        if 'exclude_zero_pixels' in params:
+            self.excludeZeroCheckbox.setChecked(
+                bool(params['exclude_zero_pixels'])
+            )
+        if params.get('output_name'):
+            self.outputNameLineEdit.setText(params['output_name'])
+        if 'use_acdc_output' in params:
+            self.normalizationGroupbox.setChecked(
+                bool(params['use_acdc_output'])
+            )
+        if 'low_percentile' in params:
+            self.lowPercentileSpinbox.setValue(params['low_percentile'])
+        if 'high_percentile' in params:
+            self.highPercentileSpinbox.setValue(params['high_percentile'])
+
+    def selectedChannels(self):
+        channels = []
+        for i in range(self.channelsListWidget.count()):
+            item = self.channelsListWidget.item(i)
+            if item.checkState() == Qt.Checked:
+                channels.append(item.text())
+        return channels
+
+    def _warn(self, text):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Invalid parameters', html_utils.paragraph(text))
+
+    def ok_cb(self):
+        channels = self.selectedChannels()
+        if not channels:
+            self._warn('Select at least one channel.')
+            return
+        outputName = self.outputNameLineEdit.text().strip()
+        if not outputName:
+            self._warn('The name of the background table cannot be empty.')
+            return
+        existingFile = None
+        if self.findExistingFile is not None:
+            existingFile = self.findExistingFile(outputName)
+        if existingFile is not None:
+            self._warn(
+                f'The name "{outputName}" is already used by the file '
+                f'<code>{existingFile}</code>.<br><br>'
+                'Please choose a different name for the background table.'
+            )
+            return
+        low = self.lowPercentileSpinbox.value()
+        high = self.highPercentileSpinbox.value()
+        useAcdcOutput = self.normalizationGroupbox.isChecked()
+        if low >= high:
+            self._warn(
+                'The percentile mapped to 0 must be lower than the percentile '
+                'mapped to 1.'
+            )
+            return
+        self.params = {
+            'channels': channels,
+            'statistic': self.statisticCombobox.currentText(),
+            'exclude_zero_pixels': self.excludeZeroCheckbox.isChecked(),
+            'output_name': outputName,
+            'use_acdc_output': useAcdcOutput,
+            'low_percentile': low,
+            'high_percentile': high,
+        }
+        self.cancel = False
+        self.close()
+
 class ViewCcaTableWindow(pdDataFrameWidget):
     sigUpdateCcaTable = Signal(object)
     

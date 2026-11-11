@@ -42,6 +42,24 @@
       "info": "Background-corrected Cdt1 (G1) intensity that is mapped to 1. Must be larger than the minimum. Typically a high percentile (e.g. 95th) pooled in the same way as the minimum."
     }
   },
+  "channel_hints": {
+    "GEMININ": ["geminin", "gfp", "mag1", "azami", "venus", "clover", "yfp", "green", "488"],
+    "CDT1": ["cdt1", "mcherry", "mko2", "kusabira", "rfp", "tomato", "scarlet", "red", "561", "594"]
+  },
+  "background_values": {
+    "statistic": "median",
+    "low_percentile": 5,
+    "high_percentile": 95,
+    "exclude_zero_pixels": true,
+    "inputs": {
+      "GEMININ_BACKGROUND": {"channel": "GEMININ", "value": "constant_background"},
+      "GEMININ_MIN": {"channel": "GEMININ", "value": "constant_min"},
+      "GEMININ_MAX": {"channel": "GEMININ", "value": "constant_max"},
+      "CDT1_BACKGROUND": {"channel": "CDT1", "value": "constant_background"},
+      "CDT1_MIN": {"channel": "CDT1", "value": "constant_min"},
+      "CDT1_MAX": {"channel": "CDT1", "value": "constant_max"}
+    }
+  },
   "channel": "",
   "segm_endname": "",
   "overlay_channels": ["{GEMININ}", "{CDT1}"],

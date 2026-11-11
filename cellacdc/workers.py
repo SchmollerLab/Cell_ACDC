@@ -36,6 +36,7 @@ from . import (
     segm_re_pattern, io
 )
 from . import transformation, measurements, cca_functions
+from . import background_values
 from .path import copy_or_move_tree
 from . import features, plot
 from . import core
@@ -6840,6 +6841,384 @@ class CountObjectsInSegm(BaseWorkerUtil):
                 self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
+
+class ComputeBackgroundValuesWorker(BaseWorkerUtil):
+    """Worker of `utils.computeBackgroundValues.ComputeBackgroundValuesUtil`.
+
+    See `cellacdc.background_values` for the method. The GUI answers
+    `sigAskParams` by setting `self.params` (dict with the keys `channels`,
+    `statistic`, `exclude_zero_pixels`, `output_name`, `use_acdc_output`,
+    `low_percentile`, `high_percentile`) or `self.abort`. With
+    `use_acdc_output`, the mean intensities of the cells are read from a
+    selected acdc_output table (not modified) for the normalization
+    constants.
+    """
+    sigAskParams = Signal(object)
+    sigAborted = Signal()
+    sigSummary = Signal(object, object)
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+        self.params = None
+
+    def emitAskParams(self, expPaths):
+        self.mutex.lock()
+        self.sigAskParams.emit(expPaths)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    def _saveCsv(self, df, csv_path, index=False):
+        while True:
+            try:
+                df.to_csv(csv_path, index=index)
+                return
+            except PermissionError:
+                traceback_str = traceback.format_exc()
+                self.mutex.lock()
+                self.signals.sigPermissionError.emit(traceback_str, csv_path)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+
+    def _selectFiles(self, expPaths, use_acdc_output):
+        """Ask the segmentation file (and acdc_output table) per experiment.
+
+        Returns None when the user cancelled, otherwise
+        {exp_path: (segm_endname, acdc_output_endname or None)}. Experiments
+        without segmentation files are skipped.
+        """
+        selections = {}
+        for exp_path, pos_foldernames in expPaths.items():
+            has_segm = has_acdc_output = False
+            for pos in pos_foldernames:
+                images_path = os.path.join(exp_path, pos, 'Images')
+                has_segm = has_segm or bool(load.get_segm_files(images_path))
+                has_acdc_output = has_acdc_output or bool(
+                    load.get_acdc_output_files(images_path)
+                )
+            if not has_segm:
+                self.logger.log(
+                    f'[WARNING]: No segmentation file found in "{exp_path}". '
+                    'Experiment skipped.'
+                )
+                continue
+
+            self.mainWin.infoText = (
+                'Select the segmentation file that defines the '
+                '<b>background</b> (pixels outside of the segmented objects).'
+                '<br>Ideally, <b>all cells are segmented</b> in this file.'
+            )
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                return
+            segm_endname = self.mainWin.endFilenameSegm
+
+            acdc_output_endname = None
+            if use_acdc_output and not has_acdc_output:
+                self.logger.log(
+                    f'[WARNING]: No acdc_output table found in "{exp_path}". '
+                    'Only the background values will be computed.'
+                )
+            elif use_acdc_output:
+                abort = self.emitSelectAcdcOutputFiles(
+                    exp_path, pos_foldernames,
+                    infoText=(
+                        ' with the mean intensities for the normalization '
+                        'constants'
+                    ),
+                    allowSingleSelection=True, multiSelection=False
+                )
+                if abort or not self.mainWin.selectedAcdcOutputEndnames:
+                    return
+                acdc_output_endname = (
+                    self.mainWin.selectedAcdcOutputEndnames[0]
+                )
+            selections[exp_path] = (segm_endname, acdc_output_endname)
+        return selections
+
+    def _loadPositionData(self, images_path, segm_endname, channels):
+        """Load the segmentation and channel images of one Position.
+
+        Returns (images, segm, basename) with data shaped (T, [Z,] Y, X).
+        Raises FileNotFoundError with a message for the log when the Position
+        cannot be processed.
+        """
+        basename, _ = myutils.getBasenameAndChNames(images_path)
+        segm_filenames = {
+            f'{basename}{segm_endname}.npz', f'{basename}{segm_endname}.npy'
+        }
+        segm_files = [
+            file for file in load.get_segm_files(images_path)
+            if file in segm_filenames
+        ]
+        if not segm_files:
+            raise FileNotFoundError(
+                f'Segmentation file "{basename}{segm_endname}.npz" not found.'
+            )
+        segm_filepath = os.path.join(images_path, segm_files[0])
+
+        channel_filepaths = {}
+        for channel in channels:
+            # Match '<basename><channel>' so that e.g. 'GFP' is not
+            # loaded from 'mGFP'
+            filepath = load.get_filename_from_channel(
+                images_path, channel, basename=basename
+            )
+            if filepath:
+                channel_filepaths[channel] = filepath
+        if not channel_filepaths:
+            raise FileNotFoundError(
+                f'None of the channels {list(channels)} found.'
+            )
+
+        first_channel, first_filepath = next(iter(channel_filepaths.items()))
+        posData = load.loadData(first_filepath, first_channel)
+        posData.getBasenameAndChNames()
+        posData.buildPaths()
+        posData.loadOtherFiles(load_segm_data=False, load_metadata=True)
+        size_t = int(posData.SizeT)
+
+        if segm_filepath.endswith('.npy'):
+            segm = np.load(segm_filepath)
+        else:
+            with np.load(segm_filepath) as archive:
+                segm = archive[archive.files[0]]
+        segm = background_values.as_frames(segm, size_t)
+
+        images = {}
+        for channel, filepath in channel_filepaths.items():
+            img = load.load_image_file(filepath)
+            images[channel] = background_values.as_frames(img, size_t)
+        return images, segm, basename
+
+    def _processPosition(
+            self, images_path, segm_endname, acdc_endname, params,
+            raw_means, backgrounds
+        ):
+        """Compute, save and pool the background of one Position.
+
+        Returns True if the Position was processed.
+        """
+        statistic = params['statistic']
+        try:
+            images, segm, basename = self._loadPositionData(
+                images_path, segm_endname, params['channels']
+            )
+        except FileNotFoundError as err:
+            self.logger.log(
+                f'[WARNING]: {err} Position "{images_path}" skipped.'
+            )
+            return False
+
+        missing = [ch for ch in params['channels'] if ch not in images]
+        if missing:
+            self.logger.log(
+                f'[WARNING]: Channels {missing} not found in "{images_path}".'
+            )
+        num_frames = min([len(segm), *[len(img) for img in images.values()]])
+        self.signals.sigInitInnerPbar.emit(num_frames)
+        try:
+            bkgr_df = background_values.compute_background_values(
+                images, segm,
+                exclude_zero_pixels=params['exclude_zero_pixels'],
+                progress_callback=(
+                    lambda: self.signals.sigUpdateInnerPbar.emit(1)
+                )
+            )
+        except ValueError as err:
+            self.logger.log(
+                f'[WARNING]: {err} Position "{images_path}" skipped.'
+            )
+            return False
+
+        num_empty = int((bkgr_df['num_objects'] == 0).sum())
+        if num_empty:
+            self.logger.log(
+                f'[WARNING]: {num_empty} frame(s) without segmented objects: '
+                'their background is left empty (NaN).'
+            )
+        bkgr_csv_path = os.path.join(
+            images_path, f'{basename}{params["output_name"]}.csv'
+        )
+        self._saveCsv(bkgr_df, bkgr_csv_path)
+        self.logger.log(f'Background values saved to "{bkgr_csv_path}"')
+        for channel in images:
+            col = background_values.background_colname(channel, statistic)
+            backgrounds[channel].append(bkgr_df[col].to_numpy())
+
+        if acdc_endname is not None:
+            acdc_csv_path = os.path.join(
+                images_path, f'{basename}{acdc_endname}.csv'
+            )
+            self._collectCellMeans(
+                acdc_csv_path, list(images), segm.ndim == 4, raw_means
+            )
+        return True
+
+    @worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+        self.signals.initProgressBar.emit(0)
+
+        abort = self.emitAskParams(expPaths)
+        if abort or self.params is None:
+            self.sigAborted.emit()
+            return
+        params = self.params
+
+        selections = self._selectFiles(
+            expPaths, params['use_acdc_output']
+        )
+        if selections is None:
+            self.sigAborted.emit()
+            return
+
+        raw_means = defaultdict(list)
+        backgrounds = defaultdict(list)
+        num_positions = 0
+        tot_pos = sum(len(expPaths[exp_path]) for exp_path in selections)
+        self.signals.initProgressBar.emit(tot_pos)
+        for i, (exp_path, (segm_endname, acdc_endname)) in enumerate(
+                selections.items()
+            ):
+            pos_foldernames = expPaths[exp_path]
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{len(selections)}, '
+                    f'{pos} ({p+1}/{len(pos_foldernames)})'
+                )
+                images_path = os.path.join(exp_path, pos, 'Images')
+                self.signals.sigUpdatePbarDesc.emit(
+                    f'Processing {os.path.join(exp_path, pos)}'
+                )
+                processed = self._processPosition(
+                    images_path, segm_endname, acdc_endname, params,
+                    raw_means, backgrounds
+                )
+                num_positions += int(processed)
+                self.signals.progressBar.emit(1)
+
+        if self.abort:
+            # Cancelled during the last Position: no summary
+            self.sigAborted.emit()
+            return
+
+        if num_positions == 0:
+            self.sigSummary.emit(pd.DataFrame(), {'num_positions': 0})
+            self.signals.finished.emit(self)
+            return
+
+        summary_df = background_values.normalization_constants(
+            raw_means, backgrounds,
+            low_percentile=params['low_percentile'],
+            high_percentile=params['high_percentile']
+        )
+        summary_df.insert(1, 'background_statistic', params['statistic'])
+        summary_df['exclude_zero_pixels'] = params['exclude_zero_pixels']
+        summary_df['num_positions'] = num_positions
+        summary_df['experiment_folders'] = ';'.join(selections)
+        for exp_path in selections:
+            summary_csv_path = os.path.join(
+                exp_path, f'{params["output_name"]}_summary.csv'
+            )
+            self._saveCsv(summary_df, summary_csv_path)
+            self.logger.log(f'Summary saved to "{summary_csv_path}"')
+        self.sigSummary.emit(summary_df, {'num_positions': num_positions})
+        self.signals.finished.emit(self)
+
+    def _collectCellMeans(
+            self, acdc_csv_path, channels, is_segm_3D, raw_means
+        ):
+        """Pool the mean intensities of the included cells of `channels`
+        from an acdc_output table (read only) into `raw_means`."""
+        if not os.path.exists(acdc_csv_path):
+            self.logger.log(
+                f'[WARNING]: Table "{acdc_csv_path}" not found. '
+                'Its cells are not used for the normalization constants.'
+            )
+            return
+        acdc_df = load.read_acdc_df_csv(acdc_csv_path)
+        missing = []
+        for channel in channels:
+            source_col, values = background_values.cell_mean_values(
+                acdc_df, channel, is_segm_3D=is_segm_3D
+            )
+            if source_col is None:
+                missing.append(channel)
+                continue
+            raw_means[channel].append(values)
+        if missing:
+            expected = [
+                ' or '.join(
+                    background_values.mean_source_columns(ch, is_segm_3D)
+                )
+                for ch in missing
+            ]
+            self.logger.log(
+                f'[WARNING]: Columns {expected} not found in '
+                f'"{acdc_csv_path}". Compute the mean intensity of these '
+                'channels first (e.g., with the "Compute measurements" '
+                'utility).'
+            )
+
+    # Disabled for now (not used): added per-frame background-corrected
+    # columns to the acdc_output table. See `background_values`.
+    # def _correctAcdcOutput(
+    #         self, acdc_csv_path, bkgr_df, channels, statistic, is_segm_3D,
+    #         raw_means, corrected_means
+    #     ):
+    #     if not os.path.exists(acdc_csv_path):
+    #         self.logger.log(
+    #             f'[WARNING]: Table "{acdc_csv_path}" not found. '
+    #             'Background correction skipped.'
+    #         )
+    #         return
+    #     acdc_df = load.read_acdc_df_csv(acdc_csv_path)
+    #     acdc_df, corrected, skipped = (
+    #         background_values.add_background_corrected_columns(
+    #             acdc_df, bkgr_df, channels, statistic, is_segm_3D=is_segm_3D
+    #         )
+    #     )
+    #     if skipped:
+    #         expected = [
+    #             ' or '.join(
+    #                 background_values.mean_source_columns(ch, is_segm_3D)
+    #             )
+    #             for ch in skipped
+    #         ]
+    #         self.logger.log(
+    #             f'[WARNING]: Columns {expected} not found in '
+    #             f'"{acdc_csv_path}". Compute the mean intensity of these '
+    #             'channels first (e.g., with the "Compute measurements" '
+    #             'utility).'
+    #         )
+    #     if not corrected:
+    #         return
+    #     self._saveCsv(acdc_df, acdc_csv_path)
+    #     included = background_values.included_cells_mask(acdc_df)
+    #     for channel, source_col in corrected.items():
+    #         corrected_col = background_values.corrected_colname(source_col)
+    #         raw = pd.to_numeric(acdc_df[source_col], errors='coerce')
+    #         num_nan = int((raw.notna() & acdc_df[corrected_col].isna()).sum())
+    #         self.logger.log(
+    #             f'Added column "{corrected_col}" to "{acdc_csv_path}"'
+    #         )
+    #         if num_nan:
+    #             self.logger.log(
+    #                 f'[WARNING]: "{corrected_col}" is empty for {num_nan} '
+    #                 'row(s) of frames without a background value. Cell-ACDC '
+    #                 'reads these as 0 when the table has cell cycle '
+    #                 'annotations.'
+    #             )
+    #         raw_means[channel].append(raw[included].to_numpy())
+    #         corrected_means[channel].append(
+    #             acdc_df.loc[included, corrected_col].to_numpy()
+    #         )
+
 
 class CreateSymLinkToPosWinWorker(QObject):
     def __init__(
