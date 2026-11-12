@@ -98,7 +98,9 @@ from .cca_functions import _calc_rot_vol
 from .myutils import setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
-    normal_division_lineage_tree)#, reorg_sister_cells_for_export)
+    normal_division_lineage_tree, is_lineage_tree_annotated,
+    init_lineage_tree_cols_of_added_IDs
+)#, reorg_sister_cells_for_export)
 from . import debugutils
 from . import exec_time
 from .plot import imshow
@@ -21068,7 +21070,19 @@ When working with 3D segmentation masks:
         else:
             # Filter or add IDs that were not stored yet
             acdc_df = acdc_df.drop(columns=['time_seconds'], errors='ignore')
+            added_IDs = [ID for ID in IDs if ID not in acdc_df.index]
+            is_lin_tree_annotated = is_lineage_tree_annotated(acdc_df)
             acdc_df = acdc_df.reindex(IDs, fill_value=0)
+            if added_IDs:
+                # Zeros are not valid lineage tree values (no ID 0)
+                frame_i = posData.frame_i
+                prev_acdc_df = None
+                if frame_i > 0:
+                    prev_acdc_df = posData.allData_li[frame_i-1].get('acdc_df')
+                acdc_df = init_lineage_tree_cols_of_added_IDs(
+                    acdc_df, added_IDs, frame_i, is_lin_tree_annotated,
+                    prev_acdc_df=prev_acdc_df
+                )
             acdc_df['is_cell_dead'] = is_cell_dead_li
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
