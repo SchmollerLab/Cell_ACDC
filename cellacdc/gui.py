@@ -14977,7 +14977,7 @@ When working with 3D segmentation masks:
         z = self.zSliceScrollBar.sliderPosition()
         posData = self.data[self.pos_i]
         self.overlay_z_label.setText(
-            f'Overlay z-slice {z-correction:02}/{posData.SizeZ+correction}'
+            f'Overlay z-slice {z+correction:02}/{posData.SizeZ+correction}'
         )
     
     def defaultRescaleIntensLutActionToggled(self, action):
