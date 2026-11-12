@@ -3792,8 +3792,13 @@ When working with 3D segmentation masks:
         self.updateZproj(self.zProjComboBox.currentText())
     
     def launch3dViewerToggled(self, checked):
-        self.logger.info('Launching 3D volume viewer...')
-        
+        msg = 'Launching 3D volume viewer...'
+        self.logger.info(msg)
+        self.titleLabel.setText(msg)
+
+        QTimer.singleShot(300, partial(self._launch3dViewer, checked))
+
+    def _launch3dViewer(self, checked):
         myutils.check_install_package(
             'PyOpenGL',
             import_pkg_name='OpenGL',
@@ -3902,6 +3907,8 @@ When working with 3D segmentation masks:
         self._volume_renderer.run(block=False)
         self._volume_renderer.raise_()
         self._volume_renderer.activateWindow()
+
+        self.titleLabel.setText('3D viewer up and running!')
 
     def onClose3dViewer(self, *args, **kwargs):
         self.launch3dViewerAction.setChecked(False)
