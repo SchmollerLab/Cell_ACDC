@@ -72,12 +72,148 @@ _TWO_D_VIEW_AZIMUTH = 180.0
 _TWO_D_VIEW_ELEVATION = 90.0
 _TWO_D_VIEW_ROLL = 180.0
 
-# Mirrored cursor of the mouse cursor on the parent GUI image (same
-# appearance as the mirrored cursor in the GUI)
-_PARENT_CURSOR_SYMBOL = 'diamond'
-_PARENT_CURSOR_SIZE = 16
-_PARENT_CURSOR_FACE_RGBA = (1.0, 1.0, 1.0, 70/255)
-_PARENT_CURSOR_EDGE_RGBA = (1.0, 1.0, 1.0, 1.0)
+# Mirrored cursor of the mouse cursor on the parent GUI image: a shaded
+# octahedron, i.e., the 3D version of the diamond cursor of the GUI (it
+# looks like the diamond in "2D view"). Size in pixels at the depth of the
+# camera centre, larger in front of it and smaller behind it (perspective,
+# with the scale clamped to [MIN_SCALE, MAX_SCALE]).
+_PARENT_CURSOR_SIZE = 24
+_PARENT_CURSOR_MIN_SCALE = 0.35
+_PARENT_CURSOR_MAX_SCALE = 2.5
+
+# Octahedron vertices along +-x, +-y, +-z (scene coordinates)
+_OCTAHEDRON_VERTICES = np.array([
+    [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+], dtype=float)
+
+def _get_octahedron_faces() -> tuple[np.ndarray, np.ndarray]:
+    """Return the vertex indices (counter-clockwise seen from outside) and
+    the outward unit normals of the 8 faces (one per octant) of the
+    octahedron with vertices `_OCTAHEDRON_VERTICES`."""
+    faces, normals = [], []
+    for sx in (1, -1):
+        for sy in (1, -1):
+            for sz in (1, -1):
+                a = 0 if sx > 0 else 1
+                b = 2 if sy > 0 else 3
+                c = 4 if sz > 0 else 5
+                faces.append((a, b, c) if sx*sy*sz > 0 else (a, c, b))
+                normals.append(np.array([sx, sy, sz]) / np.sqrt(3))
+    return np.array(faces), np.array(normals)
+
+_OCTAHEDRON_FACES, _OCTAHEDRON_NORMALS = _get_octahedron_faces()
+
+def _projection_jacobian(M: np.ndarray, h: np.ndarray) -> np.ndarray:
+    """(2, 3) Jacobian of the canvas (x, y) coordinates w.r.t. the scene
+    coordinates at the point with homogeneous canvas coordinates `h = M @ p`,
+    where M is the (4, 4) homogeneous scene-to-canvas matrix."""
+    w = h[3]
+    return (M[:2, :3]*w - np.outer(h[:2], M[3, :3])) / w**2
+
+def _get_octahedron_cursor_faces(
+        M: np.ndarray,
+        pos: np.ndarray,
+        focal_point: np.ndarray,
+        size_px: float,
+        min_scale: float=_PARENT_CURSOR_MIN_SCALE,
+        max_scale: float=_PARENT_CURSOR_MAX_SCALE,
+    ) -> tuple[list[tuple[np.ndarray, float]], float]:
+    """Project an octahedron centred at `pos` (scene coordinates) onto the
+    canvas and return its faces visible from the camera and its opacity.
+
+    Parameters
+    ----------
+    M : (4, 4) np.ndarray
+        Homogeneous matrix mapping scene to canvas coordinates.
+    pos, focal_point : (3,) np.ndarray
+        Centre of the octahedron and of the camera (scene coordinates).
+    size_px : float
+        Size of the octahedron (distance between opposite vertices) in
+        pixels when it is at the depth of `focal_point`. It is larger in
+        front and smaller behind (perspective), with the scale clamped to
+        [`min_scale`, `max_scale`].
+
+    Returns
+    -------
+    faces : list of ((3, 2) np.ndarray, float)
+        Canvas coordinates of the vertices of each visible face and its
+        shade in [0, 1] (lit from the camera, slightly from the top-left).
+        Empty if the octahedron is not in front of the camera.
+    opacity : float
+        Lower when the octahedron is far behind the focal point.
+    """
+    h_focal = M @ np.append(focal_point, 1.0)
+    h_pos = M @ np.append(pos, 1.0)
+    if h_focal[3] <= 0 or h_pos[3] <= 0:
+        return [], 1.0
+
+    pixels_per_unit = np.linalg.svd(
+        _projection_jacobian(M, h_focal), compute_uv=False
+    )[0]
+    if not pixels_per_unit > 0:
+        return [], 1.0
+
+    # Perspective scale relative to the focal point (w is the depth)
+    scale = h_focal[3] / h_pos[3]
+    clamped_scale = min(max(scale, min_scale), max_scale)
+    radius = size_px / 2 / pixels_per_unit * clamped_scale / scale
+
+    vertices = pos + radius*_OCTAHEDRON_VERTICES
+    h = np.c_[vertices, np.ones(len(vertices))] @ M.T
+    if np.any(h[:, 3] <= 0):
+        return [], 1.0
+    xy = h[:, :2] / h[:, 3:4]
+
+    # Direction towards the camera = where the depth (normalised device z)
+    # decreases (valid for perspective and orthographic projections)
+    w = h_pos[3]
+    depth_gradient = (M[2, :3]*w - h_pos[2]*M[3, :3]) / w**2
+    towards_camera = -depth_gradient / np.linalg.norm(depth_gradient)
+
+    # Direction from the octahedron to the eye. The eye is the (homogeneous)
+    # point mapped to x = y = w = 0, i.e., the null vector of these rows of
+    # M. With an orthographic projection it is a point at infinity (the
+    # direction of the view). With a perspective projection it differs
+    # from the optical axis away from the centre of the canvas.
+    eye_h = np.linalg.svd(M[[0, 1, 3]])[2][-1]
+    towards_eye = eye_h[:3] - pos*eye_h[3]
+    if towards_eye @ towards_camera < 0:
+        # The sign of the null vector is arbitrary
+        towards_eye = -towards_eye
+
+    # Visible faces have the same winding on the canvas as the face that
+    # faces the eye the most (it always faces the eye: dot >= 1/sqrt(3))
+    a, b, c = xy[_OCTAHEDRON_FACES[:, 0]], xy[_OCTAHEDRON_FACES[:, 1]], xy[_OCTAHEDRON_FACES[:, 2]]
+    signed_areas = (
+        (b[:, 0] - a[:, 0])*(c[:, 1] - a[:, 1])
+        - (b[:, 1] - a[:, 1])*(c[:, 0] - a[:, 0])
+    )
+    front_sign = np.sign(
+        signed_areas[np.argmax(_OCTAHEDRON_NORMALS @ towards_eye)]
+    )
+    is_visible = np.sign(signed_areas) == front_sign
+
+    # Light from the camera, slightly from the top-left of the canvas
+    up, left = (
+        np.linalg.pinv(_projection_jacobian(M, h_pos))
+        @ np.array([[0.0, -1.0], [-1.0, 0.0]]).T
+    ).T
+    light = (
+        towards_camera
+        + 0.6*up/np.linalg.norm(up)
+        + 0.4*left/np.linalg.norm(left)
+    )
+    light /= np.linalg.norm(light)
+    shades = 0.2 + 0.8*np.clip(_OCTAHEDRON_NORMALS @ light, 0, 1)
+
+    faces = [
+        (xy[face], float(shade))
+        for face, shade, visible
+        in zip(_OCTAHEDRON_FACES, shades, is_visible)
+        if visible
+    ]
+    opacity = min(max(clamped_scale, 0.6), 1.0)
+    return faces, opacity
 
 # Max. size of each dimension of the displayed volumes when the
 # "Full resolution" mode is off (faster, volumes are stride-downsampled)
@@ -463,10 +599,15 @@ class VolumeRendererWindow(QMainWindow):
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
 
-        # Mirrored cursor of the mouse cursor on the parent GUI image.
-        # Created at first use in `set_parent_cursor_pos` because an empty
-        # Markers visual breaks `camera.set_range()` (no bounds)
-        self._parent_cursor_marker = None
+        # Mirrored cursor of the mouse cursor on the parent GUI image,
+        # painted on an overlay widget created at first use (see
+        # `set_parent_cursor_pos`). Its projection is updated at every draw
+        # of the canvas (e.g., when the camera moves).
+        self._parent_cursor_overlay = None
+        self._parent_cursor_scene_pos = None
+        # Cached between draws, see `_update_parent_cursor_overlay`
+        self._scene_to_canvas_matrix = None
+        self._canvas.events.draw.connect(self._update_parent_cursor_overlay)
 
     def _on_camera_mouse_press(self, event):
         self._camera_mouse_interaction = True
@@ -2443,34 +2584,71 @@ class VolumeRendererWindow(QMainWindow):
 
             is_hidden = np.any(pos < -0.5) or np.any(pos > shape_xyz - 0.5)
 
-        marker = self._parent_cursor_marker
         if is_hidden:
-            if marker is not None and marker.visible:
-                marker.visible = False
-                self._canvas.update()
+            self._parent_cursor_scene_pos = None
+        else:
+            self._parent_cursor_scene_pos = (
+                self._voxel_size_transform.map(pos)[:3]
+            )
+
+        # Only the overlay is repainted, the volumes are not re-rendered
+        self._update_parent_cursor_overlay()
+
+    def _get_scene_to_canvas_matrix(self) -> np.ndarray | None:
+        """Return the (4, 4) matrix mapping homogeneous scene coordinates to
+        homogeneous canvas coordinates (divide x and y by w to get the
+        canvas pixels, w is the depth), or None if no volume is displayed.
+        """
+        nodes = [ch_data.node for ch_data in self._channels_data.values()]
+        if self._lab_node is not None:
+            nodes.append(self._lab_node)
+        if not nodes:
+            return None
+
+        # Scene --> local coordinates of the node --> canvas
+        node = nodes[0]
+        basis = np.array(
+            [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float
+        )
+        local_h = node.transform.imap(basis)
+        local = local_h[:, :3] / local_h[:, 3:4]
+        h = node.transforms.get_transform('visual', 'canvas').map(local)
+
+        M = np.empty((4, 4))
+        M[:, 3] = h[0]
+        M[:, :3] = (h[1:] - h[0]).T
+        return M
+
+    def _update_parent_cursor_overlay(self, event=None):
+        if event is not None:
+            # Called at a draw of the canvas --> the projection might have
+            # changed (e.g., camera moved or canvas resized)
+            self._scene_to_canvas_matrix = None
+
+        pos = self._parent_cursor_scene_pos
+        overlay = self._parent_cursor_overlay
+        if pos is None:
+            if overlay is not None:
+                overlay.setFaces([])
             return
 
-        if marker is None:
-            # Fixed size in pixels and drawn last without depth test so
-            # that it is always visible
-            marker = vispy.scene.visuals.Markers(
-                parent=self._view.scene, scaling='fixed'
-            )
-            marker.set_gl_state('translucent', depth_test=False)
-            marker.order = 1000
-            self._parent_cursor_marker = marker
+        M = self._scene_to_canvas_matrix
+        if M is None:
+            M = self._get_scene_to_canvas_matrix()
+            self._scene_to_canvas_matrix = M
+        if M is None:
+            return
 
-        pos_scene = self._voxel_size_transform.map(pos)[:3]
-        marker.set_data(
-            pos_scene[np.newaxis].astype(np.float32),
-            symbol=_PARENT_CURSOR_SYMBOL,
-            size=_PARENT_CURSOR_SIZE,
-            face_color=_PARENT_CURSOR_FACE_RGBA,
-            edge_color=_PARENT_CURSOR_EDGE_RGBA,
-            edge_width=1,
+        if overlay is None:
+            overlay = _widgets.ParentCursorOverlay(self._canvas.native)
+            overlay.raise_()
+            self._parent_cursor_overlay = overlay
+
+        faces, opacity = _get_octahedron_cursor_faces(
+            M, pos, np.asarray(self._view.camera.center, dtype=float),
+            _PARENT_CURSOR_SIZE
         )
-        marker.visible = True
-        self._canvas.update()
+        overlay.setFaces(faces, opacity=opacity)
 
     def is_view_synced(self):
         if self._parent_gui is None:
