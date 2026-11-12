@@ -77,6 +77,8 @@ The codebase is large; many core files are huge single modules (`gui.py` ~31k li
 
 Experiments are organized as `<exp_folder>/Position_<n>/Images/` containing `<basename><channel>.tif`, segmentation `<basename>segm*.npz`, the annotations/measurements table `<basename>acdc_output*.csv` (one row per `frame_i` × `Cell_ID`), and metadata CSV/JSON files. `acdc_df` in code refers to the `acdc_output` table (indexed by `frame_i`, `Cell_ID`).
 
+Every save also writes a snapshot to `Images/recovery/<basename>acdc_output.zip` (`load.store_copy_acdc_df`). The archive keeps about 21 `iso<timestamp>.csv` members and drops the oldest, so diffing consecutive members shows when bad values first appeared. Each save re-reads every member and casts it with `pd_bool_and_float_to_int_to_str`. A traceback printed during a save can therefore come from an old member rather than the table you just saved.
+
 ## Testing
 
 - Tests live in `tests/` (pytest; config in `pyproject.toml`, which ignores `cellacdc/test_tracker.py` and DeprecationWarnings). Shared helpers in `tests/utils/`, sample data in `tests/test_data/`.
