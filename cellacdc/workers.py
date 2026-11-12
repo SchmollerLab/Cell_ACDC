@@ -5739,16 +5739,24 @@ class CustomPreprocessWorkerGUI(QObject):
         self.signals.finished.emit(self)
 
 class MeasurementProcessingWorkerGUI(CustomPreprocessWorkerGUI):
-    """One-shot measurement job using the preprocessing worker's job API."""
+    """One-shot measurement job using the preprocessing worker's job API.
+
+    ``max_frame_i`` (plain int or None, given to ``setupJob``) is passed to
+    ``measurement_processing.apply_recipe``: only rows up to that frame are
+    processed (the worker never reads GUI state).
+    """
     sigDone = Signal(object)
-    def applyRecipe(self, df, cols, recipe, new_colnames):
-        return measurement_processing.apply_recipe(df, cols, recipe, new_colnames)
+    def applyRecipe(self, df, cols, recipe, new_colnames, max_frame_i=None):
+        return measurement_processing.apply_recipe(
+            df, cols, recipe, new_colnames, max_frame_i=max_frame_i
+        )
             
-    def setupJob(self, df, cols, recipe, new_colnames):
+    def setupJob(self, df, cols, recipe, new_colnames, max_frame_i=None):
         self._df = df
         self._cols = cols
         self._recipe = recipe
         self._new_colnames = new_colnames
+        self._max_frame_i = max_frame_i
         
     def runJob(self):
         try:
@@ -5756,7 +5764,8 @@ class MeasurementProcessingWorkerGUI(CustomPreprocessWorkerGUI):
                 self._df,
                 self._cols,
                 self._recipe,
-                self._new_colnames
+                self._new_colnames,
+                max_frame_i=self._max_frame_i
             )
             self.sigDone.emit(df)
             return

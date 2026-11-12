@@ -47,11 +47,15 @@ def fucci_configuration(mapping, overrides=None):
     return configuration
 
 
-def run_fucci_pipeline(acdc_df, mapping, SizeT=None, overrides=None):
+def run_fucci_pipeline(
+        acdc_df, mapping, SizeT=None, overrides=None, manual=None
+    ):
     """Replay steps, predict time points/annotations and translate phases.
 
     Mirrors what the measurements viewer does when the FUCCI configuration
-    is loaded and every cell is predicted. Returns (table, configuration).
+    is loaded and every cell is predicted. `manual` maps an annotation
+    column to the (frame_i, Cell_ID) rows the user marked by hand after the
+    prediction. Returns (table, configuration).
     """
     configuration = fucci_configuration(mapping, overrides)
     df = acdc_df
@@ -87,8 +91,18 @@ def run_fucci_pipeline(acdc_df, mapping, SizeT=None, overrides=None):
         for ID, frames in predicted.items():
             for frame_i in frames:
                 table.loc[(frame_i, ID), column] = value
+    for column, rows in (manual or {}).items():
+        for row in rows:
+            table.loc[row, column] = 1
+    # Like `MeasurementsViewerWin.phaseOverrideAnnotations`: annotations
+    # with "Overrides phases", in toolbar (configuration) order
+    annotation_overrides = [
+        state['name'] for state in configuration['custom_annotations']
+        if state.get('overridesPhases')
+    ]
     evaluation = phase_translator.evaluate(
-        table, configuration['phase_translator_rules'], SizeT=SizeT
+        table, configuration['phase_translator_rules'], SizeT=SizeT,
+        annotation_overrides=annotation_overrides
     )
     return evaluation.table, configuration
 
@@ -369,15 +383,63 @@ def test_fucci_pipeline_matches_original_classifier():
         ]
 
 
-def test_arrested_cell_is_annotated():
-    frames = range(200)
-    df = pd.DataFrame({
-        'frame_i': list(frames), 'Cell_ID': 1,
+def arrested_table():
+    return pd.DataFrame({
+        'frame_i': list(range(200)), 'Cell_ID': 1,
         'GFP_mean': 0.5, 'mCherry_mean': 0.6, 'cell_vol_fl': 100.0,
         'parent_ID_tree': -1,
     })
+
+
+def test_fucci_annotations_override_phases():
+    with open(FUCCI_TEMPLATE, encoding='utf-8') as file:
+        template = json.load(file)
+    # Excluded first, so that it wins over Arrested
+    assert [
+        (state['name'], state.get('overridesPhases'))
+        for state in template['custom_annotations']
+    ] == [('Excluded', True), ('Arrested', True)]
+    assert not any(
+        'Arrested' in rule['annotations']
+        for rule in template['phase_translator_rules']
+    )
+
+
+def test_arrested_cell_is_annotated():
     table, _ = run_fucci_pipeline(
-        df, {'GEMININ': 'GFP', 'CDT1': 'mCherry'}, SizeT=200
+        arrested_table(), {'GEMININ': 'GFP', 'CDT1': 'mCherry'}, SizeT=200
     )
     assert table['Arrested'].eq(1).all()
-    assert table['phase'].eq('arrested').all()
+    assert table['phase'].eq('Arrested').all()
+    assert table['phase_Arrested'].dtype == bool
+    assert table['phase_Arrested'].all()
+    assert not table['phase_Excluded'].any()
+
+
+def test_excluded_cell_overrides_complete_cycle_and_arrested():
+    mapping = {'GEMININ': 'GFP', 'CDT1': 'mCherry'}
+    expected, _ = run_fucci_pipeline(
+        synthetic_fucci_table(), mapping, SizeT=170
+    )
+    # The user marks the mother as excluded in one frame only
+    table, _ = run_fucci_pipeline(
+        synthetic_fucci_table(), mapping, SizeT=170,
+        manual={'Excluded': [(70, 1)]}
+    )
+    # Its time points are still complete, but its phase is "Excluded"
+    assert timepoint_frame(table, 1, 'M_start') is not None
+    assert table.xs(1, level='Cell_ID')['phase'].eq('Excluded').all()
+    assert table.xs(1, level='Cell_ID')['phase_Excluded'].all()
+    for ID in (2, 3):
+        pd.testing.assert_series_equal(
+            table.xs(ID, level='Cell_ID')['phase'],
+            expected.xs(ID, level='Cell_ID')['phase']
+        )
+    # Excluded comes first in the toolbar, so it wins over Arrested
+    table, _ = run_fucci_pipeline(
+        arrested_table(), mapping, SizeT=200,
+        manual={'Excluded': [(199, 1)]}
+    )
+    assert table['Arrested'].eq(1).all()
+    assert table['phase'].eq('Excluded').all()
+    assert not table['phase_Arrested'].any()

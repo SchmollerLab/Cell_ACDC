@@ -1,4 +1,4 @@
-"""Background intensity utility (Utilities > Misc): `cellacdc.background_values`,
+"""Background intensity utility (Utilities > Measurements): `cellacdc.background_values`,
 `workers.ComputeBackgroundValuesWorker` and the launcher wiring.
 
 The reference formulas are the ones of the FUCCI analysis scripts the utility
@@ -656,12 +656,11 @@ def test_launcher_misc_menu_launches_utility(app, monkeypatch):
 
     action = host.computeBackgroundValuesAction
     assert action.text() in utilsInfo
-    miscMenus = [
-        a.menu() for a in host.utilsMenu.actions()
-        if a.menu() is not None and a.menu().title() == 'Misc'
+    menusWithAction = [
+        a.menu().title() for a in host.utilsMenu.actions()
+        if a.menu() is not None and action in a.menu().actions()
     ]
-    assert len(miscMenus) == 1
-    assert action in miscMenus[0].actions()
+    assert menusWithAction == ['Measurements']
 
     action.trigger()
     assert launched == [{'exp': ['Position_1']}, 'shown']

@@ -70,6 +70,45 @@ Loading large experiments can take a while. The window stays visible but does
 not accept input until loading is complete; progress is shown in the status
 bar and in the terminal.
 
+Partially analyzed videos
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The viewer checks how far each Position was analyzed in the main GUI, like
+the main GUI's "Last tracked frame" information: the **last cell cycle
+annotated frame** if the table has cell cycle annotations, otherwise the
+**last tracked frame** (the last frame of the ``acdc_output`` table).
+
+If a Position was not analyzed until the end of the video, you are asked
+whether to **ignore the later frames** (default, recommended) or to **use all
+frames**. When the later frames are ignored, all calculations of that
+Position use only the analyzed frames:
+
+* time point and custom annotation predictors (and the tests in their
+  editors): later frames get no time points, and annotations are decided
+  from the analyzed frames only;
+* phase evaluation: later frames get no phase;
+* measurement processing and combined measurements: later frames get empty
+  values;
+* conditional formatting.
+
+In equations, ``SizeT`` is then the number of analyzed frames (e.g.,
+``LAST(frame_i) == SizeT - 1`` means "present at the last analyzed frame").
+Images, navigation and plots still show all frames: the ignored frames are
+shaded gray in the time course and phase band, and the label next to the
+frames slider shows the last analyzed frame.
+
+Change the choice with **Annotations > Ignore frames after the last analyzed
+frame**. It is saved in the configuration, so loading that configuration does
+not ask again. Results calculated before changing it are not recalculated
+automatically (except automatically evaluated phases): re-evaluate the
+predictors and phases, or load the configuration again to recalculate the
+measurement steps. After annotating more frames in the main GUI, click
+**Reload table** (:kbd:`F5`): new calculations (and automatically evaluated
+phases) then use the new last analyzed frame. The outputs of the measurement
+steps stay empty after the frame they were calculated up to (the
+configuration remembers it) until you load the configuration again and
+choose **Calculate**.
+
 The window
 ~~~~~~~~~~
 
@@ -80,7 +119,8 @@ The window
   time point markers; hover over it for a description).
 * **Image** (center): the current frame with the segmentation contours and
   cell IDs. The selected cell is highlighted.
-* **Navigate** box: Position, frame, z-slice and Cell ID controls.
+* **Navigate** box: Position, frame, z-slice and Cell ID controls (labels,
+  value boxes and sliders in aligned columns).
 * **Annotations** box: what to display on the image (contours, IDs, cell
   cycle info, etc.).
 * **Measurements** box: the plot (left) and the list of columns to plot with
@@ -114,7 +154,8 @@ arrow keys, or drag the **red vertical line** (current frame) in the plot.
 With z-stacks, the z-slice scrollbar selects the slice or the projection.
 Use the **Position** drop-down menu to switch between Positions.
 
-Options below the Cell ID controls:
+Options at the bottom of the **Navigate** box (below the Cell ID controls and
+the overlay transparency sliders):
 
 * **Follow cell**: keep the view zoomed on the selected cell when changing
   frame or z-slice.
@@ -153,6 +194,9 @@ plotted.
   the light background (**Image > Invert black/white**), black replaces the
   Okabe-Ito yellow. To choose another color, **right-click** the column and select
   **Change color...** (**Reset to default color** restores the default).
+  Custom colors are saved with the configuration (the premade FUCCI
+  configuration plots the Geminin reporter in green and the Cdt1 reporter
+  in red).
 * **Zoom**: when you add a column, the y axis is fitted to the plotted data
   and the current x zoom is kept. Scroll or drag in the plot to zoom and pan.
   With the mouse over the plot, press :kbd:`H` to fit the plot to the data
@@ -242,8 +286,9 @@ Export and save
 * **Export measurements...** saves the table of the current Position to a
   separate CSV file, including processed and combined columns, time points,
   custom annotations, phases and the ``measurements_viewer_visited`` column
-  (which cells you have viewed). If phase rules are configured, you are asked
-  whether to evaluate the phases of all cells first.
+  (which cells you have viewed). If phase rules (or annotations that override
+  phases) are configured, you are asked whether to evaluate the phases of all
+  cells first.
 * When closing the viewer or loading other data, you are asked whether to
   **save the tables**, which overwrites each Position's ``acdc_output`` file.
   The previous file is backed up in the Position's ``recovery`` folder.
@@ -362,9 +407,17 @@ named like the annotation. Custom annotations are shared with the main GUI.
   **Re-evaluate annotation predictors on all cells / on displayed cell** work
   as for time point identifiers. Right-click an annotation button to edit or
   re-evaluate it.
+* **Overrides phases** (under **Additional options**, measurements viewer
+  only): every cell with this annotation gets the annotation's name as its
+  phase on all frames (e.g., ``Excluded``), instead of the phases of the
+  `Time point to phase translator`_ rules. Use it for cells that do not go
+  through the normal phases, e.g. excluded or arrested cells. If a cell has
+  several such annotations, the one listed first in the
+  **Custom annotations** toolbar wins (see `How it works`_).
 
-Annotation definitions are saved in the configuration; the annotations of the
-cells are saved in the table (save the tables or export the measurements).
+Annotation definitions (including **Overrides phases**) are saved in the
+configuration; the annotations of the cells are saved in the table (save the
+tables or export the measurements).
 
 
 Time point to phase translator
@@ -402,6 +455,13 @@ How it works
 * A rule without boundaries has a single phase for the whole cell, which is
   useful as a fallback at the bottom of the list or, together with a
   required annotation, at the top.
+* Custom annotations with the **Overrides phases** option (see
+  `Custom annotations`_) take precedence over **all** rules: a cell with such
+  an annotation gets the annotation's name as its phase on every frame, and
+  no rule is checked for it. If a cell has several of these annotations, the
+  one listed first in the **Custom annotations** toolbar wins. The rules give
+  the phases of all other cells. Phases can also be evaluated with these
+  annotations alone, without any rule.
 
 Worked example: cell cycle phases of budding yeast
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -463,6 +523,14 @@ Select a rule and use **Up** / **Down** to reorder it. Rules higher in the
 list win, so put the most specific rules first (here, a cell annotated as
 "Excluded" always gets "excluded", even if it has time points).
 
+.. tip::
+
+    Instead of the rule "Excluded", you can turn on **Overrides phases** for
+    the ``Excluded`` annotation (right-click its toolbar button to edit it)
+    and keep only the rules "Full cycle" and "Bud emergence only". The
+    excluded cells then get the phase ``Excluded`` (the annotation's name) on
+    every frame.
+
 **Step 8: apply.** Click **Apply phase evaluation on displayed cell** to check
 the result on the cell you are looking at, then
 **Apply phase evaluation on all cells** for all cells of the current Position.
@@ -471,8 +539,9 @@ Click **OK** to close the dialog and keep the rules.
 Afterwards, you do not need to open the dialog again to update a cell: click
 **Evaluate phases on displayed cell** next to the translator button in the
 **Phases** toolbar (or **Annotations > Evaluate phases on displayed cell**),
-or press :kbd:`Alt+P`. It applies the saved rules to the displayed cell only,
-e.g. after correcting its time points.
+or press :kbd:`Alt+P`. It applies the saved rules (and the annotations that
+override phases) to the displayed cell only, e.g. after correcting its time
+points.
 
 **Result.** A cell present from frame 1 to 40 with Bud emergence at frame 10
 and Division at frame 25 gets:
@@ -506,11 +575,21 @@ skip this check.
 Automatic evaluation
 ~~~~~~~~~~~~~~~~~~~~
 
-Check **Automatically evaluate phases when time points change or phases are
-missing** to keep the phases up to date: whenever you add, move, remove,
-clear or predict time points, the phases of the affected cells are evaluated
-again, and a displayed cell without phases is evaluated once. Messages then
-appear in the status bar. This option is saved in the configuration.
+Check **Automatically evaluate phases when time points or annotations change
+or phases are missing** to keep the phases up to date: whenever you add,
+move, remove, clear or predict time points, or add, remove, predict or clear
+custom annotations, the phases of the affected cells are evaluated again, and
+a displayed cell without phases is evaluated once. Turning **Overrides
+phases** of an annotation on or off, and renaming or removing an annotation
+that overrides phases, also evaluates the cells with this annotation again
+(in all loaded Positions; Positions that are not displayed are updated when
+you display them or save the tables). Messages then appear in the status
+bar. This option is saved in the configuration.
+
+If there are no phase rules and you turn off or remove the last annotation
+that overrides phases, its name is removed from the phases of its cells
+(also without automatic evaluation), because nothing else could assign them
+a phase.
 
 Phase colors and phase band
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -520,25 +599,32 @@ Phase colors and phase band
   phase, labeled with its name; hover for the frame range). In
   **Measurement vs Measurement** mode, the points are colored by phase.
   Toggle both with **Show phases**.
-* The **Phase colors** box of the translator lists every phase name. Click a
-  color to change it; the change is applied with **Apply** or **OK** and
-  saved in the configuration. Phases without a chosen color get default
-  colors from the colorblind-friendly Okabe-Ito palette (no red, which is
-  reserved for the current frame line drawn over the band).
+* The **Phase colors** box of the translator lists every phase name: first
+  the phases of the rules, then the names of the annotations that override
+  phases (so adding such an annotation does not change the default colors of
+  the rule phases). Click a color to change it; the change is applied with
+  **Apply** or **OK** and saved in the configuration. Phases without a chosen
+  color get default colors from the colorblind-friendly Okabe-Ito palette (no
+  red, which is reserved for the current frame line drawn over the band).
 
 Output columns
 ~~~~~~~~~~~~~~
 
-Applying the rules adds these columns to the table of the current Position:
+Evaluating the phases adds these columns to the table of the current
+Position:
 
 * ``phase``: the phase name of each frame (empty if no phase).
 * ``phase_<name>``: one yes/no column per phase name, e.g. ``phase_G1`` and
   ``phase_S-G2-M`` (a name used in several intervals or rules shares one
   column).
+* ``phase_<annotation name>``: one yes/no column per annotation that
+  overrides phases, e.g. ``phase_Excluded``, even if no cell has this
+  annotation.
 
 They are saved with **Export measurements...** (which offers to evaluate all
-cells first) or when you save the tables. The rules themselves (not the
-evaluated values) are saved in the configuration.
+cells first) or when you save the tables. The rules and the
+**Overrides phases** option of the annotations (not the evaluated values) are
+saved in the configuration.
 
 
 Configurations
@@ -548,11 +634,15 @@ A configuration stores your setup, so you can reuse it on other experiments:
 
 * the inputs (Images folders, displayed and overlay channels, segmentation
   file);
-* the plotted columns of both plot modes, **Normalize measurements (0-1)**
-  and conditional formatting (custom column colors are not saved);
+* the plotted columns of both plot modes, **Normalize measurements (0-1)**,
+  conditional formatting and custom column colors;
 * measurement processing recipes and combine equations;
-* time point identifiers, custom annotations and their predictors;
-* phase rules, phase colors and automatic phase evaluation.
+* time point identifiers, custom annotations (including their
+  **Overrides phases** option) and their predictors;
+* phase rules, phase colors and automatic phase evaluation;
+* whether frames after the last analyzed frame are ignored, and up to which
+  frame the measurement steps were calculated in each Position (see
+  `Partially analyzed videos`_).
 
 The time points, annotations and phases of the cells are **not** stored in the
 configuration, but in the tables.
@@ -582,9 +672,11 @@ Premade configurations are ready-made templates shipped with Cell-ACDC, for
 example:
 
 * ``fucci_cell_cycle.json``: cell cycle phases (G1, S Early, S, S Late, G2,
-  M, and "arrested") from the two FUCCI reporters (Cdt1 and Geminin), with background
+  M) from the two FUCCI reporters (Cdt1 and Geminin), with background
   correction, min-max normalization, smoothing, ramp detection, time point
-  predictors, the "Arrested" and "Excluded" annotations and phase rules.
+  predictors and phase rules. Its "Excluded" and "Arrested" annotations
+  override phases: annotated cells get the phase "Excluded" or "Arrested" on
+  every frame ("Excluded" wins if a cell has both).
 * ``example_two_channel_ratio.json``: a simple example that plots two
   channels and their ratio (a combined measurement).
 
@@ -597,8 +689,8 @@ experiment folder; the **Set up premade configuration** dialog then asks:
 2. the values of the inputs (e.g., background intensities and normalization
    constants). Click the info buttons for an explanation of each value. For
    FUCCI, **Calculate background values...** runs the launcher utility
-   **Utilities > Misc > Compute background intensity outside of segmented
-   objects...** on the selected experiment and fills the values, while
+   **Utilities > Measurements > Compute background intensity outside of
+   segmented objects...** on the selected experiment and fills the values, while
    **Load calculated background values...** reads a summary table saved
    before (e.g., of another experiment);
 3. which channel to display as base image (for FUCCI, typically the phase
@@ -660,7 +752,7 @@ shortcuts of the viewer tools.
       - Toggle the maximum z-projection
     * - :kbd:`Alt+P`
       - Evaluate the phases of the displayed cell with the phase translator
-        rules
+        (rules and annotations that override phases)
     * - :kbd:`Shift+S` / :kbd:`Alt+Shift+S`
       - Shuffle the colormap of the segmentation masks
     * - :kbd:`Esc`
@@ -708,9 +800,23 @@ Troubleshooting
     eligibility formula is true for the cell. Apply the evaluation again
     after correcting the time points (or enable automatic evaluation).
 
+**A cell has the name of an annotation as phase on every frame.**
+    The cell has a custom annotation with the **Overrides phases** option,
+    which takes precedence over the phase rules (see `How it works`_).
+    Remove the annotation from the cell, or turn the option off in the
+    annotation's dialog (right-click its toolbar button), and evaluate the
+    phases again.
+
 **The table was changed in the main GUI.**
     Click **Reload table** (:kbd:`F5`). Your time points, annotations,
     visited cells and phases are kept.
+
+**The last frames have no time points, phases or processed values.**
+    These frames are after the last frame analyzed in the main GUI and are
+    ignored by the calculations (shaded gray in the plot). Annotate the
+    frames in the main GUI and reload the table, or uncheck **Annotations >
+    Ignore frames after the last analyzed frame** (see
+    `Partially analyzed videos`_).
 
 **A column is missing from the list.**
     Only numerical and yes/no columns can be plotted; text columns are kept

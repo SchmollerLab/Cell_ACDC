@@ -17,6 +17,7 @@ from qtpy.QtWidgets import (
 
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc import measurements_viewer, widgets
+from cellacdc import measurements_viewer_utils
 
 
 @pytest.fixture(scope='module')
@@ -706,7 +707,7 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
     viewer.measurementsAxes = {'X': '', 'Y': ''}
     viewer.normalizeCheckbox.setChecked(False)
     load_position = Mock(return_value=viewer.data[0])
-    monkeypatch.setattr(measurements_viewer, 'load_position', load_position)
+    monkeypatch.setattr(measurements_viewer_utils, 'load_position', load_position)
     monkeypatch.setattr(
         measurements_viewer, 'get_channels_and_segm_endnames',
         Mock(return_value=(['phase'], ['segm_custom']))
@@ -766,7 +767,7 @@ def test_loading_failure_preserves_current_data(
         Mock(return_value=(channels, segmentations))
     )
     monkeypatch.setattr(
-        measurements_viewer, 'load_position', Mock(side_effect=OSError('Cannot read'))
+        measurements_viewer_utils, 'load_position', Mock(side_effect=OSError('Cannot read'))
     )
     error = Mock()
     set_data = Mock()

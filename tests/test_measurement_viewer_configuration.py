@@ -1898,6 +1898,40 @@ def test_conditional_formatting_is_saved_and_loaded(viewer, tmp_path, monkeypatc
     assert not viewer.hasUnsavedConfiguration()
 
 
+def test_custom_signal_colors_are_saved_and_loaded(
+        viewer, tmp_path, monkeypatch):
+    _, path = load_clean_workflow(viewer, tmp_path)
+    monkeypatch.setattr(
+        measurements_viewer.QColorDialog, 'getColor',
+        Mock(return_value=measurements_viewer.QColor('#123456'))
+    )
+    viewer.changeSignalColor('final')
+    assert viewer.configuration()['measurements_colors'] == {
+        'final': '#123456'
+    }
+    assert viewer.hasUnsavedConfiguration()
+    assert viewer.saveConfiguration()
+    assert json.loads(path.read_text())['measurements_colors'] == {
+        'final': '#123456'
+    }
+    viewer.measurementsColors = {}
+    monkeypatch.setattr(viewer, 'askSaveBeforeLoading', Mock(return_value=True))
+    assert viewer.loadConfiguration(filepath=str(path))
+    assert pg_color_name(viewer.getSignalColor('final')) == '#123456'
+    assert not viewer.hasUnsavedConfiguration()
+
+
+@pytest.mark.parametrize('bad', [
+    [], {'': '#00ff00'}, {'a': 'green'}, {'a': '#00ff0'}, {'a': [0, 255, 0]},
+])
+def test_invalid_signal_colors_are_rejected(viewer, tmp_path, bad):
+    load_clean_workflow(viewer, tmp_path)
+    configuration = viewer.configuration()
+    configuration['measurements_colors'] = bad
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateConfiguration(configuration)
+
+
 def test_conditional_formatting_dialog(app, monkeypatch):
     warnings = []
     monkeypatch.setattr(
@@ -1943,6 +1977,10 @@ def test_fucci_template_formats_reporters_by_ramp():
         {'condition': 'mCherry_ramp == 1', 'color': 'lighter'},
         {'condition': 'mCherry_ramp == -1', 'color': 'darker'},
     ]
+    # Geminin (GFP) reporter plotted in green, Cdt1 (mCherry) in red
+    assert result['measurements_colors'] == {
+        'GFP_fucci': '#2ecc40', 'mCherry_fucci': '#e8384f'
+    }
 
 
 def test_formatting_condition_editor(app):

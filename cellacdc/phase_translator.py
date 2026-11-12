@@ -1,10 +1,11 @@
 """Ordered, per-cell translation of time point boundaries into phases.
 
 Rules are listed in descending priority and each rule has its own
-eligibility criteria. Every cell is checked against the rules in order and
-gets its phases from the first rule it is eligible for; a cell that is not
-eligible for a rule moves on to the next one. A cell is eligible for a rule
-when all of these hold, checked in this order:
+eligibility criteria. Every cell that no annotation overrides (see below) is
+checked against the rules in order and gets its phases from the first rule
+it is eligible for; a cell that is not eligible for a rule moves on to the
+next one. A cell is eligible for a rule when all of these hold, checked in
+this order:
 
 1. Each of the rule's boundary time points is marked exactly once in the
    cell, and their frames increase in the configured order. A boundary
@@ -36,11 +37,41 @@ Rules are dictionaries with these fields:
   For boundaries at frames 2 and 5, names ``['G1', 'S', 'G2']`` assign
   G1 before frame 2, S at frames 2 through 4, and G2 from frame 5 onward.
   A rule without boundaries has one interval covering the whole cell, which
-  makes it a fallback (e.g. ``['Arrested']`` with a formula).
+  makes it a fallback (e.g. ``['G1']`` as the last rule, or a name such as
+  ``['Small']`` with an eligibility formula).
+
+Annotations can also override the phases (``annotation_overrides``: the
+names of the measurements viewer's custom annotations with the "Overrides
+phases" option, in toolbar order). They are checked before the rules: a cell
+whose annotation column is truthy (``parse_flags``) in at least one row gets
+the annotation's name, verbatim, as its phase on all its rows, e.g.
+``'Arrested'`` or ``'Excluded'`` for the whole cell, and no rule is checked
+for it. The first override in the list that is set in the cell wins. The
+rules assign the phases of the remaining cells. Each override always adds
+its boolean ``phase_<name>`` output (sharing it with a rule phase of the same
+name); an override whose column is missing is skipped with a warning.
+Evaluation needs at least one rule or one override, except to clear phases:
+without either, evaluating a table that has phase outputs (owned or
+recognized, see below) resets the phases of the selected cells to ``''``
+and drops the ``phase_<name>`` outputs no cell uses anymore (e.g. after the
+last overriding annotation was removed from a configuration without rules).
 
 Evaluation returns a new position table with a shared ``phase`` string column
 and boolean ``phase_<name>`` columns. It does not modify or save the input table.
 Unassigned rows have an empty phase (``''``).
+
+Optionally, evaluation ignores the frames after the last analyzed frame of
+the position (``last_frame``, e.g. the last cell cycle annotated or tracked
+frame). These rows are not analyzed: their ``phase`` is ``''`` and every
+``phase_<name>`` is False for all cells, including cells that are not
+re-evaluated (no phase after the last analyzed frame). Boundaries and
+required annotations marked after ``last_frame`` are ignored (a boundary
+marked only there counts as missing), the eligibility formula sees only the
+analyzed rows with ``SizeT`` clipped to ``last_frame + 1``, the last interval
+stops at ``last_frame`` and cells without analyzed rows stay unassigned. In
+the same way, an overriding annotation counts only when it is set in an
+analyzed row and assigns its name only up to ``last_frame``. The returned
+table still keeps every row.
 
 Output ownership is not stored in files: ``existing_output_columns`` recognizes
 outputs of a saved or exported table by their values, so they can be
@@ -56,11 +87,14 @@ values. Call ``normalize_loaded_outputs`` on a freshly loaded table to
 restore unassigned phases to ``''``, recovered names to strings and
 recognized marker columns to bool.
 
-``phase_names`` lists the distinct phase names of the rules and
-``phase_colors`` resolves their display colors (``#rrggbb``): user overrides
-first, otherwise the colorblind-friendly Okabe-Ito palette by name order
-(``DEFAULT_PHASE_COLORS``: no black and vermillion last, because red is
-reserved for the current frame line), then evenly spaced hues that skip red.
+``phase_names`` lists the distinct phase names of the rules (by first use),
+then the names of the overriding annotations that are not listed yet, so
+the default colors of the rule phases do not depend on the overrides.
+``phase_colors`` resolves their display colors (``#rrggbb``): colors chosen
+by the user (its ``overrides`` argument) first, otherwise the
+colorblind-friendly Okabe-Ito palette by name order (``DEFAULT_PHASE_COLORS``:
+no black and vermillion last, because red is reserved for the current frame
+line), then evenly spaced hues that skip red.
 """
 import colorsys
 import re
@@ -76,15 +110,32 @@ from .timepoint_predictors import (
 )
 
 
-def validate_rules(rules: list[dict[str, Any]]) -> None:
+def validate_rules(
+        rules: list[dict[str, Any]],
+        annotation_overrides: Iterable[str] = ()
+    ) -> None:
     """Validate serialized rule structure and reject input/output name clashes.
 
-    An empty rule list is valid for a saved, unconfigured translator, but cannot
-    be evaluated. Input availability and per-cell boundary order are checked
-    against the measurements later, during evaluation.
+    ``annotation_overrides`` are the names of the annotations that override
+    phases (a list or tuple of unique nonempty strings, see the module
+    docstring); they are inputs and add ``phase_<name>`` outputs, so they are
+    included in the clash check. An empty rule list is valid for a saved,
+    unconfigured translator; it can be evaluated only together with
+    annotation overrides, or to clear existing phases (see `evaluate`).
+    Input availability and per-cell boundary order are
+    checked against the measurements later, during evaluation.
     """
     if not isinstance(rules, list):
         raise ValueError('Phase translator rules must be a list.')
+    if (
+        not isinstance(annotation_overrides, (list, tuple))
+        or any(not isinstance(name, str) or not name
+               for name in annotation_overrides)
+        or len(set(annotation_overrides)) != len(annotation_overrides)
+    ):
+        raise ValueError(
+            'Annotations overriding phases must have unique nonempty names.'
+        )
     names = set()
     for rule in rules:
         if not isinstance(rule, dict):
@@ -119,25 +170,40 @@ def validate_rules(rules: list[dict[str, Any]]) -> None:
     inputs = {
         column for rule in rules
         for column in rule['timepoints'] + rule['annotations']
-    }
-    if inputs.intersection(output_columns(rules)):
+    } | set(annotation_overrides)
+    if inputs.intersection(output_columns(rules, annotation_overrides)):
         raise ValueError('Phase output columns cannot be required inputs.')
 
 
-def output_columns(rules: list[dict[str, Any]]) -> set[str]:
-    """Return output names, sharing a boolean column for repeated phase names."""
+def output_columns(
+        rules: list[dict[str, Any]],
+        annotation_overrides: Iterable[str] = ()
+    ) -> set[str]:
+    """Return output names, sharing a boolean column for repeated phase names.
+
+    Each annotation overriding phases adds its ``phase_<name>`` column.
+    """
     return {'phase'} | {
         f'phase_{phase}' for rule in rules for phase in rule['phases'] if phase
-    }
+    } | {f'phase_{name}' for name in annotation_overrides}
 
 
-def phase_names(rules: list[dict[str, Any]]) -> list[str]:
-    """Return the nonempty phase names of all rules, ordered by first use."""
+def phase_names(
+        rules: list[dict[str, Any]],
+        annotation_overrides: Iterable[str] = ()
+    ) -> list[str]:
+    """Return the nonempty phase names of all rules, ordered by first use,
+    followed by the names of the annotations overriding phases that are not
+    listed yet (so adding an override does not shift the default colors of
+    the rule phases)."""
     names = {}
     for rule in rules:
         for phase in rule.get('phases', []):
             if phase:
                 names.setdefault(phase, None)
+    for name in annotation_overrides:
+        if name:
+            names.setdefault(name, None)
     return list(names)
 
 
@@ -524,8 +590,9 @@ class PhaseEvaluation:
 
     ``table`` retains the source layout and all non-translator measurements.
     ``columns`` tracks translator-owned outputs for subsequent evaluations.
-    ``warnings`` reports skipped rules with missing columns and cells left
-    unmatched because of duplicate boundaries; these do not abort evaluation.
+    ``warnings`` reports skipped rules and overriding annotations with missing
+    columns and cells left unmatched because of duplicate boundaries; these do
+    not abort evaluation.
     """
     table: pd.DataFrame
     columns: set[str]
@@ -535,11 +602,13 @@ class PhaseEvaluation:
 def evaluate(
         df: pd.DataFrame, rules: list[dict[str, Any]],
         IDs: Iterable[int] | None = None, SizeT: int | None = None,
-        owned_columns: Iterable[str] = ()
+        owned_columns: Iterable[str] = (), last_frame: int | None = None,
+        annotation_overrides: Iterable[str] = ()
     ) -> PhaseEvaluation:
-    """Assign phases to each selected cell from the first rule it is eligible
-    for (boundaries, required annotations, then the rule's own eligibility
-    formula; see the module docstring).
+    """Assign phases to each selected cell: the name of the first annotation
+    overriding phases that is set in the cell, otherwise the phases of the
+    first rule it is eligible for (boundaries, required annotations, then the
+    rule's own eligibility formula; see the module docstring).
 
     Parameters
     ----------
@@ -548,7 +617,10 @@ def evaluate(
         cells. Accepts a (frame_i, Cell_ID) index or those columns directly.
         The original row order and index are preserved in the returned table.
     rules
-        Nonempty rule list in descending priority (see the module docstring).
+        Rule list in descending priority (see the module docstring). It may
+        be empty when ``annotation_overrides`` is not, or, to clear the
+        phases of the selected cells, when df has phase outputs (owned or
+        recognized).
     IDs
         Cells whose phases should be recalculated; None selects all cells.
         The full df remains available to predictors that use other-cell inputs.
@@ -558,31 +630,48 @@ def evaluate(
     owned_columns
         Previously generated output names tracked by the viewer for this
         position. These may be replaced or removed, unlike unrelated columns.
+    last_frame
+        Last analyzed frame of the position, or None (default) to analyze
+        every frame. Rows with ``frame_i > last_frame`` get an empty phase
+        and False markers for all cells (also cells not in ``IDs``); their
+        boundaries and annotations are ignored, the eligibility formula
+        receives only the analyzed rows and
+        ``SizeT = min(SizeT, last_frame + 1)``, and selected cells without
+        analyzed rows stay unassigned. The returned table keeps all rows.
+    annotation_overrides
+        Names of the annotation columns that override phases, in priority
+        order (list or tuple of unique nonempty names). Each selected cell
+        with a truthy value (``parse_flags``) in at least one analyzed row of
+        such a column gets the annotation's name as phase on all its analyzed
+        rows, taken from the first override set in the cell; the rules are
+        applied only to the other cells. A missing column gives a warning.
 
     Returns
     -------
     PhaseEvaluation
         Updated table, retained output names and nonfatal warnings. Unmatched
-        selected cells have empty phases; unselected cells keep their phases.
+        selected cells have empty phases; unselected cells keep their phases
+        (with ``last_frame``, only up to that frame).
         A matching rule owns the whole cell, including unnamed intervals:
         blank phase names do not fall through to a lower-priority rule.
 
     Raises
     ------
     ValueError
-        Invalid rules or target cells, conflicting output column names, or
-        predictor evaluation failures. No changes are made to df on failure.
+        Invalid rules, overrides or target cells, neither rules nor
+        overrides for a table without phase outputs, conflicting output
+        column names, or predictor evaluation failures. No changes are made
+        to df on failure.
     """
-    validate_rules(rules)
-    if not rules:
-        raise ValueError('Add at least one phase rule before applying evaluation.')
+    validate_rules(rules, annotation_overrides)
+    overrides = list(annotation_overrides)
     # Flatten for row lookup without losing positional alignment with df.
     # Only the rule inputs are needed here (predictors receive df itself), so
     # avoid copying every measurement of the position.
     inputs = {
         column for rule in rules
         for column in rule['timepoints'] + rule['annotations']
-    }
+    } | set(overrides)
     flat = CellTable.flatten(
         df.loc[:, df.columns.isin(inputs | {'frame_i', 'Cell_ID'})]
     )
@@ -596,8 +685,14 @@ def evaluate(
             'No measurement rows for selected cells: '
             + ', '.join(str(ID) for ID in sorted(missing_ids)) + '.'
         )
+    frames = flat['frame_i'].to_numpy()
+    cell_ids = flat['Cell_ID'].to_numpy()
+    # Rows after the last analyzed frame are ignored by every calculation and
+    # keep empty outputs; the "No measurement rows" check above still uses
+    # the whole table, so selecting such a cell is not an error.
+    analyzed = None if last_frame is None else frames <= last_frame
     target = flat['Cell_ID'].isin(target_ids).to_numpy()
-    columns = output_columns(rules)
+    columns = output_columns(rules, overrides)
     owned = set(owned_columns)
     # Normalize the phase strings once; they serve both to recognize outputs
     # of a saved table and as the starting phases. Boolean columns already
@@ -606,6 +701,13 @@ def evaluate(
     owned |= _recognized_outputs(
         df, phase_strings, known=owned if 'phase' in owned else ()
     )
+    if not rules and not overrides and 'phase' not in owned:
+        # Without rules and overrides, evaluation can only clear the phases
+        # of a table that has phase outputs
+        raise ValueError(
+            'Add at least one phase rule (or a custom annotation that '
+            'overrides phases) before applying evaluation.'
+        )
     result = df.copy()
     if 'phase' not in result:
         result['phase'] = ''
@@ -619,6 +721,9 @@ def evaluate(
     # Reset only the requested cells. Existing phases on other cells also
     # determine which old boolean outputs must survive this evaluation.
     phase_values[target] = ''
+    if analyzed is not None:
+        # No phase after the last analyzed frame, for every cell.
+        phase_values[~analyzed] = ''
     retained = columns | {
         f'phase_{phase}' for phase in pd.unique(phase_values) if phase
     }
@@ -631,8 +736,21 @@ def evaluate(
     pending = target_ids.copy()
     # Positional row indices let assignments preserve even an unsorted index.
     cell_rows = flat.groupby('Cell_ID', sort=False).indices
-    frames = flat['frame_i'].to_numpy()
-    cell_ids = flat['Cell_ID'].to_numpy()
+    predict_df = df
+    predict_SizeT = SizeT
+    if analyzed is not None:
+        # Only analyzed rows count for boundaries, annotations, the formula
+        # and the assigned intervals. Cells without analyzed rows are not
+        # evaluated (a fallback rule without boundaries would match them).
+        target = target & analyzed
+        pending.intersection_update(cell_ids[target].tolist())
+        cell_rows = {
+            ID: rows[analyzed[rows]] for ID, rows in cell_rows.items()
+        }
+        predict_df = df.iloc[np.flatnonzero(analyzed)]
+        predict_SizeT = (
+            last_frame + 1 if SizeT is None else min(SizeT, last_frame + 1)
+        )
     # Cache of per-column facts used by the eligibility checks. For a boundary
     # column: how many rows each target cell has marked and its first marked
     # frame (marked_frames). For an annotation column: which target cells have
@@ -663,6 +781,24 @@ def evaluate(
 
     duplicate_cells = set()
     warnings = []
+    # Annotations overriding phases come before the rules: a cell set in at
+    # least one (analyzed) row of such a column gets the annotation's name on
+    # all its analyzed rows, and the first override in the list wins. These
+    # cells leave `pending`, so no rule is checked for them (and they never
+    # cause duplicate time point warnings).
+    for name in overrides:
+        if not pending:
+            break
+        if name not in flat.columns:
+            warnings.append(
+                f'Annotation "{name}" overriding phases skipped: '
+                'missing column.'
+            )
+            continue
+        overridden = pending.intersection(present_cells(name))
+        for ID in overridden:
+            phase_values[cell_rows[ID]] = name
+        pending.difference_update(overridden)
     # Iterate over each rule and apply it to the eligible cells, breaking
     # early if all Cells have had a phase assigned, or if rules are exhausted.
     for rule in rules:
@@ -706,7 +842,7 @@ def evaluate(
         matches = (
             set(eligible) if predictor['type'] == PREDICTOR_NONE else
             set(CustomAnnotationPredictor.predict(
-                df, predictor, IDs=eligible, SizeT=SizeT
+                predict_df, predictor, IDs=eligible, SizeT=predict_SizeT
             ))
         )
         for ID in matches:

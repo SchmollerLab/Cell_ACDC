@@ -133,6 +133,10 @@
   ],
   "measurements_axes": {"X": "{GEMININ}_fucci", "Y": "{CDT1}_fucci"},
   "normalize_measurements": false,
+  "measurements_colors": {
+    "{GEMININ}_fucci": "#2ecc40",
+    "{CDT1}_fucci": "#e8384f"
+  },
   "conditional_formatting": {
     "{GEMININ}_fucci": [
       {"condition": "`{GEMININ}_ramp` == 1", "color": "lighter"},
@@ -209,6 +213,18 @@
   ],
   "custom_annotations": [
     {
+      "name": "Excluded",
+      "type": "Single time-point",
+      "symbol": "'s' square",
+      "symbolColor": [255, 0, 0, 255],
+      "shortcut": "D",
+      "description": "Cell to be excluded from analysis.",
+      "keepActive": true,
+      "isHideChecked": true,
+      "autoApply": false,
+      "overridesPhases": true
+    },
+    {
       "name": "Arrested",
       "type": "Single time-point",
       "symbol": "'s' square",
@@ -218,6 +234,7 @@
       "keepActive": true,
       "isHideChecked": true,
       "autoApply": true,
+      "overridesPhases": true,
       "predictor": {
         "type": "equation",
         "equation": "(COUNT(`{GEMININ}_fucci`) >= 180) & (STD(`{GEMININ}_fucci`) < 0.0008 * COUNT(`{GEMININ}_fucci`) * abs(MEAN(`{GEMININ}_fucci`)))",
@@ -230,24 +247,9 @@
           "condition": "COUNT(Cell_ID_other) == 0", "condition_mode": "all"
         }
       }
-    },
-    {
-      "name": "Excluded",
-      "type": "Single time-point",
-      "symbol": "'s' square",
-      "symbolColor": [255, 0, 0, 255],
-      "shortcut": "D",
-      "description": "Cell to be excluded from analysis.",
-      "keepActive": true,
-      "isHideChecked": true,
-      "autoApply": false
     }
   ],
   "phase_translator_rules": [
-    {
-      "name": "Arrested", "predictor": {"type": "none"},
-      "timepoints": [], "annotations": ["Arrested"], "phases": ["arrested"]
-    },
     {
       "name": "Full_cycle", "predictor": {"type": "none"},
       "timepoints": ["timepoint_G1_S", "timepoint_Cdt1_peak", "timepoint_Crossing", "timepoint_G2_start", "timepoint_M_start"],

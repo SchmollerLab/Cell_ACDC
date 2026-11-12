@@ -15,7 +15,7 @@ import pyqtgraph as pg
 import re
 import traceback
 from functools import partial
-from qtpy.QtCore import Signal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor, QKeySequence
 from qtpy.QtWidgets import (
     QAbstractItemView,
@@ -2331,9 +2331,15 @@ PHASE_TRANSLATOR_HELP = (
         'for each cell the first rule (from the top) whose formula and '
         'requirements pass supplies its phases. Each checked time point '
         'must occur exactly once in the cell, in the boundary order.',
+        'Custom annotations with the option <b>Overrides phases</b> (set it '
+        'when adding or editing the annotation) take precedence over the '
+        'rules: an annotated cell gets the annotation name as its phase on '
+        'every frame (e.g., "Arrested" or "Excluded"). If a cell has '
+        'several of them, the first annotation in the toolbar wins. The '
+        'rules apply to the other cells.',
         'Click <b>Apply phase evaluation</b> on the displayed cell or on all '
         'cells, or check the automatic evaluation to update the phases '
-        'whenever time points change.',
+        'whenever time points or annotations change.',
         'The phases are drawn as a colored band below the time course and '
         'color the Measurement vs Measurement points (change the colors in '
         '<b>Phase colors</b>). <b>Export measurements...</b> saves the '
@@ -2344,17 +2350,24 @@ PHASE_TRANSLATOR_HELP = (
 
 
 class PhaseTranslatorDialog(QDialog):
-    """Manage phase rules in descending priority, without editing the table."""
+    """Manage phase rules in descending priority, without editing the table.
+
+    ``annotationOverrides`` are the names of the custom annotations with
+    the "Overrides phases" option (toolbar order). They are not edited
+    here: the dialog lists them, gives them color buttons and allows
+    applying the evaluation without rules.
+    """
     sigApply = Signal(object, bool)
 
     def __init__(
             self, rules, timepoints, annotations, options, parent=None,
-            phaseColors=None
+            phaseColors=None, annotationOverrides=()
         ):
         import copy
         super().__init__(parent)
         self.cancel = True
         self.rules = copy.deepcopy(rules)
+        self.annotationOverrides = list(annotationOverrides)
         # User-chosen colors {phase name: '#rrggbb'}; others use defaults
         self.phaseColors = dict(phaseColors or {})
         self.phaseColorButtons = {}
@@ -2376,14 +2389,15 @@ class PhaseTranslatorDialog(QDialog):
             button.clicked.connect(callback)
             controls.addWidget(button)
         self.autoApplyCheckbox = QCheckBox(
-            'Automatically evaluate phases when time points change or '
-            'phases are missing'
+            'Automatically evaluate phases when time points or annotations '
+            'change or phases are missing'
         )
         self.autoApplyCheckbox.setToolTip(
             'Re-evaluate the phases of a cell whenever its time points are '
-            'added, moved, removed or predicted, and evaluate displayed '
-            'cells without phases. Applied with Apply or OK; save the '
-            'viewer configuration to keep this option.'
+            'added, moved, removed or predicted or its custom annotations '
+            'change (annotated, removed or predicted), and evaluate '
+            'displayed cells without phases. Applied with Apply or OK; save '
+            'the viewer configuration to keep this option.'
         )
         applyButtons = QHBoxLayout()
         # Same icons as the "Apply" / "Apply to all Positions..." buttons
@@ -2417,13 +2431,36 @@ class PhaseTranslatorDialog(QDialog):
         layout = QVBoxLayout(self)
         info = QLabel(
             'Rules are evaluated from top to bottom for each cell. The first '
-            'rule whose formula and all requirements pass supplies its phases. '
+            'rule whose formula and all requirements pass supplies its phases '
+            '(cells with a custom annotation that overrides phases get the '
+            'annotation name instead). '
             'Apply updates the current position in memory; Export measurements '
             'saves the phase and phase_<name> columns. Save the viewer '
             'configuration to keep these rules.'
         )
         info.setWordWrap(True)
         layout.addWidget(info)
+        # Custom annotations with "Overrides phases" (edited with the
+        # annotation, not here)
+        self.overridesLabel = QLabel()
+        self.overridesLabel.setWordWrap(True)
+        self.overridesLabel.setTextFormat(Qt.RichText)
+        if self.annotationOverrides:
+            names = ', '.join(
+                f'<b>{html.escape(name)}</b>'
+                for name in self.annotationOverrides
+            )
+            firstWins = (
+                '; the first one in this list wins'
+                if len(self.annotationOverrides) > 1 else ''
+            )
+            self.overridesLabel.setText(
+                f'Cells annotated with {names} get that annotation as their '
+                'phase on every frame (custom annotation option "Overrides '
+                f'phases"{firstWins}); the rules apply to the other cells.'
+            )
+        self.overridesLabel.setVisible(bool(self.annotationOverrides))
+        layout.addWidget(self.overridesLabel)
         layout.addWidget(self.rulesList)
         layout.addLayout(controls)
         self.phaseColorsGroupbox = QGroupBox('Phase colors')
@@ -2451,9 +2488,13 @@ class PhaseTranslatorDialog(QDialog):
         )
 
     def currentPhaseColors(self):
-        """Colors {name: '#rrggbb'} of the current rules' phases."""
+        """Colors {name: '#rrggbb'} of the current rules' phases, then of
+        the annotations overriding phases."""
         return phase_translator.phase_colors(
-            phase_translator.phase_names(self.rules), self.phaseColors
+            phase_translator.phase_names(
+                self.rules, self.annotationOverrides
+            ),
+            self.phaseColors
         )
 
     def refreshPhaseColors(self):
@@ -2466,7 +2507,10 @@ class PhaseTranslatorDialog(QDialog):
         columns = 4
         for i, (name, color) in enumerate(colors.items()):
             button = widgets.myColorButton(color=color)
-            button.setToolTip(f'Color of phase "{name}"')
+            toolTip = f'Color of phase "{name}"'
+            if name in self.annotationOverrides:
+                toolTip += ' (custom annotation overriding phases)'
+            button.setToolTip(toolTip)
             button.sigColorChanged.connect(
                 partial(self.phaseColorChanged, name)
             )
@@ -2487,8 +2531,10 @@ class PhaseTranslatorDialog(QDialog):
             for index, rule in enumerate(self.rules)
         ])
         self.rulesList.setCurrentRow(row)
-        self.applyCellButton.setEnabled(bool(self.rules))
-        self.applyAllButton.setEnabled(bool(self.rules))
+        # Annotations overriding phases can be evaluated without rules
+        canApply = bool(self.rules or self.annotationOverrides)
+        self.applyCellButton.setEnabled(canApply)
+        self.applyAllButton.setEnabled(canApply)
         self.refreshPhaseColors()
 
     def ruleDialog(self, rule=None):

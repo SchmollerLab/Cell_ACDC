@@ -11,11 +11,14 @@ from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import QApplication, QLabel
 
 from cellacdc import apps, apps_measurements_viewer, gui_custom_annotations, measurements_viewer
+from cellacdc import measurements_viewer_utils
 from cellacdc.custom_annotation_predictors import (
     CustomAnnotationPredictor, DEFAULT_SHORTCUTS
 )
 from cellacdc.measurements_viewer import MeasurementsViewerWin
-from cellacdc.timepoint_predictors import CellFilter, TimepointPredictor
+from cellacdc.timepoint_predictors import (
+    CellFilter, TIMEPOINT_PREFIX, TimepointPredictor
+)
 
 
 load_configuration = MeasurementsViewerWin.loadConfiguration
@@ -281,6 +284,7 @@ def test_load_saved_annotation_restores_predictor_and_options(
     )
     saved['keepActive'] = False
     saved['isHideChecked'] = False
+    saved['overridesPhases'] = True
     selection = Mock(
         cancel=False, selectedItemsText=['Big'], _additionalButtons=[]
     )
@@ -293,12 +297,14 @@ def test_load_saved_annotation_restores_predictor_and_options(
         group = dialog.predictorGroupbox
         assert group.predictorType() != 'equation'
         assert not group.autoApplyCheckBox.isChecked()
+        assert not dialog.overridesPhasesToggle.isChecked()
         dialog.loadSavedAnnot()
         assert group.predictorType() == 'equation'
         assert group.equationLineEdit.text() == 'area > 12'
         assert group.autoApplyCheckBox.isChecked()
         assert not dialog.keepActiveToggle.isChecked()
         assert not dialog.hideAnnotTooggle.isChecked()
+        assert dialog.overridesPhasesToggle.isChecked()
         dialog.nameWidget.widget.setText('Big2')
         dialog.cancel = False
         dialog.clickedButton = dialog.okButton
@@ -314,8 +320,175 @@ def test_load_saved_annotation_restores_predictor_and_options(
         assert state['autoApply'] is True
         assert state['keepActive'] is False
         assert state['isHideChecked'] is False
+        assert state['overridesPhases'] is True
     finally:
         dialog.deleteLater()
+        app.processEvents()
+
+
+def accept_annotation_dialog(dialog):
+    """Run the OK path of `customAnnotationDialog.closeEvent`; returns
+    the resulting state."""
+    dialog.cancel = False
+    dialog.clickedButton = dialog.okButton
+    event = Mock()
+    dialog.closeEvent(event)
+    event.ignore.assert_not_called()
+    assert not dialog.cancel
+    return dialog.state
+
+
+@pytest.mark.parametrize('overrides', [False, True])
+def test_main_gui_annotation_dialog_has_no_overrides_phases_option(
+        app, monkeypatch, overrides
+    ):
+    """The "Overrides phases" option is viewer-only: the main GUI dialog
+    neither shows it nor adds the key, even when the state has it."""
+    state = annot_state()
+    if overrides:
+        state['overridesPhases'] = True
+    dialog = apps.customAnnotationDialog({}, state=state)
+    try:
+        assert dialog.overridesPhasesToggle is None
+        assert not any(
+            'Overrides phases' in label.text()
+            for label in dialog.findChildren(QLabel)
+        )
+        info = Mock()
+        monkeypatch.setattr(apps.widgets, 'myMessageBox', info)
+        dialog.showOptionsInfo()
+        assert 'Overrides phases' not in info.return_value.addText.call_args.args[0]
+        assert set(accept_annotation_dialog(dialog)) == {
+            'type', 'name', 'symbol', 'shortcut', 'description',
+            'keepActive', 'isHideChecked', 'symbolColor'
+        }
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+@pytest.mark.parametrize('saved', [None, False, True])
+def test_viewer_annotation_dialog_overrides_phases_option(
+        app, monkeypatch, saved
+    ):
+    """In the viewer the toggle is prefilled from the state (absent means
+    False) and the state always gets a strict bool."""
+    state = annot_state(predictor=equation('area > 12'))
+    if saved is not None:
+        state['overridesPhases'] = saved
+    dialog = apps.customAnnotationDialog(
+        {}, state=state, predictorOptions={}
+    )
+    try:
+        toggle = dialog.overridesPhasesToggle
+        assert toggle is not None
+        assert toggle.isChecked() is bool(saved)
+        assert any(
+            label.text() == 'Overrides phases: '
+            and 'first one' in label.toolTip()
+            for label in dialog.findChildren(QLabel)
+        )
+        info = Mock()
+        monkeypatch.setattr(apps.widgets, 'myMessageBox', info)
+        dialog.showOptionsInfo()
+        assert 'Overrides phases' in info.return_value.addText.call_args.args[0]
+        assert accept_annotation_dialog(dialog)['overridesPhases'] is bool(saved)
+        toggle.setChecked(not saved)
+        assert accept_annotation_dialog(dialog)['overridesPhases'] is (not saved)
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_new_viewer_annotation_does_not_override_phases(app):
+    dialog = apps.customAnnotationDialog({}, predictorOptions={})
+    try:
+        assert not dialog.overridesPhasesToggle.isChecked()
+        dialog.nameWidget.widget.setText('Big')
+        assert accept_annotation_dialog(dialog)['overridesPhases'] is False
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def phase_rule(name='Cycle', phases=('G1', 'S'), timepoints=('Start',)):
+    return {
+        'name': name, 'predictor': {'type': 'none'},
+        'timepoints': [f'{TIMEPOINT_PREFIX}{tp}' for tp in timepoints],
+        'annotations': [], 'phases': list(phases),
+    }
+
+
+def test_phase_translator_dialog_lists_annotation_overrides(app):
+    rules = [phase_rule(), phase_rule('Fallback', ['Other'], ())]
+    without = apps_measurements_viewer.PhaseTranslatorDialog(rules, [], [], {})
+    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+        rules, [], [], {}, phaseColors={'Excluded': '#123456'},
+        annotationOverrides=('Excluded', 'Arrested', 'G1')
+    )
+    try:
+        assert dialog.autoApplyCheckbox.text() == (
+            'Automatically evaluate phases when time points or annotations '
+            'change or phases are missing'
+        )
+        assert 'annotations' in dialog.autoApplyCheckbox.toolTip()
+        assert dialog.annotationOverrides == ['Excluded', 'Arrested', 'G1']
+        # Rule phases first (unchanged defaults), then the new override names
+        assert list(dialog.phaseColorButtons) == [
+            'G1', 'S', 'Other', 'Excluded', 'Arrested'
+        ]
+        rule_colors = without.currentPhaseColors()
+        colors = dialog.currentPhaseColors()
+        assert {name: colors[name] for name in rule_colors} == rule_colors
+        assert colors['Excluded'] == '#123456'
+        assert dialog.phaseColorButtons['Excluded'].color().name() == '#123456'
+        assert 'overriding' in dialog.phaseColorButtons['Arrested'].toolTip()
+        dialog.phaseColorButtons['Arrested'].setColor('#0000ff')
+        assert dialog.currentPhaseColors()['Arrested'] == '#0000ff'
+        assert without.overridesLabel.isHidden()
+        assert not dialog.overridesLabel.isHidden()
+        text = dialog.overridesLabel.text()
+        for name in dialog.annotationOverrides:
+            assert f'<b>{name}</b>' in text
+        assert 'first one' in text
+        assert 'Overrides phases' in apps_measurements_viewer.PHASE_TRANSLATOR_HELP
+        # Removing every rule keeps the override colors and Apply enabled
+        dialog.removeRule()
+        dialog.removeRule()
+        assert dialog.rules == []
+        assert list(dialog.phaseColorButtons) == ['Excluded', 'Arrested', 'G1']
+        assert dialog.currentPhaseColors()['Arrested'] == '#0000ff'
+        assert dialog.applyCellButton.isEnabled()
+        assert dialog.applyAllButton.isEnabled()
+        applied = Mock()
+        dialog.sigApply.connect(applied)
+        dialog.applyAllButton.click()
+        assert applied.call_args.args == ([], True)
+    finally:
+        without.deleteLater()
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_phase_translator_dialog_without_rules_or_overrides(app):
+    dialog = apps_measurements_viewer.PhaseTranslatorDialog(
+        [], [], [], {}, annotationOverrides=[]
+    )
+    single = apps_measurements_viewer.PhaseTranslatorDialog(
+        [], [], [], {}, annotationOverrides=['Arrested']
+    )
+    try:
+        assert not dialog.applyCellButton.isEnabled()
+        assert not dialog.applyAllButton.isEnabled()
+        assert dialog.overridesLabel.isHidden()
+        assert dialog.phaseColorButtons == {}
+        assert single.applyCellButton.isEnabled()
+        assert list(single.phaseColorButtons) == ['Arrested']
+        # "first one wins" only matters with several overrides
+        assert 'first one' not in single.overridesLabel.text()
+    finally:
+        dialog.deleteLater()
+        single.deleteLater()
         app.processEvents()
 
 
@@ -965,7 +1138,7 @@ def test_configuration_roundtrip(viewer, tmp_path, monkeypatch):
         Mock(return_value=(['GFP'], ['segm']))
     )
     monkeypatch.setattr(
-        measurements_viewer, 'load_position', Mock(return_value=posData)
+        measurements_viewer_utils, 'load_position', Mock(return_value=posData)
     )
     monkeypatch.setattr(viewer, 'setData', Mock())
     monkeypatch.setattr(viewer, 'setOverlayItemsOpacities', Mock())

@@ -18,6 +18,7 @@ from qtpy.QtGui import QColor, QKeySequence
 from qtpy.QtWidgets import QApplication, QWidget
 
 from cellacdc import measurements_viewer, qutils, widgets
+from cellacdc import measurements_viewer_utils
 from cellacdc.measurements_viewer import (
     MeasurementsViewerWin, SIGNAL_COLORS, signal_color
 )
@@ -389,6 +390,58 @@ def test_loading_data_blinks_cell_id_controls(app, monkeypatch, tmp_path, blinks
         app.processEvents()
 
 
+def test_navigate_box_aligns_labels_spinboxes_and_sliders(viewer, app):
+    """Labels, spin boxes and sliders of the Navigate box are each in their
+    own left-aligned grid column, also the overlay alpha sliders (added by
+    the viewer's `addAlphaScrollbar` override); the options are below."""
+    layout = viewer.bottomLeftLayout
+    alphaScrollBar = viewer.addAlphaScrollbar('GFP', SimpleNamespace())
+    alphaScrollBar.show()
+    alphaScrollBar.label.show()
+
+    def cell(widget):
+        row, col, _, _ = layout.getItemPosition(layout.indexOf(widget))
+        return row, col
+
+    rows = [
+        (viewer.t_label, viewer.navSpinBox, viewer.navigateScrollBar),
+        (viewer.zSliceCheckbox, viewer.zSliceSpinbox, viewer.zSliceScrollBar),
+        (viewer.idLabel, viewer.idSpinBox, viewer.idScrollBar),
+    ]
+    for label, spinbox, slider in rows:
+        assert cell(label)[1] == viewer.NAV_LABEL_COL
+        assert cell(spinbox)[1] == viewer.NAV_SPINBOX_COL
+        assert cell(slider)[1] == viewer.NAV_SLIDER_COL
+    for label in (alphaScrollBar.label, viewer.overlay_z_label):
+        assert cell(label)[1] == viewer.NAV_LABEL_COL
+    for slider in (alphaScrollBar, viewer.zSliceOverlay_SB):
+        assert cell(slider)[1] == viewer.NAV_SLIDER_COL
+    # Alpha sliders follow the Cell ID slider; the options are not in the grid
+    assert cell(alphaScrollBar)[0] == cell(viewer.idScrollBar)[0] + 1
+    assert layout.indexOf(viewer.followIDcheckbox) == -1
+    for col in range(viewer.NAV_NUM_COLS):
+        stretch = layout.columnStretch(col)
+        assert stretch == (1 if col == viewer.NAV_SLIDER_COL else 0)
+
+    viewer.show()
+    try:
+        app.processEvents()
+        visibleRows = [
+            (viewer.t_label, viewer.navSpinBox, viewer.navigateScrollBar),
+            (viewer.idLabel, viewer.idSpinBox, viewer.idScrollBar),
+            (alphaScrollBar.label, None, alphaScrollBar),
+        ]
+        for widgetsInColumn in zip(*visibleRows):
+            xs = {w.geometry().x() for w in widgetsInColumn if w is not None}
+            assert len(xs) == 1
+        assert (
+            viewer.followIDcheckbox.mapTo(viewer, viewer.followIDcheckbox.rect().topLeft()).y()
+            > alphaScrollBar.mapTo(viewer, alphaScrollBar.rect().topLeft()).y()
+        )
+    finally:
+        viewer.hide()
+
+
 def test_restarting_blink_restores_original_style(app):
     widget = QWidget()
     widget.setStyleSheet('color: blue')
@@ -540,7 +593,7 @@ def record_load_threads(monkeypatch):
         return count_objects(*args, **kwargs)
 
     monkeypatch.setattr(
-        measurements_viewer, 'load_position', recorded_load_position
+        measurements_viewer_utils, 'load_position', recorded_load_position
     )
     monkeypatch.setattr(
         measurements_viewer.core, 'count_objects_and_init_rps',
@@ -634,7 +687,7 @@ def test_load_configuration_loads_in_worker_thread_and_reports_errors(
     # A failure in the worker thread gives the same warning as before
     loaded = loading_window.data
     monkeypatch.setattr(
-        measurements_viewer, 'load_position',
+        measurements_viewer_utils, 'load_position',
         Mock(side_effect=OSError('Cannot read'))
     )
     error = Mock()
@@ -656,7 +709,7 @@ def test_reentrant_load_and_close_are_refused(
     from tests.test_measurement_viewer import make_timelapse_position
     images_path = make_timelapse_position(tmp_path)
     load_position = Mock(wraps=measurements_viewer.load_position)
-    monkeypatch.setattr(measurements_viewer, 'load_position', load_position)
+    monkeypatch.setattr(measurements_viewer_utils, 'load_position', load_position)
     nested = {}
 
     def askSaveBeforeLoading():
@@ -737,7 +790,7 @@ def test_load_is_refused_while_measurement_processing_runs(
     from tests.test_measurement_viewer import make_timelapse_position
     images_path = make_timelapse_position(tmp_path)
     load_position = Mock(wraps=measurements_viewer.load_position)
-    monkeypatch.setattr(measurements_viewer, 'load_position', load_position)
+    monkeypatch.setattr(measurements_viewer_utils, 'load_position', load_position)
     error = Mock()
     monkeypatch.setattr(loading_window, 'configurationError', error)
 

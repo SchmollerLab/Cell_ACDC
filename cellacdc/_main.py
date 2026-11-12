@@ -445,7 +445,8 @@ class mainWin(QMainWindow):
         measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
         measurementsMenu.addAction(self.generateMothBudTotTableAction) 
         measurementsMenu.addAction(self.launchMeasurementsViewerAction)
-        
+        measurementsMenu.addAction(self.computeBackgroundValuesAction)
+
         concatMenu = utilsMenu.addMenu('Concatenate')
         concatMenu.addAction(self.concatAcdcDfsAction)    
         if SPOTMAX_INSTALLED:
@@ -466,9 +467,6 @@ class mainWin(QMainWindow):
         dataPrepMenu.addAction(self.fucciPreprocessAction)
         dataPrepMenu.addAction(self.customPreprocessAction)
         dataPrepMenu.addAction(self.combineChannelsAction)
-        
-        miscMenu = utilsMenu.addMenu('Misc')
-        miscMenu.addAction(self.computeBackgroundValuesAction)
 
         utilsMenu.addAction(self.renameAction)
         utilsMenu.addAction(self.editMetadataAction)

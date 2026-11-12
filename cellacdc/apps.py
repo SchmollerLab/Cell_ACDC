@@ -226,8 +226,10 @@ class customAnnotationDialog(QDialog):
         state : dict, optional
             State of the annotation to modify.
         predictorOptions : dict, optional
-            If not None, add the predictor settings (measurements viewer). 
+            If not None, add the predictor settings (measurements viewer).
             See `apps_measurements_viewer._CustomAnnotationPredictorGroupbox`.
+            The viewer also gets the "Overrides phases" option (state key
+            'overridesPhases', always written as a bool).
         reservedShortcuts : dict, optional
             {key sequence text: used by} of shortcuts that cannot be used.
         existingNames : iterable of str, optional
@@ -369,11 +371,33 @@ class customAnnotationDialog(QDialog):
         optionsLayout.addWidget(colorButtonLabel, optRow, 1)
         optionsLayout.addWidget(self.colorButton, optRow, 2)
 
+        # Measurements viewer only: the annotation replaces the phases
+        # of the annotated cells (state key 'overridesPhases')
+        self.overridesPhasesToggle = None
+        if self.hasPredictor:
+            overridesPhasesTooltip = (
+                'Annotated cells get the annotation name as their phase on '
+                'every frame, regardless of the phase translator rules.\n'
+                'If a cell has several annotations with this option, the '
+                'first one in the list (toolbar order) wins.'
+            )
+            self.overridesPhasesToggle = widgets.Toggle()
+            self.overridesPhasesToggle.setToolTip(overridesPhasesTooltip)
+            overridesPhasesLabel = QLabel('Overrides phases: ')
+            overridesPhasesLabel.setToolTip(overridesPhasesTooltip)
+            optRow += 1
+            optionsLayout.addWidget(overridesPhasesLabel, optRow, 1)
+            optionsLayout.addWidget(self.overridesPhasesToggle, optRow, 2)
+
         if state is not None:
             self.keepActiveToggle.setChecked(state.get('keepActive', True))
             self.hideAnnotTooggle.setChecked(state.get('isHideChecked', True))
             if state.get('symbolColor') is not None:
                 self.colorButton.setColor(state['symbolColor'])
+            if self.overridesPhasesToggle is not None:
+                self.overridesPhasesToggle.setChecked(
+                    bool(state.get('overridesPhases', False))
+                )
 
         optionsGroupBox.setLayout(optionsLayout)
         layout.addWidget(optionsGroupBox, row, 1, alignment=Qt.AlignCenter)
@@ -522,6 +546,10 @@ class customAnnotationDialog(QDialog):
                 selectedAnnot.get('predictor'),
                 selectedAnnot.get('autoApply', False)
             )
+        if self.overridesPhasesToggle is not None:
+            self.overridesPhasesToggle.setChecked(
+                bool(selectedAnnot.get('overridesPhases', False))
+            )
 
     def warnNoItemsSelected(self):
         msg = widgets.myMessageBox(parent=self)
@@ -574,6 +602,14 @@ class customAnnotationDialog(QDialog):
         <b>Symbol color</b>: Choose color of the symbol that will be used
         to label annotated cell/object.
         """)
+        if self.overridesPhasesToggle is not None:
+            info = (f"""{info}<br><br>
+            <b>Overrides phases</b>: Annotated cells get the annotation
+            name as their <b>phase on every frame</b>, regardless of the
+            time point to phase translator rules (which apply only to the
+            other cells). If a cell has several annotations with this
+            option, the first one in the list (toolbar order) wins.
+            """)
         info = (f'{html_utils.paragraph(info)}')
         msg = widgets.myMessageBox()
         msg.setIcon()
@@ -711,6 +747,11 @@ class customAnnotationDialog(QDialog):
             self.state['predictor'] = predictor
             self.state['autoApply'] = (
                 self.predictorGroupbox.autoApplyCheckBox.isChecked()
+            )
+        if self.overridesPhasesToggle is not None:
+            # Always written: modifying an annotation replaces its state
+            self.state['overridesPhases'] = bool(
+                self.overridesPhasesToggle.isChecked()
             )
 
         if self.loop is not None:
