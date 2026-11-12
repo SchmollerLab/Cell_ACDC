@@ -107,18 +107,21 @@ class _ChannelData:
 class _PointsLayer:
     name: str
     
-    points_t_xyz: np.ndarray # (N, [t, x, y, z]) voxel coordinates
-    _label_ids: np.ndarray | None # (N, id) id in self._orig_lab
+    points_t_xyz: dict[int, np.ndarray] # {frame_i: (N, [x, y, z]) voxel coords}
     labels: list[str] | None
-    
+
     markers: vispy.scene.visuals.Markers
-    
+
     toolbutton: widgets.PointsLayerToolButton
     properties_dialog: apps.EditPointsLayerAppearanceDialog
     context_menu: widgets.PointsLayerContextMenu
-    
+
     df: pd.DataFrame | None=None
     text: vispy.scene.visuals.Text | None=None
+
+    # {frame_i: (N,) ID in VolumeRendererWindow._orig_lab of each point},
+    # filled lazily by VolumeRendererWindow._get_points_label_ids
+    label_ids_t: dict[int, np.ndarray] = field(default_factory=dict)
 
 @dataclass(slots=True)
 class LabelAnnotation:
@@ -1325,13 +1328,18 @@ class VolumeRendererWindow(QMainWindow):
             return
 
         markers.visible = points_layer.toolbutton.isChecked()
-        if self._orig_lab is not None:
-            visible_label_ids = [
-                int(cb.text()) 
+        label_ids = self._get_points_label_ids(
+            points_layer, frame_i, points_xyz
+        )
+        if label_ids is not None:
+            # Hide only the points belonging to hidden objects. Points
+            # outside of any object (ID 0) are always visible
+            hidden_label_ids = [
+                int(cb.text())
                 for cb in self._object_labels_list_buttongroup.buttons()
-                if cb.isChecked()
+                if not cb.isChecked()
             ]
-            visible = np.isin(points_layer._label_ids, visible_label_ids)
+            visible = ~np.isin(label_ids, hidden_label_ids)
             points_xyz = points_xyz[visible]
         
         markers.set_data(
@@ -1345,6 +1353,43 @@ class VolumeRendererWindow(QMainWindow):
         if update:
             self._canvas.update()
     
+    def _get_points_label_ids(
+            self,
+            points_layer: _PointsLayer,
+            frame_i: int,
+            points_xyz: np.ndarray
+        ) -> np.ndarray | None:
+        """Return the ID of the object each point of `points_xyz` (points
+        of `points_layer` at frame `frame_i`) falls into.
+
+        Each point is mapped to the voxel it is rendered in (rounded
+        coordinates, since voxel centers are at integer coordinates).
+        Points outside of any object, outside of the volume, or with
+        non-finite coordinates get ID 0.
+
+        Returns None if no labels are available for `frame_i`. Results are
+        cached per frame in `points_layer.label_ids_t`.
+        """
+        if self._orig_lab is None or frame_i >= len(self._orig_lab):
+            return None
+
+        label_ids = points_layer.label_ids_t.get(frame_i)
+        if label_ids is not None:
+            return label_ids
+
+        lab = self._orig_lab[frame_i]
+        zyx = np.asarray(points_xyz, dtype=float).reshape(-1, 3)[:, ::-1]
+        valid = np.all(np.isfinite(zyx), axis=1)
+        zyx = np.round(np.where(valid[:, np.newaxis], zyx, -1)).astype(int)
+        valid &= np.all((zyx >= 0) & (zyx < lab.shape), axis=1)
+
+        label_ids = np.zeros(len(zyx), dtype=lab.dtype)
+        zz, yy, xx = zyx[valid].T
+        label_ids[valid] = lab[zz, yy, xx]
+
+        points_layer.label_ids_t[frame_i] = label_ids
+        return label_ids
+
     def _toggle_points_layer(self, checked, points_layer=None):
         if points_layer is None:
             return
@@ -1394,6 +1439,13 @@ class VolumeRendererWindow(QMainWindow):
         ----------
         lut:  np.ndarray of {``ColorMap.BYTE``}, default=None
             The lookup table for the labels volume
+
+        Notes
+        -----
+        If the labels have more timepoints than the volumes already
+        displayed (e.g., the segmentation file has more frames than the
+        loaded channel), the extra timepoints at the end are cropped away.
+        The z-slices (and y, x) must still match.
         """
         if self._is_labels_set:
             self._logger_func(
@@ -1436,7 +1488,9 @@ class VolumeRendererWindow(QMainWindow):
 
         if self._data_shape is None:
             self._data_shape = lab.shape
-        
+
+        lab = self._crop_lab_extra_frames(lab)
+
         if lab.shape != self._data_shape:
             raise ValueError(
                 f'Labels array shape {lab.shape} does not match the current '
@@ -1475,6 +1529,33 @@ class VolumeRendererWindow(QMainWindow):
             self._set_voxel_size_strides_transform(voxel_size)
 
         self._is_labels_set = True
+
+    def _crop_lab_extra_frames(self, lab: np.ndarray) -> np.ndarray:
+        """Crop the timepoints of a 4D (T, Z, Y, X) labels array that exceed
+        the number of frames of the displayed volumes.
+
+        Only the time axis is cropped. If the other dimensions do not match
+        the viewer shape, `lab` is returned unchanged and the mismatch is
+        reported by the shape check in `set_labels`.
+        """
+        if self._data_shape is None or lab.ndim != 4:
+            return lab
+
+        num_frames = self._data_shape[0]
+        lab_num_frames = lab.shape[0]
+        if lab_num_frames <= num_frames:
+            return lab
+
+        if lab.shape[1:] != tuple(self._data_shape[1:]):
+            return lab
+
+        self._logger_func(
+            f'[WARNING]: Labels array has {lab_num_frames} frames while the '
+            f'displayed volumes have {num_frames} frames. The last '
+            f'{lab_num_frames - num_frames} frames of the labels will not '
+            'be displayed in the 3D viewer.'
+        )
+        return lab[:num_frames]
 
     def _init_frames_scrollbar(self, num_frames):
         self._frames_scrollbar.setVisible(num_frames > 1)
@@ -1761,15 +1842,6 @@ class VolumeRendererWindow(QMainWindow):
         if self._voxel_size_transform is not None:
             markers.transform = self._voxel_size_transform
         
-        _label_ids = None
-        if self._orig_lab is not None:
-            _label_ids = self._orig_lab[
-                frame_i,
-                points_xyz[:, 2], 
-                points_xyz[:, 1], 
-                points_xyz[:, 0], 
-            ]
-        
         ui_items = self._init_points_layer_ui_items(
             color=edge_color,
             size=size,
@@ -1781,9 +1853,8 @@ class VolumeRendererWindow(QMainWindow):
         
         points_layer = _PointsLayer(
             name=name,
-            points_t_xyz=points_t_xyz, 
-            _label_ids=_label_ids,
-            labels=labels, 
+            points_t_xyz=points_t_xyz,
+            labels=labels,
             markers=markers,
             toolbutton=toolbutton,
             properties_dialog=properties_dialog,
