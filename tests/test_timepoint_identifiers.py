@@ -12,6 +12,7 @@ from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
 from cellacdc import apps, apps_measurements_viewer, measurements_viewer, timepoint_predictors
+from cellacdc import measurements_viewer_utils
 from cellacdc.custom_annotation_predictors import CustomAnnotationPredictor
 from cellacdc.measurements_viewer import MeasurementsViewerWin, _TimepointLine, VISITED_COLUMN
 from cellacdc.timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
@@ -1166,7 +1167,7 @@ def test_viewed_cells_configuration_roundtrip(viewer, tmp_path, monkeypatch):
         measurements_viewer, 'get_channels_and_segm_endnames',
         Mock(return_value=(['GFP'], ['segm']))
     )
-    monkeypatch.setattr(measurements_viewer, 'load_position', Mock(return_value=posData))
+    monkeypatch.setattr(measurements_viewer_utils, 'load_position', Mock(return_value=posData))
     monkeypatch.setattr(
         viewer, 'selectConfigurationInput',
         lambda config: viewer.configurationInputOptions(config)[0]

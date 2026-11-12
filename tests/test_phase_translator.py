@@ -10,6 +10,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication, QPushButton
 
 from cellacdc import apps_measurements_viewer, measurements_viewer, phase_translator, widgets
+from cellacdc import measurements_viewer_utils
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TimepointIdentifier
@@ -492,6 +493,227 @@ def test_invalid_rules(invalid):
         phase_translator.validate_rules(invalid)
 
 
+# --- Annotations overriding phases ------------------------------------------
+
+def cell_phases(result, ID):
+    return result.table.xs(ID, level='Cell_ID')['phase'].tolist()
+
+
+def test_override_gets_annotation_name_on_all_frames(table):
+    # Set in one row of cell 1 only, which also has a duplicate boundary
+    table['Excluded'] = [0, 0, 1, 0] + [0] * 4
+    table.loc[(2, 1), f'{TIMEPOINT_PREFIX}Start'] = True
+    result = phase_translator.evaluate(
+        table, [rule()], annotation_overrides=['Excluded']
+    )
+    assert cell_phases(result, 1) == ['Excluded'] * 4
+    # Cells without the annotation fall through to the rules
+    assert cell_phases(result, 2) == ['G1', 'S', 'S', 'G2']
+    # The overridden cell is not checked by the rules: no duplicate warning
+    assert result.warnings == []
+    assert result.columns == {
+        'phase', 'phase_G1', 'phase_S', 'phase_G2', 'phase_Excluded'
+    }
+    marker = result.table['phase_Excluded']
+    assert marker.dtype == bool
+    assert marker.tolist() == [True] * 4 + [False] * 4
+
+
+@pytest.mark.parametrize('overrides, expected', [
+    (['Excluded', 'Arrested'], ['Excluded', 'Arrested']),
+    (['Arrested', 'Excluded'], ['Arrested', 'Arrested']),
+])
+def test_first_override_set_in_the_cell_wins(table, overrides, expected):
+    table['Excluded'] = [0, 0, 0, 1] + [0] * 4
+    table['Arrested'] = [1, 0, 0, 0] + [0, 1, 0, 0]
+    result = phase_translator.evaluate(
+        table, [rule()], annotation_overrides=overrides
+    )
+    assert cell_phases(result, 1) == [expected[0]] * 4
+    assert cell_phases(result, 2) == [expected[1]] * 4
+
+
+def test_override_flags_stored_as_strings(table):
+    table['Excluded'] = ['False', 'True', '0', 'False'] + ['0', 'False'] * 2
+    result = phase_translator.evaluate(
+        table, [rule()], annotation_overrides=['Excluded']
+    )
+    assert cell_phases(result, 1) == ['Excluded'] * 4
+    assert cell_phases(result, 2) == ['G1', 'S', 'S', 'G2']
+
+
+def test_override_only_for_selected_cells(table):
+    first = phase_translator.evaluate(table, [rule()])
+    first.table['Excluded'] = 1
+    result = phase_translator.evaluate(
+        first.table, [rule()], IDs=np.array([1], dtype=np.uint32),
+        owned_columns=first.columns, annotation_overrides=['Excluded']
+    )
+    assert cell_phases(result, 1) == ['Excluded'] * 4
+    # Not re-evaluated: keeps its phases although the annotation is set
+    assert cell_phases(result, 2) == ['G1', 'S', 'S', 'G2']
+    assert 'phase_Excluded' in result.columns
+    assert result.table['phase_S'].tolist() == [False] * 4 + [
+        False, True, True, False
+    ]
+
+
+def test_override_with_missing_column_warns(table):
+    result = phase_translator.evaluate(
+        table, [rule()], annotation_overrides=['Gone']
+    )
+    assert result.table['phase'].tolist() == ['G1', 'S', 'S', 'G2'] * 2
+    assert result.warnings == [
+        'Annotation "Gone" overriding phases skipped: missing column.'
+    ]
+    # Its output is still part of the translator outputs
+    assert 'phase_Gone' in result.columns
+    assert not result.table['phase_Gone'].any()
+
+
+def test_override_output_does_not_overwrite_unrelated_measurement(table):
+    table['Excluded'] = 1
+    table['phase_Excluded'] = 7
+    original = table.copy()
+    with pytest.raises(ValueError, match='overwrite existing measurements'):
+        phase_translator.evaluate(
+            table, [rule()], annotation_overrides=['Excluded']
+        )
+    pd.testing.assert_frame_equal(table, original)
+
+
+def test_overrides_without_rules(table):
+    table['Excluded'] = [0, 1, 0, 0] + [0] * 4
+    result = phase_translator.evaluate(
+        table, [], annotation_overrides=('Excluded',)
+    )
+    assert result.table['phase'].tolist() == ['Excluded'] * 4 + [''] * 4
+    assert result.columns == {'phase', 'phase_Excluded'}
+    assert result.warnings == []
+    with pytest.raises(ValueError, match='at least one phase rule'):
+        phase_translator.evaluate(table, [], annotation_overrides=[])
+
+
+def test_obsolete_override_outputs_are_removed(table, tmp_path):
+    table['Excluded'] = [0, 1, 0, 0] + [0] * 4
+    first = phase_translator.evaluate(
+        table, [rule()], annotation_overrides=['Excluded']
+    )
+    # Recognized again after export and reload
+    path = tmp_path / 'phases.csv'
+    first.table.to_csv(path)
+    loaded = pd.read_csv(path, index_col=['frame_i', 'Cell_ID'])
+    assert phase_translator.existing_output_columns(loaded) == {
+        'phase', 'phase_G1', 'phase_S', 'phase_G2', 'phase_Excluded'
+    }
+    # Still used by cell 1, which is not re-evaluated
+    kept = phase_translator.evaluate(
+        first.table, [rule()], IDs=[2], owned_columns=first.columns
+    )
+    assert cell_phases(kept, 1) == ['Excluded'] * 4
+    assert 'phase_Excluded' in kept.columns
+    # No longer configured and no longer used
+    for source, owned in ((first.table, first.columns), (loaded, ())):
+        result = phase_translator.evaluate(
+            source, [rule()], owned_columns=owned
+        )
+        assert 'phase_Excluded' not in result.table
+        assert 'phase_Excluded' not in result.columns
+        assert result.table['phase'].tolist() == ['G1', 'S', 'S', 'G2'] * 2
+
+
+def test_phase_names_output_columns_and_validation_with_overrides():
+    rules = [rule(), fallback()]
+    names = phase_translator.phase_names(
+        rules, ['Excluded', 'Other', 'Arrested']
+    )
+    # Rule phases first, so their default colors do not change
+    assert names == ['G1', 'S', 'G2', 'Other', 'Excluded', 'Arrested']
+    defaults = phase_translator.phase_colors(phase_translator.phase_names(rules))
+    colors = phase_translator.phase_colors(names)
+    assert {name: colors[name] for name in defaults} == defaults
+    assert phase_translator.phase_names([], ['Arrested']) == ['Arrested']
+    assert phase_translator.output_columns([rule()], ['Excluded']) == {
+        'phase', 'phase_G1', 'phase_S', 'phase_G2', 'phase_Excluded'
+    }
+    assert phase_translator.output_columns([], ('A',)) == {'phase', 'phase_A'}
+    # Valid: overrides only, a tuple, an override that is also a required
+    # annotation of a rule, a name with spaces
+    phase_translator.validate_rules([], ['Excluded'])
+    phase_translator.validate_rules(rules, ('Excluded', ' Arrested '))
+    phase_translator.validate_rules([rule()], ['Flag'])
+
+
+@pytest.mark.parametrize('rules, overrides', [
+    ([rule()], 'Excluded'),
+    ([rule()], {'Excluded'}),
+    ([rule()], ['']),
+    ([rule()], [None]),
+    ([rule()], ['Excluded', 'Excluded']),
+    # An override is an input; it cannot also be an output
+    ([rule()], ['phase']),
+    ([rule()], ['phase_G1']),
+    ([], ['X', 'phase_X']),
+    ([rule(annotations=['phase_Excluded'])], ['Excluded']),
+])
+def test_invalid_annotation_overrides(table, rules, overrides):
+    with pytest.raises(ValueError):
+        phase_translator.validate_rules(rules, overrides)
+    with pytest.raises(ValueError):
+        phase_translator.evaluate(table, rules, annotation_overrides=overrides)
+
+
+def test_overrides_match_per_cell_reference():
+    rng = np.random.default_rng(11)
+    n_cells, n_frames = 40, 8
+    tp = lambda name: f'{TIMEPOINT_PREFIX}{name}'
+    data = {
+        'frame_i': np.tile(np.arange(n_frames), n_cells),
+        'Cell_ID': np.repeat(np.arange(1, n_cells + 1), n_frames),
+    }
+    for name in ('A', 'B'):
+        data[tp(name)] = rng.random(n_cells * n_frames) < 1.5 / n_frames
+    complete = data['Cell_ID'] <= 20
+    for name, frame in (('A', 2), ('B', 5)):
+        data[tp(name)][complete] = data['frame_i'][complete] == frame
+    data['Flag'] = (data['Cell_ID'] % 2).astype(int)
+    for name, rate in (('Excl', 0.03), ('Arr', 0.04)):
+        data[name] = (rng.random(n_cells * n_frames) < rate).astype(int)
+    table = pd.DataFrame(data).sample(frac=1, random_state=5)
+    table = table.set_index(['frame_i', 'Cell_ID'])
+    rules = [
+        rule(name='AB', timepoints=[tp('A'), tp('B')], phases=['p0', 'p1', 'p2']),
+        rule(name='A', timepoints=[tp('A')], annotations=[], phases=['', 'a1']),
+    ]
+    overrides = ['Excl', 'Arr']
+    IDs = list(range(1, n_cells + 1, 2))
+    result = phase_translator.evaluate(
+        table, rules, IDs=IDs, annotation_overrides=overrides
+    )
+    # Reference: the rules' per-cell result, replaced by the first override
+    # set anywhere in the cell
+    expected, duplicates = _reference_phases(table, rules, IDs)
+    flat = table.reset_index()
+    overridden = {}
+    for ID, cell in flat.groupby('Cell_ID'):
+        for name in overrides:
+            if ID in IDs and cell[name].astype(bool).any():
+                overridden[ID] = name
+                break
+    expected = [
+        overridden.get(ID, phase)
+        for ID, phase in zip(flat['Cell_ID'], expected)
+    ]
+    duplicates = [ID for ID in duplicates if ID not in overridden]
+    assert result.table['phase'].tolist() == expected
+    assert result.warnings == [
+        'No phase rule could be applied to cells with duplicate time points: '
+        + ', '.join(str(ID) for ID in duplicates) + '.'
+    ] if duplicates else not result.warnings
+    # Both overrides and both rules assign phases
+    assert {'Excl', 'Arr', 'p0', 'a1'}.issubset(expected)
+
+
 def test_formula_failure_does_not_change_source(table):
     original = table.copy()
     with pytest.raises(ValueError):
@@ -762,7 +984,7 @@ def test_configuration_save_load_and_legacy(viewer, tmp_path, monkeypatch):
         measurements_viewer, 'get_channels_and_segm_endnames',
         Mock(return_value=(['GFP'], ['segm']))
     )
-    monkeypatch.setattr(measurements_viewer, 'load_position', Mock(return_value=pos))
+    monkeypatch.setattr(measurements_viewer_utils, 'load_position', Mock(return_value=pos))
     monkeypatch.setattr(
         viewer, 'selectConfigurationInput',
         lambda config: viewer.configurationInputOptions(config)[0]

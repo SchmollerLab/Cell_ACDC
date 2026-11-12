@@ -58,6 +58,7 @@ from .utils import splitVideoIntoFrameTiffs as utilSplitVideoTiffs
 from .utils import acdcOutputToCtcTable as utilAcdcToCtc
 from .utils import toTrackastraInputData as ultilToTrackastra
 from .utils import editMetadata as utilsEditMetadata
+from .utils import computeBackgroundValues as utilsComputeBackgroundValues
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -444,7 +445,8 @@ class mainWin(QMainWindow):
         measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
         measurementsMenu.addAction(self.generateMothBudTotTableAction) 
         measurementsMenu.addAction(self.launchMeasurementsViewerAction)
-        
+        measurementsMenu.addAction(self.computeBackgroundValuesAction)
+
         concatMenu = utilsMenu.addMenu('Concatenate')
         concatMenu.addAction(self.concatAcdcDfsAction)    
         if SPOTMAX_INSTALLED:
@@ -465,7 +467,7 @@ class mainWin(QMainWindow):
         dataPrepMenu.addAction(self.fucciPreprocessAction)
         dataPrepMenu.addAction(self.customPreprocessAction)
         dataPrepMenu.addAction(self.combineChannelsAction)
-        
+
         utilsMenu.addAction(self.renameAction)
         utilsMenu.addAction(self.editMetadataAction)
 
@@ -850,6 +852,9 @@ class mainWin(QMainWindow):
         self.editMetadataAction = QAction(
             'Edit metadata of one or more experiments...'
         )
+        self.computeBackgroundValuesAction = QAction(
+            'Compute background intensity outside of segmented objects...'
+        )
         self.alignAction = QAction('Align or revert alignment...')
 
         self.arboretumAction = QAction(
@@ -968,6 +973,9 @@ class mainWin(QMainWindow):
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
         self.editMetadataAction.triggered.connect(self.launchEditMetadataUtil)
+        self.computeBackgroundValuesAction.triggered.connect(
+            self.launchComputeBackgroundValuesUtil
+        )
         if SPOTMAX_INSTALLED:
             self.aboutSmaxAction.triggered.connect(self.showAboutSmax)
 
@@ -1722,6 +1730,25 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.editMetadataWin.show()
+
+    def launchComputeBackgroundValuesUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Compute background intensity'
+        )
+        if selectedExpPaths is None:
+            return
+
+        title = 'Compute background intensity'
+        infoText = 'Launching compute background intensity process...'
+        progressDialogueTitle = 'Computing background intensity'
+        self.computeBackgroundValuesWin = (
+            utilsComputeBackgroundValues.ComputeBackgroundValuesUtil(
+                selectedExpPaths, self.app, title, infoText,
+                progressDialogueTitle, parent=self
+            )
+        )
+        self.computeBackgroundValuesWin.show()
 
     def launchToSymDicUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')

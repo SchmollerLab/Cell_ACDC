@@ -1565,7 +1565,7 @@ def patch_premade_dialogs(viewer, monkeypatch, folder, saved, mapping):
     )
     offered = []
 
-    def select(placeholders, channels, inputs=None, validate=None):
+    def select(placeholders, channels, inputs=None, validate=None, **kwargs):
         offered.append(channels)
         if mapping is None:
             return None
@@ -1898,6 +1898,40 @@ def test_conditional_formatting_is_saved_and_loaded(viewer, tmp_path, monkeypatc
     assert not viewer.hasUnsavedConfiguration()
 
 
+def test_custom_signal_colors_are_saved_and_loaded(
+        viewer, tmp_path, monkeypatch):
+    _, path = load_clean_workflow(viewer, tmp_path)
+    monkeypatch.setattr(
+        measurements_viewer.QColorDialog, 'getColor',
+        Mock(return_value=measurements_viewer.QColor('#123456'))
+    )
+    viewer.changeSignalColor('final')
+    assert viewer.configuration()['measurements_colors'] == {
+        'final': '#123456'
+    }
+    assert viewer.hasUnsavedConfiguration()
+    assert viewer.saveConfiguration()
+    assert json.loads(path.read_text())['measurements_colors'] == {
+        'final': '#123456'
+    }
+    viewer.measurementsColors = {}
+    monkeypatch.setattr(viewer, 'askSaveBeforeLoading', Mock(return_value=True))
+    assert viewer.loadConfiguration(filepath=str(path))
+    assert pg_color_name(viewer.getSignalColor('final')) == '#123456'
+    assert not viewer.hasUnsavedConfiguration()
+
+
+@pytest.mark.parametrize('bad', [
+    [], {'': '#00ff00'}, {'a': 'green'}, {'a': '#00ff0'}, {'a': [0, 255, 0]},
+])
+def test_invalid_signal_colors_are_rejected(viewer, tmp_path, bad):
+    load_clean_workflow(viewer, tmp_path)
+    configuration = viewer.configuration()
+    configuration['measurements_colors'] = bad
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateConfiguration(configuration)
+
+
 def test_conditional_formatting_dialog(app, monkeypatch):
     warnings = []
     monkeypatch.setattr(
@@ -1943,6 +1977,10 @@ def test_fucci_template_formats_reporters_by_ramp():
         {'condition': 'mCherry_ramp == 1', 'color': 'lighter'},
         {'condition': 'mCherry_ramp == -1', 'color': 'darker'},
     ]
+    # Geminin (GFP) reporter plotted in green, Cdt1 (mCherry) in red
+    assert result['measurements_colors'] == {
+        'GFP_fucci': '#2ecc40', 'mCherry_fucci': '#e8384f'
+    }
 
 
 def test_formatting_condition_editor(app):
@@ -2146,7 +2184,7 @@ def test_premade_input_values_are_written(viewer, tmp_path, monkeypatch):
     )
     monkeypatch.setattr(
         viewer, 'selectChannelMapping',
-        lambda placeholders, channels, inputs=None, validate=None: (
+        lambda placeholders, channels, inputs=None, validate=None, **kw: (
             {'MAIN': 'phase', 'OTHER': 'GFP'}, {'BG': 0.5, 'N': 5, 'LABEL': 'x'}
         )
     )
@@ -2157,6 +2195,396 @@ def test_premade_input_values_are_written(viewer, tmp_path, monkeypatch):
     assert written['combined_measurements'][0]['equations'] == {
         'GFP_double': 'area * 5'
     }
+
+
+# --- Premade background values ------------------------------------------------
+def fucci_template():
+    with open(os.path.join(
+            measurements_viewer.PREMADE_CONFIGURATIONS_PATH,
+            'fucci_cell_cycle.json'), encoding='utf-8') as file:
+        return json.load(file)
+
+
+def background_summary(**overrides):
+    """Summary table as saved by the "Compute background intensity"
+    utility (`background_values.normalization_constants` + settings)."""
+    rows = [
+        {'channel': 'GFP', 'constant_background': 36.0,
+         'constant_min': 10.5, 'constant_max': 210.25},
+        {'channel': 'mCherry', 'constant_background': 142.0,
+         'constant_min': 3.0, 'constant_max': 98.0},
+    ]
+    df = pd.DataFrame(rows)
+    df.insert(1, 'background_statistic', 'median')
+    df.insert(2, 'low_percentile', 5.0)
+    df.insert(3, 'high_percentile', 95.0)
+    df['num_cell_values'] = 100
+    df['num_background_values'] = 50
+    for col, values in overrides.items():
+        df[col] = values
+    return df
+
+
+def fucci_setup_dialog(**kwargs):
+    template = fucci_template()
+    spec = MeasurementsViewerWin.validateBackgroundValuesSpec(
+        template['background_values'], template['channel_placeholders'],
+        template['input_placeholders']
+    )
+    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+        template['channel_placeholders'], ['GFP', 'mCherry', 'phase'],
+        inputs=template['input_placeholders'], backgroundValues=spec,
+        **kwargs
+    )
+    dialog.comboboxes['GEMININ'].setCurrentText('GFP')
+    dialog.comboboxes['CDT1'].setCurrentText('mCherry')
+    return dialog
+
+
+def capture_warnings(monkeypatch):
+    warnings = []
+    monkeypatch.setattr(
+        measurements_viewer.widgets, 'myMessageBox',
+        lambda **kwargs: SimpleNamespace(warning=lambda *a: warnings.append(a))
+    )
+    return warnings
+
+
+def test_fucci_background_values_spec():
+    template = fucci_template()
+    spec = MeasurementsViewerWin.validateBackgroundValuesSpec(
+        template['background_values'], template['channel_placeholders'],
+        template['input_placeholders']
+    )
+    assert spec['statistic'] == 'median'
+    assert (spec['low_percentile'], spec['high_percentile']) == (5.0, 95.0)
+    # Every normalization input of the template is linked
+    assert set(spec['inputs']) == set(template['input_placeholders'])
+    # Defaults of the optional settings
+    minimal = MeasurementsViewerWin.validateBackgroundValuesSpec(
+        {'inputs': {'GEMININ_MIN': {
+            'channel': 'GEMININ', 'value': 'constant_min'
+        }}},
+        template['channel_placeholders'], template['input_placeholders']
+    )
+    assert minimal['statistic'] == 'median'
+    assert minimal['exclude_zero_pixels'] is True
+    # Setup-only section: not written to the configuration
+    result = MeasurementsViewerWin.resolvePremadeTemplate(
+        template, {'GEMININ': 'GFP', 'CDT1': 'mCherry'}
+    )
+    assert 'background_values' not in result
+
+
+@pytest.mark.parametrize('bad', [
+    [], {}, {'inputs': {}}, {'inputs': {'BG': {'channel': 'MAIN',
+                                                'value': 'constant_min'}},
+                             'extra': 1},
+    {'statistic': 'max', 'inputs': {'BG': {'channel': 'MAIN',
+                                           'value': 'constant_min'}}},
+    {'low_percentile': 95, 'high_percentile': 5,
+     'inputs': {'BG': {'channel': 'MAIN', 'value': 'constant_min'}}},
+    {'low_percentile': True,
+     'inputs': {'BG': {'channel': 'MAIN', 'value': 'constant_min'}}},
+    {'exclude_zero_pixels': 1,
+     'inputs': {'BG': {'channel': 'MAIN', 'value': 'constant_min'}}},
+    # Unknown channel placeholder, unknown value, non-float input
+    {'inputs': {'BG': {'channel': 'OTHER', 'value': 'constant_min'}}},
+    {'inputs': {'BG': {'channel': 'MAIN', 'value': 'num_cell_values'}}},
+    # The per-frame values are disabled for now
+    {'inputs': {'BG': {'channel': 'MAIN', 'value': 'per_frame_min'}}},
+    {'inputs': {'N': {'channel': 'MAIN', 'value': 'constant_min'}}},
+    {'inputs': {'BG': {'channel': 'MAIN'}}},
+])
+def test_invalid_background_values_spec_is_rejected(bad):
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateBackgroundValuesSpec(
+            bad, {'MAIN': ''}, premade_inputs()
+        )
+
+
+def test_setup_dialog_fills_values_from_summary(app, monkeypatch):
+    dialog = fucci_setup_dialog()
+    warnings = capture_warnings(monkeypatch)
+    # Missing values (e.g. min/max without corrected acdc_output tables)
+    # are left unchanged and reported
+    summary = background_summary(constant_max=[210.25, np.nan])
+    dialog.inputLineEdits['CDT1_MAX'].setText('7')
+    filled = dialog.fillBackgroundValues(summary, 'test')
+    assert filled == {
+        'GEMININ_BACKGROUND': 36.0, 'GEMININ_MIN': 10.5,
+        'GEMININ_MAX': 210.25, 'CDT1_BACKGROUND': 142.0, 'CDT1_MIN': 3.0,
+    }
+    assert dialog.inputLineEdits['GEMININ_MAX'].text() == '210.25'
+    assert dialog.inputLineEdits['CDT1_MAX'].text() == '7'
+    assert len(warnings) == 1 and 'CDT1_MAX' in warnings[0][2]
+    assert 'Filled in 5 of 6' in dialog.backgroundSourceLabel.text()
+    dialog.ok_cb()
+    assert not dialog.cancel
+    assert dialog.values['GEMININ_MIN'] == 10.5
+    assert dialog.values['CDT1_MAX'] == 7.0
+
+
+def test_setup_dialog_asks_table_row_and_reports_other_settings(
+        app, monkeypatch
+    ):
+    dialog = fucci_setup_dialog()
+    warnings = capture_warnings(monkeypatch)
+    asked = []
+
+    def askTableChannel(placeholder, channel, tableChannels):
+        asked.append((placeholder, channel, tableChannels))
+        return 'GFP2' if placeholder == 'GEMININ' else None
+
+    monkeypatch.setattr(dialog, 'askTableChannel', askTableChannel)
+    # Another experiment with other channel names and percentiles
+    summary = background_summary(
+        channel=['GFP2', 'mCherry2'], low_percentile=10.0,
+        high_percentile=90.0
+    )
+    filled = dialog.fillBackgroundValues(summary, 'test')
+    assert asked == [
+        ('GEMININ', 'GFP', ['GFP2', 'mCherry2']),
+        ('CDT1', 'mCherry', ['GFP2', 'mCherry2']),
+    ]
+    assert set(filled) == {'GEMININ_BACKGROUND', 'GEMININ_MIN', 'GEMININ_MAX'}
+    assert dialog.inputLineEdits['CDT1_MIN'].text() == '0.0'
+    text = warnings[0][2]
+    assert 'CDT1_MIN' in text and '10th/90th percentiles' in text
+
+
+def test_setup_dialog_loads_summary_table(app, monkeypatch, tmp_path):
+    dialog = fucci_setup_dialog(tableStartDir=str(tmp_path))
+    warnings = capture_warnings(monkeypatch)
+    # Channels that CSV reading would turn into a number stay text
+    table = tmp_path / 'background_values_summary.csv'
+    background_summary(channel=['488', 'mCherry']).to_csv(table, index=False)
+    monkeypatch.setattr(dialog, 'askTableChannel', lambda *args: '488')
+    started = []
+
+    def getOpenFileName(parent, caption, folder, filters):
+        started.append(folder)
+        return str(table), ''
+
+    monkeypatch.setattr(
+        measurements_viewer.apps_measurements_viewer.QFileDialog,
+        'getOpenFileName', getOpenFileName
+    )
+    dialog.loadBackgroundTableButton.click()
+    assert started == [str(tmp_path)]
+    assert not warnings
+    assert dialog.inputLineEdits['GEMININ_MAX'].text() == '210.25'
+    assert dialog.inputLineEdits['CDT1_BACKGROUND'].text() == '142'
+    # A per-Position background table is refused with a hint
+    other = tmp_path / 'exp_background_values.csv'
+    pd.DataFrame({'frame_i': [0], 'num_objects': [1]}).to_csv(
+        other, index=False
+    )
+    table = other
+    dialog.loadBackgroundTableButton.click()
+    assert 'single Position' in warnings[0][2]
+
+
+def test_setup_dialog_computes_background_values(app, monkeypatch):
+    calls = []
+    results = [None, pd.DataFrame(), background_summary()]
+
+    def compute(channels, settings, parent=None):
+        calls.append((channels, settings['statistic'], parent))
+        return results.pop(0)
+
+    dialog = fucci_setup_dialog(computeBackgroundValues=compute)
+    warnings = capture_warnings(monkeypatch)
+    dialog.comboboxes['GEMININ'].setCurrentText('mCherry')
+    dialog.comboboxes['CDT1'].setCurrentText('GFP')
+    dialog.computeBackgroundButton.click()   # cancelled: nothing happens
+    assert not warnings and dialog.inputLineEdits['CDT1_MIN'].text() == '0.0'
+    dialog.computeBackgroundButton.click()   # no Position processed
+    assert len(warnings) == 1
+    dialog.computeBackgroundButton.click()
+    assert calls == [(['mCherry', 'GFP'], 'median', dialog)] * 3
+    # Rows follow the selected channels
+    assert dialog.inputLineEdits['CDT1_MIN'].text() == '10.5'
+    assert dialog.inputLineEdits['GEMININ_MIN'].text() == '3'
+
+
+def test_setup_dialog_refills_when_linked_channel_changes(app, monkeypatch):
+    dialog = fucci_setup_dialog()
+    warnings = capture_warnings(monkeypatch)
+    dialog.fillBackgroundValues(background_summary(), 'test')
+    assert dialog.inputLineEdits['GEMININ_MIN'].text() == '10.5'
+    # The values belonged to GFP: switching the reporters refills them
+    dialog.comboboxes['GEMININ'].setCurrentText('mCherry')
+    dialog.comboboxes['CDT1'].setCurrentText('GFP')
+    assert dialog.inputLineEdits['GEMININ_MIN'].text() == '3'
+    assert dialog.inputLineEdits['CDT1_MAX'].text() == '210.25'
+    assert 'CDT1 = GFP' in dialog.backgroundSourceLabel.text()
+    assert not warnings
+
+
+def test_setup_dialog_reports_other_zero_pixel_setting(app, monkeypatch):
+    dialog = fucci_setup_dialog()
+    warnings = capture_warnings(monkeypatch)
+    dialog.fillBackgroundValues(
+        background_summary(exclude_zero_pixels=['False', 'True']), 'test'
+    )
+    assert len(warnings) == 1
+    text = warnings[0][2]
+    assert 'pixels with intensity 0 included' in text
+    assert 'mCherry' not in text
+
+
+def test_setup_dialog_is_disabled_while_computing(app, monkeypatch):
+    states = []
+
+    def compute(channels, settings, parent=None):
+        states.append(parent.isEnabled())
+        parent.close()   # e.g. cancelled while the experiments are selected
+        return background_summary()
+
+    dialog = fucci_setup_dialog(computeBackgroundValues=compute)
+    dialog.computeBackgroundButton.click()
+    assert states == [False]
+    assert dialog.isEnabled()
+    # Closed meanwhile: nothing is filled
+    assert dialog.inputLineEdits['GEMININ_MIN'].text() == '0.0'
+    assert dialog.backgroundFill is None
+
+
+def test_fucci_hints_preselect_reporter_channels_for_calculation(app):
+    template = fucci_template()
+    spec = MeasurementsViewerWin.validateBackgroundValuesSpec(
+        template['background_values'], template['channel_placeholders'],
+        template['input_placeholders']
+    )
+    hints = MeasurementsViewerWin.validateChannelHints(
+        template['channel_hints'], template['channel_placeholders']
+    )
+    calls = []
+    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+        template['channel_placeholders'],
+        ['BF', 'GFP', 'combined', 'combined_preprocessed', 'mCherry'],
+        inputs=template['input_placeholders'], backgroundValues=spec,
+        channelHints=hints,
+        computeBackgroundValues=lambda channels, *a, **k: calls.append(
+            channels
+        )
+    )
+    assert dialog.currentMapping() == {'GEMININ': 'GFP', 'CDT1': 'mCherry'}
+    dialog.computeBackgroundButton.click()
+    assert calls == [['GFP', 'mCherry']]
+    # Placeholder names in channel names win over the hints
+    guess = measurements_viewer.ChannelPlaceholderMappingDialog.guessChannels
+    assert guess(
+        template['channel_placeholders'],
+        ['GFP', 'mAG1-hGeminin', 'mKO2-hCdt1'], hints
+    ) == {'GEMININ': 'mAG1-hGeminin', 'CDT1': 'mKO2-hCdt1'}
+    assert guess(
+        template['channel_placeholders'], ['mAG1', 'mKO2', 'phase'], hints
+    ) == {'GEMININ': 'mAG1', 'CDT1': 'mKO2'}
+    # Without hints: first unused channels, as before
+    assert guess({'A': '', 'B': ''}, ['x', 'y']) == {'A': 'x', 'B': 'y'}
+    result = MeasurementsViewerWin.resolvePremadeTemplate(
+        template, {'GEMININ': 'GFP', 'CDT1': 'mCherry'}
+    )
+    assert 'channel_hints' not in result
+
+
+@pytest.mark.parametrize('bad', [
+    [], {'OTHER': ['gfp']}, {'MAIN': 'gfp'}, {'MAIN': ['']}, {'MAIN': [1]},
+])
+def test_invalid_channel_hints_are_rejected(bad):
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateChannelHints(bad, {'MAIN': ''})
+
+
+def test_setup_dialog_without_background_values_has_no_buttons(app):
+    dialog = measurements_viewer.ChannelPlaceholderMappingDialog(
+        {'MAIN': ''}, ['GFP'], inputs=premade_inputs()
+    )
+    assert dialog.backgroundSourceLabel is None
+    assert not hasattr(dialog, 'loadBackgroundTableButton')
+
+
+def test_compute_background_summary_presets_utility(viewer, monkeypatch):
+    from cellacdc.utils import computeBackgroundValues as utilsBackground
+    selected, created = [], []
+    selections = [None, {'exp': ['Position_1']}]
+
+    def select_positions(parent, experimentPositions):
+        selected.append(experimentPositions)
+        return selections.pop(0)
+
+    class _FakeUtil:
+        def __init__(self, expPaths, app, *args, parent=None,
+                     presetParams=None, presetNote=''):
+            created.append((expPaths, parent, presetParams))
+            self.summaryDf = None
+
+        def exec_(self):
+            self.summaryDf = background_summary()
+
+    monkeypatch.setattr(utilsBackground, 'select_positions', select_positions)
+    monkeypatch.setattr(
+        utilsBackground, 'ComputeBackgroundValuesUtil', _FakeUtil
+    )
+    settings = MeasurementsViewerWin.validateBackgroundValuesSpec(
+        {'statistic': 'mean', 'low_percentile': 2,
+         'inputs': {'BG': {'channel': 'MAIN', 'value': 'constant_min'}}},
+        {'MAIN': ''}, premade_inputs()
+    )
+    experiment = {'exp': ['Position_1']}
+    assert viewer.computeBackgroundSummary(
+        experiment, ['GFP'], settings
+    ) is None
+    assert not created
+    summary = viewer.computeBackgroundSummary(experiment, ['GFP'], settings)
+    assert summary['channel'].tolist() == ['GFP', 'mCherry']
+    assert selected == [experiment, experiment]
+    assert created == [({'exp': ['Position_1']}, viewer, {
+        'channels': ['GFP'], 'statistic': 'mean',
+        'exclude_zero_pixels': True, 'use_acdc_output': True,
+        'low_percentile': 2.0, 'high_percentile': 95.0,
+    })]
+
+
+def test_premade_setup_gets_background_values_and_experiment(
+        viewer, tmp_path, monkeypatch
+    ):
+    experiment = tmp_path / 'exp'
+    paths = make_experiment(experiment)
+    for images in paths:
+        add_channel(images, 'GFP')
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    premade = tmp_path / 'template.json'
+    template = premade_config()
+    template['input_placeholders'] = premade_inputs()
+    template['background_values'] = {
+        'inputs': {'BG': {'channel': 'OTHER', 'value': 'constant_background'}}
+    }
+    premade.write_text(json.dumps(template))
+    patch_premade_dialogs(
+        viewer, monkeypatch, experiment, saved,
+        {'MAIN': 'phase', 'OTHER': 'GFP'}
+    )
+    received = []
+
+    def select(placeholders, channels, inputs=None, validate=None, **kwargs):
+        received.append(kwargs)
+        return {'MAIN': 'phase', 'OTHER': 'GFP'}, {'BG': 36.0}
+
+    monkeypatch.setattr(viewer, 'selectChannelMapping', select)
+    assert viewer.loadConfiguration(filepath=str(premade))
+    spec = received[0]['backgroundValues']
+    assert spec['inputs'] == template['background_values']['inputs']
+    positions = received[0]['experimentPositions']
+    assert {os.path.normpath(p): sorted(pos) for p, pos in positions.items()} == {
+        os.path.normpath(experiment): ['Position_1', 'Position_2']
+    }
+    written = json.loads(next(saved.glob('*.json')).read_text())
+    assert 'background_values' not in written
+    assert written['premade']['input_values'] == {'BG': 36.0}
 
 
 # --- Empty display channel ----------------------------------------------------

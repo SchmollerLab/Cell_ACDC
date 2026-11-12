@@ -15,7 +15,7 @@ import pyqtgraph as pg
 import re
 import traceback
 from functools import partial
-from qtpy.QtCore import Signal
+from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor, QKeySequence
 from qtpy.QtWidgets import (
     QAbstractItemView,
@@ -37,12 +37,14 @@ from qtpy.QtWidgets import (
 )
 from . import (
     apps,
+    background_values,
     fonts,
     html_utils,
     myutils,
     phase_translator,
     settings_folderpath,
     timepoint_predictors,
+    urls,
     widgets,
 )
 from .timepoint_predictors import TIMEPOINT_PREFIX, debug_trace as timepoint_debug_trace
@@ -1360,13 +1362,30 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
     `validate(mapping, values)` (optional, e.g. resolving the template)
     may raise ValueError to refuse a selection: its message is shown and
     the dialog stays open.
+    `channelHints` (`{placeholder: [name parts]}`, optional) improve the
+    preselected channels: each placeholder gets an unused channel whose name
+    contains the placeholder name, else the first of its hints (in order,
+    case-insensitive), else the first unused channel.
+    `backgroundValues` is the template's validated `background_values`
+    section (`MeasurementsViewerWin.validateBackgroundValuesSpec`): its
+    linked inputs can be filled from a summary table of the "Compute
+    background intensity" utility, loaded from a file (start folder
+    `tableStartDir`) or computed by
+    `computeBackgroundValues(channels, backgroundValues, parent=dialog)`,
+    which returns the summary table (None if cancelled). The table row of
+    each linked channel placeholder is the row of its selected channel
+    (the user picks another row when the table has none). Changing the
+    channel of a linked placeholder after filling refills its values from
+    the same table. While the background values are computed, the dialog
+    is disabled.
     After `exec_`, `mapping` is `{placeholder: channel}` and `values` is
     `{input name: typed value}` unless `cancel` is True.
     """
 
     def __init__(
             self, placeholders, channels, parent=None, inputs=None,
-            validate=None
+            validate=None, backgroundValues=None,
+            computeBackgroundValues=None, tableStartDir='', channelHints=None
         ):
         super().__init__(parent)
         self.cancel = True
@@ -1374,6 +1393,13 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         self.values = None
         self.validate = validate
         self.inputs = dict(inputs or {})
+        self.backgroundValues = backgroundValues
+        self.computeBackgroundValues = computeBackgroundValues
+        self.tableStartDir = tableStartDir
+        self.backgroundSourceLabel = None
+        # Last table used to fill the values: {'summary', 'source', 'mapping'}
+        self.backgroundFill = None
+        self._closed = False
         self.setWindowTitle('Set up premade configuration')
         channels = sorted(channels)
         layout = QVBoxLayout()
@@ -1383,21 +1409,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         )))
         grid = QGridLayout()
         self.comboboxes = {}
-        # Prefer a channel whose name contains the placeholder name
-        guesses = {}
-        for name in placeholders:
-            guesses[name] = next(
-                (ch for ch in channels
-                 if name.lower() in ch.lower()
-                 and ch not in guesses.values()),
-                None
-            )
-        for name, guess in guesses.items():
-            if guess is None:
-                guesses[name] = next(
-                    (ch for ch in channels if ch not in guesses.values()),
-                    channels[0] if channels else ''
-                )
+        guesses = self.guessChannels(placeholders, channels, channelHints)
         for row, (name, description) in enumerate(placeholders.items()):
             text = f'<b>{name}</b>'
             if description:
@@ -1435,6 +1447,8 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
                 self.inputLineEdits[name] = lineEdit
             inputsGrid.setColumnStretch(1, 1)
             layout.addLayout(inputsGrid)
+            if self.backgroundValues is not None:
+                layout.addLayout(self._backgroundValuesLayout())
         layout.addSpacing(10)
         buttons = widgets.CancelOkButtonsLayout()
         buttons.okButton.clicked.connect(self.ok_cb)
@@ -1442,11 +1456,307 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         layout.addLayout(buttons)
         self.setLayout(layout)
 
+    @staticmethod
+    def guessChannels(placeholders, channels, channelHints=None):
+        """Preselected channel of each placeholder: an unused channel whose
+        name contains the placeholder name, else the one containing the
+        first matching hint of `channelHints[placeholder]`, else the first
+        unused channel (case-insensitive)."""
+        channelHints = channelHints or {}
+        guesses = dict.fromkeys(placeholders)
+
+        def unused(ch):
+            return ch not in guesses.values()
+
+        # Placeholder names first (most specific), then the hints
+        for name in placeholders:
+            guesses[name] = next(
+                (ch for ch in channels
+                 if name.lower() in ch.lower() and unused(ch)),
+                None
+            )
+        for name in placeholders:
+            if guesses[name] is not None:
+                continue
+            for hint in channelHints.get(name, []):
+                guesses[name] = next(
+                    (ch for ch in channels
+                     if hint.lower() in ch.lower() and unused(ch)),
+                    None
+                )
+                if guesses[name] is not None:
+                    break
+        for name in placeholders:
+            if guesses[name] is None:
+                guesses[name] = next(
+                    (ch for ch in channels if unused(ch)),
+                    channels[0] if channels else ''
+                )
+        return guesses
+
     def currentMapping(self):
         return {
             name: combobox.currentText()
             for name, combobox in self.comboboxes.items()
         }
+
+    def _backgroundValuesLayout(self):
+        spec = self.backgroundValues
+        layout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+        if self.computeBackgroundValues is not None:
+            computeButton = widgets.calcPushButton(
+                'Calculate background values...'
+            )
+            computeButton.setToolTip(
+                'Run the "Compute background intensity" utility on the '
+                'Positions of this experiment with the settings of this '
+                f'configuration (background {spec["statistic"]}, '
+                f'{spec["low_percentile"]:g}th and '
+                f'{spec["high_percentile"]:g}th percentiles) and fill in '
+                'the values'
+            )
+            computeButton.clicked.connect(self.computeBackgroundValuesClicked)
+            buttonsLayout.addWidget(computeButton)
+            self.computeBackgroundButton = computeButton
+        loadButton = widgets.LoadPushButton(
+            'Load calculated background values...'
+        )
+        loadButton.setToolTip(
+            'Fill in the values from the summary table saved by the "Compute '
+            'background intensity" utility (<name>_summary.csv in the '
+            'experiment folder)'
+        )
+        loadButton.clicked.connect(self.loadBackgroundValuesTable)
+        buttonsLayout.addWidget(loadButton)
+        self.loadBackgroundTableButton = loadButton
+        buttonsLayout.addStretch(1)
+        layout.addLayout(buttonsLayout)
+        self.backgroundSourceLabel = QLabel()
+        self.backgroundSourceLabel.setWordWrap(True)
+        self.backgroundSourceLabel.hide()
+        layout.addWidget(self.backgroundSourceLabel)
+        linked = {link['channel'] for link in spec['inputs'].values()}
+        for placeholder in linked:
+            self.comboboxes[placeholder].currentTextChanged.connect(
+                self.linkedChannelChanged
+            )
+        return layout
+
+    def linkedBackgroundMapping(self):
+        mapping = self.currentMapping()
+        return {
+            link['channel']: mapping[link['channel']]
+            for link in self.backgroundValues['inputs'].values()
+        }
+
+    def linkedChannelChanged(self, text):
+        """Refill the values from the last table when the channel of a
+        linked placeholder changes (they belong to the previous channel)."""
+        fill = self.backgroundFill
+        if fill is None or self.linkedBackgroundMapping() == fill['mapping']:
+            return
+        self.fillBackgroundValues(fill['summary'], fill['source'])
+
+    def closeEvent(self, event):
+        self._closed = True
+        super().closeEvent(event)
+
+    def linkedChannels(self):
+        """Selected channels of the placeholders linked to background
+        values (each once, in link order)."""
+        mapping = self.currentMapping()
+        return list(dict.fromkeys(
+            mapping[link['channel']]
+            for link in self.backgroundValues['inputs'].values()
+        ))
+
+    def _warnBackgroundValues(self, title, text):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, title, html_utils.paragraph(text))
+
+    def computeBackgroundValuesClicked(self):
+        # The selection dialogs are not modal: keep this dialog from being
+        # used (OK, Cancel, a second run) until the computation returns
+        self.setEnabled(False)
+        try:
+            summary = self.computeBackgroundValues(
+                self.linkedChannels(), self.backgroundValues, parent=self
+            )
+        finally:
+            self.setEnabled(True)
+        if summary is None or self._closed:
+            return
+        if summary.empty:
+            self._warnBackgroundValues(
+                'No background values',
+                'No Position was processed, no value was filled in.'
+            )
+            return
+        self.fillBackgroundValues(summary, 'the computed summary table')
+
+    def loadBackgroundValuesTable(self):
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, 'Select summary table of the background values',
+            self.tableStartDir, 'CSV files (*.csv);;All files (*)'
+        )
+        if not filepath:
+            return
+        try:
+            summary = background_values.read_summary_table(filepath)
+        except ValueError as err:
+            self._warnBackgroundValues(
+                'Invalid table',
+                f'{err}<br><br>File: <code>{html.escape(filepath)}</code>'
+            )
+            return
+        self.fillBackgroundValues(
+            summary, f'<code>{html.escape(filepath)}</code>'
+        )
+
+    def askTableChannel(self, placeholder, channel, tableChannels):
+        """Ask which row (channel) of the table to use for `placeholder`,
+        mapped to `channel` that the table does not have. Returns the
+        channel or None to skip its values."""
+        win = widgets.QDialogListbox(
+            'Select channel of the table',
+            f'The table has no values for the channel "{channel}" '
+            f'({placeholder}).\n'
+            'Select the channel of the table to use instead:',
+            tableChannels, multiSelection=False, parent=self,
+            allowEmptySelection=False
+        )
+        win.exec_()
+        if win.cancel or not win.selectedItemsText:
+            return None
+        return win.selectedItemsText[0]
+
+    def fillBackgroundValues(self, summary, source):
+        """Fill the inputs linked to background values from a summary table
+        (`background_values.read_summary_table`); `source` (HTML) is shown
+        in the dialog. Values that are missing (NaN) are left unchanged.
+        Returns `{input name: value}` of the filled inputs."""
+        spec = self.backgroundValues
+        mapping = self.currentMapping()
+        rows = {
+            str(row['channel']): row for _, row in summary.iterrows()
+        }
+        tableRows = {}
+        for link in spec['inputs'].values():
+            placeholder = link['channel']
+            if placeholder in tableRows:
+                continue
+            channel = mapping[placeholder]
+            if channel not in rows:
+                channel = self.askTableChannel(
+                    placeholder, channel, list(rows)
+                )
+            tableRows[placeholder] = channel
+        filled, empty, skipped = {}, [], []
+        for name, link in spec['inputs'].items():
+            channel = tableRows[link['channel']]
+            if channel is None:
+                skipped.append(name)
+                continue
+            try:
+                value = float(rows[channel][link['value']])
+            except (TypeError, ValueError):
+                value = np.nan
+            if not np.isfinite(value):
+                empty.append(
+                    f'<b>{html.escape(name)}</b> (<code>'
+                    f'{html.escape(link["value"])}</code> of '
+                    f'{html.escape(channel)})'
+                )
+                continue
+            self.inputLineEdits[name].setText(f'{value:.10g}')
+            filled[name] = value
+        self.backgroundFill = {
+            'summary': summary, 'source': source,
+            'mapping': self.linkedBackgroundMapping(),
+        }
+        notes = self._backgroundSettingsNotes(
+            {ch: rows[ch] for ch in tableRows.values() if ch is not None},
+            uses_percentiles=any(
+                link['value'] != 'constant_background'
+                for link in spec['inputs'].values()
+            )
+        )
+        used = ', '.join(
+            f'{html.escape(placeholder)} = {html.escape(channel)}'
+            for placeholder, channel in tableRows.items()
+            if channel is not None
+        )
+        self.backgroundSourceLabel.setText(html_utils.paragraph(
+            f'Filled in {len(filled)} of {len(spec["inputs"])} values from '
+            f'{source}' + (f' (table rows: {used})' if used else '') + '.',
+            font_size='11px'
+        ))
+        self.backgroundSourceLabel.show()
+        if empty or skipped or notes:
+            items = []
+            if empty:
+                items.append(
+                    'The table has <b>no value</b> for: '
+                    f'{", ".join(empty)}. Min/max values are empty when no '
+                    'acdc_output table with the mean intensity of the '
+                    'channel was selected.'
+                )
+            if skipped:
+                items.append(
+                    'Not filled in (no table row selected): '
+                    + ', '.join(f'<b>{html.escape(n)}</b>' for n in skipped)
+                )
+            items.extend(notes)
+            self._warnBackgroundValues(
+                'Background values',
+                f'Filled in {len(filled)} of {len(spec["inputs"])} values. '
+                'The other values are left unchanged.'
+                + html_utils.to_list(items)
+            )
+        return filled
+
+    def _backgroundSettingsNotes(self, rows, uses_percentiles=True):
+        """Differences between the settings of the table rows and of the
+        configuration (statistic, percentiles and ignored zero pixels)."""
+        spec = self.backgroundValues
+        notes = []
+        for channel, row in rows.items():
+            differences = []
+            statistic = str(row['background_statistic'])
+            if statistic != spec['statistic']:
+                differences.append(
+                    f'background {html.escape(statistic)} '
+                    f'(configuration: {spec["statistic"]})'
+                )
+            low, high = row['low_percentile'], row['high_percentile']
+            if uses_percentiles and not (
+                    np.isclose(low, spec['low_percentile'])
+                    and np.isclose(high, spec['high_percentile'])):
+                differences.append(
+                    f'{low:g}th/{high:g}th percentiles (configuration: '
+                    f'{spec["low_percentile"]:g}th/'
+                    f'{spec["high_percentile"]:g}th)'
+                )
+            excludeZero = configparser.ConfigParser.BOOLEAN_STATES.get(
+                str(row.get('exclude_zero_pixels', '')).strip().lower()
+            )
+            if (excludeZero is not None
+                    and excludeZero != spec['exclude_zero_pixels']):
+                ignored = 'ignored' if excludeZero else 'included'
+                expected = (
+                    'ignored' if spec['exclude_zero_pixels'] else 'included'
+                )
+                differences.append(
+                    f'pixels with intensity 0 {ignored} '
+                    f'(configuration: {expected})'
+                )
+            if differences:
+                notes.append(
+                    f'The values of {html.escape(str(channel))} were computed '
+                    f'with {" and ".join(differences)}.'
+                )
+        return notes
 
     @staticmethod
     def parseInput(text, kind):
@@ -1552,7 +1862,9 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
     rules unless `cancel` is True.
     """
 
-    DEFAULT_COLORS = ('#2ca02c', '#d62728', '#1f77b4', '#ff7f0e', '#9467bd')
+    # Okabe-Ito colors (colorblind-friendly) without red, which is reserved
+    # for the current frame line
+    DEFAULT_COLORS = ('#009e73', '#0072b2', '#e69f00', '#cc79a7', '#56b4e9')
 
     def __init__(
             self, column, rules, validateCondition=None, editCondition=None,
@@ -2000,18 +2312,62 @@ class PhaseTranslatorRuleDialog(QDialog):
         self.accept()
 
 
+PHASE_TRANSLATOR_HELP = (
+    'The translator turns the time points of each cell into <b>phases</b>: '
+    'all frames between two consecutive time points get the same phase '
+    'name (e.g., "G1" between "Birth" and "S start").'
+    '<br><br><b>How to use it:</b>'
+    + html_utils.to_list([
+        'Define time point identifiers in the main window (<b>Add time point '
+        'identifier...</b>) and mark them on the cells (hover over the plot '
+        'and press their shortcut, or use their predictors).',
+        'Click <b>Add...</b> to create a rule: check the time points that '
+        'separate the phases, put them in their order (boundaries) and type '
+        'the phase names before, between and after them. A blank name '
+        'leaves those frames unassigned. Optionally add a formula and the '
+        'custom annotations that a cell must have for the rule to apply.',
+        'Add more rules for cells with other time points (e.g., cells '
+        'present only at the end) and order them with <b>Up</b>/<b>Down</b>: '
+        'for each cell the first rule (from the top) whose formula and '
+        'requirements pass supplies its phases. Each checked time point '
+        'must occur exactly once in the cell, in the boundary order.',
+        'Custom annotations with the option <b>Overrides phases</b> (set it '
+        'when adding or editing the annotation) take precedence over the '
+        'rules: an annotated cell gets the annotation name as its phase on '
+        'every frame (e.g., "Arrested" or "Excluded"). If a cell has '
+        'several of them, the first annotation in the toolbar wins. The '
+        'rules apply to the other cells.',
+        'Click <b>Apply phase evaluation</b> on the displayed cell or on all '
+        'cells, or check the automatic evaluation to update the phases '
+        'whenever time points or annotations change.',
+        'The phases are drawn as a colored band below the time course and '
+        'color the Measurement vs Measurement points (change the colors in '
+        '<b>Phase colors</b>). <b>Export measurements...</b> saves the '
+        '<code>phase</code> and <code>phase_&lt;name&gt;</code> columns.',
+    ], ordered=True)
+    + 'Save the viewer configuration to keep the rules and colors.'
+)
+
+
 class PhaseTranslatorDialog(QDialog):
-    """Manage phase rules in descending priority, without editing the table."""
+    """Manage phase rules in descending priority, without editing the table.
+
+    ``annotationOverrides`` are the names of the custom annotations with
+    the "Overrides phases" option (toolbar order). They are not edited
+    here: the dialog lists them, gives them color buttons and allows
+    applying the evaluation without rules.
+    """
     sigApply = Signal(object, bool)
 
     def __init__(
             self, rules, timepoints, annotations, options, parent=None,
-            phaseColors=None
+            phaseColors=None, annotationOverrides=()
         ):
         import copy
         super().__init__(parent)
         self.cancel = True
         self.rules = copy.deepcopy(rules)
+        self.annotationOverrides = list(annotationOverrides)
         # User-chosen colors {phase name: '#rrggbb'}; others use defaults
         self.phaseColors = dict(phaseColors or {})
         self.phaseColorButtons = {}
@@ -2033,14 +2389,15 @@ class PhaseTranslatorDialog(QDialog):
             button.clicked.connect(callback)
             controls.addWidget(button)
         self.autoApplyCheckbox = QCheckBox(
-            'Automatically evaluate phases when time points change or '
-            'phases are missing'
+            'Automatically evaluate phases when time points or annotations '
+            'change or phases are missing'
         )
         self.autoApplyCheckbox.setToolTip(
             'Re-evaluate the phases of a cell whenever its time points are '
-            'added, moved, removed or predicted, and evaluate displayed '
-            'cells without phases. Applied with Apply or OK; save the '
-            'viewer configuration to keep this option.'
+            'added, moved, removed or predicted or its custom annotations '
+            'change (annotated, removed or predicted), and evaluate '
+            'displayed cells without phases. Applied with Apply or OK; save '
+            'the viewer configuration to keep this option.'
         )
         applyButtons = QHBoxLayout()
         # Same icons as the "Apply" / "Apply to all Positions..." buttons
@@ -2057,8 +2414,15 @@ class PhaseTranslatorDialog(QDialog):
             button.clicked.connect(lambda checked=False, batch=allCells: self.apply(batch))
             applyButtons.addWidget(button)
         buttons = QHBoxLayout()
+        self.helpButton = widgets.infoPushButton('Help...')
+        self.helpButton.setToolTip(
+            'How to translate time points into phases (with a link to the '
+            'user guide)'
+        )
+        self.helpButton.clicked.connect(self.showHelp)
         cancelButton = widgets.cancelPushButton('Cancel')
         okButton = widgets.okPushButton('  OK  ')
+        buttons.addWidget(self.helpButton)
         buttons.addStretch(1)
         buttons.addWidget(cancelButton)
         buttons.addWidget(okButton)
@@ -2067,13 +2431,36 @@ class PhaseTranslatorDialog(QDialog):
         layout = QVBoxLayout(self)
         info = QLabel(
             'Rules are evaluated from top to bottom for each cell. The first '
-            'rule whose formula and all requirements pass supplies its phases. '
+            'rule whose formula and all requirements pass supplies its phases '
+            '(cells with a custom annotation that overrides phases get the '
+            'annotation name instead). '
             'Apply updates the current position in memory; Export measurements '
             'saves the phase and phase_<name> columns. Save the viewer '
             'configuration to keep these rules.'
         )
         info.setWordWrap(True)
         layout.addWidget(info)
+        # Custom annotations with "Overrides phases" (edited with the
+        # annotation, not here)
+        self.overridesLabel = QLabel()
+        self.overridesLabel.setWordWrap(True)
+        self.overridesLabel.setTextFormat(Qt.RichText)
+        if self.annotationOverrides:
+            names = ', '.join(
+                f'<b>{html.escape(name)}</b>'
+                for name in self.annotationOverrides
+            )
+            firstWins = (
+                '; the first one in this list wins'
+                if len(self.annotationOverrides) > 1 else ''
+            )
+            self.overridesLabel.setText(
+                f'Cells annotated with {names} get that annotation as their '
+                'phase on every frame (custom annotation option "Overrides '
+                f'phases"{firstWins}); the rules apply to the other cells.'
+            )
+        self.overridesLabel.setVisible(bool(self.annotationOverrides))
+        layout.addWidget(self.overridesLabel)
         layout.addWidget(self.rulesList)
         layout.addLayout(controls)
         self.phaseColorsGroupbox = QGroupBox('Phase colors')
@@ -2089,10 +2476,25 @@ class PhaseTranslatorDialog(QDialog):
         self.refreshRules()
         self.resize(800, 450)
 
+    def showHelp(self, checked=False):
+        """How-to of the translator with a link to its user guide section
+        (`urls.measurements_viewer_phase_translator_docs_url`)."""
+        msg = widgets.myMessageBox()
+        msg.information(
+            self, 'Time point to phase translator: help',
+            html_utils.paragraph(PHASE_TRANSLATOR_HELP),
+            url_to_open=urls.measurements_viewer_phase_translator_docs_url,
+            open_url_button_text='Open user guide'
+        )
+
     def currentPhaseColors(self):
-        """Colors {name: '#rrggbb'} of the current rules' phases."""
+        """Colors {name: '#rrggbb'} of the current rules' phases, then of
+        the annotations overriding phases."""
         return phase_translator.phase_colors(
-            phase_translator.phase_names(self.rules), self.phaseColors
+            phase_translator.phase_names(
+                self.rules, self.annotationOverrides
+            ),
+            self.phaseColors
         )
 
     def refreshPhaseColors(self):
@@ -2105,7 +2507,10 @@ class PhaseTranslatorDialog(QDialog):
         columns = 4
         for i, (name, color) in enumerate(colors.items()):
             button = widgets.myColorButton(color=color)
-            button.setToolTip(f'Color of phase "{name}"')
+            toolTip = f'Color of phase "{name}"'
+            if name in self.annotationOverrides:
+                toolTip += ' (custom annotation overriding phases)'
+            button.setToolTip(toolTip)
             button.sigColorChanged.connect(
                 partial(self.phaseColorChanged, name)
             )
@@ -2126,8 +2531,10 @@ class PhaseTranslatorDialog(QDialog):
             for index, rule in enumerate(self.rules)
         ])
         self.rulesList.setCurrentRow(row)
-        self.applyCellButton.setEnabled(bool(self.rules))
-        self.applyAllButton.setEnabled(bool(self.rules))
+        # Annotations overriding phases can be evaluated without rules
+        canApply = bool(self.rules or self.annotationOverrides)
+        self.applyCellButton.setEnabled(canApply)
+        self.applyAllButton.setEnabled(canApply)
         self.refreshPhaseColors()
 
     def ruleDialog(self, rule=None):

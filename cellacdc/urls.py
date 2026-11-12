@@ -29,3 +29,9 @@ install_pytorch = 'https://pytorch.org/get-started/locally/'
 fiji_downloads = 'https://imagej.net/software/fiji/downloads'
 
 data_structure_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/data-structure.html'
+
+measurements_viewer_docs_url = 'https://cell-acdc.readthedocs.io/en/latest/measurements-viewer.html'
+
+measurements_viewer_phase_translator_docs_url = (
+    f'{measurements_viewer_docs_url}#time-point-to-phase-translator'
+)

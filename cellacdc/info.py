@@ -110,5 +110,41 @@ utilsInfo = {
         Note that measurements already saved in the
         <code>acdc_output.csv</code> tables are not updated.
         Run the "Compute measurements" utility to update them.
+    """),
+
+    'Compute background intensity outside of segmented objects...': (f"""
+        This utility computes, for every frame, the <b>background
+        intensity</b> of the selected channels as the mean and median of the
+        pixels <b>outside of all segmented objects</b> (label 0).<br><br>
+
+        Select a segmentation file where (nearly) <b>all cells are
+        segmented</b>, otherwise unsegmented cells raise the background.
+        Frames without segmented objects get no background value. Pixels with
+        intensity 0 (e.g., padding added by the alignment) can be
+        ignored.<br><br>
+
+        The background values of each Position are saved in the Images
+        folder as <code>&lt;basename&gt;background_values.csv</code> (the
+        name can be changed, but not to the name of another existing
+        file).<br><br>
+
+        Optionally, the utility computes <b>normalization constants</b> from
+        the mean intensity of the cells in a selected <code>acdc_output</code>
+        table (<code>&lt;channel&gt;_mean</code>; for z-stacks
+        <code>&lt;channel&gt;_mean_meanProj</code> or, with 3D masks,
+        <code>&lt;channel&gt;_mean_3D</code>; the table is not modified): a
+        constant background (median of the per-frame backgrounds) and the low
+        and high percentiles (default 5th and 95th) of the mean intensities
+        minus that background, pooled over all cells, frames and Positions
+        (excluded cells are ignored). Select only the
+        experiments of the reference condition to compute the constants from
+        them. The constants are the min/max values of the
+        "Min-max normalization" measurement processing (e.g., in the premade
+        FUCCI configuration of the Measurements viewer) and are saved in each
+        experiment folder as <code>background_values_summary.csv</code>.
+        <br><br>
+        When setting up the premade FUCCI configuration of the Measurements
+        viewer, this utility can be run (or its summary table loaded) from
+        the setup dialog to fill in the normalization values.
     """)
 }

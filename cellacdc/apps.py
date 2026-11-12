@@ -226,8 +226,10 @@ class customAnnotationDialog(QDialog):
         state : dict, optional
             State of the annotation to modify.
         predictorOptions : dict, optional
-            If not None, add the predictor settings (measurements viewer). 
+            If not None, add the predictor settings (measurements viewer).
             See `apps_measurements_viewer._CustomAnnotationPredictorGroupbox`.
+            The viewer also gets the "Overrides phases" option (state key
+            'overridesPhases', always written as a bool).
         reservedShortcuts : dict, optional
             {key sequence text: used by} of shortcuts that cannot be used.
         existingNames : iterable of str, optional
@@ -369,11 +371,33 @@ class customAnnotationDialog(QDialog):
         optionsLayout.addWidget(colorButtonLabel, optRow, 1)
         optionsLayout.addWidget(self.colorButton, optRow, 2)
 
+        # Measurements viewer only: the annotation replaces the phases
+        # of the annotated cells (state key 'overridesPhases')
+        self.overridesPhasesToggle = None
+        if self.hasPredictor:
+            overridesPhasesTooltip = (
+                'Annotated cells get the annotation name as their phase on '
+                'every frame, regardless of the phase translator rules.\n'
+                'If a cell has several annotations with this option, the '
+                'first one in the list (toolbar order) wins.'
+            )
+            self.overridesPhasesToggle = widgets.Toggle()
+            self.overridesPhasesToggle.setToolTip(overridesPhasesTooltip)
+            overridesPhasesLabel = QLabel('Overrides phases: ')
+            overridesPhasesLabel.setToolTip(overridesPhasesTooltip)
+            optRow += 1
+            optionsLayout.addWidget(overridesPhasesLabel, optRow, 1)
+            optionsLayout.addWidget(self.overridesPhasesToggle, optRow, 2)
+
         if state is not None:
             self.keepActiveToggle.setChecked(state.get('keepActive', True))
             self.hideAnnotTooggle.setChecked(state.get('isHideChecked', True))
             if state.get('symbolColor') is not None:
                 self.colorButton.setColor(state['symbolColor'])
+            if self.overridesPhasesToggle is not None:
+                self.overridesPhasesToggle.setChecked(
+                    bool(state.get('overridesPhases', False))
+                )
 
         optionsGroupBox.setLayout(optionsLayout)
         layout.addWidget(optionsGroupBox, row, 1, alignment=Qt.AlignCenter)
@@ -522,6 +546,10 @@ class customAnnotationDialog(QDialog):
                 selectedAnnot.get('predictor'),
                 selectedAnnot.get('autoApply', False)
             )
+        if self.overridesPhasesToggle is not None:
+            self.overridesPhasesToggle.setChecked(
+                bool(selectedAnnot.get('overridesPhases', False))
+            )
 
     def warnNoItemsSelected(self):
         msg = widgets.myMessageBox(parent=self)
@@ -574,6 +602,14 @@ class customAnnotationDialog(QDialog):
         <b>Symbol color</b>: Choose color of the symbol that will be used
         to label annotated cell/object.
         """)
+        if self.overridesPhasesToggle is not None:
+            info = (f"""{info}<br><br>
+            <b>Overrides phases</b>: Annotated cells get the annotation
+            name as their <b>phase on every frame</b>, regardless of the
+            time point to phase translator rules (which apply only to the
+            other cells). If a cell has several annotations with this
+            option, the first one in the list (toolbar order) wins.
+            """)
         info = (f'{html_utils.paragraph(info)}')
         msg = widgets.myMessageBox()
         msg.setIcon()
@@ -711,6 +747,11 @@ class customAnnotationDialog(QDialog):
             self.state['predictor'] = predictor
             self.state['autoApply'] = (
                 self.predictorGroupbox.autoApplyCheckBox.isChecked()
+            )
+        if self.overridesPhasesToggle is not None:
+            # Always written: modifying an annotation replaces its state
+            self.state['overridesPhases'] = bool(
+                self.overridesPhasesToggle.isChecked()
             )
 
         if self.loop is not None:
@@ -10659,17 +10700,20 @@ class EditIDDialog(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class QtSelectItems(QDialog):
+class SelectPositionFoldersDialogue(QDialog):
     def __init__(
             self, title, items, informativeText,
             CbLabel='Select value:  ', parent=None,
-            showInFileManagerPath=None
+            showInFileManagerPath=None,
+            addSelectByInfoCheckboxes=False, 
+            allowMultiSelection=True
         ):
         self.cancel = True
         self.selectedItemsText = ''
         self.selectedItemsIdx = None
         self.showInFileManagerPath = showInFileManagerPath
         self.items = items
+        self.allowMultiSelection = allowMultiSelection
         super().__init__(parent)
         self.setWindowTitle(title)
 
@@ -10678,21 +10722,15 @@ class QtSelectItems(QDialog):
         self.topLayout = topLayout
         bottomLayout = QHBoxLayout()
 
-        stretchRow = 0
         if informativeText:
             infoLabel = QLabel(informativeText)
             mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
-            stretchRow = 1
 
         label = QLabel(CbLabel)
         topLayout.addWidget(label, alignment=Qt.AlignRight)
 
-        combobox = QComboBox(self)
-        combobox.addItems(items)
-        self.ComboBox = combobox
-        topLayout.addWidget(combobox)
-
         okButton = widgets.okPushButton('Ok')
+        self.okButton = okButton
         cancelButton = widgets.cancelPushButton('Cancel')
         if showInFileManagerPath is not None:
             txt = myutils.get_open_filemaneger_os_string()
@@ -10704,26 +10742,43 @@ class QtSelectItems(QDialog):
         if showInFileManagerPath is not None:
             bottomLayout.addWidget(showInFileManagerButton)
         bottomLayout.addWidget(okButton)
-
-        multiPosButton = QPushButton('Multiple selection')
-        multiPosButton.setCheckable(True)
-        self.multiPosButton = multiPosButton
-        bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
         
         self.buttonsLayout = bottomLayout
 
+        self.selectByInfoCheckboxes = []
+        selectByInfoLayout = None
+        if addSelectByInfoCheckboxes and allowMultiSelection:
+            selectByInfoLayout = self._createSelectByInfoCheckboxes(items)
+
         listBox = widgets.listWidget()
         listBox.addItems(items)
-        listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        listBox.setCurrentRow(0)
+        if allowMultiSelection:
+            selectionMode = QAbstractItemView.SelectionMode.ExtendedSelection
+        else:
+            selectionMode = QAbstractItemView.SelectionMode.SingleSelection
+        listBox.setSelectionMode(selectionMode)
         listBox.setFont(fonts.font)
+        listBox.setFocusPolicy(Qt.StrongFocus)
         topLayout.addWidget(listBox)
-        listBox.hide()
         self.ListBox = listBox
+        self._setListBoxMinimumHeight()
 
-        mainLayout.addLayout(topLayout)  
+        self.numSelectedLabel = None
+        if addSelectByInfoCheckboxes:
+            self.numSelectedLabel = QLabel()
+
+        mainLayout.addLayout(topLayout)
+        if selectByInfoLayout is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addLayout(selectByInfoLayout)
+        if self.numSelectedLabel is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addWidget(
+                self.numSelectedLabel, alignment=Qt.AlignRight
+            )
         mainLayout.addSpacing(20)
         mainLayout.addLayout(bottomLayout)
+        mainLayout.setStretchFactor(topLayout, 2)
 
         self.setLayout(mainLayout)
         self.mainLayout = mainLayout
@@ -10734,70 +10789,193 @@ class QtSelectItems(QDialog):
         # Connect events
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
-        multiPosButton.toggled.connect(self.toggleMultiSelection)
+        listBox.itemSelectionChanged.connect(self.onSelectionChanged)
         if showInFileManagerPath is not None:
             showInFileManagerButton.clicked.connect(self.showInFileManager)
 
         self.setFont(fonts.font)
+        
+        # Select the first item by default
+        listBox.setCurrentRow(0)
+        self.onSelectionChanged()
+    
+    def _setListBoxMinimumHeight(self):
+        # Show up to 10 items without scrolling
+        n = min(self.ListBox.count(), 10)
+        h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
+        self.ListBox.setMinimumHeight(h+5)
+    
+    def onSelectionChanged(self):
+        numSelected = len(self.ListBox.selectedItems())
+        self.okButton.setDisabled(numSelected == 0)
+        self.updateNumSelectedLabel()
+
+    def updateNumSelectedLabel(self, *args):
+        if self.numSelectedLabel is None:
+            return
+
+        numSelected = len(self.ListBox.selectedItems())
+        numTotal = self.ListBox.count()
+        self.numSelectedLabel.setText(
+            f'<i>Number of selected Positions</i>: <b>{numSelected}/{numTotal}</b>'
+        )
+
+    # (regex pattern searched in the item text, checkbox text)
+    # The info text is added to the Position folder names by methods like
+    # `load.select_exp_folder.get_values_acdc_and_spotmax`,
+    # `load.select_exp_folder.get_values_segmGUI`, and
+    # `load.select_exp_folder.get_values_dataprep`
+    SELECT_BY_INFO_RULES = (
+        (
+            r'last tracked frame',
+            'Select all Positions with at least one tracked frame'
+        ),
+        (
+            r'last (cc )?annotated frame',
+            'Select all Positions with cell cycle annotations'
+        ),
+        (
+            r'SpotMAX output exists',
+            'Select all Positions with SpotMAX output'
+        ),
+        (
+            r'z-slices selected',
+            'Select all Positions with z-slices selected'
+        ),
+        (
+            r'\baligned\b',
+            'Select all aligned Positions'
+        ),
+        (
+            r'(?<!bkgr )ROI info present',
+            'Select all Positions with ROI info'
+        ),
+        (
+            r'bkgr ROI info present',
+            'Select all Positions with background ROI info'
+        ),
+        (
+            r'\bcropped\b',
+            'Select all cropped Positions'
+        ),
+    )
+
+    def _createSelectByInfoCheckboxes(self, items):
+        """Add one checkbox for each type of info found in the items text
+        (e.g., 'last tracked frame' or 'SpotMAX output exists'). Every time
+        a checkbox is toggled, the selection is set to the items that match
+        ALL the checked checkboxes (AND). If no checkbox is checked, all
+        the items are deselected.
+        """
+        if len(items) < 2:
+            return
+
+        layout = QGridLayout()
+        n_cols = 2
+        for pattern, checkboxText in self.SELECT_BY_INFO_RULES:
+            regex = re.compile(pattern, flags=re.IGNORECASE)
+            isMatch = [
+                regex.search(self._getItemInfoText(item)) is not None
+                for item in items
+            ]
+            if not any(isMatch):
+                continue
+
+            checkbox = QCheckBox(checkboxText)
+            checkbox.isMatch = isMatch
+            checkbox.toggled.connect(
+                partial(self.selectItemsByInfoToggled, checkbox)
+            )
+            idx = len(self.selectByInfoCheckboxes)
+            row, col = divmod(idx, n_cols)
+            layout.addWidget(checkbox, row, col)
+            self.selectByInfoCheckboxes.append(checkbox)
+
+        if not self.selectByInfoCheckboxes:
+            return
+
+        hLayout = QHBoxLayout()
+        hLayout.addStretch(1)
+        hLayout.addLayout(layout)
+
+        return hLayout
+
+    def _getItemInfoText(self, item):
+        # Search only in the info part (after the Position folder name)
+        idx = item.find('(')
+        if idx == -1:
+            return ''
+        return item[idx:]
+
+    def selectItemsByInfoToggled(self, checkbox, checked):
+        # Select only the items that match ALL the checked checkboxes
+        checkedCheckboxes = [
+            cb for cb in self.selectByInfoCheckboxes if cb.isChecked()
+        ]
+        firstSelectedItem = None
+        for i in range(self.ListBox.count()):
+            item = self.ListBox.item(i)
+            isSelected = (
+                len(checkedCheckboxes) > 0
+                and all(cb.isMatch[i] for cb in checkedCheckboxes)
+            )
+            item.setSelected(isSelected)
+            if isSelected and firstSelectedItem is None:
+                firstSelectedItem = item
+
+        if firstSelectedItem is not None:
+            self.ListBox.scrollToItem(firstSelectedItem)
 
     def setAllSelected(self, selected: bool):
         for i in range(self.ListBox.count()):
             item = self.ListBox.item(i)
             item.setSelected(selected)
-    
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.StandardKey.SelectAll):
+            self.selectAllItems()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def selectAllItems(self):
+        if not self.allowMultiSelection:
+            return
+        self.setAllSelected(True)
+
     def setSelectedItems(self, selectedItemsText):
-        if self.multiPosButton.isChecked():
-            for i in range(self.ListBox.count()):
-                item = self.ListBox.item(i)
-                if item.text() in selectedItemsText:
-                    item.setSelected(True)
-        else:
-            idx = self.items.index(selectedItemsText[0])
-            self.ComboBox.setCurrentIndex(idx)
-    
+        self.ListBox.clearSelection()
+        firstSelectedItem = None
+        for i in range(self.ListBox.count()):
+            item = self.ListBox.item(i)
+            if item.text() not in selectedItemsText:
+                continue
+            item.setSelected(True)
+            if firstSelectedItem is None:
+                firstSelectedItem = item
+            if not self.allowMultiSelection:
+                break
+
+        if firstSelectedItem is not None:
+            self.ListBox.scrollToItem(firstSelectedItem)
+
     def showInFileManager(self):
         selectedTexts, _ = self.getSelectedItems()
-        folder = selectedTexts[0].split('(')[0].strip()
-        path = os.path.join(self.showInFileManagerPath, folder)
-        if os.path.exists(path) and os.path.isdir(path):
-            showPath = path
-        else:
-            showPath = self.showInFileManagerPath
+        showPath = self.showInFileManagerPath
+        if selectedTexts:
+            folder = selectedTexts[0].split('(')[0].strip()
+            path = os.path.join(self.showInFileManagerPath, folder)
+            if os.path.exists(path) and os.path.isdir(path):
+                showPath = path
         myutils.showInExplorer(showPath)
 
-    def toggleMultiSelection(self, checked):
-        if checked:
-            self.multiPosButton.setText('Single selection')
-            self.ComboBox.hide()
-            self.ListBox.show()
-            # Show 10 items
-            n = self.ListBox.count()
-            if n > 10:
-                h = sum([self.ListBox.sizeHintForRow(i) for i in range(10)])
-            else:
-                h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
-            self.ListBox.setMinimumHeight(h+5)
-            self.ListBox.setFocusPolicy(Qt.StrongFocus)
-            self.ListBox.setFocus()
-            self.ListBox.setCurrentRow(0)
-            self.mainLayout.setStretchFactor(self.topLayout, 2)
-        else:
-            self.multiPosButton.setText('Multiple selection')
-            self.ListBox.hide()
-            self.ComboBox.show()
-            self.resize(self.width(), self.singleSelectionHeight)
-
     def getSelectedItems(self):
-        if self.multiPosButton.isChecked():
-            selectedItems = self.ListBox.selectedItems()
-            selectedItemsText = [item.text() for item in selectedItems]
-            selectedItemsText = natsorted(selectedItemsText)
-            selectedItemsIdx = [
-                self.items.index(txt) for txt in selectedItemsText
-            ]
-        else:
-            selectedItemsText = [self.ComboBox.currentText()]
-            selectedItemsIdx = [self.ComboBox.currentIndex()]
+        selectedItems = self.ListBox.selectedItems()
+        selectedItemsText = [item.text() for item in selectedItems]
+        selectedItemsText = natsorted(selectedItemsText)
+        selectedItemsIdx = [
+            self.items.index(txt) for txt in selectedItemsText
+        ]
         return selectedItemsText, selectedItemsIdx
 
     def ok_cb(self, event):
@@ -10811,7 +10989,7 @@ class QtSelectItems(QDialog):
     def show(self, block=False):
         _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
-        self.singleSelectionHeight = self.height()
+        self.ListBox.setFocus()
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
@@ -19647,7 +19825,219 @@ class FucciPreprocessDialog(FunctionParamsDialog):
         self.firstChannelName = self.firstChNameWidget.currentText()
         self.secondChannelName = self.secondChNameWidget.currentText()
         super().ok_cb()
-        
+
+
+class BackgroundValuesParamsDialog(QBaseDialog):
+    """Parameters of the "Compute background intensity" utility.
+
+    After `exec_`, `cancel` is False when the user pressed Ok and `params`
+    holds the keys documented in `workers.ComputeBackgroundValuesWorker`.
+
+    `findExistingFile(name)` returns the name of an existing file that the
+    background table `<basename><name>.csv` would collide with, or None.
+
+    `presetParams` (any subset of the `params` keys) prefill the widgets:
+    with `channels`, only these channels are checked. `presetNote` is shown
+    on top (e.g. why the values are preset).
+    """
+    def __init__(
+            self, channelNames, findExistingFile=None, parent=None,
+            presetParams=None, presetNote=''
+        ):
+        super().__init__(parent=parent)
+        self.setWindowTitle('Compute background intensity')
+        self.cancel = True
+        self.params = None
+        self.findExistingFile = findExistingFile
+
+        mainLayout = QVBoxLayout()
+        if presetNote:
+            noteLabel = QLabel(html_utils.paragraph(presetNote))
+            noteLabel.setWordWrap(True)
+            mainLayout.addWidget(noteLabel)
+        mainLayout.addWidget(QLabel(html_utils.paragraph(
+            'For every frame, the background of each selected channel is the '
+            '<b>intensity of the pixels outside of the segmented '
+            'objects</b>.<br>'
+            'You will select the segmentation file next: use one where '
+            '<b>(nearly) all cells are segmented</b>.'
+        )))
+
+        mainLayout.addWidget(QLabel(html_utils.paragraph(
+            '<b>Channels</b>:'
+        )))
+        self.channelsListWidget = QListWidget()
+        for channel in channelNames:
+            item = QListWidgetItem(channel)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            self.channelsListWidget.addItem(item)
+        self.channelsListWidget.setMaximumHeight(
+            max(60, min(160, 24*len(channelNames) + 8))
+        )
+        mainLayout.addWidget(self.channelsListWidget)
+
+        gridLayout = QGridLayout()
+        row = 0
+        gridLayout.addWidget(
+            QLabel('Background statistic subtracted from cells:'), row, 0
+        )
+        self.statisticCombobox = QComboBox()
+        self.statisticCombobox.addItems(['mean', 'median'])
+        gridLayout.addWidget(self.statisticCombobox, row, 1)
+        gridLayout.addWidget(widgets.infoPushButton(
+            info_title='Background statistic',
+            info_text=html_utils.paragraph(
+                'Both the mean and the median of the background pixels are '
+                'saved for every frame. This statistic is the one subtracted '
+                'from the mean intensity of the cells and used for the '
+                'normalization constants.'
+            )
+        ), row, 2)
+
+        row += 1
+        self.excludeZeroCheckbox = QCheckBox(
+            'Ignore pixels with intensity 0 (e.g., padding from alignment)'
+        )
+        self.excludeZeroCheckbox.setChecked(True)
+        gridLayout.addWidget(self.excludeZeroCheckbox, row, 0, 1, 3)
+
+        row += 1
+        gridLayout.addWidget(QLabel('Name of the background table:'), row, 0)
+        self.outputNameLineEdit = widgets.alphaNumericLineEdit()
+        self.outputNameLineEdit.setText('background_values')
+        gridLayout.addWidget(self.outputNameLineEdit, row, 1)
+        gridLayout.addWidget(widgets.infoPushButton(
+            info_title='Background table',
+            info_text=html_utils.paragraph(
+                'The per-frame background values of each Position are saved '
+                'in the Images folder as '
+                '<code>&lt;basename&gt;&lt;name&gt;.csv</code>, the pooled '
+                'summary in each experiment folder as '
+                '<code>&lt;name&gt;_summary.csv</code>. Existing files are '
+                'overwritten.'
+            )
+        ), row, 2)
+        gridLayout.setColumnStretch(1, 1)
+        mainLayout.addLayout(gridLayout)
+
+        self.normalizationGroupbox = QGroupBox(
+            'Compute normalization constants from an acdc_output table'
+        )
+        self.normalizationGroupbox.setCheckable(True)
+        self.normalizationGroupbox.setChecked(True)
+        groupLayout = QGridLayout()
+        groupLayout.addWidget(QLabel(html_utils.paragraph(
+            'Reads <code>&lt;channel&gt;_mean</code> of the cells from the '
+            'selected acdc_output table (the table is not modified).<br>'
+            'The percentiles below of these values minus the constant '
+            'background, pooled over all cells,<br>'
+            'frames and Positions, are the min/max values of the "Min-max '
+            'normalization" measurement processing.'
+        )), 0, 0, 1, 2)
+        groupLayout.addWidget(QLabel('Percentile mapped to 0:'), 1, 0)
+        self.lowPercentileSpinbox = widgets.DoubleSpinBox()
+        self.lowPercentileSpinbox.setMinimum(0)
+        self.lowPercentileSpinbox.setMaximum(100)
+        self.lowPercentileSpinbox.setValue(5)
+        groupLayout.addWidget(self.lowPercentileSpinbox, 1, 1)
+        groupLayout.addWidget(QLabel('Percentile mapped to 1:'), 2, 0)
+        self.highPercentileSpinbox = widgets.DoubleSpinBox()
+        self.highPercentileSpinbox.setMinimum(0)
+        self.highPercentileSpinbox.setMaximum(100)
+        self.highPercentileSpinbox.setValue(95)
+        groupLayout.addWidget(self.highPercentileSpinbox, 2, 1)
+        self.normalizationGroupbox.setLayout(groupLayout)
+        mainLayout.addWidget(self.normalizationGroupbox)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        mainLayout.addSpacing(10)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+        if presetParams:
+            self.setParams(presetParams)
+
+    def setParams(self, params):
+        """Prefill the widgets with `params` (any subset of the keys of
+        `self.params`)."""
+        if 'channels' in params:
+            selected = set(params['channels'])
+            for i in range(self.channelsListWidget.count()):
+                item = self.channelsListWidget.item(i)
+                checked = item.text() in selected
+                item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+        if params.get('statistic') in ('mean', 'median'):
+            self.statisticCombobox.setCurrentText(params['statistic'])
+        if 'exclude_zero_pixels' in params:
+            self.excludeZeroCheckbox.setChecked(
+                bool(params['exclude_zero_pixels'])
+            )
+        if params.get('output_name'):
+            self.outputNameLineEdit.setText(params['output_name'])
+        if 'use_acdc_output' in params:
+            self.normalizationGroupbox.setChecked(
+                bool(params['use_acdc_output'])
+            )
+        if 'low_percentile' in params:
+            self.lowPercentileSpinbox.setValue(params['low_percentile'])
+        if 'high_percentile' in params:
+            self.highPercentileSpinbox.setValue(params['high_percentile'])
+
+    def selectedChannels(self):
+        channels = []
+        for i in range(self.channelsListWidget.count()):
+            item = self.channelsListWidget.item(i)
+            if item.checkState() == Qt.Checked:
+                channels.append(item.text())
+        return channels
+
+    def _warn(self, text):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Invalid parameters', html_utils.paragraph(text))
+
+    def ok_cb(self):
+        channels = self.selectedChannels()
+        if not channels:
+            self._warn('Select at least one channel.')
+            return
+        outputName = self.outputNameLineEdit.text().strip()
+        if not outputName:
+            self._warn('The name of the background table cannot be empty.')
+            return
+        existingFile = None
+        if self.findExistingFile is not None:
+            existingFile = self.findExistingFile(outputName)
+        if existingFile is not None:
+            self._warn(
+                f'The name "{outputName}" is already used by the file '
+                f'<code>{existingFile}</code>.<br><br>'
+                'Please choose a different name for the background table.'
+            )
+            return
+        low = self.lowPercentileSpinbox.value()
+        high = self.highPercentileSpinbox.value()
+        useAcdcOutput = self.normalizationGroupbox.isChecked()
+        if low >= high:
+            self._warn(
+                'The percentile mapped to 0 must be lower than the percentile '
+                'mapped to 1.'
+            )
+            return
+        self.params = {
+            'channels': channels,
+            'statistic': self.statisticCombobox.currentText(),
+            'exclude_zero_pixels': self.excludeZeroCheckbox.isChecked(),
+            'output_name': outputName,
+            'use_acdc_output': useAcdcOutput,
+            'low_percentile': low,
+            'high_percentile': high,
+        }
+        self.cancel = False
+        self.close()
+
 class ViewCcaTableWindow(pdDataFrameWidget):
     sigUpdateCcaTable = Signal(object)
     

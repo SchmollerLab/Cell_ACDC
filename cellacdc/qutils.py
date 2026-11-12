@@ -34,7 +34,14 @@ class QWhileLoop:
         self.loop.exit()
 
 class QControlBlink(QObject):
-    """Blink one control or a group in sync, restoring each original style."""
+    """Blink one control or a group in sync, restoring each original style.
+
+    Starting a blink on a widget that is still blinking stops the running
+    blink first, so that its original style (not the blink color) is
+    restored at the end.
+    """
+    # Running blink of each widget {widget: QControlBlink}
+    _active = {}
 
     def __init__(
             self,
@@ -72,12 +79,24 @@ class QControlBlink(QObject):
             for widget in widgets:
                 if widget not in self._widgets:
                     self._widgets.append(widget)
+        for widget in self._widgets:
+            running = QControlBlink._active.get(widget)
+            if running is None:
+                continue
+            try:
+                running.stop()
+            except RuntimeError:
+                # Its widgets or timers were already deleted
+                QControlBlink._active.pop(widget, None)
+        self._stopped = False
         self._original_styles = [
             widget.styleSheet() for widget in self._widgets
         ]
         super().__init__(qparent)
     
     def start(self):
+        for widget in self._widgets:
+            QControlBlink._active[widget] = self
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.timerCallback)
         self.timer.start(100)
@@ -99,9 +118,14 @@ class QControlBlink(QObject):
         self.blinkON = not self.blinkON
 
     def stop(self):
+        if self._stopped:
+            return
+        self._stopped = True
         self.timer.stop()
         self.stopTimer.stop()
         for widget, style in zip(self._widgets, self._original_styles):
+            if QControlBlink._active.get(widget) is self:
+                del QControlBlink._active[widget]
             widget.setStyleSheet(style)
         self.deleteLater()
         
