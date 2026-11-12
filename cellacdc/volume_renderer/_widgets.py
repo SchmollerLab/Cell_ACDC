@@ -25,6 +25,7 @@ class VolumeRendererToolbar(ToolBar):
     sigTwoDView = Signal()
     sigSave = Signal()
     sigSetSingleChannel = Signal(bool)
+    sigSetFullResolution = Signal(bool)
     sigSelectObjects = Signal(bool)
     sigUpdate = Signal()
     sigSetupAnimation = Signal(bool)
@@ -96,7 +97,19 @@ class VolumeRendererToolbar(ToolBar):
             'When single channel mode is activated, selecting a channel '
             'will display only that channel in the overlay.'
         )
-        
+
+        self.fullResolutionCheckbox = self.addCheckBox(
+            text='Full resolution'
+        )
+
+        self.fullResolutionCheckbox.setToolTip(
+            'When full resolution is activated, the volumes are displayed '
+            'with all their voxels (limited only by the maximum 3D texture '
+            'size of the GPU).\n\n'
+            'When deactivated, the volumes are downsampled to maximum 512 '
+            'voxels per dimension (faster, and less memory used on the GPU).'
+        )
+
         self.emitSigUpdateAction.triggered.connect(self.sigUpdate.emit)
         self.homeViewAction.triggered.connect(self.sigHomeView.emit)
         self.twoDViewAction.triggered.connect(self.sigTwoDView.emit)
@@ -108,9 +121,16 @@ class VolumeRendererToolbar(ToolBar):
         self.singleChannelCheckbox.toggled.connect(
             self.sigSetSingleChannel.emit
         )
-    
+
+        self.fullResolutionCheckbox.toggled.connect(
+            self.sigSetFullResolution.emit
+        )
+
     def is_single_channel_mode(self) -> bool:
         return self.singleChannelCheckbox.isChecked()
+
+    def is_full_resolution(self) -> bool:
+        return self.fullResolutionCheckbox.isChecked()
 
 class PointsLayersToolbar(ToolBar):    
     def __init__(self, name='Points Layer Toolbar', parent=None):

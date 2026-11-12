@@ -3822,6 +3822,9 @@ When working with 3D segmentation masks:
             self._volume_renderer = None
             if volume_renderer is not None:
                 volume_renderer.force_close()
+                # Free the window and the data it references (e.g., the
+                # images, not copied), otherwise kept as child of mainWin
+                volume_renderer.deleteLater()
             return
         
         posData = self.data[self.pos_i]
@@ -3867,10 +3870,18 @@ When working with 3D segmentation masks:
             volumes,
             lut_items_states=lut_items_states,
             voxel_size=voxel_size,
+            # The images are not modified while the viewer is open -->
+            # no need to copy them (large timelapses take several GB)
+            copy=False,
+        )
+        # Labels frames beyond the frames of the displayed volumes (e.g.,
+        # segmentation file with more frames than the channel) would
+        # be cropped away by the viewer --> do not collect them
+        num_frames = min(
+            len(posData.segm_data), self._volume_renderer.num_frames
         )
         labels = []
-        max_ID = 1
-        for frame_i in range(len(posData.segm_data)):
+        for frame_i in range(num_frames):
             if frame_i == posData.frame_i:
                 lab = posData.lab
             else:
@@ -3878,14 +3889,22 @@ When working with 3D segmentation masks:
                 if lab is None:
                     lab = posData.segm_data[frame_i]
             labels.append(lab)
-            try:
-                max_ID_i = np.max(lab)
-            except Exception as err:
-                max_ID_i = 1
-            if max_ID_i > max_ID:
-                max_ID = max_ID_i
 
-        labels = np.asarray(labels)
+        from cellacdc.volume_renderer import utils as volume_renderer_utils
+
+        # Stack the frames and get their max ID in parallel threads
+        # (large timelapses take several GB)
+        labels = volume_renderer_utils.stack_frames(labels)
+
+        def _get_frame_max_ID(frame_i):
+            try:
+                return np.max(labels[frame_i])
+            except Exception as err:
+                return 1
+
+        max_ID = max([1, *volume_renderer_utils.map_frames(
+            _get_frame_max_ID, len(labels)
+        )])
         lut = self.extendLabelsLUT(max_ID+1, return_lut=True)
         lut = lut[:max_ID+1]
         self._volume_renderer.set_labels(
@@ -3895,8 +3914,11 @@ When working with 3D segmentation masks:
             SizeZ=posData.SizeZ,
             font_size=self.fontSizeSpinBox.value(),
             text_color=self.imgGrad.textColorButton.color(),
-        ) 
-        
+            # `labels` is a new array not used anymore here --> no need
+            # to copy it (large timelapses take several GB)
+            copy=False,
+        )
+
         self.addPointsLayersToVolumeViewer(self._volume_renderer)
 
         # Applied by the renderer once its camera is set up in `show`

@@ -633,11 +633,19 @@ def replace_background_rgba_lut(
 def get_auto_contrast_percentile(
         image_data: np.ndarray,
         low_pct=0.02,
-        high_pct=99.98
+        high_pct=99.98,
+        vmin_raw: float | None=None,
+        vmax_raw: float | None=None,
     ):
+    """Return the (low, high) percentiles of `image_data` scaled to [0, 1]
+    with the value range [`vmin_raw`, `vmax_raw`] (min and max of
+    `image_data` if None).
+    """
     # Subsample large volumes for speed (< 1 M samples is fast).
-    vmin_raw = float(image_data.min())
-    vmax_raw = float(image_data.max())
+    if vmin_raw is None:
+        vmin_raw = float(image_data.min())
+    if vmax_raw is None:
+        vmax_raw = float(image_data.max())
     flat = image_data.ravel()
     if flat.size > 1_000_000:
         step = flat.size // 1_000_000 + 1
