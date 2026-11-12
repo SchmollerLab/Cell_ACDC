@@ -10659,17 +10659,20 @@ class EditIDDialog(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class QtSelectItems(QDialog):
+class SelectPositionFoldersDialogue(QDialog):
     def __init__(
             self, title, items, informativeText,
             CbLabel='Select value:  ', parent=None,
-            showInFileManagerPath=None
+            showInFileManagerPath=None,
+            addSelectByInfoCheckboxes=False, 
+            allowMultiSelection=True
         ):
         self.cancel = True
         self.selectedItemsText = ''
         self.selectedItemsIdx = None
         self.showInFileManagerPath = showInFileManagerPath
         self.items = items
+        self.allowMultiSelection = allowMultiSelection
         super().__init__(parent)
         self.setWindowTitle(title)
 
@@ -10678,21 +10681,15 @@ class QtSelectItems(QDialog):
         self.topLayout = topLayout
         bottomLayout = QHBoxLayout()
 
-        stretchRow = 0
         if informativeText:
             infoLabel = QLabel(informativeText)
             mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
-            stretchRow = 1
 
         label = QLabel(CbLabel)
         topLayout.addWidget(label, alignment=Qt.AlignRight)
 
-        combobox = QComboBox(self)
-        combobox.addItems(items)
-        self.ComboBox = combobox
-        topLayout.addWidget(combobox)
-
         okButton = widgets.okPushButton('Ok')
+        self.okButton = okButton
         cancelButton = widgets.cancelPushButton('Cancel')
         if showInFileManagerPath is not None:
             txt = myutils.get_open_filemaneger_os_string()
@@ -10704,26 +10701,43 @@ class QtSelectItems(QDialog):
         if showInFileManagerPath is not None:
             bottomLayout.addWidget(showInFileManagerButton)
         bottomLayout.addWidget(okButton)
-
-        multiPosButton = QPushButton('Multiple selection')
-        multiPosButton.setCheckable(True)
-        self.multiPosButton = multiPosButton
-        bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
         
         self.buttonsLayout = bottomLayout
 
+        self.selectByInfoCheckboxes = []
+        selectByInfoLayout = None
+        if addSelectByInfoCheckboxes and allowMultiSelection:
+            selectByInfoLayout = self._createSelectByInfoCheckboxes(items)
+
         listBox = widgets.listWidget()
         listBox.addItems(items)
-        listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        listBox.setCurrentRow(0)
+        if allowMultiSelection:
+            selectionMode = QAbstractItemView.SelectionMode.ExtendedSelection
+        else:
+            selectionMode = QAbstractItemView.SelectionMode.SingleSelection
+        listBox.setSelectionMode(selectionMode)
         listBox.setFont(fonts.font)
+        listBox.setFocusPolicy(Qt.StrongFocus)
         topLayout.addWidget(listBox)
-        listBox.hide()
         self.ListBox = listBox
+        self._setListBoxMinimumHeight()
 
-        mainLayout.addLayout(topLayout)  
+        self.numSelectedLabel = None
+        if addSelectByInfoCheckboxes:
+            self.numSelectedLabel = QLabel()
+
+        mainLayout.addLayout(topLayout)
+        if selectByInfoLayout is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addLayout(selectByInfoLayout)
+        if self.numSelectedLabel is not None:
+            mainLayout.addSpacing(10)
+            mainLayout.addWidget(
+                self.numSelectedLabel, alignment=Qt.AlignRight
+            )
         mainLayout.addSpacing(20)
         mainLayout.addLayout(bottomLayout)
+        mainLayout.setStretchFactor(topLayout, 2)
 
         self.setLayout(mainLayout)
         self.mainLayout = mainLayout
@@ -10734,70 +10748,193 @@ class QtSelectItems(QDialog):
         # Connect events
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
-        multiPosButton.toggled.connect(self.toggleMultiSelection)
+        listBox.itemSelectionChanged.connect(self.onSelectionChanged)
         if showInFileManagerPath is not None:
             showInFileManagerButton.clicked.connect(self.showInFileManager)
 
         self.setFont(fonts.font)
+        
+        # Select the first item by default
+        listBox.setCurrentRow(0)
+        self.onSelectionChanged()
+    
+    def _setListBoxMinimumHeight(self):
+        # Show up to 10 items without scrolling
+        n = min(self.ListBox.count(), 10)
+        h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
+        self.ListBox.setMinimumHeight(h+5)
+    
+    def onSelectionChanged(self):
+        numSelected = len(self.ListBox.selectedItems())
+        self.okButton.setDisabled(numSelected == 0)
+        self.updateNumSelectedLabel()
+
+    def updateNumSelectedLabel(self, *args):
+        if self.numSelectedLabel is None:
+            return
+
+        numSelected = len(self.ListBox.selectedItems())
+        numTotal = self.ListBox.count()
+        self.numSelectedLabel.setText(
+            f'<i>Number of selected Positions</i>: <b>{numSelected}/{numTotal}</b>'
+        )
+
+    # (regex pattern searched in the item text, checkbox text)
+    # The info text is added to the Position folder names by methods like
+    # `load.select_exp_folder.get_values_acdc_and_spotmax`,
+    # `load.select_exp_folder.get_values_segmGUI`, and
+    # `load.select_exp_folder.get_values_dataprep`
+    SELECT_BY_INFO_RULES = (
+        (
+            r'last tracked frame',
+            'Select all Positions with at least one tracked frame'
+        ),
+        (
+            r'last (cc )?annotated frame',
+            'Select all Positions with cell cycle annotations'
+        ),
+        (
+            r'SpotMAX output exists',
+            'Select all Positions with SpotMAX output'
+        ),
+        (
+            r'z-slices selected',
+            'Select all Positions with z-slices selected'
+        ),
+        (
+            r'\baligned\b',
+            'Select all aligned Positions'
+        ),
+        (
+            r'(?<!bkgr )ROI info present',
+            'Select all Positions with ROI info'
+        ),
+        (
+            r'bkgr ROI info present',
+            'Select all Positions with background ROI info'
+        ),
+        (
+            r'\bcropped\b',
+            'Select all cropped Positions'
+        ),
+    )
+
+    def _createSelectByInfoCheckboxes(self, items):
+        """Add one checkbox for each type of info found in the items text
+        (e.g., 'last tracked frame' or 'SpotMAX output exists'). Every time
+        a checkbox is toggled, the selection is set to the items that match
+        ALL the checked checkboxes (AND). If no checkbox is checked, all
+        the items are deselected.
+        """
+        if len(items) < 2:
+            return
+
+        layout = QGridLayout()
+        n_cols = 2
+        for pattern, checkboxText in self.SELECT_BY_INFO_RULES:
+            regex = re.compile(pattern, flags=re.IGNORECASE)
+            isMatch = [
+                regex.search(self._getItemInfoText(item)) is not None
+                for item in items
+            ]
+            if not any(isMatch):
+                continue
+
+            checkbox = QCheckBox(checkboxText)
+            checkbox.isMatch = isMatch
+            checkbox.toggled.connect(
+                partial(self.selectItemsByInfoToggled, checkbox)
+            )
+            idx = len(self.selectByInfoCheckboxes)
+            row, col = divmod(idx, n_cols)
+            layout.addWidget(checkbox, row, col)
+            self.selectByInfoCheckboxes.append(checkbox)
+
+        if not self.selectByInfoCheckboxes:
+            return
+
+        hLayout = QHBoxLayout()
+        hLayout.addStretch(1)
+        hLayout.addLayout(layout)
+
+        return hLayout
+
+    def _getItemInfoText(self, item):
+        # Search only in the info part (after the Position folder name)
+        idx = item.find('(')
+        if idx == -1:
+            return ''
+        return item[idx:]
+
+    def selectItemsByInfoToggled(self, checkbox, checked):
+        # Select only the items that match ALL the checked checkboxes
+        checkedCheckboxes = [
+            cb for cb in self.selectByInfoCheckboxes if cb.isChecked()
+        ]
+        firstSelectedItem = None
+        for i in range(self.ListBox.count()):
+            item = self.ListBox.item(i)
+            isSelected = (
+                len(checkedCheckboxes) > 0
+                and all(cb.isMatch[i] for cb in checkedCheckboxes)
+            )
+            item.setSelected(isSelected)
+            if isSelected and firstSelectedItem is None:
+                firstSelectedItem = item
+
+        if firstSelectedItem is not None:
+            self.ListBox.scrollToItem(firstSelectedItem)
 
     def setAllSelected(self, selected: bool):
         for i in range(self.ListBox.count()):
             item = self.ListBox.item(i)
             item.setSelected(selected)
-    
+
+    def keyPressEvent(self, event):
+        if event.matches(QKeySequence.StandardKey.SelectAll):
+            self.selectAllItems()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def selectAllItems(self):
+        if not self.allowMultiSelection:
+            return
+        self.setAllSelected(True)
+
     def setSelectedItems(self, selectedItemsText):
-        if self.multiPosButton.isChecked():
-            for i in range(self.ListBox.count()):
-                item = self.ListBox.item(i)
-                if item.text() in selectedItemsText:
-                    item.setSelected(True)
-        else:
-            idx = self.items.index(selectedItemsText[0])
-            self.ComboBox.setCurrentIndex(idx)
-    
+        self.ListBox.clearSelection()
+        firstSelectedItem = None
+        for i in range(self.ListBox.count()):
+            item = self.ListBox.item(i)
+            if item.text() not in selectedItemsText:
+                continue
+            item.setSelected(True)
+            if firstSelectedItem is None:
+                firstSelectedItem = item
+            if not self.allowMultiSelection:
+                break
+
+        if firstSelectedItem is not None:
+            self.ListBox.scrollToItem(firstSelectedItem)
+
     def showInFileManager(self):
         selectedTexts, _ = self.getSelectedItems()
-        folder = selectedTexts[0].split('(')[0].strip()
-        path = os.path.join(self.showInFileManagerPath, folder)
-        if os.path.exists(path) and os.path.isdir(path):
-            showPath = path
-        else:
-            showPath = self.showInFileManagerPath
+        showPath = self.showInFileManagerPath
+        if selectedTexts:
+            folder = selectedTexts[0].split('(')[0].strip()
+            path = os.path.join(self.showInFileManagerPath, folder)
+            if os.path.exists(path) and os.path.isdir(path):
+                showPath = path
         myutils.showInExplorer(showPath)
 
-    def toggleMultiSelection(self, checked):
-        if checked:
-            self.multiPosButton.setText('Single selection')
-            self.ComboBox.hide()
-            self.ListBox.show()
-            # Show 10 items
-            n = self.ListBox.count()
-            if n > 10:
-                h = sum([self.ListBox.sizeHintForRow(i) for i in range(10)])
-            else:
-                h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
-            self.ListBox.setMinimumHeight(h+5)
-            self.ListBox.setFocusPolicy(Qt.StrongFocus)
-            self.ListBox.setFocus()
-            self.ListBox.setCurrentRow(0)
-            self.mainLayout.setStretchFactor(self.topLayout, 2)
-        else:
-            self.multiPosButton.setText('Multiple selection')
-            self.ListBox.hide()
-            self.ComboBox.show()
-            self.resize(self.width(), self.singleSelectionHeight)
-
     def getSelectedItems(self):
-        if self.multiPosButton.isChecked():
-            selectedItems = self.ListBox.selectedItems()
-            selectedItemsText = [item.text() for item in selectedItems]
-            selectedItemsText = natsorted(selectedItemsText)
-            selectedItemsIdx = [
-                self.items.index(txt) for txt in selectedItemsText
-            ]
-        else:
-            selectedItemsText = [self.ComboBox.currentText()]
-            selectedItemsIdx = [self.ComboBox.currentIndex()]
+        selectedItems = self.ListBox.selectedItems()
+        selectedItemsText = [item.text() for item in selectedItems]
+        selectedItemsText = natsorted(selectedItemsText)
+        selectedItemsIdx = [
+            self.items.index(txt) for txt in selectedItemsText
+        ]
         return selectedItemsText, selectedItemsIdx
 
     def ok_cb(self, event):
@@ -10811,7 +10948,7 @@ class QtSelectItems(QDialog):
     def show(self, block=False):
         _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
-        self.singleSelectionHeight = self.height()
+        self.ListBox.setFocus()
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()

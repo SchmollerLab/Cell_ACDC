@@ -98,9 +98,12 @@ class OverlayChannelsGuiElements:
     def loadOverlayData(self, ol_channels, addToExisting=False):
         posData = self.data[self.pos_i]
         for ol_ch in ol_channels:
-            if ol_ch not in list(posData.loadedFluoChannels):
-                # Requested channel was never loaded --> load it at first
-                # iter i == 0
+            isLoadedInAllPos = all([
+                ol_ch in _posData.loadedFluoChannels for _posData in self.data
+            ])
+            if not isLoadedInAllPos:
+                # Requested channel was never loaded (or only in some
+                # Positions for measurements) --> load it at first iter i == 0
                 success = self.loadFluo_cb(fluo_channels=[ol_ch])
                 if not success:
                     return False
@@ -642,7 +645,10 @@ class OverlayChannelsGuiElements:
             'Load fluorescence images?', msg.clickedButton.text()
         )
 
-    def loadFluo_cb(self, checked=True, fluo_channels=None):
+    def loadFluo_cb(
+            self, checked=True, fluo_channels=None,
+            skipPosWithoutChannel=False
+        ):
         if fluo_channels is None:
             posData = self.data[self.pos_i]
             ch_names = [
@@ -671,10 +677,32 @@ class OverlayChannelsGuiElements:
             fluo_channels = selectFluo.selectedItemsText
             self.AutoPilotProfile.storeLoadedFluoChannels(fluo_channels)
 
+        if skipPosWithoutChannel:
+            # Positions can have different channels --> load only where
+            # present, but fail if the channel is not present anywhere
+            for fluo_ch in fluo_channels:
+                isChannelPresent = any([
+                    self.getPathAndFilenameNoExtFromChName(
+                        fluo_ch, _posData
+                    )[0] is not None
+                    for _posData in self.data
+                ])
+                if not isChannelPresent:
+                    self.criticalFluoChannelNotFound(
+                        fluo_ch, self.data[self.pos_i]
+                    )
+                    return False
+
         for p, posData in enumerate(self.data):
             # posData.ol_data = None
             for fluo_ch in fluo_channels:
                 fluo_path, filename = self.getPathAndFilenameNoExtFromChName(fluo_ch, posData)
+                if fluo_path is None and skipPosWithoutChannel:
+                    self.logger.info(
+                        f'Channel "{fluo_ch}" not present in '
+                        f'"{posData.relPath}" --> skipping it.'
+                    )
+                    continue
                 if fluo_path is None:
                     self.criticalFluoChannelNotFound(fluo_ch, posData)
                     return False
@@ -691,8 +719,13 @@ class OverlayChannelsGuiElements:
                 posData.ol_data_dict[filename] = fluo_data.copy()
                 
         self.overlayButton.setStyleSheet(f'background-color: {GREEN_HEX}')
+        allLoadedFluoChannels = []
+        for _posData in self.data:
+            for fluo_ch in _posData.loadedFluoChannels:
+                if fluo_ch not in allLoadedFluoChannels:
+                    allLoadedFluoChannels.append(fluo_ch)
         self.guiTabControl.addChannels([
-            posData.user_ch_name, *posData.loadedFluoChannels
+            posData.user_ch_name, *allLoadedFluoChannels
         ])
         return True
 

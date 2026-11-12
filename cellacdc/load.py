@@ -3926,8 +3926,7 @@ class select_exp_folder:
     def doNotAskAgainCallback(self, selectWindow):
         self.doNotAskAgain = True
         selectWindow.setAllSelected(True)
-        selectWindow.cancel = False
-        selectWindow.close()
+        selectWindow.ok_cb(None)
     
     def QtPrompt(
             self, parentQWidget, values,
@@ -3943,13 +3942,17 @@ class select_exp_folder:
             selectedValues=None,
             addDoNotAskAgain=False
         ):
+        # NOTE: `toggleMulti` is kept for backward compatibility but it is
+        # not used anymore since the items are always shown in a list widget
         from . import apps
         font = QtGui.QFont()
         font.setPixelSize(13)
-        win = apps.QtSelectItems(
-            title, values, informativeText, CbLabel=CbLabel, 
+        win = apps.SelectPositionFoldersDialogue(
+            title, values, informativeText, CbLabel=CbLabel,
             parent=parentQWidget,
-            showInFileManagerPath=self.exp_path
+            showInFileManagerPath=self.exp_path,
+            addSelectByInfoCheckboxes=allowMultiSelection,
+            allowMultiSelection=allowMultiSelection
         )
         win.setFont(font)
         self.doNotAskAgain = False
@@ -3965,11 +3968,6 @@ class select_exp_folder:
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
         win.setWindowState(toFront)
         win.activateWindow()
-        if not allowMultiSelection:
-            win.multiPosButton.setChecked(False)
-            win.multiPosButton.setDisabled(True)
-        if toggleMulti:
-            win.multiPosButton.setChecked(True)
         if selectedValues is not None:
             win.setSelectedItems(selectedValues)
         win.exec_()
@@ -4074,38 +4072,6 @@ class select_exp_folder:
                 values.append(pos)
             else:
                 values.append(f'{info_txt})')
-        self.values = values
-        return values
-
-    def get_values_cca(self, exp_path):
-        self.exp_path = exp_path
-        pos_foldernames = natsorted(myutils.listdir(exp_path))
-        pos_foldernames = [
-            pos for pos in pos_foldernames if re.match(r'^Position_(\d+)', pos)
-        ]
-        self.pos_foldernames = pos_foldernames
-        values = []
-        for pos in pos_foldernames:
-            cc_stage_found = False
-            pos_path = os.path.join(exp_path, pos)
-            if os.path.isdir(pos_path):
-                images_path = f'{exp_path}/{pos}/Images'
-                filenames = myutils.listdir(images_path)
-                for filename in filenames:
-                    if filename.find('cc_stage.csv') != -1:
-                        cc_stage_found = True
-                        cc_stage_path = f'{images_path}/{filename}'
-                        cca_df = pd.read_csv(
-                            cc_stage_path, index_col=['frame_i', 'Cell_ID']
-                        )
-                        last_analyzed_frame_i = (
-                            cca_df.index.get_level_values(0).max()
-                        )
-                if cc_stage_found:
-                    values.append(f'{pos} (Last analyzed frame: '
-                                  f'{last_analyzed_frame_i})')
-                else:
-                    values.append(pos)
         self.values = values
         return values
 

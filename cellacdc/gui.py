@@ -20556,9 +20556,22 @@ When working with 3D segmentation masks:
             self.logger, self.log_path, False
         )
         self._measurements_kernel.init_args(
-            posData.chNames, posData.getSegmEndname()
+            self.getAllPosChNames(), posData.getSegmEndname()
         )
         self._measurements_kernel._init_metrics(posData, self.isSegm3D)
+
+    def getAllPosChNames(self):
+        """Ordered union of the channel names found in all loaded Positions
+        (order of first appearance)."""
+        allChNames = list(self.ch_names)
+        for _posData in self.data:
+            chNames = getattr(_posData, 'chNames', None)
+            if not chNames:
+                continue
+            for chName in chNames:
+                if chName not in allChNames:
+                    allChNames.append(chName)
+        return allChNames
     
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
@@ -30148,7 +30161,9 @@ When working with 3D segmentation masks:
         posData.fluo_data_dict.pop(self.user_ch_name, None)
         if self.user_ch_name not in loadedChNames:
             loadedChNames.insert(0, self.user_ch_name)
-        notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
+        notLoadedChNames = [
+            c for c in self.getAllPosChNames() if c not in loadedChNames
+        ]
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.SetMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1, self.isSegm3D,
@@ -30204,7 +30219,9 @@ When working with 3D segmentation masks:
             if ch not in self.notLoadedChNames:
                 continue
             
-            success = self.loadFluo_cb(fluo_channels=[ch])
+            success = self.loadFluo_cb(
+                fluo_channels=[ch], skipPosWithoutChannel=True
+            )
             if not success:
                 continue
 
@@ -30220,7 +30237,7 @@ When working with 3D segmentation masks:
         posData = self.data[self.pos_i]
         isZstack = posData.SizeZ > 1
         win = apps.CombineMetricsEquationDialog(
-            self.ch_names, isZstack, self.isSegm3D, parent=self,
+            self.getAllPosChNames(), isZstack, self.isSegm3D, parent=self,
             acdc_df=posData.acdc_df
         )
         win.sigOk.connect(self.saveCombineMetricsToPosData)

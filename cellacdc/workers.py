@@ -1458,6 +1458,7 @@ class ComputeMetricsWorker(QObject):
                 self.allPosDataInputs.append({
                     'file_path': file_path,
                     'chName': chName,
+                    'chNames': list(posData.chNames),
                     'combineMetricsConfig': posData.combineMetricsConfig,
                     'combineMetricsPath': posData.custom_combine_metrics_path
                 })
