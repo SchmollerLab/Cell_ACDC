@@ -1,8 +1,9 @@
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from functools import partial
-from math import ceil
+from math import ceil, prod
 
-from typing import Literal
+from typing import Callable, Literal
 
 import numpy as np
 import pandas as pd
@@ -10,10 +11,10 @@ import pandas as pd
 import skimage
 
 from qtpy.QtCore import (
-    Signal, Qt, QCoreApplication, QEventLoop
+    Signal, Qt, QCoreApplication, QEventLoop, QTimer
 )
 from qtpy.QtWidgets import (
-    QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton, 
+    QApplication, QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QPushButton,
     QGraphicsProxyWidget, QGroupBox, QCheckBox, QMenu, QRadioButton, 
     QButtonGroup, QGridLayout, QSpacerItem
 )
@@ -55,37 +56,410 @@ MarkerSymbols = plot.VisPyMarkerSymbols
 _SLIDER_NORMALIZE_FACTOR = 20
 _DEFAULT_LABELS_CMAP_NAME = 'viridis'
 
+# Default (home) camera orientation. It is the "2D view" orientation
+# (azimuth=180, elevation=90, roll=180, see `set_2d_view`), where left-right
+# and top-bottom are the same as in the Cell-ACDC GUI, tilted by 45 degrees
+# and turned by 20 degrees to give a 3D perspective without mirroring the
+# image compared to the GUI.
+_HOME_AZIMUTH = 160.0
+_HOME_ELEVATION = 45.0
+_HOME_ROLL = 180.0
+_HOME_FOV = 60.0
+
+# "2D view" camera orientation (looking perpendicular to the xy plane with
+# left-right and top-bottom as in the Cell-ACDC GUI)
+_TWO_D_VIEW_AZIMUTH = 180.0
+_TWO_D_VIEW_ELEVATION = 90.0
+_TWO_D_VIEW_ROLL = 180.0
+
+# Mirrored cursor of the mouse cursor on the parent GUI image: a shaded
+# octahedron, i.e., the 3D version of the diamond cursor of the GUI (it
+# looks like the diamond in "2D view"). Size in pixels at the depth of the
+# camera centre, larger in front of it and smaller behind it (perspective,
+# with the scale clamped to [MIN_SCALE, MAX_SCALE]).
+_PARENT_CURSOR_SIZE = 24
+_PARENT_CURSOR_MIN_SCALE = 0.35
+_PARENT_CURSOR_MAX_SCALE = 2.5
+
+# Octahedron vertices along +-x, +-y, +-z (scene coordinates)
+_OCTAHEDRON_VERTICES = np.array([
+    [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]
+], dtype=float)
+
+def _get_octahedron_faces() -> tuple[np.ndarray, np.ndarray]:
+    """Return the vertex indices (counter-clockwise seen from outside) and
+    the outward unit normals of the 8 faces (one per octant) of the
+    octahedron with vertices `_OCTAHEDRON_VERTICES`."""
+    faces, normals = [], []
+    for sx in (1, -1):
+        for sy in (1, -1):
+            for sz in (1, -1):
+                a = 0 if sx > 0 else 1
+                b = 2 if sy > 0 else 3
+                c = 4 if sz > 0 else 5
+                faces.append((a, b, c) if sx*sy*sz > 0 else (a, c, b))
+                normals.append(np.array([sx, sy, sz]) / np.sqrt(3))
+    return np.array(faces), np.array(normals)
+
+_OCTAHEDRON_FACES, _OCTAHEDRON_NORMALS = _get_octahedron_faces()
+
+def _projection_jacobian(M: np.ndarray, h: np.ndarray) -> np.ndarray:
+    """(2, 3) Jacobian of the canvas (x, y) coordinates w.r.t. the scene
+    coordinates at the point with homogeneous canvas coordinates `h = M @ p`,
+    where M is the (4, 4) homogeneous scene-to-canvas matrix."""
+    w = h[3]
+    return (M[:2, :3]*w - np.outer(h[:2], M[3, :3])) / w**2
+
+def _get_octahedron_cursor_faces(
+        M: np.ndarray,
+        pos: np.ndarray,
+        focal_point: np.ndarray,
+        size_px: float,
+        min_scale: float=_PARENT_CURSOR_MIN_SCALE,
+        max_scale: float=_PARENT_CURSOR_MAX_SCALE,
+    ) -> tuple[list[tuple[np.ndarray, float]], float]:
+    """Project an octahedron centred at `pos` (scene coordinates) onto the
+    canvas and return its faces visible from the camera and its opacity.
+
+    Parameters
+    ----------
+    M : (4, 4) np.ndarray
+        Homogeneous matrix mapping scene to canvas coordinates.
+    pos, focal_point : (3,) np.ndarray
+        Centre of the octahedron and of the camera (scene coordinates).
+    size_px : float
+        Size of the octahedron (distance between opposite vertices) in
+        pixels when it is at the depth of `focal_point`. It is larger in
+        front and smaller behind (perspective), with the scale clamped to
+        [`min_scale`, `max_scale`].
+
+    Returns
+    -------
+    faces : list of ((3, 2) np.ndarray, float)
+        Canvas coordinates of the vertices of each visible face and its
+        shade in [0, 1] (lit from the camera, slightly from the top-left).
+        Empty if the octahedron is not in front of the camera.
+    opacity : float
+        Lower when the octahedron is far behind the focal point.
+    """
+    h_focal = M @ np.append(focal_point, 1.0)
+    h_pos = M @ np.append(pos, 1.0)
+    if h_focal[3] <= 0 or h_pos[3] <= 0:
+        return [], 1.0
+
+    pixels_per_unit = np.linalg.svd(
+        _projection_jacobian(M, h_focal), compute_uv=False
+    )[0]
+    if not pixels_per_unit > 0:
+        return [], 1.0
+
+    # Perspective scale relative to the focal point (w is the depth)
+    scale = h_focal[3] / h_pos[3]
+    clamped_scale = min(max(scale, min_scale), max_scale)
+    radius = size_px / 2 / pixels_per_unit * clamped_scale / scale
+
+    vertices = pos + radius*_OCTAHEDRON_VERTICES
+    h = np.c_[vertices, np.ones(len(vertices))] @ M.T
+    if np.any(h[:, 3] <= 0):
+        return [], 1.0
+    xy = h[:, :2] / h[:, 3:4]
+
+    # Direction towards the camera = where the depth (normalised device z)
+    # decreases (valid for perspective and orthographic projections)
+    w = h_pos[3]
+    depth_gradient = (M[2, :3]*w - h_pos[2]*M[3, :3]) / w**2
+    towards_camera = -depth_gradient / np.linalg.norm(depth_gradient)
+
+    # Direction from the octahedron to the eye. The eye is the (homogeneous)
+    # point mapped to x = y = w = 0, i.e., the null vector of these rows of
+    # M. With an orthographic projection it is a point at infinity (the
+    # direction of the view). With a perspective projection it differs
+    # from the optical axis away from the centre of the canvas.
+    eye_h = np.linalg.svd(M[[0, 1, 3]])[2][-1]
+    towards_eye = eye_h[:3] - pos*eye_h[3]
+    if towards_eye @ towards_camera < 0:
+        # The sign of the null vector is arbitrary
+        towards_eye = -towards_eye
+
+    # Visible faces have the same winding on the canvas as the face that
+    # faces the eye the most (it always faces the eye: dot >= 1/sqrt(3))
+    a, b, c = xy[_OCTAHEDRON_FACES[:, 0]], xy[_OCTAHEDRON_FACES[:, 1]], xy[_OCTAHEDRON_FACES[:, 2]]
+    signed_areas = (
+        (b[:, 0] - a[:, 0])*(c[:, 1] - a[:, 1])
+        - (b[:, 1] - a[:, 1])*(c[:, 0] - a[:, 0])
+    )
+    front_sign = np.sign(
+        signed_areas[np.argmax(_OCTAHEDRON_NORMALS @ towards_eye)]
+    )
+    is_visible = np.sign(signed_areas) == front_sign
+
+    # Light from the camera, slightly from the top-left of the canvas
+    up, left = (
+        np.linalg.pinv(_projection_jacobian(M, h_pos))
+        @ np.array([[0.0, -1.0], [-1.0, 0.0]]).T
+    ).T
+    light = (
+        towards_camera
+        + 0.6*up/np.linalg.norm(up)
+        + 0.4*left/np.linalg.norm(left)
+    )
+    light /= np.linalg.norm(light)
+    shades = 0.2 + 0.8*np.clip(_OCTAHEDRON_NORMALS @ light, 0, 1)
+
+    faces = [
+        (xy[face], float(shade))
+        for face, shade, visible
+        in zip(_OCTAHEDRON_FACES, shades, is_visible)
+        if visible
+    ]
+    opacity = min(max(clamped_scale, 0.6), 1.0)
+    return faces, opacity
+
+# Max. size of each dimension of the displayed volumes when the
+# "Full resolution" mode is off (faster, volumes are stride-downsampled)
+_PREVIEW_MAX_SIZE = 512
+
+# OpenGL enum to query the max. size of 3D textures supported by the GPU
+_GL_MAX_3D_TEXTURE_SIZE = 0x8073
+
+# Max. 3D texture size assumed in "Full resolution" mode when it cannot
+# be queried from the GPU (min. value required by OpenGL 4)
+_FALLBACK_MAX_TEXTURE_3D = 2048
+
+# Max. memory used by each cache of frames computed on demand
+_FRAMES_CACHE_MAX_NBYTES = 512 * 1024**2
+
+ParentViewPlane = Literal['xy', 'zy', 'zx']
+
+# Plane displayed in the parent 2D GUI --> indices of the vispy (x, y, z)
+# coordinates displayed (horizontal, vertical, depth) in the parent GUI.
+_PARENT_VIEW_PLANE_AXES = {
+    'xy': (0, 1, 2),
+    'zy': (1, 2, 0),
+    'zx': (0, 2, 1),
+}
+
 @dataclass
 class _ChannelData:
     node: vispy.scene.visuals.Volume
-    
-    volume: np.ndarray
-    _raw_volume: np.ndarray
-    _off_focus_volume: np.ndarray
-    
+
+    # (T, Z, Y, X) normalised (and possibly downsampled) data, frames
+    # computed on demand. Never modified in place.
+    volume: '_NormalisedVolume'
+
     auto_button: QPushButton
     reset_button: QPushButton
     lut_item: widgets.baseHistogramLUTitem
-    
+
     opacity_slider: widgets.sliderWithSpinBox
     toolbutton: widgets.OverlayChannelToolButton
+
+    # (T, Z, Y, X) blurred and dimmed `volume` used for the unselected
+    # objects in "Focus on selected" display mode, frames computed on
+    # demand. Created by `VolumeRendererWindow._get_off_focus_volume`
+    _off_focus_volume: '_LazyFrames | None' = None
+
+    # (Z, Y, X) scratch buffer displayed in the display modes
+    # "Hide unselected" and "Focus on selected"
+    _display_volume: np.ndarray | None = None
 
 @dataclass
 class _PointsLayer:
     name: str
     
-    points_t_xyz: np.ndarray # (N, [t, x, y, z]) voxel coordinates
-    _label_ids: np.ndarray | None # (N, id) id in self._orig_lab
+    points_t_xyz: dict[int, np.ndarray] # {frame_i: (N, [x, y, z]) voxel coords}
     labels: list[str] | None
-    
+
     markers: vispy.scene.visuals.Markers
-    
+
     toolbutton: widgets.PointsLayerToolButton
     properties_dialog: apps.EditPointsLayerAppearanceDialog
     context_menu: widgets.PointsLayerContextMenu
-    
+
     df: pd.DataFrame | None=None
     text: vispy.scene.visuals.Text | None=None
+
+    # {frame_i: (N,) ID in VolumeRendererWindow._orig_lab of each point},
+    # filled lazily by VolumeRendererWindow._get_points_label_ids
+    label_ids_t: dict[int, np.ndarray] = field(default_factory=dict)
+
+def _strides_to_slice(strides: tuple[int, ...]) -> tuple[slice, ...]:
+    return tuple(slice(None, None, s) for s in strides)
+
+class _LazyFrames:
+    """Read-only (T, Z, Y, X) array-like whose (Z, Y, X) frames are
+    computed on demand by `compute_frame(frame_i)` and cached.
+
+    Only the most recently used frames are cached (up to
+    `_FRAMES_CACHE_MAX_NBYTES`, at least 2 frames). Only integer indexing
+    of the frames is supported.
+    """
+    def __init__(
+            self,
+            num_frames: int,
+            frame_shape: tuple[int, ...],
+            dtype,
+            compute_frame: Callable[[int], np.ndarray],
+        ):
+        self.shape = (num_frames, *frame_shape)
+        self.dtype = np.dtype(dtype)
+        self._compute_frame = compute_frame
+        frame_nbytes = max(1, prod(frame_shape) * self.dtype.itemsize)
+        self._max_cached = max(2, _FRAMES_CACHE_MAX_NBYTES // frame_nbytes)
+        self._cache: OrderedDict[int, np.ndarray] = OrderedDict()
+
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
+
+    def __len__(self) -> int:
+        return self.shape[0]
+
+    def __getitem__(self, frame_i: int) -> np.ndarray:
+        if not isinstance(frame_i, (int, np.integer)):
+            raise TypeError(
+                f'{type(self).__name__} supports only integer indexing of '
+                f'the frames, got {frame_i!r}'
+            )
+
+        frame_i = int(frame_i)
+        num_frames = len(self)
+        if frame_i < 0:
+            frame_i += num_frames
+
+        if not 0 <= frame_i < num_frames:
+            raise IndexError(
+                f'Frame index {frame_i} out of range for {num_frames} frames'
+            )
+
+        frame = self._cache.get(frame_i)
+        if frame is not None:
+            self._cache.move_to_end(frame_i)
+            return frame
+
+        frame = self._compute_frame(frame_i)
+        self._cache[frame_i] = frame
+        while len(self._cache) > self._max_cached:
+            self._cache.popitem(last=False)
+        return frame
+
+class _NormalisedVolume(_LazyFrames):
+    """(T, Z, Y, X) float32 volume normalised to [0, 1] with the
+    (full-resolution) value range [`vmin`, `vmax`] of `volume` and
+    stride-downsampled with `strides`.
+
+    Frames are computed on demand from `volume` (which is not copied and
+    must not be modified).
+    """
+    def __init__(
+            self,
+            volume: np.ndarray,
+            vmin: float,
+            vmax: float,
+            strides: tuple[int, int, int]
+        ):
+        self.input_volume = volume
+        self.vmin = vmin
+        self.vmax = vmax
+        self.strides = tuple(strides)
+        self._frame_slice = _strides_to_slice(self.strides)
+        frame_shape = volume[0][self._frame_slice].shape
+        super().__init__(
+            len(volume), frame_shape, np.float32, self._normalise_frame
+        )
+
+    def _normalise(self, values: np.ndarray, out: np.ndarray):
+        # In float32 directly into `out` to avoid temporary arrays
+        np.subtract(values, self.vmin, out=out, dtype=np.float32)
+        np.divide(out, self.vmax - self.vmin, out=out)
+
+    def _normalise_frame(self, frame_i: int) -> np.ndarray:
+        out = np.zeros(self.shape[1:], dtype=np.float32)
+        if self.vmax > self.vmin:
+            self._normalise(self.input_volume[frame_i][self._frame_slice], out)
+        return out
+
+    def with_strides(self, strides: tuple[int, int, int]):
+        return _NormalisedVolume(
+            self.input_volume, self.vmin, self.vmax, strides
+        )
+
+    def sample_values(self, max_num_samples=1_000_000) -> np.ndarray:
+        """Return at most `max_num_samples` normalised values evenly
+        sampled from all frames, i.e., the same values as
+        `np.asarray(self).ravel()[::step]` without computing all frames.
+        """
+        size = prod(self.shape)
+        step = 1
+        if size > max_num_samples:
+            step = size // max_num_samples + 1
+
+        flat_idx = np.arange(0, size, step)
+        values = np.zeros(len(flat_idx), dtype=np.float32)
+        if not self.vmax > self.vmin:
+            return values
+
+        tt, zz, yy, xx = np.unravel_index(flat_idx, self.shape)
+        sz, sy, sx = self.strides
+        # Flat indices are sorted --> samples of each frame are contiguous
+        frames, starts = np.unique(tt, return_index=True)
+        stops = np.append(starts[1:], len(tt))
+        for frame_i, start, stop in zip(frames, starts, stops):
+            idx = slice(start, stop)
+            frame_values = self.input_volume[frame_i][
+                zz[idx]*sz, yy[idx]*sy, xx[idx]*sx
+            ]
+            self._normalise(frame_values, values[idx])
+        return values
+
+class _LabelsFrames(_LazyFrames):
+    """(T, Z, Y, X) labels displayed, i.e., the original labels
+    stride-downsampled with `strides`.
+
+    Frames are copies of `source` computed on demand because they are
+    modified in place (e.g., hidden objects are set to 0). `source` is a
+    (strided) view of the original labels (that must not be modified).
+    """
+    def __init__(self, orig_lab: np.ndarray, strides: tuple[int, int, int]):
+        self.source = orig_lab[(slice(None), *_strides_to_slice(strides))]
+        super().__init__(
+            len(self.source), self.source.shape[1:], self.source.dtype,
+            self._copy_frame
+        )
+
+    def _copy_frame(self, frame_i: int) -> np.ndarray:
+        return self.source[frame_i].copy()
+
+    def value_range(self) -> tuple[float, float]:
+        vmin, vmax = utils.frames_min_max(self.source)
+        return float(vmin), float(vmax)
+
+class _LazyFramesRegionprops(_LazyFrames):
+    """`skimage.measure.regionprops` of each frame of a (T, Z, Y, X) labels
+    array, computed on demand and cached.
+
+    The labels array must not be modified in place.
+    """
+    def __init__(self, lab: np.ndarray):
+        self._lab = lab
+        # Cache budget estimated as one int64 label image per frame
+        super().__init__(
+            len(lab), lab.shape[1:], np.int64, self._compute_regionprops
+        )
+
+    def _compute_regionprops(self, frame_i: int) -> list:
+        return skimage.measure.regionprops(self._lab[frame_i])
+
+def _compute_off_focus_volume(raw_volume: np.ndarray) -> np.ndarray:
+    """Blurred and dimmed version of `raw_volume` used for the unselected
+    objects in "Focus on selected" display mode."""
+    off_focus_volume = skimage.filters.gaussian(raw_volume, sigma=1.5)
+    p_raw = np.percentile(raw_volume, 99.9)
+    p_blur = np.percentile(off_focus_volume, 99.9)
+    if p_blur > 0:
+        off_focus_volume *= (p_raw / p_blur)
+    off_focus_volume *= 0.8
+    return off_focus_volume
 
 @dataclass(slots=True)
 class LabelAnnotation:
@@ -146,11 +520,22 @@ class VolumeRendererWindow(QMainWindow):
         self._voxel_size_transform = None
         self._lab_ncolors = 256
         self._voxel_size_strides_transform = None
+        # Strides used to downsample the displayed (Z, Y, X) frames,
+        # see `_get_display_strides`
         self._downsample_strides = None
+        self._is_full_resolution = False
         self._object_labels_list_buttongroup = None
         self._data_shape = None
         self._frames_scrollbar_connected = False
-        
+        self._is_camera_view_set = False
+        # Orientation (azimuth, elevation, roll) restored when syncing the
+        # camera with the parent GUI, i.e., the last selected view
+        # ("Home" or "2D view")
+        self._synced_camera_orientation = (
+            _HOME_AZIMUTH, _HOME_ELEVATION, _HOME_ROLL
+        )
+        self._parent_view_region = None
+
         if app is None:
             app = QCoreApplication.instance()
         
@@ -187,10 +572,10 @@ class VolumeRendererWindow(QMainWindow):
         # Keeps the "up" axis fixed, which suits microscopy z-stacks better than
         # a free arcball.
         self._view.camera = scene.cameras.TurntableCamera(
-            fov=45, 
-            elevation=30.0, 
-            azimuth=-60.0,
-            roll=180.0
+            fov=45,
+            elevation=_HOME_ELEVATION,
+            azimuth=_HOME_AZIMUTH,
+            roll=_HOME_ROLL
         )
 
         self._canvas.events.mouse_press.connect(
@@ -213,7 +598,17 @@ class VolumeRendererWindow(QMainWindow):
         # Scale and visibility are updated in update_volume on first load.
         self._axis_visual = scene.visuals.XYZAxis(parent=self._view.scene)
         self._axis_visual.visible = False
-    
+
+        # Mirrored cursor of the mouse cursor on the parent GUI image,
+        # painted on an overlay widget created at first use (see
+        # `set_parent_cursor_pos`). Its projection is updated at every draw
+        # of the canvas (e.g., when the camera moves).
+        self._parent_cursor_overlay = None
+        self._parent_cursor_scene_pos = None
+        # Cached between draws, see `_update_parent_cursor_overlay`
+        self._scene_to_canvas_matrix = None
+        self._canvas.events.draw.connect(self._update_parent_cursor_overlay)
+
     def _on_camera_mouse_press(self, event):
         self._camera_mouse_interaction = True
         self._update_camera_indicators()
@@ -242,8 +637,8 @@ class VolumeRendererWindow(QMainWindow):
         # )
 
     def _init_lab_ui_items(
-            self, 
-            lab_volume, 
+            self,
+            lab_volume: _LabelsFrames,
             cmap_name=None,
             gradient_item_state=None,
             font_size=None,
@@ -253,8 +648,9 @@ class VolumeRendererWindow(QMainWindow):
 
         from vispy.scene import visuals
         from .gl_blend import volume_gl_state
-        
-        vmin, vmax = float(lab_volume.min()), float(lab_volume.max())
+
+        # Kept when changing resolution so that the colors do not change
+        vmin, vmax = lab_volume.value_range()
         
         self._lab_node = visuals.Volume(
             lab_volume[0],
@@ -552,25 +948,32 @@ class VolumeRendererWindow(QMainWindow):
     def _update_volume_nodes(self, update=True):
         frame_i = self._frames_scrollbar.value() - 1
         for channel_data in self._channels_data.values():
+            raw_vol = channel_data.volume[frame_i]
             if self._display_mode_show_all_rb.isChecked():
-                displayed_volume = channel_data._raw_volume[frame_i]
-                channel_data.node.set_data(displayed_volume)
+                channel_data.node.set_data(raw_vol)
                 continue
-            
-            displayed_volume = channel_data.volume[frame_i]
+
+            displayed_volume = channel_data._display_volume
+            if displayed_volume is None or displayed_volume.shape != raw_vol.shape:
+                displayed_volume = np.empty_like(raw_vol)
+                channel_data._display_volume = displayed_volume
+
             if self._display_mode_focus_selected_rb.isChecked():
-                unselected_vals = channel_data._off_focus_volume[frame_i]
+                unselected_vals = self._get_off_focus_volume(
+                    channel_data, frame_i
+                )
                 np.copyto(displayed_volume, unselected_vals)
             elif self._display_mode_hide_unselected_rb.isChecked():
                 displayed_volume[:] = 0
-            
-            for checkbox in self._object_labels_list_buttongroup.buttons(): 
+            else:
+                np.copyto(displayed_volume, raw_vol)
+
+            for checkbox in self._object_labels_list_buttongroup.buttons():
                 obj = checkbox.obj
                 checked = checkbox.isChecked()
                 if not checked:
                     continue
 
-                raw_vol = channel_data._raw_volume[frame_i]
                 src_intensities = raw_vol[obj.slice][obj.image]
                 displayed_volume[obj.slice][obj.image] = src_intensities
             
@@ -662,7 +1065,9 @@ class VolumeRendererWindow(QMainWindow):
             0.0, 1.0, self._lab_ncolors
         )
         labels = [obj.label for obj in self._rp[frame_i]]
-        greedy_lut = colors.get_greedy_lut(self._lab, lut, ids=labels)
+        greedy_lut = colors.get_greedy_lut(
+            self._lab[frame_i], lut, ids=labels
+        )
         
         greedy_lut = np.array(greedy_lut) / 255.0
         greedy_lut = colors.replace_background_rgba_lut(greedy_lut)
@@ -734,6 +1139,7 @@ class VolumeRendererWindow(QMainWindow):
         self._toolbar.sigTwoDView.connect(self.set_2d_view)
         self._toolbar.sigSave.connect(self.save_screenshot)
         self._toolbar.sigSetSingleChannel.connect(self._set_single_channel)
+        self._toolbar.sigSetFullResolution.connect(self.set_full_resolution)
         # self._toolbar.sigSetupAnimation.connect(self.setup_animation_parameters)
         # self._toolbar.sigPlayAnimation.connect(self.play_animation)
 
@@ -799,10 +1205,10 @@ class VolumeRendererWindow(QMainWindow):
 
         if self._parent_gui is not None:
             self._sync_frames_scrollbar_main_gui_checkbox = QCheckBox(
-                'Sync with parent GUI'
+                'Sync frames with parent GUI'
             )
             self._scene_layout.addWidget(
-                self._sync_frames_scrollbar_main_gui_checkbox, 
+                self._sync_frames_scrollbar_main_gui_checkbox,
                 row, 2, 1, 2,
                 alignment=Qt.AlignLeft
             )
@@ -811,7 +1217,10 @@ class VolumeRendererWindow(QMainWindow):
             self._sync_frames_scrollbar_main_gui_checkbox.toggled.connect(
                 self._sync_frames_toggled
             )
-            
+
+            row += 1
+            self._init_parent_view_ui_items(row)
+
         self._scene_layout.setColumnStretch(0, 0)
         self._scene_layout.setColumnStretch(1, 10)
         self._scene_layout.setColumnStretch(2, 0)
@@ -834,10 +1243,40 @@ class VolumeRendererWindow(QMainWindow):
         
         self._ui_initialised = True
 
+    def _init_parent_view_ui_items(self, row: int):
+        self._sync_view_main_gui_checkbox = QCheckBox(
+            'Sync pan/zoom with parent GUI'
+        )
+        self._sync_view_main_gui_checkbox.setToolTip(
+            'When checked, panning and zooming in the parent GUI moves the '
+            'centre of rotation of the 3D camera to the centre of the region '
+            'visible in the parent GUI (at the current slice) and zooms '
+            'the camera to fit that region.\n\n'
+            'Any manual rotation of the 3D view is reset to the last '
+            'selected view ("Home" or "2D view").\n'
+            'Tip: use the "2D view" button to look at the volume from the '
+            'top, matching the parent GUI.'
+        )
+        self._sync_view_main_gui_checkbox.setChecked(True)
+        self._sync_view_main_gui_checkbox.toggled.connect(
+            self._sync_view_toggled
+        )
+
+        parent_view_layout = QHBoxLayout()
+        parent_view_layout.setContentsMargins(5, 0, 5, 0)
+        parent_view_layout.addWidget(self._sync_view_main_gui_checkbox)
+        parent_view_layout.addStretch(1)
+
+        self._scene_layout.addLayout(parent_view_layout, row, 0, 1, 4)
+
     def _sync_frames_toggled(self, checked):
         if checked:
             self._parent_gui.update3DViewer()
-    
+
+    def _sync_view_toggled(self, checked):
+        if checked:
+            self._sync_camera_to_parent_view_region()
+
     def _set_object_labels_checkboxes_disabled(self, disabled=True):
         if disabled:
             tooltip = (
@@ -868,84 +1307,177 @@ class VolumeRendererWindow(QMainWindow):
         self.loop = QEventLoop()
         self.loop.exec_()
     
-    def _resolve_max_texture_3d(self) -> int:
-        """Return the GPU's maximum 3-D texture size (cached after first call)."""
+    def _resolve_max_texture_3d(self) -> int | None:
+        """Return the GPU's maximum 3-D texture size queried from the
+        OpenGL context of the canvas (cached after the first successful
+        query), or None if it cannot be queried.
+        """
         if self._max_texture_3d is not None:
             return self._max_texture_3d
-        try:
-            from vispy.gloo.util import get_max_texture_sizes  # noqa: PLC0415
-            _max_2d, max_3d = get_max_texture_sizes()
-            self._max_texture_3d = int(max_3d)
-        except Exception:
-            # Fallback: conservatively assume 512³ if GL query fails.
-            self._max_texture_3d = 512
-        return self._max_texture_3d
-    
-    def _downsample(self, vol: np.ndarray, max_size: int) -> np.ndarray:
-        """
-        Return a stride-subsampled view of *vol* so no dimension exceeds *max_size*.
 
-        Uses integer strides (fast, no interpolation) — suitable for interactive
-        previews.  Returns the original array unchanged if no downsampling is needed.
+        if self._canvas is None:
+            return None
+
+        try:
+            from vispy.gloo import gl
+            self._canvas.set_current()
+            max_3d = int(gl.glGetParameter(_GL_MAX_3D_TEXTURE_SIZE))
+        except Exception:
+            return None
+
+        if max_3d <= 0:
+            return None
+
+        self._max_texture_3d = max_3d
+        return self._max_texture_3d
+
+    def _get_display_max_size(self) -> int:
+        """Max. size of each dimension of the displayed volumes."""
+        max_texture_3d = self._resolve_max_texture_3d()
+        if not self._is_full_resolution:
+            if max_texture_3d is None:
+                return _PREVIEW_MAX_SIZE
+            return min(_PREVIEW_MAX_SIZE, max_texture_3d)
+
+        if max_texture_3d is None:
+            self._logger_func(
+                '[WARNING]: Could not query the max. 3D texture size of the '
+                f'GPU. Assuming {_FALLBACK_MAX_TEXTURE_3D}.'
+            )
+            return _FALLBACK_MAX_TEXTURE_3D
+
+        return max_texture_3d
+
+    def _get_display_strides(self) -> tuple[int, int, int]:
+        """
+        Return the (z, y, x) integer strides used to subsample the displayed
+        (Z, Y, X) frames so no dimension exceeds the max. display size
+        (see `_get_display_max_size`).
+
+        Uses integer strides (fast, no interpolation). The strides are
+        computed once (for the current resolution mode) so that all
+        volumes are downsampled the same way.
         """
         if self._downsample_strides is None:
-            strides = tuple(
-                max(1, int(np.ceil(s / max_size))) for s in vol.shape
+            max_size = self._get_display_max_size()
+            self._downsample_strides = tuple(
+                max(1, ceil(s / max_size)) for s in self._data_shape[-3:]
             )
-            self._downsample_strides = strides
-        else:
-            strides = self._downsample_strides
-        
-        if all(s == 1 for s in strides):
-            return vol
-        return np.ascontiguousarray(vol[::strides[0], ::strides[1], ::strides[2]])
-    
-    def _preprocess_volume(self, volume: np.ndarray):            
+
+        return self._downsample_strides
+
+    def _preprocess_volume(self, volume: np.ndarray) -> _NormalisedVolume:
         if volume.ndim != 4:
             raise ValueError(
                 f'Expected 4D (T, Z, Y, X) or 3D (Z, Y, X) array; got shape {volume.shape}'
             )
-        
+
         self._SizeZ = len(volume[0])
-        
-        # copy=False avoids a redundant allocation when data is already float32
-        data = volume.astype(np.float32, copy=False)
 
         # Compute the value range on the full-resolution data BEFORE downsampling
         # so that stride-based subsampling cannot accidentally exclude extreme voxels
         # and cause incorrect normalisation (e.g. a single bright fluorescence spot
         # being dropped by the stride may lower the apparent maximum).
-        vmin, vmax = float(data.min()), float(data.max())
+        # Computed on the input dtype (frame by frame in parallel threads)
+        # to avoid a full-resolution float32 copy; casting to float32 gives
+        # the same values as computing them on the float32 data (rounding
+        # is monotonic).
+        vmin, vmax = utils.frames_min_max(volume)
+        vmin = float(np.float32(vmin))
+        vmax = float(np.float32(vmax))
 
-        # Downsample to fit GPU texture limits (after range is already captured).
-        # Store the per-axis strides so set_voxel_scale can correct for
-        # non-uniform compression (e.g. stride_x=4 while stride_z=1).
-        max_tex = self._resolve_max_texture_3d()
-        if max(data[0].shape) > max_tex:
-            downsampled_data = []
-            for t, vol in enumerate(data):
-                vol = self._downsample(vol, max_tex)
-                downsampled_data.append(vol)
+        # Frames are normalised with the full-resolution range and
+        # downsampled to fit the display size only when displayed.
+        # The strides are used by `_set_voxel_size_strides_transform` to
+        # correct for non-uniform compression (e.g. stride_x=4 while
+        # stride_z=1).
+        return _NormalisedVolume(
+            volume, vmin, vmax, self._get_display_strides()
+        )
 
-            data = np.asarray(downsampled_data)
+    def _get_off_focus_volume(
+            self, channel_data: _ChannelData, frame_i: int
+        ) -> np.ndarray:
+        """Return the blurred and dimmed version of `channel_data.volume`
+        at frame `frame_i`, used for the unselected objects in
+        "Focus on selected" display mode.
 
-        # Normalise the (possibly downsampled) array using the full-resolution range.
-        if vmax > vmin:
-            data = (data - vmin) / (vmax - vmin)
-        else:
-            data = np.zeros_like(data)
-        
-        return data
-    
-    def _preprocess_lab(self, lab_data: np.ndarray):
-        max_tex = self._resolve_max_texture_3d()
-        downsampled_lab = []
-        for t, lab in enumerate(lab_data):
-            ds_lab = self._downsample(lab, max_tex)
-            downsampled_lab.append(ds_lab)
+        Computed on demand and cached (computing it for every frame at
+        startup is slow with large timelapses).
+        """
+        if channel_data._off_focus_volume is None:
+            volume = channel_data.volume
+            channel_data._off_focus_volume = _LazyFrames(
+                len(volume), volume.shape[1:], np.float32,
+                lambda frame_i: _compute_off_focus_volume(volume[frame_i])
+            )
 
-        downsampled_lab = np.asarray(downsampled_lab)
-        return downsampled_lab
+        return channel_data._off_focus_volume[frame_i]
+
+    def is_full_resolution(self) -> bool:
+        return self._is_full_resolution
+
+    def set_full_resolution(self, full_resolution: bool):
+        """Display the volumes at full resolution (limited only by the max.
+        3D texture size of the GPU) if True. If False, the volumes are
+        stride-downsampled to max. `_PREVIEW_MAX_SIZE` voxels per dimension
+        (faster, less GPU memory).
+        """
+        full_resolution = bool(full_resolution)
+        checkbox = self._toolbar.fullResolutionCheckbox
+        if checkbox.isChecked() != full_resolution:
+            checkbox.blockSignals(True)
+            checkbox.setChecked(full_resolution)
+            checkbox.blockSignals(False)
+
+        if full_resolution == self._is_full_resolution:
+            return
+
+        self._is_full_resolution = full_resolution
+        prev_strides = self._downsample_strides
+        self._downsample_strides = None
+        if self._data_shape is None:
+            # Applied when data is set
+            return
+
+        if self._get_display_strides() == prev_strides:
+            # Data small enough to be already displayed at full resolution
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self._apply_display_strides()
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def _apply_display_strides(self):
+        """Re-create the displayed data with the current downsampling
+        strides and refresh the display (current frame only, the other
+        frames are computed when displayed)."""
+        strides = self._get_display_strides()
+        for channel_data in self._channels_data.values():
+            channel_data.volume = channel_data.volume.with_strides(strides)
+            channel_data._off_focus_volume = None
+            channel_data._display_volume = None
+
+        if self._orig_lab is not None:
+            self._lab = _LabelsFrames(self._orig_lab, strides)
+            self._rp = _LazyFramesRegionprops(self._lab.source)
+
+        # Scale the nodes so that the scene coordinates do not change
+        self._set_voxel_size_strides_transform(self._voxel_size)
+
+        self._frame_number_changed(self._frames_scrollbar.value())
+
+        # vispy caches the bounds of the nodes and does not update them
+        # when the shape of the data changes (e.g., used in `set_2d_view`)
+        nodes = [ch_data.node for ch_data in self._channels_data.values()]
+        if self._lab_node is not None:
+            nodes.append(self._lab_node)
+        for node in nodes:
+            bounds_changed = getattr(node, '_bounds_changed', None)
+            if bounds_changed is not None:
+                bounds_changed()
     
     def _init_default_rgbs(self):
         self._default_rgbs = colors.overlay_rgbs.copy()
@@ -1021,28 +1553,10 @@ class VolumeRendererWindow(QMainWindow):
             toolbutton.action = self._toolbar.addWidget(toolbutton)
             toolbutton.setChecked(True)
 
-            _raw_data = volume.copy()
-            _off_focus_data = []
-            for _raw_volume in _raw_data:
-                _off_focus_volume = skimage.filters.gaussian(
-                    _raw_volume, sigma=1.5
-                )
-                p_raw = np.percentile(_raw_volume, 99.9)
-                p_blur = np.percentile(_off_focus_volume, 99.9)
-                if p_blur > 0:
-                    _off_focus_volume *= (p_raw / p_blur)
-                _off_focus_volume *= 0.8
-                _off_focus_data.append(_off_focus_volume)
-
-            _raw_volume = _raw_data
-            _off_focus_volume = np.asarray(_off_focus_data)
-
             channel_data = _ChannelData(
                 node=node,
                 lut_item=lut_item,
                 volume=volume,
-                _raw_volume=_raw_volume,
-                _off_focus_volume=_off_focus_volume,
                 auto_button=auto_btn,
                 reset_button=reset_btn,
                 opacity_slider=opacity_slider,
@@ -1160,8 +1674,14 @@ class VolumeRendererWindow(QMainWindow):
             )
             return
         
-        volume = channel_data.volume
-        lo, hi = colors.get_auto_contrast_percentile(volume)
+        # Same samples of all frames used by `get_auto_contrast_percentile`
+        # but without computing all the frames. The ticks are positions in
+        # the colormap, which vispy maps to the colour limits of the node
+        values = channel_data.volume.sample_values()
+        vmin_raw, vmax_raw = channel_data.node.clim
+        lo, hi = colors.get_auto_contrast_percentile(
+            values, vmin_raw=vmin_raw, vmax_raw=vmax_raw
+        )
         (low_tick, _), (high_tick, _) = lut_item.gradient.listTicks()            
         lut_item.gradient.setTickValue(high_tick, hi)
         lut_item.gradient.setTickValue(low_tick, lo)
@@ -1246,13 +1766,18 @@ class VolumeRendererWindow(QMainWindow):
             return
 
         markers.visible = points_layer.toolbutton.isChecked()
-        if self._orig_lab is not None:
-            visible_label_ids = [
-                int(cb.text()) 
+        label_ids = self._get_points_label_ids(
+            points_layer, frame_i, points_xyz
+        )
+        if label_ids is not None:
+            # Hide only the points belonging to hidden objects. Points
+            # outside of any object (ID 0) are always visible
+            hidden_label_ids = [
+                int(cb.text())
                 for cb in self._object_labels_list_buttongroup.buttons()
-                if cb.isChecked()
+                if not cb.isChecked()
             ]
-            visible = np.isin(points_layer._label_ids, visible_label_ids)
+            visible = ~np.isin(label_ids, hidden_label_ids)
             points_xyz = points_xyz[visible]
         
         markers.set_data(
@@ -1266,6 +1791,43 @@ class VolumeRendererWindow(QMainWindow):
         if update:
             self._canvas.update()
     
+    def _get_points_label_ids(
+            self,
+            points_layer: _PointsLayer,
+            frame_i: int,
+            points_xyz: np.ndarray
+        ) -> np.ndarray | None:
+        """Return the ID of the object each point of `points_xyz` (points
+        of `points_layer` at frame `frame_i`) falls into.
+
+        Each point is mapped to the voxel it is rendered in (rounded
+        coordinates, since voxel centers are at integer coordinates).
+        Points outside of any object, outside of the volume, or with
+        non-finite coordinates get ID 0.
+
+        Returns None if no labels are available for `frame_i`. Results are
+        cached per frame in `points_layer.label_ids_t`.
+        """
+        if self._orig_lab is None or frame_i >= len(self._orig_lab):
+            return None
+
+        label_ids = points_layer.label_ids_t.get(frame_i)
+        if label_ids is not None:
+            return label_ids
+
+        lab = self._orig_lab[frame_i]
+        zyx = np.asarray(points_xyz, dtype=float).reshape(-1, 3)[:, ::-1]
+        valid = np.all(np.isfinite(zyx), axis=1)
+        zyx = np.round(np.where(valid[:, np.newaxis], zyx, -1)).astype(int)
+        valid &= np.all((zyx >= 0) & (zyx < lab.shape), axis=1)
+
+        label_ids = np.zeros(len(zyx), dtype=lab.dtype)
+        zz, yy, xx = zyx[valid].T
+        label_ids[valid] = lab[zz, yy, xx]
+
+        points_layer.label_ids_t[frame_i] = label_ids
+        return label_ids
+
     def _toggle_points_layer(self, checked, points_layer=None):
         if points_layer is None:
             return
@@ -1309,13 +1871,27 @@ class VolumeRendererWindow(QMainWindow):
             text_color='white',
             SizeZ: int=None,
             SizeT: int=None,
+            copy: bool=True,
         ):
         """
         Parameters
         ----------
         lut:  np.ndarray of {``ColorMap.BYTE``}, default=None
             The lookup table for the labels volume
+        copy: bool, default=True
+            If True, the viewer keeps its own copy of `lab`. If False, the
+            viewer keeps a reference to `lab` (faster and less memory with
+            large timelapses), which must then NOT be modified after
+            calling this method.
+
+        Notes
+        -----
+        If the labels have more timepoints than the volumes already
+        displayed (e.g., the segmentation file has more frames than the
+        loaded channel), the extra timepoints at the end are cropped away.
+        The z-slices (and y, x) must still match.
         """
+        input_lab = lab
         if self._is_labels_set:
             self._logger_func(
                 '[WARNING]: Labels already set. '
@@ -1357,7 +1933,9 @@ class VolumeRendererWindow(QMainWindow):
 
         if self._data_shape is None:
             self._data_shape = lab.shape
-        
+
+        lab = self._crop_lab_extra_frames(lab)
+
         if lab.shape != self._data_shape:
             raise ValueError(
                 f'Labels array shape {lab.shape} does not match the current '
@@ -1372,13 +1950,23 @@ class VolumeRendererWindow(QMainWindow):
             raise ValueError(
                 f'Expected 4D (T, Z, Y, X) or 3D (Z, Y, X) labels array; got shape {lab.shape}')
         
-        self._orig_lab = lab.copy()
-        self._lab = self._preprocess_lab(lab)
-        self._rp = [
-            skimage.measure.regionprops(self._lab[frame_i]) 
-            for frame_i in range(len(self._lab))
-        ]
-        
+        # The original labels are only read (e.g., to get the ID of the
+        # object under each point) and never modified by the viewer. Copy
+        # them only if requested and if they are (a view of) the caller's
+        # array (stacking 2D/3D labels and casting bool already copied)
+        if copy and np.may_share_memory(lab, input_lab):
+            lab = lab.copy()
+        self._orig_lab = lab
+
+        # Displayed (possibly downsampled) labels, frames computed on demand
+        self._lab = _LabelsFrames(lab, self._get_display_strides())
+
+        # Regionprops of the displayed labels are computed lazily per
+        # frame. They are computed from a (strided) view of the original
+        # labels because the frames of `self._lab` are modified in place
+        # (e.g., hidden objects are set to 0)
+        self._rp = _LazyFramesRegionprops(self._lab.source)
+
         self._init_lab_ui_items(
             self._lab, 
             cmap_name=cmap_name, 
@@ -1396,6 +1984,33 @@ class VolumeRendererWindow(QMainWindow):
             self._set_voxel_size_strides_transform(voxel_size)
 
         self._is_labels_set = True
+
+    def _crop_lab_extra_frames(self, lab: np.ndarray) -> np.ndarray:
+        """Crop the timepoints of a 4D (T, Z, Y, X) labels array that exceed
+        the number of frames of the displayed volumes.
+
+        Only the time axis is cropped. If the other dimensions do not match
+        the viewer shape, `lab` is returned unchanged and the mismatch is
+        reported by the shape check in `set_labels`.
+        """
+        if self._data_shape is None or lab.ndim != 4:
+            return lab
+
+        num_frames = self._data_shape[0]
+        lab_num_frames = lab.shape[0]
+        if lab_num_frames <= num_frames:
+            return lab
+
+        if lab.shape[1:] != tuple(self._data_shape[1:]):
+            return lab
+
+        self._logger_func(
+            f'[WARNING]: Labels array has {lab_num_frames} frames while the '
+            f'displayed volumes have {num_frames} frames. The last '
+            f'{lab_num_frames - num_frames} frames of the labels will not '
+            'be displayed in the 3D viewer.'
+        )
+        return lab[:num_frames]
 
     def _init_frames_scrollbar(self, num_frames):
         self._frames_scrollbar.setVisible(num_frames > 1)
@@ -1415,7 +2030,7 @@ class VolumeRendererWindow(QMainWindow):
     def _frame_number_changed(self, frame_n: int):
         if self._object_labels_list_buttongroup is None:
             for channel_data in self._channels_data.values():
-                channel_data.node.set_data(channel_data._raw_volume[frame_n - 1])
+                channel_data.node.set_data(channel_data.volume[frame_n - 1])
             self._update_markers(update=False)
             self._canvas.update()
             return
@@ -1448,6 +2063,12 @@ class VolumeRendererWindow(QMainWindow):
 
         self._update_display()
 
+    @property
+    def num_frames(self) -> int | None:
+        """Number of frames of the displayed volumes (None if no volumes
+        have been set yet)."""
+        return getattr(self, '_SizeT', None)
+
     def set_frame_number(self, frame_n: int):
         self._frames_scrollbar.setValue(frame_n)
 
@@ -1467,9 +2088,11 @@ class VolumeRendererWindow(QMainWindow):
             volume: np.ndarray, 
             channel_name: str='',
             voxel_size: tuple[float, float, float]=None,
-            lut_item_state: LutItemState | None=None, 
+            lut_item_state: LutItemState | None=None,
             cmap: list[colors.RgbaColor] | AcdcPyQtGraphColorMapName=None,
-        ):        
+            copy: bool=True,
+        ):
+        """See `set_volumes` for the description of the parameters."""
         num_channels = len(self._channels_data)
         if not channel_name:
             channel_name = f'channel_{num_channels+1}'
@@ -1484,10 +2107,11 @@ class VolumeRendererWindow(QMainWindow):
         volumes = {channel_name: volume}
         
         self.set_volumes(
-            volumes, 
-            cmaps=cmaps, 
+            volumes,
+            cmaps=cmaps,
             lut_items_states=lut_items_states,
-            voxel_size=voxel_size
+            voxel_size=voxel_size,
+            copy=copy,
         )
     
     def _set_voxel_size_strides_transform(
@@ -1525,7 +2149,7 @@ class VolumeRendererWindow(QMainWindow):
         
         for points_layer in self._points_layers.values():
             points_layer.markers.transform = self._voxel_size_transform
-        
+
         if self._canvas is not None:
             self._canvas.update()
     
@@ -1534,13 +2158,26 @@ class VolumeRendererWindow(QMainWindow):
             volumes: list[np.ndarray] | dict[str, np.ndarray], 
             channel_names: list[str] | None=None,
             voxel_size: tuple[float, float, float]=None,
-            lut_items_states: LutItemStates | None=None, 
+            lut_items_states: LutItemStates | None=None,
             cmaps: ColorMapPerChannel=None,
+            copy: bool=True,
         ):
+        """
+        Parameters
+        ----------
+        copy : bool, default=True
+            If True, the viewer keeps its own copy of the volumes. If False,
+            the viewer keeps a reference to the volumes (faster and less
+            memory with large timelapses), which must then NOT be modified
+            while the viewer is open (the displayed frames are computed
+            from them on demand).
+        """
         if isinstance(volumes, dict):
             channel_names = list(volumes.keys())
             volumes = list(volumes.values())
-        
+        else:
+            volumes = list(volumes)
+
         for v, volume in enumerate(volumes):
             if volume.ndim == 3:
                 # Add time axis
@@ -1556,8 +2193,11 @@ class VolumeRendererWindow(QMainWindow):
                     f'Volume shape {volume.shape} does not match the current '
                     f'viewer shape {self._data_shape}. '
                     'All displayed volumes must have the same shape.'
-                ) 
-        
+                )
+
+        if copy:
+            volumes = [volume.copy() for volume in volumes]
+
         volumes = [self._preprocess_volume(vol) for vol in volumes]
         
         num_existing_channels = len(self._channels_data)
@@ -1682,15 +2322,6 @@ class VolumeRendererWindow(QMainWindow):
         if self._voxel_size_transform is not None:
             markers.transform = self._voxel_size_transform
         
-        _label_ids = None
-        if self._orig_lab is not None:
-            _label_ids = self._orig_lab[
-                frame_i,
-                points_xyz[:, 2], 
-                points_xyz[:, 1], 
-                points_xyz[:, 0], 
-            ]
-        
         ui_items = self._init_points_layer_ui_items(
             color=edge_color,
             size=size,
@@ -1702,9 +2333,8 @@ class VolumeRendererWindow(QMainWindow):
         
         points_layer = _PointsLayer(
             name=name,
-            points_t_xyz=points_t_xyz, 
-            _label_ids=_label_ids,
-            labels=labels, 
+            points_t_xyz=points_t_xyz,
+            labels=labels,
             markers=markers,
             toolbutton=toolbutton,
             properties_dialog=properties_dialog,
@@ -1744,8 +2374,13 @@ class VolumeRendererWindow(QMainWindow):
         self.resize(960, 720)
         _window_stacking.set_window_flags_on_top(self, Qt.Window)
         super().show()
-        
+
         self.set_camera_view()
+
+        self._update_parent_view_region()
+        # The camera zoom fitting the parent view region depends on the
+        # canvas aspect ratio --> re-apply once the layout has settled
+        QTimer.singleShot(0, self._update_parent_view_region)
 
         try:
             self.setEnabled(True)
@@ -1792,13 +2427,21 @@ class VolumeRendererWindow(QMainWindow):
         camera.elevation = self._home_elevation
         camera.scale_factor = self._default_scale_factor
         camera.roll = self._home_roll
-    
+
+        self._synced_camera_orientation = (
+            self._home_azimuth, self._home_elevation, self._home_roll
+        )
+
     def set_2d_view(self):
         camera = self._view.camera
 
-        camera.azimuth = 180
-        camera.elevation = 90
-        camera.roll = 180
+        camera.azimuth = _TWO_D_VIEW_AZIMUTH
+        camera.elevation = _TWO_D_VIEW_ELEVATION
+        camera.roll = _TWO_D_VIEW_ROLL
+
+        self._synced_camera_orientation = (
+            _TWO_D_VIEW_AZIMUTH, _TWO_D_VIEW_ELEVATION, _TWO_D_VIEW_ROLL
+        )
 
         first_channel = list(self._channels_data.keys())[0]
         first_node = self._channels_data[first_channel].node
@@ -1815,7 +2458,11 @@ class VolumeRendererWindow(QMainWindow):
         camera.center = center_scene[:3]
 
         camera.distance = self._home_distance
-            
+
+        if self.is_view_synced():
+            # Centre and zoom on the region visible in the parent GUI
+            self._sync_camera_to_parent_view_region()
+
     def set_camera_view(self):
         """Reset the camera to the default orientation and fit the volume."""
         if not self._channels_data:
@@ -1837,21 +2484,26 @@ class VolumeRendererWindow(QMainWindow):
         diag = np.linalg.norm(world[1] - world[0])
         
         self._home_center = first_node.transform.map(xyz_center)[:3]
-        self._home_elevation = 30.0
-        self._home_azimuth = 45.0
-        self._home_fov = 60.0
-        self._home_roll = 180.0
+        self._home_elevation = _HOME_ELEVATION
+        self._home_azimuth = _HOME_AZIMUTH
+        self._home_fov = _HOME_FOV
+        self._home_roll = _HOME_ROLL
         self._home_distance = diag
-        
+
         self._view.camera.set_range()
         self._view.camera.center = first_node.transform.map(xyz_center)[:3]
-        self._view.camera.elevation = 30.0
-        self._view.camera.azimuth = 45.0
-        self._view.camera.fov = 60.0
+        self._view.camera.elevation = self._home_elevation
+        self._view.camera.azimuth = self._home_azimuth
+        self._view.camera.roll = self._home_roll
+        self._view.camera.fov = self._home_fov
         self._view.camera.distance = diag
         
         self._default_scale_factor = self._view.camera.scale_factor
-        
+        self._is_camera_view_set = True
+        self._synced_camera_orientation = (
+            self._home_azimuth, self._home_elevation, self._home_roll
+        )
+
         self._canvas.update()
     
     def save_screenshot(self):
@@ -1882,5 +2534,330 @@ class VolumeRendererWindow(QMainWindow):
     def are_frames_synced(self):
         if self._parent_gui is None:
             return False
-        
+
         return self._sync_frames_scrollbar_main_gui_checkbox.isChecked()
+
+    def set_parent_cursor_pos(
+            self,
+            x: float | None,
+            y: float | None,
+            plane: ParentViewPlane='xy',
+            depth_slice: int | None=None,
+        ):
+        """Show a mirrored cursor (diamond) at the position of the mouse
+        cursor on the parent 2D GUI image. Pass `x=None` to hide it.
+
+        Parameters
+        ----------
+        x, y : float or None
+            Position of the mouse cursor in full-resolution image
+            coordinates of the parent GUI (where pixel ``i`` spans
+            ``[i, i+1]``). If None, the cursor is hidden.
+        plane : {'xy', 'zy', 'zx'}, optional
+            Plane displayed in the parent GUI (see
+            `set_parent_view_region`). Default is 'xy'.
+        depth_slice : int or None, optional
+            Index of the displayed slice along the axis perpendicular to
+            `plane`. If None (the parent GUI displays a projection), the
+            cursor is placed at the centre of the volume along that axis.
+            Default is None.
+        """
+        is_hidden = (
+            x is None or y is None
+            or self._data_shape is None
+            or self._voxel_size_transform is None
+        )
+        if not is_hidden:
+            SizeZ, SizeY, SizeX = self._data_shape[-3:]
+            shape_xyz = np.array((SizeX, SizeY, SizeZ), dtype=float)
+            h_axis, v_axis, d_axis = _PARENT_VIEW_PLANE_AXES[plane]
+
+            # In pyqtgraph pixel i spans [i, i+1] while in vispy voxel i
+            # spans [i-0.5, i+0.5] --> subtract 0.5
+            pos = np.zeros(3)
+            pos[h_axis] = x - 0.5
+            pos[v_axis] = y - 0.5
+            if depth_slice is None:
+                pos[d_axis] = (shape_xyz[d_axis] - 1) / 2
+            else:
+                pos[d_axis] = depth_slice
+
+            is_hidden = np.any(pos < -0.5) or np.any(pos > shape_xyz - 0.5)
+
+        if is_hidden:
+            self._parent_cursor_scene_pos = None
+        else:
+            self._parent_cursor_scene_pos = (
+                self._voxel_size_transform.map(pos)[:3]
+            )
+
+        # Only the overlay is repainted, the volumes are not re-rendered
+        self._update_parent_cursor_overlay()
+
+    def _get_scene_to_canvas_matrix(self) -> np.ndarray | None:
+        """Return the (4, 4) matrix mapping homogeneous scene coordinates to
+        homogeneous canvas coordinates (divide x and y by w to get the
+        canvas pixels, w is the depth), or None if no volume is displayed.
+        """
+        nodes = [ch_data.node for ch_data in self._channels_data.values()]
+        if self._lab_node is not None:
+            nodes.append(self._lab_node)
+        if not nodes:
+            return None
+
+        # Scene --> local coordinates of the node --> canvas
+        node = nodes[0]
+        basis = np.array(
+            [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float
+        )
+        local_h = node.transform.imap(basis)
+        local = local_h[:, :3] / local_h[:, 3:4]
+        h = node.transforms.get_transform('visual', 'canvas').map(local)
+
+        M = np.empty((4, 4))
+        M[:, 3] = h[0]
+        M[:, :3] = (h[1:] - h[0]).T
+        return M
+
+    def _update_parent_cursor_overlay(self, event=None):
+        if event is not None:
+            # Called at a draw of the canvas --> the projection might have
+            # changed (e.g., camera moved or canvas resized)
+            self._scene_to_canvas_matrix = None
+
+        pos = self._parent_cursor_scene_pos
+        overlay = self._parent_cursor_overlay
+        if pos is None:
+            if overlay is not None:
+                overlay.setFaces([])
+            return
+
+        M = self._scene_to_canvas_matrix
+        if M is None:
+            M = self._get_scene_to_canvas_matrix()
+            self._scene_to_canvas_matrix = M
+        if M is None:
+            return
+
+        if overlay is None:
+            overlay = _widgets.ParentCursorOverlay(self._canvas.native)
+            overlay.raise_()
+            self._parent_cursor_overlay = overlay
+
+        faces, opacity = _get_octahedron_cursor_faces(
+            M, pos, np.asarray(self._view.camera.center, dtype=float),
+            _PARENT_CURSOR_SIZE
+        )
+        overlay.setFaces(faces, opacity=opacity)
+
+    def is_view_synced(self):
+        if self._parent_gui is None:
+            return False
+
+        return self._sync_view_main_gui_checkbox.isChecked()
+
+    def set_parent_view_region(
+            self,
+            x_range: tuple[float, float],
+            y_range: tuple[float, float],
+            plane: ParentViewPlane='xy',
+            depth_slice: int | None=None,
+        ):
+        """Set the region currently visible in the parent 2D GUI.
+
+        If the "Sync pan/zoom with parent GUI" checkbox is checked, the
+        region is used to centre and zoom the camera (without changing its
+        orientation).
+
+        Parameters
+        ----------
+        x_range, y_range : tuple[float, float]
+            Horizontal and vertical range of the parent 2D view in
+            full-resolution image coordinates, i.e., the output of
+            ``pyqtgraph.ViewBox.viewRange()`` where pixel ``i`` spans
+            ``[i, i+1]``.
+        plane : {'xy', 'zy', 'zx'}, optional
+            Plane displayed in the parent GUI. The horizontal and vertical
+            axes are X and Y for 'xy', Y and Z for 'zy', and X and Z for
+            'zx'. Default is 'xy'.
+        depth_slice : int or None, optional
+            Index of the displayed slice along the axis perpendicular to
+            `plane` (e.g., the z-slice for 'xy'). Pass None when the parent
+            GUI displays a projection. Default is None.
+        """
+        if plane not in _PARENT_VIEW_PLANE_AXES:
+            raise ValueError(
+                f'Invalid plane "{plane}". '
+                f'Valid planes are {list(_PARENT_VIEW_PLANE_AXES.keys())}'
+            )
+
+        prev_region = self._parent_view_region
+        region = {
+            'x_range': (float(min(x_range)), float(max(x_range))),
+            'y_range': (float(min(y_range)), float(max(y_range))),
+            'plane': plane,
+            'depth_slice': depth_slice,
+        }
+        self._parent_view_region = region
+
+        # Move the camera only when the parent GUI was panned/zoomed (or the
+        # plane changed). Changing slice or frame only stores the new slice
+        # (used at the next sync) so that the user's 3D zoom/pan is not
+        # discarded.
+        is_pan_zoom = prev_region is None or any(
+            prev_region[key] != region[key]
+            for key in ('x_range', 'y_range', 'plane')
+        )
+        if is_pan_zoom:
+            self._update_parent_view_region()
+
+    def _update_parent_view_region(self):
+        if self._parent_view_region is None:
+            return
+
+        if self.is_view_synced():
+            self._sync_camera_to_parent_view_region()
+
+    def _get_parent_view_region_voxel_coords(self):
+        """Return the parent view region in full-resolution voxel
+        coordinates in vispy (x, y, z) order.
+
+        Returns
+        -------
+        None or tuple of (lower, upper, depth, axes)
+            `lower` and `upper` are the corners of the region, spanning
+            the entire volume along the depth axis. `depth` is the
+            coordinate of the displayed slice (centre of the volume for
+            projections) and `axes` is the tuple of indices (horizontal,
+            vertical, depth) of the displayed axes.
+        """
+        region = self._parent_view_region
+        if region is None or self._data_shape is None:
+            return
+
+        SizeZ, SizeY, SizeX = self._data_shape[-3:]
+        shape_xyz = np.array((SizeX, SizeY, SizeZ), dtype=float)
+        axes = _PARENT_VIEW_PLANE_AXES[region['plane']]
+        h_axis, v_axis, d_axis = axes
+
+        # In pyqtgraph pixel i spans [i, i+1] while in vispy voxel i spans
+        # [i-0.5, i+0.5] --> subtract 0.5
+        lower = np.zeros(3)
+        upper = np.zeros(3)
+        lower[h_axis], upper[h_axis] = np.array(region['x_range']) - 0.5
+        lower[v_axis], upper[v_axis] = np.array(region['y_range']) - 0.5
+        lower[d_axis], upper[d_axis] = -0.5, shape_xyz[d_axis] - 0.5
+
+        depth = region['depth_slice']
+        if depth is None:
+            depth = (shape_xyz[d_axis] - 1) / 2
+        depth = float(np.clip(depth, 0, shape_xyz[d_axis] - 1))
+
+        return lower, upper, depth, axes
+
+    def _scene_vectors_to_camera_axes(self, vectors: np.ndarray):
+        """Express scene vectors in the camera axes (right, up, towards the
+        camera). Only the current camera orientation is used.
+        """
+        transform = self._view.camera.transform # camera --> scene
+        origin = transform.imap(np.zeros(3))
+        mapped = transform.imap(vectors)
+        origin = origin[:3] / origin[3]
+        mapped = mapped[:, :3] / mapped[:, 3:4]
+        return mapped - origin
+
+    def _sync_camera_to_parent_view_region(self, update=True):
+        """Centre the camera on the region visible in the parent GUI (at
+        the depth of the displayed slice) and zoom so that the region fits
+        the canvas.
+
+        Any manual rotation is discarded: the camera orientation is reset
+        to the last selected view ("Home" or "2D view"). The fit accounts
+        for the orientation and perspective, therefore when looking
+        perpendicular to the parent GUI plane (e.g., "2D view" with the 'xy'
+        plane), the 3D view matches the parent GUI view.
+        """
+        if not self._is_camera_view_set:
+            return
+
+        if self._voxel_size_transform is None:
+            return
+
+        coords = self._get_parent_view_region_voxel_coords()
+        if coords is None:
+            return
+
+        # Restore the orientation before fitting (the fit depends on it)
+        camera = self._view.camera
+        azimuth, elevation, roll = self._synced_camera_orientation
+        camera.azimuth = azimuth
+        camera.elevation = elevation
+        camera.roll = roll
+
+        lower, upper, depth, axes = coords
+        h_axis, v_axis, d_axis = axes
+
+        # Corners of the region at the depth of the displayed slice
+        corners = np.zeros((4, 3))
+        corners[:, d_axis] = depth
+        corners[:, h_axis] = (
+            lower[h_axis], upper[h_axis], upper[h_axis], lower[h_axis]
+        )
+        corners[:, v_axis] = (
+            lower[v_axis], lower[v_axis], upper[v_axis], upper[v_axis]
+        )
+        corners_scene = self._voxel_size_transform.map(corners)[:, :3]
+        center = corners_scene.mean(axis=0)
+
+        # Corners relative to the centre in camera axes
+        offsets = self._scene_vectors_to_camera_axes(corners_scene - center)
+        offsets_right = np.abs(offsets[:, 0])
+        offsets_up = np.abs(offsets[:, 1])
+        offsets_towards_camera = offsets[:, 2]
+
+        canvas_width, canvas_height = self._view.size
+        if canvas_width > 0 and canvas_height > 0:
+            aspect_ratio = canvas_width / canvas_height
+        else:
+            aspect_ratio = 1.0
+
+        if camera.fov > 0:
+            # With the camera at `distance` from the centre, a point with
+            # camera-axes coordinates (x, y, z) is at depth (distance - z)
+            # and it is visible if |y| <= (distance - z)*tan(fov/2) and
+            # |x| <= (distance - z)*tan(fov/2)*aspect_ratio (fov is the
+            # vertical field of view).
+            tan_half_fov = np.tan(np.radians(camera.fov) / 2)
+            distance = np.max(
+                offsets_towards_camera + np.maximum(
+                    offsets_up / tan_half_fov,
+                    offsets_right / (tan_half_fov * aspect_ratio)
+                )
+            )
+            # Visible height at the centre
+            visible_height = 2 * distance * tan_half_fov
+        else:
+            distance = None
+            visible_height = 2 * max(
+                offsets_up.max(), offsets_right.max() / aspect_ratio
+            )
+
+        if not visible_height > 0:
+            return
+
+        camera.center = tuple(center)
+
+        # vispy applies `scale_factor` to the shorter side of the canvas,
+        # while the field of view (and hence the `distance`) is vertical.
+        # We set both to keep them consistent (as vispy does when zooming
+        # with the mouse wheel).
+        if aspect_ratio > 1:
+            camera.scale_factor = visible_height
+        else:
+            camera.scale_factor = visible_height * aspect_ratio
+
+        if distance is not None:
+            camera.distance = distance
+
+        if update:
+            self._canvas.update()

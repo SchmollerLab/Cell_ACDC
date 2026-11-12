@@ -1190,19 +1190,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
         self._busyTimer.stop()
         self._releaseWaitOverride()
-        self.unsetCursor()
+        # Called at every mouse move --> avoid needless (platform) cursor
+        # changes
+        if self.cursor().shape() != Qt.CursorShape.ArrowCursor:
+            self.unsetCursor()
 
         isHoverImg1 = self._cursorHoverImage
         if isHoverImg1 is None:
             return
 
-        if self.app.overrideCursor() == Qt.SizeAllCursor:
+        overrideCursor = self.app.overrideCursor()
+        if overrideCursor == Qt.SizeAllCursor:
             return
 
         cursor = self.gui_getToolCursor(isHoverImg1)
-        if self.app.overrideCursor() is None:
+        if overrideCursor is None:
             self.app.setOverrideCursor(cursor)
-        else:
+        elif not qutils.is_same_cursor(overrideCursor, cursor):
             self.app.changeOverrideCursor(cursor)
 
     def gui_createMenuBar(self):
@@ -3224,8 +3228,9 @@ When working with 3D segmentation masks:
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
-        # Permanent widget
-        self.wcLabel = QLabel('')
+        # Permanent widget. Its text is updated at every mouse move -->
+        # fixed size (growing only) to avoid re-layouting the main window
+        self.wcLabel = widgets.AutoGrowFixedSizeLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
 
         # self.toggleTerminalButton = widgets.ToggleTerminalButton()
@@ -3792,8 +3797,13 @@ When working with 3D segmentation masks:
         self.updateZproj(self.zProjComboBox.currentText())
     
     def launch3dViewerToggled(self, checked):
-        self.logger.info('Launching 3D volume viewer...')
-        
+        msg = 'Launching 3D volume viewer...'
+        self.logger.info(msg)
+        self.titleLabel.setText(msg)
+
+        QTimer.singleShot(300, partial(self._launch3dViewer, checked))
+
+    def _launch3dViewer(self, checked):
         myutils.check_install_package(
             'PyOpenGL',
             import_pkg_name='OpenGL',
@@ -3817,6 +3827,9 @@ When working with 3D segmentation masks:
             self._volume_renderer = None
             if volume_renderer is not None:
                 volume_renderer.force_close()
+                # Free the window and the data it references (e.g., the
+                # images, not copied), otherwise kept as child of mainWin
+                volume_renderer.deleteLater()
             return
         
         posData = self.data[self.pos_i]
@@ -3862,10 +3875,18 @@ When working with 3D segmentation masks:
             volumes,
             lut_items_states=lut_items_states,
             voxel_size=voxel_size,
+            # The images are not modified while the viewer is open -->
+            # no need to copy them (large timelapses take several GB)
+            copy=False,
+        )
+        # Labels frames beyond the frames of the displayed volumes (e.g.,
+        # segmentation file with more frames than the channel) would
+        # be cropped away by the viewer --> do not collect them
+        num_frames = min(
+            len(posData.segm_data), self._volume_renderer.num_frames
         )
         labels = []
-        max_ID = 1
-        for frame_i in range(len(posData.segm_data)):
+        for frame_i in range(num_frames):
             if frame_i == posData.frame_i:
                 lab = posData.lab
             else:
@@ -3873,14 +3894,22 @@ When working with 3D segmentation masks:
                 if lab is None:
                     lab = posData.segm_data[frame_i]
             labels.append(lab)
-            try:
-                max_ID_i = np.max(lab)
-            except Exception as err:
-                max_ID_i = 1
-            if max_ID_i > max_ID:
-                max_ID = max_ID_i
 
-        labels = np.asarray(labels)
+        from cellacdc.volume_renderer import utils as volume_renderer_utils
+
+        # Stack the frames and get their max ID in parallel threads
+        # (large timelapses take several GB)
+        labels = volume_renderer_utils.stack_frames(labels)
+
+        def _get_frame_max_ID(frame_i):
+            try:
+                return np.max(labels[frame_i])
+            except Exception as err:
+                return 1
+
+        max_ID = max([1, *volume_renderer_utils.map_frames(
+            _get_frame_max_ID, len(labels)
+        )])
         lut = self.extendLabelsLUT(max_ID+1, return_lut=True)
         lut = lut[:max_ID+1]
         self._volume_renderer.set_labels(
@@ -3890,15 +3919,23 @@ When working with 3D segmentation masks:
             SizeZ=posData.SizeZ,
             font_size=self.fontSizeSpinBox.value(),
             text_color=self.imgGrad.textColorButton.color(),
-        ) 
-        
+            # `labels` is a new array not used anymore here --> no need
+            # to copy it (large timelapses take several GB)
+            copy=False,
+        )
+
         self.addPointsLayersToVolumeViewer(self._volume_renderer)
-        
+
+        # Applied by the renderer once its camera is set up in `show`
+        self._update3DViewerViewRegion()
+
         self._volume_renderer.sigClose.connect(self.onClose3dViewer)
         self._volume_renderer.sigUpdate.connect(self.onUpdate3dViewer)
         self._volume_renderer.run(block=False)
         self._volume_renderer.raise_()
         self._volume_renderer.activateWindow()
+
+        self.titleLabel.setText('3D viewer up and running!')
 
     def onClose3dViewer(self, *args, **kwargs):
         self.launch3dViewerAction.setChecked(False)
@@ -4084,7 +4121,8 @@ When working with 3D segmentation masks:
     
     def clearCursors(self):
         self.ax1_cursor.setData([], [])
-        self.ax2_cursor.setData([], [])              
+        self.ax2_cursor.setData([], [])
+        self.update3DViewerCursor(None)
         self.setHoverToolSymbolData(
             [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
         )  
@@ -5024,6 +5062,12 @@ When working with 3D segmentation masks:
 
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
+        # pyqtgraph ignores high-frequency mouse moves --> make sure the
+        # last one is delivered (otherwise the hover position, e.g., of
+        # the mirrored cursors, is stale when the mouse stops)
+        self.mouseMoveTrailingEdgeFilter = widgets.MouseMoveTrailingEdgeFilter(
+            self.graphLayout
+        )
         if self.invertBwAction.isChecked():
             self.graphLayout.setBackground(graphLayoutBkgrColor)
             self.titleColor = 'black'
@@ -7253,6 +7297,15 @@ When working with 3D segmentation masks:
             
         if not event.isExit() and self.slideshowWin is not None:
             self.slideshowWin.setMirroredCursorPos(*event.pos())
+
+        setMirroredCursor3D = (
+            not event.isExit() and self.showMirroredCursorAction.isChecked()
+        )
+        if setMirroredCursor3D:
+            x, y = event.pos()
+            self.update3DViewerCursor((x, y))
+        else:
+            self.update3DViewerCursor(None)
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
@@ -7424,21 +7477,23 @@ When working with 3D segmentation masks:
         except Exception as e:
             pass
 
-        self.ax2_cursor = pg.ScatterPlotItem(
-            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+        # Moved at every mouse move --> lightweight item (much faster than
+        # a pg.ScatterPlotItem)
+        self.ax2_cursor = widgets.MirroredCursorItem(
+            symbol=MIRRORED_CURSOR_PG_SYMBOL,
+            size=FINAL_SIZE_CURSOR // 2,
             pen=pg.mkPen('w', width=1),
-            brush=pg.mkBrush((255, 255, 255, 70)), 
-            size=FINAL_SIZE_CURSOR // 2, tip=None
+            brush=pg.mkBrush((255, 255, 255, 70)),
         )
-        self.ax2.addItem(self.ax2_cursor)
+        self.ax2.addItem(self.ax2_cursor, ignoreBounds=True)
 
-        self.ax1_cursor = pg.ScatterPlotItem(
-            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+        self.ax1_cursor = widgets.MirroredCursorItem(
+            symbol=MIRRORED_CURSOR_PG_SYMBOL,
+            size=FINAL_SIZE_CURSOR // 2,
             pen=pg.mkPen('w', width=1),
-            brush=pg.mkBrush((255, 255, 255, 70)), 
-            size=FINAL_SIZE_CURSOR // 2, tip=None
+            brush=pg.mkBrush((255, 255, 255, 70)),
         )
-        self.ax1.addItem(self.ax1_cursor)
+        self.ax1.addItem(self.ax1_cursor, ignoreBounds=True)
 
     def gui_setCursor(self, modifiers, event, isHoverImg1=True):
         noModifier = modifiers == Qt.NoModifier
@@ -11119,11 +11174,20 @@ When working with 3D segmentation masks:
             self.ax2_lostTrackedScatterItem.setVisible(True)
 
         for item in ScatterItems:
+            isAlreadyEmpty = (
+                not xx
+                and isinstance(item, pg.ScatterPlotItem)
+                and len(item.data) == 0
+            )
+            if isAlreadyEmpty:
+                # Called at every mouse move. Setting empty data again
+                # would repaint the region at the origin of the image
+                continue
             if size is None:
                 item.setData(xx, yy)
             else:
                 item.setData(xx, yy, size=size)
-    
+
     def updateLabelRoiCircularSize(self, value):
         self.labelRoiCircItemLeft.setSize(value)
         self.labelRoiCircItemRight.setSize(value)
@@ -14213,9 +14277,10 @@ When working with 3D segmentation masks:
             if chName not in self.checkedOverlayChannels:
                 continue
             
-            raw_overlay_img = self.getRawImage(filename=filename)
-            raw_overlay_value = raw_overlay_img[ydata, xdata]
-            # raw_overlay_max_value = raw_overlay_img.max()
+            # Only the value at (y, x) is computed (called at every move)
+            raw_overlay_value = self.getRawImage(
+                filename=filename, yx=(ydata, xdata)
+            )
 
             raw_txt = self._channelHoverValues('Raw', chName, raw_overlay_value)
 
@@ -14362,9 +14427,8 @@ When working with 3D segmentation masks:
 
         posData = self.data[self.pos_i]
 
-        raw_img = self.getRawImage()
-        raw_value = raw_img[ydata, xdata]
-        # raw_max_value = raw_img.max()
+        # Only the value at (y, x) is computed (called at every mouse move)
+        raw_value = self.getRawImage(yx=(ydata, xdata))
 
         ch = self.user_ch_name
         raw_txt = self._channelHoverValues('Raw', ch, raw_value)
@@ -15383,7 +15447,14 @@ When working with 3D segmentation masks:
 
             self.updateAllImages()
             self.updateScrollbars()
-            self.ax1.sigRangeChanged.disconnect()
+            # Disconnect only this slot, a bare `disconnect()` would also
+            # disconnect `viewRangeChanged`
+            try:
+                self.ax1.sigRangeChanged.disconnect(
+                    self.highlightManualAnnotMode
+                )
+            except (TypeError, RuntimeError):
+                pass
             self.ax1.setHighlighted(False)
             
             self.warnLostCellsAction.setChecked(
@@ -15477,7 +15548,14 @@ When working with 3D segmentation masks:
             self.get_data()
             self.updateAllImages()
             self.updateScrollbars()
-            self.ax1.sigRangeChanged.disconnect()
+            # Disconnect only this slot, a bare `disconnect()` would also
+            # disconnect `viewRangeChanged`
+            try:
+                self.ax1.sigRangeChanged.disconnect(
+                    self.highlightManualAnnotMode
+                )
+            except (TypeError, RuntimeError):
+                pass
             self.ax1.setHighlighted(False)
             QTimer.singleShot(150, self.autoRange)
         
@@ -17265,9 +17343,15 @@ When working with 3D segmentation masks:
         if not getattr(self, 'isDataLoaded', False):
             return super().eventFilter(obj, ev)
 
-        if ev.type() == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
+        evType = ev.type()
+        if evType == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
             self.onMouseRelease()
-        
+
+        if evType not in (QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress):
+            # Installed on the app (all events, e.g., ~40 per mouse move)
+            # --> return early for the events that are not handled below
+            return super().eventFilter(obj, ev)
+
         widgetWithFocus = QApplication.focusWidget()
         if widgetWithFocus is not None:
             widgetClassesFilteringEvent = (
@@ -21384,10 +21468,98 @@ When working with 3D segmentation masks:
         if volume_renderer is None:
             return
 
+        # The z-slice might be different in the new frame
+        self.update3DViewerViewRegion()
+
         if not volume_renderer.are_frames_synced():
-            return 
-        
+            return
+
         volume_renderer.set_frame_number(self.navigateScrollBar.value())
+
+    def update3DViewerViewRegion(self, *args):
+        """Send the region visible in ax1 to the 3D viewer (if open).
+
+        Calls are throttled because this is called at every view range
+        change (e.g., while panning).
+        """
+        if getattr(self, '_volume_renderer', None) is None:
+            return
+
+        timer = getattr(self, '_update3DViewerViewRegionTimer', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(30)
+            timer.timeout.connect(self._update3DViewerViewRegion)
+            self._update3DViewerViewRegionTimer = timer
+
+        # Do not restart an active timer, otherwise the 3D viewer would not
+        # be updated until the user stops panning/zooming. The current
+        # state is read when the timer fires.
+        if not timer.isActive():
+            timer.start()
+
+    def _get3DViewerPlaneDepthSlice(self):
+        """Return the plane displayed in ax1 ('xy', 'zy', or 'zx') and the
+        index of the displayed slice along the perpendicular axis (None for
+        z-projections).
+        """
+        plane = self.switchPlaneCombobox.plane()
+        isSingleSlice = (
+            plane != 'xy'
+            or self.zProjComboBox.currentText() == 'single z-slice'
+        )
+        depthSlice = None
+        if isSingleSlice:
+            depthSlice = self.zSliceScrollBar.sliderPosition()
+
+        return plane, depthSlice
+
+    def _update3DViewerViewRegion(self):
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is None:
+            return
+
+        xRange, yRange = self.ax1.viewRange()
+        plane, depthSlice = self._get3DViewerPlaneDepthSlice()
+
+        volume_renderer.set_parent_view_region(
+            xRange, yRange, plane=plane, depth_slice=depthSlice
+        )
+
+        # The slice (or plane) might have changed --> move the cursor too
+        self._update3DViewerCursor()
+
+    def update3DViewerCursor(self, xy=None):
+        """Show a mirrored cursor in the 3D viewer (if open) at the position
+        `xy` of the mouse cursor on the image. Pass None to hide it.
+
+        Not throttled: the 3D viewer only repaints a small overlay around
+        the cursor (the volumes are not re-rendered).
+        """
+        # Store also when the 3D viewer is closed to avoid showing a stale
+        # position when it is opened
+        self._3DViewerCursorXY = xy
+
+        if getattr(self, '_volume_renderer', None) is None:
+            return
+
+        self._update3DViewerCursor()
+
+    def _update3DViewerCursor(self):
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is None:
+            return
+
+        xy = getattr(self, '_3DViewerCursorXY', None)
+        if xy is None:
+            volume_renderer.set_parent_cursor_pos(None, None)
+            return
+
+        plane, depthSlice = self._get3DViewerPlaneDepthSlice()
+        volume_renderer.set_parent_cursor_pos(
+            *xy, plane=plane, depth_slice=depthSlice
+        )
 
     def applyAllDelROI(self):
         posData = self.data[self.pos_i]
@@ -23254,6 +23426,8 @@ When working with 3D segmentation masks:
             self.updateObjectCounts()
             self.editIDToolbar.setCurrentZslice(z, posData.SizeZ)
 
+        self.update3DViewerViewRegion()
+
     def updateOverlayZslice(self, z):
         self.setOverlayImages()
 
@@ -23284,6 +23458,8 @@ When working with 3D segmentation masks:
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
             self.updateAllImages()
+
+        self.update3DViewerViewRegion()
 
     def setZSliceWidgetsEnabled(self, how):
         posData = self.data[self.pos_i]
@@ -29983,18 +30159,29 @@ When working with 3D segmentation masks:
             
         return z_slice
     
-    def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None):
+    def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None, yx=None):
+        """Return the 2D image displayed from the 3D `imgData` (slice or
+        z-projection depending on the GUI settings).
+
+        If `yx` is not None, return only the value at (y, x) of the 2D image,
+        which is much faster than computing the whole 2D image (e.g.,
+        a z-projection of the whole z-stack).
+        """
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
         if frame_i < 0:
             frame_i = 0
             frame_i = posData.frame_i = 0
-        
+
         axis_slice = self.zSliceScrollBar.sliderPosition()
         if self.switchPlaneCombobox.depthAxes() == 'x':
+            if yx is not None:
+                return imgData[yx[0], yx[1], axis_slice]
             return imgData[:, :, axis_slice].copy()
         elif self.switchPlaneCombobox.depthAxes() == 'y':
+            if yx is not None:
+                return imgData[yx[0], axis_slice, yx[1]]
             return imgData[:, axis_slice].copy()
         
         idx = (posData.filename, frame_i)
@@ -30013,6 +30200,10 @@ When working with 3D segmentation masks:
             else:
                 zProjHow = zProjHow_L1
         
+        if yx is not None:
+            # Only the z-column at (y, x)
+            imgData = imgData[:, yx[0], yx[1]]
+
         if zProjHow == 'single z-slice':
             img = imgData[z] #.copy()
         elif zProjHow == 'max z-projection':
@@ -30058,18 +30249,24 @@ When working with 3D segmentation masks:
             )
         self.zSliceSpinbox.setValueNoEmit(z+1)
     
-    def getRawImage(self, frame_i=None, filename=None):
+    def getRawImage(self, frame_i=None, filename=None, yx=None):
+        """Return the raw 2D image displayed (or only its value at (y, x)
+        if `yx` is not None, much faster for z-projections)."""
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
         if filename is None:
             rawImgData = posData.img_data[frame_i]
             isLayer0 = True
-        else: 
+        else:
             rawImgData = posData.ol_data[filename][frame_i]
             isLayer0 = False
         if posData.SizeZ > 1:
-            rawImg = self.get_2Dimg_from_3D(rawImgData, isLayer0=isLayer0)
+            rawImg = self.get_2Dimg_from_3D(
+                rawImgData, isLayer0=isLayer0, yx=yx
+            )
+        elif yx is not None:
+            rawImg = rawImgData[yx[0], yx[1]]
         else:
             rawImg = rawImgData
         return rawImg
@@ -37923,8 +38120,10 @@ When working with 3D segmentation masks:
         )
         if doMoveTimestamp:
             self.timestamp.updatePosViewRangeChanged(viewRange)
-        
+
         self._viewRange = viewRange
+
+        self.update3DViewerViewRegion()
 
     def onSearchTriggerBlink(self, target):
         button = getattr(self, target, None) if isinstance(target, str) else target
