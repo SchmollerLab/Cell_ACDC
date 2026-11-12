@@ -60,18 +60,23 @@ def worker_exception_handler(func):
             
             # Some workers have both self.critical and self.signals.critical 
             # errors but only one of them is connected --> emit both just 
-            # in case
-            try:
-                self.critical.emit((self, error))
-            except Exception as err:
-                self.signals.critical.emit((self, error))
-                
-            try:
-                self.signals.critical.emit((self, error))
-            except Exception as err:
-                self.critical.emit((self, error))
+            # in case, but each of them only once (emitting the same signal
+            # twice shows the error dialog twice)
+            for owner in (self, getattr(self, 'signals', None)):
+                critical = getattr(owner, 'critical', None)
+                if critical is None:
+                    continue
+                try:
+                    critical.emit((self, error))
+                except Exception as err:
+                    pass
             
+            # Release the mutex in case the worker raised while holding it.
+            # Unlocking a mutex that is not locked crashes on Qt5, so first
+            # lock it if it is free (`tryLock` does nothing and returns
+            # False if the mutex is already locked)
             try:
+                self.mutex.tryLock()
                 self.mutex.unlock()
             except Exception as err:
                 pass
@@ -4937,8 +4942,12 @@ class CcaIntegrityCheckerWorker(QObject):
         if self.debug:
             self.logger.log('Cell cycle annotations checker is idle.')
         self.mutex.lock()
-        self.isPaused = True
-        self.waitCond.wait(self.mutex)
+        # Re-check under the mutex. Without this, a wake-up sent by `_stop`
+        # or `_enqueue` between the check in `run` and the `wait` below
+        # would be lost and the worker would sleep forever
+        if not self.exit and len(self.dataQ) == 0:
+            self.isPaused = True
+            self.waitCond.wait(self.mutex)
         self.mutex.unlock()
         self.isPaused = False
     
@@ -4949,26 +4958,36 @@ class CcaIntegrityCheckerWorker(QObject):
         self._enqueue(posData)
     
     def _enqueue(self, posData):
+        if self.exit:
+            # Worker is stopping --> do not enqueue, otherwise
+            # `abortChecking` would be reset and the current check would
+            # run until the end
+            return
+
         if self.debug:
             self.logger.log('Enqueing posData...')
+        self.mutex.lock()
         self.dataQ.append(posData)
         if len(self.dataQ) == 1:
             # Wake worker upon inserting first element
             self.abortChecking = False
             self.waitCond.wakeAll()
+        self.mutex.unlock()
     
     def clearQueue(self):
         self.dataQ.clear()
     
     def _stop(self):
+        self.mutex.lock()
         self.exit = True
         self.waitCond.wakeAll()
+        self.mutex.unlock()
     
     def abort(self):
         self.abortChecking = True
-        while not len(self.dataQ) == 0:
-            data = self.dataQ.pop()
-            del data
+        self.mutex.lock()
+        self.dataQ.clear()
+        self.mutex.unlock()
         self._stop()
     
     def _check_equality_num_mothers_buds_in_S(self, checker, frame_i):
@@ -5214,10 +5233,33 @@ class CcaIntegrityCheckerWorker(QObject):
         
         self.abortChecking = False
         self.isChecking = False
-        time.sleep(1)
     
-    @worker_exception_handler
+        # Throttle checks, but return early when stopped so that the thread
+        # can be quickly joined (see `guiWin.stopCcaIntegrityCheckerWorker`)
+        for _ in range(10):
+            if self.exit:
+                break
+            time.sleep(0.1)
+
     def run(self):
+        try:
+            self._run()
+        except Exception as error:
+            # Do not use `worker_exception_handler` because it unlocks
+            # `self.mutex`, which this worker never holds when raising.
+            # Unlocking a mutex that is not locked crashes on Qt5 and it
+            # could release the lock held by the GUI thread
+            printl(traceback.format_exc())
+            self.dataQ.clear()
+            self.critical.emit((self, error))
+
+        # Always emit `finished`, also after an exception, otherwise the
+        # thread's event loop is never quit and the QThread would be
+        # destroyed while still running --> hard crash (GitHub issue #1299)
+        self.isFinished = True
+        self.finished.emit(self)
+
+    def _run(self):
         while True:
             if self.exit:
                 self.logger.log('Closing cell cycle integrity checker worker...')
@@ -5228,14 +5270,16 @@ class CcaIntegrityCheckerWorker(QObject):
                         'Checking integrity of cell cycle annotations '
                         f'({len(self.dataQ)})...'
                     )
-                data = self.dataQ.pop()
+                try:
+                    data = self.dataQ.pop()
+                except IndexError:
+                    # Queue cleared by the GUI thread in the meantime
+                    continue
                 self.check(data)
                 if len(self.dataQ) == 0:
                     self.sigDone.emit()
             else:
                 self.pause()
-        self.isFinished = True
-        self.finished.emit(self)
     
 class ApplyImageFilterWorker(QObject):
     finished = Signal(object)

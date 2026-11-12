@@ -199,6 +199,12 @@ SliderPageStepAdd = QtScoped.SliderPageStepAdd()
 SliderPageStepSub = QtScoped.SliderPageStepSub()
 SliderMove = QtScoped.SliderMove()
 
+# Cell cycle annotations integrity checker threads that did not stop in time
+# (see `guiWin.stopCcaIntegrityCheckerWorker`). Stored at module level and not
+# on the window, because the window can be garbage collected before these
+# threads finish and destroying a running QThread aborts the process
+CCA_CHECKER_ORPHAN_THREADS = []
+
 def qt_debug_trace():
     from qtpy.QtCore import pyqtRemoveInputHook
     pyqtRemoveInputHook()
@@ -410,6 +416,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.exportToImageWindow = None
         self.customAnnotButton = None
         self.ccaCheckerRunning = False
+        self.isCancellingModeInit = False
         self.isDataLoaded = False
         self.highlightedID = 0
         self.hoverLabelID = 0
@@ -2250,6 +2257,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.setStatusBarLabel(log=False)
     
     def ccaCheckerWorkerDone(self):
+        if not hasattr(self, 'data'):
+            # Signal delivered after closing the window (data cleared)
+            return
         self.setStatusBarLabel(log=False)
     
     def preprocWorkerIsQueueEmpty(self, isEmpty: bool):
@@ -2358,8 +2368,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
        
     def goToFrameNumber(self, frame_n):
         posData = self.data[self.pos_i]
+        prev_frame_i = posData.frame_i
         posData.frame_i = frame_n - 1
-        self.get_data()
+        proceed_cca, _ = self.get_data()
+        if not self.restorePrevFrameIfNotProceed(proceed_cca, prev_frame_i):
+            return
+
         self.updateAllImages()
         self.updateScrollbars()
     
@@ -2415,6 +2429,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
 
     def ccaCheckerWorkerClosed(self, worker):
         self.logger.info('Cell cycle annotations integrity checker stopped.') 
+        if worker is not getattr(self, 'ccaIntegrityCheckerWorker', None):
+            # Previous worker that finished after a new one was started
+            # --> do not mark the new one as not running
+            return
         self.ccaCheckerRunning = False           
     
     def preprocWorkerClosed(self, worker):
@@ -4530,7 +4548,7 @@ When working with 3D segmentation masks:
         if 'is_cca_integrity_checker_activated' in self.df_settings.index:
             idx = 'is_cca_integrity_checker_activated'
             val = int(self.df_settings.at[idx, 'value'])
-            self.ccaIntegrCheckerToggle.setChecked(not val)
+            self.ccaIntegrCheckerToggle.setChecked(bool(val))
         
         self.annotLostObjsToggle = widgets.Toggle()
         annotLostObjsToggleTooltip = (
@@ -10577,8 +10595,12 @@ When working with 3D segmentation masks:
         if not proceed:
             return
         
+        prev_frame_i = posData.frame_i
         posData.frame_i = frame_i_found
-        self.get_data()
+        proceed_cca, _ = self.get_data()
+        if not self.restorePrevFrameIfNotProceed(proceed_cca, prev_frame_i):
+            return
+
         self.updateAllImages()
         self.updateScrollbars()
         
@@ -14913,7 +14935,7 @@ When working with 3D segmentation masks:
         mode = text
         prevMode = self.modeComboBox.previousText()
         self.annotateToolbar.setVisible(False)
-        if prevMode != 'Viewer':
+        if prevMode != 'Viewer' and not self.isCancellingModeInit:
             self.store_data(autosave=True)
             
         self.copyLostObjButton.setChecked(False)
@@ -20459,11 +20481,17 @@ When working with 3D segmentation masks:
             self.lazyLoader.pause()
         raise error
     
-    def ccaIntegrityWorkerCritical(self, error):
-        try:
-            raise error
-        except Exception as err:
-            self.logger.exception(traceback.format_exc())
+    def ccaIntegrityWorkerCritical(self, out: Tuple[QObject, Exception]):
+        worker, error = out
+        traceback_str = ''.join(traceback.format_exception(
+            type(error), error, error.__traceback__
+        ))
+        self.logger.error(traceback_str)
+
+        if worker is not getattr(self, 'ccaIntegrityCheckerWorker', None):
+            # Error from a previous worker that was already replaced
+            # --> do not stop the current one
+            return
         
         href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
@@ -20484,6 +20512,14 @@ When working with 3D segmentation masks:
             path_to_browse=self.logs_path
         )
         self.disableCcaIntegrityChecker()
+
+        # Switch the toggle off for this session (without saving the
+        # setting), as stated in the message above. Otherwise the checker
+        # would be restarted (and fail again) every time the user enters
+        # the "Cell cycle analysis" mode
+        self.ccaIntegrCheckerToggle.blockSignals(True)
+        self.ccaIntegrCheckerToggle.setChecked(False)
+        self.ccaIntegrCheckerToggle.blockSignals(False)
         
     @exception_handler
     def workerCritical(self, out: Tuple[QObject, Exception]):
@@ -23915,6 +23951,30 @@ When working with 3D segmentation masks:
         elif action == SliderPageStepSub:
             self.framesScrollBarReleased(do_store_data=True)
 
+    def restorePrevFrameIfNotProceed(self, proceed_cca, prev_frame_i):
+        """Go back to `prev_frame_i` if `get_data` could not load the
+        requested frame (`proceed_cca` is False, e.g., frame never checked
+        in "Segmentation and Tracking" mode while in "Cell cycle analysis"
+        mode). In that case `get_data` returns early and the data of the
+        previous frame would otherwise be displayed and stored as the data
+        of the requested frame.
+
+        Returns
+        -------
+        bool
+            True if the requested frame was loaded, False if we went back
+            to `prev_frame_i`.
+        """
+        if proceed_cca:
+            return True
+
+        posData = self.data[self.pos_i]
+        posData.frame_i = prev_frame_i
+        self.get_data()
+        self.resetNavigateFramesScrollbar()
+        self.updateFramePosLabel()
+        return False
+
     def framesScrollBarMoved(self, frame_n):
         if self.navigateScrollBarStartedMoving:
             mode = str(self.modeComboBox.currentText())
@@ -23922,8 +23982,13 @@ When working with 3D segmentation masks:
                 self.store_data(debug=False)
                 
         posData = self.data[self.pos_i]
+        prev_frame_i = posData.frame_i
         posData.frame_i = frame_n-1
-        self.get_data()
+        proceed_cca, _ = self.get_data()
+        if not self.restorePrevFrameIfNotProceed(proceed_cca, prev_frame_i):
+            self.navigateScrollBarStartedMoving = False
+            return
+
         self.updateLostNewCurrentIDs()
         self.updateAllImages()
         self.updateFramePosLabel()
@@ -23946,9 +24011,13 @@ When working with 3D segmentation masks:
             self.store_data(debug=False)
             
         self.navigateScrollBarStartedMoving = True
+        prev_frame_i = posData.frame_i
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
+        if not self.restorePrevFrameIfNotProceed(proceed_cca, prev_frame_i):
+            return
+
         if do_store_data:
             self.updateLostNewCurrentIDs()
         self.updateLostNewCurrentIDs()
@@ -24479,28 +24548,36 @@ When working with 3D segmentation masks:
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
         
+        # Collect only the frames that were actually annotated. Frames
+        # without annotations are skipped (do not fill them with
+        # placeholders, e.g. '' strings, because they would be propagated
+        # to the initialized frames and corrupt the annotations)
         annotated_cca_dfs = []
+        keys = []
         for frame_i in range(last_cca_frame_i+1):
             acdc_df = posData.allData_li[frame_i]['acdc_df']
-            if 'cell_cycle_stage' in acdc_df.columns:
+            if acdc_df is None:
                 continue
             
-            acdc_df[self.cca_df_colnames] = ''
+            if 'cell_cycle_stage' not in acdc_df.columns:
+                continue
         
-        annotated_cca_dfs = [
-            posData.allData_li[i]['acdc_df'][self.cca_df_colnames]
-            for i in range(last_cca_frame_i+1)
-        ]
-        keys = range(last_cca_frame_i+1)
-        names = ['frame_i', 'Cell_ID']
-        annotated_cca_df = (
-            pd.concat(annotated_cca_dfs, keys=keys, names=names)
-            .reset_index()
-            .set_index(['Cell_ID', 'frame_i'])
-            .sort_index()
-        )
+            annotated_cca_dfs.append(
+                acdc_df.reindex(columns=self.cca_df_colnames)
+            )
+            keys.append(frame_i)
         
-        last_annotated_cca_df = annotated_cca_df.groupby(level=0).last()
+        last_annotated_cca_df = None
+        if annotated_cca_dfs:
+            names = ['frame_i', 'Cell_ID']
+            annotated_cca_df = (
+                pd.concat(annotated_cca_dfs, keys=keys, names=names)
+                .reset_index()
+                .set_index(['Cell_ID', 'frame_i'])
+                .sort_index()
+            )
+            last_annotated_cca_df = annotated_cca_df.groupby(level=0).last()
+
         cca_df_colnames = self.cca_df_colnames
         pbar = tqdm(total=current_frame_i-last_cca_frame_i+1, ncols=100)
         for frame_i in range(last_cca_frame_i, current_frame_i+1):
@@ -24508,8 +24585,15 @@ When working with 3D segmentation masks:
             self.get_data()
             cca_df = self.getBaseCca_df()
 
-            idx = last_annotated_cca_df.index.intersection(cca_df.index)
-            cca_df.loc[idx, cca_df_colnames] = last_annotated_cca_df.loc[idx]
+            if last_annotated_cca_df is not None:
+                idx = last_annotated_cca_df.index.intersection(cca_df.index)
+                # Values missing in the annotations are taken from the
+                # base (default) annotations
+                last_annotated = (
+                    last_annotated_cca_df.loc[idx, cca_df_colnames]
+                    .combine_first(cca_df.loc[idx, cca_df_colnames])
+                )
+                cca_df.loc[idx, cca_df_colnames] = last_annotated
 
             self.store_cca_df(cca_df=cca_df, frame_i=frame_i, autosave=False)
             pbar.update()
@@ -25408,16 +25492,13 @@ When working with 3D segmentation masks:
     def get_last_cca_frame_i(self):
         posData = self.data[self.pos_i]
         
-        i = 0
-        # Determine last annotated frame index
+        # Determine last annotated frame index (0 if no frame is annotated)
+        last_cca_frame_i = len(posData.allData_li) - 1
         for i, dict_frame_i in enumerate(posData.allData_li):
             df = dict_frame_i['acdc_df']
-            if df is None:
+            if df is None or 'cell_cycle_stage' not in df.columns:
+                last_cca_frame_i = max(i-1, 0)
                 break
-            elif 'cell_cycle_stage' not in df.columns:
-                break
-        
-        last_cca_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1  
         
         return last_cca_frame_i
     
@@ -25478,6 +25559,22 @@ When working with 3D segmentation masks:
             f'Last checked frame n. = {last_tracked_i+1}'
         )
     
+    def cancelModeInit(self, defaultMode='Viewer'):
+        """Switch to `defaultMode` after the initialization of a mode (e.g.,
+        "Cell cycle analysis") was cancelled.
+
+        Data is not stored on this mode change because the cancelled mode
+        was never active. The mode change that started the initialization
+        already stored the data according to the actual previous mode.
+        Storing here would mark the current frame as checked, even if it
+        was only visited in "Viewer" mode.
+        """
+        self.isCancellingModeInit = True
+        try:
+            self.modeComboBox.setCurrentText(defaultMode)
+        finally:
+            self.isCancellingModeInit = False
+
     @exception_handler
     def initCca(self):
         posData = self.data[self.pos_i]
@@ -25496,7 +25593,7 @@ When working with 3D segmentation masks:
             msg.critical(
                 self, 'Tracking was never checked', txt
             )
-            self.modeComboBox.setCurrentText(defaultMode)
+            self.cancelModeInit(defaultMode)
             return
 
         proceed = True
@@ -25511,17 +25608,40 @@ When working with 3D segmentation masks:
         if posData.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
             msg = widgets.myMessageBox()
-            txt = html_utils.paragraph(f"""
-                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
-                Do you want to restart cell cycle analysis from frame 
-                {last_cca_frame_i+1}?<br>
-            """)
-            _, goToFrameButton, stayButton = msg.warning(
+            # Cell cycle analysis cannot start from a frame that was never
+            # checked in "Segmentation and Tracking" mode (e.g., after
+            # visiting it in "Viewer" mode) --> do not offer to stay
+            canStayOnCurrentFrame = posData.frame_i <= last_tracked_i
+            if canStayOnCurrentFrame:
+                txt = html_utils.paragraph(f"""
+                    The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
+                    Do you want to restart cell cycle analysis from frame
+                    {last_cca_frame_i+1}?<br>
+                """)
+                buttonsTexts = (
+                    'Cancel', f'Yes, go to frame {last_cca_frame_i+1}',
+                    'No, stay on current frame'
+                )
+            else:
+                txt = html_utils.paragraph(f"""
+                    The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
+                    The current frame (n. {posData.frame_i+1}) was
+                    <b>never checked</b> in "Segmentation and Tracking" mode
+                    (last checked frame is n. {last_tracked_i+1}),
+                    therefore cell cycle analysis cannot start from the
+                    current frame.<br><br>
+                    Do you want to restart cell cycle analysis from frame
+                    {last_cca_frame_i+1}?<br>
+                """)
+                buttonsTexts = (
+                    'Cancel', f'Yes, go to frame {last_cca_frame_i+1}'
+                )
+            buttons = msg.warning(
                 self, 'Go to last annotated frame?', txt, 
-                buttonsTexts=(
-                    'Cancel', f'Yes, go to frame {last_cca_frame_i+1}', 
-                    'No, stay on current frame')
+                buttonsTexts=buttonsTexts
             )
+            goToFrameButton = buttons[1]
+            stayButton = buttons[2] if canStayOnCurrentFrame else None
             if goToFrameButton == msg.clickedButton:
                 self.addMissingIDs_cca_df(posData)
                 msg = 'Looking good!'
@@ -25534,7 +25654,7 @@ When working with 3D segmentation masks:
                 self.updateAllImages()
                 self.updateScrollbars()
                 self.updateSingleMotherBudPairLastAnnotatedFrame()
-            elif stayButton == msg.clickedButton:
+            elif stayButton is not None and stayButton == msg.clickedButton:
                 self.addMissingIDs_cca_df(posData)
                 self.store_cca_df()
                 self.initMissingFramesCca(last_cca_frame_i, posData.frame_i)
@@ -25546,7 +25666,7 @@ When working with 3D segmentation masks:
                 msg = 'Cell cycle analysis cancelled.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
+                self.cancelModeInit(defaultMode)
                 proceed = False
                 return
         elif posData.frame_i < last_cca_frame_i:
@@ -25565,7 +25685,7 @@ When working with 3D segmentation masks:
                 msg = 'Cell cycle analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
+                self.cancelModeInit(defaultMode)
                 proceed = False
                 return
             
@@ -25646,7 +25766,7 @@ When working with 3D segmentation masks:
             msg.critical(
                 self, 'Tracking was never checked', txt
             )
-            self.modeComboBox.setCurrentText(defaultMode)
+            self.cancelModeInit(defaultMode)
             return
 
         proceed = True
@@ -25699,7 +25819,7 @@ When working with 3D segmentation masks:
                 msg = 'Lineage tree analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
+                self.cancelModeInit(defaultMode)
                 proceed = False
                 return
             
@@ -25727,7 +25847,7 @@ When working with 3D segmentation masks:
                 msg = 'Lineage tree analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
+                self.cancelModeInit(defaultMode)
                 proceed = False
                 return
         else:
@@ -35270,6 +35390,11 @@ When working with 3D segmentation masks:
         if not self.ccaIntegrCheckerToggle.isChecked():
             return
         
+        # The previous checker thread must be finished before we replace
+        # it, because destroying a running QThread aborts the process
+        # (GitHub issue #1299)
+        self.stopCcaIntegrityCheckerWorker(wait=True)
+
         ccaCheckerThread = QThread()
         self.ccaCheckerMutex = QMutex()
         self.ccaCheckerWaitCond = QWaitCondition()
@@ -35313,26 +35438,84 @@ When working with 3D segmentation masks:
         
         self.enqCcaIntegrityChecker()
     
-    def initCcaIntegrityChecker(self):
-        posData = self.data[self.pos_i]
-        for frame_i, data_frame_i in enumerate(posData.allData_li):
-            lab = data_frame_i['labels']
-            if lab is None:
-                break
-            
-            cca_df = self.get_cca_df(frame_i, return_df=True)
-            self.store_cca_df_checker(posData, frame_i, cca_df)
-        
-        self.enqCcaIntegrityChecker()
-    
     def disableCcaIntegrityChecker(self):
         self.stopCcaIntegrityCheckerWorker()
     
-    def stopCcaIntegrityCheckerWorker(self):
+    def stopCcaIntegrityCheckerWorker(self, wait=False, timeout_ms=5000):
+        """Stop the cell cycle annotations integrity checker worker and quit
+        its thread.
+
+        Parameters
+        ----------
+        wait : bool, optional
+            If True, block until the thread has finished (at most
+            `timeout_ms`). Required before replacing or releasing the
+            thread, because destroying a QThread that is still running
+            aborts the process (GitHub issue #1299). Default is False
+        timeout_ms : int, optional
+            Maximum time in milliseconds to wait for the thread. If the
+            thread is still running after that, a reference to it is kept
+            to prevent its destruction. Default is 5000
+        """
+        # Do not enqueue new checks to the stopping worker
+        self.ccaCheckerRunning = False
+
+        worker = getattr(self, 'ccaIntegrityCheckerWorker', None)
+        if worker is not None:
+            try:
+                worker.abort()
+            except Exception as err:
+                pass
+
+        if wait:
+            self.waitCcaCheckerOrphanThreads(timeout_ms=0)
+
+        thread = getattr(self, 'ccaCheckerThread', None)
+        if thread is None:
+            return
+
         try:
-            self.ccaIntegrityCheckerWorker._stop()
-        except Exception as err:
-            pass
+            # Quit the thread's event loop also when `worker.finished`
+            # (connected to `thread.quit`) was not emitted
+            thread.quit()
+            if not wait:
+                return
+
+            # Always wait, without checking `isRunning` first: `isRunning`
+            # is already False while the thread is still finishing and
+            # releasing the thread at that moment deadlocks. `wait` releases
+            # the GIL and returns immediately if the thread is finished
+            if thread.wait(timeout_ms):
+                return
+        except RuntimeError:
+            # The C++ thread was already deleted (finished --> deleteLater)
+            return
+
+        self.logger.info(
+            '[WARNING]: Cell cycle annotations integrity checker did not '
+            f'stop within {timeout_ms} ms.'
+        )
+        # Keep a reference to prevent destroying a running thread
+        CCA_CHECKER_ORPHAN_THREADS.append(thread)
+
+    def waitCcaCheckerOrphanThreads(self, timeout_ms=5000):
+        """Wait for the checker threads that did not stop in time (see
+        `stopCcaIntegrityCheckerWorker`) and release the finished ones.
+
+        Threads are released only after `wait` returned True. Releasing
+        them earlier (e.g., from a slot connected to `finished`) could
+        destroy them while they are still finishing.
+        """
+        stillRunning = []
+        for thread in CCA_CHECKER_ORPHAN_THREADS:
+            try:
+                thread.quit()
+                if not thread.wait(timeout_ms):
+                    stillRunning.append(thread)
+            except RuntimeError:
+                # Thread already deleted
+                pass
+        CCA_CHECKER_ORPHAN_THREADS[:] = stillRunning
     
     def loadFluo_cb(
             self, checked=True, fluo_channels=None,
@@ -37804,7 +37987,8 @@ When working with 3D segmentation masks:
         
         self.stopPreprocWorker()
         self.stopCombineWorker()
-        self.stopCcaIntegrityCheckerWorker()
+        self.stopCcaIntegrityCheckerWorker(wait=True)
+        self.waitCcaCheckerOrphanThreads()
         self.stopModelExecutions()
         
         # Close the inifinte loop of the thread
