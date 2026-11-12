@@ -4701,8 +4701,7 @@ When working with 3D segmentation masks:
             for obj in posData.rp:
                 self.drawObjMothBudLines(obj, posData, ax=ax)
 
-            mode = self.modeComboBox.currentText()
-            if mode == 'Normal division: Lineage tree':
+            if self.isLineageTreeLinesModeActive():
                 self.drawAllLineageTreeLines()
         else:
             self.getMothBudLineScatterItem(ax, True).clear()
@@ -26289,52 +26288,96 @@ When working with 3D segmentation masks:
         self.ax2_newMothBudLinesItem.setData([], [])
         self.ax2_oldMothBudLinesItem.setData([], [])
 
+    def isLineageTreeLinesModeActive(self):
+        """Check whether mother-daughter lines should be drawn from the
+        lineage tree annotations (see `drawAllLineageTreeLines`) rather than
+        from the cell cycle annotations (see `drawAllMothBudLines`).
+
+        Lineage tree lines are drawn in "Normal division: Lineage tree" mode
+        and in the other modes (e.g., Viewer) when the current frame does
+        not have cell cycle annotations. Never drawn in
+        "Cell cycle analysis" mode.
+        """
+        mode = self.modeComboBox.currentText()
+        if mode == 'Normal division: Lineage tree':
+            return True
+
+        if mode == 'Cell cycle analysis':
+            return False
+
+        posData = self.data[self.pos_i]
+        if posData.cca_df is not None and not posData.cca_df.empty:
+            return False
+
+        return True
+
     def drawAllLineageTreeLines(self):
         """
         Draw all lineage tree lines on the GUI.
 
         This method retrieves the lineage tree data and draws the lineage tree lines
         connecting cells and their respective mothers when the mother has split.
-        """
-        if self.lineage_tree is None:
-            return
 
-        if len(self.lineage_tree.frames_for_dfs) < 2:
-            return
+        Outside of the "Normal division: Lineage tree" mode (i.e., when
+        `self.lineage_tree` is None) the lines are drawn from the lineage
+        tree annotations stored in the acdc_df (if present).
+        """
+        if self.lineage_tree is not None:
+            if len(self.lineage_tree.frames_for_dfs) < 2:
+                return
 
         self.clearAllCellToCellLines()
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
 
         if frame_i == 0:
-            return 
+            return
 
         lin_tree_df = posData.allData_li[frame_i]['acdc_df']
+        if lin_tree_df is None or 'parent_ID_tree' not in lin_tree_df.columns:
+            return
+
         lin_tree_df_prev = posData.allData_li[frame_i-1]['acdc_df']
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        if prev_rp is None:
+            return
 
-        self.setTitleText()
+        if self.lineage_tree is not None:
+            self.setTitleText()
 
-        new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
+        # In Viewer mode the previous frame might have never been visited
+        # --> use the IDs from its regionprops
+        if lin_tree_df_prev is not None:
+            prev_IDs = lin_tree_df_prev.index
+        else:
+            prev_IDs = prev_rp.IDs
+        new_cells = lin_tree_df.index.difference(prev_IDs) # I could use this for the if already but this is probably faster for frames where nothing changes
         if new_cells.shape[0] == 0:
             return
-        
+
         for ax in (0, 1):
             if not self.areMothBudLinesRequested(ax):
                 continue
 
             for ID in new_cells:
-                curr_obj = rp.get_obj_from_ID(ID)
+                curr_obj = rp.get_obj_from_ID(ID, warn=False)
+                if curr_obj is None:
+                    continue
+
                 lin_tree_df_ID = lin_tree_df.loc[ID]
+                parent_ID = lin_tree_df_ID['parent_ID_tree']
 
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
-                if lin_tree_df_ID['parent_ID_tree'] == -1: # make sure that new obj where the parents are not known get skipped
+                # make sure that new obj where the parents are not known
+                # (or not annotated) get skipped
+                if pd.isna(parent_ID) or parent_ID == -1:
                     continue
-                
-                mother_obj = prev_rp.get_obj_from_ID(lin_tree_df_ID['parent_ID_tree'])
 
-                emerg_frame_i = lin_tree_df_ID['emerg_frame_i']
+                mother_obj = prev_rp.get_obj_from_ID(int(parent_ID), warn=False)
+                if mother_obj is None:
+                    continue
+
                 isNew = False
 
                 self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
@@ -31841,9 +31884,8 @@ When working with 3D segmentation masks:
             compute=False
         )
 
-        mode = self.modeComboBox.currentText()
         self.drawAllMothBudLines()
-        if mode == 'Normal division: Lineage tree':
+        if self.isLineageTreeLinesModeActive():
             self.drawAllLineageTreeLines()
 
         self.highlightLostNew()      
