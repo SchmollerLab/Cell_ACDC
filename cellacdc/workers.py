@@ -73,7 +73,12 @@ def worker_exception_handler(func):
             except Exception as err:
                 self.critical.emit((self, error))
             
+            # Release the mutex in case the error happened while holding
+            # it. Unlocking a mutex that is not locked is undefined
+            # behaviour (segfault with Qt5) --> tryLock first, so that
+            # unlock always releases a locked mutex
             try:
+                self.mutex.tryLock()
                 self.mutex.unlock()
             except Exception as err:
                 pass
