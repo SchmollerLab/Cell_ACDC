@@ -44,7 +44,7 @@ class tracker:
             If `True`, attempts to try to use the GPU for inference. 
             Default is False
         """        
-        device = myutils.get_torch_device()
+        device = myutils.get_torch_device(gpu=gpu)
         if use_custom_model and not model_folder_path:
             raise ValueError(
                 '`use_custom_model` is True, but `model_folder_path` is empty!'
