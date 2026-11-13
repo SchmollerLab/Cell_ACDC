@@ -18,10 +18,28 @@ from cellacdc import core, measurements
 QS = [0.25, 0.75, 0.05, 0.95]
 
 
+def _same_float(a, b):
+    # Exact comparison of two floats, including the sign of zero (NaN
+    # matches only NaN). Raw bytes cannot be compared because extended
+    # precision long doubles (e.g., 80-bit on Linux x86-64) are stored with
+    # uninitialized padding bytes.
+    a_nan, b_nan = bool(np.isnan(a)), bool(np.isnan(b))
+    if a_nan or b_nan:
+        return a_nan and b_nan
+    return bool(a == b) and bool(np.signbit(a)) == bool(np.signbit(b))
+
+
 def _assert_same_value(a, b):
     assert type(a) is type(b), (a, b)
     if a is None or b is None:
         assert a is b
+        return
+    if isinstance(a, (complex, np.complexfloating)):
+        assert _same_float(a.real, b.real), (a, b)
+        assert _same_float(a.imag, b.imag), (a, b)
+        return
+    if isinstance(a, (float, np.floating)):
+        assert _same_float(a, b), (a, b)
         return
     try:
         both_nan = bool(np.isnan(a)) and bool(np.isnan(b))
