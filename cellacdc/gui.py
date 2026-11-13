@@ -2410,6 +2410,9 @@ class guiWin(
         self.overlayToolbar.sigSetTranspacency.connect(
             self.setOverlayTransparency
         )
+        self.overlayToolbar.sigTransparencyModesClicked.connect(
+            self.saveOverlayTransparencyModes
+        )
         self.overlayToolbar.sigSetSingleChannel.connect(
             self.setOverlaySingleChannel
         )
@@ -25329,6 +25332,8 @@ When working with 3D segmentation masks:
         
         self.df_settings = self.imgGrad.saveState(self.df_settings)
         self.df_settings.to_csv(self.settings_csv_path)
+        # Per-channel LUT (`gui_overlay`)
+        self.imageChannelLutChanged()
 
     def setTextAnnotZsliceScrolling(self):
         pass

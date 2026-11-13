@@ -7,8 +7,34 @@ for creating the widgets and attributes the methods use. The host may define
 an optional `bottomLayoutFont` (`QFont`) used for the alpha scrollbar labels
 (the main GUI sets it in `resizeSlidersArea` to follow the bottom layout
 zoom); without it an 11 px font is used.
+
+Display settings remembered per user (settings CSV, `df_settings`):
+
+- The LUT (gradient) of each channel, matched by channel name, separately for
+  the displayed image (`imgGrad`, ``image_lut_<channel>``) and for overlays
+  (``overlay_lut_<channel>``), so that a grey image LUT never replaces the
+  color of the same channel shown as overlay. They are saved after every
+  change (`scheduleChannelLutSave`, written at the next event loop iteration
+  so that the final tick visibility is stored) and restored when the items
+  are created (`gui_createOverlayItems`). Both store the "Invert black/white"
+  mode: the image LUT is inverted when the mode differs; an overlay gradient
+  that starts with the background of the mode it was built for gets the
+  current background, as in `initColormapOverlayLayerItem`
+  (`overlay_gradient_for_background`). Channels without a saved LUT keep
+  the current behaviour (image: the gradient shown; overlay: the channel
+  color).
+- The overlay transparency modes of `widgets.OverlayToolbar`
+  (``overlay_true_transparency``, ``overlay_alpha_encoded_intensity``),
+  saved only on user clicks (exports toggle them programmatically) and
+  applied when the overlay is activated (`overlay_cb`).
+
+The host calls `imageChannelLutChanged` from its ``imgGradLUTfinished_cb``,
+connects ``overlayToolbar.sigTransparencyModesClicked`` to
+`saveOverlayTransparencyModes`, and needs ``invertBwAction`` and the
+`gui_core.GUICoreElements` settings attributes.
 """
 import os
+import json
 from functools import partial
 
 import numpy as np
@@ -27,6 +53,131 @@ from . import load, html_utils, myutils, widgets, colors, issues_url
 from . import _palettes
 
 GREEN_HEX = _palettes.green()
+
+IMAGE_LUT_SETTING_PREFIX = 'image_lut_'
+OVERLAY_LUT_SETTING_PREFIX = 'overlay_lut_'
+TRANSPARENCY_SETTING = 'overlay_true_transparency'
+ALPHA_ENCODED_INTENSITY_SETTING = 'overlay_alpha_encoded_intensity'
+
+_BLACK = (0, 0, 0)
+_WHITE = (255, 255, 255)
+
+
+def channel_lut_setting_name(channel, overlay=False):
+    """Settings key of the LUT of `channel` (displayed image or overlay)."""
+    if overlay:
+        return f'{OVERLAY_LUT_SETTING_PREFIX}{channel}'
+    return f'{IMAGE_LUT_SETTING_PREFIX}{channel}'
+
+
+def drop_channel_lut_settings(df):
+    """Settings table `df` without the per-channel LUT rows."""
+    prefixes = (IMAGE_LUT_SETTING_PREFIX, OVERLAY_LUT_SETTING_PREFIX)
+    keep = [not str(name).startswith(prefixes) for name in df.index]
+    return df.loc[keep].copy()
+
+
+def gradient_setting_value(gradient, inverted=None):
+    """JSON text of the gradient shown by a LUT item.
+
+    Parameters
+    ----------
+    gradient : pyqtgraph.GradientEditorItem
+        Gradient of the LUT item.
+    inverted : bool or None, optional
+        "Invert black/white" mode of the gradient: the mode of the displayed
+        image LUT, or the mode an overlay's background was built for
+        (``lutItem.backgroundInverted``). Default is None (not stored).
+
+    Returns
+    -------
+    str
+        JSON with ``mode``, ``ticks`` ([position, [r, g, b, a]] sorted by
+        position), ``ticksVisible`` (read from the ticks themselves, also when
+        the LUT item is hidden) and optionally ``inverted``.
+    """
+    ticks = [
+        [float(pos), [int(c) for c in tick.color.getRgb()]]
+        for tick, pos in gradient.listTicks()
+    ]
+    state = {
+        'mode': gradient.colorMode,
+        'ticks': ticks,
+        'ticksVisible': all(
+            tick.isVisibleTo(gradient) for tick in gradient.ticks
+        ),
+    }
+    if inverted is not None:
+        state['inverted'] = bool(inverted)
+    return json.dumps(state)
+
+
+def parse_gradient_setting(value):
+    """Gradient state written by `gradient_setting_value`.
+
+    Returns
+    -------
+    tuple of (dict, bool or None) or None
+        The state for ``GradientEditorItem.restoreState`` (ticks sorted by
+        position) and the stored ``inverted`` flag, or None if `value` is not
+        a valid gradient (e.g., edited by hand).
+    """
+    try:
+        saved = json.loads(value)
+        ticks = sorted(
+            (float(pos), tuple(int(c) for c in color))
+            for pos, color in saved['ticks']
+        )
+        mode = saved.get('mode', 'rgb')
+        ticksVisible = bool(saved.get('ticksVisible', True))
+        inverted = saved.get('inverted')
+    except Exception:
+        return None
+    isValid = (
+        len(ticks) >= 2 and mode in ('rgb', 'hsv')
+        and all(
+            0 <= pos <= 1 and len(color) in (3, 4)
+            and all(0 <= c <= 255 for c in color)
+            for pos, color in ticks
+        )
+    )
+    if not isValid:
+        return None
+    state = {'mode': mode, 'ticks': ticks, 'ticksVisible': ticksVisible}
+    return state, (None if inverted is None else bool(inverted))
+
+
+def overlay_gradient_for_background(state, savedInverted, inverted):
+    """Overlay gradient `state` with the black/white background of the
+    current "Invert black/white" mode.
+
+    A gradient built by `initColormapOverlayLayerItem` goes from the
+    background (black, or white when inverted) to the channel color. When
+    the saved gradient was built in the other mode (`savedInverted`) and
+    still starts with that mode's background, the start gets the current
+    background, unless the color is that background (e.g., a grey
+    gradient). Other gradients, including a start color chosen by the user,
+    are kept.
+
+    Returns
+    -------
+    dict
+        `state` itself when nothing changes, else a new state.
+    """
+    if savedInverted is None or savedInverted == inverted:
+        return state
+    ticks = state['ticks']
+    savedBackground = _WHITE if savedInverted else _BLACK
+    background = _WHITE if inverted else _BLACK
+    (startPos, startColor), (endPos, endColor) = ticks[0], ticks[-1]
+    isBackgroundGradient = (
+        len(ticks) == 2 and tuple(startColor[:3]) == savedBackground
+        and tuple(endColor[:3]) != background
+    )
+    if not isBackgroundGradient:
+        return state
+    startColor = (*background, *startColor[3:])
+    return {**state, 'ticks': [(startPos, startColor), (endPos, endColor)]}
 
 _font = QFont()
 _font.setPixelSize(11)
@@ -56,8 +207,137 @@ class OverlayChannelsGuiElements:
                 rgb = colors.FLUO_CHANNELS_COLORS.get(ch, self.overlayRGBs[c])
                 self.overlayColors[ch] = rgb
 
+    def savedChannelLut(self, channel, overlay=False):
+        """Saved LUT of `channel` as (state, inverted) or None
+        (`parse_gradient_setting`)."""
+        key = channel_lut_setting_name(channel, overlay=overlay)
+        df = getattr(self, 'df_settings', None)
+        if df is None or key not in df.index:
+            return None
+        saved = parse_gradient_setting(df.at[key, 'value'])
+        if saved is None:
+            self.logger.info(f'Ignoring invalid saved LUT "{key}".')
+        return saved
+
+    def restoreImageChannelLut(self):
+        """Show the saved LUT of the displayed channel on `imgGrad`.
+
+        Runs when the overlay items are created (every data load), before
+        the first load's `invertBw`, which then inverts it as any gradient.
+        `imgGrad.setGradient` keeps ``lastGradient`` (what "Invert
+        black/white" inverts) in sync. Changes of `imgGrad` are saved for
+        the channel only from here on (``imgGradLutChannel``), so the
+        gradient of the previous channel is not saved under the new name."""
+        channel = self.user_ch_name
+        saved = self.savedChannelLut(channel)
+        if saved is not None:
+            state, inverted = saved
+            if inverted is not None and inverted != self.imgGrad.isInverted:
+                ticksVisible = state['ticksVisible']
+                state = self.imgGrad.invertGradient(state)
+                state['ticksVisible'] = ticksVisible
+            self.imgGrad.setGradient(state)
+        self.imgGradLutChannel = channel
+
+    def imageChannelLutChanged(self):
+        """Called by the host's ``imgGradLUTfinished_cb`` after every change
+        of the displayed image's gradient."""
+        # Menu colormaps and tick edits do not update `lastGradient`: keep
+        # it in sync so that "Invert black/white" inverts what is shown
+        self.imgGrad.lastGradient = self.imgGrad.gradient.saveState()
+        channel = getattr(self, 'imgGradLutChannel', None)
+        if channel is None or channel != getattr(self, 'user_ch_name', None):
+            return
+        self.scheduleChannelLutSave(channel, self.imgGrad, overlay=False)
+
+    def restoreOverlayChannelLut(self, channelName, lutItem):
+        """Show the saved overlay LUT of `channelName` on `lutItem`, with the
+        background of the current "Invert black/white" mode
+        (`overlay_gradient_for_background`)."""
+        saved = self.savedChannelLut(channelName, overlay=True)
+        if saved is None:
+            return
+        savedState, savedInverted = saved
+        inverted = self.invertBwAction.isChecked()
+        state = overlay_gradient_for_background(
+            savedState, savedInverted, inverted
+        )
+        lutItem.setGradient(state)
+        if state is savedState and savedInverted is not None:
+            lutItem.backgroundInverted = savedInverted
+        else:
+            lutItem.backgroundInverted = inverted
+
+    def overlayChannelLutChanged(self, channelName, lutItem, *args):
+        self.scheduleChannelLutSave(channelName, lutItem, overlay=True)
+
+    def scheduleChannelLutSave(self, channel, lutItem, overlay=False):
+        """Save the LUT of `channel` at the next event loop iteration.
+
+        The menu colormaps hide their ticks after the gradient change was
+        signalled, and the color dialog changes the gradient continuously:
+        waiting stores the final state and writes the settings once.
+        Ignored while ``_suppressChannelLutSaves`` is set (restoring the
+        default settings)."""
+        if getattr(self, '_suppressChannelLutSaves', False):
+            return
+        pending = getattr(self, '_pendingChannelLutSaves', None)
+        if not pending:
+            pending = {}
+            self._pendingChannelLutSaves = pending
+            QTimer.singleShot(0, self.saveChannelLuts)
+        pending[(channel, overlay)] = lutItem
+
+    def saveChannelLuts(self):
+        """Write the LUTs scheduled by `scheduleChannelLutSave`."""
+        pending = getattr(self, '_pendingChannelLutSaves', None)
+        self._pendingChannelLutSaves = {}
+        if not pending or self.df_settings is None:
+            return
+        for (channel, overlay), lutItem in pending.items():
+            if not overlay and channel != self.imgGradLutChannel:
+                # imgGrad shows another channel since the change
+                continue
+            if overlay:
+                # Mode the background was built for: "Invert black/white"
+                # does not rebuild the overlay gradients
+                inverted = getattr(lutItem, 'backgroundInverted', None)
+            else:
+                inverted = lutItem.isInverted
+            try:
+                value = gradient_setting_value(lutItem.gradient, inverted)
+            except RuntimeError:
+                # Item deleted in the meantime (e.g., window closed)
+                continue
+            key = channel_lut_setting_name(channel, overlay=overlay)
+            self.df_settings.at[key, 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
+
+    def restoreOverlayTransparencyModes(self):
+        """Check the saved overlay transparency modes without applying them
+        (the overlay is off while loading): `overlay_cb` applies them."""
+        alphaEncoded = self._get_setting_value(
+            ALPHA_ENCODED_INTENSITY_SETTING, False, cast=bool
+        )
+        transparent = self._get_setting_value(
+            TRANSPARENCY_SETTING, False, cast=bool
+        )
+        self.overlayToolbar.setTransparencyModes(transparent, alphaEncoded)
+
+    def saveOverlayTransparencyModes(self):
+        """Save the overlay transparency modes the user clicked
+        (``overlayToolbar.sigTransparencyModesClicked``)."""
+        self._set_setting_value(
+            TRANSPARENCY_SETTING, self.overlayToolbar.isTransparent()
+        )
+        self._set_setting_value(
+            ALPHA_ENCODED_INTENSITY_SETTING,
+            self.overlayToolbar.isAlphaEncodedIntensity()
+        )
+
     def gui_createOverlayItems(self):
         self.imgGrad.setAxisLabel(self.user_ch_name)
+        self.restoreImageChannelLut()
         self.baseLayerToolbutton = widgets.OverlayChannelToolButton(
             self.user_ch_name, self.imgGrad
         )
@@ -89,8 +369,9 @@ class OverlayChannelsGuiElements:
 
         self.overlayToolbuttonsSep = self.overlayToolbar.addSeparator()
         self.plotsCol = len(self.ch_names)
-        
+
         self.ax1.addImageItem(self.rgbaImg1)
+        self.restoreOverlayTransparencyModes()
 
     def setOverlayColors(self):
         self.overlayRGBs = colors.overlay_rgbs.copy()
@@ -185,6 +466,32 @@ class OverlayChannelsGuiElements:
     def updateTransparentOverlayRgba(self, *args, **kwargs):
         self.setOverlayImages()
 
+    def _transparentOverlaySignals(self, item):
+        """Signals of a LUT item or alpha scrollbar that redraw the RGBA
+        composite (`updateTransparentOverlayRgba`)."""
+        if hasattr(item, 'sigLookupTableChanged'):
+            return (item.sigLookupTableChanged, item.sigLevelsChanged)
+        return (item.valueChanged,)
+
+    def _connectTransparentOverlayUpdates(self, item):
+        # Connect once: `setOverlayTransparency(True)` also runs when the
+        # overlay is activated (`overlay_cb`) and on mode checkbox changes
+        if getattr(item, '_transparentOverlayConnected', False):
+            return
+        for signal in self._transparentOverlaySignals(item):
+            signal.connect(self.updateTransparentOverlayRgba)
+        item._transparentOverlayConnected = True
+
+    def _disconnectTransparentOverlayUpdates(self, item):
+        if not getattr(item, '_transparentOverlayConnected', False):
+            return
+        for signal in self._transparentOverlaySignals(item):
+            try:
+                signal.disconnect(self.updateTransparentOverlayRgba)
+            except (TypeError, RuntimeError):
+                pass
+        item._transparentOverlayConnected = False
+
     def setOverlayTransparency(self, transparent: bool):
         opacity = float(transparent)
         opacity = opacity if opacity < 1.0 else 0.999
@@ -193,51 +500,23 @@ class OverlayChannelsGuiElements:
         if transparent:
             self.rgbaImg1.setVisible(True)
             self.img1.setOpacity(0.001, applyToLinked=False)
-            self.imgGrad.sigLookupTableChanged.connect(
-                self.updateTransparentOverlayRgba
-            )
-            self.imgGrad.sigLevelsChanged.connect(
-                self.updateTransparentOverlayRgba
-            )
-            
+            self._connectTransparentOverlayUpdates(self.imgGrad)
+
             for channel, items in self.overlayLayersItems.items():
                 imageItem, lutItem, alphaSB = items[:3]
-                if transparent:
-                    alphaSB.valueChanged.connect(
-                        self.updateTransparentOverlayRgba
-                    )
-                    lutItem.sigLookupTableChanged.connect(
-                        self.updateTransparentOverlayRgba
-                    )
-                    lutItem.sigLevelsChanged.connect(
-                        self.updateTransparentOverlayRgba
-                    )
-                    imageItem.setOpacity(0)
+                self._connectTransparentOverlayUpdates(alphaSB)
+                self._connectTransparentOverlayUpdates(lutItem)
+                imageItem.setOpacity(0)
         else:
             self.rgbaImg1.clear()
             self.rgbaImg1.setVisible(False)
             self.img1.setOpacity(1.0, applyToLinked=False)
+            self._disconnectTransparentOverlayUpdates(self.imgGrad)
             for channel, items in self.overlayLayersItems.items():
                 imageItem, lutItem, alphaSB = items[:3]
                 imageItem.setOpacity(1.0)
-                try:
-                    lutItem.sigLookupTableChanged.disconnect(
-                        self.updateTransparentOverlayRgba
-                    )
-                except:
-                    pass
-                try:
-                    lutItem.sigLevelsChanged.disconnect(
-                        self.updateTransparentOverlayRgba
-                    )
-                except:
-                    pass
-                try:
-                    alphaSB.valueChanged.disconnect(
-                        self.updateTransparentOverlayRgba
-                    )
-                except:
-                    pass
+                self._disconnectTransparentOverlayUpdates(lutItem)
+                self._disconnectTransparentOverlayUpdates(alphaSB)
 
             self.setOverlayItemsOpacities()
 
@@ -268,6 +547,11 @@ class OverlayChannelsGuiElements:
 
             self.setRetainSizePolicyLutItems()
             self.normalizeRescale0to1Action.setChecked(True)
+
+            if self.overlayToolbar.isTransparent():
+                # Mode restored at loading (`restoreOverlayTransparencyModes`)
+                # or kept while the overlay was off: apply it to the items
+                self.setOverlayTransparency(True)
 
             self.updateAllImages()
             self.updateImageValueFormatter()
@@ -518,8 +802,13 @@ class OverlayChannelsGuiElements:
             rgba = colors.grayscale_apply_lut(img, lut)            
             images_rgba.append(rgba)
         
-        weights = colors.hierarchical_weights(alpha_values)
-        rgba_merge = colors.hierarchical_blend(images_rgba, weights)        
+        if self.baseLayerToolbutton.isChecked():
+            weights = colors.hierarchical_weights(alpha_values)
+        else:
+            # `hierarchical_weights` adds the weight of the bottom layer:
+            # without the base image, the last overlay is the bottom one
+            weights = colors.hierarchical_weights(alpha_values[:-1])
+        rgba_merge = colors.hierarchical_blend(images_rgba, weights)
         self.rgbaImg1.setImage(rgba_merge)
 
     def getOpacitiesFromAlphaScrollbarValues(self):
@@ -750,6 +1039,7 @@ class OverlayChannelsGuiElements:
         lutItem.vb.raiseContextMenu = lambda x: None
         initColor = self.overlayColors[channelName]
         self.initColormapOverlayLayerItem(initColor, lutItem)
+        self.restoreOverlayChannelLut(channelName, lutItem)
         lutItem.addOverlayColorButton(initColor, channelName)
         lutItem.initColor = initColor
         lutItem.hide()
@@ -815,7 +1105,12 @@ class OverlayChannelsGuiElements:
         toolbutton.clicked.connect(self.overlayChannelToolbuttonClicked)
         
         alphaScrollBar.toolbutton = toolbutton
-        
+
+        # Connected after the initial gradients: save only later changes
+        lutItem.gradient.sigGradientChangeFinished.connect(
+            partial(self.overlayChannelLutChanged, channelName, lutItem)
+        )
+
         return imageItem, lutItem, alphaScrollBar, toolbutton
 
     def addAlphaScrollbar(self, channelName, imageItem):
@@ -957,7 +1252,12 @@ class OverlayChannelsGuiElements:
         else:
             bkgrColor = (0,0,0,255)
         gradient = colors.get_pg_gradient((bkgrColor, foregrColor))
+        # Without it, ticks of a hidden LUT item (channel not shown) would be
+        # hidden (and saved hidden, `gradient_setting_value`)
+        gradient['ticksVisible'] = True
         lutItem.setGradient(gradient)
+        # Saved with the overlay LUT (`saveChannelLuts`)
+        lutItem.backgroundInverted = self.invertBwAction.isChecked()
 
     def setOpacityOverlayLayersItems(self, value, imageItem=None, scrollbar=None):
         if self.overlayToolbar.isTransparent():

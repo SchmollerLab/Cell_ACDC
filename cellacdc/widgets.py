@@ -6385,7 +6385,13 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         return invertedGradient
     
     def invertCurrentColormap(self, inverted, debug=False):
-        self.setGradient(self.invertGradient(self.lastGradient))
+        gradient = self.invertGradient(self.lastGradient)
+        # Keep the ticks hidden (e.g., colormaps from the menu): without it
+        # pyqtgraph shows the new ticks
+        gradient['ticksVisible'] = all(
+            tick.isVisibleTo(self.gradient) for tick in self.gradient.ticks
+        )
+        self.setGradient(gradient)
     
     def addCustomGradient(self, gradient_name, gradient_ticks, restore=True):
         self.originalLength = self.gradient.length
@@ -13079,6 +13085,9 @@ def get_min_width_for_no_scrollbar(list_widget: QListWidget) -> int:
 class OverlayToolbar(ToolBar):
     sigSetTranspacency = Signal(bool)
     sigSetSingleChannel = Signal(bool)
+    # The user clicked a transparency mode checkbox (not emitted by
+    # `setTransparent`, e.g. while exporting): both have their final state
+    sigTransparencyModesClicked = Signal()
     
     def __init__(self, name='Overlay tools', parent=None):
         
@@ -13131,8 +13140,31 @@ class OverlayToolbar(ToolBar):
         )
         self.alphaEncodedIntensityCheckbox.toggled.connect(
             self.alphaEncodedIntensityToggled)
-        
-        
+        # `clicked` follows `toggled` (and its coupled checkbox update)
+        self.transparencyCheckbox.clicked.connect(
+            self.emitTransparencyModesClicked
+        )
+        self.alphaEncodedIntensityCheckbox.clicked.connect(
+            self.emitTransparencyModesClicked
+        )
+
+    def emitTransparencyModesClicked(self, checked=False):
+        self.sigTransparencyModesClicked.emit()
+
+    def setTransparencyModes(self, transparent: bool, alphaEncoded: bool):
+        """Check the transparency modes without emitting any signal (e.g.,
+        restoring saved modes while the overlay is off). Alpha-encoded
+        intensity implies true transparency."""
+        transparent = transparent or alphaEncoded
+        modes = (
+            (self.transparencyCheckbox, transparent),
+            (self.alphaEncodedIntensityCheckbox, alphaEncoded)
+        )
+        for checkbox, checked in modes:
+            wasBlocked = checkbox.blockSignals(True)
+            checkbox.setChecked(checked)
+            checkbox.blockSignals(wasBlocked)
+
     def alphaEncodedIntensityToggled(self, checked):
         if checked:
             self.transparencyCheckbox.blockSignals(True)

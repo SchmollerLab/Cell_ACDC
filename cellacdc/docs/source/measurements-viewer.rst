@@ -173,6 +173,13 @@ the overlay transparency sliders):
 **Normalize measurements (0-1)** is saved in the configuration (see
 `Configurations`_).
 
+The colormap (LUT) of each channel is remembered by channel name, both for
+the displayed channel and for each overlay channel, and so are the overlay
+transparency modes (**True transparency** and **Alpha-encoded intensity**).
+They apply the next time a channel with the same name is loaded, also in the
+main GUI. **Restore default settings...** in the colormap's right-click
+menu resets the colormaps.
+
 
 Plotting measurements
 ---------------------

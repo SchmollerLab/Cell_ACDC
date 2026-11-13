@@ -1939,24 +1939,40 @@ class BottomLayoutGuiElements:
 
 class DefaultSettingsGuiElements:
     def restoreDefaultSettings(self):
+        # The gradient changes below must not be saved as the channels' LUTs
+        # (`gui_overlay.OverlayChannelsGuiElements.scheduleChannelLutSave`)
+        self._suppressChannelLutSaves = True
+        self._pendingChannelLutSaves = {}
+        try:
+            self._restoreDefaultSettings()
+        finally:
+            self._suppressChannelLutSaves = False
+
+    def _restoreDefaultSettings(self):
+        from .gui_overlay import drop_channel_lut_settings
+
+        defaults = {
+            'contLineWeight': 1,
+            'mothBudLineSize': 1,
+            'mothBudLineColor': (255, 165, 0, 255),
+            'contLineColor': (205, 0, 0, 220),
+            'overlaySegmMasksAlpha': 0.3,
+            'img_cmap': 'grey',
+            'labels_bkgrColor': (25, 25, 25),
+        }
         df = self.df_settings
-        df.at['contLineWeight', 'value'] = 1
-        df.at['mothBudLineSize', 'value'] = 1
-        df.at['mothBudLineColor', 'value'] = (255, 165, 0, 255)
-        df.at['contLineColor', 'value'] = (205, 0, 0, 220)
+        for name, value in defaults.items():
+            df.at[name, 'value'] = value
 
         self._updateContColour((205, 0, 0, 220))
         self._updateMothBudLineColour((255, 165, 0, 255))
         self._updateMothBudLineSize(1)
         self._updateContLineThickness()
 
-        df.at['overlaySegmMasksAlpha', 'value'] = 0.3
-        df.at['img_cmap', 'value'] = 'grey'
         self.imgCmap = self.imgGrad.cmaps['grey']
         self.imgCmapName = 'grey'
         self.labelsGrad.item.loadPreset('viridis')
-        df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
-        
+
         if df.at['is_bw_inverted', 'value'] == 'Yes':
             self.invertBw(False, update=False)
             # invertBw does not touch the window's own menu action: sync it
@@ -1965,12 +1981,25 @@ class DefaultSettingsGuiElements:
             self.invertBwAction.setChecked(False)
             self.invertBwAction.blockSignals(False)
 
+        # Saving the colormaps above (`updateLabelsCmap`,
+        # `imgGradLUTfinished_cb`) replaced `self.df_settings` with copies
+        # (the first one without the later defaults, the old table still
+        # inverted): continue on the current table, with the defaults and
+        # without the per-channel LUTs
+        df = drop_channel_lut_settings(self.df_settings)
+        for name, value in defaults.items():
+            df.at[name, 'value'] = value
+        self.df_settings = df
         df = df[~df.index.str.contains('lab_cmap')]
         df.to_csv(self.settings_csv_path)
         self.imgGrad.restoreState(df)
+        self.imgGrad.setGradient(dict(widgets.Gradients['grey']))
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.restoreState(df)
+            # `restoreState` applies the image colormap: back to the color
+            overlayColor = lutItem.overlayColorButton.color().getRgb()[:3]
+            self.initColormapOverlayLayerItem(overlayColor, lutItem)
 
         self.labelsGrad.saveState(df)
         self.labelsGrad.restoreState(df, loadCmap=False)

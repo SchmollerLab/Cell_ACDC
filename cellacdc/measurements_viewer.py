@@ -2221,7 +2221,12 @@ class MeasurementsViewerWin(
             self.overlayButton.setChecked(True)
         for channel, button in self.allOverlayToolbuttons.items():
             button.setChecked(channel in configuration['visible_channels'])
-        self.setOverlayItemsOpacities()
+        if self.overlayButton.isChecked() and self.overlayToolbar.isTransparent():
+            # RGBA composite (saved transparency mode): redraw it with the
+            # visible channels, opacities would show the layers through it
+            self.setOverlayImages()
+        else:
+            self.setOverlayItemsOpacities()
 
         columns = {item.text() for item in self.columnsModel.measurementItems()}
         selected = set(configuration['time_course_columns'])
@@ -3051,6 +3056,9 @@ class MeasurementsViewerWin(
         self.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
         self.overlayToolbar.sigSetTranspacency.connect(
             self.setOverlayTransparency
+        )
+        self.overlayToolbar.sigTransparencyModesClicked.connect(
+            self.saveOverlayTransparencyModes
         )
         self.overlayToolbar.sigSetSingleChannel.connect(
             self.setOverlaySingleChannel
@@ -4016,6 +4024,8 @@ class MeasurementsViewerWin(
     def imgGradLUTfinished_cb(self):
         self.df_settings = self.imgGrad.saveState(self.df_settings)
         self.df_settings.to_csv(self.settings_csv_path)
+        # Per-channel LUT (`gui_overlay`)
+        self.imageChannelLutChanged()
     
     def initLut(self):
         """Initialize LUT levels as in `gui.guiWin` after loading data."""
