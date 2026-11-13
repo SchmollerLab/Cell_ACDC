@@ -15,6 +15,13 @@ from tqdm import tqdm
 from . import core, base_cca_dict, cca_df_colnames, html_utils, config, printl
 from . import user_profile_path, cca_functions
 
+try:
+    # Same function used internally by `pd.DataFrame.to_dict` to convert
+    # numpy scalars to native Python types
+    from pandas.core.dtypes.cast import maybe_box_native as _pd_maybe_box_native
+except Exception as _err:
+    _pd_maybe_box_native = None
+
 skimage_rp_url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
 
 import warnings
@@ -973,12 +980,27 @@ def regionprops_table(labels, props, logger_func=None):
     empty_metric = [None]*len(rp)
     rp_table = {}
     error_ids = {}
+
+    # Additional regionprops (circularity, roundness, aspect_ratio) do not
+    # depend on `prop` --> compute them only once per object (they were
+    # re-computed for every prop, which is expensive for 3D objects).
+    # If they fail, every prop of that object fails like before.
+    additional_rp_errors = [None]*len(rp)
+    for o, obj in enumerate(rp):
+        try:
+            calc_additional_regionprops(obj)
+        except Exception as err:
+            additional_rp_errors[o] = (err, err.__traceback__)
+
     pbar = tqdm(total=len(props), ncols=100, leave=False)
     for prop in props:
         pbar.set_description(f'Computing "{prop}"')
         for o, obj in enumerate(rp):
             try:
-                obj = calc_additional_regionprops(obj)
+                additional_rp_error = additional_rp_errors[o]
+                if additional_rp_error is not None:
+                    err, err_tb = additional_rp_error
+                    raise err.with_traceback(err_tb)
                 metric = getattr(obj, prop)
                 _type = PROPS_DTYPES[prop]
                 if _type == int or _type == float:
@@ -1074,6 +1096,274 @@ def _quantile(arr, q):
         val = np.nan
     return val
 
+def _make_quantile_func(q):
+    def quantile_func(arr):
+        return _quantile(arr, q)
+
+    # Tag used to compute multiple quantiles of the same array at once
+    # (see `_multi_quantile`)
+    quantile_func.acdc_quantile_q = q
+    return quantile_func
+
+def _get_func_quantile_q(func):
+    return getattr(func, 'acdc_quantile_q', None)
+
+def _is_float64_dtype(dtype):
+    """True only for the native float64 dtype. Note that `dtype == np.float64`
+    is also True for longdouble where it is 64-bit (e.g., Windows)."""
+    return (
+        isinstance(dtype, np.dtype)
+        and dtype == np.float64
+        and dtype.char == 'd'
+    )
+
+def _has_longdouble_dtype(dtypes):
+    """True if any of `dtypes` is longdouble or clongdouble."""
+    return any(
+        isinstance(dtype, np.dtype) and dtype.char in 'gG' for dtype in dtypes
+    )
+
+def _multi_quantile(arr, qs):
+    """Compute `np.quantile(arr, q=q)` for each `q` in `qs` with a single
+    call to `np.quantile` (i.e., a single partition of the array).
+
+    The result is bitwise identical to calling `np.quantile` once per `q`
+    only for:
+        - unsigned integer arrays (with signed integers, overflows would
+          raise with scalars but not with arrays if `np.errstate` is set
+          to raise)
+        - float64 arrays without NaNs and without -0.0 (-0.0 == 0.0 are
+          ties for the partition and which one ends up in the k-th position
+          depends on the set of k-th requested)
+    For float32 arrays, an array of `q` promotes the result to float64.
+    For any other array, or if `np.quantile` raises, return None and the
+    caller must fall back to computing each quantile separately.
+
+    Returns
+    -------
+    dict or None
+        Mapping {q: quantile value}.
+    """
+    if len(qs) < 2:
+        return None
+
+    try:
+        arr = np.asarray(arr)
+        is_valid_dtype = (
+            arr.dtype.kind == 'u' or _is_float64_dtype(arr.dtype)
+        )
+        if not is_valid_dtype or arr.ndim == 0:
+            return None
+
+        if _is_float64_dtype(arr.dtype):
+            if np.isnan(arr).any():
+                return None
+            is_zero = arr == 0
+            if is_zero.any() and np.signbit(arr[is_zero]).any():
+                return None
+
+        values = np.quantile(arr, q=np.array(qs, dtype=np.float64))
+    except Exception as err:
+        return None
+
+    return {q: values[k] for k, q in enumerate(qs)}
+
+def _is_float64_settable(value):
+    """True if `df.at[ID, col] = value` on an existing float64 column
+    stores `np.float64(value)` without changing the column dtype"""
+    if value is None:
+        # Stored as NaN
+        return True
+
+    # Note that np.timedelta64 is a subclass of np.integer
+    if isinstance(value, (bool, np.bool_, np.timedelta64)):
+        return False
+
+    if isinstance(value, int) and not isinstance(value, np.integer):
+        return abs(value) < 2**53
+
+    return isinstance(
+        value, (float, np.float64, np.float32, np.float16, np.integer)
+    )
+
+def _creates_float64_column(value):
+    """True if `df.at[ID, new_col] = value` creates a float64 column
+    (e.g., float32 values create a float32 column, None an object one)"""
+    if value is None or isinstance(value, (bool, np.bool_, np.timedelta64)):
+        return False
+
+    if isinstance(value, int) and not isinstance(value, np.integer):
+        return abs(value) < 2**53
+
+    return isinstance(value, (float, np.integer))
+
+def _can_assign_column_values(df, col, values):
+    """True if assigning `values` one by one with `df.at` to column `col` 
+    gives a float64 column with `np.float64(value)` values (i.e., the 
+    assignment can be done with a single column assignment)."""
+    if not values:
+        return True
+    
+    if col not in df.columns:
+        return (
+            _creates_float64_column(values[0])
+            and all([_is_float64_settable(value) for value in values])
+        )
+    
+    return (
+        _is_float64_dtype(df[col].dtype)
+        and all([_is_float64_settable(value) for value in values])
+    )
+
+def _assign_column_values(df, col, rows, values):
+    """Assign `values` at row positions `rows` of the float64 column `col` 
+    (created if missing). Call only if `_can_assign_column_values` is True.
+    """
+    if not values:
+        return
+    
+    if col not in df.columns:
+        col_values = np.full(len(df.index), np.nan)
+    else:
+        col_values = df[col].to_numpy(dtype=np.float64, copy=True)
+    
+    values = np.asarray(values, dtype=np.float64)
+    if len(set(rows)) == len(rows):
+        col_values[rows] = values
+    else:
+        # Same row assigned multiple times --> last assignment wins
+        for row, value in zip(rows, values):
+            col_values[row] = value
+    df[col] = col_values
+
+def _set_column_values_at(df, col, IDs, rows, values):
+    """Equivalent of `for ID, value in zip(IDs, values): df.at[ID, col] = value` 
+    where `rows` are the positions of `IDs` in `df.index`.
+    
+    Values are assigned with a single column assignment when the result is 
+    guaranteed to be the same (float64 column), otherwise we fall back to 
+    assigning each value with `df.at`.
+    """
+    if _can_assign_column_values(df, col, values):
+        _assign_column_values(df, col, rows, values)
+        return
+    
+    for ID, value in zip(IDs, values):
+        df.at[ID, col] = value
+
+class _BatchedAtWriter:
+    """Collect `df.at[ID, col] = value` assignments and apply them column 
+    by column in `flush` (much faster than assigning single values).
+    
+    Columns are assigned in the order they were first assigned (i.e., new 
+    columns are created in the same order) and only when the result is 
+    guaranteed to be the same as assigning each value with `df.at` 
+    (see `_can_assign_column_values`). Otherwise, all the assignments are 
+    replayed with `df.at` in their original order.
+    
+    Valid only if `df` has unique index and columns, every ID is already 
+    in the index (no new rows), and the assigned columns are not read 
+    before calling `flush`. Use `create` to check the first two conditions.
+    """
+    def __init__(self, df, row_of_ID):
+        self.df = df
+        self._row_of_ID = row_of_ID
+        self._pending = {}
+        self._assignments = []
+    
+    @classmethod
+    def create(cls, df, IDs):
+        if not df.index.is_unique or not df.columns.is_unique:
+            return
+        
+        row_of_ID = {ID: row for row, ID in enumerate(df.index)}
+        for ID in IDs:
+            if ID not in row_of_ID:
+                # Assigning would add a new row
+                return
+        
+        return cls(df, row_of_ID)
+    
+    def set(self, ID, col, value):
+        pending = self._pending.get(col)
+        if pending is None:
+            pending = ([], [])
+            self._pending[col] = pending
+        
+        rows, values = pending
+        rows.append(self._row_of_ID[ID])
+        values.append(value)
+        self._assignments.append((ID, col, value))
+    
+    def flush(self):
+        df = self.df
+        pending = self._pending
+        assignments = self._assignments
+        self._pending = {}
+        self._assignments = []
+        
+        can_assign_columns = all([
+            _can_assign_column_values(df, col, values)
+            for col, (rows, values) in pending.items()
+        ])
+        if not can_assign_columns:
+            # Replay every assignment in the original order (same result 
+            # also if one assignment raises an exception)
+            for ID, col, value in assignments:
+                df.at[ID, col] = value
+            return
+        
+        for col, (rows, values) in pending.items():
+            _assign_column_values(df, col, rows, values)
+            
+
+class _DataFrameAtReader:
+    """Read-only fast equivalent of `df.at[ID, col]` that can be passed in
+    place of `df` to functions that only read single values with `df.at`.
+
+    Column arrays are cached --> call `invalidate` after modifying `df`.
+    """
+    def __init__(self, df):
+        self._df = df
+        self.invalidate()
+
+    def invalidate(self, col=None):
+        if col is not None:
+            self._col_values.pop(col, None)
+            return
+
+        self._col_values = {}
+        self._nrows = len(self._df.index)
+        self._row_of_ID = None
+        if self._df.index.is_unique and self._df.columns.is_unique:
+            self._row_of_ID = {
+                ID: row for row, ID in enumerate(self._df.index)
+            }
+
+    @property
+    def at(self):
+        return self
+
+    def __getitem__(self, key):
+        if self._row_of_ID is None or len(self._df.index) != self._nrows:
+            return self._df.at[key]
+
+        ID, col = key
+        col_values = self._col_values.get(col)
+        if col_values is None:
+            series = self._df[col]
+            dtype = series.dtype
+            if isinstance(dtype, np.dtype) and dtype.kind in 'biufcO':
+                col_values = series.to_numpy()
+            else:
+                col_values = False
+            self._col_values[col] = col_values
+
+        if col_values is False:
+            return self._df.at[key]
+
+        return col_values[self._row_of_ID[ID]]
+
 def _amount(arr, bkgr, area):
     try:
         val = (np.mean(arr)-bkgr)*area
@@ -1122,15 +1412,27 @@ def get_obj_size_metric(
     elif col_name == 'cell_vol_fl_3D':
         return obj.area*vox_to_fl_3D
 
-def get_foregr_data(foregr_img, isSegm3D, z):
+def get_zstack_projections(foregr_img):
+    """Max and mean z-projections of a z-stack image. Pass the output as
+    `projections` to `get_foregr_data` and `get_bkgr_data` to compute them
+    only once per image."""
+    projections = {
+        'maxProj': foregr_img.max(axis=0),
+        'meanProj': foregr_img.mean(axis=0)
+    }
+    return projections
+
+def get_foregr_data(foregr_img, isSegm3D, z, projections=None):
     isZstack = foregr_img.ndim == 3
     foregr_data = {}
     if isSegm3D:
         foregr_data['3D'] = foregr_img
-    
+
     if isZstack:
-        foregr_data['maxProj'] = foregr_img.max(axis=0)
-        foregr_data['meanProj'] = foregr_img.mean(axis=0)
+        if projections is None:
+            projections = get_zstack_projections(foregr_img)
+        foregr_data['maxProj'] = projections['maxProj']
+        foregr_data['meanProj'] = projections['meanProj']
         foregr_data['zSlice'] = foregr_img[z]
     foregr_data[''] = foregr_img
     return foregr_data
@@ -1171,6 +1473,145 @@ def get_cell_volumes_areas(df):
         cell_area_pxl, cell_area_um2
     )
     return items
+
+def _is_single_value_update_dtype(dtype):
+    """True for numpy bool, integer and float16/32/64 dtypes (where
+    `maybe_box_native(arr[i])` equals `arr.tolist()[i]`). Note that on
+    Windows longdouble ('g') compares equal to float64 ('d')."""
+    if not isinstance(dtype, np.dtype):
+        return False
+
+    if dtype.kind in 'biu':
+        return True
+
+    return dtype.kind == 'f' and dtype.char in 'efd'
+
+# Columns read by `get_cell_volumes_areas`
+_CELL_VOLUMES_AREAS_COLS = frozenset((
+    'cell_vol_vox', 'cell_vol_fl', 'cell_vol_vox_3D', 'cell_vol_fl_3D',
+    'cell_area_pxl', 'cell_area_um2'
+))
+
+class _MetricsValuesCache:
+    """Keep up-to-date the output of `df.to_dict('list')` and of
+    `get_cell_volumes_areas(df)` while `df` is modified only through
+    `self.set_value` (i.e., `df.at[ID, col] = value`).
+
+    Custom metrics need a snapshot of all the metrics of each object.
+    Rebuilding the snapshot with `df.to_dict('list')` for every object
+    and every custom metric scales quadratically with the number of
+    objects and was the main bottleneck of the measurements.
+
+    `df.to_dict('list')` converts each column independently, hence after
+    writing a single value we only need to update that single value (or
+    re-convert that single column if it is new or its dtype changed).
+    The values returned by `get` are identical to calling
+    `df.to_dict('list')` and `get_cell_volumes_areas(df)` at that moment.
+
+    If the index or columns are not unique, or a new row is added,
+    we fall back to rebuilding everything (same as the old behaviour).
+
+    If `df` has longdouble (or clongdouble) columns, nothing is cached and
+    every `get` calls `df.to_dict('list')` (same as the old behaviour).
+    Where longdouble is 64-bit (e.g., Windows), pandas < 2 can merge
+    (consolidate) longdouble and float64 columns in place when setting a
+    value, changing the dtype of the columns that were not set.
+    """
+    def __init__(self, df: pd.DataFrame):
+        self.df = df
+        self._built = False
+        # Fast read-only `df.at` kept in sync by `set_value`
+        self.df_reader = _DataFrameAtReader(df)
+        if _has_longdouble_dtype(df.dtypes):
+            self._disable_caching()
+
+    def _disable_caching(self):
+        self.df_reader = self.df
+        self._built = True
+        self._incremental = False
+
+    def _build(self):
+        df = self.df
+        self._built = True
+        if _has_longdouble_dtype(df.dtypes):
+            self._disable_caching()
+            return
+
+        self._incremental = (
+            _pd_maybe_box_native is not None
+            and df.index.is_unique
+            and df.columns.is_unique
+        )
+        if not self._incremental:
+            return
+        self._metrics_values = df.to_dict('list')
+        self._volumes_areas = get_cell_volumes_areas(df)
+        self._nrows = len(df.index)
+        self._row_of_ID = {ID: row for row, ID in enumerate(df.index)}
+        self._dtypes = df.dtypes.to_dict()
+
+    def get(self):
+        if not self._built:
+            self._build()
+
+        if not self._incremental:
+            df = self.df
+            return df.to_dict('list'), get_cell_volumes_areas(df)
+
+        return self._metrics_values, self._volumes_areas
+
+    def set_value(self, ID, col, value):
+        df = self.df
+        df.at[ID, col] = value
+        if self.df_reader is df:
+            # Caching is disabled
+            return
+
+        self.df_reader.invalidate(col)
+
+        if not df.columns.is_unique:
+            self._disable_caching()
+            return
+
+        col_dtype = df[col].dtype
+        if _has_longdouble_dtype((col_dtype,)):
+            self._disable_caching()
+            return
+
+        if not self._built or not self._incremental:
+            return
+
+        if len(df.index) != self._nrows:
+            # New row was added --> rebuild everything
+            self._build()
+            return
+
+        # Single values are updated only for bool, integer and float16/32/64
+        # dtypes where the conversion done by `to_dict` is the same in every
+        # pandas version (older versions use `Series.tolist`, which e.g.
+        # does not convert complex and longdouble values). Other columns
+        # (e.g., object) are always re-converted.
+        is_single_value_update = (
+            self._dtypes.get(col) is not None
+            and self._dtypes[col] == col_dtype
+            and _is_single_value_update_dtype(col_dtype)
+        )
+        if not is_single_value_update:
+            # Convert only this column exactly like `df.to_dict('list')`.
+            # Note that `df[[col]]` would consolidate `df` in place in
+            # pandas < 2
+            self._metrics_values[col] = (
+                df[col].to_frame().to_dict('list')[col]
+            )
+            self._dtypes[col] = col_dtype
+        else:
+            row = self._row_of_ID[ID]
+            self._metrics_values[col][row] = _pd_maybe_box_native(
+                df[col].to_numpy()[row]
+            )
+
+        if col in _CELL_VOLUMES_AREAS_COLS:
+            self._volumes_areas = get_cell_volumes_areas(df)
 
 def get_bkgrVals(df, channel, how, ID, bkgr_type=None):
     try:
@@ -1262,26 +1703,63 @@ def _mask_0valued_pixels_from_alignment(bkgr_mask, frame_i, posData):
     
     return bkgr_mask
 
+def _get_bkgr_archive_array(bkgr_archive, file, bkgr_archive_cache=None):
+    """Return `bkgr_archive[file]`. Accessing a file of a `.npz` archive 
+    reads and decompresses it every time --> if `bkgr_archive_cache` is 
+    a dictionary, the loaded array is stored there and re-used (e.g., for 
+    every frame of the same position)."""
+    if bkgr_archive_cache is None:
+        return bkgr_archive[file]
+    
+    key = (id(bkgr_archive), file)
+    cached = bkgr_archive_cache.get(key)
+    if cached is not None and cached[0] is bkgr_archive:
+        return cached[1]
+    
+    bkgr_archive_data = bkgr_archive[file]
+    bkgr_archive_cache[key] = (bkgr_archive, bkgr_archive_data)
+    return bkgr_archive_data
+
 def get_bkgr_data(
         foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-        autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+        autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab,
+        projections=None, bkgr_archive_cache=None, only_zslice=False
     ):
+    """Get background data for each type of background and z-projection.
+
+    Optional parameters (they do not change the output values)
+    ----------------------------------------------------------
+    projections : dict, optional
+        Output of `get_zstack_projections(foregr_img)`. If None, the 
+        projections are computed here.
+    bkgr_archive_cache : dict, optional
+        If not None, arrays loaded from the dataPrep background archive 
+        are cached here (see `_get_bkgr_archive_array`).
+    only_zslice : bool, optional
+        If True, for z-stack data only the 'zSlice' entries are computed 
+        (the others are left at their default values). Used when the 
+        measurements are repeated for each z-slice.
+    """
     isZstack = foregr_img.ndim == 3
     bkgr_data = {}
+    
+    if isZstack and projections is None and not only_zslice:
+        projections = get_zstack_projections(foregr_img)
 
     """Auto Background"""
     bkgr_data['autoBkgr'] =  {
         '': 0, 'maxProj': 0, 'meanProj': 0, 'zSlice': 0, '3D': 0
     }
     if isZstack:
-        if isSegm3D:
-            autoBkr_3D = foregr_img[autoBkgr_mask]
-            bkgr_data['autoBkgr']['3D'] = autoBkr_3D
-        autoBkgr_maxP = foregr_img.max(axis=0)[autoBkgr_mask_proj]
-        autoBkgr_meanP = foregr_img.mean(axis=0)[autoBkgr_mask_proj]
+        if not only_zslice:
+            if isSegm3D:
+                autoBkr_3D = foregr_img[autoBkgr_mask]
+                bkgr_data['autoBkgr']['3D'] = autoBkr_3D
+            autoBkgr_maxP = projections['maxProj'][autoBkgr_mask_proj]
+            autoBkgr_meanP = projections['meanProj'][autoBkgr_mask_proj]
+            bkgr_data['autoBkgr']['maxProj'] = autoBkgr_maxP
+            bkgr_data['autoBkgr']['meanProj'] = autoBkgr_meanP
         autoBkgr_zSlice = foregr_img[int(z)][autoBkgr_mask_proj]
-        bkgr_data['autoBkgr']['maxProj'] = autoBkgr_maxP
-        bkgr_data['autoBkgr']['meanProj'] = autoBkgr_meanP
         bkgr_data['autoBkgr']['zSlice'] = autoBkgr_zSlice
     else:
         autoBkgr_data = foregr_img[autoBkgr_mask]
@@ -1296,12 +1774,15 @@ def get_bkgr_data(
     if bkgr_archive is not None:
         # Background data saved separately after cropping in dataprep
         for file in bkgr_archive.files:
-            bkgrRoi_data = bkgr_archive[file]
+            bkgrRoi_data = _get_bkgr_archive_array(
+                bkgr_archive, file, bkgr_archive_cache=bkgr_archive_cache
+            )
             if posData.SizeT > 1:
                 bkgrRoi_data = bkgrRoi_data[frame_i]
             if isZstack:
-                bkgrRoi_maxP = bkgrRoi_data.max(axis=0)
-                bkgrRoi_meanP = bkgrRoi_data.mean(axis=0)
+                if not only_zslice:
+                    bkgrRoi_maxP = bkgrRoi_data.max(axis=0)
+                    bkgrRoi_meanP = bkgrRoi_data.mean(axis=0)
                 bkgrRoi_zSlice = bkgrRoi_data[z]
                 if isSegm3D:
                     bkgrRoi_3D = bkgrRoi_data
@@ -1313,12 +1794,16 @@ def get_bkgr_data(
         dataPrepBkgrROI_mask = np.logical_and(dataPrepBkgrROI_mask, lab==0)
         if isZstack:
             if isSegm3D:
-                bkgrRoi_3D = foregr_img[dataPrepBkgrROI_mask]
+                if not only_zslice:
+                    bkgrRoi_3D = foregr_img[dataPrepBkgrROI_mask]
                 dataPrepBkgrROI_mask_2D = dataPrepBkgrROI_mask[0]
             else:
                 dataPrepBkgrROI_mask_2D = dataPrepBkgrROI_mask
-            bkgrRoi_maxP = foregr_img.max(axis=0)[dataPrepBkgrROI_mask_2D]
-            bkgrRoi_meanP = foregr_img.mean(axis=0)[dataPrepBkgrROI_mask_2D]
+            if not only_zslice:
+                bkgrRoi_maxP = projections['maxProj'][dataPrepBkgrROI_mask_2D]
+                bkgrRoi_meanP = (
+                    projections['meanProj'][dataPrepBkgrROI_mask_2D]
+                )
             bkgrRoi_zSlice = foregr_img[z][dataPrepBkgrROI_mask_2D]      
         else:
             bkgrRoi = foregr_img[dataPrepBkgrROI_mask]
@@ -1326,10 +1811,11 @@ def get_bkgr_data(
     
     if isZstack and dataPrepBkgr_present:
         # Note: we do not try to exclude 0-valued pixels, see issue #285
-        bkgr_data['dataPrepBkgr']['maxProj'].extend(bkgrRoi_maxP)
-        bkgr_data['dataPrepBkgr']['meanProj'].extend(bkgrRoi_meanP)
+        if not only_zslice:
+            bkgr_data['dataPrepBkgr']['maxProj'].extend(bkgrRoi_maxP)
+            bkgr_data['dataPrepBkgr']['meanProj'].extend(bkgrRoi_meanP)
         bkgr_data['dataPrepBkgr']['zSlice'].extend(bkgrRoi_zSlice)
-        if isSegm3D:
+        if isSegm3D and not only_zslice:
             bkgr_data['dataPrepBkgr']['3D'].extend(bkgrRoi_3D)
     elif dataPrepBkgr_present:
         bkgr_data['dataPrepBkgr'][''].extend(bkgrRoi)
@@ -1348,10 +1834,10 @@ def standard_metrics_func():
         'median': lambda arr: _try_metric_func(np.median, arr),
         'min': lambda arr: _try_metric_func(np.min, arr),
         'max': lambda arr: _try_metric_func(np.max, arr),
-        'q25': lambda arr: _quantile(arr, 0.25),
-        'q75': lambda arr: _quantile(arr, 0.75),
-        'q05': lambda arr: _quantile(arr, 0.05),
-        'q95': lambda arr: _quantile(arr, 0.95)
+        'q25': _make_quantile_func(0.25),
+        'q75': _make_quantile_func(0.75),
+        'q05': _make_quantile_func(0.05),
+        'q95': _make_quantile_func(0.95)
     }
     all_metrics_names = list(_get_metrics_names().keys())
 
@@ -1548,26 +2034,39 @@ def add_size_metrics(
         df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, 
         calc_size_for_each_zslice=False
     ):
-    for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
-        for col in size_metrics_to_save:
-            val = get_obj_size_metric(
-                col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
-            )
-            df.at[obj.label, col] = val
-            
-            if not calc_size_for_each_zslice:
-                continue
-            
-            z0 = obj.bbox[0]
-            for local_z, obj_img_z in enumerate(obj.image):
-                z_slice = z0 + local_z
-                area_pxl_z = np.count_nonzero(obj_img_z)
-                area_pxl_zslice_col = f'cell_area_pxl_zslice{z_slice}'
-                df.at[obj.label, area_pxl_zslice_col] = area_pxl_z
-                
-                area_um2_z = area_pxl_z*yx_pxl_to_um2
-                area_um2_zslice_col = f'cell_area_um2_zslice{z_slice}'
-                df.at[obj.label, area_um2_zslice_col] = area_um2_z
+    # Nothing reads `df` in this function --> assignments can be batched
+    writer = _BatchedAtWriter.create(df, [obj.label for obj in rp])
+    if writer is None:
+        def set_value(ID, col, value):
+            df.at[ID, col] = value
+    else:
+        set_value = writer.set
+
+    try:
+        for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
+            for col in size_metrics_to_save:
+                val = get_obj_size_metric(
+                    col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+                )
+                set_value(obj.label, col, val)
+
+                if not calc_size_for_each_zslice:
+                    continue
+
+                z0 = obj.bbox[0]
+                for local_z, obj_img_z in enumerate(obj.image):
+                    z_slice = z0 + local_z
+                    area_pxl_z = np.count_nonzero(obj_img_z)
+                    area_pxl_zslice_col = f'cell_area_pxl_zslice{z_slice}'
+                    set_value(obj.label, area_pxl_zslice_col, area_pxl_z)
+
+                    area_um2_z = area_pxl_z*yx_pxl_to_um2
+                    area_um2_zslice_col = f'cell_area_um2_zslice{z_slice}'
+                    set_value(obj.label, area_um2_zslice_col, area_um2_z)
+    finally:
+        # Apply the assignments done so far also if an exception was raised
+        if writer is not None:
+            writer.flush()
     return df
 
 def add_ch_indipend_custom_metrics(
@@ -1579,6 +2078,10 @@ def add_ch_indipend_custom_metrics(
         text_to_append_to_col='',
         customMetricsCritical=None
     ):
+    if not ch_indipend_custom_func_params:
+        return df
+
+    metrics_values_cache = _MetricsValuesCache(df)
     for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
         ID = obj.label
         for col, (custom_func, how) in ch_indipend_custom_func_params.items():
@@ -1589,25 +2092,24 @@ def add_ch_indipend_custom_metrics(
                 if all_channels_z_slices is not None:
                     z_slice = all_channels_z_slices[channel]
                 else:
-                    z_slice = None   
+                    z_slice = None
                 foregr_arr = foregr_data.get(how)
                 if foregr_arr is None:
                     continue
-                
+
                 foregr_obj_arr, obj_area = get_foregr_obj_array(
                     foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
                 )
-            
+
                 autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(
-                    df, channel, how, ID
+                    metrics_values_cache.df_reader, channel, how, ID
                 )
-                
+
                 all_channels_obj_intens[channel] = foregr_obj_arr
                 all_channels_autoBkgr[channel] = autoBkgrVal
                 all_channels_dataPrepBkgr[channel] = dataPrepBkgrVal
-            
-            metrics_values = df.to_dict('list')
-            items = get_cell_volumes_areas(df)
+
+            metrics_values, items = metrics_values_cache.get()
             (cell_vols_vox, cell_vols_fl, cell_vols_vox_3D, cell_vols_fl_3D,
             cell_areas_pxl, cell_areas_um2) = items
             custom_error, custom_val, custom_col_name = (
@@ -1629,14 +2131,18 @@ def add_ch_indipend_custom_metrics(
                 )
             )
             if custom_col_name is None:
-                df.at[ID, f'{col}{text_to_append_to_col}'] = custom_val
+                metrics_values_cache.set_value(
+                    ID, f'{col}{text_to_append_to_col}', custom_val
+                )
             else:
                 for custom_col, value in zip(custom_col_name, custom_val):
-                    df.at[ID, f'{custom_col}{text_to_append_to_col}'] = value
-                    
+                    metrics_values_cache.set_value(
+                        ID, f'{custom_col}{text_to_append_to_col}', value
+                    )
+
             if customMetricsCritical is not None and custom_error:
                 customMetricsCritical.emit(custom_error, col)
-    
+
     return df
 
 
@@ -1647,19 +2153,24 @@ def add_custom_metrics(
         z_slice=None, text_to_append_to_col='',
         customMetricsCritical=None
     ):
+    if not custom_metrics_params:
+        return df
+
+    metrics_values_cache = _MetricsValuesCache(df)
     for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
-        for col, (custom_func, how) in custom_metrics_params.items():   
+        for col, (custom_func, how) in custom_metrics_params.items():
             foregr_arr = foregr_data.get(how)
             if foregr_arr is None:
                 continue
-            
+
             foregr_obj_arr, obj_area = get_foregr_obj_array(
                 foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
             )
             ID = obj.label
-            autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(df, channel, how, ID)
-            metrics_values = df.to_dict('list')
-            items = get_cell_volumes_areas(df)
+            autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(
+                metrics_values_cache.df_reader, channel, how, ID
+            )
+            metrics_values, items = metrics_values_cache.get()
             (cell_vols_vox, cell_vols_fl, cell_vols_vox_3D, cell_vols_fl_3D,
             cell_areas_pxl, cell_areas_um2) = items
             custom_error, custom_val, custom_col_name = get_custom_metric_value(
@@ -1671,10 +2182,14 @@ def add_custom_metrics(
                 cell_vols_fl_3D=cell_vols_fl_3D
             )
             if custom_col_name is None:
-                df.at[ID, f'{col}{text_to_append_to_col}'] = custom_val
+                metrics_values_cache.set_value(
+                    ID, f'{col}{text_to_append_to_col}', custom_val
+                )
             else:
                 for custom_col, value in zip(custom_col_name, custom_val):
-                    df.at[ID, f'{custom_col}{text_to_append_to_col}'] = value
+                    metrics_values_cache.set_value(
+                        ID, f'{custom_col}{text_to_append_to_col}', value
+                    )
                     
             if customMetricsCritical is not None and custom_error:
                 customMetricsCritical.emit(custom_error, col)
@@ -1694,44 +2209,136 @@ def add_foregr_standard_metrics(
     if manualBackgrRp is not None:
         manualBackgrRp = {obj.label for obj in manualBackgrRp}
     custom_errors = ''
-    # Iterate objects and compute foreground metrics
-    for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
-        for col, (func_name, how) in foregr_metrics_params.items():
-            func_name, how = foregr_metrics_params[col]
-            foregr_arr = foregr_data.get(how)
-            if foregr_arr is None:
-                continue
-            
-            foregr_obj_arr, obj_area = get_foregr_obj_array(
-                foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
-            )
-            is_manual_bkgr_metric = func_name.find('manualBkgr') != -1
-            is_amount_metric = func_name.find('amount_') != -1
-            if is_amount_metric and not is_manual_bkgr_metric:
-                bkgr_type = func_name[len('amount_'):]
-                try:
-                    bkgr_val = get_bkgrVals(
-                        df, channel, how, obj.label, bkgr_type=bkgr_type
+
+    # The only columns read in the loop below are the background values
+    # --> if they are not written in the loop we can batch the assignments
+    # and read the background values with the faster `_DataFrameAtReader`
+    read_cols = set()
+    written_cols = set()
+    quantiles_qs = {}
+    for col, (func_name, how) in foregr_metrics_params.items():
+        written_cols.add(f'{col}{text_to_append_to_col}')
+        read_cols.update(_get_bkgr_vals_colnames(channel, how))
+        q = _get_func_quantile_q(metrics_func.get(func_name))
+        if q is not None:
+            quantiles_qs.setdefault(how, []).append(q)
+
+    writer = None
+    if read_cols.isdisjoint(written_cols):
+        writer = _BatchedAtWriter.create(df, [obj.label for obj in rp])
+
+    if writer is None:
+        df_reader = df
+        def set_value(ID, col, value):
+            df.at[ID, col] = value
+    else:
+        df_reader = _DataFrameAtReader(df)
+        set_value = writer.set
+
+    try:
+        # Iterate objects and compute foreground metrics
+        for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
+            # Object's intensities and quantiles are computed only once
+            # per `how` instead of once per metric
+            obj_arrays = {}
+            obj_quantiles = {}
+            for col, (func_name, how) in foregr_metrics_params.items():
+                func_name, how = foregr_metrics_params[col]
+                foregr_arr = foregr_data.get(how)
+                if foregr_arr is None:
+                    continue
+
+                obj_array_area = obj_arrays.get(how)
+                if obj_array_area is None:
+                    obj_array_area = get_foregr_obj_array(
+                        foregr_arr, obj, isSegm3D, z_slice=z_slice, how=how
+                    )
+                    obj_arrays[how] = obj_array_area
+                foregr_obj_arr, obj_area = obj_array_area
+                is_manual_bkgr_metric = func_name.find('manualBkgr') != -1
+                is_amount_metric = func_name.find('amount_') != -1
+                if is_amount_metric and not is_manual_bkgr_metric:
+                    bkgr_type = func_name[len('amount_'):]
+                    try:
+                        bkgr_val = get_bkgrVals(
+                            df_reader, channel, how, obj.label,
+                            bkgr_type=bkgr_type
+                        )
+                        func = metrics_func[func_name]
+                        val = func(foregr_obj_arr, bkgr_val, obj_area)
+                    except Exception as e:
+                        val = np.nan
+                elif is_manual_bkgr_metric:
+                    bkgr_val = get_manualBkgr_bkgrVal(
+                        df_reader, channel, how, obj.label
                     )
                     func = metrics_func[func_name]
                     val = func(foregr_obj_arr, bkgr_val, obj_area)
-                except Exception as e:
-                    val = np.nan
-            elif is_manual_bkgr_metric:
-                bkgr_val = get_manualBkgr_bkgrVal(df, channel, how, obj.label)
-                func = metrics_func[func_name]
-                val = func(foregr_obj_arr, bkgr_val, obj_area)
-            else:
-                func = metrics_func[func_name]
-                val = func(foregr_obj_arr)
-            df.at[obj.label, f'{col}{text_to_append_to_col}'] = val
+                else:
+                    func = metrics_func[func_name]
+                    val = _call_metric_func_cached_quantiles(
+                        func, foregr_obj_arr, how, obj_quantiles,
+                        quantiles_qs
+                    )
+                set_value(obj.label, f'{col}{text_to_append_to_col}', val)
+    finally:
+        # Apply the assignments done so far also if an exception was raised
+        if writer is not None:
+            writer.flush()
     return df
+
+def _get_bkgr_vals_colnames(channel, how):
+    """Columns read by `get_bkgrVals` and `get_manualBkgr_bkgrVal`"""
+    if how:
+        return (
+            f'{channel}_autoBkgr_bkgrVal_median_{how}',
+            f'{channel}_dataPrepBkgr_bkgrVal_median_{how}',
+            f'{channel}_manualBkgr_bkgrVal_mean_{how}'
+        )
+    else:
+        return (
+            f'{channel}_autoBkgr_bkgrVal_median',
+            f'{channel}_dataPrepBkgr_bkgrVal_median',
+            f'{channel}_dataPrepBkgr_bkgrVal_mean'
+        )
+
+def _call_metric_func_cached_quantiles(
+        func, arr, cache_key, quantiles_cache, quantiles_qs
+    ):
+    """Return `func(arr)`. If `func` is a quantile function, all the
+    quantiles in `quantiles_qs[cache_key]` are computed at once and
+    stored in `quantiles_cache[cache_key]` (see `_multi_quantile`)
+    """
+    q = _get_func_quantile_q(func)
+    if q is None:
+        return func(arr)
+
+    if cache_key not in quantiles_cache:
+        quantiles_cache[cache_key] = _multi_quantile(
+            arr, quantiles_qs.get(cache_key, [])
+        )
+
+    quantiles = quantiles_cache[cache_key]
+    if quantiles is None or q not in quantiles:
+        return func(arr)
+
+    return quantiles[q]
 
 def add_bkgr_values(
         df, bkgr_data, bkgr_metrics_params, metrics_func, 
         manualBackgrRp=None, foregr_data=None, 
         text_to_append_to_col=''
     ):
+    # Quantiles of the same background array are computed at once
+    quantiles_qs = {}
+    for col, (bkgr_type, func_name, how) in bkgr_metrics_params.items():
+        if bkgr_type == 'manualBkgr':
+            continue
+        q = _get_func_quantile_q(metrics_func.get(func_name))
+        if q is not None:
+            quantiles_qs.setdefault((bkgr_type, how), []).append(q)
+    quantiles_cache = {}
+
     # Compute background values
     for col, (bkgr_type, func_name, how) in bkgr_metrics_params.items():
         bkgr_func = metrics_func[func_name]
@@ -1743,8 +2350,11 @@ def add_bkgr_values(
         bkgr_arr = bkgr_data[bkgr_type].get(how)
         if bkgr_arr is None:
             continue
-        
-        bkgr_val = bkgr_func(bkgr_arr)
+
+        bkgr_val = _call_metric_func_cached_quantiles(
+            bkgr_func, bkgr_arr, (bkgr_type, how), quantiles_cache,
+            quantiles_qs
+        )
         df[f'{col}{text_to_append_to_col}'] = bkgr_val
     return df
 
