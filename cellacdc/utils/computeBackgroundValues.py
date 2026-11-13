@@ -147,14 +147,18 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
     def findExistingFile(self, outputName):
         """Existing file named `<basename><outputName>` (any extension) in
         the selected Positions, ignoring background tables of previous runs.
+
+        Names are compared case-insensitively: on the case-insensitive file
+        systems of Windows and macOS, writing `<basename>ACDC_output.csv`
+        would replace `<basename>acdc_output.csv`.
         """
         for exp_path, pos_foldernames in self.expPaths.items():
             for pos in pos_foldernames:
                 images_path = os.path.join(exp_path, pos, 'Images')
                 basename, _ = myutils.getBasenameAndChNames(images_path)
-                stem = f'{basename}{outputName}'
+                stem = f'{basename}{outputName}'.casefold()
                 for file in myutils.listdir(images_path):
-                    if os.path.splitext(file)[0] != stem:
+                    if os.path.splitext(file)[0].casefold() != stem:
                         continue
                     filepath = os.path.join(images_path, file)
                     if background_values.is_background_table(filepath):

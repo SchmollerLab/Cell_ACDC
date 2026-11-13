@@ -543,7 +543,7 @@ def test_translator_dialog_gets_and_applies_overriding_annotations(
             self.rules = []
             self.autoApplyCheckbox = Mock(isChecked=Mock(return_value=False))
             self.sigApply = Mock()
-            self.currentPhaseColors = Mock(return_value={})
+            self.chosenPhaseColors = Mock(return_value={})
 
         def exec_(self):
             # "Apply phase evaluation" on all cells without rules

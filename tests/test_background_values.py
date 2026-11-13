@@ -324,8 +324,13 @@ def test_output_name_cannot_be_the_name_of_another_file(tmp_path):
     assert find(stub, 'metadata') == f'{basename}metadata.csv'
     assert find(stub, 'GFP') == f'{basename}GFP.tif'
     assert find(stub, 'segm') == f'{basename}segm.npz'
+    # Case variants collide too (case-insensitive file systems of Windows
+    # and macOS would overwrite the existing table)
+    assert find(stub, 'ACDC_output') == f'{basename}acdc_output.csv'
+    assert find(stub, 'Metadata') == f'{basename}metadata.csv'
     # Background table of a previous run can be overwritten
     assert find(stub, 'background_values') is None
+    assert find(stub, 'Background_Values') is None
     assert find(stub, 'new_name') is None
 
 

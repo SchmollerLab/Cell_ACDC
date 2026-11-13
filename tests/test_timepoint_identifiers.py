@@ -710,6 +710,35 @@ def test_equation_dialog_accepts_index_only_inputs(
         dialog.deleteLater()
 
 
+@pytest.mark.parametrize('Dialog', [
+    apps_measurements_viewer.TimepointPredictorEquationDialog,
+    apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
+])
+@pytest.mark.parametrize('source, equation', [
+    ('mother', 'COUNT(Cell_ID_other) > 0'),
+    ('daughter', '(COUNT(area_other) > 0) & (MIN(frame_i_other) > frame_i)'),
+])
+def test_equation_dialog_accepts_other_cell_index_inputs(
+        app, lineage_df, Dialog, source, equation
+    ):
+    # Columns of CellTable.flatten, as in the library and the filter editor
+    dialog = Dialog([], False, False, acdc_df=lineage_df, SizeT=4)
+    try:
+        assert dialog.validateEquation(equation) == (
+            False, 'Enable Other-cell measurements to use _other inputs.'
+        )
+        dialog.otherCellsGroup.setChecked(True)
+        dialog.otherCellsSourceCombobox.setCurrentIndex(
+            dialog.otherCellsSourceCombobox.findData(source)
+        )
+        assert dialog.validateEquation(equation)[0]
+        dialog.formulaEditWidget.setText(equation)
+        dialog.test_cb()
+        assert dialog.okButton.isEnabled(), dialog.statusLabel.text()
+    finally:
+        dialog.deleteLater()
+
+
 def test_other_cell_inputs_use_equation_aggregations(acdc_df):
     settings = {
         'source': 'same_frame',
@@ -921,6 +950,36 @@ def test_add_identifier_creates_action_with_shortcut(viewer, monkeypatch):
     assert action in viewer.timepointsToolBar.actions()
     assert action.text() == 'Bud'
     assert action.shortcut().toString() == 'Q'
+
+
+def test_identifier_dialog_checks_names_and_shortcuts_on_ok(
+        viewer, monkeypatch
+    ):
+    # The dialog is not modal: a second one opened meanwhile has the same
+    # default name and shortcut, so OK checks the current identifiers
+    warnings = []
+    monkeypatch.setattr(
+        apps_measurements_viewer.TimepointIdentifierDialog, 'warn',
+        lambda self, title, text: warnings.append(title)
+    )
+    opened = []
+
+    def exec_(dialog):
+        opened.append(dialog)
+        if len(opened) == 1:
+            assert viewer.addTimepointIdentifier() is not None
+            dialog.ok_cb()
+            dialog.nameLineEdit.setText('Bud')
+        dialog.ok_cb()
+
+    monkeypatch.setattr(
+        apps_measurements_viewer.TimepointIdentifierDialog, 'exec_', exec_
+    )
+    assert viewer.addTimepointIdentifier() is None
+    assert warnings == ['Name already used', 'Shortcut already used']
+    assert [(item.name, item.shortcut) for item in viewer.timepointIdentifiers] == [
+        ('Time point 1', 'Q')
+    ]
 
 
 def press_key(viewer, app, key, modifier=Qt.NoModifier):
@@ -1818,6 +1877,36 @@ def test_main_cell_annotation_presets(app, acdc_df):
     dialog.deleteLater()
 
 
+def test_main_cell_presets_ignore_the_custom_mode(app, acdc_df):
+    # The (disabled) "Keep cells where true in" of a preset kept the mode
+    # chosen earlier under "Custom equation"
+    df = acdc_df.copy()
+    df['cell_cycle_stage'] = df['stage']
+    Dialog = apps_measurements_viewer.TimepointPredictorEquationDialog
+    dialog = Dialog([], False, False, acdc_df=df)
+    presets, match = dialog.mainCellFilterCombobox, dialog.mainCellMatchCombobox
+    dialog.mainCellGroup.setChecked(True)
+    presets.setCurrentIndex(presets.findData('custom'))
+    dialog.mainCellConditionEdit.setText('area > 5')
+    match.setCurrentIndex(match.findData('all'))
+    presets.setCurrentIndex(presets.findData('Cells in G1 (budding)'))
+    assert match.currentData() == 'any'
+    G1 = {'condition': 'cell_cycle_stage == "G1"', 'condition_mode': 'any'}
+    assert dialog.currentMainCellFilter() == G1
+    presets.setCurrentIndex(presets.findData('custom'))
+    assert dialog.currentMainCellFilter() == {
+        'condition': 'area > 5', 'condition_mode': 'all'
+    }
+    # A preset condition saved with All is shown as a custom filter
+    for saved, shown in ((G1, 'Cells in G1 (budding)'),
+                         (dict(G1, condition_mode='all'), 'custom')):
+        reopened = Dialog([], False, False, acdc_df=df, mainCellFilter=saved)
+        assert reopened.mainCellFilterCombobox.currentData() == shown
+        assert reopened.currentMainCellFilter() == saved
+        reopened.deleteLater()
+    dialog.deleteLater()
+
+
 def test_unified_other_cell_filter_materializes_legacy_source(app, lineage_df):
     settings = dict(
         timepoint_predictors.CellFilter.default_other(),
@@ -1945,6 +2034,45 @@ def test_edit_filter_with_invalid_frame_window(app, acdc_df, monkeypatch, start,
     assert len(opened) == 1
     assert 'Invalid other-cell settings' in dialog.statusLabel.text()
     dialog.deleteLater()
+
+
+def test_nested_editors_disable_the_calling_dialog(app, acdc_df, monkeypatch):
+    # The editors are not modal: confirming the caller (or opening a second
+    # editor) while one is open dropped the edit
+    states = []
+
+    def exec_(caller, editor):
+        states.append(caller.isEnabled())
+        editor.cancel = True
+
+    identifierDialog = apps_measurements_viewer.TimepointIdentifierDialog(
+        'M', (255, 0, 0), 'Q', acdc_df=acdc_df, SizeT=4, allChNames=['GFP']
+    )
+    monkeypatch.setattr(
+        apps_measurements_viewer.TimepointPredictorEquationDialog, 'exec_',
+        lambda editor: exec_(identifierDialog, editor)
+    )
+    identifierDialog.editEquation()
+    predictorDialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+        ['GFP'], False, False, acdc_df=acdc_df, SizeT=4,
+        otherCells=timepoint_predictors.CellFilter.default_other(),
+        mainCellFilter=timepoint_predictors.CellFilter.default_main()
+    )
+    for combobox in (
+            predictorDialog.mainCellFilterCombobox,
+            predictorDialog.otherCellsSourceCombobox
+        ):
+        combobox.setCurrentIndex(combobox.findData('custom'))
+    monkeypatch.setattr(
+        apps_measurements_viewer._TimepointCellFilterEquationDialog, 'exec_',
+        lambda editor: exec_(predictorDialog, editor)
+    )
+    predictorDialog.editOtherCellsCondition()
+    predictorDialog.editMainCellCondition()
+    assert states == [False, False, False]
+    assert identifierDialog.isEnabled() and predictorDialog.isEnabled()
+    identifierDialog.deleteLater()
+    predictorDialog.deleteLater()
 
 
 def test_predictor_equation_dialog_functions(app, acdc_df):

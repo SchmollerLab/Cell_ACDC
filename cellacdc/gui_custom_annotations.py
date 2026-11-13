@@ -30,14 +30,17 @@ Hooks that the inheriting class can override
   `apps.customAnnotationDialog` (e.g., predictor options).
 - `customAnnotToolTip`: tool tip of the annotation button.
 - `setCustomAnnotShortcut`: assign the keyboard shortcut.
-- `initCustomAnnotColumn`, `renameCustomAnnotColumn`, 
+- `initCustomAnnotColumn`, `renameCustomAnnotColumn`,
   `removeCustomAnnotColumn`: storage of the annotations in the acdc_df.
+- `customAnnotColumnConflict`: refuse names whose existing column must not
+  be reused (adding and loading annotations; none in the main GUI).
 - `saveCustomAnnotPositionParams`: persist the annotations of a position.
 - `onCustomAnnotationChanged`, `onCustomAnnotationRemoved`: called after 
   an annotation is added/modified or removed.
 """
 import os
 import re
+import html
 import json
 import traceback
 from collections import defaultdict
@@ -131,6 +134,14 @@ class CustomAnnotationsGuiElements:
     def customAnnotColumnRemovalNote(self, name):
         """Extra text for the removal question of custom annotation `name`
         (e.g. what reads its column). Empty in the main GUI."""
+        return ''
+
+    def customAnnotColumnConflict(self, name):
+        """Why a new or loaded custom annotation cannot store its values in
+        the table column `name` (e.g., the column holds measurements that
+        `initCustomAnnotColumn` would turn into 0/1), '' if it can. Checked
+        before `checkNameExists`. Empty in the main GUI (any existing
+        column is reused)."""
         return ''
 
     def customAnnotToolTip(self, state):
@@ -448,13 +459,19 @@ class CustomAnnotationsGuiElements:
         if self.selectAnnotWin.cancel:
             return
         
+        conflicts = {}
         for selectedAnnotName in self.selectAnnotWin.selectedItemsText:
             if self.customAnnotButtonByName(selectedAnnotName) is not None:
                 self.logger.info(
                     f'Custom annotation "{selectedAnnotName}" already loaded.'
                 )
                 continue
-            
+
+            conflict = self.customAnnotColumnConflict(selectedAnnotName)
+            if conflict:
+                conflicts[selectedAnnotName] = conflict
+                continue
+
             selectedAnnot = self.savedCustomAnnot[selectedAnnotName]
             symbol = custom_annot_symbol(selectedAnnot)
             symbolColor = pg.mkColor(selectedAnnot['symbolColor'])
@@ -474,10 +491,29 @@ class CustomAnnotationsGuiElements:
                 selectedAnnotName, keepActive, isHideChecked, state
             )
             self.onCustomAnnotationChanged(button)
-            
+
         self.saveCustomAnnot()
         self.doCustomAnnotation(0)
-    
+        if conflicts:
+            self.warnCustomAnnotColumnConflicts(conflicts)
+
+    def warnCustomAnnotColumnConflicts(self, conflicts):
+        """Tell that the custom annotations {name: reason} were not added
+        (`customAnnotColumnConflict`)."""
+        for name, reason in conflicts.items():
+            self.logger.info(f'Custom annotation "{name}" not added: {reason}')
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'These custom annotations were <b>not added</b>, because their '
+            'name cannot be used as an annotation column:'
+            + html_utils.to_list([
+                f'<code>{html.escape(name)}</code>: {html.escape(reason)}'
+                for name, reason in conflicts.items()
+            ])
+            + 'Add them with a different name.'
+        )
+        msg.warning(self, 'Custom annotation not added', txt)
+
     def deleteSavedAnnotation(self):
         for item in self.selectAnnotWin.listBox.selectedItems():
             name = item.text()
@@ -507,7 +543,13 @@ class CustomAnnotationsGuiElements:
         name = state['name']
         keepActive = state.get('keepActive', True)
         isHideChecked = state.get('isHideChecked', True)
-        
+
+        conflict = self.customAnnotColumnConflict(name)
+        if conflict:
+            self.warnCustomAnnotColumnConflicts({name: conflict})
+            self.logger.info('Custom annotation process cancelled.')
+            return
+
         proceed = self.checkNameExists(name)
         if not proceed:
             self.logger.info('Custom annotation process cancelled.')
@@ -602,6 +644,11 @@ class CustomAnnotationsGuiElements:
         for posData in self.data:
             self.positionCustomAnnot(posData)[state['name']] = state_to_save
         self.saveCustomAnnot()
+        self.applyCustomAnnotVisibility(button)
+
+    def applyCustomAnnotVisibility(self, button):
+        """Clear or redraw the symbols of the inactive `button` after its
+        "Hide annotations" option changed."""
         clearAnnot = (
             not button.isChecked() and button.isHideChecked
             and not self.viewAllCustomAnnotAction.isChecked()
@@ -667,6 +714,8 @@ class CustomAnnotationsGuiElements:
             pen=pg.mkPen(width=3, color=symbolColor),
             hoverBrush=pg.mkBrush(symbolColor)
         )
+        # The dialog may have switched "Hide annotations"
+        self.applyCustomAnnotVisibility(button)
         self.onCustomAnnotationChanged(button, oldState=oldState)
 
     def doCustomAnnotation(self, ID):

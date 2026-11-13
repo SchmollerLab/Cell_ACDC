@@ -368,6 +368,10 @@ or one for all rows of the cell). ``All`` (default), ``None`` or ``Most``
 consolidates the results into one boolean for the entire Cell_ID history.
 Most requires strictly more than half True; ties are False. Existing
 frame-specific assignments are expanded to all frames if any frame is marked.
+Adding or loading an annotation refuses names whose column is not a 0/1
+flag column of a loaded table (e.g., a measurement) or is written by a time
+point, another annotation, the phases, a recorded step or the visited
+tracking (``customAnnotColumnConflict``), so no column is turned into 0/1.
 Definitions and predictor settings are saved in viewer configurations; the
 main GUI's global saved definitions can be loaded, but are not overwritten
 or deleted (the load dialogs have no delete button in the viewer).
@@ -527,7 +531,9 @@ Y or normalization change, a position is loaded or the view switches to it
 (`_comparisonRangeKey`); other redraws (e.g. phases evaluated automatically
 when selecting a cell) keep the zoom. Phase colors are edited in the
 translator dialog's ``Phase colors`` box (committed on Apply or OK) and saved
-in the configuration's ``phase_colors`` ``{name: "#rrggbb"}``; phases without a
+in the configuration's ``phase_colors`` ``{name: "#rrggbb"}`` (only the colors
+the user chose, `chosenPhaseColors`: a stored default could be repeated by the
+default of a phase added later); phases without a
 color get the colorblind-friendly, red-free defaults of
 ``phase_translator.phase_colors`` (red is reserved for the frame lines), in
 the order of ``phase_translator.phase_names``: the rule phases first, then
@@ -5242,7 +5248,11 @@ class MeasurementsViewerWin(
         self.reloadAcdcDfFile()
         self.refreshAcdcDf()
 
-    def measurementProcessingWarning(self, title, text, details=None):
+    def measurementProcessingWarning(
+            self, title, text, details=None, parent=None
+        ):
+        """Log and show a warning, parented to the viewer or to `parent`
+        (a modal dialog must parent it, or Qt blocks its buttons)."""
         if details:
             self.logger.warning('%s: %s\n%s', title, text, details)
         else:
@@ -5250,7 +5260,7 @@ class MeasurementsViewerWin(
         msg = widgets.myMessageBox(wrapText=False)
         if details:
             msg.setDetailedText(details, wrap=False)
-        msg.warning(self, title, text)
+        msg.warning(self if parent is None else parent, title, text)
 
     def combineMeasurements(self, checked=False):
         if self.measurementProcessingThread is not None:
@@ -5588,16 +5598,19 @@ class MeasurementsViewerWin(
         dialog.autoApplyCheckbox.setChecked(self.autoApplyPhases)
 
         def apply(rules, allCells):
-            # Apply commits the colors and options together with the rules
-            self.phaseColors = dialog.currentPhaseColors()
+            # Apply commits the colors and options together with the rules.
+            # Only the chosen colors: stored defaults would keep their
+            # color while later defaults (by phase order) can repeat it
+            self.phaseColors = dialog.chosenPhaseColors()
             self.setAutoApplyPhases(dialog.autoApplyCheckbox.isChecked())
-            self.applyPhaseTranslator(rules, allCells)
+            # The dialog is modal: its child message boxes stay clickable
+            self.applyPhaseTranslator(rules, allCells, parent=dialog)
 
         dialog.sigApply.connect(apply)
         dialog.exec_()
         if not dialog.cancel:
             self.phaseTranslatorRules = copy.deepcopy(dialog.rules)
-            self.phaseColors = dialog.currentPhaseColors()
+            self.phaseColors = dialog.chosenPhaseColors()
             self.setAutoApplyPhases(dialog.autoApplyCheckbox.isChecked())
             overrides = self.phaseOverrideAnnotations()
             self.logger.info(
@@ -5636,7 +5649,8 @@ class MeasurementsViewerWin(
         return self.applyPhaseTranslator(allCells=False)
 
     def applyPhaseTranslator(
-            self, rules=None, allCells=True, IDs=None, quiet=False
+            self, rules=None, allCells=True, IDs=None, quiet=False,
+            parent=None
         ):
         """Evaluate phases on all cells, the displayed cell (`allCells`
         False) or the cells `IDs` (overrides `allCells`) of the current
@@ -5644,12 +5658,14 @@ class MeasurementsViewerWin(
         current custom annotations overriding phases
         (`phaseOverrideAnnotations`). With `quiet`, errors and warnings go
         to the status bar instead of message boxes (automatic
-        re-evaluation)."""
+        re-evaluation). `parent` is the parent of the message boxes
+        (default the viewer; the modal translator dialog when called from
+        it)."""
         def warn(title, text):
             if quiet:
                 self.statusBar().showMessage(f'{title}: {text}', 8000)
             else:
-                self.measurementProcessingWarning(title, text)
+                self.measurementProcessingWarning(title, text, parent=parent)
 
         if self.measurementProcessingThread is not None:
             warn(
@@ -6580,14 +6596,18 @@ class MeasurementsViewerWin(
     
     def execTimepointIdentifierDialog(self, identifier, title):
         posData = self.posData() if self.data else None
-        names = {
+        # Evaluated on OK: another identifier dialog may have added one
+        # meanwhile (the dialog is not modal)
+        names = lambda: {
             other.name for other in self.timepointIdentifiers
             if other.uid != identifier.uid
         }
         dialog = apps_measurements_viewer.TimepointIdentifierDialog(
             identifier.name, identifier.color, identifier.shortcut,
             predictor=identifier.predictor, existingNames=names,
-            reservedShortcuts=self.reservedShortcuts(excludeUid=identifier.uid),
+            reservedShortcuts=lambda: self.reservedShortcuts(
+                excludeUid=identifier.uid
+            ),
             acdc_df=(
                 self.dialogAnalysisDf(self.timepointsDf(posData), posData)
                 if posData is not None else None

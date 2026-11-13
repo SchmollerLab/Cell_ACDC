@@ -7,7 +7,9 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 import pytest
-from qtpy.QtWidgets import QApplication, QGridLayout, QGroupBox, QWidget
+from qtpy.QtWidgets import (
+    QAction, QApplication, QGridLayout, QGroupBox, QMainWindow, QWidget
+)
 
 from cellacdc import apps, gui, widgets
 from cellacdc.gui_custom_annotations import CustomAnnotationsGuiElements
@@ -184,6 +186,10 @@ def test_restore_default_settings_with_inverted_bw(app, tmp_path):
         ):
         setattr(host, name, MagicMock())
     host.overlayLayersItems = {}
+    # As `updateLabelsCmap` (sigGradientChangeFinished), which rebinds it
+    def loadPreset(name):
+        host.df_settings = host.df_settings.copy()
+    host.labelsGrad.item.loadPreset.side_effect = loadPreset
     host.invertBwAction = QAction('Invert black/white')
     host.invertBwAction.setCheckable(True)
     host.invertBwAction.setChecked(True)
@@ -196,8 +202,12 @@ def test_restore_default_settings_with_inverted_bw(app, tmp_path):
     # The window's menu action is synced without re-triggering invertBw
     assert not host.invertBwAction.isChecked()
     assert toggledCalls == []
+    # The LUTs are restored from the current (not inverted) settings
+    restored = host.imgGrad.restoreState.call_args.args[0]
+    assert restored.at['is_bw_inverted', 'value'] == 'No'
     saved = pd.read_csv(host.settings_csv_path, index_col='setting')
     assert saved.at['is_bw_inverted', 'value'] == 'No'
+    assert saved.at['labels_bkgrColor', 'value'] == '(25, 25, 25)'
 
 
 def test_annotate_obj_track_settings_dialog_3d_toggle(app):
@@ -270,3 +280,68 @@ def test_measurements_viewer_cannot_delete_saved_custom_annotations():
     from cellacdc.measurements_viewer import MeasurementsViewerWin
     assert MeasurementsViewerWin.canDeleteSavedCustomAnnot(None) is False
     assert CustomAnnotationsGuiElements.canDeleteSavedCustomAnnot(None)
+
+
+class _CustomAnnotModifyHost(QMainWindow, CustomAnnotationsGuiElements):
+    """Main GUI-like host (default `onCustomAnnotationChanged` hook)."""
+
+
+@pytest.mark.parametrize('hide', [True, False])
+def test_modify_dialog_hide_option_updates_drawn_symbols(
+        app, monkeypatch, hide
+    ):
+    """Switching "Hide annotations" in the Modify dialog of an inactive
+    button clears or redraws its symbols, as the context menu option does
+    (regression: the main GUI kept the old display until the next frame)."""
+    host = _CustomAnnotModifyHost()
+    host.customAnnotDict = {}
+    host.data = []
+    host.savedCustomAnnot = {}
+    host.logger = MagicMock()
+    host.annotateToolbar = widgets.ToolBar('Custom annotations', host)
+    host.viewAllCustomAnnotAction = QAction(host)
+    host.viewAllCustomAnnotAction.setCheckable(True)
+    host.ax1 = pg.PlotItem()
+    settings = {}
+    host._get_setting_value = (
+        lambda key, default, cast=None: settings.get(key, default)
+    )
+    host._set_setting_value = settings.__setitem__
+    host.saveCustomAnnot = MagicMock()
+    host.doCustomAnnotation = MagicMock()
+    color = pg.mkColor((0, 114, 178))
+    state = {
+        'type': 'Single time-point', 'name': 'Dead', 'symbol': "'o' circle",
+        'shortcut': '', 'description': '', 'keepActive': True,
+        'isHideChecked': not hide, 'symbolColor': color,
+    }
+    button, action = host.addCustomAnnotationButton(
+        'o', color, '', 'Dead', 'Dead', True, not hide
+    )
+    host.customAnnotDict[button] = {
+        'action': action, 'state': state, 'annotatedIDs': [],
+    }
+    host.addCustomAnnnotScatterPlot(color, 'o', button)
+    item = host.customAnnotDict[button]['scatterPlotItem']
+    if hide:
+        # Not hidden yet: the symbols of the inactive button are drawn
+        item.setData([5, 6], [5, 6])
+    dialog = SimpleNamespace(
+        cancel=False, state={**state, 'isHideChecked': hide}, symbol='o',
+        exec_=lambda: None, sigDeleteSelecAnnot=MagicMock()
+    )
+    monkeypatch.setattr(
+        apps, 'customAnnotationDialog', lambda *args, **kwargs: dialog
+    )
+    try:
+        host.customAnnotModify(button)
+        assert button.isHideChecked is hide
+        assert settings['Dead_annotation_hidden'] is hide
+        if hide:
+            assert len(item.getData()[0]) == 0
+            host.doCustomAnnotation.assert_not_called()
+        else:
+            host.doCustomAnnotation.assert_called_once_with(0)
+    finally:
+        host.close()
+        host.deleteLater()

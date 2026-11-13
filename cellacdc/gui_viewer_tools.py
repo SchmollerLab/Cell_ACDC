@@ -570,9 +570,15 @@ class CcaTableGuiElements:
             return
 
         if zoomIDs is not None:
+            # The measurements viewer's tables keep only cells with complete
+            # cell cycle annotations (as its `updateCcaTableWin`)
+            zoomIDs = [
+                ID for ID in zoomIDs
+                if ID in current_cca_df.index and ID in df.index
+            ]
             df = df.loc[zoomIDs]
             current_cca_df = current_cca_df.loc[zoomIDs]
-            
+
         for column in current_cca_df.columns:
             header = (
                 '================================================\n'
@@ -715,7 +721,15 @@ class CountObjectsGuiElements:
             )
         
         for pos_i, _posData in enumerate(self.data):
-            IDs = _posData.allData_li[0]['regionprops'].IDs
+            # The measurements viewer creates `allData_li` lazily when a
+            # position is first displayed (`initPosAnnotData`)
+            stored = getattr(_posData, 'allData_li', None)
+            rp = stored[0]['regionprops'] if stored else None
+            if rp is None:
+                rp = self._acdcRegionProps(
+                    _posData.segm_data[0], precache_centroids=False
+                )
+            IDs = rp.IDs
             if os.path.exists(_posData.acdc_output_csv_path):
                 numObjectsVisitedPosPrevious += len(IDs)
             if IDs:
@@ -2097,15 +2111,24 @@ class DefaultSettingsGuiElements:
         self.imgCmap = self.imgGrad.cmaps['grey']
         self.imgCmapName = 'grey'
         self.labelsGrad.item.loadPreset('viridis')
-        df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
-        
-        if df.at['is_bw_inverted', 'value'] == 'Yes':
+
+        if self.df_settings.at['is_bw_inverted', 'value'] == 'Yes':
             self.invertBw(False, update=False)
             # invertBw does not touch the window's own menu action: sync it
             # without re-triggering invertBw (updateAllImages runs below)
             self.invertBwAction.blockSignals(True)
             self.invertBwAction.setChecked(False)
             self.invertBwAction.blockSignals(False)
+            # Measurements viewer: plot colors depend on the background
+            recolorSignals = getattr(self, 'recolorSignalsForBackground', None)
+            if recolorSignals is not None:
+                recolorSignals(False)
+
+        # `loadPreset` (-> `updateLabelsCmap`) rebinds `self.df_settings`
+        # and `invertBw` writes to it: continue on the current table, else
+        # `restoreState(df)` below restores the old state (e.g. re-inverts)
+        df = self.df_settings
+        df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
 
         df = df[~df.index.str.contains('lab_cmap')]
         df.to_csv(self.settings_csv_path)

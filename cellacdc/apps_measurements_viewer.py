@@ -14,6 +14,7 @@ import pandas as pd
 import pyqtgraph as pg
 import re
 import traceback
+from contextlib import contextmanager
 from functools import partial
 from qtpy.QtCore import Qt, Signal
 from qtpy.QtGui import QColor, QKeySequence
@@ -55,6 +56,26 @@ from .apps import (
     QBaseDialog,
     _CombineMetricsDialog,
 )
+
+
+@contextmanager
+def disabled_while_nested(widget):
+    """Disable the window of `widget` while a nested editor runs.
+
+    `QBaseDialog.exec_` is not modal: without this, the calling dialog could
+    be confirmed, edited or open a second editor while the editor is open,
+    and the editor's result would be lost or applied to a changed state.
+    The editor stays usable (`QBaseDialog.show` enables its own window).
+    """
+    window = widget.window()
+    wasEnabled = window.isEnabled()
+    if wasEnabled:
+        window.setEnabled(False)
+    try:
+        yield
+    finally:
+        if wasEnabled:
+            window.setEnabled(True)
 
 
 class _CustomAnnotationPredictorGroupbox(QGroupBox):
@@ -224,7 +245,8 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
                     self.nameGetter(), predictor
                 )
             )
-        win.exec_()
+        with disabled_while_nested(self):
+            win.exec_()
         if win.cancel:
             return
         self.equation = win.equation
@@ -451,11 +473,20 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             else self._mainCellFilter['condition']
         )
         self._mainCellCustomCondition = mainCellCondition
+        mainCellMode = (
+            'any' if self._mainCellFilter is None
+            else self._mainCellFilter['condition_mode']
+        )
+        # Presets keep the cells where their condition is true in any
+        # frame; the mode chosen under "Custom equation" is restored there
+        self._mainCellCustomMode = mainCellMode
         self.mainCellFilterCombobox = QComboBox()
         mainCellPreset = 'custom'
         for label, condition in self.mainCellFilterPresets.items():
             self.mainCellFilterCombobox.addItem(label, label)
-            if condition == mainCellCondition:
+            # Without a condition the mode does not matter
+            if (condition == mainCellCondition
+                    and (mainCellMode == 'any' or not condition)):
                 mainCellPreset = label
         self.mainCellFilterCombobox.addItem('Custom equation', 'custom')
         self.mainCellFilterCombobox.setCurrentIndex(
@@ -479,12 +510,10 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             self.mainCellMatchCombobox.addItem(
                 timepoint_predictors.FILTER_FRAME_MODES[key], key
             )
-        mainCellMode = (
-            'any' if self._mainCellFilter is None
-            else self._mainCellFilter['condition_mode']
-        )
         self.mainCellMatchCombobox.setCurrentIndex(
-            self.mainCellMatchCombobox.findData(mainCellMode)
+            self.mainCellMatchCombobox.findData(
+                mainCellMode if mainCellPreset == 'custom' else 'any'
+            )
         )
         mainCellLayout.addWidget(QLabel('Select cells:'), 0, 0)
         mainCellLayout.addWidget(self.mainCellFilterCombobox, 0, 1, 1, 2)
@@ -604,7 +633,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         self.mainCellGroup.toggled.connect(self.updateMainCellControls)
         self.mainCellGroup.toggled.connect(self.equationChanged)
         self.mainCellMatchCombobox.currentIndexChanged.connect(
-            self.equationChanged
+            self.mainCellModeChanged
         )
         self.mainCellConditionEdit.textChanged.connect(
             self.mainCellConditionChanged
@@ -671,6 +700,11 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             self._mainCellCustomCondition = text
         self.equationChanged()
 
+    def mainCellModeChanged(self, index):
+        if self.mainCellFilterCombobox.currentData() == 'custom':
+            self._mainCellCustomMode = self.mainCellMatchCombobox.currentData()
+        self.equationChanged()
+
     def otherCellsConditionChanged(self, text):
         if self.otherCellsSourceCombobox.currentData() == 'custom':
             self._otherCellsCustomCondition = text
@@ -686,10 +720,18 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
 
     def mainCellPresetChanged(self, index):
         preset = self.mainCellFilterCombobox.currentData()
+        custom = preset == 'custom'
         condition = (
-            self._mainCellCustomCondition if preset == 'custom'
+            self._mainCellCustomCondition if custom
             else self.mainCellFilterPresets[preset]
         )
+        # Presets always keep the cells where they are true in any frame
+        mode = self._mainCellCustomMode if custom else 'any'
+        self.mainCellMatchCombobox.blockSignals(True)
+        self.mainCellMatchCombobox.setCurrentIndex(
+            self.mainCellMatchCombobox.findData(mode)
+        )
+        self.mainCellMatchCombobox.blockSignals(False)
         self.mainCellConditionEdit.setText(condition)
         self.updateMainCellControls(self.mainCellGroup.isChecked())
         self.equationChanged()
@@ -739,12 +781,15 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         if not self.mainCellGroup.isChecked():
             return None
         preset = self.mainCellFilterCombobox.currentData()
+        custom = preset == 'custom'
         settings = {
             'condition': (
-                self.mainCellConditionEdit.text().strip() if preset == 'custom'
+                self.mainCellConditionEdit.text().strip() if custom
                 else self.mainCellFilterPresets[preset]
             ),
-            'condition_mode': self.mainCellMatchCombobox.currentData(),
+            'condition_mode': (
+                self.mainCellMatchCombobox.currentData() if custom else 'any'
+            ),
         }
         return self._predictors.CellFilter.validate_main(settings)
 
@@ -761,7 +806,8 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         dialog.formulaEditWidget._edit.setToolTip(
             self.otherCellsConditionEdit.toolTip()
         )
-        dialog.exec_()
+        with disabled_while_nested(self):
+            dialog.exec_()
         if not dialog.cancel:
             self.otherCellsConditionEdit.setText(dialog.equation)
 
@@ -781,7 +827,8 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         dialog.formulaEditWidget._edit.setToolTip(
             self.mainCellConditionEdit.toolTip()
         )
-        dialog.exec_()
+        with disabled_while_nested(self):
+            dialog.exec_()
         if not dialog.cancel:
             self.mainCellConditionEdit.setText(dialog.equation)
     
@@ -794,9 +841,11 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             if not formula.strip():
                 return False, 'Equation cannot be empty'
             # frame_i and Cell_ID are index levels (not listed in the
-            # trees) but are valid per-cell inputs; SizeT is a constant.
+            # trees) but are valid per-cell inputs, also of the other cells
+            # (columns of CellTable.flatten); SizeT is a constant.
+            indexInputs = ('frame_i', 'Cell_ID')
             usesIndexInputs = bool(
-                {'frame_i', 'Cell_ID'}
+                {*indexInputs, *(f'{name}_other' for name in indexInputs)}
                 & self._predictors.CellEquation.names(formula)
             )
             if (
@@ -826,6 +875,8 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
                 if self.acdcDf is not None else ()
             )
             for otherName in otherInputNames:
+                if otherName[:-len('_other')] in indexInputs:
+                    continue
                 if otherName not in self.otherMeasurementColumns:
                     return False, f'Unknown other-cell input "{otherName}".'
                 column = self.otherMeasurementColumns[otherName]
@@ -2003,8 +2054,12 @@ class ConditionalFormattingDialog(apps.QBaseDialog):
         self.rebuildRows()
 
     def editRule(self, i, checked=False):
-        condition = self.editCondition(self.rows[i]['edit'].text().strip())
-        if condition is not None:
+        # The rules cannot be removed, moved or edited while the editor runs
+        with disabled_while_nested(self):
+            condition = self.editCondition(
+                self.rows[i]['edit'].text().strip()
+            )
+        if condition is not None and i < len(self.rows):
             self.rows[i]['edit'].setText(condition)
 
     def ok_cb(self, checked=False):
@@ -2498,6 +2553,18 @@ class PhaseTranslatorDialog(QDialog):
             self.phaseColors
         )
 
+    def chosenPhaseColors(self):
+        """User-chosen colors {name: '#rrggbb'} of the current phases (what
+        the viewer stores): defaults depend on the phase order, so a stored
+        default could be repeated by the default of a phase added later."""
+        names = phase_translator.phase_names(
+            self.rules, self.annotationOverrides
+        )
+        return {
+            name: self.phaseColors[name] for name in names
+            if name in self.phaseColors
+        }
+
     def refreshPhaseColors(self):
         while self.phaseColorsLayout.count():
             widget = self.phaseColorsLayout.takeAt(0).widget()
@@ -2593,10 +2660,16 @@ class TimepointIdentifierDialog(QBaseDialog):
 
     After closing, `cancel` is False if accepted and `identifier` is a dict
     with keys 'name', 'color', 'shortcut', 'predictor' and 'autoApply'.
+
+    `existingNames` (names that cannot be used) and `reservedShortcuts`
+    ({normalized key sequence: name of the action using it}) can also be
+    callables returning them: OK then checks the current values, so two
+    dialogs open at the same time (the dialog is not modal) cannot both
+    add the same name or shortcut.
     """
     def __init__(
-            self, name, color, shortcut, predictor=None, 
-            existingNames=(), reservedShortcuts=None, acdc_df=None, 
+            self, name, color, shortcut, predictor=None,
+            existingNames=(), reservedShortcuts=None, acdc_df=None,
             SizeT=None, allChNames=(), isZstack=False, isSegm3D=False,
             title='Add time point identifier', parent=None
         ):
@@ -2605,9 +2678,8 @@ class TimepointIdentifierDialog(QBaseDialog):
         self.setWindowTitle(title)
         self.cancel = True
         self.identifier = None
-        self.existingNames = set(existingNames)
-        # {normalized key sequence: name of the action using it}
-        self.reservedShortcuts = dict(reservedShortcuts or {})
+        self._existingNames = existingNames
+        self._reservedShortcuts = reservedShortcuts
         self.acdc_df = acdc_df
         self.SizeT = SizeT
         self.allChNames = list(allChNames)
@@ -2770,7 +2842,8 @@ class TimepointIdentifierDialog(QBaseDialog):
             win.validatePredictorDependencies = (
                 lambda predictor: validator(self.nameLineEdit.text().strip(), predictor)
             )
-        win.exec_()
+        with disabled_while_nested(self):
+            win.exec_()
         if win.cancel:
             return
         self.equation = win.equation
@@ -2851,13 +2924,21 @@ class TimepointIdentifierDialog(QBaseDialog):
     def warn(self, title, text):
         msg = widgets.myMessageBox(wrapText=False)
         msg.warning(self, title, html_utils.paragraph(text))
-    
+
+    def existingNames(self):
+        names = self._existingNames
+        return set(names() if callable(names) else names or ())
+
+    def reservedShortcuts(self):
+        reserved = self._reservedShortcuts
+        return dict((reserved() if callable(reserved) else reserved) or {})
+
     def ok_cb(self):
         name = self.nameLineEdit.text().strip()
         if not name:
             self.warn('Empty name', 'The name of the time point cannot be empty.')
             return
-        if name in self.existingNames:
+        if name in self.existingNames():
             self.warn(
                 'Name already used', 
                 'A time point identifier called '
@@ -2870,7 +2951,7 @@ class TimepointIdentifierDialog(QBaseDialog):
                 self.warn('Invalid shortcut', 'Mouse buttons are not supported.')
                 return
             shortcut = QKeySequence(shortcut).toString()
-            usedBy = self.reservedShortcuts.get(shortcut)
+            usedBy = self.reservedShortcuts().get(shortcut)
             if usedBy is not None:
                 self.warn(
                     'Shortcut already used', 

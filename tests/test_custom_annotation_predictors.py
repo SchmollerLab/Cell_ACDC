@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 import pytest
-from qtpy.QtCore import QPoint
+from qtpy.QtCore import QPoint, QTimer
 from qtpy.QtGui import QKeySequence
 from qtpy.QtWidgets import QApplication, QLabel
 
@@ -542,6 +542,44 @@ def test_equation_editor_preview_uses_consolidation(app, acdc_df, mode, cells):
             f'Annotated {cells * 4} frame(s) of {cells} of 2 cells.'
         )
         assert dialog.okButton.isEnabled()
+    finally:
+        dialog.deleteLater()
+        app.processEvents()
+
+
+def test_annotation_dialog_is_disabled_while_equation_editor_runs(
+        app, acdc_df, monkeypatch
+    ):
+    # The editor is not modal: OK of the annotation dialog meanwhile would
+    # save the old predictor and drop the edit
+    dialog = apps.customAnnotationDialog(
+        {}, predictorOptions={'acdc_df': acdc_df, 'SizeT': 4}
+    )
+    Editor = apps_measurements_viewer.CustomAnnotationPredictorEquationDialog
+    original = Editor.exec_
+    states = {}
+
+    def exec_(editor, *args, **kwargs):
+        def during():
+            states['caller'] = dialog.isEnabled()
+            states['editor'] = editor.isEnabled()
+            editor.formulaEditWidget.setText('area > 12')
+            editor.test_cb()
+            editor.ok_cb()
+
+        QTimer.singleShot(0, during)
+        original(editor, *args, **kwargs)
+
+    monkeypatch.setattr(Editor, 'exec_', exec_)
+    try:
+        group = dialog.predictorGroupbox
+        group.predictorCombobox.setCurrentIndex(
+            group.predictorCombobox.findData('equation')
+        )
+        group.editEquationButton.click()
+        assert states == {'caller': False, 'editor': True}
+        assert dialog.isEnabled()
+        assert group.equation == 'area > 12'
     finally:
         dialog.deleteLater()
         app.processEvents()
@@ -1143,6 +1181,96 @@ def test_load_legacy_definitions_does_not_overwrite_global_library(viewer, monke
     saved = viewer.customAnnotConfiguration()
     assert not saved[0]['isHideChecked']
     assert saved[0]['name'] == 'Big'
+
+
+def record_warnings(monkeypatch):
+    warnings = []
+
+    class FakeMessageBox:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def warning(self, parent, title, text, *args, **kwargs):
+            warnings.append(text)
+
+    monkeypatch.setattr(
+        gui_custom_annotations.widgets, 'myMessageBox', FakeMessageBox
+    )
+    return warnings
+
+
+def test_loading_annotation_named_like_a_measurement_is_refused(
+        viewer, monkeypatch
+    ):
+    """A saved annotation named like a measurement or text column is not
+    loaded: its column would be turned into 0/1 (regression). A 0/1 column
+    (e.g., exported before) is reused."""
+    viewer.acdc_df['ratio'] = viewer.acdc_df['area'] / 7
+    viewer.acdc_df['Dead'] = [0, 0, 0, 0, 1, 1, 1, 1]
+    before = viewer.acdc_df[['ratio', 'stage']].copy()
+    saved = {
+        name: annot_state(name, key)
+        for name, key in (('ratio', 'D'), ('stage', 'F'), ('Dead', 'G'))
+    }
+    with open(gui_custom_annotations.custom_annot_path, 'w') as file:
+        json.dump(saved, file)
+    selection = Mock(
+        cancel=False, selectedItemsText=list(saved), _additionalButtons=[]
+    )
+    monkeypatch.setattr(
+        apps.widgets, 'QDialogListbox', Mock(return_value=selection)
+    )
+    warnings = record_warnings(monkeypatch)
+    viewer.loadCustomAnnotations()
+    pd.testing.assert_frame_equal(viewer.acdc_df[['ratio', 'stage']], before)
+    assert viewer.customAnnotNames() == ['Dead']
+    assert annotated(viewer, 'Dead') == [(frame, 2) for frame in range(4)]
+    assert len(warnings) == 1
+    assert '<code>ratio</code>' in warnings[0]
+    assert '<code>stage</code>' in warnings[0]
+    assert 'Dead' not in warnings[0]
+
+
+def test_adding_annotation_named_like_another_output_is_refused(
+        viewer, monkeypatch
+    ):
+    viewer.acdc_df['ratio'] = viewer.acdc_df['area'] / 7
+    before = viewer.acdc_df['ratio'].copy()
+    state = annot_state('ratio', 'D')
+    state['symbolColor'] = measurements_viewer.QColor(*state['symbolColor'])
+    dialog = SimpleNamespace(
+        cancel=False, state=state, symbol='o', exec_=Mock(),
+        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock())
+    )
+    monkeypatch.setattr(
+        gui_custom_annotations.apps, 'customAnnotationDialog',
+        Mock(return_value=dialog)
+    )
+    ask = Mock(return_value=True)
+    monkeypatch.setattr(viewer, 'askCustomAnnotationNameExists', ask)
+    warnings = record_warnings(monkeypatch)
+    assert viewer.addCustomAnnotation() is None
+    pd.testing.assert_series_equal(viewer.acdc_df['ratio'], before)
+    assert viewer.customAnnotNames() == []
+    ask.assert_not_called()
+    assert len(warnings) == 1 and '<code>ratio</code>' in warnings[0]
+
+    # Columns written by time points, phases or recorded steps, even if
+    # they are 0/1 flags
+    identifier = viewer.defaultTimepointIdentifier()
+    viewer.addTimepointIdentifierItem(identifier)
+    column = viewer.timepointColumn(identifier)
+    assert 'time point' in viewer.customAnnotColumnConflict(column)
+    viewer.phaseTranslatorRules = [{
+        'name': 'Cycle', 'phases': ['G1', 'S'], 'timepoints': [column],
+        'annotations': [], 'predictor': None,
+    }]
+    assert 'phases' in viewer.customAnnotColumnConflict('phase_G1')
+    viewer.combinedMeasurementSteps = [{'equations': {'big': 'area > 12'}}]
+    assert 'measurement step' in viewer.customAnnotColumnConflict('big')
+    assert viewer.customAnnotColumnConflict('Dead') == ''
+    viewer.acdc_df['Dead'] = ['True', 'False', 0, 0, 'False', 0, 0, 0]
+    assert viewer.customAnnotColumnConflict('Dead') == ''
 
 
 def test_export_contains_cellwide_annotation_column(viewer, tmp_path, monkeypatch):

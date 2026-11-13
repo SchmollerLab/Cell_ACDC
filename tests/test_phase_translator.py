@@ -884,6 +884,30 @@ def test_viewer_failure_is_atomic_and_processing_blocks_apply(viewer):
     assert viewer.measurementProcessingWarning.call_count == 2
 
 
+def test_translator_apply_warnings_are_children_of_the_modal_dialog(
+        viewer, monkeypatch
+    ):
+    # The translator dialog is modal: a warning parented to the viewer
+    # could not be clicked until the dialog was closed
+    monkeypatch.delattr(viewer, 'measurementProcessingWarning')
+    warning = Mock()
+    monkeypatch.setattr(widgets.myMessageBox, 'warning', warning)
+    viewer.phaseTranslatorRules = [rule()]
+    viewer.selectedID = None
+    opened = []
+
+    def exec_(dialog):
+        opened.append(dialog)
+        dialog.applyCellButton.click()
+
+    monkeypatch.setattr(
+        apps_measurements_viewer.PhaseTranslatorDialog, 'exec_', exec_
+    )
+    viewer.configurePhaseTranslator()
+    assert warning.call_args.args[1] == 'No cell selected'
+    assert warning.call_args.args[0] is opened[0]
+
+
 def test_missing_selected_cell_reports_error_without_changing_table(viewer):
     viewer.selectedID = 999
     original = viewer.acdc_df
@@ -1047,6 +1071,36 @@ def test_manager_phase_color_buttons(app):
     dialog.removeRule()
     assert list(dialog.phaseColorButtons) == ['Other']
     dialog.deleteLater()
+
+
+def test_viewer_stores_only_chosen_phase_colors(viewer, monkeypatch):
+    # Stored defaults kept their color while later defaults (by phase
+    # order) could repeat it
+    viewer.phaseTranslatorRules = [rule(), fallback()]
+    viewer.phaseColors = {'Gone': '#00ff00'}
+    choose = {}
+
+    def exec_(dialog):
+        for name, color in choose.items():
+            dialog.phaseColorButtons[name].setColor(color)
+        dialog.ok_cb()
+
+    monkeypatch.setattr(
+        apps_measurements_viewer.PhaseTranslatorDialog, 'exec_', exec_
+    )
+    viewer.configurePhaseTranslator()
+    assert viewer.phaseColors == {}
+    choose['S'] = '#0000ff'
+    viewer.configurePhaseTranslator()
+    assert viewer.phaseColors == {'S': '#0000ff'}
+    # Removing the first rule gives "Other" the first default color again
+    viewer.phaseTranslatorRules = [fallback()]
+    choose.clear()
+    viewer.configurePhaseTranslator()
+    assert viewer.phaseColors == {}
+    assert viewer.phaseColorMap()['Other'].name() == (
+        phase_translator.default_phase_color(0, 1)
+    )
 
 
 def _open_color_dialog(button, color):

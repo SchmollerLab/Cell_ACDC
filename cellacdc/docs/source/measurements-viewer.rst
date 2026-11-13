@@ -459,7 +459,11 @@ named like the annotation. Custom annotations are shared with the main GUI.
 * Click **Add custom annotation** in the **Custom annotations** toolbar to
   define the name, symbol, color, shortcut (defaults A, D, F, ...) and an
   optional predictor. Other buttons load annotations used before (also those
-  defined in the main GUI) and show all annotations.
+  defined in the main GUI) and show all annotations. An existing 0/1 column
+  with the annotation's name (e.g., exported before) keeps its values. A name
+  is refused when the table already has a column with that name holding other
+  values (e.g., a measurement) or when the column belongs to a time point,
+  the phases or a combined/processed measurement.
 * Select a cell and press the annotation's shortcut to annotate or
   un-annotate it **across its entire history**. Alternatively, activate the
   annotation button in the toolbar and **right-click** on a cell in the image.

@@ -468,10 +468,11 @@ Select a preset under **Select cells**:
       - ``parent_ID_tree != -1``
 
 The budding presets are offered when the table has cell cycle annotations,
-**Cells with parent** when it has a lineage tree. Presets are read-only:
-select **Custom equation** to type your own filter or open the filter editor
-with **Edit filter...** (see `Cell filters`_), and to choose
-**Keep cells where true in**:
+**Cells with parent** when it has a lineage tree. Presets are read-only and
+keep a cell if they are true in **Any** of its frames: select **Custom
+equation** to type your own filter or open the filter editor with **Edit
+filter...** (see `Cell filters`_), and to choose **Keep cells where true in**
+(the choice is kept when you switch to a preset and back):
 
 * **Any**: keep a cell if the filter is true in at least one of its frames.
 * **All**: keep a cell only if the filter is true in every frame.
@@ -490,7 +491,8 @@ Other-cell measurements
 Check the **Other-cell measurements** box of a predictor editor to use the
 measurements of other cells, e.g. of the mother or of all cells in the same
 frame. The list **Other-cell measurements** then contains every column ``x``
-as ``x_other`` (e.g. ``GFP_mean_other``).
+as ``x_other`` (e.g. ``GFP_mean_other``). The unlisted ``frame_i_other`` and
+``Cell_ID_other`` can be used too, e.g. ``MIN(frame_i_other)``.
 
 How other cells are selected
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

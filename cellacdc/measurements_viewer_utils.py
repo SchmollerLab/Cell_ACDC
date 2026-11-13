@@ -398,6 +398,18 @@ def float_if_bool(values):
     return values
 
 
+def is_flag_column(values):
+    """Whether the stored column `values` (Series) holds only 0/1 flags and
+    missing values, so a custom annotation can reuse it: a bool-like column
+    (`parse_flags` with ``strict=True``) or a numeric one whose values are
+    all 0 or 1 (annotations are stored as int 0/1, which strict parsing
+    rejects). Measurements and text columns are not flag columns."""
+    if (pd.api.types.is_numeric_dtype(values.dtype)
+            and not pd.api.types.is_bool_dtype(values.dtype)):
+        return bool(values.dropna().isin([0, 1]).all())
+    return parse_flags(values, strict=True) is not None
+
+
 def position_key(posData):
     """Key of a position in the configuration (normalized Images path)."""
     path = getattr(posData, 'images_path', None)
@@ -2265,6 +2277,49 @@ class MeasurementsViewerUtils:
     def ensureCustomAnnotColumns(self, acdc_df):
         for name in self.customAnnotNames():
             self.ensureCustomAnnotColumn(acdc_df, name)
+
+    def customAnnotColumnConflict(self, name):
+        """Why a new or loaded custom annotation cannot be called `name`
+        ('' if it can): the column is written by a time point, another
+        annotation, the phase translation, a recorded measurement step or
+        the visited tracking, or it is a column of a loaded table that is
+        not a 0/1 flag column (`is_flag_column`, e.g., a measurement), whose
+        values `ensureCustomAnnotColumn` would turn into 0/1. Existing flag
+        columns (e.g., exported annotations) are reused."""
+        definitions = self.predictorDefinitions()
+        if name in definitions:
+            kind, key = definitions[name][:2]
+            owner = (
+                f'time point "{self.timepointIdentifier(key).name}"'
+                if kind == 'timepoint' else f'custom annotation "{name}"'
+            )
+            return f'it is the column of the {owner}.'
+        phaseColumns = set()
+        if self.hasPhaseTranslation():
+            phaseColumns = phase_translator.output_columns(
+                self.phaseTranslatorRules, self.phaseOverrideAnnotations()
+            )
+        for posData in self.data or []:
+            phaseColumns.update(
+                getattr(posData, 'phaseTranslatorColumns', ()) or ()
+            )
+        if name in phaseColumns:
+            return 'it is a column of the phases.'
+        if name == VISITED_COLUMN:
+            return 'it is the column of the visited cells.'
+        steps = [
+            *self.combinedMeasurementSteps, *self.measurementProcessingSteps
+        ]
+        if any(name in self.measurementStepOutputColumns(step) for step in steps):
+            return 'it is the output of a recorded measurement step.'
+        for acdc_df in self.allAcdcDfs():
+            if name in acdc_df.columns and not is_flag_column(acdc_df[name]):
+                return (
+                    'the table already has this column with values other '
+                    'than 0/1 (e.g., a measurement), which the annotation '
+                    'would replace.'
+                )
+        return ''
 
     def saveCustomAnnotPositionParams(self, posData):
         # Annotations are columns of the in-memory acdc_df (exported with 

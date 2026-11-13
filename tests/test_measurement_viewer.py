@@ -1259,6 +1259,26 @@ def test_cca_table_on_frames_without_annotations(
     assert not real_viewer.slotErrors
 
 
+def test_cca_table_zoomed_on_cell_without_annotations(real_viewer, tmp_path):
+    # The viewer's cca tables keep only cells with complete annotations,
+    # while the zoomed IDs come from the label image
+    path = make_timelapse_position(
+        tmp_path, SizeT=2, extra_cells=[(0, 2), (1, 2)], cca_frames=[0]
+    )
+    csv = os.path.join(path, 'test_acdc_output.csv')
+    df = pd.read_csv(csv)
+    df.loc[(df.frame_i == 0) & (df.Cell_ID == 2), 'will_divide'] = np.nan
+    df.to_csv(csv, index=False)
+    load_real(real_viewer, [path])
+    assert list(real_viewer.posData().cca_df.index) == [1]
+    real_viewer.ax1.setRange(xRange=(12, 29), yRange=(10, 25), padding=0)
+    assert real_viewer.getZoomIDs() == [2]
+    real_viewer.viewCcaTable()
+    assert real_viewer.ccaTableWin is not None
+    assert real_viewer.ccaTableWin.tableView.model().rowCount() == 0
+    assert not real_viewer.slotErrors
+
+
 def test_search_id_in_later_frame_with_unvisited_positions(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -1280,6 +1300,50 @@ def test_search_id_in_later_frame_with_unvisited_positions(
     assert not notFound
     assert found == [2]
     assert real_viewer.posData().frame_i == 2
+    assert not real_viewer.slotErrors
+
+
+def test_count_objects_snapshots_with_unvisited_positions(
+        real_viewer, tmp_path
+    ):
+    paths = [
+        make_timelapse_position(tmp_path, pos=pos, SizeT=1) for pos in (1, 2)
+    ]
+    load_real(real_viewer, paths)
+    assert not hasattr(real_viewer.data[1], 'allData_li')
+    real_viewer.countObjsButton.setChecked(True)
+    assert not real_viewer.slotErrors
+    assert real_viewer.countObjsWindow is not None
+    counts = real_viewer.countObjectsSnapshots()
+    assert counts['In all loaded positions'] == 2
+    assert counts['In all visited positions (previous sessions)'] == 2
+    real_viewer.countObjsButton.setChecked(False)
+    assert not real_viewer.slotErrors
+
+
+def test_restore_default_settings_un_inverts_black_white(
+        real_viewer, tmp_path
+    ):
+    # `loadPreset` of the labels LUT rebinds `df_settings`: restoring from
+    # the stale table re-inverted black/white (real LUT widgets needed)
+    import pyqtgraph as pg
+    path = make_timelapse_position(tmp_path, SizeT=2)
+    load_real(real_viewer, [path])
+    real_viewer._defaultSignalColorIndices['area'] = (
+        measurements_viewer_utils.SIGNAL_COLORS.index('#F0E442')
+    )
+    column(real_viewer, 'area').setCheckState(Qt.Checked)
+    real_viewer.invertBwAction.setChecked(True)
+    real_viewer.restoreDefaultSettings()
+    assert not real_viewer.invertBwAction.isChecked()
+    assert not real_viewer.imgGrad.invertBwAction.isChecked()
+    assert not real_viewer.labelsGrad.invertBwAction.isChecked()
+    saved = pd.read_csv(real_viewer.settings_csv_path, index_col='setting')
+    assert saved.at['is_bw_inverted', 'value'] == 'No'
+    assert saved.at['labels_bkgrColor', 'value'] == '(25, 25, 25)'
+    # Default colors follow the dark background again (yellow, not black)
+    item, = real_viewer.measurementsPlot.listDataItems()
+    assert pg.mkPen(item.opts['pen']).color().name() == '#f0e442'
     assert not real_viewer.slotErrors
 
 
@@ -1494,5 +1558,25 @@ def test_formatting_dialog_warning_escapes_condition_and_error(
         text = warning.call_args.args[2]
         assert '<code>area &lt; 500</code>' in text
         assert '&lt;&#x27; not supported' in text
+    finally:
+        dialog.deleteLater()
+
+
+def test_formatting_dialog_is_disabled_while_condition_editor_runs(app):
+    # The condition editor is not modal: removing or moving rules meanwhile
+    # made editRule raise IndexError (aborting the app) or edit another rule
+    states = []
+    dialog = measurements_viewer.ConditionalFormattingDialog(
+        'x', [{'condition': 'a > 1', 'color': 'lighter'},
+              {'condition': 'b > 1', 'color': 'darker'}],
+        editCondition=lambda text: states.append(dialog.isEnabled()) or 'b > 5'
+    )
+    try:
+        assert dialog.isEnabled()
+        dialog.rows[1]['editor'].click()
+        assert states == [False]
+        assert dialog.isEnabled()
+        assert dialog.rows[1]['edit'].text() == 'b > 5'
+        assert dialog.rows[0]['edit'].text() == 'a > 1'
     finally:
         dialog.deleteLater()
