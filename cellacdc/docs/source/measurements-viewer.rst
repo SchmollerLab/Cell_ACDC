@@ -152,7 +152,10 @@ measurement steps. After annotating more frames in the main GUI, click
 phases) then use the new last analyzed frame. The outputs of the measurement
 steps stay empty after the frame they were calculated up to (the
 configuration remembers it, also when you open the data again) until you load
-the configuration again and choose **Calculate**.
+the configuration again and choose **Calculate**. When loading changes
+that frame (e.g., after **Calculate**, or when fewer frames are analyzed
+than before), save the configuration (you are asked when closing):
+otherwise the empty values saved in the tables could later be read as zeros.
 
 The window
 ~~~~~~~~~~
@@ -463,7 +466,10 @@ named like the annotation. Custom annotations are shared with the main GUI.
   with the annotation's name (e.g., exported before) keeps its values. A name
   is refused when the table already has a column with that name holding other
   values (e.g., a measurement) or when the column belongs to a time point,
-  the phases or a combined/processed measurement.
+  the phases or a combined/processed measurement. For the same reason,
+  loading a configuration or opening data is refused when the tables have
+  such a column named like one of the annotations (annotations stay when
+  you open other data): rename or remove the annotation first.
 * Select a cell and press the annotation's shortcut to annotate or
   un-annotate it **across its entire history**. Alternatively, activate the
   annotation button in the toolbar and **right-click** on a cell in the image.

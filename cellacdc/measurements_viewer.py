@@ -171,10 +171,14 @@ the ignored frames) so they stay plottable. The frame up to which each
 position's step outputs were calculated is recorded
 (``measurementStepsLastFrames``, configuration key
 ``measurement_steps_last_frames`` ``{Images folder: frame index}``; no
-entry = all frames): saved step outputs used as existing values (also when
-opening data while steps are recorded), or read back on Reload table, are
-set to NaN after the smaller of that frame and the current last analyzed
-frame (`blankSavedStepOutputs`), also in the "as on disk" snapshot (NaN saved in
+entry = all frames; a record that differs from the saved configuration
+after its steps were calculated or their existing values blanked, also by
+Open folder, counts as an unsaved configuration change): saved step
+outputs used as existing values (also when opening data while steps are
+recorded), or read
+back on Reload table, are set to NaN after the smaller of that frame and the
+current last analyzed frame (`blankSavedStepOutputs`), also in the "as on
+disk" snapshot (NaN saved in
 tables with cell cycle columns is read back as 0; restoring it is not an
 edit). Toggling the option does not recalculate earlier results (except
 phases evaluated automatically, which are re-evaluated on all cells):
@@ -183,7 +187,9 @@ recalculate the measurement steps. Toggling is refused while data load or
 measurement processing runs, and Combine measurements refuses to apply
 equations if the option changed while its dialog was open. A reload that
 changes the last analyzed frame is logged (with a hint when the steps were
-calculated on fewer frames) and handled like a toggle.
+calculated on fewer frames) and handled like a toggle (also "Reload and
+save" when saving a table changed on disk: the re-evaluated phases are
+saved).
 
 Premade configurations are templates shipped in
 `cellacdc/measurements_viewer_premade_configurations/*.json` and listed as
@@ -281,10 +287,13 @@ the position's current table (aligned on frame_i, Cell_ID), so time
 point/annotation edits made meanwhile are kept. The results are discarded 
 with a warning when the position is no longer loaded, its table was 
 reloaded from file, the processed input columns changed, or columns with the
-output names were added meanwhile. A failed recipe leaves the table unchanged 
-and shows a warning with the traceback as details (also logged).
+output names were added meanwhile. A failed recipe leaves the table unchanged
+and shows a warning with the traceback as details (also logged). One job runs
+at a time: a recipe dialog accepted while a job runs (e.g. a second dialog),
+or whose inputs are no longer in the table, is refused with a warning.
 ``Combine measurements...`` opens the combined-measurement equation editor.
-Equations are evaluated on the current position's raw table, including
+Equations are evaluated on the current position's raw table as it is when OK
+is clicked (edits made while the dialog is open included), including
 categorical inputs, and add columns without overwriting existing measurements.
 Combined columns stay in memory and are not saved to the global equation
 configuration. Numerical and boolean results are available for plotting;
@@ -385,6 +394,10 @@ Adding or loading an annotation refuses names whose column is not a 0/1
 flag column of a loaded table (e.g., a measurement) or is written by a time
 point, another annotation, the phases, a recorded step or the visited
 tracking (``customAnnotColumnConflict``), so no column is turned into 0/1.
+For the same reason, loading a configuration or opening data (annotations
+persist across loading) is refused, before any data is replaced, when one
+of its annotations is named like a column of the new tables that is not a
+flag column (``flag_column_conflicts``).
 Definitions and predictor settings are saved in viewer configurations; the
 main GUI's global saved definitions can be loaded, but are not overwritten
 or deleted (the load dialogs have no delete button in the viewer).
@@ -644,6 +657,7 @@ from .measurements_viewer_utils import (
     normalize_loaded_acdc_df, LAST_ANALYZED_CCA, LAST_ANALYZED_TRACKED,
     last_analyzed_frame, analysis_last_frame, mask_frames, min_frame,
     float_if_bool, position_key, blank_unanalyzed_outputs,
+    flag_column_conflicts, flag_column_conflicts_text,
     evaluate_masked_cell_equation, update_last_analyzed_frame,
     acdc_df_file_stamp, acdc_df_snapshot, position_name, load_positions,
     precompute_position_regionprops, preload_overlay_channels,
@@ -1672,6 +1686,10 @@ class MeasurementsViewerWin(
                     self.reloadAcdcDfFile(posData)
                     if self.data and posData is self.posData():
                         self.refreshAcdcDf()
+                    # A changed last analyzed frame queued the re-evaluation
+                    # of the automatic phases: save them too (the window may
+                    # close right after this save)
+                    self.flushPendingPhaseEvaluations([posData])
             try:
                 if not filepath:
                     raise OSError('No acdc_output file path for this position.')
@@ -2261,6 +2279,19 @@ class MeasurementsViewerWin(
                     'position(s)...'
                 )
             )
+            # Before anything is replaced: `setData` would turn such columns
+            # into 0/1 (`customAnnotColumnConflict` for loaded annotations)
+            conflicts = flag_column_conflicts(
+                [state.get('name') for state
+                 in configuration.get('custom_annotations', [])],
+                [getattr(posData, 'acdc_df', None) for posData in data]
+            )
+            if conflicts:
+                raise ValueError(
+                    flag_column_conflicts_text(conflicts) + '\n\nRename '
+                    'these annotations (e.g., on the data the configuration '
+                    'was made for) and save the configuration first.'
+                )
             # Before the measurement steps and the predictions (of
             # `setData`), which use only the analyzed frames when masking
             mask, maskAsked = self.resolveMaskUnanalyzedFrames(
@@ -2277,6 +2308,8 @@ class MeasurementsViewerWin(
             stepsLastFrames = dict(
                 configuration.get('measurement_steps_last_frames', {})
             )
+            # As in the file (also the premade copy, written before)
+            fileStepsLastFrames = dict(stepsLastFrames)
             if replay == 'recalculate':
                 lastFrames = [
                     analysis_last_frame(posData, mask) for posData in data
@@ -2405,6 +2438,13 @@ class MeasurementsViewerWin(
         if maskAsked and isinstance(self.savedConfiguration, dict):
             # The answer is not in the file yet: offer to save it on closing
             self.savedConfiguration.pop('mask_unanalyzed_frames', None)
+        if (stepsLastFrames != fileStepsLastFrames
+                and isinstance(self.savedConfiguration, dict)):
+            # Steps (re)calculated or blanked up to other frames: the new
+            # record (it protects the saved step outputs) is not in the file
+            self.savedConfiguration['measurement_steps_last_frames'] = (
+                fileStepsLastFrames
+            )
         self.logger.info(f'Configuration loaded: "{filepath}"')
         if missing:
             self.configurationError(
@@ -3584,6 +3624,21 @@ class MeasurementsViewerWin(
             )
             return
 
+        # The annotations persist across loading: `setData` would turn such
+        # columns of the new tables into 0/1 (`customAnnotColumnConflict`)
+        conflicts = flag_column_conflicts(
+            self.customAnnotNames(),
+            [getattr(posData, 'acdc_df', None) for posData in data]
+        )
+        if conflicts:
+            text = flag_column_conflicts_text(conflicts)
+            self.logger.warning('Loading refused. ' + text.replace('\n', ' '))
+            self.warnLoading(
+                f'{text}\n\nRename or remove these custom annotations, then '
+                'open the data again.'
+            )
+            return
+
         # Before the predictions of `setData`
         mask, _ = self.resolveMaskUnanalyzedFrames(
             data, default=self.maskUnanalyzedFrames
@@ -3594,6 +3649,12 @@ class MeasurementsViewerWin(
         # The recorded measurement steps stay: their saved outputs are used
         # as existing values (as in `loadConfiguration`)
         outputs = self.measurementStepOutputs(self.configurationSteps())
+        # The record of the saved configuration, before blanking changes it
+        saved = self.savedConfiguration
+        savedStepsLastFrames = dict(
+            saved.get('measurement_steps_last_frames', {})
+            if isinstance(saved, dict) else self.measurementStepsLastFrames
+        )
         if outputs:
             lastFrames = self.blankSavedStepOutputs(
                 data, outputs, mask, self.measurementStepsLastFrames
@@ -3624,6 +3685,14 @@ class MeasurementsViewerWin(
             )
             self.seedVisitedTimepointPredictions(data=data)
         self.markConfigurationSaved()
+        if (self.measurementStepsLastFrames != savedStepsLastFrames
+                and isinstance(self.savedConfiguration, dict)):
+            # Existing values blanked up to other frames: the new record (it
+            # protects the saved step outputs) is not saved yet (as in
+            # `loadConfiguration`)
+            self.savedConfiguration['measurement_steps_last_frames'] = (
+                savedStepsLastFrames
+            )
         self.logger.info(f'Loaded {len(data)} position(s)')
 
     def runInThread(
@@ -5354,11 +5423,11 @@ class MeasurementsViewerWin(
         source = self.acdc_df
         # Equations (and the dialog's test) see only the analyzed frames;
         # `source` stays the full table (identity check when applying)
-        equationSource = self.analysisDf(source, posData).copy()
         self.logger.info('Opening "Combine measurements" dialog...')
         dialog = apps.CombineMetricsEquationDialog(
             posData.chNames, posData.SizeZ > 1, self.isSegm3D,
-            parent=self, closeOnOk=False, acdc_df=equationSource,
+            parent=self, closeOnOk=False,
+            acdc_df=self.analysisDf(source, posData).copy(),
             saveToConfig=False, allowCellAggregations=True,
             limitToLoadedColumns=True
         )
@@ -5372,15 +5441,14 @@ class MeasurementsViewerWin(
         dialog.sigOk.connect(
             partial(
                 self.applyCombinedMeasurements, posData=posData,
-                source=source, equationSource=equationSource,
-                lastFrame=self.analysisLastFrame(posData)
+                source=source, lastFrame=self.analysisLastFrame(posData)
             )
         )
         dialog.exec_()
         dialog.deleteLater()
 
     def applyCombinedMeasurements(
-            self, dialog, *, posData, source, equationSource, lastFrame=None
+            self, dialog, *, posData, source, lastFrame=None
         ):
         dialog.cancel = True
         if (
@@ -5397,6 +5465,9 @@ class MeasurementsViewerWin(
             )
             return
         equations, _ = dialog.getEquationsDict()
+        # The table as it is now: time points, annotations, etc. may have
+        # been edited in place while the (non-blocking) dialog was open
+        equationSource = self.analysisDf(source, posData).copy()
         # Index levels too: a column named like one (e.g. frame_i) would be
         # read instead of the index (`mask_frames`) and break `reset_index`
         collisions = set(equations).intersection({
@@ -5503,6 +5574,27 @@ class MeasurementsViewerWin(
                 'dialog was open: start "Process measurements" again.'
             )
             return
+        # E.g. started from a second recipe dialog meanwhile
+        if self.measurementProcessingThread is not None:
+            self.measurementProcessingWarning(
+                'Measurement processing running',
+                'Wait for measurement processing to finish, then start '
+                '"Process measurements" again.'
+            )
+            return
+        # E.g. dropped by Reload table meanwhile
+        missing = [
+            col for col in dialog.selectedChannels
+            if self.acdc_df is None or col not in self.acdc_df.columns
+        ]
+        if missing:
+            self.measurementProcessingWarning(
+                'Measurements changed',
+                'These measurements are no longer in the table: '
+                + ', '.join(missing)
+                + '. Start "Process measurements" again.'
+            )
+            return
 
         conflicts = self.recordedOutputConflicts(dialog.saveNames)
         if conflicts:
@@ -5520,6 +5612,13 @@ class MeasurementsViewerWin(
         )
 
     def startMeasurementsProcessing(self, columns, recipe, saveNames):
+        if self.measurementProcessingThread is not None:
+            # One job at a time: its state is kept on the window
+            self.logger.warning(
+                'Measurement processing is already running: '
+                f'{", ".join(saveNames)} not started.'
+            )
+            return
         posData = self.posData()
         self.logger.info(
             f'Processing measurements {", ".join(columns)} '
@@ -6882,6 +6981,17 @@ class MeasurementsViewerWin(
             identifier, f'Edit time point identifier "{identifier.name}"'
         )
         if values is None:
+            return
+        if (self.timepointIdentifier(uid) is not identifier
+                or uid not in self.timepointActions):
+            # Removed (or replaced by a loaded configuration) while the
+            # non-blocking dialog was open
+            text = (
+                f'The time point identifier "{identifier.name}" was removed '
+                'while its dialog was open: changes not applied.'
+            )
+            self.logger.info(text)
+            self.statusBar().showMessage(text, 8000)
             return
         predictorChanged = values['predictor'] != identifier.predictor
         oldColumn = self.timepointColumn(identifier)

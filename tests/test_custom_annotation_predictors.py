@@ -198,6 +198,18 @@ def test_text_column_per_cell_functions():
     assert CustomAnnotationPredictor.predict(
         df, equation('any((stage == "S") & (SHIFT(stage) == "G1"))'), SizeT=3
     ) == {1: [0, 1, 2]}
+    # A cell without any stage (appears after the last annotated frame)
+    # used to make SHIFT(stage) == "G1" fail for the whole position.
+    unannotated = pd.DataFrame({
+        'frame_i': [1, 2], 'Cell_ID': [3, 3], 'stage': [np.nan, np.nan],
+    }).set_index(['frame_i', 'Cell_ID'])
+    df = pd.concat([df, unannotated]).sort_index()
+    assert CustomAnnotationPredictor.predict(
+        df, equation('any((stage == "S") & (SHIFT(stage) == "G1"))'), SizeT=3
+    ) == {1: [0, 1, 2]}
+    assert CustomAnnotationPredictor.predict(
+        df, equation('SHIFT(stage) != "G1"', consolidation='all'), SizeT=3
+    ) == {2: [0, 1, 2], 3: [1, 2]}
 
 
 # --- Measurements viewer ----------------------------------------------------
@@ -1251,6 +1263,22 @@ def test_loading_annotation_named_like_a_measurement_is_refused(
     assert '<code>ratio</code>' in warnings[0]
     assert '<code>stage</code>' in warnings[0]
     assert 'Dead' not in warnings[0]
+
+
+def test_flag_column_conflicts_lists_non_flag_columns():
+    # Checked on the new tables when loading a configuration or opening
+    # data, which would turn such columns into 0/1
+    tables = [
+        pd.DataFrame({
+            'ratio': [0.5, 2.], 'Dead': [1, 0], 'stage': ['G1', 'S']
+        }),
+        None,
+        pd.DataFrame({'Dead': ['True', 'False'], 'Empty': [np.nan] * 2}),
+    ]
+    assert measurements_viewer_utils.flag_column_conflicts(
+        ['stage', 'Dead', 'missing', 'Empty', 'ratio'], tables
+    ) == ['stage', 'ratio']
+    assert measurements_viewer_utils.flag_column_conflicts(['ratio'], []) == []
 
 
 def test_adding_annotation_named_like_another_output_is_refused(

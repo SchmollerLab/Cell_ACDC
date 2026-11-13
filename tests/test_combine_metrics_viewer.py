@@ -194,6 +194,36 @@ def test_changed_table_is_not_overwritten(viewer, monkeypatch):
     assert viewer.measurementProcessingWarning.call_args.args[0] == 'Measurements changed'
 
 
+def test_equations_use_the_table_edited_while_dialog_open(viewer, monkeypatch):
+    # In-place edits (time points, annotations) while the non-blocking
+    # dialog is open: the results match the table they are written into
+    original = viewer.acdc_df
+
+    def edit_in_place():
+        viewer.acdc_df.loc[(1, 1), 'GFP_mean'] = 40.
+
+    accept_formula(monkeypatch, 'GFP_mean / 2', before_accept=edit_in_place)
+    viewer.combineMeasurements()
+    viewer.measurementProcessingWarning.assert_not_called()
+    assert viewer.acdc_df['GFP_combined'].tolist() == [1., 20., 4.]
+    assert original['GFP_mean'].tolist() == [2., 40., 8.]
+
+
+def test_column_added_while_dialog_open_is_not_overwritten(
+        viewer, monkeypatch
+    ):
+    def add_column():
+        viewer.acdc_df['GFP_combined'] = -1.
+
+    accept_formula(monkeypatch, 'GFP_mean / 2', before_accept=add_column)
+    viewer.combineMeasurements()
+    assert viewer.acdc_df['GFP_combined'].tolist() == [-1.] * 3
+    viewer.measurementProcessingWarning.assert_called_once()
+    assert viewer.measurementProcessingWarning.call_args.args[0] == (
+        'Invalid measurement name'
+    )
+
+
 def test_combined_columns_are_exported(viewer, monkeypatch, tmp_path):
     accept_formula(monkeypatch, 'stage == "G1"', 'g1')
     viewer.combineMeasurements()

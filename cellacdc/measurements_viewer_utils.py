@@ -428,6 +428,32 @@ def is_flag_column(values):
     return parse_flags(values, strict=True) is not None
 
 
+def flag_column_conflicts(names, tables):
+    """Custom annotation `names` (in their order) whose column is in one of
+    the `tables` (acdc_df, None skipped) but is not a 0/1 flag column
+    (`is_flag_column`, e.g., a measurement): the annotation would turn its
+    values into 0/1 (`ensureCustomAnnotColumn`)."""
+    tables = [table for table in tables if table is not None]
+    return [
+        name for name in names
+        if any(
+            name in table.columns and not is_flag_column(table[name])
+            for table in tables
+        )
+    ]
+
+
+def flag_column_conflicts_text(names):
+    """Why custom annotations `names` (`flag_column_conflicts`) cannot be
+    used with the tables to load."""
+    return (
+        'The tables have columns named like the custom annotations '
+        + ', '.join(f'"{name}"' for name in names)
+        + '\nwith values other than 0/1 (e.g., a measurement), '
+        'which the annotations would replace.'
+    )
+
+
 def position_key(posData):
     """Key of a position in the configuration (normalized Images path)."""
     path = getattr(posData, 'images_path', None)
@@ -2444,13 +2470,12 @@ class MeasurementsViewerUtils:
         ]
         if any(name in self.measurementStepOutputColumns(step) for step in steps):
             return 'it is the output of a recorded measurement step.'
-        for acdc_df in self.allAcdcDfs():
-            if name in acdc_df.columns and not is_flag_column(acdc_df[name]):
-                return (
-                    'the table already has this column with values other '
-                    'than 0/1 (e.g., a measurement), which the annotation '
-                    'would replace.'
-                )
+        if flag_column_conflicts([name], self.allAcdcDfs()):
+            return (
+                'the table already has this column with values other '
+                'than 0/1 (e.g., a measurement), which the annotation '
+                'would replace.'
+            )
         return ''
 
     def saveCustomAnnotPositionParams(self, posData):

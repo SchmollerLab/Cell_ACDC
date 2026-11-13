@@ -1143,7 +1143,7 @@ def test_replacement_reading_later_outputs_is_refused_when_read(
     )
     viewer.measurementProcessingWarning.reset_mock()
     viewer.applyCombinedMeasurements(
-        dialog, posData=pos, source=table, equationSource=table.copy()
+        dialog, posData=pos, source=table
     )
     viewer.measurementProcessingWarning.assert_called_once()
     dialog.evaluateEquation.assert_not_called()
@@ -1197,7 +1197,7 @@ def test_partially_overlapping_outputs_are_refused(viewer, monkeypatch):
     )
     viewer.measurementProcessingWarning.reset_mock()
     viewer.applyCombinedMeasurements(
-        dialog, posData=pos, source=table, equationSource=table.copy()
+        dialog, posData=pos, source=table
     )
     viewer.measurementProcessingWarning.assert_called_once()
     dialog.evaluateEquation.assert_not_called()
@@ -1256,7 +1256,7 @@ def test_successful_processing_and_combining_are_recorded(viewer, monkeypatch):
         close=Mock()
     )
     viewer.applyCombinedMeasurements(
-        dialog, posData=pos, source=source, equationSource=source.copy()
+        dialog, posData=pos, source=source
     )
     assert viewer.combinedMeasurementSteps == [
         {'order': 1, 'equations': {'combined': 'copy + 1'}}
@@ -1549,6 +1549,86 @@ def test_exported_manual_assignments_are_not_predicted_again(viewer, tmp_path):
     viewer.setSelectedID(2)
     assert viewer.acdc_df[f'{TIMEPOINT_PREFIX}Start'].tolist() == [False, True]
     assert viewer.acdc_df['Flag'].tolist() == [1, 0]
+
+
+def set_table_columns(images, **columns):
+    tablepath = os.path.join(images, 'test_acdc_output.csv')
+    table = pd.read_csv(tablepath)
+    for name, values in columns.items():
+        table[name] = values
+    table.to_csv(tablepath, index=False)
+
+
+def test_configuration_annotation_named_like_a_measurement_is_refused(
+        viewer, tmp_path):
+    # Loading would turn the measurement into 0/1 (later saved): refused
+    # before anything is replaced. A 0/1 column (exported) is reused.
+    paths = make_experiment(tmp_path, positions=1)
+    set_table_columns(paths[0], ratio=[0.5, 2.], Dead=[1, 0])
+    configuration = config(paths[0])
+    configuration['measurement_processing'] = []
+    configuration['combined_measurements'] = []
+    configuration['time_course_columns'] = ['area']
+    dead = {'name': 'Dead', 'symbolColor': [255, 0, 0, 255]}
+    configuration['custom_annotations'] = [dead]
+    first = tmp_path / 'flag.json'
+    first.write_text(json.dumps(configuration))
+    assert viewer.loadConfiguration(filepath=str(first))
+    viewer.configurationError.assert_not_called()
+    assert viewer.acdc_df['Dead'].tolist() == [1, 0]
+    # No "Save changes?" prompt when loading
+    assert viewer.saveAcdcDfs(viewer.unsavedAcdcDfPositions())
+    data = viewer.data
+    configuration['custom_annotations'] = [dead, dict(dead, name='ratio')]
+    second = tmp_path / 'measurement.json'
+    second.write_text(json.dumps(configuration))
+    assert not viewer.loadConfiguration(filepath=str(second))
+    viewer.configurationError.assert_called_once()
+    operation, error = viewer.configurationError.call_args.args
+    assert operation == 'load'
+    assert '"ratio"' in str(error) and '"Dead"' not in str(error)
+    assert viewer.data is data
+    assert viewer.customAnnotNames() == ['Dead']
+    assert viewer.acdc_df['ratio'].tolist() == [0.5, 2.]
+    assert viewer.configurationFilepath == str(first)
+
+
+def test_open_folder_refused_when_annotation_is_named_like_a_measurement(
+        viewer, tmp_path, monkeypatch):
+    # The annotations persist across loading: opening data whose table has
+    # a measurement with an annotation's name is refused (it would be
+    # turned into 0/1); a 0/1 column is reused
+    first = make_experiment(tmp_path / 'first', positions=1)
+    second = make_experiment(tmp_path / 'second', positions=1)
+    set_table_columns(second[0], ratio=[0.5, 2.])
+    third = make_experiment(tmp_path / 'third', positions=1)
+    set_table_columns(third[0], ratio=[0, 1])
+    viewer.loadImagesPaths(first)
+    viewer.setCustomAnnotations([{
+        'name': 'ratio', 'symbolColor': [255, 0, 0, 255]
+    }])
+    # No "Save changes?" prompt when loading
+    assert viewer.saveAcdcDfs(viewer.unsavedAcdcDfPositions())
+    viewer.markConfigurationSaved()
+    data = viewer.data
+    warnings = []
+    monkeypatch.setattr(viewer, 'warnLoading', warnings.append)
+    viewer.loadImagesPaths(second)
+    text, = warnings
+    assert '"ratio"' in text
+    assert viewer.data is data
+    assert not viewer.unsavedAcdcDfPositions()
+    viewer.loadImagesPaths(third)
+    assert len(warnings) == 1
+    assert same_images_path(viewer.posData(), third[0])
+    assert viewer.acdc_df['ratio'].tolist() == [0, 1]
+    assert viewer.customAnnotNames() == ['ratio']
+
+
+def same_images_path(posData, images):
+    return os.path.normcase(os.path.abspath(posData.images_path)) == (
+        os.path.normcase(os.path.abspath(images))
+    )
 
 
 def premade_config():

@@ -527,6 +527,76 @@ def test_cancel_does_not_process(viewer, monkeypatch):
     start.assert_not_called()
 
 
+def recipe_dialog_class(saveNames, onExec):
+    """Fake recipe dialog accepted with the Dummy recipe on 'area' after
+    calling `onExec` (what happened while the non-blocking dialog was
+    open)."""
+    class Dialog:
+        def __init__(self, *args, **kwargs):
+            self.cancel = False
+            self.selectedChannels = ['area']
+            self.selectedRecipe = [{'method': 'Dummy', 'kwargs': {}}]
+            self.saveNames = saveNames
+
+        def exec_(self):
+            onExec()
+
+    return Dialog
+
+
+def test_second_recipe_dialog_does_not_start_a_second_job(
+        viewer, monkeypatch
+    ):
+    # A second recipe dialog, accepted first, started a job while this
+    # one was open: one job at a time (the job state is kept on the window)
+    def startOther():
+        viewer.startMeasurementsProcessing(
+            ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_first']
+        )
+
+    monkeypatch.setattr(
+        apps_measurements_viewer, 'MeasurementProcessingRecipeDialog',
+        recipe_dialog_class(['area_second'], startOther)
+    )
+    viewer.processMeasurements()
+    viewer.measurementProcessingWarning.assert_called_once()
+    assert viewer.measurementProcessingWarning.call_args.args[0] == (
+        'Measurement processing running'
+    )
+    # Also refused when started directly
+    viewer.startMeasurementsProcessing(
+        ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_third']
+    )
+    wait_for_worker(viewer)
+    assert 'area_first' in viewer.acdc_df
+    assert 'area_second' not in viewer.acdc_df
+    assert 'area_third' not in viewer.acdc_df
+    assert [step['output_columns'] for step in viewer.measurementProcessingSteps] == [
+        ['area_first']
+    ]
+    viewer.measurementProcessingWarning.assert_called_once()
+
+
+def test_recipe_inputs_dropped_meanwhile_are_refused(viewer, monkeypatch):
+    # E.g. Reload table while the dialog was open dropped the input column
+    def dropInput():
+        viewer.acdc_df = viewer.acdc_df.drop(columns='area')
+        viewer.posData().acdc_df = viewer.acdc_df
+
+    monkeypatch.setattr(
+        apps_measurements_viewer, 'MeasurementProcessingRecipeDialog',
+        recipe_dialog_class(['area_new'], dropInput)
+    )
+    start = Mock()
+    monkeypatch.setattr(viewer, 'startMeasurementsProcessing', start)
+    viewer.processMeasurements()
+    start.assert_not_called()
+    viewer.measurementProcessingWarning.assert_called_once()
+    assert viewer.measurementProcessingWarning.call_args.args[0] == (
+        'Measurements changed'
+    )
+
+
 def test_export_includes_processed_columns(viewer, monkeypatch, tmp_path):
     viewer.startMeasurementsProcessing(
         ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_copy']

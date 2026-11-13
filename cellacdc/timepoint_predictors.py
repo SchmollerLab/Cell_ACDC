@@ -695,7 +695,14 @@ class CellEquation:
         return float(finite[-1]) if len(finite) else np.nan
 
     @staticmethod
-    def _shift(x: ArrayLike, n: int = 1) -> NDArray[np.float64]:
+    def _shift(x: ArrayLike, n: int = 1) -> NDArray | pd.Series:
+        """``x`` shifted by ``n`` observed rows, NaN where nothing shifts in.
+
+        A Series ``x`` (pandas eval) gives a Series on its index also for
+        numbers: a cell without text values (e.g. unannotated, NaN
+        ``cell_cycle_stage``) must still support ``SHIFT(x) == "G1"``,
+        which pandas eval rewrites to ``in ["G1"]`` (see _text_result).
+        """
         text = CellEquation._text(x)
         if text is None:
             values = CellEquation._numeric(x)
@@ -712,12 +719,14 @@ class CellEquation:
                 shifted[n:] = values[:-n]
             else:
                 shifted[:n] = values[-n:]
-        if text is None:
-            return shifted
-        return CellEquation._text_result(x, shifted)
+        if text is not None:
+            return CellEquation._text_result(x, shifted)
+        if isinstance(x, pd.Series):
+            return pd.Series(shifted, index=x.index)
+        return shifted
 
     @staticmethod
-    def _diff(x: ArrayLike) -> NDArray[np.float64]:
+    def _diff(x: ArrayLike) -> NDArray[np.float64] | pd.Series:
         CellEquation._require_number(x, 'DIFF')
         return CellEquation._numeric(x) - CellEquation._shift(x, 1)
 

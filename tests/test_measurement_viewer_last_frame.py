@@ -811,7 +811,9 @@ def test_configuration_with_stored_choice_does_not_prompt(
     assert viewer.maskUnanalyzedFrames is stored
     assert viewer.maskUnanalyzedFramesAction.isChecked() is stored
     assert viewer.configuration()['mask_unanalyzed_frames'] is stored
-    assert not viewer.hasUnsavedConfiguration()
+    # Masked: the steps calculated up to frame 2 are recorded, which the
+    # file does not store yet
+    assert viewer.hasUnsavedConfiguration() is stored
     for posData in viewer.data:
         copied = cell_values(posData.acdc_df, 'copied')
         peak = cell_values(posData.acdc_df, 'peak')
@@ -985,6 +987,8 @@ def test_set_option_without_update_keeps_label(viewer, tmp_path):
 # ---------------------------------------------------------------------------
 
 def rewrite_cca_frames(path, cca_frames):
+    """Cell cycle annotate `cca_frames` only (as the main GUI), also the
+    cell cycle columns that a save of the viewer added."""
     tablepath = os.path.join(path, 'test_acdc_output.csv')
     table = pd.read_csv(tablepath)
     annotated = table['frame_i'].isin(list(cca_frames))
@@ -994,6 +998,10 @@ def rewrite_cca_frames(path, cca_frames):
         table[col] = np.where(annotated, 1, np.nan)
     table['relationship'] = np.where(annotated, 'mother', None)
     table['is_history_known'] = np.where(annotated, True, None)
+    for col in ('daughter_disappears_before_division',
+                'disappears_before_division'):
+        if col in table:
+            table[col] = np.where(annotated, False, None)
     table.to_csv(tablepath, index=False)
 
 
@@ -1032,6 +1040,35 @@ def test_reload_blanks_recorded_outputs_after_last_frame(viewer, tmp_path):
     double = cell_values(posData.acdc_df, 'double')
     assert double[:LAST + 1] == [0., 20., 40.]
     assert_nan_after(double)
+
+
+def test_reload_and_save_saves_phases_of_new_last_frame(
+        viewer, tmp_path, monkeypatch
+    ):
+    # "Reload and save" (table changed on disk) with more frames annotated
+    # in the main GUI: the automatic phases re-evaluated for the new last
+    # analyzed frame are saved (the window may close right after the save)
+    path = load(viewer, tmp_path, mask=True)
+    posData = viewer.posData()
+    viewer.phaseTranslatorRules = [fallback_rule()]
+    viewer.autoApplyPhases = True
+    assert viewer.applyPhaseTranslator(allCells=True)
+    QTest.qWait(20)
+    assert viewer.saveTables()
+    rewrite_cca_frames(path, range(5))
+    monkeypatch.setattr(
+        viewer, 'askAcdcDfChangedOnDisk', Mock(return_value='reload')
+    )
+    assert viewer.saveAcdcDfs([posData])
+    viewer.askAcdcDfChangedOnDisk.assert_called_once()
+    assert viewer.analysisLastFrame(posData) == 4
+    assert id(posData) not in viewer._pendingPhaseIDs
+    saved = pd.read_csv(os.path.join(path, 'test_acdc_output.csv'))
+    phases = saved.loc[saved['Cell_ID'] == 1, 'phase'].fillna('').tolist()
+    assert phases == ['Other'] * 5 + ['']
+    assert cell_values(viewer.acdc_df, 'phase') == ['Other'] * 5 + ['']
+    assert not viewer.unsavedAcdcDfPositions()
+    assert not viewer.slotErrors
 
 
 # ---------------------------------------------------------------------------
@@ -1235,6 +1272,78 @@ def test_recalculated_steps_record_their_last_frame(
             **viewer.configuration(),
             'measurement_steps_last_frames': {key: -1}
         })
+
+
+@pytest.mark.parametrize('fileRecord', [None, 1])
+def test_changed_steps_record_is_offered_for_saving(
+        viewer, tmp_path, dummy_processor, fileRecord
+    ):
+    # Recalculating changes the record of the frame up to which the steps
+    # were calculated: it must reach the file, else saved NaN outputs are
+    # later read back as 0 (cell cycle columns) and used as values
+    path = make_position(tmp_path)
+    key = os.path.normcase(os.path.abspath(path))
+    extra = {} if fileRecord is None else {
+        'measurement_steps_last_frames': {key: fileRecord}
+    }
+    filepath = write_configuration(tmp_path, timelapse_configuration(
+        path, mask_unanalyzed_frames=True, **extra
+    ))
+    assert viewer.loadConfiguration(filepath=filepath)
+    assert viewer.measurementStepsLastFrames == {key: LAST}
+    assert viewer.hasUnsavedConfiguration()
+    assert viewer.saveConfiguration()
+    assert json.loads(open(filepath).read())[
+        'measurement_steps_last_frames'
+    ] == {key: LAST}
+    assert not viewer.hasUnsavedConfiguration()
+    # Round trip: tables saved, more frames annotated in the main GUI, then
+    # the saved values used as existing values
+    assert viewer.saveTables()
+    rewrite_cca_frames(path, range(5))
+    viewer.askMeasurementReplay.return_value = 'existing'
+    assert viewer.loadConfiguration(filepath=filepath)
+    for column in ('copied', 'peak'):
+        assert_nan_after(cell_values(viewer.acdc_df, column))
+    assert cell_values(viewer.acdc_df, 'copied')[:LAST + 1] == [0., 10., 20.]
+    assert viewer.measurementStepsLastFrames == {key: LAST}
+    assert not viewer.hasUnsavedConfiguration()
+    viewer.configurationError.assert_not_called()
+
+
+def test_open_folder_changing_steps_record_is_offered_for_saving(
+        viewer, tmp_path, dummy_processor
+    ):
+    # Opening the data again blanks the existing step outputs after fewer
+    # analyzed frames (annotations removed in the main GUI): the lowered
+    # record is not in the configuration file yet
+    path = make_position(tmp_path, cca_frames=range(5))
+    for column in ('copied', 'peak', 'sizeT'):
+        set_column(path, column, {frame: -1. for frame in range(SIZE_T)})
+    key = os.path.normcase(os.path.abspath(path))
+    filepath = write_configuration(tmp_path, timelapse_configuration(
+        path, mask_unanalyzed_frames=True,
+        measurement_steps_last_frames={key: 4}
+    ))
+    viewer.askMeasurementReplay.return_value = 'existing'
+    assert viewer.loadConfiguration(filepath=filepath)
+    assert viewer.measurementStepsLastFrames == {key: 4}
+    assert not viewer.hasUnsavedConfiguration()
+    rewrite_cca_frames(path, range(LAST + 1))
+    viewer.loadImagesPaths([path], channel='phase')
+    assert viewer.measurementStepsLastFrames == {key: LAST}
+    assert_nan_after(cell_values(viewer.acdc_df, 'copied'))
+    assert viewer.hasUnsavedConfiguration()
+    assert viewer.saveConfiguration()
+    assert json.loads(open(filepath).read())[
+        'measurement_steps_last_frames'
+    ] == {key: LAST}
+    assert not viewer.hasUnsavedConfiguration()
+    # Unchanged record: nothing to save
+    viewer.loadImagesPaths([path], channel='phase')
+    assert not viewer.hasUnsavedConfiguration()
+    viewer.configurationError.assert_not_called()
+    assert not viewer.slotErrors
 
 
 def test_masked_bool_combined_measurement_stays_numeric(

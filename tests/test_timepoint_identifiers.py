@@ -328,6 +328,37 @@ def test_timepoint_column_list_and_axes_follow_add_rename_remove(viewer, monkeyp
     viewer.plotMeasurements()
 
 
+def test_edit_of_identifier_removed_while_dialog_open_is_not_applied(
+        viewer, monkeypatch
+    ):
+    # The dialog does not block the window: the identifier may be removed
+    # (or replaced by a loaded configuration) before OK is clicked
+    values = {
+        'name': 'Bud', 'color': (255, 0, 0), 'shortcut': '', 'autoApply': False,
+        'predictor': {'type': timepoint_predictors.PREDICTOR_NONE},
+    }
+    monkeypatch.setattr(
+        viewer, 'execTimepointIdentifierDialog', Mock(return_value=dict(values))
+    )
+    identifier = viewer.addTimepointIdentifier()
+
+    def removed_meanwhile(edited, title):
+        viewer.removeTimepointIdentifier(edited.uid, ask=False)
+        return dict(values, name='Bud2')
+
+    monkeypatch.setattr(
+        viewer, 'execTimepointIdentifierDialog', removed_meanwhile
+    )
+    viewer.editTimepointIdentifier(identifier.uid)
+    assert viewer.timepointIdentifiers == []
+    assert identifier.name == 'Bud'
+    names = column_names(viewer)
+    assert 'timepoint_Bud' not in names and 'timepoint_Bud2' not in names
+    assert 'removed while its dialog was open' in (
+        viewer.statusBar().currentMessage()
+    )
+
+
 def test_removing_identifier_drops_its_color_and_formatting(
         viewer, monkeypatch
     ):
@@ -870,6 +901,51 @@ def test_cell_functions_on_text_columns(equation, mode, expected):
     assert timepoint_predictors.TimepointPredictor.from_equation(
         stage_table(), equation, mode
     ) == expected
+
+
+def test_text_comparisons_of_cells_without_text():
+    # Unannotated rows keep NaN stages (all frames used of a partially
+    # annotated video): cell 3 only appears after the last annotated
+    # frame. SHIFT of a cell without text used to return an array, which
+    # pandas eval's ``== "G1"`` (rewritten to ``in ["G1"]``) cannot
+    # compare, so the whole prediction failed.
+    nan = np.nan
+    stages = {
+        1: [(0, 'G1'), (1, 'G1'), (2, 'S'), (3, nan), (4, nan)],
+        2: [(0, 'G1'), (1, 'G1'), (2, 'S'), (3, nan), (4, nan)],
+        3: [(3, nan), (4, nan)],
+    }
+    df = pd.DataFrame([
+        (t, ID, stage) for ID, rows in stages.items() for t, stage in rows
+    ], columns=['frame_i', 'Cell_ID', 'stage']).set_index(
+        ['frame_i', 'Cell_ID']
+    ).sort_index()
+    predict = timepoint_predictors.TimepointPredictor.from_equation
+    docsEquation = '(stage == "S") & (SHIFT(stage) == "G1")'
+    assert predict(df, docsEquation, 'rising_true') == {
+        1: [2], 2: [2], 3: []
+    }
+    assert predict(df, 'SHIFT(stage) != "G1"', 'rising_true') == {
+        1: [0, 3], 2: [0, 3], 3: [3]
+    }
+    assert predict(df, 'frame_i >= 0', 'first_true', main_cell_filter={
+        'condition': 'SHIFT(stage) == "G1"', 'condition_mode': 'any',
+    }) == {1: [0], 2: [0]}
+    evaluate = apps.CombineMetricsEquationDialog.evaluateCellEquation
+    shifted = evaluate(df, 'SHIFT(stage) == "G1"').astype(bool)
+    assert sorted(shifted[shifted].index) == [(1, 1), (1, 2), (2, 1), (2, 2)]
+    # A position without any stage value (float NaN column)
+    df['stage'] = np.nan
+    noTimepoints = {1: [], 2: [], 3: []}
+    assert predict(df, docsEquation, 'rising_true') == noTimepoints
+    assert predict(
+        df, 'SHIFT(stage) in ["G1", "S"]', 'rising_true'
+    ) == noTimepoints
+    # Numerical SHIFT/DIFF results are unchanged.
+    df['area'] = np.arange(len(df), dtype=float)
+    assert predict(df, 'DIFF(area) > 0', 'first_true') == {
+        1: [1], 2: [1], 3: [4]
+    }
 
 
 def test_text_columns_in_filters_and_other_cell_functions():
