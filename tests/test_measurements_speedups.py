@@ -65,6 +65,16 @@ def _assert_same_df(result, expected):
             _assert_same_value(a, b)
 
 
+def _get_error(func, *args):
+    # Older pandas versions raise instead of upcasting for some values
+    # (e.g., bool into a float column) --> compare the errors too
+    try:
+        func(*args)
+    except Exception as err:
+        return type(err), str(err)
+    return None
+
+
 def _random_value(rng):
     choices = (
         lambda: float(rng.normal(10, 5)),
@@ -186,13 +196,19 @@ def test_set_column_values_at_matches_df_at(seed):
 
         expected = base.copy()
         result = base.copy()
-        with warnings.catch_warnings():
-            warnings.simplefilter('ignore')
+
+        def set_values_at():
             for ID, value in zip(IDs_to_set, values):
                 expected.at[ID, col] = value
-            measurements._set_column_values_at(
+
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            expected_error = _get_error(set_values_at)
+            error = _get_error(
+                measurements._set_column_values_at,
                 result, col, IDs_to_set, rows, values
             )
+        assert error == expected_error
         _assert_same_df(result, expected)
 
 
@@ -200,21 +216,23 @@ def test_set_column_values_at_matches_df_at(seed):
 def test_metrics_values_cache_matches_to_dict(seed):
     rng = np.random.default_rng(seed)
     IDs = [2, 4, 6, 8, 10, 12]
-    df = pd.DataFrame(
-        {
-            'cell_area_pxl': rng.integers(10, 100, size=6).astype(float),
-            'cell_vol_fl': rng.normal(50, 5, size=6),
-            'ch_mean': rng.normal(size=6),
-            'ch_int': np.arange(6),
-            'ch_obj': ['G1']*6,
-        },
-        index=pd.Index(IDs, name='Cell_ID')
-    )
+    data = {
+        'cell_area_pxl': rng.integers(10, 100, size=6).astype(float),
+        'cell_vol_fl': rng.normal(50, 5, size=6),
+        'ch_mean': rng.normal(size=6),
+        'ch_int': np.arange(6),
+        'ch_obj': ['G1']*6,
+    }
+    df = pd.DataFrame(data, index=pd.Index(IDs, name='Cell_ID'), copy=True)
+    # Reference modified only with `df.at` --> the cache must not modify
+    # `df` in any other way (e.g., consolidating it in place)
+    df_ref = pd.DataFrame(data, index=pd.Index(IDs, name='Cell_ID'), copy=True)
     columns = [*df.columns, 'ch_CV', 'ch_CV0', 'cell_vol_vox', 'new_obj']
     cache = measurements._MetricsValuesCache(df)
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         for step in range(60):
+            _assert_same_df(df, df_ref)
             metrics_values, volumes_areas = cache.get()
             _assert_same_dict_of_lists(metrics_values, df.to_dict('list'))
             for result, expected in zip(
@@ -237,7 +255,80 @@ def test_metrics_values_cache_matches_to_dict(seed):
             else:
                 ID = int(rng.choice(df.index))
             col = str(rng.choice(columns))
-            cache.set_value(ID, col, _random_value(rng))
+            value = _random_value(rng)
+
+            def set_value_at():
+                df_ref.at[ID, col] = value
+
+            expected_error = _get_error(set_value_at)
+            error = _get_error(cache.set_value, ID, col, value)
+            assert error == expected_error
+            if error is not None:
+                # The kernel never uses the cache after `df.at` raised
+                cache = measurements._MetricsValuesCache(df)
+
+
+def _make_df_with_longdouble_col():
+    df = pd.DataFrame(
+        {
+            'cell_vol_vox': [10.0, 20.0, 30.0],
+            'ch_mean': [0.5, 1.5, 2.5],
+            'ch_int': [1, 2, 3]
+        },
+        index=pd.Index([1, 2, 3], name='Cell_ID')
+    )
+    # Assigned after creation to get a separate longdouble block
+    df['ch_autoBkgr_bkgrVal_median'] = np.longdouble(2.5)
+    return df
+
+
+def test_metrics_values_cache_with_longdouble_column():
+    # Where longdouble is 64-bit (e.g., Windows), pandas < 2 can merge
+    # longdouble and float64 columns in place (e.g., in `df[[col]]` or
+    # when `df.at` upcasts a column), changing the dtype of other columns
+    df = _make_df_with_longdouble_col()
+    df_ref = _make_df_with_longdouble_col()
+    cache = measurements._MetricsValuesCache(df)
+    writes = [
+        (1, 'ch_new', 1.5),
+        (2, 'ch_text', 'text'),
+        (3, 'ch_new', np.float32(2.5)),
+        (2, 'cell_vol_vox', 21.0),
+        (3, 'ch_new_ld', np.longdouble(3.5)),
+        (1, 'ch_mean', 0.25),
+    ]
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        for ID, col, value in writes:
+            cache.set_value(ID, col, value)
+            df_ref.at[ID, col] = value
+            _assert_same_df(df, df_ref)
+            metrics_values, volumes_areas = cache.get()
+            _assert_same_dict_of_lists(metrics_values, df_ref.to_dict('list'))
+            expected_volumes_areas = measurements.get_cell_volumes_areas(df_ref)
+            for result, expected in zip(volumes_areas, expected_volumes_areas):
+                for a, b in zip(result, expected):
+                    _assert_same_value(a, b)
+            for ID_ in df_ref.index:
+                for col_ in df_ref.columns:
+                    _assert_same_value(
+                        cache.df_reader.at[ID_, col_], df_ref.at[ID_, col_]
+                    )
+
+
+def test_float64_dtype_checks():
+    assert measurements._is_float64_dtype(np.dtype(np.float64))
+    # On Windows np.dtype('g') == np.float64 is True
+    assert not measurements._is_float64_dtype(np.dtype('g'))
+    assert not measurements._is_float64_dtype(np.dtype('>f8'))
+    assert not measurements._is_float64_dtype(np.dtype(np.float32))
+    assert not measurements._is_float64_dtype(pd.Int64Dtype())
+    assert measurements._has_longdouble_dtype([np.dtype('g')])
+    assert measurements._has_longdouble_dtype([np.dtype(int), np.dtype('G')])
+    assert not measurements._has_longdouble_dtype(
+        [np.dtype(float), np.dtype(complex), pd.Int64Dtype()]
+    )
+    assert measurements._multi_quantile(np.ones(5, np.longdouble), QS) is None
 
 
 def test_metrics_values_cache_non_unique_index_falls_back():

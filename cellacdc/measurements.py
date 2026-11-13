@@ -1108,6 +1108,21 @@ def _make_quantile_func(q):
 def _get_func_quantile_q(func):
     return getattr(func, 'acdc_quantile_q', None)
 
+def _is_float64_dtype(dtype):
+    """True only for the native float64 dtype. Note that `dtype == np.float64`
+    is also True for longdouble where it is 64-bit (e.g., Windows)."""
+    return (
+        isinstance(dtype, np.dtype)
+        and dtype == np.float64
+        and dtype.char == 'd'
+    )
+
+def _has_longdouble_dtype(dtypes):
+    """True if any of `dtypes` is longdouble or clongdouble."""
+    return any(
+        isinstance(dtype, np.dtype) and dtype.char in 'gG' for dtype in dtypes
+    )
+
 def _multi_quantile(arr, qs):
     """Compute `np.quantile(arr, q=q)` for each `q` in `qs` with a single
     call to `np.quantile` (i.e., a single partition of the array).
@@ -1135,12 +1150,12 @@ def _multi_quantile(arr, qs):
     try:
         arr = np.asarray(arr)
         is_valid_dtype = (
-            arr.dtype.kind == 'u' or arr.dtype == np.float64
+            arr.dtype.kind == 'u' or _is_float64_dtype(arr.dtype)
         )
         if not is_valid_dtype or arr.ndim == 0:
             return None
 
-        if arr.dtype == np.float64:
+        if _is_float64_dtype(arr.dtype):
             if np.isnan(arr).any():
                 return None
             is_zero = arr == 0
@@ -1196,7 +1211,7 @@ def _can_assign_column_values(df, col, values):
         )
     
     return (
-        df[col].dtype == np.float64
+        _is_float64_dtype(df[col].dtype)
         and all([_is_float64_settable(value) for value in values])
     )
 
@@ -1495,16 +1510,33 @@ class _MetricsValuesCache:
 
     If the index or columns are not unique, or a new row is added,
     we fall back to rebuilding everything (same as the old behaviour).
+
+    If `df` has longdouble (or clongdouble) columns, nothing is cached and
+    every `get` calls `df.to_dict('list')` (same as the old behaviour).
+    Where longdouble is 64-bit (e.g., Windows), pandas < 2 can merge
+    (consolidate) longdouble and float64 columns in place when setting a
+    value, changing the dtype of the columns that were not set.
     """
     def __init__(self, df: pd.DataFrame):
         self.df = df
         self._built = False
         # Fast read-only `df.at` kept in sync by `set_value`
         self.df_reader = _DataFrameAtReader(df)
+        if _has_longdouble_dtype(df.dtypes):
+            self._disable_caching()
+
+    def _disable_caching(self):
+        self.df_reader = self.df
+        self._built = True
+        self._incremental = False
 
     def _build(self):
         df = self.df
         self._built = True
+        if _has_longdouble_dtype(df.dtypes):
+            self._disable_caching()
+            return
+
         self._incremental = (
             _pd_maybe_box_native is not None
             and df.index.is_unique
@@ -1531,17 +1563,29 @@ class _MetricsValuesCache:
     def set_value(self, ID, col, value):
         df = self.df
         df.at[ID, col] = value
+        if self.df_reader is df:
+            # Caching is disabled
+            return
+
         self.df_reader.invalidate(col)
+
+        if not df.columns.is_unique:
+            self._disable_caching()
+            return
+
+        col_dtype = df[col].dtype
+        if _has_longdouble_dtype((col_dtype,)):
+            self._disable_caching()
+            return
 
         if not self._built or not self._incremental:
             return
 
-        if len(df.index) != self._nrows or not df.columns.is_unique:
+        if len(df.index) != self._nrows:
             # New row was added --> rebuild everything
             self._build()
             return
 
-        col_dtype = df[col].dtype
         # Single values are updated only for bool, integer and float16/32/64
         # dtypes where the conversion done by `to_dict` is the same in every
         # pandas version (older versions use `Series.tolist`, which e.g.
@@ -1553,8 +1597,12 @@ class _MetricsValuesCache:
             and _is_single_value_update_dtype(col_dtype)
         )
         if not is_single_value_update:
-            # Convert only this column exactly like `df.to_dict('list')`
-            self._metrics_values[col] = df[[col]].to_dict('list')[col]
+            # Convert only this column exactly like `df.to_dict('list')`.
+            # Note that `df[[col]]` would consolidate `df` in place in
+            # pandas < 2
+            self._metrics_values[col] = (
+                df[col].to_frame().to_dict('list')[col]
+            )
             self._dtypes[col] = col_dtype
         else:
             row = self._row_of_ID[ID]
