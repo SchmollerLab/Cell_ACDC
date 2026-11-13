@@ -896,3 +896,62 @@ def test_measurement_execution_handles_categorical_literals_with_underscores():
     assert df['selected'].tolist() == [True, False]
     assert df['large'].tolist() == [False, True]
     assert 'missing' not in df
+
+
+@pytest.mark.parametrize('formula, expected', [
+    ('~is_cell_excluded', [True, False, True, True]),
+    ('~is_cell_dead & ~is_cell_excluded', [True, False, True, False]),
+    ('GFP_mean * ~is_cell_excluded', [1., 0., 3., 4.]),
+    ('GFP_mean * (is_cell_excluded == False)', [1., 0., 3., 4.]),
+])
+def test_main_gui_yes_no_inputs_test_and_save_agree(
+        app, monkeypatch, formula, expected
+    ):
+    """Main GUI "Add combined measurement": the test sees the loaded yes/no
+    columns (nullable boolean), the save the Int64 0/1 frames of
+    `ComputeMeasurementsKernel.run`. Both must evaluate them as bool, else
+    `~` is a bitwise not and saves -1/-2 (regression)."""
+    from cellacdc import load
+    _patch_small_catalog(monkeypatch)
+    loaded = load._parse_loaded_acdc_df(pd.DataFrame({
+        'frame_i': [0, 0, 1, 1],
+        'Cell_ID': [1, 2, 1, 2],
+        'GFP_mean': [1., 2., 3., 4.],
+        'is_cell_excluded': [0, 1, 0, 0],
+        'is_cell_dead': [0, 0, 0, 1],
+    }))
+    dialog = apps.CombineMetricsEquationDialog(
+        ['GFP'], False, False, acdc_df=loaded, saveToConfig=False
+    )
+    dialog.newColNameLineEdit.setText('kept')
+    dialog.formulaEditWidget.setText(formula)
+    dialog.test_cb()
+    assert dialog.okButton.isEnabled(), dialog.statusLabel.text()
+    tested = dialog.evaluateEquation(dialog.getTestData(), formula)
+    dialog.deleteLater()
+
+    # Save: per-frame cast of `ComputeMeasurementsKernel.run`, then concat
+    frames = [
+        load.pd_bool_and_float_to_int_to_str(
+            loaded.loc[frame_i].copy(), inplace=False, colsToCastInt=[]
+        )
+        for frame_i in (0, 1)
+    ]
+    saved = pd.concat(frames, keys=[0, 1], names=['frame_i', 'Cell_ID'])
+    assert str(saved['is_cell_excluded'].dtype) == 'Int64'
+    kernel = object.__new__(cli.ComputeMeasurementsKernel)
+    kernel.metricsToSkip = {}
+    kernel.mixedChCombineMetricsToSkip = []
+    position = SimpleNamespace(
+        loadedChNames=['GFP'],
+        combineMetricsConfig={
+            'equations': {}, 'user_path_equations': {},
+            'mixed_channels_equations': {'kept': formula},
+        },
+    )
+    kernel._add_combined_metrics(position, saved)
+    assert saved['kept'].tolist() == expected
+    assert tested.tolist() == expected
+    # The saved yes/no columns are not changed
+    assert str(saved['is_cell_excluded'].dtype) == 'Int64'
+    assert saved['is_cell_excluded'].tolist() == [0, 1, 0, 0]

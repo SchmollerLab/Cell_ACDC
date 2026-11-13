@@ -79,6 +79,32 @@ def _families_frames(mothers):
     return frames
 
 
+def _set_mothers_parents(allData_li, mothers):
+    """What find_mother_action does: the orphan mothers get a parent."""
+    df = allData_li[1]['acdc_df']
+    for mother, _, _, lost_ID, _ in mothers:
+        df.at[mother, 'parent_ID_tree'] = lost_ID
+        df.at[mother, 'generation_num_tree'] = 2
+
+
+def _wrong_lineage(allData_li, mothers):
+    """(frame_i, ID, found, expected) of the cells with a wrong lineage
+    after propagating `_set_mothers_parents`."""
+    expected = {}
+    for mother, (d1, d2), (g1, g2), lost_ID, _ in mothers:
+        expected[mother] = (2, lost_ID, lost_ID)
+        expected[d1] = expected[d2] = (3, mother, lost_ID)
+        expected[g1] = expected[g2] = (4, d1, lost_ID)
+
+    return [
+        (frame_i, ID, _lineage(data['acdc_df'], ID), values)
+        for frame_i, data in enumerate(allData_li)
+        for ID, values in expected.items()
+        if ID in data['acdc_df'].index
+        and _lineage(data['acdc_df'], ID) != values
+    ]
+
+
 @pytest.mark.parametrize('relevant_cells', [True, False])
 @pytest.mark.parametrize('mothers', [
     [(1, (3, 4), (7, 8), 10, 0), (2, (5, 6), (9, 11), 20, 40)],
@@ -89,32 +115,56 @@ def _families_frames(mothers):
 ])
 def test_propagate_updates_descendants_of_every_mother(mothers, relevant_cells):
     tree, allData_li = _annotate(_families_frames(mothers))
-
-    # What find_mother_action does: the orphan mothers get a parent
-    df = allData_li[1]['acdc_df']
-    for mother, _, _, lost_ID, _ in mothers:
-        df.at[mother, 'parent_ID_tree'] = lost_ID
-        df.at[mother, 'generation_num_tree'] = 2
+    _set_mothers_parents(allData_li, mothers)
 
     if relevant_cells:
         tree.propagate(1, relevant_cells=[m[0] for m in mothers])
     else:
         tree.propagate(1)
 
-    expected = {}
-    for mother, (d1, d2), (g1, g2), lost_ID, _ in mothers:
-        expected[mother] = (2, lost_ID, lost_ID)
-        expected[d1] = expected[d2] = (3, mother, lost_ID)
-        expected[g1] = expected[g2] = (4, d1, lost_ID)
+    assert not _wrong_lineage(allData_li, mothers)
 
-    wrong = [
-        (frame_i, ID, _lineage(data['acdc_df'], ID), values)
-        for frame_i, data in enumerate(allData_li)
-        for ID, values in expected.items()
-        if ID in data['acdc_df'].index
-        and _lineage(data['acdc_df'], ID) != values
-    ]
-    assert not wrong
+
+@pytest.mark.parametrize('relevant_cells', [True, False])
+def test_propagate_computes_children_once(monkeypatch, relevant_cells):
+    """The children of a parent are computed once, not again in every frame
+    they appear in (that made Propagate several times slower on long
+    videos)."""
+    mothers = [(1, (3, 4), (7, 8), 10, 0), (2, (5, 6), (9, 11), 20, 40)]
+    frames = _families_frames(mothers)
+    tree, allData_li = _annotate(frames + [frames[-1]] * 13)
+    _set_mothers_parents(allData_li, mothers)
+
+    # Each computation of a parent's children reads the frame of the sisters
+    sisters_frames = []
+    get_df_from_frame_i = tree._get_df_from_frame_i
+    update_consistency = tree._update_consistency
+
+    def spy_get_df_from_frame_i(frame_i):
+        sisters_frames.append(frame_i)
+        return get_df_from_frame_i(frame_i)
+
+    def spy_update_consistency(*args, **kwargs):
+        monkeypatch.setattr(
+            tree, '_get_df_from_frame_i', spy_get_df_from_frame_i
+        )
+        try:
+            return update_consistency(*args, **kwargs)
+        finally:
+            monkeypatch.setattr(
+                tree, '_get_df_from_frame_i', get_df_from_frame_i
+            )
+
+    monkeypatch.setattr(tree, '_update_consistency', spy_update_consistency)
+    if relevant_cells:
+        # IDs missing in the fixed frame (10: frame 0 only) are ignored
+        tree.propagate(1, relevant_cells=[1, 2, 10])
+    else:
+        tree.propagate(1)
+
+    # Daughters of 1 and 2 (born in frame 3), of 3 and 5 (frame 5)
+    assert sorted(sisters_frames) == [3, 3, 5, 5]
+    assert not _wrong_lineage(allData_li, mothers)
 
 
 def _store_data_reindex(allData_li, frame_i, boxes):

@@ -1205,6 +1205,33 @@ def pd_int_to_bool(acdc_df, colsToCast=None):
             continue
     return acdc_df
 
+def bool_cols_as_plain_bool(df):
+    """Return `df` with its yes/no columns (`acdc_df_bool_cols`) as plain
+    numpy bool (missing values are False).
+
+    Combined measurement equations ("Add combined measurement" of the main
+    GUI and the compute utility) are evaluated on this both by the dialog's
+    test (`apps._CombineMetricsDialog.getTestData`) and at save
+    (`cli.ComputeMeasurementsKernel._df_eval_equation`, where the frames were
+    cast to Int64 0/1 by `pd_bool_and_float_to_int_to_str`), so both give
+    the same values: ``~is_cell_excluded`` is a logical not (on Int64 it is
+    a bitwise not, -1/-2) and nullable dtypes do not break `DataFrame.eval`.
+
+    `df` is not modified: a shallow copy is returned (or `df` itself when it
+    has none of these columns).
+    """
+    cols = [col for col in acdc_df_bool_cols if col in df.columns]
+    if not cols:
+        return df
+    # Same cast as at save: Int64 0/1 (pd.NA where missing)
+    casted = pd_bool_and_float_to_int_to_str(
+        df[cols], colsToCastBool=cols, colsToCastInt=[], inplace=False
+    )
+    df = df.copy(deep=False)
+    for col in cols:
+        df[col] = casted[col].fillna(0).astype(bool)
+    return df
+
 def pd_bool_and_float_to_int_to_str(
         acdc_df, 
         colsToCastBool=None, 

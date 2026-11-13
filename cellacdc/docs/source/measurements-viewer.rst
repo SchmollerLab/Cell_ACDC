@@ -785,6 +785,13 @@ experiment folder; the **Set up premade configuration** dialog then asks:
 The result is saved as a new configuration in the settings folder and loaded.
 The template itself is never changed.
 
+The premade configurations read the mean intensity of each channel
+(``<channel>_mean``), so compute the measurements of the channels first.
+Z-stacks have no ``<channel>_mean`` column: the setup then uses
+``<channel>_mean_3D`` (3D segmentation) or ``<channel>_mean_meanProj`` (2D
+segmentation), the same column as the background values utility. If the
+tables have none of these columns, the setup stops with a message.
+
 
 Keyboard shortcuts
 ------------------
@@ -851,6 +858,12 @@ predictor, a key cannot be used as such a shortcut when :kbd:`Shift` + the key
 is already taken (e.g., :kbd:`S`, because :kbd:`Shift+S` shuffles the
 colormap).
 
+The shortcuts editor also lists the time point and annotation shortcuts
+(change them with **Edit...** / **Modify annotation parameters...** in the
+right-click menu of their buttons) and marks a tool key that
+collides with one of them. If you keep such a key, the time point or
+annotation loses its shortcut (with a warning) until the key is free again.
+
 
 Troubleshooting
 ---------------
@@ -873,8 +886,11 @@ Troubleshooting
 **Pressing a time point shortcut does nothing.**
     Keep the mouse over the time-course plot while pressing the key: the
     time point is added at the frame under the mouse cursor. If a shortcut is
-    already used by another action, it is left unset and a warning is shown;
-    choose another key in the identifier's **Edit...** dialog.
+    already used by another action (e.g., a viewer tool key set with
+    **Edit > Customize keyboard shortcuts...**), it is left unset: a warning
+    is printed to the terminal and noted in the button's tool tip. Choose
+    another key in the identifier's **Edit...** dialog, or give the tool
+    another key.
 
 **A predictor did not run on a cell.**
     Automatic predictions run only on cells that you have never viewed, so
@@ -913,5 +929,6 @@ Troubleshooting
 
 **A premade configuration refuses a channel.**
     Channel names starting with a digit, or with a digit right after a dash
-    (e.g., ``561`` or ``GFP-488``), cannot be used in equations. Rename the
+    (e.g., ``561`` or ``GFP-488``), cannot be used in equations, nor can
+    names containing quotes, brackets, ``#`` or backslashes. Rename the
     channel (e.g., ``ch561``) and try again.

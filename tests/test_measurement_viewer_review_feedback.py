@@ -177,6 +177,23 @@ def test_default_phase_colors_are_okabe_ito_and_not_red():
     assert len(set(colors.values())) == len(names)
 
 
+def test_premade_timepoint_colors_are_not_red():
+    # A red dashed time point line is mistaken for the current frame line
+    # it is drawn over (and dragging it moves the time point)
+    import os
+    folder = measurements_viewer.PREMADE_CONFIGURATIONS_PATH
+    colors = {}
+    for filename in os.listdir(folder):
+        if not filename.endswith('.json'):
+            continue
+        with open(os.path.join(folder, filename), encoding='utf-8') as file:
+            template = json.load(file)
+        for identifier in template.get('timepoint_identifiers', []):
+            colors[(filename, identifier['name'])] = tuple(identifier['color'])
+    assert colors
+    assert not [key for key, color in colors.items() if is_reddish(color)]
+
+
 def test_conditional_formatting_default_colors_are_not_red():
     from cellacdc import apps_measurements_viewer
     colors = apps_measurements_viewer.ConditionalFormattingDialog.DEFAULT_COLORS

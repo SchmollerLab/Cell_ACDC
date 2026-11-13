@@ -19,7 +19,11 @@ fails with ``ValueError: could not convert string to float``.
 - ``check_lineage_tree_files(path)``: every ``*acdc_output*.csv`` of a folder
   tree (or a list of files/folders). The raw tracker tables
   ``*acdc_output_auto.csv`` are skipped unless ``include_auto=True`` or
-  given explicitly as files.
+  given explicitly as files. The tables of the Concatenate utility
+  (``AllPos_acdc_output`` folders, ``AllPos_*`` / ``multiExp_*`` files) hold
+  several positions, i.e. repeated ``frame_i`` x ``Cell_ID``, and are
+  skipped in folders too (they copy the per-position tables, which are the
+  ones to check).
 - Command line: ``python -m cellacdc.lineage_tree_integrity <path> [...]
   [--out report.txt|report.csv]``.
 
@@ -52,7 +56,8 @@ Expected annotations (normal division, one node per ``Cell_ID``):
 Frames where no cell has lineage values are reported once (``info``) and
 otherwise ignored. Rows with ``parent_ID_tree == generation_num_tree == 0``
 hold the GUI fill value of ``guiWin.store_data`` (cell added after the
-lineage was annotated) and count as not annotated, like the GUI does. Rows
+lineage was annotated) and count as not annotated, like the GUI does
+(reported as ``info``, they are valid). Rows
 whose ``parent_ID_tree`` is empty or invalid are left out of the structural
 checks; empty or invalid generation/root/sister values only skip the checks
 of those values. Tables whose ``Cell_ID_tree`` differs from
@@ -83,6 +88,10 @@ OTHER_INT_COLS = (
     'Cell_ID_tree', 'generation_num', 'emerg_frame_i', 'division_frame_i'
 )
 BUDDING_CCA_COLS = ('cell_cycle_stage', 'relationship', 'relative_ID')
+
+# Output of the Concatenate utility (`workers.ConcatAcdcDfsWorker`), lower case
+CONCATENATED_TABLES_FOLDER = 'allpos_acdc_output'
+CONCATENATED_TABLES_PREFIXES = ('allpos_', 'multiexp_')
 
 SEVERITIES = ('error', 'warning', 'info')
 
@@ -119,7 +128,7 @@ CHECKS = {
         'Check that the file opens and has frame_i and Cell_ID columns.'
     ),
     'fill_value_rows': (
-        'warning',
+        'info',
         'Lineage values are 0, the GUI fill value for a cell added to the '
         'frame after the lineage was annotated (never annotated).',
         'Annotate the lineage of these cells in the GUI.'
@@ -1326,18 +1335,26 @@ def find_acdc_output_files(path, include_auto=False):
     """``*acdc_output*.csv`` files in ``path`` (recursively) or ``path``.
 
     The raw tracker tables ``*acdc_output_auto.csv`` (never loaded by
-    Cell-ACDC) are skipped unless ``include_auto``.
+    Cell-ACDC) are skipped unless ``include_auto``. The multi-position
+    tables of the Concatenate utility (``AllPos_acdc_output`` folders,
+    ``AllPos_*`` / ``multiExp_*`` files) are skipped too, regardless of
+    ``include_auto``. A file given as ``path`` is always returned.
     """
     if os.path.isfile(path):
         return [os.path.normpath(path)]
     found = []
     for root, dirs, files in os.walk(path):
-        dirs.sort()
+        dirs[:] = sorted(
+            folder for folder in dirs
+            if folder.lower() != CONCATENATED_TABLES_FOLDER
+        )
         for file in sorted(files):
             name = file.lower()
             if 'acdc_output' not in name or not name.endswith('.csv'):
                 continue
             if not include_auto and name.endswith('acdc_output_auto.csv'):
+                continue
+            if name.startswith(CONCATENATED_TABLES_PREFIXES):
                 continue
             found.append(os.path.normpath(os.path.join(root, file)))
     return found

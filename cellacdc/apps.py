@@ -12413,8 +12413,10 @@ class FunctionParamsDialog(QBaseDialog):
         self.original_function_kwargs = self.functionKwargs()
 
     def cancel_cb(self):
+        # Edits are emitted live (`sigValuesChanged`): the caller restores
+        # `original_function_kwargs` on cancel (see
+        # `widgets.PreProcessingSelector.askSetParams`)
         self.cancel = True
-        # revert function kwargs to original values
         self.function_kwargs = self.original_function_kwargs
         self.close()
     
@@ -14691,6 +14693,10 @@ class _CombineMetricsDialog(QBaseDialog):
             nrows = 10 if preview else self.TEST_DATA_MAX_ROWS
             cols = [name for name in names if name in self.acdcDf.columns]
             sample = self.acdcDf[cols].head(nrows).copy()
+        if not self.limitToLoadedColumns:
+            # Main GUI / compute utility: yes/no columns as at save
+            # (`cli.ComputeMeasurementsKernel._df_eval_equation`)
+            sample = load.bool_cols_as_plain_bool(sample)
         for name in names:
             if name not in sample and name not in sample.index.names:
                 sample[name] = np.random.uniform(1, 5, len(sample))

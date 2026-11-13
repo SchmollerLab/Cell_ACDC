@@ -12523,6 +12523,12 @@ class PreProcessingSelector(QComboBox):
         self.setParamsWindow.emitValuesChanged()
         self.setParamsWindow.exec_()
         if self.setParamsWindow.cancel:
+            # Every edit was already emitted live (step kwargs and preview):
+            # Cancel (or closing the window) restores the opening values.
+            if self.currentText() == method:
+                self.emitValuesChanged(
+                    self.setParamsWindow.original_function_kwargs
+                )
             self.setParamsWindow = None
             return
         

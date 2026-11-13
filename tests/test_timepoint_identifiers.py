@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from qtpy.QtCore import Qt, QPoint
-from qtpy.QtGui import QCloseEvent
+from qtpy.QtGui import QCloseEvent, QKeySequence
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
@@ -816,6 +816,32 @@ def test_cell_functions_ignore_nan():
     ) == {1: [1]}
 
 
+def test_documented_nan_comparisons():
+    # equation-editor.rst ("Writing conditions", "Conditional formatting
+    # conditions"): comparisons with NaN are False, except !=
+    df = pd.DataFrame({
+        'frame_i': [0, 1, 2, 0, 1, 2], 'Cell_ID': [1, 1, 1, 2, 2, 2],
+        'area': [5., 5., 7., 3., 4., 4.],
+        'timepoint_Division': [False, True, False, False, False, False],
+    }).set_index(['frame_i', 'Cell_ID'])
+    evaluate = apps.CombineMetricsEquationDialog.evaluateCellEquation
+    # DIFF is missing at each cell's first frame
+    assert evaluate(df, 'DIFF(area) != 0').tolist() == [
+        True, False, True, True, True, False
+    ]
+    assert evaluate(df, 'abs(DIFF(area)) > 0').tolist() == [
+        False, False, True, False, True, False
+    ]
+    # Without `any`, MAX gives 0 for cell 2, which has no Division
+    assert evaluate(
+        df, 'frame_i >= MAX(frame_i * timepoint_Division)'
+    ).tolist()[3:] == [True, True, True]
+    assert evaluate(
+        df, '(frame_i >= MAX(frame_i * timepoint_Division)) '
+        '& any(timepoint_Division)'
+    ).tolist() == [False, True, True, False, False, False]
+
+
 def stage_table():
     """Text column: cell 1 G1 G1 S S G1 S, cell 2 S S S G1 G1 S."""
     stages = {
@@ -1117,6 +1143,57 @@ def test_auto_shortcut_is_never_ambiguous(viewer, app, monkeypatch):
     app.processEvents()
     viewer.hide()
     assert timepoints(viewer, shifted.uid) == {1: [2]}
+
+
+def test_timepoint_shortcut_used_by_a_tool_key_is_not_set(
+        viewer, app, monkeypatch, capsys
+    ):
+    # A tool key from the shortcuts editor (or the shortcuts.ini shared with
+    # the main GUI) on a time point key: Qt would trigger neither action
+    monkeypatch.setattr(viewer, 'hoveredMeasurementsPlotFrame', lambda: 2)
+    identifier = TimepointIdentifier('Bud', (0, 0, 255), 'Q')
+    viewer.setShortcuts({'Next': ('Q', QKeySequence('Q'))}, save=False)
+    viewer.setTimepointIdentifiers([identifier])
+    action = viewer.timepointActions[identifier.uid]
+    autoAction = viewer.timepointAutoActions[identifier.uid]
+    assert action.shortcut().isEmpty() and autoAction.shortcut().isEmpty()
+    assert identifier.shortcut == 'Q'
+    assert 'Shortcut "Q" of time point "Bud" is not set' in (
+        capsys.readouterr().out
+    )
+    assert 'already used by "Next"' in ' '.join(action.toolTip().split())
+    press_key(viewer, app, Qt.Key_Q)
+    assert viewer.frame_i == 1
+    assert timepoints(viewer, identifier.uid) == {}
+
+    # Set again once the tool key is free
+    viewer.setShortcuts({'Next': ('', None)}, save=False)
+    assert action.shortcut() == QKeySequence('Q')
+    assert autoAction.shortcut() == QKeySequence('Shift+Q')
+    assert 'not set' not in action.toolTip()
+    press_key(viewer, app, Qt.Key_Q)
+    assert timepoints(viewer, identifier.uid) == {1: [2]}
+    # Listed in the shortcuts editor, which flags a colliding tool key
+    hardShortcuts = viewer.getHardcodedShortcuts()
+    assert hardShortcuts['Q'] == ('Time point "Bud"', action)
+    assert hardShortcuts['Shift+Q'] == ('Time point "Bud" (re-evaluate)', autoAction)
+    dialog = apps.ShortcutEditorDialog(
+        viewer.widgetsWithShortcut, zoomOutKeyValue=viewer.zoomOutKeyValue,
+        mouseBindings=viewer.mouseBindings, hard_shortcuts=hardShortcuts,
+        show_delete_object_shortcut=False, parent=viewer
+    )
+    lineEdit = dialog.shortcutLineEdits['Next']
+    lineEdit.setText('Q')
+    assert 'Time point "Bud"' in lineEdit.warnConflictLabel.text()
+    dialog.deleteLater()
+
+    # A tool key edited later (e.g., kept despite the conflict) wins
+    viewer.setShortcuts({'Next': ('Q', QKeySequence('Q'))}, save=False)
+    assert action.shortcut().isEmpty()
+    press_key(viewer, app, Qt.Key_Q)
+    viewer.hide()
+    assert viewer.frame_i == 2
+    assert timepoints(viewer, identifier.uid) == {1: [2]}
 
 
 def test_identifier_dialog_rejects_key_with_used_auto_shortcut(
@@ -1874,6 +1951,26 @@ def test_main_cell_annotation_presets(app, acdc_df):
             'mode': 'first_true',
             'main_cell_filter': dialog.currentMainCellFilter(),
         }) == expected
+    dialog.deleteLater()
+
+
+def test_cells_with_parent_preset_needs_a_positive_parent(app, acdc_df):
+    # Rows without lineage annotation hold 0 (`store_data` fill value) or
+    # NaN: a root cell (-1) with such rows has no parent
+    df = acdc_df.copy()
+    # Cell 1 (frames 0-3): root; cell 2: daughter of cell 1
+    df['parent_ID_tree'] = [-1, -1, 0, np.nan, 1, 1, 1, 1]
+    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+        [], False, False, acdc_df=df
+    )
+    dialog.mainCellGroup.setChecked(True)
+    dialog.mainCellFilterCombobox.setCurrentIndex(
+        dialog.mainCellFilterCombobox.findData('Cells with parent')
+    )
+    assert timepoint_predictors.TimepointPredictor.predict(df, {
+        'type': 'equation', 'equation': 'area > 0', 'mode': 'first_true',
+        'main_cell_filter': dialog.currentMainCellFilter(),
+    }) == {2: [0]}
     dialog.deleteLater()
 
 

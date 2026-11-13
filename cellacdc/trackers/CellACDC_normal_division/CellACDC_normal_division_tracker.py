@@ -1248,6 +1248,7 @@ class normal_division_lineage_tree:
         information for selected cells.
         - Cell_IDs_fixed (iterable, optional): Iterable of Cell IDs to consider 
         for consistency updates. If None, all IDs in `fixed_df` are used.
+        IDs missing in `fixed_df` are ignored.
         - consider_children (bool, default=True): If True, also updates the 
         lineage information for children of fixed cells.
 
@@ -1259,7 +1260,12 @@ class normal_division_lineage_tree:
         - The columns updated for consistency are: 'generation_num_tree', 
         'root_ID_tree', 'sister_ID_tree', 'parent_ID_tree'.
         - The function maintains a lookup dictionary and a list of fixed 
-        DataFrames to efficiently propagate updates.
+        DataFrames to efficiently propagate updates. The children of every
+        fixed parent are registered (and through them their descendants);
+        a parent's children are computed again only when their inputs
+        (parent registration, frame of the sisters) changed, not in every
+        frame they appear in. Each frame is written with one assignment of
+        the latest registered values.
         - Sister IDs are stored as sets, excluding the cell's own ID; if a 
         cell has no sisters, the value is set to {-1}.
         """
@@ -1284,12 +1290,21 @@ class normal_division_lineage_tree:
 
         if Cell_IDs_fixed is not None: # if we have a list of Cell_IDs to consider
             fixed_df = fixed_df[fixed_df.index.isin(Cell_IDs_fixed)]
-        else: 
-            Cell_IDs_fixed = fixed_df.index
 
         fixed_dfs = [fixed_df]
         fixed_dfs_lookup = {fixed_df.index[i]: 0 for i in range(len(fixed_df))}
-        Cell_IDs_fixed = set(Cell_IDs_fixed) # we convert to a set for faster lookups
+        # Only IDs of the fixed frame have values to propagate (a requested
+        # ID missing there would fail the lookups below)
+        Cell_IDs_fixed = set(fixed_df.index)
+        # Values of the latest registration of every fixed cell, written to
+        # each frame with a single assignment
+        fixed_values = dict(zip(
+            fixed_df.index,
+            fixed_df[columns_to_replace].itertuples(index=False, name=None)
+        ))
+        # Child ID -> (parent ID, registration index of the parent, frame of
+        # the sisters) used to compute the child's values
+        children_sources = {}
 
         df_li = self.lineage_list if not self.gui_mode else [posData.allData_li[i]['acdc_df'] for i in range(len(posData.allData_li))]
         for frame_df in df_li:
@@ -1304,55 +1319,68 @@ class normal_division_lineage_tree:
                     frame_df['parent_ID_tree'].isin(Cell_IDs_fixed)
                 ]
                 # Register every parent's children (and through them their
-                # descendants), not only the last group of the groupby
-                if not all_children.empty:
-                    groups = all_children.groupby('parent_ID_tree')
-                    for parent_ID, children in groups:
-                        children = children.copy()
-                        parent_cell_loc = fixed_dfs_lookup[parent_ID] # we get the parent cell from the lookup dictionary
-                        parent_line = fixed_dfs[parent_cell_loc].loc[parent_ID]
-                        children['root_ID_tree'] = parent_line['root_ID_tree']
-                        children['generation_num_tree'] = parent_line['generation_num_tree'] + 1
-                        first_frame_i = self._get_first_frame_i_for_ID(children.index[0])
-                        df_sisters = self._get_df_from_frame_i(first_frame_i)
-                        if self.gui_mode:
-                            sisters = set(df_sisters.loc[df_sisters['parent_ID_tree'] == parent_ID].index)
-                            for child in children.index:
-                                child_sisters = [s for s in sisters if s != child] if len(sisters) > 1 else [-1]
-                                child_sisters = child_sisters + [-1] * (self.max_daughters_added - len(child_sisters))
-                                children.loc[child, 'sister_ID_tree'] = child_sisters[0] if child_sisters else -1
-                                children.loc[child, self._get_extra_daughter_cols(num_daughters=len(child_sisters))] = child_sisters
-                        else:
-                            sisters = set(df_sisters.loc[df_sisters['parent_ID_tree'] == parent_ID, 'Cell_ID'])
-                            children['sister_ID_tree'] = [
-                                [s for s in sisters if s != cell_id] if len(sisters) > 1 else [-1]
-                                for cell_id in children.index
-                            ]
+                # descendants), not only the last group of the groupby.
+                # Children already computed from the same inputs (parent
+                # registration, frame of the sisters) in an earlier frame
+                # are skipped, since recomputing them gives the same values
+                # (doing it in every frame made long videos slow)
+                groups = all_children.groupby('parent_ID_tree').indices
+                for parent_ID in sorted(groups):
+                    parent_cell_loc = fixed_dfs_lookup[parent_ID] # we get the parent cell from the lookup dictionary
+                    children_positions = groups[parent_ID]
+                    children_IDs = all_children.index[children_positions]
+                    first_frame_i = self._get_first_frame_i_for_ID(
+                        children_IDs[0]
+                    )
+                    source = (parent_ID, parent_cell_loc, first_frame_i)
+                    is_registered = all(
+                        children_sources.get(ID) == source
+                        for ID in children_IDs
+                    )
+                    if is_registered:
+                        continue
+                    children = all_children.iloc[children_positions].copy()
+                    parent_line = fixed_dfs[parent_cell_loc].loc[parent_ID]
+                    children['root_ID_tree'] = parent_line['root_ID_tree']
+                    children['generation_num_tree'] = parent_line['generation_num_tree'] + 1
+                    df_sisters = self._get_df_from_frame_i(first_frame_i)
+                    if self.gui_mode:
+                        sisters = set(df_sisters.loc[df_sisters['parent_ID_tree'] == parent_ID].index)
+                        for child in children.index:
+                            child_sisters = [s for s in sisters if s != child] if len(sisters) > 1 else [-1]
+                            child_sisters = child_sisters + [-1] * (self.max_daughters_added - len(child_sisters))
+                            children.loc[child, 'sister_ID_tree'] = child_sisters[0] if child_sisters else -1
+                            children.loc[child, self._get_extra_daughter_cols(num_daughters=len(child_sisters))] = child_sisters
+                    else:
+                        sisters = set(df_sisters.loc[df_sisters['parent_ID_tree'] == parent_ID, 'Cell_ID'])
+                        children['sister_ID_tree'] = [
+                            [s for s in sisters if s != cell_id] if len(sisters) > 1 else [-1]
+                            for cell_id in children.index
+                        ]
 
-                        Cell_IDs_fixed = Cell_IDs_fixed.union(children.index) # we add the children IDs to the set of Cell_IDs_fixed
-                        fixed_dfs.append(children) # we append the children to the fixed_dfs list
-                        indx = len(fixed_dfs) - 1 # we get the index of the children in the fixed_dfs list
-                        fixed_dfs_lookup.update({children.index[i]: indx
-                                                 for i in range(len(children))}) # we update the lookup dictionary with the children
+                    Cell_IDs_fixed.update(children.index) # we add the children IDs to the set of Cell_IDs_fixed
+                    fixed_dfs.append(children) # we append the children to the fixed_dfs list
+                    indx = len(fixed_dfs) - 1 # we get the index of the children in the fixed_dfs list
+                    for ID in children.index:
+                        fixed_dfs_lookup[ID] = indx
+                        children_sources[ID] = source
+                    fixed_values.update(zip(
+                        children.index,
+                        children[columns_to_replace].itertuples(
+                            index=False, name=None
+                        )
+                    ))
 
-            relevant_cells_mask = frame_df.index.isin(Cell_IDs_fixed)
-            if not relevant_cells_mask.any():
+            relevant_cell_ids = [
+                ID for ID in frame_df.index if ID in fixed_values
+            ]
+            if not relevant_cell_ids:
                 continue
 
-            relevant_cell_ids = frame_df.index[relevant_cells_mask]
-            relevant_fixed_dfs_indx = {
-                fixed_dfs_lookup[cell_id] for cell_id in relevant_cell_ids
-            }
-
-            for indx in relevant_fixed_dfs_indx:
-                fixed_df = fixed_dfs[indx]
-                # Find the intersection of indices
-                common_idx = frame_df.index.intersection(fixed_df.index)
-                if not common_idx.empty:
-                    frame_df.loc[common_idx, columns_to_replace] = fixed_df.loc[
-                        common_idx, 
-                        columns_to_replace
-                        ]
+            frame_df.loc[relevant_cell_ids, columns_to_replace] = pd.DataFrame(
+                [fixed_values[ID] for ID in relevant_cell_ids],
+                index=relevant_cell_ids, columns=columns_to_replace
+            )
 
     def propagate(self, frame_i, relevant_cells=None):
         """

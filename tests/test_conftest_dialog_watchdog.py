@@ -14,8 +14,8 @@ from qtpy.QtWidgets import QApplication, QDialog, QMessageBox
 
 from cellacdc import widgets
 from tests.conftest import (
-    MAX_ATTEMPTS, AutoAnsweredDialogWarning, _DialogWatchdog,
-    flushDeferredDeletes
+    MAX_ATTEMPTS, AutoAnsweredDialogWarning, LeftOpenDialogWarning,
+    _DialogWatchdog, flushDeferredDeletes
 )
 
 SAFETY_TIMEOUT_MS = 5000
@@ -278,6 +278,75 @@ def test_dialog_keys_are_stable_and_never_reused(app):
         other.deleteLater()
     finally:
         watchdog.stop()
+
+
+def test_dialog_keys_are_unique_across_watchdogs(app):
+    # A dialog that outlives its test keeps its key property: a later
+    # watchdog restarting its counter at 1 gave a new dialog the same key,
+    # so both shared their grace period and attempt state
+    first, second = _DialogWatchdog(), _DialogWatchdog()
+    leftOver, new = QDialog(), QDialog()
+    try:
+        oldKey = first.key(leftOver)
+        first.stop()
+        assert second.key(new) != oldKey
+        assert second.key(leftOver) == oldKey
+    finally:
+        first.stop()
+        second.stop()
+        leftOver.deleteLater()
+        new.deleteLater()
+
+
+class _ProgressLikeDialog(QDialog):
+    """Refuses to close, like ``QDialogWorkerProgress`` of a running worker."""
+
+    def closeEvent(self, event):
+        event.ignore()
+
+
+def test_dialogs_left_open_are_hidden_but_not_older_ones(app):
+    before = _ProgressLikeDialog()
+    before.setWindowTitle('Visible before the test')
+    before.show()
+    watchdog = _DialogWatchdog()
+    leftOpen = _ProgressLikeDialog()
+    try:
+        leftOpen.setWindowTitle('Left open')
+        leftOpen.show()
+        with pytest.warns(LeftOpenDialogWarning, match='Left open'):
+            hidden = watchdog.hideDialogsLeftOpen()
+        assert hidden == [('_ProgressLikeDialog', 'Left open')]
+        assert not leftOpen.isVisible()
+        # e.g. a module-scoped fixture's dialog: not opened by the test
+        assert before.isVisible()
+    finally:
+        watchdog.stop()
+        for dialog in (before, leftOpen):
+            dialog.hide()
+            dialog.deleteLater()
+
+
+# Set by the test below, checked by the one after it: the conftest hides the
+# dialog after the test (the leaked "Computing" progress window of a
+# background utility test used to reach these watchdog tests in CI)
+_LEFT_OPEN_BY_PREVIOUS_TEST = []
+
+
+@pytest.mark.filterwarnings('ignore::tests.conftest.LeftOpenDialogWarning')
+def test_leave_dialog_open(app):
+    dialog = _ProgressLikeDialog()
+    dialog.setWindowTitle('Left open by a test')
+    dialog.show()
+    _LEFT_OPEN_BY_PREVIOUS_TEST.append(dialog)
+
+
+def test_dialog_left_open_by_previous_test_was_hidden(app):
+    if not _LEFT_OPEN_BY_PREVIOUS_TEST:
+        pytest.skip('test_leave_dialog_open did not run before')
+    dialog = _LEFT_OPEN_BY_PREVIOUS_TEST.pop()
+    assert not dialog.isVisible()
+    dialog.deleteLater()
 
 
 def test_message_box_without_title_is_named_by_its_text(app):

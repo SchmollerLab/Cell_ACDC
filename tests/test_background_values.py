@@ -15,10 +15,11 @@ import pandas as pd
 import pytest
 import skimage.io
 from qtpy.QtCore import Qt
-from qtpy.QtWidgets import QApplication, QMainWindow, QMenu
+from qtpy.QtWidgets import QApplication, QDialog, QMainWindow, QMenu
 
 from cellacdc import _main, apps, background_values as bv, workers
 from cellacdc.info import utilsInfo
+from cellacdc.utils import base as utilsBase
 from cellacdc.utils import computeBackgroundValues as utilsComputeBackgroundValues
 
 
@@ -538,9 +539,17 @@ def _exec_util(win):
         win._workerDone = True
         win.close()
 
-    # Never block the test session: force the window closed after 30 s
-    QTimer.singleShot(30000, forceClose)
-    win.exec_()
+    # Never block the test session: force the window closed after 30 s.
+    # A QTimer object (not singleShot) is stopped after exec_, so the
+    # closure never fires inside a later test's event loop
+    safetyTimer = QTimer()
+    safetyTimer.setSingleShot(True)
+    safetyTimer.timeout.connect(forceClose)
+    safetyTimer.start(30000)
+    try:
+        win.exec_()
+    finally:
+        safetyTimer.stop()
     thread = win._workerThread()
     if thread is not None:
         try:
@@ -570,10 +579,22 @@ def test_util_error_closes_modal_window_and_stops_thread(
     monkeypatch.setattr(
         workers.ComputeBackgroundValuesWorker, '_processPosition', fail
     )
-    criticals = []
+    # Keep the base class cleanup (it closes the progress window), only
+    # replace the error dialog: a recorder that replaced `workerCritical`
+    # left the "Computing" progress window visible for the rest of the
+    # pytest session, where the watchdog tests picked it up
+    criticals, errorDialogs = [], []
+    Base = utilsComputeBackgroundValues.NewThreadMultipleExpBaseUtil
+    baseWorkerCritical = Base.workerCritical
+
+    def recordCritical(self, error):
+        criticals.append(error)
+        return baseWorkerCritical(self, error)
+
+    monkeypatch.setattr(Base, 'workerCritical', recordCritical)
     monkeypatch.setattr(
-        utilsComputeBackgroundValues.NewThreadMultipleExpBaseUtil,
-        'workerCritical', lambda self, error: criticals.append(error)
+        utilsBase, '_critical_exception_gui',
+        lambda *args, **kwargs: errorDialogs.append(args)
     )
     win = Util(
         {exp_path: ['Position_1']}, app, 'Compute background intensity',
@@ -581,8 +602,14 @@ def test_util_error_closes_modal_window_and_stops_thread(
     )
     thread = _exec_util(win)
     # Reported once, also if the worker emits the error more than once
-    assert len(criticals) == 1 and win.summaryDf is None
+    assert len(criticals) == 1 and len(errorDialogs) == 1
+    assert win.summaryDf is None
     assert thread is None or not thread.isRunning()
+    # No progress window is left open for later tests
+    assert not [
+        widget.windowTitle() for widget in QApplication.topLevelWidgets()
+        if isinstance(widget, QDialog) and widget.isVisible()
+    ]
 
 
 def test_util_with_presets_runs_modally_and_returns_summary(

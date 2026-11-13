@@ -80,6 +80,33 @@ def test_processing_window_uses_integer_control_and_docstring_help(app, monkeypa
     selector.deleteLater()
 
 
+@pytest.mark.parametrize('close_with', ['cancel_button', 'window_close'])
+def test_cancelled_params_dialog_restores_recipe_kwargs(
+        app, monkeypatch, close_with
+    ):
+    """Edits are applied live: Cancel/closing must restore the old values."""
+    widget = apps_measurements_viewer.MeasurementProcessingParamsWidget()
+    selector = widget.stepsWidgets[1]['selector']
+    assert selector.currentText() == 'Smooth measurement'
+    live = {}
+
+    def edit_and_cancel(dialog):
+        control, = dialog.argsWidgets
+        control.widget.setValue(11)
+        live['window'] = widget.recipe()[0]['kwargs']['window']
+        if close_with == 'cancel_button':
+            dialog.buttonsLayout.cancelButton.click()
+        else:
+            dialog.close()
+
+    monkeypatch.setattr(apps.FunctionParamsDialog, 'exec_', edit_and_cancel)
+    assert selector.askSetParams() is None
+    assert live['window'] == 11
+    assert widget.stepsWidgets[1]['step_kwargs'] == {'window': 3}
+    assert widget.recipe()[0]['kwargs'] == {'window': 3}
+    widget.deleteLater()
+
+
 def test_processing_recipe_roundtrips_typed_parameters(app, dummy_processor):
     original = apps_measurements_viewer.MeasurementProcessingParamsWidget()
     original.stepsWidgets[1]['step_kwargs'] = {'window': 7}

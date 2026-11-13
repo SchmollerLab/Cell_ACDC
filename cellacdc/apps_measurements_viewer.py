@@ -465,8 +465,10 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
                     'Cells in S (budding)': 'cell_cycle_stage == "S"',
                 })
             if 'parent_ID_tree' in self.acdcDf:
+                # Only positive IDs are parents: roots have -1, rows that
+                # were not annotated 0 (`store_data` fill value) or NaN
                 self.mainCellFilterPresets.update({
-                    'Cells with parent': 'parent_ID_tree != -1',
+                    'Cells with parent': 'parent_ID_tree > 0',
                 })
         mainCellCondition = (
             '' if self._mainCellFilter is None
@@ -2169,7 +2171,9 @@ class _FormattingConditionDialog(_TimepointCellFilterEquationDialog):
         txt = html_utils.paragraph(
             f'{self.INFO}<br><br>Examples: <code>mCherry_ramp == 1</code>, '
             '<code>area &gt; 1.5 * MEAN(area)</code>, '
-            '<code>frame_i &gt;= MAX(frame_i * timepoint_G2_start)</code>. '
+            '<code>(frame_i &gt;= MAX(frame_i * timepoint_G2_start)) &amp; '
+            'any(timepoint_G2_start)</code> (from the G2_start time point '
+            'on, only in cells that have it). '
             'Use <code>&amp;</code>, <code>|</code>, <code>~</code> and '
             'parentheses to combine conditions.'
         )

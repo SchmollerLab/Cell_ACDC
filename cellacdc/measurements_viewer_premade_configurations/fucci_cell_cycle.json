@@ -150,7 +150,7 @@
   "timepoint_identifiers": [
     {
       "name": "Cdt1_peak",
-      "color": [255, 60, 60],
+      "color": [255, 0, 255],
       "shortcut": "Q",
       "autoApply": true,
       "predictor": {

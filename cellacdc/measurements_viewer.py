@@ -199,9 +199,11 @@ the backticks are dropped when the resolved name is a plain identifier and
 kept otherwise, so channels with dashes (`mKO2-hCdt1`) work. Quoted names
 whose first character, or the first character after a dash or other
 non-word character, is a digit (`561_mean`, `GFP-488_mean`) cannot be
-parsed reliably (Python >= 3.12 fails, older versions split them), so the
-rule is checked explicitly on every Python version (`isEquationName`) and
-such channels are rejected for placeholders used inside backticks (`resolvePremadeTemplate`; the setup
+parsed reliably (Python >= 3.12 fails, older versions split them), and
+names with quotes, brackets, `#` or backslashes parse differently on
+Python 3.10/3.11 and 3.12+, so these rules are checked explicitly on every
+Python version (`isEquationName`) and such channels are rejected for
+placeholders used inside backticks (`resolvePremadeTemplate`; the setup
 dialog shows the message and keeps its selection).
 Templates can also declare
 `"input_placeholders": {"NAME": {"type": "float"|"int"|"str", "default": v,
@@ -221,7 +223,13 @@ segmentation/overlays like a new experiment input, and writes the result
 (without placeholder sections, with a `premade` source/mapping/input values
 record) as a
 new configuration in the settings folder, which is then loaded. The template
-itself is never modified.
+itself is never modified. Templates use the 2D mean intensity column
+`{RED}_mean`; z-stack tables have none, so when the selected tables lack
+`<channel>_mean`, the setup uses the column of the background utility
+instead (`<channel>_mean_3D` with 3D segmentation, else
+`<channel>_mean_meanProj`, `premadeMeanSuffixes`), replacing only whole
+`{RED}_mean` names of the template (`substituteMeanColumns`); it stops with
+an error if the tables have none of them.
 
 Optional setup-only `"channel_hints": {"PLACEHOLDER": ["gfp", ...]}` lists
 name parts (case-insensitive, in order of preference) used to preselect the
@@ -320,11 +328,16 @@ shortcut, and an auto shortcut already used by another action (e.g., from an
 older configuration) is left unset with a warning. A key is not available as
 shortcut (in the dialogs and for the defaults) when it or its ``Shift+key``
 is already used (e.g., S, because Shift+S shuffles the colormap); the same
-rules apply to custom annotations. A custom annotation whose own shortcut is
-already used by another action (possible with 'Load annotation...' or a
-configuration, which skip the dialog checks) gets neither shortcut, with a
-warning and a tool tip note, because Qt triggers neither of two actions
-sharing a key. Time point lines can be dragged like the
+rules apply to custom annotations. A time point identifier or custom
+annotation whose own shortcut is already used by another action (possible
+with 'Load annotation...', a configuration or a viewer tool key set in the
+shortcuts editor or read from the shortcuts.ini shared with the main GUI,
+which skip the dialog checks) gets neither shortcut, with a warning and a
+tool tip note, because Qt triggers neither of two actions sharing a key. The
+shortcuts editor lists their keys (not editable there,
+`getHardcodedShortcuts`) to flag such collisions, and `setShortcuts` checks
+them again (a key is set again once it is free). Time point lines can be
+dragged like the
 current frame line and are drawn above it (z-value 11 over 10, so a time
 point added at the current frame is visible through the dashes; a drag at
 that frame moves the time point, not the current frame);
@@ -1557,6 +1570,31 @@ class MeasurementsViewerWin(
         if selectedInput is None:
             return None
         result.update(selectedInput)
+        # z-stack tables have no `<channel>_mean`: use the column of the
+        # background utility (`_mean_3D` / `_mean_meanProj`) instead
+        meanSuffixes = self.premadeMeanSuffixes(
+            configuration, mapping, result['images_paths'],
+            result['segm_endname']
+        )
+        if meanSuffixes:
+            plain = self.resolvePremadeTemplate(configuration, mapping, values)
+            adapted = self.resolvePremadeTemplate(
+                configuration, mapping, values, meanSuffixes=meanSuffixes
+            )
+            # Only the sections with mean columns (the channel and input
+            # sections chosen above have none)
+            result.update({
+                key: value for key, value in adapted.items()
+                if value != plain.get(key)
+            })
+            self.logger.info(
+                'Premade configuration: using the mean intensity columns '
+                + ', '.join(
+                    f'"{mapping[name]}{suffix}"'
+                    for name, suffix in meanSuffixes.items()
+                )
+                + ' (the tables have no "<channel>_mean" column)'
+            )
         result['input_options'] = [copy.deepcopy(selectedInput)]
         result['premade'] = {
             'source': os.path.basename(source), 'channel_mapping': mapping
@@ -3331,7 +3369,11 @@ class MeasurementsViewerWin(
     def getHardcodedShortcuts(self):
         """Shortcuts displayed (not editable) in the shortcuts editor, as
         {key sequence: (name, widget)}, the same format as
-        `guiWin.getHardcodedShortcuts`."""
+        `guiWin.getHardcodedShortcuts`.
+
+        Also lists the keys of the time point identifiers and custom
+        annotations (edited in their own dialogs), so that the editor flags
+        a viewer tool key that collides with one of them."""
         hard_shortcuts = {}
         actions = (
             self.openFolderAction, self.reloadAction, self.saveTablesAction,
@@ -3350,7 +3392,43 @@ class MeasurementsViewerWin(
             if name.endswith('...'):
                 name = name[:-3]
             hard_shortcuts[shortcut.toString()] = (name, widget)
+        items = [
+            (f'Time point "{identifier.name}"',
+             self.timepointActions.get(identifier.uid),
+             self.timepointAutoActions.get(identifier.uid))
+            for identifier in self.timepointIdentifiers
+        ]
+        items.extend(
+            (f'Annotation "{getattr(button, "name", "")}"', *actions)
+            for button, actions in self.customAnnotShortcutActions.items()
+        )
+        for name, action, autoAction in items:
+            for widget, widgetName in (
+                    (action, name), (autoAction, f'{name} (re-evaluate)')):
+                if widget is None or widget.shortcut().isEmpty():
+                    continue
+                hard_shortcuts[widget.shortcut().toString()] = (
+                    widgetName, widget
+                )
         return hard_shortcuts
+
+    def setShortcuts(self, shortcuts: dict, save=True):
+        super().setShortcuts(shortcuts, save=save)
+        # A tool key edited in the shortcuts editor (or read from the
+        # shortcuts.ini shared with the main GUI) can collide with a time
+        # point or annotation key: check them again (the colliding one is
+        # left unset with a warning, and set again once its key is free)
+        self.updateTimepointAndAnnotationShortcuts()
+
+    def updateTimepointAndAnnotationShortcuts(self):
+        for identifier in self.timepointIdentifiers:
+            if identifier.uid in self.timepointActions:
+                self.updateTimepointAction(identifier)
+        for button, annotation in self.customAnnotDict.items():
+            state = annotation['state']
+            # `setCustomAnnotShortcut` appends its notes to the tool tip
+            button.setToolTip(self.customAnnotToolTip(state))
+            self.setCustomAnnotShortcut(button, state.get('shortcut'))
     
     def showInExplorer_cb(self):
         posData = self.posData()
@@ -6703,9 +6781,24 @@ class MeasurementsViewerWin(
         painter.end()
         action.setIcon(QIcon(pixmap))
         action.setText(identifier.name)
-        action.setShortcut(QKeySequence(identifier.shortcut))
+        # A key already used by another action (e.g., a viewer tool key set
+        # in the shortcuts editor or a configuration skipping the dialog
+        # checks) is not set: Qt would trigger neither of the two actions
+        keyText = QKeySequence(identifier.shortcut or '').toString()
+        usedBy = None
+        if keyText:
+            usedBy = self.reservedShortcuts(
+                excludeUid=identifier.uid, shiftDerived=False
+            ).get(keyText)
+        shortcut = identifier.shortcut if usedBy is None else ''
+        if usedBy is not None:
+            self.logger.warning(
+                f'Shortcut "{keyText}" of time point "{identifier.name}" is '
+                f'not set because it is already used by "{usedBy}".'
+            )
+        action.setShortcut(QKeySequence(shortcut or ''))
         autoText, autoUsedBy = self.autoShortcutConflict(
-            identifier.shortcut, excludeUid=identifier.uid
+            shortcut, excludeUid=identifier.uid
         )
         if autoUsedBy is not None:
             self.logger.warning(
@@ -6713,7 +6806,13 @@ class MeasurementsViewerWin(
                 f'"{identifier.name}" is not set because it is already used '
                 f'by "{autoUsedBy}".'
             )
-        if not identifier.shortcut:
+        if usedBy is not None:
+            shortcutText = (
+                f'No shortcut\nNote: the shortcut "{keyText}" (and its auto '
+                f'shortcut) is not set because it is already used by '
+                f'"{usedBy}".'
+            )
+        elif not identifier.shortcut:
             shortcutText = 'No shortcut'
         elif autoUsedBy is not None:
             shortcutText = (

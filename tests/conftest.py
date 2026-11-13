@@ -21,7 +21,15 @@
   message box titles), so it is listed in the pytest summary; tests
   should still monkeypatch dialogs whose answer matters. Dialogs are tracked
   by a key stored as a Qt property on the dialog, not by ``id()``, which is
-  unstable for dialogs created by Qt (e.g. static ``QMessageBox.question``).
+  unstable for dialogs created by Qt (e.g. static ``QMessageBox.question``);
+  keys are unique across tests.
+- Top-level dialogs that a test opened and left visible without releasing
+  them with ``deleteLater()`` (e.g. a progress window whose ``closeEvent``
+  refuses to close) are hidden after the test (after the deferred deletes
+  below), with a ``LeftOpenDialogWarning``: otherwise they stay visible for
+  the rest of the pytest session (CI runs all files in one process) and the
+  watchdog of a later test may answer them instead of that test's own
+  dialog.
 - Widgets released with ``deleteLater()`` are destroyed after each test
   (posted ``DeferredDelete`` events are flushed, then ``gc.collect()``):
   tests never run the main loop and ``processEvents()`` does not deliver
@@ -32,8 +40,10 @@
   ``settings_folderpath`` and the paths ``settings_csv_path``,
   ``shortcut_filepath``, ``custom_annot_path``,
   ``MEASUREMENTS_CONFIGURATIONS_PATH``, ``last_entries_metadata_path``,
-  ``additional_metadata_path``, ``last_selected_measurements_ini_path`` and
-  ``recentPaths_path`` (``USER_SETTINGS_PATHS``) of ``cellacdc`` and its
+  ``additional_metadata_path``, ``last_selected_measurements_ini_path``,
+  ``recentPaths_path`` and the log folder ``logs_path`` (written and pruned
+  by ``myutils.setupLogger``, e.g. when a utility window is created)
+  (``USER_SETTINGS_PATHS``) of ``cellacdc`` and its
   already imported submodules point into a fresh temporary settings folder
   (``settings.csv`` holds only the current ``colorScheme``), and
   ``QSettings(organization, application)`` in those modules writes an INI
@@ -48,6 +58,7 @@
   which is not shipped with Cell-ACDC.
 """
 import gc
+import itertools
 import os
 import sys
 import time
@@ -71,6 +82,24 @@ class AutoAnsweredDialogWarning(UserWarning):
     """A blocking dialog was answered automatically by the test watchdog."""
 
 
+class LeftOpenDialogWarning(UserWarning):
+    """A test left a top-level dialog visible; it was hidden after the test."""
+
+
+# Keys of all watchdogs (see `_DialogWatchdog.key`): a dialog that outlives
+# its test keeps its key property, so a per-watchdog counter would give a
+# later dialog the same key
+_DIALOG_KEYS = itertools.count(1)
+
+
+def _visibleTopLevelDialogs():
+    from qtpy.QtWidgets import QApplication, QDialog
+    return [
+        widget for widget in QApplication.topLevelWidgets()
+        if isinstance(widget, QDialog) and widget.isVisible()
+    ]
+
+
 class _DialogWatchdog:
     # Qt dynamic property holding the key of a dialog (see `key`)
     KEY_PROPERTY = '_testWatchdogKey'
@@ -82,8 +111,12 @@ class _DialogWatchdog:
         self.answered = []
         # keys of dialogs whose answer is scheduled or running
         self.pending = set()
-        self.lastKey = 0
         self.stopped = False
+        # Dialogs visible before the test (e.g. of a module-scoped fixture)
+        # are not hidden by `hideDialogsLeftOpen`
+        self.keysAtStart = {
+            self.key(dialog) for dialog in _visibleTopLevelDialogs()
+        }
         self.timer = QTimer()
         self.timer.setInterval(CHECK_INTERVAL_MS)
         self.timer.timeout.connect(self.check)
@@ -112,12 +145,12 @@ class _DialogWatchdog:
         new, short-lived Python wrapper from every ``topLevelWidgets()``
         call, so their ``id()`` can change between checks (the grace period
         then never ends), and a new dialog can reuse a freed one's ``id()``
-        (no grace period, predecessor's attempt count).
+        (no grace period, predecessor's attempt count). Unique across
+        watchdogs (`_DIALOG_KEYS`).
         """
         key = dialog.property(self.KEY_PROPERTY)
         if key is None:
-            self.lastKey += 1
-            key = self.lastKey
+            key = next(_DIALOG_KEYS)
             dialog.setProperty(self.KEY_PROPERTY, key)
         return key
 
@@ -142,12 +175,9 @@ class _DialogWatchdog:
 
     def visibleDialogs(self):
         """Visible dialogs as ``(dialog, key)``, oldest first."""
-        from qtpy.QtWidgets import QApplication, QDialog
         now = time.monotonic()
         dialogs = [
-            (widget, self.key(widget))
-            for widget in QApplication.topLevelWidgets()
-            if isinstance(widget, QDialog) and widget.isVisible()
+            (widget, self.key(widget)) for widget in _visibleTopLevelDialogs()
         ]
         visibleKeys = {key for _, key in dialogs}
         self.forget(
@@ -285,6 +315,27 @@ class _DialogWatchdog:
             except Exception:
                 pass
 
+    def hideDialogsLeftOpen(self):
+        """Hide the dialogs opened during the test and still visible.
+
+        Only ``hide()``: no ``closeEvent`` or ``finished``/``rejected``
+        slots run, since the test's patches and the settings isolation are
+        already undone at this point. Returns ``(type name, title)`` of the
+        hidden dialogs, each also reported as a ``LeftOpenDialogWarning``.
+        """
+        hidden = []
+        for dialog in _visibleTopLevelDialogs():
+            if self.key(dialog) in self.keysAtStart:
+                continue
+            name, title = type(dialog).__name__, self.label(dialog)
+            dialog.hide()
+            hidden.append((name, title))
+            warnings.warn(
+                f'Hid dialog {name} "{title}" left open by the test',
+                LeftOpenDialogWarning, stacklevel=1
+            )
+        return hidden
+
     def answer(self, dialog, key):
         self.attempts[key] = self.attempts.get(key, 0) + 1
         title = self.label(dialog)
@@ -337,9 +388,10 @@ def flushDeferredDeletes():
 def _auto_answer_blocking_dialogs():
     """Answer blocking dialogs of Qt tests (see the module docstring).
 
-    Also destroys ``deleteLater()``'d widgets after each test. Being autouse,
-    this fixture is set up before (and torn down after) the test's own
-    fixtures, so the windows they release are flushed too.
+    Also destroys ``deleteLater()``'d widgets and then hides the dialogs the
+    test left visible after each test. Being autouse, this fixture
+    is set up before (and torn down after) the test's own fixtures, so the
+    windows they release are flushed too.
     """
     if 'qtpy' not in sys.modules:
         # Not a Qt test (or Qt not imported yet): nothing can block
@@ -359,7 +411,10 @@ def _auto_answer_blocking_dialogs():
         yield watchdog
     finally:
         watchdog.stop()
+        # First destroy the dialogs released with deleteLater(): only the
+        # ones still alive afterwards were left open
         flushDeferredDeletes()
+        watchdog.hideDialogsLeftOpen()
 
 
 # Module-level names that bind paths inside the user's settings folder,
@@ -373,6 +428,8 @@ USER_SETTINGS_PATHS = {
     'additional_metadata_path': 'additional_metadata.json',
     'last_selected_measurements_ini_path': 'last_selected_measurements.ini',
     'recentPaths_path': 'recentPaths.csv',
+    # myutils.setupLogger writes there and deletes logs older than 7 days
+    'logs_path': 'logs',
 }
 # Module-level name of the settings folder itself, redirected to the
 # isolated folder (e.g. load.loadLastEntriesMetadata joins file names to it)

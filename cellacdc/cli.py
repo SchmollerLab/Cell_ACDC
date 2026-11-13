@@ -2089,16 +2089,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 )
     
     def _df_eval_equation(self, df, newColName, expr, saveDataWorker=None):
+        # Yes/no columns as bool, as in the dialog's test (`~` = logical not)
+        evalDf = load.bool_cols_as_plain_bool(df)
         try:
-            df[newColName] = df.eval(expr)
+            df[newColName] = evalDf.eval(expr)
         except pd.errors.UndefinedVariableError as error:
             if saveDataWorker is not None:
                 saveDataWorker.sigCombinedMetricsMissingColumn.emit(
                     str(error), newColName
                 )
-        
+
         try:
-            df[newColName] = df.eval(expr)
+            df[newColName] = evalDf.eval(expr)
         except Exception as error:
             if saveDataWorker is not None:
                 saveDataWorker.customMetricsCritical.emit(

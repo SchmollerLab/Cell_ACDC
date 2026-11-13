@@ -65,6 +65,12 @@ PREMADE_TEMPLATE_KEYS = (
 )
 
 
+# Mean intensity column ``{NAME}_mean`` of a channel token in a premade
+# template (a whole column name: not ``{NAME}_mean_x`` nor
+# ``{A}_over_{B}_mean``)
+PREMADE_MEAN_COLUMN_RE = re.compile(r'(?<![\w}])\{([A-Za-z0-9_]+)\}_mean(?!\w)')
+
+
 # Default colors of the plotted columns: the colorblind-friendly Okabe-Ito
 # palette without black (dark plot background) and with vermillion last,
 # because the current frame line is red.
@@ -227,6 +233,18 @@ def get_channels_and_segm_endnames(images_path):
         if not endname.endswith('_raw') and 'raw_postproc' not in endname
     ] or [endname.lstrip('_') for endname in segm_endnames]
     return chNames, sorted(set(segm_endnames))
+
+
+def acdc_output_columns(images_path, segm_endname='segm'):
+    """Column names (set) of the acdc_output table that `load_position`
+    loads with the segmentation `segm_endname` of `images_path` (only the
+    header is read), None if the file does not exist."""
+    basename, _ = myutils.getBasenameAndChNames(images_path)
+    endname = (segm_endname or 'segm').replace('segm', 'acdc_output')
+    filepath = os.path.join(images_path, f'{basename}{endname}.csv')
+    if not os.path.exists(filepath):
+        return None
+    return set(pd.read_csv(filepath, nrows=0).columns)
 
 
 def get_channel_from_filepath(file_path):
@@ -1024,12 +1042,17 @@ class MeasurementsViewerUtils:
         return result
 
     @classmethod
-    def resolvePremadeTemplate(cls, template, mapping, values=None):
+    def resolvePremadeTemplate(
+            cls, template, mapping, values=None, meanSuffixes=None
+        ):
         """Return the configuration of a premade `template` (not modified)
         with channel tokens replaced by `mapping` and input tokens by
-        `values` (defaults for missing inputs). Raises ValueError if a token
-        remains unresolved or a backtick-quoted name built from a token
-        cannot be parsed in equations (see `isEquationName`)."""
+        `values` (defaults for missing inputs). `meanSuffixes`
+        (``{NAME: suffix}``, see `premadeMeanSuffixes`) replaces the mean
+        intensity columns ``{NAME}_mean`` first (`substituteMeanColumns`).
+        Raises ValueError if a token remains unresolved or a backtick-quoted
+        name built from a token cannot be parsed in equations (see
+        `isEquationName`)."""
         placeholders = template.get('channel_placeholders', {})
         inputs = template.get('input_placeholders', {})
         cls.validateInputPlaceholders(inputs, placeholders)
@@ -1040,6 +1063,8 @@ class MeasurementsViewerUtils:
             key: value for key, value in template.items()
             if key not in PREMADE_TEMPLATE_KEYS
         }
+        if meanSuffixes:
+            result = cls.substituteMeanColumns(result, meanSuffixes)
         quotedNames = set()
         result = cls.substituteChannelPlaceholders(
             result, replacements, quotedNames=quotedNames
@@ -1052,7 +1077,9 @@ class MeasurementsViewerUtils:
                 'These channels cannot be used in the equations of this '
                 'configuration: a channel name must start with a letter or '
                 'an underscore, also after a dash (e.g. "GFP" or '
-                '"mKO2-hCdt1", not "561" or "GFP-488"). Rename the channel. '
+                '"mKO2-hCdt1", not "561" or "GFP-488"), and must not '
+                'contain quotes, brackets, "#" or backslashes. '
+                'Rename the channel. '
                 f'Invalid column names: {", ".join(invalid)}.'
             )
         unresolved = cls.unresolvedPlaceholders(
@@ -1074,11 +1101,17 @@ class MeasurementsViewerUtils:
         character or right after a non-word character such as a dash
         (`561_mean`, `GFP-488_mean`). Python >= 3.12 cannot tokenize these
         inside backticks, while older tokenizers silently split them, so
-        they are refused everywhere. Names passing this rule must also be
-        parseable by pandas `eval` (extra guard)."""
+        they are refused everywhere. Also rejected: quotes, brackets, `#`
+        and backslashes (``' " ( ) [ ] { } # \\``). Python 3.10/3.11 parse
+        a quoted name once but fail when it appears twice in an equation
+        (the quotes pair up) and reject closing brackets, which 3.12+
+        accept. Names passing these rules must also be parseable by pandas
+        `eval` (extra guard)."""
         if not name or '`' in name:
             return False
         if re.search(r'(^|[^\w])\d', name):
+            return False
+        if re.search(r'[\'"#\\()\[\]{}]', name):
             return False
         try:
             pd.DataFrame({name: [0]}).eval(f'`{name}`')
@@ -1133,6 +1166,105 @@ class MeasurementsViewerUtils:
                 return [substitute(item) for item in value]
             return copy.deepcopy(value)
         return substitute(obj)
+
+    @staticmethod
+    def substituteMeanColumns(obj, meanSuffixes):
+        """Return a copy of a premade template `obj` with the mean intensity
+        column ``{NAME}_mean`` of each placeholder in `meanSuffixes`
+        (``{NAME: suffix}``) replaced by ``{NAME}<suffix>`` (e.g.
+        ``{RED}_mean_meanProj``) in strings and dict keys (recursive). Only
+        whole column names are replaced (`PREMADE_MEAN_COLUMN_RE`)."""
+        def replace(match):
+            name = match.group(1)
+            if name not in meanSuffixes:
+                return match.group(0)
+            return f'{{{name}}}{meanSuffixes[name]}'
+
+        def substitute(value):
+            if isinstance(value, str):
+                return PREMADE_MEAN_COLUMN_RE.sub(replace, value)
+            if isinstance(value, dict):
+                return {
+                    substitute(key): substitute(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, (list, tuple)):
+                return [substitute(item) for item in value]
+            return copy.deepcopy(value)
+        return substitute(obj)
+
+    @staticmethod
+    def premadeMeanSuffixes(template, mapping, images_paths, segm_endname):
+        """Mean intensity columns of the positions' tables that replace the
+        ``{NAME}_mean`` columns of a premade `template`, as
+        ``{NAME: suffix}`` (only placeholders whose ``<channel>_mean`` is
+        missing; `mapping` gives the channels).
+
+        z-stack tables have no ``<channel>_mean``: as the background utility
+        (`background_values.mean_source_columns`), ``<channel>_mean_3D``
+        (3D segmentation) or else ``<channel>_mean_meanProj`` is used, the
+        first one that every table (`acdc_output_columns` of `images_paths`
+        with `segm_endname`) has. Positions without a table are skipped.
+        Raises ValueError if the tables have none of these columns."""
+        def strings(value):
+            if isinstance(value, str):
+                yield value
+            elif isinstance(value, dict):
+                for key, item in value.items():
+                    yield from strings(key)
+                    yield from strings(item)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    yield from strings(item)
+
+        body = {
+            key: value for key, value in template.items()
+            if key not in PREMADE_TEMPLATE_KEYS
+        }
+        names = sorted({
+            match.group(1)
+            for text in strings(body)
+            for match in PREMADE_MEAN_COLUMN_RE.finditer(text)
+            if match.group(1) in mapping
+        })
+        if not names:
+            return {}
+        tables = [
+            columns for columns in (
+                acdc_output_columns(path, segm_endname)
+                for path in images_paths
+            )
+            if columns is not None
+        ]
+        if not tables:
+            return {}
+        suffixes, missing = {}, []
+        for name in names:
+            channel = mapping[name]
+            candidates = list(dict.fromkeys([
+                f'{channel}_mean',
+                *background_values.mean_source_columns(channel, True),
+                *background_values.mean_source_columns(channel),
+            ]))
+            column = next((
+                col for col in candidates
+                if all(col in columns for columns in tables)
+            ), None)
+            if column is None:
+                missing.append(' / '.join(f'"{col}"' for col in candidates))
+            elif column != f'{channel}_mean':
+                suffixes[name] = column[len(channel):]
+        if missing:
+            raise ValueError(
+                'This premade configuration needs the mean intensity of '
+                'its channels, but the acdc_output tables of the selected '
+                'Positions have none of these columns: '
+                f'{"; ".join(missing)}. Compute the measurements of these '
+                'channels first (e.g., in the launcher: Utilities > '
+                'Measurements > Compute measurements for one or more '
+                'experiments...).'
+            )
+        return suffixes
 
     @staticmethod
     def unresolvedPlaceholders(obj, names):

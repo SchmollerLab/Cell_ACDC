@@ -221,8 +221,11 @@ There is no ``if`` / ``else``: write a condition as a yes/no expression.
 * To use a value only where a condition holds, multiply it by the condition
   (``True`` counts as 1, ``False`` as 0): ``GFP_mean * (cell_cycle_stage ==
   "S")`` is ``GFP_mean`` in S phase and 0 in the other frames.
-* Comparisons with a missing value (NaN) are ``False``; arithmetic with a
-  missing value gives a missing value.
+* Comparisons with a missing value (NaN) are ``False``, except ``!=``, which
+  is ``True``; arithmetic with a missing value gives a missing value. For
+  example, ``DIFF(x)`` and ``SHIFT(x)`` are missing at a cell's first frame,
+  so ``DIFF(cell_area_pxl) != 0`` is true there: write
+  ``abs(DIFF(cell_area_pxl)) > 0`` instead.
 
 .. _equation-editor-per-cell-functions:
 
@@ -284,7 +287,11 @@ where the cell is larger than half of its maximum area.
   (hover over it for a description). In **Combine measurements**, only
   **ANY** and **ALL** have buttons: type the other functions.
 * Per-cell functions and ``SizeT`` are available only in the measurements
-  viewer. In the main GUI, combined measurements are evaluated row by row.
+  viewer. In the main GUI, combined measurements are evaluated row by row,
+  with the yes/no columns ``is_cell_dead``, ``is_cell_excluded`` and
+  ``is_history_known`` as ``True`` / ``False`` (also when the table is saved,
+  where they are stored as 1/0), so ``~is_cell_excluded`` means "not
+  excluded".
 
 
 Testing and confirming
@@ -310,10 +317,9 @@ Testing and confirming
   output (red border). Errors that occur for one cell name it, e.g.
   "Evaluating the equation failed for Cell_ID 12: ...": select that cell in the
   viewer to inspect its values.
-* **Ok** is enabled only after a successful test. Any change of the equation,
-  the name or the predictor settings disables it again. Clicking **Ok** while
-  it is disabled runs the test: if the test succeeds, click **Ok** again (the
-  filter and condition editors close directly after a successful test).
+* **Ok** is enabled only after a successful test (**Test equation**). Any
+  change of the equation, the name or the predictor settings disables it
+  again.
 * **Cancel**, or closing the window, discards your changes.
 
 
@@ -465,7 +471,8 @@ Select a preset under **Select cells**:
     * - Cells in G1 / Cells in S (budding)
       - ``cell_cycle_stage == "G1"`` / ``cell_cycle_stage == "S"``
     * - Cells with parent
-      - ``parent_ID_tree != -1``
+      - ``parent_ID_tree > 0`` (root cells have -1, rows without lineage
+        annotation 0 or a missing value)
 
 The budding presets are offered when the table has cell cycle annotations,
 **Cells with parent** when it has a lineage tree. Presets are read-only and
@@ -611,8 +618,8 @@ editor of the **Main-cell filter** or of the **Other-cell measurements**.
 * The filter must give ``True`` / ``False`` or 0/1, one value per frame or a
   single value; missing values are not allowed.
 * An empty filter keeps all cells ("No filter equation; all cells are kept").
-* **Test equation** checks the filter on the whole table, and **Ok** closes the
-  editor as soon as the test succeeds.
+* **Test equation** checks the filter on the whole table; **Ok** is enabled
+  after a successful test and closes the editor.
 
 The **main-cell filter editor** is evaluated on each cell across its frames,
 like a predictor. It also offers the **Other-cell measurements** list, with
@@ -649,8 +656,10 @@ In the **Conditional formatting** dialog (right-click a plotted column), click
 * Per-cell functions and ``SizeT`` are available; other-cell inputs are not.
 
 Examples: ``mCherry_ramp == 1``, ``cell_area_pxl > 1.5 * MEAN(cell_area_pxl)``,
-``frame_i >= MAX(frame_i * timepoint_Division)`` (from the Division time point
-onwards).
+``(frame_i >= MAX(frame_i * timepoint_Division)) & any(timepoint_Division)``
+(from the Division time point onwards; without the ``any`` part, every frame
+of the cells without the time point would be colored, because ``MAX`` gives
+0 there).
 
 
 More examples

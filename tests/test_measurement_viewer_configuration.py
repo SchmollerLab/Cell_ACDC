@@ -1604,6 +1604,11 @@ def test_quoted_placeholders_keep_backticks_only_if_needed():
     ('GFP_mean', True), ('mKO2-hCdt1_mean', True), ('_561_mean', True),
     ('561_mean', False), ('GFP-488_mean', False), ('GFP.488_mean', False),
     ('', False), ('a`b', False),
+    # Quotes parse once on 3.10/3.11 but not twice in an equation (3.12+
+    # reject them); closing brackets work only on 3.12+
+    ("GFP's_mean", False), ('a"b_mean', False), ('GFP)x_mean', False),
+    ('GFP]x_mean', False), ('GFP}x_mean', False), ('GFP(x_mean', False),
+    ('GFP#x_mean', False), ('GFP\\x_mean', False),
 ])
 def test_is_equation_name_rule(name, valid):
     # Explicit rule, independent of the interpreter's tokenizer (Python
@@ -1613,7 +1618,7 @@ def test_is_equation_name_rule(name, valid):
 
 @pytest.mark.parametrize('channel, valid', [
     ('GFP', True), ('mKO2-hCdt1', True), ('_561', True),
-    ('561', False), ('GFP-488', False),
+    ('561', False), ('GFP-488', False), ("GFP'", False), ('GFP)', False),
 ])
 def test_premade_equation_channel_names(channel, valid):
     template = premade_config()
@@ -2283,6 +2288,92 @@ def test_premade_input_values_are_written(viewer, tmp_path, monkeypatch):
     assert written['combined_measurements'][0]['equations'] == {
         'GFP_double': 'area * 5'
     }
+
+
+def add_table_columns(paths, columns):
+    for images in paths:
+        filepath = f'{images}/test_acdc_output.csv'
+        table = pd.read_csv(filepath)
+        for i, column in enumerate(columns):
+            table[column] = [1. + i, 2. + i]
+        table.to_csv(filepath, index=False)
+
+
+def mean_column_template():
+    template = premade_config()
+    template['combined_measurements'][0]['equations'] = {
+        '{OTHER}_double': '`{OTHER}_mean` * 2',
+        # Not the mean column of a channel: kept
+        '{MAIN}_over_{OTHER}_mean': 'area / `{OTHER}_mean`',
+    }
+    template['time_course_columns'] = ['{OTHER}_mean', '{OTHER}_double']
+    return template
+
+
+@pytest.mark.parametrize('columns, expected', [
+    (['GFP_mean'], {}),
+    (['GFP_mean_maxProj', 'GFP_mean_meanProj', 'GFP_mean_3D'],
+     {'OTHER': '_mean_3D'}),
+    (['GFP_mean_maxProj', 'GFP_mean_meanProj'], {'OTHER': '_mean_meanProj'}),
+])
+def test_premade_mean_columns_of_zstack_tables(tmp_path, columns, expected):
+    # z-stack tables have no `<channel>_mean`: the background utility's
+    # column is used (`background_values.mean_source_columns`)
+    paths = make_experiment(tmp_path)
+    add_table_columns(paths, columns)
+    mapping = {'MAIN': 'phase', 'OTHER': 'GFP'}
+    assert MeasurementsViewerWin.premadeMeanSuffixes(
+        mean_column_template(), mapping, paths, 'segm'
+    ) == expected
+
+
+def test_premade_template_uses_zstack_mean_columns(
+        viewer, tmp_path, monkeypatch
+    ):
+    experiment = tmp_path / 'exp'
+    paths = make_experiment(experiment)
+    for images in paths:
+        add_channel(images, 'GFP')
+    add_table_columns(paths, ['GFP_mean_maxProj', 'GFP_mean_meanProj'])
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    premade = tmp_path / 'template.json'
+    premade.write_text(json.dumps(mean_column_template()))
+    patch_premade_dialogs(
+        viewer, monkeypatch, experiment, saved,
+        {'MAIN': 'phase', 'OTHER': 'GFP'}
+    )
+    assert viewer.loadConfiguration(filepath=str(premade))
+    written = json.loads(next(saved.glob('*.json')).read_text())
+    assert written['combined_measurements'][0]['equations'] == {
+        'GFP_double': 'GFP_mean_meanProj * 2',
+        'phase_over_GFP_mean': 'area / GFP_mean_meanProj',
+    }
+    assert written['time_course_columns'] == [
+        'GFP_mean_meanProj', 'GFP_double'
+    ]
+    assert written['overlay_channels'] == ['GFP']
+    assert viewer.data[0].acdc_df['GFP_double'].tolist() == [4., 6.]
+
+
+def test_premade_without_mean_columns_is_refused(
+        viewer, tmp_path, monkeypatch
+    ):
+    experiment = tmp_path / 'exp'
+    paths = make_experiment(experiment, positions=1)
+    add_channel(paths[0], 'GFP')
+    saved = tmp_path / 'saved'
+    saved.mkdir()
+    premade = tmp_path / 'template.json'
+    premade.write_text(json.dumps(mean_column_template()))
+    patch_premade_dialogs(
+        viewer, monkeypatch, experiment, saved,
+        {'MAIN': 'phase', 'OTHER': 'GFP'}
+    )
+    assert not viewer.loadConfiguration(filepath=str(premade))
+    message = str(viewer.configurationError.call_args)
+    assert 'GFP_mean_meanProj' in message and 'Compute measurements' in message
+    assert list(saved.iterdir()) == []
 
 
 # --- Premade background values ------------------------------------------------

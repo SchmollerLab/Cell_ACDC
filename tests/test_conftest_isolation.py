@@ -1,8 +1,8 @@
 """Tests of the per-test isolation provided by ``tests/conftest.py``.
 
 - The user's settings folder and files (``settings.csv``, ``shortcuts.ini``,
-  custom annotations, metadata entries, recent paths, ``QSettings``) are
-  redirected to a temporary folder.
+  custom annotations, metadata entries, recent paths, ``QSettings``) and the
+  log folder are redirected to a temporary folder.
 - Widgets released with ``deleteLater()`` are destroyed after each test.
 """
 import os
@@ -19,8 +19,9 @@ from cellacdc import load, measurements_viewer, myutils, prompts
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from tests.conftest import flushDeferredDeletes
 
-# Captured at import (collection) time, before any test redirects it
+# Captured at import (collection) time, before any test redirects them
 REAL_SETTINGS_FOLDERPATH = cellacdc.settings_folderpath
+REAL_LOGS_PATH = cellacdc.logs_path
 
 
 @pytest.fixture(scope='module')
@@ -68,6 +69,10 @@ def test_settings_paths_point_to_isolated_folder(_isolate_user_settings):
     for module in (cellacdc, load, prompts, measurements_viewer):
         assert module.settings_folderpath == folderpath, module
     assert not _isInside(REAL_SETTINGS_FOLDERPATH, folderpath)
+    # myutils.setupLogger (e.g. creating a utility window) writes a log file
+    # into, and deletes week-old logs from, the folder of get_logs_path()
+    assert _isInside(myutils.get_logs_path(), folderpath)
+    assert not _isInside(REAL_LOGS_PATH, folderpath)
 
 
 def _makePosition(root):

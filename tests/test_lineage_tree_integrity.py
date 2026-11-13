@@ -266,6 +266,9 @@ def test_gui_fill_value_rows():
         ('fill_value_rows', 7, 4, 5),
         ('unannotated_frames', None, 8, 9),
     ]
+    # Valid rows (not annotated, like the GUI treats them): info only
+    assert report.filter(check='fill_value_rows')[0].severity == 'info'
+    assert report.ok
 
 
 @pytest.mark.parametrize('dtype', [object, 'string'])
@@ -468,6 +471,22 @@ def test_files_and_command_line(tmp_path, capsys):
     make_table().to_csv(good / 'exp_metadata.csv', index=False)
     # Raw tracker tables are skipped in folders by default
     corrupted.to_csv(good / 'exp_acdc_output_auto.csv', index=False)
+    # Multi-position tables of the Concatenate utility (repeated
+    # frame_i x Cell_ID) are skipped in folders
+    allpos = pd.concat(
+        [make_table().set_index('Cell_ID')] * 2,
+        keys=['Position_1', 'Position_2'], names=['Position_n', 'Cell_ID']
+    )
+    allpos['experiment_folderpath'] = str(tmp_path)
+    allpos_folder = tmp_path / 'AllPos_acdc_output'
+    allpos_folder.mkdir()
+    allpos.to_csv(allpos_folder / 'AllPos_acdc_output.csv')
+    allpos.to_csv(allpos_folder / 'renamed_acdc_output.csv')
+    allpos.to_csv(good / 'multiExp_AllPos_acdc_output.csv')
+    explicit = lti.check_lineage_tree_files(
+        allpos_folder / 'AllPos_acdc_output.csv'
+    )
+    assert len(explicit) == 1
 
     reports = lti.check_lineage_tree_files(tmp_path)
     assert [report.has_errors for report in reports] == [False, True]

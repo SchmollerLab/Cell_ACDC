@@ -781,6 +781,28 @@ def test_annotation_shortcut_already_used_is_not_set(viewer):
     assert 'is not set' not in button.toolTip()
 
 
+def test_annotation_shortcut_used_by_a_tool_key_is_not_set(viewer, capsys):
+    # A tool key edited later in the shortcuts editor takes the key; the
+    # annotation gets it back once it is free
+    viewer.setCustomAnnotations([annot_state()])
+    button = viewer.customAnnotButtonByName('Big')
+    toggleAction, autoAction = viewer.customAnnotShortcutActions[button]
+    assert viewer.getHardcodedShortcuts()['A'] == (
+        'Annotation "Big"', toggleAction
+    )
+    viewer.setShortcuts({'Previous': ('A', QKeySequence('A'))}, save=False)
+    assert toggleAction.shortcut().isEmpty()
+    assert autoAction.shortcut().isEmpty()
+    assert 'Shortcut "A" of custom annotation "Big" is not set' in (
+        capsys.readouterr().out
+    )
+    assert 'already used by "Previous"' in ' '.join(button.toolTip().split())
+    viewer.setShortcuts({'Previous': ('', None)}, save=False)
+    assert toggleAction.shortcut() == QKeySequence('A')
+    assert autoAction.shortcut() == QKeySequence('Shift+A')
+    assert 'not set' not in button.toolTip()
+
+
 @pytest.mark.parametrize('filename', sorted(
     name for name in os.listdir(measurements_viewer.PREMADE_CONFIGURATIONS_PATH)
     if name.endswith('.json')
