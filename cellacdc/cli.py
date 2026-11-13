@@ -2181,6 +2181,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 all_frames_acdc_df.copy()
             )
         except Exception as err:
-            self.sigLog.emit(traceback.format_exc())
+            self.log(f'\n{traceback.format_exc()}')
         
         return all_frames_acdc_df

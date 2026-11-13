@@ -9,6 +9,7 @@ import os
 import re
 import math
 import logging
+from functools import partial
 from typing import Tuple
 
 import numpy as np
@@ -360,8 +361,10 @@ class ScaleBarTimestampGuiElements:
         )
         if doMoveTimestamp:
             self.timestamp.updatePosViewRangeChanged(viewRange)
-        
+
         self._viewRange = viewRange
+
+        self.update3DViewerViewRegion()
 
 class ColorSchemeGuiElements:
     def gui_updateSwitchColorSchemeActionText(self):
@@ -882,9 +885,17 @@ class SearchIDGuiElements:
         proceed = self.askGoToFrameFoundID(searchedID, frame_i_found)
         if not proceed:
             return
-        
+
+        prev_frame_i = posData.frame_i
         posData.frame_i = frame_i_found
-        self.get_data()
+        # The read-only `get_data` of the measurements viewer always loads
+        # the frame and returns None (`restorePrevFrameIfNotProceed` is a
+        # main GUI method, returning True when `proceed_cca` is True)
+        proceed_cca, _ = self.get_data() or (True, None)
+        if not proceed_cca:
+            self.restorePrevFrameIfNotProceed(proceed_cca, prev_frame_i)
+            return
+
         self.updateAllImages()
         self.updateScrollbars()
         
@@ -1078,9 +1089,10 @@ class HoverInfoGuiElements:
             if chName not in self.checkedOverlayChannels:
                 continue
             
-            raw_overlay_img = self.getRawImage(filename=filename)
-            raw_overlay_value = raw_overlay_img[ydata, xdata]
-            # raw_overlay_max_value = raw_overlay_img.max()
+            # Only the value at (y, x) is computed (called at every move)
+            raw_overlay_value = self.getRawImage(
+                filename=filename, yx=(ydata, xdata)
+            )
 
             raw_txt = self._channelHoverValues('Raw', chName, raw_overlay_value)
 
@@ -1143,9 +1155,8 @@ class HoverInfoGuiElements:
 
         posData = self.data[self.pos_i]
 
-        raw_img = self.getRawImage()
-        raw_value = raw_img[ydata, xdata]
-        # raw_max_value = raw_img.max()
+        # Only the value at (y, x) is computed (called at every mouse move)
+        raw_value = self.getRawImage(yx=(ydata, xdata))
 
         ch = self.user_ch_name
         raw_txt = self._channelHoverValues('Raw', ch, raw_value)
@@ -1175,18 +1186,24 @@ class HoverInfoGuiElements:
         if not checked:
             self.clearCursors()
 
-    def getRawImage(self, frame_i=None, filename=None):
+    def getRawImage(self, frame_i=None, filename=None, yx=None):
+        """Return the raw 2D image displayed (or only its value at (y, x)
+        if `yx` is not None, much faster for z-projections)."""
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
         if filename is None:
             rawImgData = posData.img_data[frame_i]
             isLayer0 = True
-        else: 
+        else:
             rawImgData = posData.ol_data[filename][frame_i]
             isLayer0 = False
         if posData.SizeZ > 1:
-            rawImg = self.get_2Dimg_from_3D(rawImgData, isLayer0=isLayer0)
+            rawImg = self.get_2Dimg_from_3D(
+                rawImgData, isLayer0=isLayer0, yx=yx
+            )
+        elif yx is not None:
+            rawImg = rawImgData[yx[0], yx[1]]
         else:
             rawImg = rawImgData
         return rawImg
@@ -1474,8 +1491,16 @@ class SlideshowGuiElements:
 
 class Volume3DViewerGuiElements:
     def launch3dViewerToggled(self, checked):
-        self.logger.info('Launching 3D volume viewer...')
-        
+        msg = 'Launching 3D volume viewer...'
+        self.logger.info(msg)
+        # The measurements viewer has no title label
+        titleLabel = getattr(self, 'titleLabel', None)
+        if titleLabel is not None:
+            titleLabel.setText(msg)
+
+        QTimer.singleShot(300, partial(self._launch3dViewer, checked))
+
+    def _launch3dViewer(self, checked):
         myutils.check_install_package(
             'PyOpenGL',
             import_pkg_name='OpenGL',
@@ -1499,6 +1524,9 @@ class Volume3DViewerGuiElements:
             self._volume_renderer = None
             if volume_renderer is not None:
                 volume_renderer.force_close()
+                # Free the window and the data it references (e.g., the
+                # images, not copied), otherwise kept as child of mainWin
+                volume_renderer.deleteLater()
             return
         
         posData = self.data[self.pos_i]
@@ -1544,10 +1572,18 @@ class Volume3DViewerGuiElements:
             volumes,
             lut_items_states=lut_items_states,
             voxel_size=voxel_size,
+            # The images are not modified while the viewer is open -->
+            # no need to copy them (large timelapses take several GB)
+            copy=False,
+        )
+        # Labels frames beyond the frames of the displayed volumes (e.g.,
+        # segmentation file with more frames than the channel) would
+        # be cropped away by the viewer --> do not collect them
+        num_frames = min(
+            len(posData.segm_data), self._volume_renderer.num_frames
         )
         labels = []
-        max_ID = 1
-        for frame_i in range(len(posData.segm_data)):
+        for frame_i in range(num_frames):
             if frame_i == posData.frame_i:
                 lab = posData.lab
             else:
@@ -1555,14 +1591,22 @@ class Volume3DViewerGuiElements:
                 if lab is None:
                     lab = posData.segm_data[frame_i]
             labels.append(lab)
-            try:
-                max_ID_i = np.max(lab)
-            except Exception as err:
-                max_ID_i = 1
-            if max_ID_i > max_ID:
-                max_ID = max_ID_i
 
-        labels = np.asarray(labels)
+        from cellacdc.volume_renderer import utils as volume_renderer_utils
+
+        # Stack the frames and get their max ID in parallel threads
+        # (large timelapses take several GB)
+        labels = volume_renderer_utils.stack_frames(labels)
+
+        def _get_frame_max_ID(frame_i):
+            try:
+                return np.max(labels[frame_i])
+            except Exception as err:
+                return 1
+
+        max_ID = max([1, *volume_renderer_utils.map_frames(
+            _get_frame_max_ID, len(labels)
+        )])
         lut = self.extendLabelsLUT(max_ID+1, return_lut=True)
         lut = lut[:max_ID+1]
         self._volume_renderer.set_labels(
@@ -1572,15 +1616,25 @@ class Volume3DViewerGuiElements:
             SizeZ=posData.SizeZ,
             font_size=self.fontSizeSpinBox.value(),
             text_color=self.imgGrad.textColorButton.color(),
-        ) 
-        
+            # `labels` is a new array not used anymore here --> no need
+            # to copy it (large timelapses take several GB)
+            copy=False,
+        )
+
         self.addPointsLayersToVolumeViewer(self._volume_renderer)
-        
+
+        # Applied by the renderer once its camera is set up in `show`
+        self._update3DViewerViewRegion()
+
         self._volume_renderer.sigClose.connect(self.onClose3dViewer)
         self._volume_renderer.sigUpdate.connect(self.onUpdate3dViewer)
         self._volume_renderer.run(block=False)
         self._volume_renderer.raise_()
         self._volume_renderer.activateWindow()
+
+        titleLabel = getattr(self, 'titleLabel', None)
+        if titleLabel is not None:
+            titleLabel.setText('3D viewer up and running!')
 
     def onClose3dViewer(self, *args, **kwargs):
         self.launch3dViewerAction.setChecked(False)
@@ -1594,10 +1648,98 @@ class Volume3DViewerGuiElements:
         if volume_renderer is None:
             return
 
+        # The z-slice might be different in the new frame
+        self.update3DViewerViewRegion()
+
         if not volume_renderer.are_frames_synced():
-            return 
-        
+            return
+
         volume_renderer.set_frame_number(self.navigateScrollBar.value())
+
+    def update3DViewerViewRegion(self, *args):
+        """Send the region visible in ax1 to the 3D viewer (if open).
+
+        Calls are throttled because this is called at every view range
+        change (e.g., while panning).
+        """
+        if getattr(self, '_volume_renderer', None) is None:
+            return
+
+        timer = getattr(self, '_update3DViewerViewRegionTimer', None)
+        if timer is None:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(30)
+            timer.timeout.connect(self._update3DViewerViewRegion)
+            self._update3DViewerViewRegionTimer = timer
+
+        # Do not restart an active timer, otherwise the 3D viewer would not
+        # be updated until the user stops panning/zooming. The current
+        # state is read when the timer fires.
+        if not timer.isActive():
+            timer.start()
+
+    def _get3DViewerPlaneDepthSlice(self):
+        """Return the plane displayed in ax1 ('xy', 'zy', or 'zx') and the
+        index of the displayed slice along the perpendicular axis (None for
+        z-projections).
+        """
+        plane = self.switchPlaneCombobox.plane()
+        isSingleSlice = (
+            plane != 'xy'
+            or self.zProjComboBox.currentText() == 'single z-slice'
+        )
+        depthSlice = None
+        if isSingleSlice:
+            depthSlice = self.zSliceScrollBar.sliderPosition()
+
+        return plane, depthSlice
+
+    def _update3DViewerViewRegion(self):
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is None:
+            return
+
+        xRange, yRange = self.ax1.viewRange()
+        plane, depthSlice = self._get3DViewerPlaneDepthSlice()
+
+        volume_renderer.set_parent_view_region(
+            xRange, yRange, plane=plane, depth_slice=depthSlice
+        )
+
+        # The slice (or plane) might have changed --> move the cursor too
+        self._update3DViewerCursor()
+
+    def update3DViewerCursor(self, xy=None):
+        """Show a mirrored cursor in the 3D viewer (if open) at the position
+        `xy` of the mouse cursor on the image. Pass None to hide it.
+
+        Not throttled: the 3D viewer only repaints a small overlay around
+        the cursor (the volumes are not re-rendered).
+        """
+        # Store also when the 3D viewer is closed to avoid showing a stale
+        # position when it is opened
+        self._3DViewerCursorXY = xy
+
+        if getattr(self, '_volume_renderer', None) is None:
+            return
+
+        self._update3DViewerCursor()
+
+    def _update3DViewerCursor(self):
+        volume_renderer = getattr(self, '_volume_renderer', None)
+        if volume_renderer is None:
+            return
+
+        xy = getattr(self, '_3DViewerCursorXY', None)
+        if xy is None:
+            volume_renderer.set_parent_cursor_pos(None, None)
+            return
+
+        plane, depthSlice = self._get3DViewerPlaneDepthSlice()
+        volume_renderer.set_parent_cursor_pos(
+            *xy, plane=plane, depth_slice=depthSlice
+        )
 
 class RegionPropsGuiElements:
     def gui_createRegionPropsDockWidget(self, side=Qt.LeftDockWidgetArea):

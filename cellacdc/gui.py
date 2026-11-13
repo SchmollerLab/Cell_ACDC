@@ -162,6 +162,12 @@ SliderPageStepAdd = QtScoped.SliderPageStepAdd()
 SliderPageStepSub = QtScoped.SliderPageStepSub()
 SliderMove = QtScoped.SliderMove()
 
+# Cell cycle annotations integrity checker threads that did not stop in time
+# (see `guiWin.stopCcaIntegrityCheckerWorker`). Stored at module level and not
+# on the window, because the window can be garbage collected before these
+# threads finish and destroying a running QThread aborts the process
+CCA_CHECKER_ORPHAN_THREADS = []
+
 def qt_debug_trace():
     from qtpy.QtCore import pyqtRemoveInputHook
     pyqtRemoveInputHook()
@@ -404,6 +410,7 @@ class guiWin(
         self.exportToImageWindow = None
         self.customAnnotButton = None
         self.ccaCheckerRunning = False
+        self.isCancellingModeInit = False
         self.isDataLoaded = False
         self.highlightedID = 0
         self.hoverLabelID = 0
@@ -1134,19 +1141,23 @@ class guiWin(
 
         self._busyTimer.stop()
         self._releaseWaitOverride()
-        self.unsetCursor()
+        # Called at every mouse move --> avoid needless (platform) cursor
+        # changes
+        if self.cursor().shape() != Qt.CursorShape.ArrowCursor:
+            self.unsetCursor()
 
         isHoverImg1 = self._cursorHoverImage
         if isHoverImg1 is None:
             return
 
-        if self.app.overrideCursor() == Qt.SizeAllCursor:
+        overrideCursor = self.app.overrideCursor()
+        if overrideCursor == Qt.SizeAllCursor:
             return
 
         cursor = self.gui_getToolCursor(isHoverImg1)
-        if self.app.overrideCursor() is None:
+        if overrideCursor is None:
             self.app.setOverrideCursor(cursor)
-        else:
+        elif not qutils.is_same_cursor(overrideCursor, cursor):
             self.app.changeOverrideCursor(cursor)
 
     def gui_createMenuBar(self):
@@ -2180,6 +2191,9 @@ class guiWin(
         self.setStatusBarLabel(log=False)
     
     def ccaCheckerWorkerDone(self):
+        if not hasattr(self, 'data'):
+            # Signal delivered after closing the window (data cleared)
+            return
         self.setStatusBarLabel(log=False)
     
     def preprocWorkerIsQueueEmpty(self, isEmpty: bool):
@@ -2288,8 +2302,12 @@ class guiWin(
        
     def goToFrameNumber(self, frame_n):
         posData = self.data[self.pos_i]
+        prev_frame_i = posData.frame_i
         posData.frame_i = frame_n - 1
-        self.get_data()
+        proceed_cca, _ = self.get_data()
+        if not self.restorePrevFrameIfNotProceed(proceed_cca, prev_frame_i):
+            return
+
         self.updateAllImages()
         self.updateScrollbars()
     
@@ -2345,6 +2363,10 @@ class guiWin(
 
     def ccaCheckerWorkerClosed(self, worker):
         self.logger.info('Cell cycle annotations integrity checker stopped.') 
+        if worker is not getattr(self, 'ccaIntegrityCheckerWorker', None):
+            # Previous worker that finished after a new one was started
+            # --> do not mark the new one as not running
+            return
         self.ccaCheckerRunning = False           
     
     def preprocWorkerClosed(self, worker):
@@ -3140,8 +3162,9 @@ When working with 3D segmentation masks:
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
-        # Permanent widget
-        self.wcLabel = QLabel('')
+        # Permanent widget. Its text is updated at every mouse move -->
+        # fixed size (growing only) to avoid re-layouting the main window
+        self.wcLabel = widgets.AutoGrowFixedSizeLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
 
         # self.toggleTerminalButton = widgets.ToggleTerminalButton()
@@ -3691,7 +3714,8 @@ When working with 3D segmentation masks:
     
     def clearCursors(self):
         self.ax1_cursor.setData([], [])
-        self.ax2_cursor.setData([], [])              
+        self.ax2_cursor.setData([], [])
+        self.update3DViewerCursor(None)
         self.setHoverToolSymbolData(
             [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
         )  
@@ -4083,7 +4107,7 @@ When working with 3D segmentation masks:
         if 'is_cca_integrity_checker_activated' in self.df_settings.index:
             idx = 'is_cca_integrity_checker_activated'
             val = int(self.df_settings.at[idx, 'value'])
-            self.ccaIntegrCheckerToggle.setChecked(not val)
+            self.ccaIntegrCheckerToggle.setChecked(bool(val))
         
         self.annotLostObjsToggle = widgets.Toggle()
         annotLostObjsToggleTooltip = (
@@ -4396,6 +4420,12 @@ When working with 3D segmentation masks:
 
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
+        # pyqtgraph ignores high-frequency mouse moves --> make sure the
+        # last one is delivered (otherwise the hover position, e.g., of
+        # the mirrored cursors, is stale when the mouse stops)
+        self.mouseMoveTrailingEdgeFilter = widgets.MouseMoveTrailingEdgeFilter(
+            self.graphLayout
+        )
         if self.invertBwAction.isChecked():
             self.graphLayout.setBackground(graphLayoutBkgrColor)
             self.titleColor = 'black'
@@ -6186,6 +6216,15 @@ When working with 3D segmentation masks:
             
         if not event.isExit() and self.slideshowWin is not None:
             self.slideshowWin.setMirroredCursorPos(*event.pos())
+
+        setMirroredCursor3D = (
+            not event.isExit() and self.showMirroredCursorAction.isChecked()
+        )
+        if setMirroredCursor3D:
+            x, y = event.pos()
+            self.update3DViewerCursor((x, y))
+        else:
+            self.update3DViewerCursor(None)
         
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
@@ -6357,21 +6396,23 @@ When working with 3D segmentation masks:
         except Exception as e:
             pass
 
-        self.ax2_cursor = pg.ScatterPlotItem(
-            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+        # Moved at every mouse move --> lightweight item (much faster than
+        # a pg.ScatterPlotItem)
+        self.ax2_cursor = widgets.MirroredCursorItem(
+            symbol=MIRRORED_CURSOR_PG_SYMBOL,
+            size=FINAL_SIZE_CURSOR // 2,
             pen=pg.mkPen('w', width=1),
-            brush=pg.mkBrush((255, 255, 255, 70)), 
-            size=FINAL_SIZE_CURSOR // 2, tip=None
+            brush=pg.mkBrush((255, 255, 255, 70)),
         )
-        self.ax2.addItem(self.ax2_cursor)
+        self.ax2.addItem(self.ax2_cursor, ignoreBounds=True)
 
-        self.ax1_cursor = pg.ScatterPlotItem(
-            symbol=MIRRORED_CURSOR_PG_SYMBOL, pxMode=True, 
+        self.ax1_cursor = widgets.MirroredCursorItem(
+            symbol=MIRRORED_CURSOR_PG_SYMBOL,
+            size=FINAL_SIZE_CURSOR // 2,
             pen=pg.mkPen('w', width=1),
-            brush=pg.mkBrush((255, 255, 255, 70)), 
-            size=FINAL_SIZE_CURSOR // 2, tip=None
+            brush=pg.mkBrush((255, 255, 255, 70)),
         )
-        self.ax1.addItem(self.ax1_cursor)
+        self.ax1.addItem(self.ax1_cursor, ignoreBounds=True)
 
     def gui_setCursor(self, modifiers, event, isHoverImg1=True):
         noModifier = modifiers == Qt.NoModifier
@@ -9732,11 +9773,20 @@ When working with 3D segmentation masks:
             self.ax2_lostTrackedScatterItem.setVisible(True)
 
         for item in ScatterItems:
+            isAlreadyEmpty = (
+                not xx
+                and isinstance(item, pg.ScatterPlotItem)
+                and len(item.data) == 0
+            )
+            if isAlreadyEmpty:
+                # Called at every mouse move. Setting empty data again
+                # would repaint the region at the origin of the image
+                continue
             if size is None:
                 item.setData(xx, yy)
             else:
                 item.setData(xx, yy, size=size)
-    
+
     def updateLabelRoiCircularSize(self, value):
         self.labelRoiCircItemLeft.setSize(value)
         self.labelRoiCircItemRight.setSize(value)
@@ -10705,6 +10755,9 @@ When working with 3D segmentation masks:
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
+
+        if frame_i == 0:
+            return
 
         moth_bud_pairs_cca = (
             posData.allData_li[frame_i-1].get('moth_bud_pairs_cca')
@@ -13034,7 +13087,7 @@ When working with 3D segmentation masks:
         mode = text
         prevMode = self.modeComboBox.previousText()
         self.annotateToolbar.setVisible(False)
-        if prevMode != 'Viewer':
+        if prevMode != 'Viewer' and not self.isCancellingModeInit:
             self.store_data(autosave=True)
             
         self.copyLostObjButton.setChecked(False)
@@ -13505,7 +13558,14 @@ When working with 3D segmentation masks:
 
             self.updateAllImages()
             self.updateScrollbars()
-            self.ax1.sigRangeChanged.disconnect()
+            # Disconnect only this slot, a bare `disconnect()` would also
+            # disconnect `viewRangeChanged`
+            try:
+                self.ax1.sigRangeChanged.disconnect(
+                    self.highlightManualAnnotMode
+                )
+            except (TypeError, RuntimeError):
+                pass
             self.ax1.setHighlighted(False)
             
             self.warnLostCellsAction.setChecked(
@@ -13599,7 +13659,14 @@ When working with 3D segmentation masks:
             self.get_data()
             self.updateAllImages()
             self.updateScrollbars()
-            self.ax1.sigRangeChanged.disconnect()
+            # Disconnect only this slot, a bare `disconnect()` would also
+            # disconnect `viewRangeChanged`
+            try:
+                self.ax1.sigRangeChanged.disconnect(
+                    self.highlightManualAnnotMode
+                )
+            except (TypeError, RuntimeError):
+                pass
             self.ax1.setHighlighted(False)
             QTimer.singleShot(150, self.autoRange)
         
@@ -15151,9 +15218,15 @@ When working with 3D segmentation masks:
         if not getattr(self, 'isDataLoaded', False):
             return super().eventFilter(obj, ev)
 
-        if ev.type() == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
+        evType = ev.type()
+        if evType == QtScoped.QEventTypeAttribute('MouseButtonRelease'):
             self.onMouseRelease()
-        
+
+        if evType not in (QEvent.Type.MouseButtonPress, QEvent.Type.KeyPress):
+            # Installed on the app (all events, e.g., ~40 per mouse move)
+            # --> return early for the events that are not handled below
+            return super().eventFilter(obj, ev)
+
         widgetWithFocus = QApplication.focusWidget()
         if widgetWithFocus is not None:
             widgetClassesFilteringEvent = (
@@ -17681,11 +17754,17 @@ When working with 3D segmentation masks:
             self.lazyLoader.pause()
         raise error
     
-    def ccaIntegrityWorkerCritical(self, error):
-        try:
-            raise error
-        except Exception as err:
-            self.logger.exception(traceback.format_exc())
+    def ccaIntegrityWorkerCritical(self, out: Tuple[QObject, Exception]):
+        worker, error = out
+        traceback_str = ''.join(traceback.format_exception(
+            type(error), error, error.__traceback__
+        ))
+        self.logger.error(traceback_str)
+
+        if worker is not getattr(self, 'ccaIntegrityCheckerWorker', None):
+            # Error from a previous worker that was already replaced
+            # --> do not stop the current one
+            return
         
         href = f'<a href="{issues_url}">GitHub page</a>'
         txt = html_utils.paragraph(f"""
@@ -17706,6 +17785,14 @@ When working with 3D segmentation masks:
             path_to_browse=self.logs_path
         )
         self.disableCcaIntegrityChecker()
+
+        # Switch the toggle off for this session (without saving the
+        # setting), as stated in the message above. Otherwise the checker
+        # would be restarted (and fail again) every time the user enters
+        # the "Cell cycle analysis" mode
+        self.ccaIntegrCheckerToggle.blockSignals(True)
+        self.ccaIntegrCheckerToggle.setChecked(False)
+        self.ccaIntegrCheckerToggle.blockSignals(False)
         
     def workerLog(self, text):
         self.logger.info(text)
@@ -20339,6 +20426,8 @@ When working with 3D segmentation masks:
             self.updateObjectCounts()
             self.editIDToolbar.setCurrentZslice(z, posData.SizeZ)
 
+        self.update3DViewerViewRegion()
+
     def updateZproj(self, how):
         for p, posData in enumerate(self.data[self.pos_i:]):
             if self.zProjLockViewButton.isChecked():
@@ -20357,6 +20446,8 @@ When working with 3D segmentation masks:
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
             self.updateAllImages()
+
+        self.update3DViewerViewRegion()
 
     def setZSliceWidgetsEnabled(self, how):
         posData = self.data[self.pos_i]
@@ -20780,6 +20871,30 @@ When working with 3D segmentation masks:
         elif action == SliderPageStepSub:
             self.framesScrollBarReleased(do_store_data=True)
 
+    def restorePrevFrameIfNotProceed(self, proceed_cca, prev_frame_i):
+        """Go back to `prev_frame_i` if `get_data` could not load the
+        requested frame (`proceed_cca` is False, e.g., frame never checked
+        in "Segmentation and Tracking" mode while in "Cell cycle analysis"
+        mode). In that case `get_data` returns early and the data of the
+        previous frame would otherwise be displayed and stored as the data
+        of the requested frame.
+
+        Returns
+        -------
+        bool
+            True if the requested frame was loaded, False if we went back
+            to `prev_frame_i`.
+        """
+        if proceed_cca:
+            return True
+
+        posData = self.data[self.pos_i]
+        posData.frame_i = prev_frame_i
+        self.get_data()
+        self.resetNavigateFramesScrollbar()
+        self.updateFramePosLabel()
+        return False
+
     def framesScrollBarMoved(self, frame_n):
         if self.navigateScrollBarStartedMoving:
             mode = str(self.modeComboBox.currentText())
@@ -20787,8 +20902,13 @@ When working with 3D segmentation masks:
                 self.store_data(debug=False)
                 
         posData = self.data[self.pos_i]
+        prev_frame_i = posData.frame_i
         posData.frame_i = frame_n-1
-        self.get_data()
+        proceed_cca, _ = self.get_data()
+        if not self.restorePrevFrameIfNotProceed(proceed_cca, prev_frame_i):
+            self.navigateScrollBarStartedMoving = False
+            return
+
         self.updateLostNewCurrentIDs()
         self.updateAllImages()
         self.updateFramePosLabel()
@@ -20811,9 +20931,13 @@ When working with 3D segmentation masks:
             self.store_data(debug=False)
             
         self.navigateScrollBarStartedMoving = True
+        prev_frame_i = posData.frame_i
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
+        if not self.restorePrevFrameIfNotProceed(proceed_cca, prev_frame_i):
+            return
+
         if do_store_data:
             self.updateLostNewCurrentIDs()
         self.updateLostNewCurrentIDs()
@@ -21356,28 +21480,36 @@ When working with 3D segmentation masks:
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
         
+        # Collect only the frames that were actually annotated. Frames
+        # without annotations are skipped (do not fill them with
+        # placeholders, e.g. '' strings, because they would be propagated
+        # to the initialized frames and corrupt the annotations)
         annotated_cca_dfs = []
+        keys = []
         for frame_i in range(last_cca_frame_i+1):
             acdc_df = posData.allData_li[frame_i]['acdc_df']
-            if 'cell_cycle_stage' in acdc_df.columns:
+            if acdc_df is None:
                 continue
             
-            acdc_df[self.cca_df_colnames] = ''
+            if 'cell_cycle_stage' not in acdc_df.columns:
+                continue
         
-        annotated_cca_dfs = [
-            posData.allData_li[i]['acdc_df'][self.cca_df_colnames]
-            for i in range(last_cca_frame_i+1)
-        ]
-        keys = range(last_cca_frame_i+1)
-        names = ['frame_i', 'Cell_ID']
-        annotated_cca_df = (
-            pd.concat(annotated_cca_dfs, keys=keys, names=names)
-            .reset_index()
-            .set_index(['Cell_ID', 'frame_i'])
-            .sort_index()
-        )
+            annotated_cca_dfs.append(
+                acdc_df.reindex(columns=self.cca_df_colnames)
+            )
+            keys.append(frame_i)
         
-        last_annotated_cca_df = annotated_cca_df.groupby(level=0).last()
+        last_annotated_cca_df = None
+        if annotated_cca_dfs:
+            names = ['frame_i', 'Cell_ID']
+            annotated_cca_df = (
+                pd.concat(annotated_cca_dfs, keys=keys, names=names)
+                .reset_index()
+                .set_index(['Cell_ID', 'frame_i'])
+                .sort_index()
+            )
+            last_annotated_cca_df = annotated_cca_df.groupby(level=0).last()
+
         cca_df_colnames = self.cca_df_colnames
         pbar = tqdm(total=current_frame_i-last_cca_frame_i+1, ncols=100)
         for frame_i in range(last_cca_frame_i, current_frame_i+1):
@@ -21385,8 +21517,15 @@ When working with 3D segmentation masks:
             self.get_data()
             cca_df = self.getBaseCca_df()
 
-            idx = last_annotated_cca_df.index.intersection(cca_df.index)
-            cca_df.loc[idx, cca_df_colnames] = last_annotated_cca_df.loc[idx]
+            if last_annotated_cca_df is not None:
+                idx = last_annotated_cca_df.index.intersection(cca_df.index)
+                # Values missing in the annotations are taken from the
+                # base (default) annotations
+                last_annotated = (
+                    last_annotated_cca_df.loc[idx, cca_df_colnames]
+                    .combine_first(cca_df.loc[idx, cca_df_colnames])
+                )
+                cca_df.loc[idx, cca_df_colnames] = last_annotated
 
             self.store_cca_df(cca_df=cca_df, frame_i=frame_i, autosave=False)
             pbar.update()
@@ -22224,16 +22363,13 @@ When working with 3D segmentation masks:
     def get_last_cca_frame_i(self):
         posData = self.data[self.pos_i]
         
-        i = 0
-        # Determine last annotated frame index
+        # Determine last annotated frame index (0 if no frame is annotated)
+        last_cca_frame_i = len(posData.allData_li) - 1
         for i, dict_frame_i in enumerate(posData.allData_li):
             df = dict_frame_i['acdc_df']
-            if df is None:
+            if df is None or 'cell_cycle_stage' not in df.columns:
+                last_cca_frame_i = max(i-1, 0)
                 break
-            elif 'cell_cycle_stage' not in df.columns:
-                break
-        
-        last_cca_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1  
         
         return last_cca_frame_i
     
@@ -22294,6 +22430,22 @@ When working with 3D segmentation masks:
             f'Last checked frame n. = {last_tracked_i+1}'
         )
     
+    def cancelModeInit(self, defaultMode='Viewer'):
+        """Switch to `defaultMode` after the initialization of a mode (e.g.,
+        "Cell cycle analysis") was cancelled.
+
+        Data is not stored on this mode change because the cancelled mode
+        was never active. The mode change that started the initialization
+        already stored the data according to the actual previous mode.
+        Storing here would mark the current frame as checked, even if it
+        was only visited in "Viewer" mode.
+        """
+        self.isCancellingModeInit = True
+        try:
+            self.modeComboBox.setCurrentText(defaultMode)
+        finally:
+            self.isCancellingModeInit = False
+
     @exception_handler
     def initCca(self):
         posData = self.data[self.pos_i]
@@ -22312,7 +22464,7 @@ When working with 3D segmentation masks:
             msg.critical(
                 self, 'Tracking was never checked', txt
             )
-            self.modeComboBox.setCurrentText(defaultMode)
+            self.cancelModeInit(defaultMode)
             return
 
         proceed = True
@@ -22327,17 +22479,40 @@ When working with 3D segmentation masks:
         if posData.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
             msg = widgets.myMessageBox()
-            txt = html_utils.paragraph(f"""
-                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
-                Do you want to restart cell cycle analysis from frame 
-                {last_cca_frame_i+1}?<br>
-            """)
-            _, goToFrameButton, stayButton = msg.warning(
+            # Cell cycle analysis cannot start from a frame that was never
+            # checked in "Segmentation and Tracking" mode (e.g., after
+            # visiting it in "Viewer" mode) --> do not offer to stay
+            canStayOnCurrentFrame = posData.frame_i <= last_tracked_i
+            if canStayOnCurrentFrame:
+                txt = html_utils.paragraph(f"""
+                    The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
+                    Do you want to restart cell cycle analysis from frame
+                    {last_cca_frame_i+1}?<br>
+                """)
+                buttonsTexts = (
+                    'Cancel', f'Yes, go to frame {last_cca_frame_i+1}',
+                    'No, stay on current frame'
+                )
+            else:
+                txt = html_utils.paragraph(f"""
+                    The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br><br>
+                    The current frame (n. {posData.frame_i+1}) was
+                    <b>never checked</b> in "Segmentation and Tracking" mode
+                    (last checked frame is n. {last_tracked_i+1}),
+                    therefore cell cycle analysis cannot start from the
+                    current frame.<br><br>
+                    Do you want to restart cell cycle analysis from frame
+                    {last_cca_frame_i+1}?<br>
+                """)
+                buttonsTexts = (
+                    'Cancel', f'Yes, go to frame {last_cca_frame_i+1}'
+                )
+            buttons = msg.warning(
                 self, 'Go to last annotated frame?', txt, 
-                buttonsTexts=(
-                    'Cancel', f'Yes, go to frame {last_cca_frame_i+1}', 
-                    'No, stay on current frame')
+                buttonsTexts=buttonsTexts
             )
+            goToFrameButton = buttons[1]
+            stayButton = buttons[2] if canStayOnCurrentFrame else None
             if goToFrameButton == msg.clickedButton:
                 self.addMissingIDs_cca_df(posData)
                 msg = 'Looking good!'
@@ -22350,7 +22525,7 @@ When working with 3D segmentation masks:
                 self.updateAllImages()
                 self.updateScrollbars()
                 self.updateSingleMotherBudPairLastAnnotatedFrame()
-            elif stayButton == msg.clickedButton:
+            elif stayButton is not None and stayButton == msg.clickedButton:
                 self.addMissingIDs_cca_df(posData)
                 self.store_cca_df()
                 self.initMissingFramesCca(last_cca_frame_i, posData.frame_i)
@@ -22362,7 +22537,7 @@ When working with 3D segmentation masks:
                 msg = 'Cell cycle analysis cancelled.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
+                self.cancelModeInit(defaultMode)
                 proceed = False
                 return
         elif posData.frame_i < last_cca_frame_i:
@@ -22381,7 +22556,7 @@ When working with 3D segmentation masks:
                 msg = 'Cell cycle analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
+                self.cancelModeInit(defaultMode)
                 proceed = False
                 return
             
@@ -22462,7 +22637,7 @@ When working with 3D segmentation masks:
             msg.critical(
                 self, 'Tracking was never checked', txt
             )
-            self.modeComboBox.setCurrentText(defaultMode)
+            self.cancelModeInit(defaultMode)
             return
 
         proceed = True
@@ -22515,7 +22690,7 @@ When working with 3D segmentation masks:
                 msg = 'Lineage tree analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
+                self.cancelModeInit(defaultMode)
                 proceed = False
                 return
             
@@ -22543,7 +22718,7 @@ When working with 3D segmentation masks:
                 msg = 'Lineage tree analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(defaultMode)
+                self.cancelModeInit(defaultMode)
                 proceed = False
                 return
         else:
@@ -25744,7 +25919,14 @@ When working with 3D segmentation masks:
         else:
             return posData.ol_data_dict.get(filename)
 
-    def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None):
+    def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None, yx=None):
+        """Return the 2D image displayed from the 3D `imgData` (slice or
+        z-projection depending on the GUI settings).
+
+        If `yx` is not None, return only the value at (y, x) of the 2D image,
+        which is much faster than computing the whole 2D image (e.g.,
+        a z-projection of the whole z-stack).
+        """
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
@@ -25752,7 +25934,7 @@ When working with 3D segmentation masks:
             frame_i = 0
             frame_i = posData.frame_i = 0
         
-        img = self.get_2Dimg_from_switched_plane(imgData)
+        img = self.get_2Dimg_from_switched_plane(imgData, yx=yx)
         if img is not None:
             return img
         
@@ -25771,6 +25953,10 @@ When working with 3D segmentation masks:
                 zProjHow = zProjHow_L0
             else:
                 zProjHow = zProjHow_L1
+        
+        if yx is not None:
+            # Only the z-column at (y, x)
+            imgData = imgData[:, yx[0], yx[1]]
         
         return self.zProjectImage(imgData, zProjHow, z)
 
@@ -27394,9 +27580,8 @@ When working with 3D segmentation masks:
             compute=False
         )
 
-        mode = self.modeComboBox.currentText()
         self.drawAllMothBudLines()
-        if mode == 'Normal division: Lineage tree':
+        if self.isLineageTreeLinesModeActive():
             self.drawAllLineageTreeLines()
 
         self.highlightLostNew()      
@@ -29802,6 +29987,11 @@ When working with 3D segmentation masks:
         if not self.ccaIntegrCheckerToggle.isChecked():
             return
         
+        # The previous checker thread must be finished before we replace
+        # it, because destroying a running QThread aborts the process
+        # (GitHub issue #1299)
+        self.stopCcaIntegrityCheckerWorker(wait=True)
+
         ccaCheckerThread = QThread()
         self.ccaCheckerMutex = QMutex()
         self.ccaCheckerWaitCond = QWaitCondition()
@@ -29845,26 +30035,84 @@ When working with 3D segmentation masks:
         
         self.enqCcaIntegrityChecker()
     
-    def initCcaIntegrityChecker(self):
-        posData = self.data[self.pos_i]
-        for frame_i, data_frame_i in enumerate(posData.allData_li):
-            lab = data_frame_i['labels']
-            if lab is None:
-                break
-            
-            cca_df = self.get_cca_df(frame_i, return_df=True)
-            self.store_cca_df_checker(posData, frame_i, cca_df)
-        
-        self.enqCcaIntegrityChecker()
-    
     def disableCcaIntegrityChecker(self):
         self.stopCcaIntegrityCheckerWorker()
     
-    def stopCcaIntegrityCheckerWorker(self):
+    def stopCcaIntegrityCheckerWorker(self, wait=False, timeout_ms=5000):
+        """Stop the cell cycle annotations integrity checker worker and quit
+        its thread.
+
+        Parameters
+        ----------
+        wait : bool, optional
+            If True, block until the thread has finished (at most
+            `timeout_ms`). Required before replacing or releasing the
+            thread, because destroying a QThread that is still running
+            aborts the process (GitHub issue #1299). Default is False
+        timeout_ms : int, optional
+            Maximum time in milliseconds to wait for the thread. If the
+            thread is still running after that, a reference to it is kept
+            to prevent its destruction. Default is 5000
+        """
+        # Do not enqueue new checks to the stopping worker
+        self.ccaCheckerRunning = False
+
+        worker = getattr(self, 'ccaIntegrityCheckerWorker', None)
+        if worker is not None:
+            try:
+                worker.abort()
+            except Exception as err:
+                pass
+
+        if wait:
+            self.waitCcaCheckerOrphanThreads(timeout_ms=0)
+
+        thread = getattr(self, 'ccaCheckerThread', None)
+        if thread is None:
+            return
+
         try:
-            self.ccaIntegrityCheckerWorker._stop()
-        except Exception as err:
-            pass
+            # Quit the thread's event loop also when `worker.finished`
+            # (connected to `thread.quit`) was not emitted
+            thread.quit()
+            if not wait:
+                return
+
+            # Always wait, without checking `isRunning` first: `isRunning`
+            # is already False while the thread is still finishing and
+            # releasing the thread at that moment deadlocks. `wait` releases
+            # the GIL and returns immediately if the thread is finished
+            if thread.wait(timeout_ms):
+                return
+        except RuntimeError:
+            # The C++ thread was already deleted (finished --> deleteLater)
+            return
+
+        self.logger.info(
+            '[WARNING]: Cell cycle annotations integrity checker did not '
+            f'stop within {timeout_ms} ms.'
+        )
+        # Keep a reference to prevent destroying a running thread
+        CCA_CHECKER_ORPHAN_THREADS.append(thread)
+
+    def waitCcaCheckerOrphanThreads(self, timeout_ms=5000):
+        """Wait for the checker threads that did not stop in time (see
+        `stopCcaIntegrityCheckerWorker`) and release the finished ones.
+
+        Threads are released only after `wait` returned True. Releasing
+        them earlier (e.g., from a slot connected to `finished`) could
+        destroy them while they are still finishing.
+        """
+        stillRunning = []
+        for thread in CCA_CHECKER_ORPHAN_THREADS:
+            try:
+                thread.quit()
+                if not thread.wait(timeout_ms):
+                    stillRunning.append(thread)
+            except RuntimeError:
+                # Thread already deleted
+                pass
+        CCA_CHECKER_ORPHAN_THREADS[:] = stillRunning
     
     def labelRoiCancelled(self):
         self.labelRoiRunning = False
@@ -30016,25 +30264,58 @@ When working with 3D segmentation masks:
             self.annotIDsCheckbox(1).setChecked(False)
             return True
 
+    def storeAnnotOptionsBeforeModeSwitch(self):
+        """Store the current annotation options so that they can be restored
+        when leaving the mode (see `restorePrevAnnotOptions`), and uncheck
+        "Do not annotate" so the mode-specific options can be set.
+        """
+        # Only the left image options are set by the modes and restored by
+        # `restorePrevAnnotOptions`. The right image options are changed
+        # too only when they are linked to the left ones (i.e., right image
+        # controls are not independent), otherwise leave them untouched.
+        doNotAnnotLeftCheckbox = self.annotDoNotAnntoateCheckbox(0)
+        doNotAnnotRightCheckbox = self.annotDoNotAnntoateCheckbox(1)
+        isRightLinked = doNotAnnotLeftCheckbox.isLinkedTo(
+            doNotAnnotRightCheckbox
+        )
+
+        self.prevAnnotOptions = {0: self.getCurrentAnnotOptions(0)}
+
+        # The options are now stored in `prevAnnotOptions`. Clear the
+        # options to restore, otherwise unchecking "Do not annotate"
+        # (also when it happens because a mutually exclusive option is
+        # checked) would restore them while the mode-specific options
+        # are being set (see `onDoNotAnnotateChecked`)
+        self.annotOptionsToRestore[0] = {}
+        if isRightLinked:
+            self.annotOptionsToRestore[1] = {}
+
+        # If linked, this unchecks the right image checkbox too
+        doNotAnnotLeftCheckbox.setChecked(False)
+
+        # Keep the double space bar state only if the (independent) right
+        # image is still not annotated, so that the next double space bar
+        # press restores its options
+        self.doubleSpaceBarState = (
+            self.doubleSpaceBarState and doNotAnnotRightCheckbox.isChecked()
+        )
+
     def setAnnotOptionsCcaMode(self):
-        self.storeCurrentAnnotationsOptions()
-        self.prevAnnotOptions = {
-            0: self.annotOptionsToRestore[0].copy(),
-            1: self.annotOptionsToRestore[1].copy(),
-        }
-        self.annotCellCycleInfoCheckbox(0).setChecked(True)
-        self.annotIDsCheckbox(0).setChecked(False)
-        self.annotMotherDaughterLineCheckbox(0).setChecked(True)
-    
+        self.storeAnnotOptionsBeforeModeSwitch()
+        # Use `setCheckedAlwaysEmit` so that the slots are called (and the
+        # annotations updated) even if the checkboxes are already in the
+        # requested state. Uncheck first, because the slot of an unchecked
+        # text annotation option clears all the text annotations.
+        self.annotIDsCheckbox(0).setCheckedAlwaysEmit(False)
+        self.annotCellCycleInfoCheckbox(0).setCheckedAlwaysEmit(True)
+        self.annotMotherDaughterLineCheckbox(0).setCheckedAlwaysEmit(True)
+
     def setAnnotOptionsLin_treeMode(self):
-        self.storeCurrentAnnotationsOptions()
-        self.prevAnnotOptions = {
-            0: self.annotOptionsToRestore[0].copy(),
-            1: self.annotOptionsToRestore[1].copy(),
-        }
-        self.annotLineageInfoCheckbox(0).setChecked(True)
-        self.annotIDsCheckbox(0).setChecked(False)
-        self.annotMotherDaughterLineCheckbox(0).setChecked(True)
+        self.storeAnnotOptionsBeforeModeSwitch()
+        # See comment in `setAnnotOptionsCcaMode`
+        self.annotIDsCheckbox(0).setCheckedAlwaysEmit(False)
+        self.annotLineageInfoCheckbox(0).setCheckedAlwaysEmit(True)
+        self.annotMotherDaughterLineCheckbox(0).setCheckedAlwaysEmit(True)
         
     def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
@@ -31900,7 +32181,8 @@ When working with 3D segmentation masks:
         
         self.stopPreprocWorker()
         self.stopCombineWorker()
-        self.stopCcaIntegrityCheckerWorker()
+        self.stopCcaIntegrityCheckerWorker(wait=True)
+        self.waitCcaCheckerOrphanThreads()
         self.stopModelExecutions()
         
         # Close the inifinte loop of the thread

@@ -107,7 +107,7 @@ def _warn_ask_install_package(
     
     message_on_exit = (
         '[WARNING]: Execution aborted. Run the following commands before '
-        f'running spotMAX again:\n\n{commands_txt}\n'
+        f'running {caller} again:\n\n{commands_txt}\n'
     )
     msg_on_invalid = (
         '$answer is not a valid answer. '
@@ -118,7 +118,7 @@ def _warn_ask_install_package(
             answer = input(question)
             if answer == 'q':
                 print(open_str)
-                exit(message_on_exit)
+                sys.exit(message_on_exit)
             elif answer == '1':
                 break
             else:
@@ -126,9 +126,11 @@ def _warn_ask_install_package(
                 print(msg_on_invalid.replace('$answer', answer))
                 print(sep_str)
     except Exception as err:
+        # Asking failed (e.g., no interactive console, where `input` raises
+        # EOFError) --> abort instead of installing without consent
         traceback.print_exc()
         print(open_str)
-        print(message_on_exit)
+        sys.exit(message_on_exit)
 
 def _run_pip_commands(commands: Iterable[str]):
     import subprocess

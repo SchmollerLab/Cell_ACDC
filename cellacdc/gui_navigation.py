@@ -168,15 +168,22 @@ class ZsliceNavigationGuiElements:
             
         return z_slice
     
-    def get_2Dimg_from_switched_plane(self, imgData):
-        """Return the 2D image sliced along the depth axis selected with 
-        `self.switchPlaneCombobox` or None if the viewed plane is 'xy'
+    def get_2Dimg_from_switched_plane(self, imgData, yx=None):
+        """Return the 2D image sliced along the depth axis selected with
+        `self.switchPlaneCombobox` or None if the viewed plane is 'xy'.
+
+        If `yx` is not None, return only the value at (y, x) of that 2D
+        image.
         """
         axis_slice = self.zSliceScrollBar.sliderPosition()
         depthAxes = self.switchPlaneCombobox.depthAxes()
         if depthAxes == 'x':
+            if yx is not None:
+                return imgData[yx[0], yx[1], axis_slice]
             return imgData[:, :, axis_slice].copy()
         elif depthAxes == 'y':
+            if yx is not None:
+                return imgData[yx[0], axis_slice, yx[1]]
             return imgData[:, axis_slice].copy()
     
     @staticmethod

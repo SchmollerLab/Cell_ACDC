@@ -45,7 +45,7 @@ from qtpy.QtGui import (
     QRegularExpressionValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QDesktopServices, QFontMetrics, QGuiApplication, QLinearGradient,
     QImage, QCursor, QPicture, QStandardItemModel, QStandardItem, QTextDocument,
-    QValidator, QIntValidator
+    QValidator, QIntValidator, QMouseEvent, QPainterPath, QTransform
 )
 from qtpy.QtWidgets import (
     QColorDialog, QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -58,6 +58,7 @@ from qtpy.QtWidgets import (
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter,
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
+    QGraphicsPathItem,
     QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
     QStyleOptionViewItem, QAbstractButton, QTreeView
 )
@@ -799,6 +800,33 @@ class showDetailsButton(PushButton):
         pixmap = icon.pixmap(QSize(12, 8))
         self.iconLabel.setPixmap(pixmap)
 
+    def _widestTextExtraWidth(self):
+        # Extra width needed to fit the widest of the "Show" and "Hide"
+        # texts, so that the button does not change width when toggled
+        fm = self.textLabel.fontMetrics()
+        currentWidth = fm.horizontalAdvance(self.textLabel.text())
+        widestWidth = max(
+            fm.horizontalAdvance(self.txt),
+            fm.horizontalAdvance(self.checkedText)
+        )
+        return max(0, widestWidth - currentWidth)
+
+    def sizeHint(self):
+        # QPushButton.sizeHint ignores the internal layout (text is set on
+        # the child label) --> include the layout's size hint
+        layoutHint = self.layout().sizeHint()
+        layoutHint.setWidth(
+            layoutHint.width() + self._widestTextExtraWidth()
+        )
+        return super().sizeHint().expandedTo(layoutHint)
+
+    def minimumSizeHint(self):
+        layoutMinSize = self.layout().minimumSize()
+        layoutMinSize.setWidth(
+            layoutMinSize.width() + self._widestTextExtraWidth()
+        )
+        return super().minimumSizeHint().expandedTo(layoutMinSize)
+
     def onClicked(self, checked):
         if checked:
             self.textLabel.setText(self.checkedText)
@@ -807,6 +835,7 @@ class showDetailsButton(PushButton):
             self.textLabel.setText(self.txt)
             self._setIcon(self.uncheckedIcon)
 
+        self.updateGeometry()
         self.sigToggled.emit(checked)
 
 class cancelPushButton(PushButton):
@@ -2026,7 +2055,31 @@ class CheckBox(QCheckBox):
         self.blockSignals(True)
         self.setChecked(checked)
         self.blockSignals(False)
-    
+
+    def setCheckedAlwaysEmit(self, checked: bool):
+        """Set the checked state and emit `sigToggled` even if the state
+        does not change.
+
+        `setChecked` emits `toggled` (and hence `sigToggled`) only when the
+        state actually changes. Use this method when the slots connected to
+        `sigToggled` must run regardless (e.g., to refresh what they display).
+        Linked checkboxes are treated the same way.
+        """
+        if self.isChecked() != checked:
+            self.setChecked(checked)
+            return
+
+        for checkbox in self._linkedCheckboxes.values():
+            if checkbox.isChecked() != checked:
+                checkbox.setChecked(checked)
+            elif isinstance(checkbox, CheckBox):
+                checkbox.sigToggled.emit(checked, checkbox)
+
+        self.sigToggled.emit(checked, self)
+
+    def isLinkedTo(self, checkbox: QCheckBox):
+        return self._linkedCheckboxes.get(checkbox.text()) is checkbox
+
     def setLinkedCheckbox(self, checkbox: QCheckBox, linked: bool):
         if linked:
             self._linkedCheckboxes[checkbox.text()] = checkbox
@@ -2950,8 +3003,9 @@ class myMessageBox(_base_widgets.QBaseDialog):
             self.cancelButton = button
             self.cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
+        # NOTE: final position of the cancel button is set in
+        # `_arrangeButtonsLayout` when the dialog is shown
         self.buttonsLayout.insertWidget(0, self.cancelButton)
-        self.buttonsLayout.insertSpacing(1, 20)
         if connect:
             self.cancelButton.clicked.connect(self.buttonCallBack)
 
@@ -3059,8 +3113,7 @@ class myMessageBox(_base_widgets.QBaseDialog):
         # buttons
         self.currentRow += 1
 
-        if self.detailsTextWidget is not None:
-            self.buttonsLayout.insertWidget(1, self.detailsButton)
+        self._arrangeButtonsLayout()
 
         # Do not show again checkbox
         if self.doNotShowAgainCheckbox is not None:
@@ -3124,6 +3177,47 @@ class myMessageBox(_base_widgets.QBaseDialog):
 
         if block:
             self._block()
+
+    def _arrangeButtonsLayout(self):
+        """Arrange buttons as: stretch, cancel button (if any), 20 px
+        spacing, show details button (if any), and then all the other
+        buttons in the order they were added.
+
+        The stretch on the left also prevents the show details button from
+        expanding (its internal layout has a stretch that makes it
+        horizontally expanding).
+        """
+        detailsButton = None
+        if self.detailsTextWidget is not None:
+            detailsButton = self.detailsButton
+
+        otherItems = []
+        while self.buttonsLayout.count() > 0:
+            item = self.buttonsLayout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                if widget is self.cancelButton or widget is detailsButton:
+                    continue
+                otherItems.append(widget)
+            elif item.layout() is not None:
+                otherItems.append(item.layout())
+            # Spacers and stretches are dropped and re-added below
+
+        self.buttonsLayout.addStretch(1)
+
+        if self.cancelButton is not None:
+            self.buttonsLayout.addWidget(self.cancelButton)
+            if detailsButton is not None or otherItems:
+                self.buttonsLayout.addSpacing(20)
+
+        if detailsButton is not None:
+            self.buttonsLayout.addWidget(detailsButton)
+
+        for item in otherItems:
+            if isinstance(item, QWidget):
+                self.buttonsLayout.addWidget(item)
+            else:
+                self.buttonsLayout.addLayout(item)
 
     def setDetailedText(self, text, visible=False, wrap=True):
         text = text.replace('\n', '<br>')
@@ -8673,13 +8767,14 @@ class GhostContourItem(pg.PlotDataItem):
         self._ParentPlotItem.removeItem(self)
     
     def setData(
-            self, xx=None, yy=None, fontSize=11, ID=0, 
+            self, xx=None, yy=None, fontSize=11, ID=0,
             y_cursor=None, x_cursor=None
         ):
         if xx is None:
             xx = []
         if yy is None:
             yy = []
+        self._is_empty = len(xx) == 0 and ID == 0
         super().setData(xx, yy)
         if not hasattr(self, 'label'):
             return
@@ -8690,8 +8785,11 @@ class GhostContourItem(pg.PlotDataItem):
             self.label.setText(f'{ID}', size=fontSize)
             w, h = self.label.itemRect().width(), self.label.itemRect().height()
             self.label.setPos(x_cursor, y_cursor-h)
-    
+
     def clear(self):
+        if getattr(self, '_is_empty', False):
+            # Already empty (called at every mouse move)
+            return
         self.setData([], [])
 
 class GhostMaskItem(pg.ImageItem):
@@ -8705,6 +8803,7 @@ class GhostMaskItem(pg.ImageItem):
     def initImage(self, imgShape):
         image = np.zeros(imgShape, dtype=np.uint32)
         self.setImage(image)
+        self._is_cleared = True
     
     def initLookupTable(self, rgbaColor):
         lut = np.zeros((2, 4), dtype=np.uint8)
@@ -8722,6 +8821,7 @@ class GhostMaskItem(pg.ImageItem):
     
     def updateGhostImage(self, ID=0, y_cursor=None, x_cursor=None, fontSize=None):
         self.setImage(self.image)
+        self._is_cleared = False
 
         if ID == 0:
             self.label.setText('')
@@ -8732,12 +8832,193 @@ class GhostMaskItem(pg.ImageItem):
         self.label.item.setPos(x_cursor, y_cursor-h)
     
     def clear(self):
+        if getattr(self, '_is_cleared', False):
+            # Already cleared (called at every mouse move). Zeroing the
+            # image and setting it again would redraw the whole image
+            return
         if hasattr(self, 'label'):
             self.label.setText('')
         if self.image is None:
             return
         self.image[:] = 0
         self.setImage(self.image)
+        self._is_cleared = True
+
+class MirroredCursorItem(QGraphicsPathItem):
+    """Cursor mirroring the mouse cursor on another image (same look as a
+    `pg.ScatterPlotItem` with one point, symbol `symbol`, size `size` pixels).
+
+    Much faster to move than a `pg.ScatterPlotItem`: moving it only
+    repaints its small region and does not change the bounds of the plot.
+    It has the same `setData(xx, yy)` method (one or zero points).
+    """
+    def __init__(self, symbol='d', size=16, pen=None, brush=None):
+        super().__init__()
+        path = pg.graphicsItems.ScatterPlotItem.Symbols[symbol]
+        self.setPath(QTransform.fromScale(size, size).map(path))
+        if pen is not None:
+            self.setPen(pen)
+        if brush is not None:
+            self.setBrush(brush)
+        # Fixed size in pixels, i.e., independent of the zoom
+        self.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIgnoresTransformations)
+        self.setZValue(1e9)
+        # Own state, not `isVisible()` (False whenever the plot is hidden)
+        self._isShown = False
+        self.hide()
+
+    def setData(self, xx, yy):
+        if len(xx) == 0:
+            if self._isShown:
+                self._isShown = False
+                self.hide()
+            return
+
+        self.setPos(float(xx[0]), float(yy[0]))
+        if not self._isShown:
+            self._isShown = True
+            self.show()
+
+    def getData(self):
+        if not self._isShown:
+            return np.array([]), np.array([])
+        pos = self.pos()
+        return np.array([pos.x()]), np.array([pos.y()])
+
+class AutoGrowFixedSizeLabel(QLabel):
+    """QLabel with a fixed size fitting its text, re-sized only when the
+    text does not fit or is much shorter.
+
+    Changing the text of a normal QLabel re-layouts its parents (e.g., the
+    status bar and the main window with its toolbars), which is slow when
+    done at every mouse move (e.g., hover values). With a fixed size this
+    happens only when the text length changes a lot. With an empty text
+    (e.g., the mouse left the image) the space is released.
+    """
+    # Shrink when the text is shorter than this fraction of the width
+    _SHRINK_FRACTION = 0.7
+    # Qt's QWIDGETSIZE_MAX (default maximum size of widgets)
+    _QWIDGETSIZE_MAX = (1 << 24) - 1
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._fixedSize = None
+        self._measureLabel = None
+        self._fitText()
+
+    def setText(self, text):
+        super().setText(text)
+        self._fitText()
+
+    def _textSizeHint(self):
+        # The size hint of a QLabel is at least its minimum width -->
+        # measure the text with an unconstrained (hidden) label
+        if self._measureLabel is None:
+            self._measureLabel = QLabel()
+        label = self._measureLabel
+        label.setFont(self.font())
+        label.setTextFormat(self.textFormat())
+        label.setText(self.text())
+        return label.sizeHint()
+
+    def _fitText(self):
+        if not self.text():
+            if self._fixedSize is not None:
+                # Release the space for the other widgets (e.g., messages
+                # of the status bar)
+                self._fixedSize = None
+                self.setMinimumSize(0, 0)
+                self.setMaximumSize(self._QWIDGETSIZE_MAX, self._QWIDGETSIZE_MAX)
+            return
+
+        hint = self._textSizeHint()
+        if self._fixedSize is not None:
+            fixedWidth, fixedHeight = self._fixedSize
+            fits = hint.width() <= fixedWidth and hint.height() <= fixedHeight
+            isMuchShorter = hint.width() < self._SHRINK_FRACTION*fixedWidth
+            if fits and not isMuchShorter:
+                return
+
+        # Some slack so that the label is not re-sized at every small
+        # increase of the text length (e.g., one more digit)
+        slack = 4*self.fontMetrics().averageCharWidth()
+        width = hint.width() + slack
+        height = hint.height()
+        self._fixedSize = (width, height)
+        self.setFixedSize(width, height)
+
+class MouseMoveTrailingEdgeFilter(QObject):
+    """Make sure that the last mouse move over a pyqtgraph view is always
+    delivered to the items (e.g., hover events).
+
+    pyqtgraph ignores the mouse moves that come less than
+    1/`mouseRateLimit` seconds (default 100 Hz) after the last delivered
+    one. If the mouse stops right after an ignored move, the hover position
+    (e.g., of mirrored cursors) is stale until the mouse moves again.
+    This filter sends the last ignored move again when it is allowed.
+    """
+    def __init__(self, view: pg.GraphicsView):
+        super().__init__(view)
+        self._view = view
+        self._viewport = view.viewport()
+        self._lastIgnoredMove = None
+        self._timer = QTimer(self)
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._sendLastIgnoredMove)
+        self._viewport.installEventFilter(self)
+
+    def _isMoveIgnoredByScene(self):
+        isMoveAllowed = getattr(self._view.scene(), '_moveEventIsAllowed', None)
+        if isMoveAllowed is None:
+            return False
+        return not isMoveAllowed()
+
+    def eventFilter(self, watched, event):
+        if watched is not self._viewport:
+            return False
+
+        eventType = event.type()
+        if eventType == QEvent.Type.MouseMove:
+            if not self._isMoveIgnoredByScene():
+                self._timer.stop()
+                self._lastIgnoredMove = None
+                return False
+
+            if PYQT6:
+                localPos = QPointF(event.position())
+                globalPos = QPointF(event.globalPosition())
+            else:
+                localPos = QPointF(event.localPos())
+                globalPos = QPointF(event.screenPos())
+            self._lastIgnoredMove = (localPos, globalPos)
+            if not self._timer.isActive():
+                rateLimit = pg.getConfigOption('mouseRateLimit')
+                self._timer.start(ceil(1000/rateLimit) + 1)
+        elif eventType in self._cancellingEventTypes:
+            # E.g., a button press/release is delivered at its own position
+            # and a move with an outdated button state must not follow it
+            self._timer.stop()
+            self._lastIgnoredMove = None
+        return False
+
+    _cancellingEventTypes = (
+        QEvent.Type.Leave, QEvent.Type.Hide, QEvent.Type.MouseButtonPress,
+        QEvent.Type.MouseButtonRelease, QEvent.Type.MouseButtonDblClick,
+        QEvent.Type.Wheel
+    )
+
+    def _sendLastIgnoredMove(self):
+        if self._lastIgnoredMove is None:
+            return
+
+        localPos, globalPos = self._lastIgnoredMove
+        self._lastIgnoredMove = None
+        event = QMouseEvent(
+            QEvent.Type.MouseMove, localPos, globalPos,
+            Qt.MouseButton.NoButton, QApplication.mouseButtons(),
+            QApplication.keyboardModifiers()
+        )
+        QApplication.sendEvent(self._viewport, event)
 
 class PostProcessSegmSpinbox(QWidget):
     valueChanged = Signal(int)

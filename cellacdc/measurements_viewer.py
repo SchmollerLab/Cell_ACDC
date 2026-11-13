@@ -42,10 +42,16 @@ the main GUI (`gui.guiWin`) through the mixins in:
 - `gui_navigation`: frames/z-slices navigation, zoom to object, recent paths 
   and LUT.
 - `gui_annotations`: display of contours, segm. masks, IDs, cell cycle and 
-  lineage info, mother-daughter lines and object tracks.
+  lineage info, mother-daughter lines and object tracks. As in the main
+  GUI's 'Viewer' mode, mother-daughter lines come from the cell cycle
+  annotations, or from the `parent_ID_tree` column in frames without cell
+  cycle annotations (`isLineageTreeLinesModeActive`).
 - `gui_viewer_tools`: the other 'Viewer' mode tools (zoom, ruler, scale bar, 
   timestamp, colormaps, search ID, hover info, shortcuts, slideshow, 
-  3D viewer, objects properties, cell cycle table and objects count).
+  3D viewer, objects properties, cell cycle table and objects count). The
+  3D viewer follows the frame, z-slice/projection, plane, pan/zoom and the
+  mouse cursor of the image (`update3DViewer`, `update3DViewerViewRegion`,
+  `update3DViewerCursor`).
 - `gui_overlay`: overlay of other channels and of other segmentation files.
 - `gui_custom_annotations`: custom annotations of the objects.
 
@@ -3643,7 +3649,9 @@ class MeasurementsViewerWin(
     def uncheckViewerTools(self):
         """Uncheck the viewer tools (with signals, so that their slots run
         their teardown). Called by `setData` while the previous data is
-        still loaded."""
+        still loaded. The 3D viewer closes about 300 ms later
+        (`launch3dViewerToggled` defers `_launch3dViewer`), which is
+        harmless: closing it does not read `posData`."""
         for button in (
                 self.overlayButton, self.overlayLabelsButton,
                 self.rulerButton, self.zoomRectButton, self.countObjsButton,
@@ -3774,6 +3782,12 @@ class MeasurementsViewerWin(
     
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
+        # pyqtgraph ignores high-frequency mouse moves --> make sure the
+        # last one is delivered (otherwise the hover position, e.g., of
+        # the mirrored cursors, is stale when the mouse stops)
+        self.mouseMoveTrailingEdgeFilter = widgets.MouseMoveTrailingEdgeFilter(
+            self.graphLayout
+        )
         if self.invertBwAction.isChecked():
             self.graphLayout.setBackground(graphLayoutBkgrColor)
             self.titleColor = 'black'
@@ -3845,14 +3859,15 @@ class MeasurementsViewerWin(
         self.ax1.addItem(self.ax1_rulerPlotItem.labelItem)
         self.ax1.addItem(self.ax1_rulerAnchorsItem)
         
-        # Mirrored cursor from the slideshow window
-        self.ax1_cursor = pg.ScatterPlotItem(
-            symbol='d', pxMode=True, 
+        # Mirrored cursor from the slideshow window. Moved at every mouse
+        # move --> lightweight item (much faster than a pg.ScatterPlotItem)
+        self.ax1_cursor = widgets.MirroredCursorItem(
+            symbol='d',
+            size=16,
             pen=pg.mkPen('w', width=1),
             brush=pg.mkBrush((255, 255, 255, 70)), 
-            size=16, tip=None
         )
-        self.ax1.addItem(self.ax1_cursor)
+        self.ax1.addItem(self.ax1_cursor, ignoreBounds=True)
 
         # Overlay channel layers (z-value 0) are added later, when data is
         # loaded, and annotation layers are at 0.5-0.6: keep the ruler and
@@ -4624,8 +4639,10 @@ class MeasurementsViewerWin(
         self.statusbar = self.statusBar()
         self.statusBarLabel = QLabel('')
         self.statusbar.addWidget(self.statusBarLabel)
-        # Permanent widget with mouse hover info (as in guiWin)
-        self.wcLabel = QLabel('')
+        # Permanent widget with mouse hover info (as in guiWin). Its text is
+        # updated at every mouse move --> fixed size (growing only) to avoid
+        # re-layouting the main window
+        self.wcLabel = widgets.AutoGrowFixedSizeLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
     
     def gui_connectViewerToolsSignals(self):
@@ -5682,9 +5699,11 @@ class MeasurementsViewerWin(
         self.plotMeasurements()
     
     def onMotherDaughterLine(self, checked, checkbox, ax=0):
+        if checked:
+            # Previous frame data required by `drawAllLineageTreeLines`,
+            # which the mixin slot calls (frames without cca annotations)
+            self.initLineageTreeFrameData()
         super().onMotherDaughterLine(checked, checkbox, ax=ax)
-        if checked and self.initLineageTreeFrameData():
-            self.drawAllLineageTreeLines()
     
     def updateColumnsList(self, renamed=None):
         """Repopulate the columns list keeping the checked columns.
@@ -5792,11 +5811,12 @@ class MeasurementsViewerWin(
             img = self.get_2Dimg_from_3D(img)
         return img
     
-    def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None):
-        img = self.get_2Dimg_from_switched_plane(imgData)
+    def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None, yx=None):
+        # `yx` not None --> only the value at (y, x) of the 2D image (hover)
+        img = self.get_2Dimg_from_switched_plane(imgData, yx=yx)
         if img is not None:
             return img
-        
+
         zProjHow = self.zProjComboBox.currentText()
         z = self.zSliceScrollBar.sliderPosition()
         if not isLayer0:
@@ -5804,6 +5824,9 @@ class MeasurementsViewerWin(
             if zProjHowOverlay != 'same as above':
                 zProjHow = zProjHowOverlay
                 z = self.zSliceOverlay_SB.sliderPosition()
+        if yx is not None:
+            # Only the z-column at (y, x)
+            imgData = imgData[:, yx[0], yx[1]]
         return self.zProjectImage(imgData, zProjHow, z)
     
     def getHighlightedIDfromPropsDock(self):
@@ -5923,7 +5946,11 @@ class MeasurementsViewerWin(
         self.setAllTextAnnotations()
         self.setAllContoursImages(compute=False)
         self.drawAllMothBudLines()
-        if self.initLineageTreeFrameData():
+        # As in `gui.guiWin.updateAllImages`: lineage tree lines only in
+        # frames without cca annotations (they would clear the cca lines)
+        if self.isLineageTreeLinesModeActive():
+            # Previous frame data required by `drawAllLineageTreeLines`
+            self.initLineageTreeFrameData()
             self.drawAllLineageTreeLines()
         
         if self.ccaTableWin is not None:
@@ -6037,14 +6064,20 @@ class MeasurementsViewerWin(
         self.updateImages()
         self.zoomToSelectedID()
         self.updateCurrentFrameLine()
+        # As in `gui.guiWin.next_frame`: frame of the open 3D viewer
+        self.update3DViewer()
     
     def update_z_slice(self, z):
         self.zSliceSpinbox.setValueNoEmit(z+1)
         self.updateImages()
-    
+
+        self.update3DViewerViewRegion()
+
     def updateZproj(self, how):
         self.setZSliceWidgetsEnabled(how)
         self.updateImages()
+
+        self.update3DViewerViewRegion()
     
     def switchViewedPlane(self, previousPlane, currentPlane):
         posData = self.posData()
@@ -6071,6 +6104,9 @@ class MeasurementsViewerWin(
         self.updateImages()
         self.ax1.autoRange()
         self.zoomToSelectedID()
+        # The z-slice widgets changed without signals above --> send the
+        # new plane and slice also if the view range did not change
+        self.update3DViewerViewRegion()
     
     def idScrollBarValueChanged(self, idx):
         if not self.IDs:
@@ -8775,6 +8811,7 @@ class MeasurementsViewerWin(
         self.updateCurrentFrameLine()
         self.plotMeasurements()
         self.updateIDnotPresentLabel()
+        self.update3DViewer()
     
     def invertBw(self, checked, update=True):
         # `ColorSchemeGuiElements.invertBw` inverts the text annotations of 
@@ -8840,6 +8877,7 @@ class MeasurementsViewerWin(
     
     def clearCursors(self):
         self.ax1_cursor.setData([], [])
+        self.update3DViewerCursor(None)
     
     def connectLeftClickButtons(self):
         # The viewer does not have editing tools that need to be reconnected
@@ -8944,6 +8982,7 @@ class MeasurementsViewerWin(
             self.resetCursor()
             if self.slideshowWin is not None:
                 self.slideshowWin.setMirroredCursorPos(None, None)
+            self.update3DViewerCursor(None)
             return
         
         x, y = event.pos()
@@ -8951,6 +8990,11 @@ class MeasurementsViewerWin(
         
         if self.slideshowWin is not None:
             self.slideshowWin.setMirroredCursorPos(x, y)
+
+        # Mirrored (depth-aware) cursor in the 3D viewer, if open. Always
+        # shown as the slideshow one (guiWin's "Show mirrored cursor on
+        # images" setting is a main GUI-only option)
+        self.update3DViewerCursor((x, y))
         
         if self.rulerButton.isChecked() and self.tempSegmentON:
             self.drawTempRulerLine(event)
@@ -9279,6 +9323,9 @@ class MeasurementsViewerWin(
         if volume_renderer is not None:
             self._volume_renderer = None
             volume_renderer.force_close()
+            # Free the window and the data it references (e.g., the
+            # images, not copied), as `_launch3dViewer` does on closing
+            volume_renderer.deleteLater()
         self.saveWindowGeometry(setting_suffix='_measurements_viewer')
         self.logger.info('Measurements viewer closed')
         super().closeEvent(event)

@@ -1918,9 +1918,6 @@ class MeasurementsViewerUtils:
         if df is None:
             return
         
-        if 'emerg_frame_i' not in df.columns:
-            df['emerg_frame_i'] = -1
-        
         # Parents that cannot be drawn are unknown (-1) as in `gui.guiWin`
         parent_IDs = df['parent_ID_tree'].fillna(-1).astype(int)
         isDrawable = df.index.isin(rp.IDs)
@@ -1930,10 +1927,12 @@ class MeasurementsViewerUtils:
         return df
 
     def initLineageTreeFrameData(self):
-        """Store the acdc_df of current and previous frame required by 
-        `AnnotationsGuiElements.drawAllLineageTreeLines` in 
-        `posData.allData_li`. Returns False if lineage tree lines cannot be 
-        drawn."""
+        """Store the acdc_df of current and previous frame and the
+        regionprops of the previous frame (never visited frames have none)
+        required by `AnnotationsGuiElements.drawAllLineageTreeLines` in
+        `posData.allData_li`. Returns False if the tables were not stored
+        (`drawAllLineageTreeLines` then uses the tables stored by
+        `get_data`, if any)."""
         if self.lineage_tree is None:
             return False
         

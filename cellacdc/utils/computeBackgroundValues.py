@@ -222,7 +222,9 @@ class ComputeBackgroundValuesUtil(NewThreadMultipleExpBaseUtil):
         super().closeEvent(event)
 
     def workerCritical(self, error):
-        # `worker_exception_handler` emits the error twice: handle it once.
+        # `worker_exception_handler` emits both `critical` signals of a
+        # worker that has two (`critical` and `signals.critical`): handle
+        # the error once.
         # signals.finished is not emitted: stop the thread and close here so
         # that `exec_` returns (summaryDf stays None)
         if self._workerDone:

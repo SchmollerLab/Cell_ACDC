@@ -575,7 +575,7 @@ def test_util_error_closes_modal_window_and_stops_thread(
         'info', 'Computing', presetParams=DEFAULT_PARAMS
     )
     thread = _exec_util(win)
-    # Reported once although the worker emits the error twice
+    # Reported once, also if the worker emits the error more than once
     assert len(criticals) == 1 and win.summaryDf is None
     assert thread is None or not thread.isRunning()
 

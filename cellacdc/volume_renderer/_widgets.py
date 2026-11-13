@@ -1,13 +1,13 @@
 import re
 
 from qtpy.QtCore import (
-    Signal, Qt, QPoint
+    Signal, Qt, QPoint, QPointF, QRectF, QEvent
 )
 from qtpy.QtWidgets import (
     QAction, QWidget, QGridLayout, QLabel
 )
 from qtpy.QtGui import (
-    QIcon, QColor, QFont, QPainter, QPainterPath, QPen
+    QIcon, QColor, QFont, QPainter, QPainterPath, QPen, QPolygonF
 )
 
 import pyqtgraph as pg
@@ -25,6 +25,7 @@ class VolumeRendererToolbar(ToolBar):
     sigTwoDView = Signal()
     sigSave = Signal()
     sigSetSingleChannel = Signal(bool)
+    sigSetFullResolution = Signal(bool)
     sigSelectObjects = Signal(bool)
     sigUpdate = Signal()
     sigSetupAnimation = Signal(bool)
@@ -96,7 +97,19 @@ class VolumeRendererToolbar(ToolBar):
             'When single channel mode is activated, selecting a channel '
             'will display only that channel in the overlay.'
         )
-        
+
+        self.fullResolutionCheckbox = self.addCheckBox(
+            text='Full resolution'
+        )
+
+        self.fullResolutionCheckbox.setToolTip(
+            'When full resolution is activated, the volumes are displayed '
+            'with all their voxels (limited only by the maximum 3D texture '
+            'size of the GPU).\n\n'
+            'When deactivated, the volumes are downsampled to maximum 512 '
+            'voxels per dimension (faster, and less memory used on the GPU).'
+        )
+
         self.emitSigUpdateAction.triggered.connect(self.sigUpdate.emit)
         self.homeViewAction.triggered.connect(self.sigHomeView.emit)
         self.twoDViewAction.triggered.connect(self.sigTwoDView.emit)
@@ -108,9 +121,16 @@ class VolumeRendererToolbar(ToolBar):
         self.singleChannelCheckbox.toggled.connect(
             self.sigSetSingleChannel.emit
         )
-    
+
+        self.fullResolutionCheckbox.toggled.connect(
+            self.sigSetFullResolution.emit
+        )
+
     def is_single_channel_mode(self) -> bool:
         return self.singleChannelCheckbox.isChecked()
+
+    def is_full_resolution(self) -> bool:
+        return self.fullResolutionCheckbox.isChecked()
 
 class PointsLayersToolbar(ToolBar):    
     def __init__(self, name='Points Layer Toolbar', parent=None):
@@ -273,3 +293,88 @@ class LabelsOverlay(QWidget):
                 Qt.AlignCenter,
                 text,
             )
+
+class ParentCursorOverlay(QWidget):
+    """Transparent overlay on top of the vispy canvas that paints the
+    mirrored cursor of the parent GUI as a shaded 3D shape (projected faces
+    computed by the renderer, see `setFaces`).
+
+    Moving the cursor repaints only the small region of this widget around
+    the cursor, i.e., the volumes do not need to be re-rendered.
+    """
+    def __init__(self, canvas_widget: QWidget):
+        super().__init__(canvas_widget)
+
+        self.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+
+        # Follow the size of the canvas
+        self.resize(canvas_widget.size())
+        canvas_widget.installEventFilter(self)
+
+        # Thin dark halo for contrast on bright voxels, then light edges
+        self._halo_pen = QPen(QColor(0, 0, 0, 150))
+        self._halo_pen.setWidthF(3.0)
+        self._halo_pen.setJoinStyle(Qt.RoundJoin)
+        self._edge_pen = QPen(QColor(255, 255, 255, 200))
+        self._edge_pen.setWidthF(0.8)
+        self._edge_pen.setJoinStyle(Qt.RoundJoin)
+
+        self._polygons: list[tuple[QPolygonF, QColor]] = []
+        self._rect = QRectF()
+
+        self.show()
+
+    def eventFilter(self, watched, event):
+        if watched is self.parent() and event.type() == QEvent.Resize:
+            self.resize(watched.size())
+        return False
+
+    def setFaces(self, faces, opacity: float=1.0):
+        """Set the faces to paint.
+
+        Parameters
+        ----------
+        faces : list of (np.ndarray, float)
+            (N, 2) canvas coordinates of the vertices of each face and its
+            shade in [0, 1] (0 = dark, 1 = fully lit). Pass an empty list
+            to hide the cursor.
+        opacity : float, optional
+            Opacity of the whole cursor. Default is 1.0
+        """
+        polygons = []
+        rect = QRectF()
+        for points, shade in faces:
+            polygon = QPolygonF([QPointF(x, y) for x, y in points])
+            gray = int(70 + 185*shade)
+            alpha = int((170 + 70*shade) * opacity)
+            polygons.append((polygon, QColor(gray, gray, gray, alpha)))
+            rect = rect.united(polygon.boundingRect())
+
+        # Repaint only the old and new regions of the cursor
+        dirty_rect = self._rect.united(rect)
+        self._polygons = polygons
+        self._rect = rect
+        if not dirty_rect.isEmpty():
+            self.update(dirty_rect.toAlignedRect().adjusted(-3, -3, 3, 3))
+
+    def paint(self, painter: QPainter):
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        painter.setPen(self._halo_pen)
+        painter.setBrush(Qt.NoBrush)
+        for polygon, _ in self._polygons:
+            painter.drawPolygon(polygon)
+
+        painter.setPen(self._edge_pen)
+        for polygon, color in self._polygons:
+            painter.setBrush(color)
+            painter.drawPolygon(polygon)
+
+    def paintEvent(self, event):
+        if not self._polygons:
+            return
+
+        painter = QPainter(self)
+        self.paint(painter)
+        painter.end()

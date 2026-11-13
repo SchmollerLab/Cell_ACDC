@@ -14,6 +14,12 @@ Requirements on the inheriting class
 - `self.imgGrad` (`widgets.myHistogramLUTitem`) and `self.labelsGrad` 
   (`widgets.labelsGradientWidget`).
 - The z-slice navigation widgets (see `gui_navigation`).
+- `self.modeComboBox` (only `currentText()` is read, e.g., by
+  `isLineageTreeLinesModeActive`; the measurements viewer has a hidden one
+  with the 'Viewer' mode only) and `self.lineage_tree` (main GUI: None
+  outside of the "Normal division: Lineage tree" mode, else with
+  `frames_for_dfs`; the measurements viewer sets a stand-in with
+  `frames_for_dfs` whenever the table has `parent_ID_tree`).
 - The method `annotatedAxesIndices` returns the indices of the axes with 
   annotations (main GUI: left and right image, i.e., (0, 1)).
 """
@@ -21,6 +27,7 @@ from functools import partial
 from itertools import combinations
 
 import numpy as np
+import pandas as pd
 import cv2
 
 from qtpy.QtCore import Qt
@@ -225,9 +232,16 @@ class AnnotationsGuiElements:
 
     def onMotherDaughterLine(self, checked, checkbox, ax=0):
         if checked:
+            # Clear first since drawing adds points --> calling this slot
+            # when the lines are already drawn would duplicate them
+            self.getMothBudLineScatterItem(ax, True).clear()
+            self.getMothBudLineScatterItem(ax, False).clear()
             posData = self.data[self.pos_i]
             for obj in posData.rp:
                 self.drawObjMothBudLines(obj, posData, ax=ax)
+
+            if self.isLineageTreeLinesModeActive():
+                self.drawAllLineageTreeLines()
         else:
             self.getMothBudLineScatterItem(ax, True).clear()
             self.getMothBudLineScatterItem(ax, False).clear()
@@ -247,17 +261,22 @@ class AnnotationsGuiElements:
         for ax in self.annotatedAxesIndices():
             self.storeCurrentAnnotOptions(ax)
 
-    def storeCurrentAnnotOptions(self, ax: int):
-        if not hasattr(self, 'annotOptionsToRestore'):
-            return
-        
+    def getCurrentAnnotOptions(self, ax: int):
+        options = {}
         for name, checkbox in self.annotOptionsCheckboxes[ax].items():
             try:
                 isChecked = checkbox.isChecked()
             except AttributeError:
                 continue
 
-            self.annotOptionsToRestore[ax][name] = isChecked
+            options[name] = isChecked
+        return options
+
+    def storeCurrentAnnotOptions(self, ax: int):
+        if not hasattr(self, 'annotOptionsToRestore'):
+            return
+
+        self.annotOptionsToRestore[ax].update(self.getCurrentAnnotOptions(ax))
 
     def restoreAnnotOptions(self, ax: int, options=None):
         if options is None and not hasattr(self, 'annotOptionsToRestore'):
@@ -964,7 +983,7 @@ class AnnotationsGuiElements:
             return 
 
         mode = str(self.modeComboBox.currentText())
-        if mode == 'Normal division: Lineage Tree':
+        if mode == 'Normal division: Lineage tree':
             return
 
         ID = obj.label
@@ -997,52 +1016,96 @@ class AnnotationsGuiElements:
         xx, yy = core.get_line(y1, x1, y2, x2, dashed=True)
         scatterItem.addPoints(xx, yy)
 
+    def isLineageTreeLinesModeActive(self):
+        """Check whether mother-daughter lines should be drawn from the
+        lineage tree annotations (see `drawAllLineageTreeLines`) rather than
+        from the cell cycle annotations (see `drawAllMothBudLines`).
+
+        Lineage tree lines are drawn in "Normal division: Lineage tree" mode
+        and in the other modes (e.g., Viewer) when the current frame does
+        not have cell cycle annotations. Never drawn in
+        "Cell cycle analysis" mode.
+        """
+        mode = self.modeComboBox.currentText()
+        if mode == 'Normal division: Lineage tree':
+            return True
+
+        if mode == 'Cell cycle analysis':
+            return False
+
+        posData = self.data[self.pos_i]
+        if posData.cca_df is not None and not posData.cca_df.empty:
+            return False
+
+        return True
+
     def drawAllLineageTreeLines(self):
         """
         Draw all lineage tree lines on the GUI.
 
         This method retrieves the lineage tree data and draws the lineage tree lines
         connecting cells and their respective mothers when the mother has split.
-        """
-        if self.lineage_tree is None:
-            return
 
-        if len(self.lineage_tree.frames_for_dfs) < 2:
-            return
+        Outside of the "Normal division: Lineage tree" mode (i.e., when
+        `self.lineage_tree` is None) the lines are drawn from the lineage
+        tree annotations stored in the acdc_df (if present).
+        """
+        if self.lineage_tree is not None:
+            if len(self.lineage_tree.frames_for_dfs) < 2:
+                return
 
         self.clearAllCellToCellLines()
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
 
         if frame_i == 0:
-            return 
+            return
 
         lin_tree_df = posData.allData_li[frame_i]['acdc_df']
+        if lin_tree_df is None or 'parent_ID_tree' not in lin_tree_df.columns:
+            return
+
         lin_tree_df_prev = posData.allData_li[frame_i-1]['acdc_df']
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        if prev_rp is None:
+            return
 
-        self.setTitleText()
+        if self.lineage_tree is not None:
+            self.setTitleText()
 
-        new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
+        # In Viewer mode the previous frame might have never been visited
+        # --> use the IDs from its regionprops
+        if lin_tree_df_prev is not None:
+            prev_IDs = lin_tree_df_prev.index
+        else:
+            prev_IDs = prev_rp.IDs
+        new_cells = lin_tree_df.index.difference(prev_IDs) # I could use this for the if already but this is probably faster for frames where nothing changes
         if new_cells.shape[0] == 0:
             return
-        
+
         for ax in (0, 1):
             if not self.areMothBudLinesRequested(ax):
                 continue
 
             for ID in new_cells:
-                curr_obj = rp.get_obj_from_ID(ID)
+                curr_obj = rp.get_obj_from_ID(ID, warn=False)
+                if curr_obj is None:
+                    continue
+
                 lin_tree_df_ID = lin_tree_df.loc[ID]
+                parent_ID = lin_tree_df_ID['parent_ID_tree']
 
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
-                if lin_tree_df_ID['parent_ID_tree'] == -1: # make sure that new obj where the parents are not known get skipped
+                # make sure that new obj where the parents are not known
+                # (or not annotated) get skipped
+                if pd.isna(parent_ID) or parent_ID == -1:
                     continue
-                
-                mother_obj = prev_rp.get_obj_from_ID(lin_tree_df_ID['parent_ID_tree'])
 
-                emerg_frame_i = lin_tree_df_ID['emerg_frame_i']
+                mother_obj = prev_rp.get_obj_from_ID(int(parent_ID), warn=False)
+                if mother_obj is None:
+                    continue
+
                 isNew = False
 
                 self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)

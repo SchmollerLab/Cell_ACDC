@@ -8,6 +8,22 @@ from qtpy.QtCore import (
     Qt, QTimer, QEventLoop
 )
 from qtpy.QtWidgets import QWidget, QAction, QToolButton
+from qtpy.QtGui import QCursor
+
+
+def is_same_cursor(cursor1: QCursor, cursor2: QCursor) -> bool:
+    """Return True if the two cursors look the same (same shape, or same
+    pixmap and hot spot for pixmap cursors)."""
+    if cursor1.shape() != cursor2.shape():
+        return False
+
+    if cursor1.shape() != Qt.CursorShape.BitmapCursor:
+        return True
+
+    return (
+        cursor1.pixmap().cacheKey() == cursor2.pixmap().cacheKey()
+        and cursor1.hotSpot() == cursor2.hotSpot()
+    )
 
 
 class QWhileLoop:
