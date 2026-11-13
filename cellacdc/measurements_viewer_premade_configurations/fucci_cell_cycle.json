@@ -1,0 +1,333 @@
+{
+  "version": 2,
+  "channel_placeholders": {
+    "GEMININ": "S/G2/M reporter channel (e.g. mAG1-hGeminin, GFP), displayed as overlay",
+    "CDT1": "G1 reporter channel (e.g. mCherry-hCdt1), displayed as overlay"
+  },
+  "input_placeholders": {
+    "GEMININ_BACKGROUND": {
+      "type": "float",
+      "default": 0.0,
+      "description": "Geminin (S/G2/M) background intensity",
+      "info": "Constant background subtracted from every value of the Geminin (S/G2/M) channel before normalizing, e.g. the median intensity outside of cells, measured once for the whole experiment. Use 0 if the mean intensity is already background corrected."
+    },
+    "GEMININ_MIN": {
+      "type": "float",
+      "default": 0.0,
+      "description": "Geminin (S/G2/M) intensity mapped to 0",
+      "info": "Background-corrected Geminin (S/G2/M) intensity that is mapped to 0. Typically a low percentile (e.g. 5th) pooled over all cells, frames, positions and conditions (or a reference condition). Use the same value for all positions and conditions so that the two reporters remain comparable."
+    },
+    "GEMININ_MAX": {
+      "type": "float",
+      "default": 1.0,
+      "description": "Geminin (S/G2/M) intensity mapped to 1",
+      "info": "Background-corrected Geminin (S/G2/M) intensity that is mapped to 1. Must be larger than the minimum. Typically a high percentile (e.g. 95th) pooled in the same way as the minimum."
+    },
+    "CDT1_BACKGROUND": {
+      "type": "float",
+      "default": 0.0,
+      "description": "Cdt1 (G1) background intensity",
+      "info": "Constant background subtracted from every value of the Cdt1 (G1) channel before normalizing, e.g. the median intensity outside of cells, measured once for the whole experiment. Use 0 if the mean intensity is already background corrected."
+    },
+    "CDT1_MIN": {
+      "type": "float",
+      "default": 0.0,
+      "description": "Cdt1 (G1) intensity mapped to 0",
+      "info": "Background-corrected Cdt1 (G1) intensity that is mapped to 0. Typically a low percentile (e.g. 5th) pooled over all cells, frames, positions and conditions (or a reference condition). Use the same value for all positions and conditions so that the two reporters remain comparable."
+    },
+    "CDT1_MAX": {
+      "type": "float",
+      "default": 1.0,
+      "description": "Cdt1 (G1) intensity mapped to 1",
+      "info": "Background-corrected Cdt1 (G1) intensity that is mapped to 1. Must be larger than the minimum. Typically a high percentile (e.g. 95th) pooled in the same way as the minimum."
+    }
+  },
+  "channel_hints": {
+    "GEMININ": ["geminin", "gfp", "mag1", "azami", "venus", "clover", "yfp", "green", "488"],
+    "CDT1": ["cdt1", "mcherry", "mko2", "kusabira", "rfp", "tomato", "scarlet", "red", "561", "594"]
+  },
+  "background_values": {
+    "statistic": "median",
+    "low_percentile": 5,
+    "high_percentile": 95,
+    "exclude_zero_pixels": true,
+    "inputs": {
+      "GEMININ_BACKGROUND": {"channel": "GEMININ", "value": "constant_background"},
+      "GEMININ_MIN": {"channel": "GEMININ", "value": "constant_min"},
+      "GEMININ_MAX": {"channel": "GEMININ", "value": "constant_max"},
+      "CDT1_BACKGROUND": {"channel": "CDT1", "value": "constant_background"},
+      "CDT1_MIN": {"channel": "CDT1", "value": "constant_min"},
+      "CDT1_MAX": {"channel": "CDT1", "value": "constant_max"}
+    }
+  },
+  "channel": "",
+  "segm_endname": "",
+  "overlay_channels": ["{GEMININ}", "{CDT1}"],
+  "visible_channels": ["{GEMININ}", "{CDT1}"],
+  "measurement_processing": [
+    {
+      "order": 0,
+      "columns": ["{GEMININ}_mean"],
+      "recipe": [
+        {
+          "method": "Min-max normalization",
+          "kwargs": {
+            "background_value": "{GEMININ_BACKGROUND}",
+            "min_value": "{GEMININ_MIN}",
+            "max_value": "{GEMININ_MAX}"
+          }
+        },
+        {"method": "Smooth measurement", "kwargs": {"window": 7}}
+      ],
+      "output_columns": ["{GEMININ}_fucci"]
+    },
+    {
+      "order": 1,
+      "columns": ["{CDT1}_mean"],
+      "recipe": [
+        {
+          "method": "Min-max normalization",
+          "kwargs": {
+            "background_value": "{CDT1_BACKGROUND}",
+            "min_value": "{CDT1_MIN}",
+            "max_value": "{CDT1_MAX}"
+          }
+        },
+        {"method": "Smooth measurement", "kwargs": {"window": 7}}
+      ],
+      "output_columns": ["{CDT1}_fucci"]
+    },
+    {
+      "order": 2,
+      "columns": ["{GEMININ}_fucci", "{CDT1}_fucci"],
+      "recipe": [
+        {
+          "method": "Ramp detection",
+          "kwargs": {
+            "threshold": 0.0, "gap_frames": 10, "min_length": 40,
+            "relative": true
+          }
+        }
+      ],
+      "output_columns": ["{GEMININ}_ramp", "{CDT1}_ramp"]
+    }
+  ],
+  "combined_measurements": [
+    {
+      "order": 3,
+      "equations": {
+        "fucci_ramp_pattern": "`{GEMININ}_ramp` - `{CDT1}_ramp`",
+        "fucci_rel_diff": "abs(`{GEMININ}_fucci` - `{CDT1}_fucci`) / (`{GEMININ}_fucci` + `{CDT1}_fucci`)"
+      }
+    },
+    {
+      "order": 4,
+      "equations": {
+        "fucci_crossing": "(fucci_ramp_pattern == 2) & (fucci_rel_diff <= 0.1)"
+      }
+    }
+  ],
+  "measurements_mode": 0,
+  "time_course_columns": [
+    "{GEMININ}_fucci", "{CDT1}_fucci", "area"
+  ],
+  "measurements_axes": {"X": "{GEMININ}_fucci", "Y": "{CDT1}_fucci"},
+  "normalize_measurements": false,
+  "measurements_colors": {
+    "{GEMININ}_fucci": "#2ecc40",
+    "{CDT1}_fucci": "#e8384f"
+  },
+  "conditional_formatting": {
+    "{GEMININ}_fucci": [
+      {"condition": "`{GEMININ}_ramp` == 1", "color": "lighter"},
+      {"condition": "`{GEMININ}_ramp` == -1", "color": "darker"}
+    ],
+    "{CDT1}_fucci": [
+      {"condition": "`{CDT1}_ramp` == 1", "color": "lighter"},
+      {"condition": "`{CDT1}_ramp` == -1", "color": "darker"}
+    ]
+  },
+  "timepoint_identifiers": [
+    {
+      "name": "Cdt1_peak",
+      "color": [255, 60, 60],
+      "shortcut": "Q",
+      "autoApply": true,
+      "predictor": {
+        "type": "equation",
+        "equation": "(`{CDT1}_fucci` == MAX(`{CDT1}_fucci`)) & ((MIN(frame_i) > 0) | (any(`{CDT1}_ramp` == 1) & any(`{CDT1}_ramp` == -1))) & ((MAX(frame_i) < SizeT - 1) | any(fucci_crossing == 1) | (any(`{CDT1}_ramp` == 1) & any(`{CDT1}_ramp` == -1)))",
+        "mode": "last_true"
+      }
+    },
+    {
+      "name": "G1_S",
+      "color": [255, 200, 0],
+      "shortcut": "W",
+      "autoApply": true,
+      "predictor": {
+        "type": "equation",
+        "equation": "(`{GEMININ}_fucci` <= MIN(`{GEMININ}_fucci`) + 0.1 * (MAX(`{GEMININ}_fucci`) - MIN(`{GEMININ}_fucci`))) & (frame_i < MAX(frame_i * timepoint_Cdt1_peak) + (any(timepoint_Cdt1_peak) == 0) * MAX(frame_i * timepoint_Crossing))",
+        "mode": "last_true"
+      }
+    },
+    {
+      "name": "Crossing",
+      "color": [255, 140, 0],
+      "shortcut": "E",
+      "autoApply": true,
+      "predictor": {
+        "type": "equation",
+        "equation": "(fucci_crossing == 1) & (fucci_rel_diff == MIN(fucci_rel_diff + 10 * (fucci_crossing == 0)))",
+        "mode": "first_true"
+      }
+    },
+    {
+      "name": "G2_start",
+      "color": [60, 200, 60],
+      "shortcut": "R",
+      "autoApply": true,
+      "predictor": {
+        "type": "equation",
+        "equation": "(`{CDT1}_fucci` <= MIN(`{CDT1}_fucci`) + 0.1 * (MAX(`{CDT1}_fucci`) - MIN(`{CDT1}_fucci`))) & any(timepoint_Crossing) & (frame_i > MAX(frame_i * timepoint_Crossing))",
+        "mode": "first_true"
+      }
+    },
+    {
+      "name": "M_start",
+      "color": [160, 80, 255],
+      "shortcut": "T",
+      "autoApply": true,
+      "predictor": {
+        "type": "equation",
+        "equation": "(cell_vol_fl > 1.8 * MEAN(cell_vol_fl)) & (frame_i > MAX(frame_i) - 15)",
+        "mode": "first_true",
+        "other_cells": {
+          "source": "daughter", "condition": "", "condition_mode": "where_true",
+          "range_start": "t + 1", "range_end": "t + 1"
+        },
+        "main_cell_filter": {
+          "condition": "COUNT(Cell_ID_other) > 0", "condition_mode": "any"
+        }
+      }
+    }
+  ],
+  "custom_annotations": [
+    {
+      "name": "Excluded",
+      "type": "Single time-point",
+      "symbol": "'s' square",
+      "symbolColor": [255, 0, 0, 255],
+      "shortcut": "D",
+      "description": "Cell to be excluded from analysis.",
+      "keepActive": true,
+      "isHideChecked": true,
+      "autoApply": false,
+      "overridesPhases": true
+    },
+    {
+      "name": "Arrested",
+      "type": "Single time-point",
+      "symbol": "'s' square",
+      "symbolColor": [150, 150, 150, 255],
+      "shortcut": "A",
+      "description": "Cell without daughters, tracked for >= 180 frames, with a nearly constant smoothed Geminin signal.",
+      "keepActive": true,
+      "isHideChecked": true,
+      "autoApply": true,
+      "overridesPhases": true,
+      "predictor": {
+        "type": "equation",
+        "equation": "(COUNT(`{GEMININ}_fucci`) >= 180) & (STD(`{GEMININ}_fucci`) < 0.0008 * COUNT(`{GEMININ}_fucci`) * abs(MEAN(`{GEMININ}_fucci`)))",
+        "consolidation": "all",
+        "other_cells": {
+          "source": "daughter", "condition": "", "condition_mode": "where_true",
+          "range_start": "t + 1", "range_end": "t + 1"
+        },
+        "main_cell_filter": {
+          "condition": "COUNT(Cell_ID_other) == 0", "condition_mode": "all"
+        }
+      }
+    }
+  ],
+  "phase_translator_rules": [
+    {
+      "name": "Full_cycle", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_G1_S", "timepoint_Cdt1_peak", "timepoint_Crossing", "timepoint_G2_start", "timepoint_M_start"],
+      "annotations": [], "phases": ["G1", "S Early", "S", "S Late", "G2", "M"]
+    },
+    {
+      "name": "Until_G2", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_G1_S", "timepoint_Cdt1_peak", "timepoint_Crossing", "timepoint_G2_start"],
+      "annotations": [], "phases": ["G1", "S Early", "S", "S Late", "G2"]
+    },
+    {
+      "name": "No_peak_cycle", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_G1_S", "timepoint_Crossing", "timepoint_G2_start", "timepoint_M_start"],
+      "annotations": [], "phases": ["G1", "S", "S Late", "G2", "M"]
+    },
+    {
+      "name": "No_peak_until_G2", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_G1_S", "timepoint_Crossing", "timepoint_G2_start"],
+      "annotations": [], "phases": ["G1", "S", "S Late", "G2"]
+    },
+    {
+      "name": "From_S_Early", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_Cdt1_peak", "timepoint_Crossing", "timepoint_G2_start", "timepoint_M_start"],
+      "annotations": [], "phases": ["S Early", "S", "S Late", "G2", "M"]
+    },
+    {
+      "name": "From_S", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_Crossing", "timepoint_G2_start", "timepoint_M_start"],
+      "annotations": [], "phases": ["S", "S Late", "G2", "M"]
+    },
+    {
+      "name": "Until_S_Late_M", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_G1_S", "timepoint_Cdt1_peak", "timepoint_Crossing", "timepoint_M_start"],
+      "annotations": [], "phases": ["G1", "S Early", "S", "S Late", "M"]
+    },
+    {
+      "name": "Until_S_Late", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_G1_S", "timepoint_Cdt1_peak", "timepoint_Crossing"],
+      "annotations": [], "phases": ["G1", "S Early", "S", "S Late"]
+    },
+    {
+      "name": "Until_S_M", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_G1_S", "timepoint_Cdt1_peak", "timepoint_M_start"],
+      "annotations": [], "phases": ["G1", "S Early", "S", "M"]
+    },
+    {
+      "name": "Until_S", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_G1_S", "timepoint_Cdt1_peak"],
+      "annotations": [], "phases": ["G1", "S Early", "S"]
+    },
+    {
+      "name": "Peak_crossing", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_Cdt1_peak", "timepoint_Crossing"],
+      "annotations": [], "phases": ["S Early", "S", "S Late"]
+    },
+    {
+      "name": "Peak_M", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_Cdt1_peak", "timepoint_M_start"],
+      "annotations": [], "phases": ["S Early", "S Late", "M"]
+    },
+    {
+      "name": "Peak_only", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_Cdt1_peak"],
+      "annotations": [], "phases": ["S Early", "S Late"]
+    },
+    {
+      "name": "Crossing_only", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_Crossing"],
+      "annotations": [], "phases": ["S", "S Late"]
+    },
+    {
+      "name": "M_only", "predictor": {"type": "none"},
+      "timepoints": ["timepoint_M_start"],
+      "annotations": [], "phases": ["S/G2", "M"]
+    },
+    {
+      "name": "Default_G1", "predictor": {"type": "none"},
+      "timepoints": [], "annotations": [], "phases": ["G1"]
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import keyword
 import ast
 from typing import Literal, Callable, Dict, Generator, Iterable, List, Tuple
 import datetime
@@ -101,6 +102,8 @@ from . import path
 from . import fonts
 from . import QtScoped
 from . import debugutils
+from .timepoint_predictors import debug_trace as timepoint_debug_trace
+from .timepoint_predictors import TIMEPOINT_PREFIX
 from . import disableWindow
 from . import core_split_IDs
 from . import restruct_files_recipes_path
@@ -204,16 +207,46 @@ def addCustomPromptModelMessages(QParent=None):
 class QBaseDialog(_base_widgets.QBaseDialog):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        
-        
+
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = Signal(object)
 
-    def __init__(self, savedCustomAnnot, parent=None, state=None):
+    def __init__(
+            self, savedCustomAnnot, parent=None, state=None, 
+            predictorOptions=None, reservedShortcuts=None, existingNames=(),
+            allowDeleteSaved=True
+        ):
+        """Dialog to set the parameters of a custom annotation.
+
+        Parameters
+        ----------
+        savedCustomAnnot : dict
+            Previously saved annotations {name: state} that can be loaded.
+        parent : QWidget, optional
+        state : dict, optional
+            State of the annotation to modify.
+        predictorOptions : dict, optional
+            If not None, add the predictor settings (measurements viewer).
+            See `apps_measurements_viewer._CustomAnnotationPredictorGroupbox`.
+            The viewer also gets the "Overrides phases" option (state key
+            'overridesPhases', always written as a bool).
+        reservedShortcuts : dict, optional
+            {key sequence text: used by} of shortcuts that cannot be used.
+        existingNames : iterable of str, optional
+            Names of other annotations that cannot be used.
+        allowDeleteSaved : bool, optional
+            If True (default), the dialog listing the saved annotations has
+            a button to delete them (`sigDeleteSelecAnnot`). False when the
+            host cannot persist the deletion (measurements viewer).
+        """
         self.cancel = True
         self.loop = None
         self.clickedButton = None
         self.savedCustomAnnot = savedCustomAnnot
+        self.allowDeleteSaved = allowDeleteSaved
+        self.reservedShortcuts = dict(reservedShortcuts or {})
+        self.existingNames = set(existingNames)
+        self.hasPredictor = predictorOptions is not None
 
         self.internalNames = measurements.get_all_acdc_df_colnames(
             include_custom=False
@@ -227,37 +260,6 @@ class customAnnotationDialog(QDialog):
         layout = widgets.FormLayout()
 
         row = 0
-        typeCombobox = QComboBox()
-        typeCombobox.addItems([
-            'Single time-point',
-            'Multiple time-points',
-            'Multiple values class'
-        ])
-        if state is not None:
-            typeCombobox.setCurrentText(state['type'])
-        self.typeCombobox = typeCombobox
-        body_txt = ("""
-        <b>Single time-point</b> annotation: use this to annotate
-        an event that happens on a <b>single frame in time</b>
-        (e.g. cell division).
-        <br><br>
-        <b>Multiple time-points</b> annotation: use this to annotate
-        an event that has a <b>duration</b>, i.e., a start frame and a stop
-        frame (e.g. cell cycle phase).<br><br>
-        <b>Multiple values class</b> annotation: use this to annotate a class
-        that has <b>multiple values</b>. An example could be a cell cycle stage
-        that can have different values, such as 2-cells division
-        or 4-cells division.
-        """)
-        typeInfoTxt = (f'{html_utils.paragraph(body_txt)}')
-        self.typeWidget = widgets.formWidget(
-            typeCombobox, addInfoButton=True, labelTextLeft='Type: ',
-            parent=self, infoTxt=typeInfoTxt
-        )
-        layout.addFormWidget(self.typeWidget, row=row)
-        typeCombobox.currentTextChanged.connect(self.warnType)
-
-        row += 1
         nameInfoTxt = ("""
         <b>Name of the column</b> that will be saved in the <code>acdc_output.csv</code>
         file.<br><br>
@@ -304,10 +306,18 @@ class customAnnotationDialog(QDialog):
         layout.addFormWidget(self.symbolWidget, row=row)
 
         row += 1
-        shortcutInfoTxt = ("""
-        <b>Shortcut</b> that you can use to <b>activate/deactivate</b> annotation
-        of this event.<br><br> Leave empty if you don't need a shortcut.
-        """)
+        if self.hasPredictor:
+            shortcutInfoTxt = ("""
+            <b>Shortcut</b> that you can use to <b>annotate/un-annotate</b> 
+            the displayed cell across its entire video history.<br><br>
+            <b>Shift+Shortcut</b> re-evaluates the predictor on the displayed 
+            cell.<br><br>Leave empty if you don't need a shortcut.
+            """)
+        else:
+            shortcutInfoTxt = ("""
+            <b>Shortcut</b> that you can use to <b>activate/deactivate</b> annotation
+            of this event.<br><br> Leave empty if you don't need a shortcut.
+            """)
         shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
         self.shortcutWidget = widgets.formWidget(
             widgets.ShortcutLineEdit(), addInfoButton=True,
@@ -361,6 +371,35 @@ class customAnnotationDialog(QDialog):
         optionsLayout.addWidget(colorButtonLabel, optRow, 1)
         optionsLayout.addWidget(self.colorButton, optRow, 2)
 
+        # Measurements viewer only: the annotation replaces the phases
+        # of the annotated cells (state key 'overridesPhases')
+        self.overridesPhasesToggle = None
+        if self.hasPredictor:
+            overridesPhasesTooltip = (
+                'Annotated cells get the annotation '
+                'name as their phase on every frame,\n'
+                'regardless of the phase translator '
+                'rules. If a cell has several annotations\n'
+                'with this option, the first one in the list (toolbar order) wins.'
+            )
+            self.overridesPhasesToggle = widgets.Toggle()
+            self.overridesPhasesToggle.setToolTip(overridesPhasesTooltip)
+            overridesPhasesLabel = QLabel('Overrides phases: ')
+            overridesPhasesLabel.setToolTip(overridesPhasesTooltip)
+            optRow += 1
+            optionsLayout.addWidget(overridesPhasesLabel, optRow, 1)
+            optionsLayout.addWidget(self.overridesPhasesToggle, optRow, 2)
+
+        if state is not None:
+            self.keepActiveToggle.setChecked(state.get('keepActive', True))
+            self.hideAnnotTooggle.setChecked(state.get('isHideChecked', True))
+            if state.get('symbolColor') is not None:
+                self.colorButton.setColor(state['symbolColor'])
+            if self.overridesPhasesToggle is not None:
+                self.overridesPhasesToggle.setChecked(
+                    bool(state.get('overridesPhases', False))
+                )
+
         optionsGroupBox.setLayout(optionsLayout)
         layout.addWidget(optionsGroupBox, row, 1, alignment=Qt.AlignCenter)
         optionsInfoButton = QPushButton(self)
@@ -371,6 +410,27 @@ class customAnnotationDialog(QDialog):
 
         row += 1
         layout.addItem(QSpacerItem(5, 5), row, 0)
+
+        self.predictorGroupbox = None
+        if self.hasPredictor:
+            row += 1
+            predictorOptions = {
+                'nameGetter': self.nameWidget.widget.text, **predictorOptions
+            }
+            # Measurements viewer only; local import avoids a circular
+            # import (apps_measurements_viewer imports apps)
+            from .apps_measurements_viewer import (
+                _CustomAnnotationPredictorGroupbox
+            )
+            self.predictorGroupbox = _CustomAnnotationPredictorGroupbox(
+                predictorOptions, 
+                predictor=None if state is None else state.get('predictor'),
+                autoApply=(
+                    False if state is None else state.get('autoApply', False)
+                ),
+                parent=self
+            )
+            layout.addWidget(self.predictorGroupbox, row, 1, 1, 3)
 
         row += 1
         noteText = (
@@ -446,13 +506,17 @@ class customAnnotationDialog(QDialog):
 
     def loadSavedAnnot(self):
         items = list(self.savedCustomAnnot.keys())
+        additionalButtons = (
+            ('Delete selected annnotations', ) if self.allowDeleteSaved
+            else ()
+        )
         self.selectAnnotWin = widgets.QDialogListbox(
             'Load annotation parameters',
             'Select annotation to load:', items,
-            additionalButtons=('Delete selected annnotations', ),
+            additionalButtons=additionalButtons,
             parent=self, multiSelection=False
         )
-        for button in self.selectAnnotWin._additionalButtons:
+        for button in getattr(self.selectAnnotWin, '_additionalButtons', ()):
             button.disconnect()
             button.clicked.connect(self.deleteSelectedAnnot)
         self.selectAnnotWin.exec_()
@@ -465,7 +529,6 @@ class customAnnotationDialog(QDialog):
             return
         selectedName = self.selectAnnotWin.selectedItemsText[-1]
         selectedAnnot = self.savedCustomAnnot[selectedName]
-        self.typeCombobox.setCurrentText(selectedAnnot['type'])
         self.nameWidget.widget.setText(selectedAnnot['name'])
         self.symbolWidget.widget.setCurrentText(selectedAnnot['symbol'])
         self.shortcutWidget.widget.setText(selectedAnnot['shortcut'])
@@ -474,6 +537,20 @@ class customAnnotationDialog(QDialog):
         keySequence = widgets.macShortcutToWindows(selectedAnnot['shortcut'])
         if keySequence:
             self.shortcutWidget.widget.keySequence = widgets.KeySequenceFromText(keySequence)
+        # Same options as restored from `state` in __init__
+        self.keepActiveToggle.setChecked(selectedAnnot.get('keepActive', True))
+        self.hideAnnotTooggle.setChecked(
+            selectedAnnot.get('isHideChecked', True)
+        )
+        if self.predictorGroupbox is not None:
+            self.predictorGroupbox.setPredictor(
+                selectedAnnot.get('predictor'),
+                selectedAnnot.get('autoApply', False)
+            )
+        if self.overridesPhasesToggle is not None:
+            self.overridesPhasesToggle.setChecked(
+                bool(selectedAnnot.get('overridesPhases', False))
+            )
 
     def warnNoItemsSelected(self):
         msg = widgets.myMessageBox(parent=self)
@@ -514,26 +591,6 @@ class customAnnotationDialog(QDialog):
         colorDialogTop = self.colorButton.colorDialog.pos().y()
         self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
 
-    def warnType(self, currentText):
-        if currentText == 'Single time-point':
-            return
-
-        self.typeCombobox.setCurrentIndex(0)
-
-        txt = ("""
-        Unfortunately, the only annotation type that is available so far is
-        <b>Single time-point</b>.<br><br>
-        We are working on implementing the other types too, so stay tuned!<br><br>
-        Thank you for your patience!
-        """)
-        txt = (f'{html_utils.paragraph(txt)}')
-        msg = widgets.myMessageBox()
-        msg.setIcon(iconName='SP_MessageBoxWarning')
-        msg.setWindowTitle(f'Feature not implemented yet')
-        msg.addText(txt)
-        msg.addButton('   Ok   ')
-        msg.exec_()
-
     def showOptionsInfo(self):
         info = ("""
         <b>Keep tool active after using it</b>: Choose whether the tool
@@ -546,6 +603,14 @@ class customAnnotationDialog(QDialog):
         <b>Symbol color</b>: Choose color of the symbol that will be used
         to label annotated cell/object.
         """)
+        if self.overridesPhasesToggle is not None:
+            info = (f"""{info}<br><br>
+            <b>Overrides phases</b>: Annotated cells get the annotation
+            name as their <b>phase on every frame</b>, regardless of the
+            time point to phase translator rules (which apply only to the
+            other cells). If a cell has several annotations with this
+            option, the first one in the list (toolbar order) wins.
+            """)
         info = (f'{html_utils.paragraph(info)}')
         msg = widgets.myMessageBox()
         msg.setIcon()
@@ -609,10 +674,59 @@ class customAnnotationDialog(QDialog):
             self.cancel = True
             return
 
-        self.toolTip = (
+        name = self.nameWidget.widget.text()
+        if self.clickedButton==self.okButton and name in self.existingNames:
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.warning(
+                self, 'Name already used', html_utils.paragraph(
+                    f'A custom annotation called "{name}" already exists.'
+                )
+            )
+            event.ignore()
+            self.cancel = True
+            return
+        
+        shortcut = self.shortcutWidget.widget.text().strip()
+        usedBy = self.reservedShortcuts.get(
+            QKeySequence(shortcut).toString() if shortcut else None
+        )
+        if self.clickedButton==self.okButton and usedBy is not None:
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.warning(
+                self, 'Shortcut already used', html_utils.paragraph(
+                    f'The shortcut "{shortcut}" is already used by '
+                    f'"{usedBy}". Choose a different shortcut.'
+                )
+            )
+            event.ignore()
+            self.cancel = True
+            return
+        
+        predictor = None
+        if self.predictorGroupbox is not None:
+            try:
+                predictor = self.predictorGroupbox.validatePredictor()
+            except Exception as err:
+                msg = widgets.myMessageBox(wrapText=False)
+                msg.warning(
+                    self, 'Invalid predictor', 
+                    html_utils.paragraph(html.escape(str(err)))
+                )
+                event.ignore()
+                self.cancel = True
+                return
+        
+        if self.hasPredictor:
+            usage = (
+                'select a cell and press the shortcut '
+                '(or activate the button and RIGHT-CLICK\n'
+                'on the cell) to annotate it at the all frames of its video history'
+            )
+        else:
+            usage = 'activate the button and RIGHT-CLICK on cell to annotate'
+        self.toolTip = qutils.wrap_tooltip(
             f'Name: {self.nameWidget.widget.text()}\n\n'
-            f'Type: {self.typeWidget.widget.currentText()}\n\n'
-            f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
+            f'Usage: {usage}\n\n'
             f'Description: {self.descWidget.widget.toPlainText()}\n\n'
             f'SHORTCUT: "{self.shortcutWidget.widget.text()}"'
         )
@@ -621,7 +735,7 @@ class customAnnotationDialog(QDialog):
         self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
 
         self.state = {
-            'type': self.typeWidget.widget.currentText(),
+            'type': 'Single time-point',
             'name': self.nameWidget.widget.text(),
             'symbol':  self.symbolWidget.widget.currentText(),
             'shortcut': self.shortcutWidget.widget.text(),
@@ -630,6 +744,16 @@ class customAnnotationDialog(QDialog):
             'isHideChecked': self.hideAnnotTooggle.isChecked(),
             'symbolColor': self.colorButton.color()
         }
+        if self.predictorGroupbox is not None:
+            self.state['predictor'] = predictor
+            self.state['autoApply'] = (
+                self.predictorGroupbox.autoApplyCheckBox.isChecked()
+            )
+        if self.overridesPhasesToggle is not None:
+            # Always written: modifying an annotation replaces its state
+            self.state['overridesPhases'] = bool(
+                self.overridesPhasesToggle.isChecked()
+            )
 
         if self.loop is not None:
             self.loop.exit()
@@ -6546,17 +6670,19 @@ class QDialogMetadata(QDialog):
         if ask_TimeIncrement or ask_PhysicalSizes:
             okAllButton = QPushButton('Apply to ALL Positions')
             okAllButton.setToolTip(
-                'Update existing Physical Sizes, Time interval, cell volume (fl), '
-                'cell area (um^2), and time (s) for all the positions '
-                'in the experiment folder.'
+                'Update existing Physical Sizes, Time '
+                'interval, cell volume (fl), cell\n'
+                'area (um^2), and time (s) for all the '
+                'positions in the experiment folder.'
             )
             self.okAllButton = okAllButton
 
             selectButton = QPushButton('Select the Positions to be updated')
             selectButton.setToolTip(
                 'Ask to select positions then update existing Physical Sizes, '
-                'Time interval, cell volume (fl), cell area (um^2), and time (s)'
-                'for selected positions.'
+                'Time interval,\n'
+                'cell volume (fl), cell area (um^2), and time (s) for selected '
+                'positions.'
             )
             self.selectButton = selectButton
         else:
@@ -12269,7 +12395,7 @@ class FunctionParamsDialog(QBaseDialog):
 
         self.buttonsLayout = buttonsLayout
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
-        buttonsLayout.cancelButton.clicked.connect(self.close)
+        buttonsLayout.cancelButton.clicked.connect(self.cancel_cb)
         
         if addApplyButton:
             applyButton = widgets.viewPushButton('Apply')
@@ -12282,6 +12408,15 @@ class FunctionParamsDialog(QBaseDialog):
         self.mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(self.mainLayout)
+        
+        # original value for cancel
+        self.original_function_kwargs = self.functionKwargs()
+
+    def cancel_cb(self):
+        self.cancel = True
+        # revert function kwargs to original values
+        self.function_kwargs = self.original_function_kwargs
+        self.close()
     
     def emitValuesChanged(self, *args, **kwargs):
         self.sigValuesChanged.emit(self.functionKwargs())
@@ -14020,37 +14155,331 @@ class downloadModel:
         # if self.loop is not None:
         #     self.loop.exit()
 
-class combineMetricsEquationDialog(QBaseDialog):
-    sigOk = Signal(object)
+class _CombineMetricsDialog(QBaseDialog):
+    # Rows of `acdc_df` used by "Test equation" for row-wise equations
+    TEST_DATA_MAX_ROWS = 1000
 
     def __init__(
             self, allChNames, isZstack, isSegm3D, parent=None, debug=False,
-            closeOnOk=True
+            closeOnOk=True, acdcDfs=None, acdc_df=None,
+            allowCellAggregations=False, limitToLoadedColumns=True
         ):
         super().__init__(parent)
 
         self.setWindowTitle('Add combined measurement')
 
         self.initAttributes()
-        
+
         self.allChNames = allChNames
+        self.acdcDfs = acdcDfs
+        self.acdcDf = acdc_df
+        # See `populateMeasurementCatalog`
+        self.limitToLoadedColumns = limitToLoadedColumns
+        self.allowCellAggregations = allowCellAggregations
+        self.variableNames = []
+        # Names added by `addTreeItems` (fast duplicate check)
+        self._listedVariables = set()
+        self.channelLessVariables = set()
+        self.metricsTreeWidgets = []
 
         self.cancel = True
-        self.isOperatorMode = False
         self.closeOnOk = closeOnOk
 
         mainLayout = QVBoxLayout()
-        equationLayout = QHBoxLayout()
+        equationLayout = QGridLayout()
 
+        self.isZstack = isZstack
+        self.isSegm3D = isSegm3D
+        treesLayout = self.createMetricsTrees(isZstack, isSegm3D)
+        self.measurementsSearchLineEdit = QLineEdit()
+        self.measurementsSearchLineEdit.setPlaceholderText('Search measurement...')
+        self.measurementsSearchLineEdit.setClearButtonEnabled(True)
+        self.metricsSearchProxies = []
+        self.metricsHighlightDelegates = []
+        self._metricsSearchState = None
+        for tree in self.metricsTreeWidgets:
+            proxy = widgets.MeasurementTreeSearchProxy(self)
+            proxy.setSourceModel(tree.model())
+            self.metricsSearchProxies.append(proxy)
+            delegate = widgets._ButtonSearchHighlightDelegate(tree)
+            tree.setItemDelegate(delegate)
+            self.metricsHighlightDelegates.append(delegate)
+        self.measurementsSearchLineEdit.textChanged.connect(self.filterMeasurements)
+
+        operatorsLayout = QHBoxLayout()
+        operatorsLayout.addStretch(1)
+
+        iconSize = 24
+        self.operatorButtons = []
+        self.operators = [
+            ('add', '+'), ('subtract', '-'), ('multiply', '*'),
+            ('divide', '/'), ('open_bracket', '('), ('close_bracket', ')'),
+            ('square', '**2'), ('pow', '**'), ('ln', 'log('),
+            ('log10', 'log10('),
+        ]
+        for name, text in self.operators:
+            button = widgets.PushButton(icon=QIcon(f':{name}.svg'))
+            button.setIconSize(QSize(iconSize, iconSize))
+            button.setToolTip(text)
+            button.clicked.connect(partial(self.insertEquationText, text))
+            operatorsLayout.addWidget(button)
+            self.operatorButtons.append(button)
+
+        clearButton = widgets.PushButton(icon=QIcon(':clear.svg'))
+        clearButton.setIconSize(QSize(iconSize, iconSize))
+        clearEntryButton = widgets.PushButton(icon=QIcon(':backspace.svg'))
+        clearEntryButton.setIconSize(QSize(iconSize, iconSize))
+        operatorsLayout.addWidget(clearButton)
+        operatorsLayout.addWidget(clearEntryButton)
+        operatorsLayout.addStretch(1)
+
+        categoricalOperatorsLayout = QHBoxLayout()
+        categoricalOperatorsLayout.addWidget(QLabel('Comparisons / logic:'))
+        self.categoricalOperatorButtons = []
+        categoricalOperators = [
+            ('==', ' == ', 'Equal to'),
+            ('!=', ' != ', 'Not equal to'),
+            ('<', ' < ', 'Less than (numerical or ordered inputs)'),
+            ('<=', ' <= ', 'Less than or equal to (numerical or ordered inputs)'),
+            ('>', ' > ', 'Greater than (numerical or ordered inputs)'),
+            ('>=', ' >= ', 'Greater than or equal to (numerical or ordered inputs)'),
+            ('AND', ' & ', 'Both conditions must be true: (condition1) & (condition2)'),
+            ('OR', ' | ', 'Either condition must be true: (condition1) | (condition2)'),
+            ('NOT', '~', 'Negate a condition: ~(condition)'),
+            ('True', 'True', 'Boolean true'),
+            ('False', 'False', 'Boolean false'),
+        ]
+        if self.allowCellAggregations:
+            categoricalOperators.extend((
+                ('ANY', 'any(', 'True on every frame if the condition is true in at least one frame of the cell'),
+                ('ALL', 'all(', 'True on every frame only if the condition is true in every frame of the cell'),
+            ))
+        for label, text, tooltip in categoricalOperators:
+            button = widgets.PushButton(label)
+            button.setToolTip(tooltip)
+            button.clicked.connect(partial(self.insertEquationText, text))
+            categoricalOperatorsLayout.addWidget(button)
+            self.categoricalOperatorButtons.append(button)
+        categoricalOperatorsLayout.addStretch(1)
+
+        nameAndEqualsWidget = QWidget()
+        nameAndEqualsLayout = QHBoxLayout(nameAndEqualsWidget)
+        nameAndEqualsLayout.setContentsMargins(0, 0, 0, 0)
+        self.newColNameLineEdit = widgets.alphaNumericLineEdit()
+        self.newColNameLineEdit.setAlignment(Qt.AlignCenter)
+        nameAndEqualsLayout.addWidget(self.newColNameLineEdit)
+        nameAndEqualsLayout.addWidget(QLabel(' = '))
+        equationLayout.addWidget(QLabel('New measurement name:'), 0, 0)
+        equationLayout.addWidget(nameAndEqualsWidget, 1, 0, Qt.AlignTop)
+
+        equationLayout.addWidget(QLabel('Equation:'), 0, 1)
+        self.formulaEditWidget = FormulaEditWidget(
+            self.variableNames, parent=self, allow_empty=False,
+            validator=self.validateEquation
+        )
+        self.formulaEditWidget._edit.setPlaceholderText(
+            'e.g. area / 2 or cell_cycle_stage == "G1"'
+        )
+        self.equationDisplay = self.formulaEditWidget
+        equationLayout.addWidget(self.formulaEditWidget, 1, 1, Qt.AlignTop)
+        equationLayout.setColumnStretch(0, 1)
+        equationLayout.setColumnStretch(1, 2)
+
+        cellAggregationInstructions = (
+            'Wrap a condition in <code>any(...)</code> or <code>all(...)</code> '
+            'to check it across a cell\'s frames; the result is repeated on '
+            'each frame of that cell.<br>'
+            if self.allowCellAggregations else ''
+        )
+        instructions = html_utils.paragraph(f"""
+            <b>Double-click</b> an available input to add it to the equation.
+            Numerical inputs support arithmetic; categorical inputs support
+            comparisons (e.g. <code>cell_cycle_stage == "G1"</code>).
+            Combine conditions with <code>&amp;</code> or <code>|</code>.<br>
+            {cellAggregationInstructions}
+            The result is saved as a column with the new measurement name.
+        """)
+        buttonsLayout = QHBoxLayout()
+        cancelButton = widgets.cancelPushButton('Cancel')
+        helpButton = widgets.infoPushButton('  Help...')
+        testButton = widgets.calcPushButton('Test equation')
+        self.okButton = widgets.okPushButton(' Ok ')
+        self.okButton.setDisabled(True)
+        self.statusLabel = QLabel()
+        buttonsLayout.addWidget(self.statusLabel)
+        buttonsLayout.addStretch(1)
+        if debug:
+            debugButton = widgets.PushButton('Debug')
+            debugButton.clicked.connect(self._debug)
+            buttonsLayout.addWidget(debugButton)
+        for button in (cancelButton, helpButton, testButton, self.okButton):
+            buttonsLayout.addWidget(button)
+        self.testOutputDisplay = QTextEdit()
+        self.testOutputDisplay.setReadOnly(True)
+
+        mainLayout.addWidget(QLabel(instructions))
+        mainLayout.addWidget(self.measurementsSearchLineEdit)
+        mainLayout.addLayout(treesLayout)
+        mainLayout.addLayout(operatorsLayout)
+        mainLayout.addLayout(categoricalOperatorsLayout)
+        mainLayout.addLayout(equationLayout)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addWidget(self.testOutputDisplay)
+        clearButton.clicked.connect(self.clearEquation)
+        clearEntryButton.clicked.connect(self.formulaEditWidget.backspace)
+        helpButton.clicked.connect(self.showHelp)
+        self.okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+        testButton.clicked.connect(self.test_cb)
+        self.formulaEditWidget.sigFormulaChanged.connect(self.equationChanged)
+        self.newColNameLineEdit.textChanged.connect(self.equationChanged)
+        self.setLayout(mainLayout)
+        self.setFont(fonts.font)
+        self.setStyleSheet(TREEWIDGET_STYLESHEET)
+
+    def filterMeasurements(self, text):
+        """Use the recipe selector's recursive fuzzy search on every table."""
+        def treeItems(parent):
+            for row in range(parent.childCount()):
+                item = parent.child(row)
+                yield item
+                yield from treeItems(item)
+
+        searching = bool(text.strip())
+        if searching and self._metricsSearchState is None:
+            self._metricsSearchState = [
+                (item, item.isHidden(), item.isExpanded())
+                for tree in self.metricsTreeWidgets
+                for item in treeItems(tree.invisibleRootItem())
+            ]
+        for tree, proxy, delegate in zip(
+                self.metricsTreeWidgets, self.metricsSearchProxies,
+                self.metricsHighlightDelegates
+            ):
+            proxy.setFilterText(text)
+            delegate.setFilterText(text)
+            if searching:
+                for item in treeItems(tree.invisibleRootItem()):
+                    matches = proxy.mapFromSource(tree.indexFromItem(item)).isValid()
+                    item.setHidden(not matches)
+                    if matches and item.childCount():
+                        item.setExpanded(True)
+            tree.viewport().update()
+        if not searching and self._metricsSearchState is not None:
+            for item, hidden, expanded in self._metricsSearchState:
+                item.setHidden(hidden)
+                item.setExpanded(expanded)
+            self._metricsSearchState = None
+
+    def createMetricsTrees(self, isZstack, isSegm3D):
+        layout = QHBoxLayout()
+        if self.acdcDfs is not None:
+            for index, (name, df) in enumerate(self.acdcDfs.items()):
+                tree = self.createMetricsTree()
+                numerical = QTreeWidgetItem(tree, ['Numerical inputs'])
+                categorical = QTreeWidgetItem(tree, ['Categorical inputs'])
+                self.populateDataframeTree(numerical, categorical, df, index)
+                tree.expandToDepth(0)
+                treeLayout = QVBoxLayout()
+                treeLayout.addWidget(QLabel(f'{index+1}. {name} measurements'))
+                treeLayout.addWidget(tree)
+                layout.addLayout(treeLayout)
+            return layout
+
+        metricsTreeWidget = self.createMetricsTree()
+        layout.addWidget(metricsTreeWidget)
+        numerical = QTreeWidgetItem(metricsTreeWidget, ['Numerical inputs'])
+        self.categoricalRoot = QTreeWidgetItem(
+            metricsTreeWidget, ['Categorical inputs']
+        )
+
+        self.populateMeasurementCatalog(numerical, isZstack, isSegm3D)
+        self.categoricalRoot.setHidden(self.categoricalRoot.childCount() == 0)
+        metricsTreeWidget.expandToDepth(0)
+        if getattr(self, 'includeOtherMeasurements', False):
+            self.otherMeasurementColumns = {}
+            mainTree = metricsTreeWidget
+            otherTree = self.createMetricsTree()
+            for index, label in enumerate((
+                    'Numerical other-cell inputs',
+                    'Categorical other-cell inputs'
+                )):
+                sourceRoot = mainTree.topLevelItem(index)
+                otherRoot = QTreeWidgetItem(otherTree, [label])
+                self.copyOtherMeasurementGroups(sourceRoot, otherRoot)
+            otherTree.expandToDepth(0)
+            otherTreeLayout = QVBoxLayout()
+            otherTreeLayout.addWidget(QLabel('Other-cell measurements'))
+            otherTreeLayout.addWidget(otherTree)
+            layout.addLayout(otherTreeLayout)
+            self.otherMeasurementsTreeWidget = otherTree
+        return layout
+
+    def copyOtherMeasurementGroups(self, sourceParent, otherParent):
+        for row in range(sourceParent.childCount()):
+            sourceItem = sourceParent.child(row)
+            if getattr(sourceItem, 'isCol', False):
+                sourceName = sourceItem.variableName
+                otherName = f'{sourceName}_other'
+                item = QTreeWidgetItem(otherParent, [otherName])
+                item.isCol = True
+                item.setData(
+                    0, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE,
+                    otherName
+                )
+                item.variableName = otherName
+                self.variableNames.append(otherName)
+                self.otherMeasurementColumns[otherName] = sourceName
+            else:
+                group = QTreeWidgetItem(otherParent, [sourceItem.text(0)])
+                self.copyOtherMeasurementGroups(sourceItem, group)
+
+    @staticmethod
+    def isNumericalInput(dtype):
+        return (
+            pd.api.types.is_numeric_dtype(dtype)
+            and not pd.api.types.is_bool_dtype(dtype)
+        )
+
+    def populateDataframeTree(self, numerical, categorical, df, index):
+        nodes = {
+            ('Numerical inputs',): numerical,
+            ('Categorical inputs',): categorical,
+        }
+        for path, cols in measurements.measurement_column_groups(df, self.allChNames):
+            for depth in range(2, len(path)+1):
+                prefix = path[:depth]
+                if prefix not in nodes:
+                    nodes[prefix] = QTreeWidgetItem(
+                        nodes[prefix[:-1]], [prefix[-1]]
+                    )
+            self.addTreeItems(nodes[path], cols, isCol=True, index=index)
+
+    def createMetricsTree(self):
         metricsTreeWidget = QTreeWidget()
         metricsTreeWidget.setHeaderHidden(True)
         metricsTreeWidget.setFont(fonts.font)
         self.metricsTreeWidget = metricsTreeWidget
+        self.metricsTreeWidgets.append(metricsTreeWidget)
+        metricsTreeWidget.itemDoubleClicked.connect(self.addColname)
+        return metricsTreeWidget
 
-        for chName in allChNames:
-            channelTreeItem = QTreeWidgetItem(metricsTreeWidget)
+    def populateMeasurementCatalog(self, root, isZstack, isSegm3D):
+        """Fill the measurement catalog, keeping its groups.
+
+        With an ``acdc_df`` and ``limitToLoadedColumns=True`` (measurements
+        viewer) only catalog entries that are columns of the loaded table
+        are listed, so the channel-less "All channels measurements" groups
+        stay empty. With ``limitToLoadedColumns=False`` (main GUI and
+        compute utility, which define measurements computed later) the
+        full catalog is listed, including channel-less entries and
+        measurements not saved yet. In both cases the table's remaining
+        columns are added under "Other" and non-numerical columns go to
+        "Categorical inputs"; the table also provides the test rows.
+        """
+        for chName in self.allChNames:
+            channelTreeItem = QTreeWidgetItem(root)
             channelTreeItem.setText(0, f'{chName} measurements')
-            metricsTreeWidget.addTopLevelItem(channelTreeItem)
 
             metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
                 isZstack, chName, isSegm3D=isSegm3D
@@ -14060,7 +14489,7 @@ class combineMetricsEquationDialog(QBaseDialog):
             )
 
             foregrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-            foregrMetricsTreeItem.setText(0, 'Cell signal measurements')
+            foregrMetricsTreeItem.setText(0, 'Cell measurements')
             channelTreeItem.addChild(foregrMetricsTreeItem)
 
             bkgrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
@@ -14085,11 +14514,10 @@ class combineMetricsEquationDialog(QBaseDialog):
                     isCol=True
                 )
 
-        self.addChannelLessItems(isZstack, isSegm3D=isSegm3D)
+        self.addChannelLessItems(isZstack, isSegm3D=isSegm3D, root=root)
 
-        sizeMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
+        sizeMetricsTreeItem = QTreeWidgetItem(root)
         sizeMetricsTreeItem.setText(0, 'Size measurements')
-        metricsTreeWidget.addTopLevelItem(sizeMetricsTreeItem)
 
         size_metrics_desc = measurements.get_size_metrics_desc(
             isSegm3D, True
@@ -14098,155 +14526,43 @@ class combineMetricsEquationDialog(QBaseDialog):
             sizeMetricsTreeItem, size_metrics_desc.keys(), isCol=True
         )
 
-        propMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
+        propMetricsTreeItem = QTreeWidgetItem(root)
         propMetricsTreeItem.setText(0, 'Region properties')
-        metricsTreeWidget.addTopLevelItem(propMetricsTreeItem)
 
         props_names = measurements.get_props_names()
         self.addTreeItems(
             propMetricsTreeItem, props_names, isCol=True
         )
+        if self.acdcDf is not None:
+            grouped = set(self.variableNames)
+            for parent, numerical in (
+                    (root, True), (self.categoricalRoot, False)
+                ):
+                remaining = [
+                    col for col in self.acdcDf
+                    if col not in grouped
+                    and self.isNumericalInput(self.acdcDf[col].dtype) == numerical
+                ]
+                if remaining:
+                    other = QTreeWidgetItem(parent, ['Other'])
+                    self.addTreeItems(other, remaining, isCol=True)
 
-        operatorsLayout = QHBoxLayout()
-        operatorsLayout.addStretch(1)
-
-        iconSize = 24
-
-        self.operatorButtons = []
-        self.operators = [
-            ('add', '+'),
-            ('subtract', '-'),
-            ('multiply', '*'),
-            ('divide', '/'),
-            ('open_bracket', '('),
-            ('close_bracket', ')'),
-            ('square', '**2'),
-            ('pow', '**'),
-            ('ln', 'log('),
-            ('log10', 'log10('),
-        ]
-        operatorFont = QFont()
-        operatorFont.setPixelSize(16)
-        for name, text in self.operators:
-            button = QPushButton()
-            button.setIcon(QIcon(f':{name}.svg'))
-            button.setIconSize(QSize(iconSize,iconSize))
-            button.text = text
-            operatorsLayout.addWidget(button)
-            self.operatorButtons.append(button)
-            button.clicked.connect(self.addOperator)
-            # button.setFont(operatorFont)
-
-        clearButton = QPushButton()
-        clearButton.setIcon(QIcon(':clear.svg'))
-        clearButton.setIconSize(QSize(iconSize,iconSize))
-        clearButton.setFont(operatorFont)
-
-        clearEntryButton = QPushButton()
-        clearEntryButton.setIcon(QIcon(':backspace.svg'))
-        clearEntryButton.setFont(operatorFont)
-        clearEntryButton.setIconSize(QSize(iconSize,iconSize))
-
-        operatorsLayout.addWidget(clearButton)
-        operatorsLayout.addWidget(clearEntryButton)
-        operatorsLayout.addStretch(1)
-
-        newColNameLayout = QVBoxLayout()
-        newColNameLineEdit = widgets.alphaNumericLineEdit()
-        newColNameLineEdit.setAlignment(Qt.AlignCenter)
-        self.newColNameLineEdit = newColNameLineEdit
-        newColNameLayout.addStretch(1)
-        newColNameLayout.addWidget(QLabel('New measurement name:'))
-        newColNameLayout.addWidget(newColNameLineEdit)
-        newColNameLayout.addStretch(1)
-
-        equationDisplayLayout = QVBoxLayout()
-        equationDisplayLayout.addWidget(QLabel('Equation:'))
-        equationDisplay = QPlainTextEdit()
-        # equationDisplay.setReadOnly(True)
-        self.equationDisplay = equationDisplay
-        equationDisplayLayout.addWidget(equationDisplay)
-        equationDisplayLayout.setStretch(0,0)
-        equationDisplayLayout.setStretch(1,1)
-
-        equationLayout.addLayout(newColNameLayout)
-        equationLayout.addWidget(QLabel(' = '))
-        equationLayout.addLayout(equationDisplayLayout)
-        equationLayout.setStretch(0,1)
-        equationLayout.setStretch(1,0)
-        equationLayout.setStretch(2,2)
-
-        testOutputLayout = QVBoxLayout()
-        testOutputLayout.addWidget(QLabel('Result of test with random inputs:'))
-        testOutputDisplay = QTextEdit()
-        testOutputDisplay.setReadOnly(True)
-        self.testOutputDisplay = testOutputDisplay
-        testOutputLayout.addWidget(testOutputDisplay)
-        testOutputLayout.setStretch(0,0)
-        testOutputLayout.setStretch(1,1)
-
-        instructions = html_utils.paragraph("""
-            <b>Double-click</b> on any of the <b>available measurements</b>
-            to add it to the equation.<br><br>
-            <i>NOTE: the result will be saved in the <code>acdc_output.csv</code>
-            file as a column with the same name<br>
-            you enter in "New measurement name"
-            field.</i><br>
-        """)
-
-        buttonsLayout = QHBoxLayout()
-
-        cancelButton = widgets.cancelPushButton('Cancel')
-        helpButton = widgets.infoPushButton('  Help...')
-        testButton = widgets.calcPushButton('Test output')
-        okButton = widgets.okPushButton(' Ok ')
-        okButton.setDisabled(True)
-        self.okButton = okButton
-
-        buttonsLayout.addStretch(1)
-
-        if debug:
-            debugButton = QPushButton('Debug')
-            debugButton.clicked.connect(self._debug)
-            buttonsLayout.addWidget(debugButton)
-
-        buttonsLayout.addWidget(cancelButton)
-        buttonsLayout.addSpacing(20)
-        buttonsLayout.addWidget(helpButton)
-        buttonsLayout.addWidget(testButton)
-        buttonsLayout.addWidget(okButton)
-
-        mainLayout.addWidget(QLabel(instructions))
-        mainLayout.addWidget(QLabel('Available measurements:'))
-        mainLayout.addWidget(metricsTreeWidget)
-        mainLayout.addLayout(operatorsLayout)
-        mainLayout.addLayout(equationLayout)
-        mainLayout.addSpacing(20)
-        mainLayout.addLayout(buttonsLayout)
-        mainLayout.addLayout(testOutputLayout)
-
-        clearButton.clicked.connect(self.clearEquation)
-        clearEntryButton.clicked.connect(self.clearEntryEquation)
-        metricsTreeWidget.itemDoubleClicked.connect(self.addColname)
-
-        helpButton.clicked.connect(self.showHelp)
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.close)
-        testButton.clicked.connect(self.test_cb)
-
-        self.setLayout(mainLayout)
-        self.setFont(fonts.font)
-
-        self.setStyleSheet(TREEWIDGET_STYLESHEET)
-
-    def addChannelLessItems(self, isZstack, isSegm3D=False):
-        allChannelsTreeItem = QTreeWidgetItem(self.metricsTreeWidget)
+    def addChannelLessItems(self, isZstack, isSegm3D=False, root=None):
+        allChannelsTreeItem = QTreeWidgetItem(root)
         allChannelsTreeItem.setText(0, f'All channels measurements')
         metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
             isZstack, '', isSegm3D=isSegm3D
         )
         custom_metrics_desc = measurements.custom_metrics_desc(
             isZstack, '', isSegm3D=isSegm3D
+        )
+        # With an empty channel name the catalog also returns every saved
+        # per-channel equation (e.g. `GFP_ratio`), which is already listed
+        # under its channel. Channel-less names are `_<name>` (inserted
+        # after each channel name), so keep only those.
+        metrics_desc, bkgr_val_desc, custom_metrics_desc = (
+            [name for name in desc if name.startswith('_')]
+            for desc in (metrics_desc, bkgr_val_desc, custom_metrics_desc)
         )
 
         foregrMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)
@@ -14263,59 +14579,70 @@ class combineMetricsEquationDialog(QBaseDialog):
             allChannelsTreeItem.addChild(customMetricsTreeItem)
 
         self.addTreeItems(
-            foregrMetricsTreeItem, metrics_desc.keys(), isCol=True,
+            foregrMetricsTreeItem, metrics_desc, isCol=True,
             isChannelLess=True
         )
         self.addTreeItems(
-            bkgrMetricsTreeItem, bkgr_val_desc.keys(), isCol=True,
+            bkgrMetricsTreeItem, bkgr_val_desc, isCol=True,
             isChannelLess=True
         )
 
         if custom_metrics_desc:
             self.addTreeItems(
-                customMetricsTreeItem, custom_metrics_desc.keys(),
+                customMetricsTreeItem, custom_metrics_desc,
                 isCol=True, isChannelLess=True
             )
 
-    def addOperator(self):
-        button = self.sender()
-        text = f'{self.equationDisplay.toPlainText()}{button.text}'
-        self.equationDisplay.setPlainText(text)
-        self.clearLenghts.append(len(button.text))
+    def insertEquationText(self, text, checked=False):
+        self.formulaEditWidget.insert(text)
 
     def clearEquation(self):
-        self.isOperatorMode = False
-        self.equationDisplay.setPlainText('')
-        self.initAttributes()
+        self.formulaEditWidget.setText('')
 
     def initAttributes(self):
-        self.clearLenghts = []
         self.equationColNames = []
         self.channelLessColnames = []
 
     def clearEntryEquation(self):
-        if not self.clearLenghts:
-            return
-
-        text = self.equationDisplay.toPlainText()
-        newText = text[:-self.clearLenghts[-1]]
-        clearedText = text[-self.clearLenghts[-1]:]
-        self.clearLenghts.pop(-1)
-        self.equationDisplay.setPlainText(newText)
-        if clearedText in self.equationColNames:
-            self.equationColNames.remove(clearedText)
-        if clearedText in self.channelLessColnames:
-            self.channelLessColnames.remove(clearedText)
+        self.formulaEditWidget.backspace()
 
     def addTreeItems(
-            self, parentItem, itemsText, isCol=False, isChannelLess=False
+            self, parentItem, itemsText, isCol=False, isChannelLess=False,
+            index=None
         ):
         for text in itemsText:
-            _item = QTreeWidgetItem(parentItem)
+            parent = parentItem
+            if (
+                isCol and self.limitToLoadedColumns
+                and self.acdcDfs is None and self.acdcDf is not None
+                and text not in self.acdcDf
+            ):
+                continue
+            if (
+                self.acdcDfs is None and self.acdcDf is not None
+                and text in self.acdcDf
+                and not self.isNumericalInput(self.acdcDf[text].dtype)
+                and parentItem.parent() is not self.categoricalRoot
+            ):
+                parent = self.categoricalRoot
+            _item = QTreeWidgetItem(parent)
             _item.setText(0, text)
-            parentItem.addChild(_item)
             if isCol:
                 _item.isCol = True
+                _item.setData(
+                    0, widgets.ButtonSearchCompleter.SEARCH_NAME_ROLE, text
+                )
+                variable = text if index is None else f'{text}_table{index+1}'
+                _item.variableName = variable
+                # A name listed in more than one group is one variable;
+                # a channel item always wins over a channel-less one.
+                if variable not in self._listedVariables:
+                    self._listedVariables.add(variable)
+                    self.variableNames.append(variable)
+                    if isChannelLess:
+                        self.channelLessVariables.add(variable)
+                elif not isChannelLess:
+                    self.channelLessVariables.discard(variable)
             _item.isChannelLess = isChannelLess
 
 
@@ -14323,16 +14650,227 @@ class combineMetricsEquationDialog(QBaseDialog):
         if not hasattr(item, 'isCol'):
             return
 
-        colName = item.text(0)
-        text = f'{self.equationDisplay.toPlainText()}{colName}'
-        self.equationDisplay.setPlainText(text)
-        self.clearLenghts.append(len(colName))
-        self.equationColNames.append(colName)
-        if item.isChannelLess:
-            self.channelLessColnames.append(colName)
+        colName = item.variableName
+        if not colName.isidentifier() or keyword.iskeyword(colName):
+            colName = f'`{colName}`'
+        self.insertEquationText(colName)
 
     def _debug(self):
-        print(self.getEquationsDict())
+        print(self.formulaEditWidget.text(), self.equationColNames)
+
+    @timepoint_debug_trace
+    def equationChanged(self, *args):
+        self.okButton.setDisabled(True)
+        self.statusLabel.clear()
+        self.testOutputDisplay.clear()
+        self.testOutputDisplay.setStyleSheet('')
+        self.equationColNames = self.formulaEditWidget.referencedVariableNames()
+        self.channelLessColnames = [
+            name for name in self.equationColNames
+            if name in self.channelLessVariables
+        ]
+
+    def getTestData(self, preview=False):
+        if self.acdcDfs is not None:
+            return pd.concat([
+                (df.head(10) if preview else df).add_suffix(f'_table{i+1}')
+                for i, df in enumerate(self.acdcDfs.values())
+            ], axis=1)
+        names = self.formulaEditWidget.referencedVariableNames()
+        if self.acdcDf is None:
+            sample = pd.DataFrame(index=[0])
+        elif self.allowCellAggregations:
+            # Per-cell functions need the whole table (all rows/columns)
+            sample = (
+                self.acdcDf.head(10) if preview else self.acdcDf
+            ).copy()
+        else:
+            # Row-wise equations: copy only the referenced columns of a
+            # limited number of rows (the test shows only 10 results and
+            # the equation is evaluated again on the full table at save)
+            nrows = 10 if preview else self.TEST_DATA_MAX_ROWS
+            cols = [name for name in names if name in self.acdcDf.columns]
+            sample = self.acdcDf[cols].head(nrows).copy()
+        for name in names:
+            if name not in sample and name not in sample.index.names:
+                sample[name] = np.random.uniform(1, 5, len(sample))
+        if self.allowCellAggregations:
+            return sample
+        return sample[names]
+
+    def validateEquation(self, formula):
+        try:
+            if not formula.strip():
+                return False, 'Equation cannot be empty'
+            if not self.formulaEditWidget.referencedVariableNames():
+                return False, 'No measurement inputs used'
+            result = self.evaluateEquation(
+                self.getTestData(preview=True), formula
+            )
+            if not isinstance(result, pd.Series):
+                return False, 'The equation must return one value per row'
+        except Exception as err:
+            return False, str(err)
+        return True, formula
+
+    @timepoint_debug_trace
+    def evaluateEquation(
+            self, df, formula, *, enforce_dtype_output=None, alternatives=None
+        ):
+        """Use downstream pandas/per-cell execution and optionally check dtype."""
+        from . import timepoint_predictors
+        if not self.allowCellAggregations:
+            if re.search(r'\b(?:any|all)\s*\(', formula):
+                raise ValueError(
+                    'any(...) and all(...) are available only in the '
+                    'Measurements viewer.'
+                )
+            result = df.eval(formula)
+            if enforce_dtype_output is not None:
+                result = timepoint_predictors.CellEquation.enforce_dtype(
+                    result, enforce_dtype_output, len(df)
+                )
+            return result
+
+        return self.evaluateCellEquation(
+            df, formula, SizeT=getattr(self, 'SizeT', None),
+            enforce_dtype_output=enforce_dtype_output, alternatives=alternatives
+        )
+
+    @staticmethod
+    def isRowWiseFormula(formula):
+        """See ``timepoint_predictors.CellEquation.is_row_wise``."""
+        from . import timepoint_predictors
+        return timepoint_predictors.CellEquation.is_row_wise(formula)
+
+    @staticmethod
+    def evaluateCellEquation(
+            df, formula, *, SizeT=None, enforce_dtype_output=None,
+            alternatives=None
+        ):
+        """Evaluate viewer equations without requiring an equation editor.
+
+        Formulas with per-cell functions (``CELL_FUNCTIONS``) or other-cell
+        ``alternatives`` are evaluated cell by cell (rows sorted by
+        frame_i). Purely row-wise formulas give the same result evaluated
+        once on the whole table, so they take a vectorised fast path.
+        """
+        from . import timepoint_predictors
+        variables = {'SizeT': SizeT} if SizeT is not None else None
+        flat = timepoint_predictors.CellTable.flatten(df)
+        if 'Cell_ID' not in flat or flat.empty:
+            return timepoint_predictors.CellEquation.evaluate(
+                flat, formula, variables,
+                enforce_dtype_output=enforce_dtype_output
+            )
+        if (
+            not alternatives and not flat['Cell_ID'].isna().any()
+            and _CombineMetricsDialog.isRowWiseFormula(formula)
+        ):
+            try:
+                values = timepoint_predictors.CellEquation.evaluate(
+                    flat, formula, variables,
+                    enforce_dtype_output=enforce_dtype_output
+                )
+            except Exception as err:
+                raise ValueError(
+                    f'Evaluating the equation failed: {err}'
+                ) from err
+            # Same conversion as the per-cell path below
+            result = pd.Series(
+                np.broadcast_to(np.asarray(values), len(flat)).copy(),
+                index=df.index
+            )
+            return result
+        results = []
+        for ID, cell in flat.groupby('Cell_ID', sort=False):
+            if 'frame_i' in cell:
+                cell = cell.sort_values('frame_i')
+            try:
+                values = (
+                    timepoint_predictors.OtherCellMeasurements
+                    .evaluate_with_alternatives(
+                        cell.reset_index(drop=True), formula, alternatives,
+                        variables, enforce_dtype_output=enforce_dtype_output
+                    )
+                )
+                results.append(pd.Series(
+                    np.broadcast_to(np.asarray(values), len(cell)),
+                    index=cell.index
+                ))
+            except Exception as err:
+                raise ValueError(
+                    f'Evaluating the equation failed for Cell_ID {ID}: {err}'
+                ) from err
+        result = pd.concat(results).reindex(flat.index)
+        result.index = df.index
+        return result
+
+    def test_cb(self):
+        self.equationChanged()
+        success, message = self.formulaEditWidget.checkValidity()
+        if not success:
+            self.statusLabel.setText(message)
+            self.testOutputDisplay.setPlainText(message)
+            self.testOutputDisplay.setStyleSheet('border: 2px solid red')
+            return
+        try:
+            df = self.getTestData()
+            result = self.evaluateEquation(
+                df, self.formulaEditWidget.text()
+            )
+        except Exception as err:
+            traceback.print_exc()
+            self.statusLabel.setText(str(err))
+            self.testOutputDisplay.setPlainText(str(err))
+            self.testOutputDisplay.setStyleSheet('border: 2px solid red')
+            return
+        preview = df[self.equationColNames].head(10).copy()
+        preview[self.newColNameLineEdit.text() or 'Result'] = result.head(10)
+        self.testOutputDisplay.setHtml(preview.to_html())
+        self.testOutputDisplay.setStyleSheet('border: 2px solid green')
+        source = 'loaded tables' if self.acdcDfs is not None else 'random inputs'
+        if self.acdcDf is not None:
+            source = 'sampled table rows (random inputs for new measurements)'
+        self.statusLabel.setText(f'Equation test with {source} was successful.')
+        self.okButton.setEnabled(True)
+        if hasattr(self, 'logger'):
+            self.logger.info(self.statusLabel.text())
+
+    def warnEmptyEquationName(self):
+        msg = widgets.myMessageBox()
+        msg.critical(
+            self, 'Empty new measurement name',
+            html_utils.paragraph('"New measurement name" field cannot be empty!')
+        )
+
+    def showHelp(self):
+        txt = measurements.get_combine_metrics_help_txt()
+        msg = widgets.myMessageBox(
+            showCentered=False, wrapText=False,
+            scrollableText=True, enlargeWidthFactor=1.7
+        )
+        msg.addShowInFileManagerButton(
+            measurements.acdc_metrics_path, txt='Show saved file...'
+        )
+        msg.information(self, 'Combine measurements help', txt)
+
+
+class CombineMetricsEquationDialog(_CombineMetricsDialog):
+    sigOk = Signal(object)
+
+    def __init__(
+            self, allChNames, isZstack, isSegm3D, parent=None, debug=False,
+            closeOnOk=True, acdc_df=None, *, saveToConfig=True,
+            allowCellAggregations=False, limitToLoadedColumns=False
+        ):
+        self.saveToConfig = saveToConfig
+        super().__init__(
+            allChNames, isZstack, isSegm3D, parent=parent, debug=debug,
+            closeOnOk=closeOnOk, acdc_df=acdc_df,
+            allowCellAggregations=allowCellAggregations,
+            limitToLoadedColumns=limitToLoadedColumns
+        )
 
     def getEquationsDict(self):
         equation = self.equationDisplay.toPlainText()
@@ -14341,7 +14879,7 @@ class combineMetricsEquationDialog(QBaseDialog):
             chNamesInTerms = set()
             for term in self.equationColNames:
                 for chName in self.allChNames:
-                    if chName in term:
+                    if term.startswith(f'{chName}_'):
                         chNamesInTerms.add(chName)
             if len(chNamesInTerms) == 1:
                 # Equation uses metrics from a single channel --> append channel name
@@ -14357,23 +14895,32 @@ class combineMetricsEquationDialog(QBaseDialog):
         isMixedChannels = False
         equations = {}
         for chName in self.allChNames:
-            chEquation = equation
-            chEquationName = newColName
-            # Append each channel name to channelLess terms
-            for colName in self.channelLessColnames:
-                chColName = f'{chName}{colName}'
-                chEquation = chEquation.replace(colName, chColName)
-                chEquationName = f'{chName}_{newColName}'
-                equations[chEquationName] = chEquation
+            replacements = {
+                colName: f'{chName}{colName}'
+                for colName in self.channelLessColnames
+            }
+            equations[f'{chName}_{newColName}'] = (
+                self.formulaEditWidget.replaceVariableNames(replacements)
+            )
         return equations, isMixedChannels
 
     def ok_cb(self):
         if not self.newColNameLineEdit.text():
             self.warnEmptyEquationName()
             return
+        if not self.okButton.isEnabled():
+            self.test_cb()
+            return
         
+        if self.saveToConfig:
+            self.saveEquationsConfig()
         self.cancel = False
+        self.sigOk.emit(self)
 
+        if self.closeOnOk:
+            self.close()
+
+    def saveEquationsConfig(self):
         # Save equation to "<user_profile_path>/acdc-metrics/combine_metrics.ini" file
         config = measurements.read_saved_user_combine_config()
 
@@ -14394,71 +14941,148 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         measurements.save_common_combine_metrics(config)
 
-        self.sigOk.emit(self)
-        
-        if self.closeOnOk:
-            self.close()
 
-    def warnEmptyEquationName(self):
-        msg = widgets.myMessageBox()
-        txt = html_utils.paragraph("""
-            "New measurement name" field <b>cannot be empty</b>!
-        """)
-        msg.critical(
-            self, 'Empty new measurement name', txt
-        )
 
-    def showHelp(self):
-        txt = measurements.get_combine_metrics_help_txt()
-        msg = widgets.myMessageBox(
-            showCentered=False, wrapText=False,
-            scrollableText=True, enlargeWidthFactor=1.7
-        )
-        path = measurements.acdc_metrics_path
-        msg.addShowInFileManagerButton(path, txt='Show saved file...')
-        msg.information(self, 'Combine measurements help', txt)
 
-    def test_cb(self):
-        # Evaluate equation with random inputs
-        equation = self.equationDisplay.toPlainText()
-        random_data = np.random.rand(1, len(self.equationColNames))*5
-        df = pd.DataFrame(
-            data=random_data,
-            columns=self.equationColNames
-        ).round(5)
-        newColName = self.newColNameLineEdit.text()
-        try:
-            df[newColName] = df.eval(equation)
-        except Exception as e:
-            traceback.print_exc()
-            self.testOutputDisplay.setHtml(html_utils.paragraph(e))
-            self.testOutputDisplay.setStyleSheet("border: 2px solid red")
-            return
 
-        self.testOutputDisplay.setStyleSheet("border: 2px solid green")
-        self.okButton.setDisabled(False)
 
-        result = df.round(5).iloc[0][newColName]
 
-        # Substitute numbers into equation
-        inputs = df.iloc[0]
-        equation_numbers = equation
-        for c, col in enumerate(self.equationColNames):
-            equation_numbers = equation_numbers.replace(col, str(inputs[c]))
 
-        # Format output into html text
-        cols = self.equationColNames
-        inputs_txt = [f'{col} = {input}' for col, input in zip(cols, inputs)]
-        list_html = html_utils.to_list(inputs_txt)
-        text = html_utils.paragraph(f"""
-            By substituting the following random inputs:
-            {list_html}
-            we get the equation:<br><br>
-            &nbsp;&nbsp;<code>{newColName} = {equation_numbers}</code><br><br>
-            that <b>equals to</b>:<br><br>
-            &nbsp;&nbsp;<code>{newColName} = {result}</code>
-        """)
-        self.testOutputDisplay.setHtml(text)
+
+
+# class CellConstantEquationDialog(_CombineMetricsDialog):
+#     """Shared formula editor with candidate and enquiring-cell input trees."""
+#     def __init__(
+#             self, constant, acdc_df=None, SizeT=None, condition=False,
+#             parent=None
+#         ):
+#         from . import timepoint_predictors
+#         self._predictors = timepoint_predictors
+#         self.constant = dict(constant)
+#         self.SizeT = SizeT
+#         self.isCondition = condition
+#         self.sourceDf = acdc_df
+#         df = (
+#             timepoint_predictors._flat_df(acdc_df)
+#             if acdc_df is not None else pd.DataFrame(columns=['frame_i', 'Cell_ID'])
+#         )
+#         super().__init__(
+#             [], False, False, parent=parent,
+#             acdcDfs={'Candidate cell': df, 'Enquiring cell': df}
+#         )
+#         self.setWindowTitle('Cell filter formula' if condition else 'Constant formula')
+#         self.newColNameLineEdit.setText(constant['name'])
+#         self.newColNameLineEdit.setReadOnly(True)
+#         self.equation = ''
+#         functions = QHBoxLayout()
+#         for name, (_, description) in timepoint_predictors.CELL_FUNCTIONS.items():
+#             button = QPushButton(name)
+#             button.setToolTip(description)
+#             button.clicked.connect(partial(self.insertEquationText, f'{name}('))
+#             functions.addWidget(button)
+#         self.layout().insertLayout(self.layout().count()-3, functions)
+#         infoLabel = QLabel(html_utils.paragraph(
+#             'Left: candidate measurements. '
+#             'Right: enquiring-cell measurements at the same frame, prefixed '
+#             '<code>this_</code>. Double-click inputs to insert them.<br>'
+#             + ('Return bool or 0/1, either a scalar or one value per overlapping '
+#                'frame. Any/All selects cells; Only where true selects frames.'
+#                if condition else
+#                'Reduce the selected source rows to one value using MAX, MEAN, '
+#                'FIRST, etc. Time scope determines whether this is per frame '
+#                'over the entire video, or within a custom window around t.')
+#         ))
+#         infoLabel.setWordWrap(True)
+#         self.layout().insertWidget(0, infoLabel)
+#         self.formulaEditWidget.setText(
+#             constant['condition' if condition else 'equation']
+#         )
+
+#     def addTreeItems(self, parentItem, itemsText, **kwargs):
+#         start = parentItem.childCount()
+#         super().addTreeItems(parentItem, itemsText, **kwargs)
+#         for i in range(start, parentItem.childCount()):
+#             item = parentItem.child(i)
+#             if not getattr(item, 'isCol', False):
+#                 continue
+#             old = item.variableName
+#             name = item.text(0)
+#             item.variableName = f'this_{name}' if kwargs.get('index') == 1 else name
+#             self.variableNames[self.variableNames.index(old)] = item.variableName
+
+#     def getTestData(self, preview=False):
+#         df = self.acdcDfs['Candidate cell'].head(10).reset_index(drop=True).copy()
+#         for col in list(df.columns):
+#             df[f'this_{col}'] = df[col]
+#         return df
+
+#     def validateEquation(self, formula):
+#         try:
+#             if not formula.strip():
+#                 raise ValueError('Formula cannot be empty.')
+#             result = self._predictors.eval_cell_equation(
+#                 self.getTestData(), formula,
+#                 {'SizeT': self.SizeT} if self.SizeT is not None else None
+#             )
+#             if self.isCondition:
+#                 self._predictors.boolean_filter_values(result, len(self.getTestData()))
+#         except Exception as err:
+#             return False, str(err)
+#         return True, formula
+
+#     def test_cb(self):
+#         formula = self.formulaEditWidget.text()
+#         success, message = self.validateEquation(formula)
+#         if success:
+#             constant = dict(self.constant)
+#             constant['condition' if self.isCondition else 'equation'] = formula
+#             if self.isCondition:
+#                 constant['condition_type'] = 'equation'
+#                 # Show selected source-cell counts independently of the value formula.
+#                 constant['equation'] = 'NUNIQUE(Cell_ID)'
+#             try:
+#                 values = self._predictors.compute_cell_constants(
+#                     self.sourceDf, [constant], SizeT=self.SizeT
+#                 )
+#             except Exception as err:
+#                 success, message = False, str(err)
+#             else:
+#                 if values and self.sourceDf is not None:
+#                     preview = self._predictors.add_constants_columns(
+#                         self.sourceDf, values
+#                     ).reset_index()
+#                     preview = preview[['frame_i', 'Cell_ID', constant['name']]]
+#                     self.testOutputDisplay.setHtml(preview.head(20).to_html(index=False))
+#                 else:
+#                     self.testOutputDisplay.setPlainText('Formula is valid; no data to preview.')
+#         self.statusLabel.setText('Formula is valid.' if success else message)
+#         if not success:
+#             self.testOutputDisplay.setPlainText(message)
+#         self.testOutputDisplay.setStyleSheet(
+#             f'border: 2px solid {"green" if success else "red"}'
+#         )
+#         self.okButton.setEnabled(success)
+
+#     def ok_cb(self):
+#         self.test_cb()
+#         if not self.okButton.isEnabled():
+#             return
+#         self.equation = self.formulaEditWidget.text()
+#         self.cancel = False
+#         self.close()
+
+#     def showHelp(self):
+#         msg = widgets.myMessageBox(wrapText=False)
+#         msg.information(self, 'Constant formulas', html_utils.paragraph(
+#             'Candidate inputs have their measurement names. Enquiring-cell '
+#             'inputs have the prefix <code>this_</code>, for example '
+#             '<code>area &gt; this_area</code>. Functions such as MAX and MEAN '
+#             'operate on the candidate/enquirer overlapping frames when filtering. '
+#             'Custom ranges use inclusive integer bounds relative to t, '
+#             'the frame receiving the result (e.g. t - 5 to t + 2). '
+#             'SizeT is the total number of video frames.'
+#         ))
+
 
 class stopFrameDialog(QBaseDialog):
     def __init__(self, posDatas, parent=None):
@@ -14593,219 +15217,15 @@ class pgTestWindow(QWidget):
         self.setLayout(layout)
 
 
-class CombineMetricsMultiDfsDialog(QBaseDialog):
+class CombineMetricsMultiDfsDialog(_CombineMetricsDialog):
     sigOk = Signal(object, object)
     sigClose = Signal(bool)
 
     def __init__(self, acdcDfs, allChNames, parent=None, debug=False):
-        super().__init__(parent)
-
-        self.setWindowTitle('Add combined measurement')
-
-        self.initAttributes()
-
-        self.acdcDfs = acdcDfs
-        self.cancel = True
-        self.isOperatorMode = False
-
-        mainLayout = QVBoxLayout()
-        equationLayout = QHBoxLayout()
-
-        treesLayout = QHBoxLayout()
-        for i, (acdc_df_endname, acdc_df) in enumerate(acdcDfs.items()):
-            metricsTreeWidget = QTreeWidget()
-            metricsTreeWidget.setHeaderHidden(True)
-            metricsTreeWidget.setFont(fonts.font)
-
-            classified_metrics = measurements.classify_acdc_df_colnames(
-                acdc_df, allChNames
-            )
-
-            for chName in allChNames:
-                channelTreeItem = QTreeWidgetItem(metricsTreeWidget)
-                channelTreeItem.setText(0, f'{chName} measurements')
-                metricsTreeWidget.addTopLevelItem(channelTreeItem)
-
-                standard_metrics = classified_metrics['foregr'][chName]
-                bkgr_metrics = classified_metrics['bkgr'][chName]
-                custom_metrics = classified_metrics['custom'][chName]
-
-                if standard_metrics:
-                    foregrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-                    foregrMetricsTreeItem.setText(0, 'Cell signal measurements')
-                    channelTreeItem.addChild(foregrMetricsTreeItem)
-                    self.addTreeItems(
-                        foregrMetricsTreeItem, standard_metrics, 
-                        isCol=True, index=i
-                    )
-
-                if bkgr_metrics:
-                    bkgrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-                    bkgrMetricsTreeItem.setText(0, 'Background values')
-                    channelTreeItem.addChild(bkgrMetricsTreeItem)
-                    self.addTreeItems(
-                        bkgrMetricsTreeItem, bkgr_metrics, 
-                        isCol=True, index=i
-                    )
-
-                if custom_metrics:
-                    customMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
-                    customMetricsTreeItem.setText(0, 'Custom measurements')
-                    channelTreeItem.addChild(customMetricsTreeItem)
-                    self.addTreeItems(
-                        customMetricsTreeItem, custom_metrics, 
-                        isCol=True, index=i
-                    )
-
-            if classified_metrics['size']:
-                sizeMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
-                sizeMetricsTreeItem.setText(0, 'Size measurements')
-                metricsTreeWidget.addTopLevelItem(sizeMetricsTreeItem)
-                self.addTreeItems(
-                    sizeMetricsTreeItem, classified_metrics['size'], 
-                    isCol=True, index=i
-                )
-
-            if classified_metrics['props']:
-                propMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
-                propMetricsTreeItem.setText(0, 'Region properties')
-                metricsTreeWidget.addTopLevelItem(propMetricsTreeItem)
-                self.addTreeItems(
-                    propMetricsTreeItem, classified_metrics['props'], 
-                    isCol=True, index=i
-                )
-
-            treeLayout = QVBoxLayout()
-            treeTitle = QLabel(html_utils.paragraph(
-                f'{i+1}. <code>{acdc_df_endname}</code> measurements  '
-            ))
-            treeLayout.addWidget(treeTitle)       
-            treeLayout.addWidget(metricsTreeWidget)
-            treesLayout.addLayout(treeLayout)
-
-            metricsTreeWidget.index = i
-            metricsTreeWidget.itemDoubleClicked.connect(self.addColname)
-
-        operatorsLayout = QHBoxLayout()
-        operatorsLayout.addStretch(1)
-
-        iconSize = 24
-
-        self.operatorButtons = []
-        self.operators = [
-            ('add', '+'),
-            ('subtract', '-'),
-            ('multiply', '*'),
-            ('divide', '/'),
-            ('open_bracket', '('),
-            ('close_bracket', ')'),
-            ('square', '**2'),
-            ('pow', '**'),
-            ('ln', 'log('),
-            ('log10', 'log10('),
-        ]
-        operatorFont = QFont()
-        operatorFont.setPixelSize(16)
-        for name, text in self.operators:
-            button = QPushButton()
-            button.setIcon(QIcon(f':{name}.svg'))
-            button.setIconSize(QSize(iconSize,iconSize))
-            button.text = text
-            operatorsLayout.addWidget(button)
-            self.operatorButtons.append(button)
-            button.clicked.connect(self.addOperator)
-            # button.setFont(operatorFont)
-
-        clearButton = QPushButton()
-        clearButton.setIcon(QIcon(':clear.svg'))
-        clearButton.setIconSize(QSize(iconSize,iconSize))
-        clearButton.setFont(operatorFont)
-
-        clearEntryButton = QPushButton()
-        clearEntryButton.setIcon(QIcon(':backspace.svg'))
-        clearEntryButton.setFont(operatorFont)
-        clearEntryButton.setIconSize(QSize(iconSize,iconSize))
-
-        operatorsLayout.addWidget(clearButton)
-        operatorsLayout.addWidget(clearEntryButton)
-        operatorsLayout.addStretch(1)
-
-        newColNameLayout = QVBoxLayout()
-        newColNameLineEdit = widgets.alphaNumericLineEdit()
-        newColNameLineEdit.setAlignment(Qt.AlignCenter)
-        self.newColNameLineEdit = newColNameLineEdit
-        newColNameLayout.addStretch(1)
-        newColNameLayout.addWidget(QLabel('New measurement name:'))
-        newColNameLayout.addWidget(newColNameLineEdit)
-        newColNameLayout.addStretch(1)
-
-        equationDisplayLayout = QVBoxLayout()
-        equationDisplayLayout.addWidget(QLabel('Equation:'))
-        equationDisplay = QPlainTextEdit()
-        # equationDisplay.setReadOnly(True)
-        self.equationDisplay = equationDisplay
-        equationDisplayLayout.addWidget(equationDisplay)
-        equationDisplayLayout.setStretch(0,0)
-        equationDisplayLayout.setStretch(1,1)
-
-        equationLayout.addLayout(newColNameLayout)
-        equationLayout.addWidget(QLabel(' = '))
-        equationLayout.addLayout(equationDisplayLayout)
-        equationLayout.setStretch(0,1)
-        equationLayout.setStretch(1,0)
-        equationLayout.setStretch(2,2)
-
-        instructions = html_utils.paragraph("""
-            <b>Double-click</b> on any of the <b>available measurements</b>
-            to add it to the equation.<br><br>
-            <i>NOTE: the result will be saved in a new <code>acdc_output</code>
-            file as a column with the same name<br>
-            you enter in "New measurement name"
-            field.</i><br>
-        """)
-
-        buttonsLayout = QHBoxLayout()
-
-        cancelButton = widgets.cancelPushButton('Cancel')
-        testButton = widgets.calcPushButton('Test equation')
-        okButton = widgets.okPushButton(' Ok ')
-        okButton.setDisabled(True)
-        self.okButton = okButton
-
-        if debug:
-            debugButton = QPushButton('Debug')
-            debugButton.clicked.connect(self._debug)
-            buttonsLayout.addWidget(debugButton)
-
-        self.statusLabel = QLabel()
-        buttonsLayout.addWidget(self.statusLabel)
-        buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(cancelButton)
-        buttonsLayout.addSpacing(20)
-        buttonsLayout.addWidget(testButton)
-        buttonsLayout.addWidget(okButton)
-
-        mainLayout.addWidget(QLabel(instructions))
-        mainLayout.addLayout(treesLayout)
-        mainLayout.addLayout(operatorsLayout)
-        mainLayout.addLayout(equationLayout)
-        mainLayout.addSpacing(20)
-        mainLayout.addLayout(buttonsLayout)
-
-        clearButton.clicked.connect(self.clearEquation)
-        clearEntryButton.clicked.connect(self.clearEntryEquation)
-
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.close)
-        testButton.clicked.connect(self.test_cb)
-
-        self.equationDisplay.textChanged.connect(self.equationChanged)
-        # self.newColNameLineEdit.editingFinished.connect(self.equationChanged)
-
-        self.setLayout(mainLayout)
-        self.setFont(fonts.font)
-
-        self.setStyleSheet(TREEWIDGET_STYLESHEET)
+        super().__init__(
+            allChNames, False, False, parent=parent, debug=debug,
+            acdcDfs=acdcDfs
+        )
     
     def setLogger(self, logger, logs_path, log_path):
         self.logger = logger
@@ -14817,100 +15237,14 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         return super().closeEvent(event)
     
     def getCombinedDf(self):
-        dfs = []
-        for i, acdc_df in enumerate(self.acdcDfs.values()):
-            dfs.append(acdc_df.add_suffix(f'_table{i+1}'))
-        return pd.concat(dfs, axis=1)
-    
-    def _log(self, txt):
-        if hasattr(self, 'logger'):
-            self.logger.info(txt)
-        else:
-            print(f'[INFO]: {txt}')
-    
-    def equationChanged(self):
-        self.okButton.setDisabled(True)
-        self.statusLabel.setText('')
-
-    @exception_handler
-    def test_cb(self):
-        combined_df = self.getCombinedDf()
-        new_df = pd.DataFrame(index=combined_df.index)
-        equation = self.equationDisplay.toPlainText()
-        newColName = self.newColNameLineEdit.text()
-        new_df[newColName] = combined_df.eval(equation)
-        self.okButton.setDisabled(False)
-        self._log('Equation test was successful.')
-        self.statusLabel.setText(
-            'Equation test was successful. You can now click OK.'
-        )
-
-    def addOperator(self):
-        button = self.sender()
-        text = f'{self.equationDisplay.toPlainText()}{button.text}'
-        self.equationDisplay.setPlainText(text)
-        self.clearLenghts.append(len(button.text))
-
-    def clearEquation(self):
-        self.isOperatorMode = False
-        self.equationDisplay.setPlainText('')
-        self.initAttributes()
-
-    def initAttributes(self):
-        self.clearLenghts = []
-        self.equationColNames = []
-        self.channelLessColnames = []
-
-    def clearEntryEquation(self):
-        if not self.clearLenghts:
-            return
-
-        text = self.equationDisplay.toPlainText()
-        newText = text[:-self.clearLenghts[-1]]
-        clearedText = text[-self.clearLenghts[-1]:]
-        self.clearLenghts.pop(-1)
-        self.equationDisplay.setPlainText(newText)
-        if clearedText in self.equationColNames:
-            self.equationColNames.remove(clearedText)
-        if clearedText in self.channelLessColnames:
-            self.channelLessColnames.remove(clearedText)
-
-    def addTreeItems(
-            self, parentItem, itemsText, isCol=False, isChannelLess=False,
-            index=None
-        ):
-        for text in itemsText:
-            _item = QTreeWidgetItem(parentItem)
-            _item.setText(0, text)
-            parentItem.addChild(_item)
-            if isCol:
-                _item.isCol = True
-            if index is not None:
-                _item.index = index
-            _item.isChannelLess = isChannelLess
-
-    def addColname(self, item, column):
-        if not hasattr(item, 'isCol'):
-            return
-
-        colName = f'{item.text(0)}_table{item.index+1}'
-        text = f'{self.equationDisplay.toPlainText()}{colName}'
-
-        self.equationDisplay.setPlainText(text)
-        self.clearLenghts.append(len(colName))
-        self.equationColNames.append(colName)
-        if item.isChannelLess:
-            self.channelLessColnames.append(colName)
-
-    def _debug(self):
-        print(self.getEquationsDict())
+        return self.getTestData()
 
     def ok_cb(self):
         if not self.newColNameLineEdit.text():
             self.warnEmptyEquationName()
             return
-        if not self.equationDisplay.toPlainText():
-            self.warnEmptyEquation()
+        if not self.okButton.isEnabled():
+            self.test_cb()
             return
 
         self.expression = self.equationDisplay.toPlainText()
@@ -14919,24 +15253,6 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         self.sigOk.emit(self.newColname, self.expression)
         self.close()
     
-    def warnEmptyEquation(self):
-        msg = widgets.myMessageBox()
-        txt = html_utils.paragraph("""
-            "Equation" field <b>cannot be empty</b>!
-        """)
-        msg.critical(
-            self, 'Empty equation', txt
-        )
-
-    def warnEmptyEquationName(self):
-        msg = widgets.myMessageBox()
-        txt = html_utils.paragraph("""
-            "New measurement name" field <b>cannot be empty</b>!
-        """)
-        msg.critical(
-            self, 'Empty new measurement name', txt
-        )
-
 class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
     sigLoadAdditionalAcdcDf = Signal()
 
@@ -15158,7 +15474,7 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
             f'• <b>Table {i+1}</b>: <code>{e}</code>' 
             for i, e in enumerate(self.acdcDfs.keys())
         ]
-        self.selectedAcdcDfsList = widgets.readOnlyQList()
+        self.selectedAcdcDfsList.clear()
         self.selectedAcdcDfsList.addItems(items)
 
     def addEquation(self, newColname, expression):
@@ -15212,8 +15528,14 @@ class ShortcutEditorDialog(QBaseDialog):
             parent=None,
             mouseBindings: dict=None,
             hard_shortcuts: dict=None,
-            highlighted_shortcut: str=None
+            highlighted_shortcut: str=None,
+            show_delete_object_shortcut: bool=True
         ):
+        # When show_delete_object_shortcut is False the "Delete object"
+        # row is hidden and `delObjAction` stays None after Ok (callers
+        # keep their own delete-object action)
+        self.show_delete_object_shortcut = show_delete_object_shortcut
+        self.delObjAction = None
         self.cancel = True
         super().__init__(parent)
 
@@ -15261,35 +15583,37 @@ class ShortcutEditorDialog(QBaseDialog):
         max_warn_width = int(doc.idealWidth() + 10)
         
         row = 0
-        name = 'Delete object'
-        button = widgets.PushButton(self, flat=True)
-        button.setIcon(QIcon(":del_obj_click.svg"))
-        self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
-            allowModifiers=True, notAllowedModifier=Qt.AltModifier,
-            allowMouseButtons=True
-        )
-        if delObjectKey is not None:
-            self.delObjShortcutLineEdit.setText(delObjectKey)
-        self.delObjButtonCombobox = QComboBox()
-        self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
-        self.delObjButtonCombobox.setCurrentText(delObjectButton)
-        entriesLayout.addWidget(button, row, 0)
-        entriesLayout.addWidget(QLabel('Delete object:'), row, 1)
-        entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 2)
-        entriesLayout.addWidget(
-            self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
-        )
-        warnConflictLabel = QLabel('')
-        self.delObjShortcutLineEdit.warnConflictLabel = warnConflictLabel
-        entriesLayout.addWidget(warnConflictLabel, row, 4)
-        warnConflictLabel.setMinimumWidth(max_warn_width)
-        self.delObjShortcutLineEdit.name = name
-        self.shortcutLineEdits[name] = self.delObjShortcutLineEdit
-        self.delObjShortcutLineEdit.textChanged.connect(self.shortcutChanged)
-        self.delObjShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
-        self.delObjShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter)
-                
-        row += 1
+        
+        if self.show_delete_object_shortcut:
+            name = 'Delete object'
+            button = widgets.PushButton(self, flat=True)
+            button.setIcon(QIcon(":del_obj_click.svg"))
+            self.delObjShortcutLineEdit = widgets.ShortcutLineEdit(
+                allowModifiers=True, notAllowedModifier=Qt.AltModifier,
+                allowMouseButtons=True
+            )
+            if delObjectKey is not None:
+                self.delObjShortcutLineEdit.setText(delObjectKey)
+            self.delObjButtonCombobox = QComboBox()
+            self.delObjButtonCombobox.addItems(['Middle click', 'Left click'])
+            self.delObjButtonCombobox.setCurrentText(delObjectButton)
+            entriesLayout.addWidget(button, row, 0)
+            entriesLayout.addWidget(QLabel('Delete object:'), row, 1)
+            entriesLayout.addWidget(self.delObjShortcutLineEdit, row, 2)
+            entriesLayout.addWidget(
+                self.delObjButtonCombobox, row, 3, alignment=Qt.AlignLeft
+            )
+            warnConflictLabel = QLabel('')
+            self.delObjShortcutLineEdit.warnConflictLabel = warnConflictLabel
+            entriesLayout.addWidget(warnConflictLabel, row, 4)
+            warnConflictLabel.setMinimumWidth(max_warn_width)
+            self.delObjShortcutLineEdit.name = name
+            self.shortcutLineEdits[name] = self.delObjShortcutLineEdit
+            self.delObjShortcutLineEdit.textChanged.connect(self.shortcutChanged)
+            self.delObjShortcutLineEdit.clicked.connect(self.setShortcutLineEditEventFilter)
+            self.delObjShortcutLineEdit.editingFinished.connect(self.releaseShortcutLineEditEventFilter) 
+            row += 1
+
         name = 'Zoom out'
         button = widgets.PushButton(self, flat=True)
         label = QLabel('Zoom out:')
@@ -15560,7 +15884,11 @@ class ShortcutEditorDialog(QBaseDialog):
             
         if text == '':
             return
-            
+
+        # `text` (textChanged) is the displayed text, which uses macOS key
+        # names on macOS ('Command+O'), while ShortcutLineEdit.text() gives
+        # the portable form ('Ctrl+O'): compare portable forms
+        text = widgets.macShortcutToWindows(text)
         name = sender.name
         group_updated = self.exclusivity_groups_reverse.get(name, 'other')
         for name_other, shortcutLineEdit in self.shortcutLineEdits.items():
@@ -15586,7 +15914,7 @@ class ShortcutEditorDialog(QBaseDialog):
             break
         for shortcuts in self.new_hard_shortcuts.values():
             for name_other, shortcut_txt in shortcuts.items():
-                if shortcut_txt == text:
+                if widgets.macShortcutToWindows(shortcut_txt) == text:
                     warnConflictLabel = getattr(
                         sender, 'warnConflictLabel', None
                     )
@@ -15607,14 +15935,17 @@ class ShortcutEditorDialog(QBaseDialog):
         msg.warning(self, 'Invalid key sequence to delete objects', txt)
     
     def ok_cb(self):
-        delObjButtonText = self.delObjButtonCombobox.currentText()
-        delObjKeySequence = self.delObjShortcutLineEdit.keySequence
-        if delObjButtonText == 'Left click' and delObjKeySequence is None:
-            self.warnInvalidKeySequenceDelObjWithLeftClick()
-            return
+        if self.show_delete_object_shortcut:
+            delObjButtonText = self.delObjButtonCombobox.currentText()
+            delObjKeySequence = self.delObjShortcutLineEdit.keySequence
+            if delObjButtonText == 'Left click' and delObjKeySequence is None:
+                self.warnInvalidKeySequenceDelObjWithLeftClick()
+                return
         
-        self.shortcutLineEdits.pop('Zoom out')
-        self.shortcutLineEdits.pop('Delete object')
+        self.shortcutLineEdits.pop('Zoom out', None)
+        # 'Delete object' row is missing when show_delete_object_shortcut
+        # is False
+        self.shortcutLineEdits.pop('Delete object', None)
         self.cancel = False
         self.mouseBindings = dict()
         for name, shortcutLineEdit in self.shortcutLineEdits.items():
@@ -15634,11 +15965,12 @@ class ShortcutEditorDialog(QBaseDialog):
                     text, shortcutLineEdit.keySequence
                 )
         
-        delObjQtButton = (
-            Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
-            else Qt.MouseButton.MiddleButton
-        )
-        self.delObjAction = delObjKeySequence, delObjQtButton
+        if self.show_delete_object_shortcut:
+            delObjQtButton = (
+                Qt.MouseButton.LeftButton if delObjButtonText == 'Left click'
+                else Qt.MouseButton.MiddleButton
+            )
+            self.delObjAction = delObjKeySequence, delObjQtButton
         self.zoomOutKeyValue = self.zoomShortcutLineEdit.key
         
         self.close()
@@ -16515,6 +16847,7 @@ class CombineFeaturesCalculator(QBaseDialog):
         okButton = widgets.okPushButton(' Ok ')
         okButton.setDisabled(True)
         self.okButton = okButton
+        okButton.setToolTip('Click "Test output" to check the equation and enable this button')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -17886,6 +18219,8 @@ class PreProcessParamsWidget(QWidget):
     sigLoadRecipe = Signal()
     sigLoadSavedRecipe = Signal()
     sigValuesChanged = Signal(list)
+    recipesPath = preproc_recipes_path
+    recipePrefix = 'preprocessing_recipe'
     
     def __init__(self, df_metadata=None, addApplyButton=False, parent=None):
         super().__init__(parent)
@@ -18028,16 +18363,17 @@ class PreProcessParamsWidget(QWidget):
         default_text = ''
         for step in recipe[:2]:
             method = step['method']
-            func_name = config.PREPROCESS_MAPPER[method]['function_name']
+            selector = next(iter(self.stepsWidgets.values()))['selector']
+            func_name = selector.preprocessMapper[method]['function_name']
             default_text = f'{default_text}-{func_name}'
         default_text = default_text.lstrip('-')
         
-        proceed, ini_filepath = self.saveRecipeUI(preproc_recipes_path, '.ini', 
-            'Filename for pre-processing recipe',
-            'preprocessing_recipe', 
-            'Insert a <b>filename</b> for the pre-processing recipe:',
-            default_text
-        )
+        proceed, ini_filepath = self.saveRecipeUI(self.recipesPath, '.ini',
+                          'Filename for pre-processing recipe',
+                          self.recipePrefix,
+                          'Insert a <b>filename</b> for the pre-processing recipe:',
+                          default_text
+                          )
         if not proceed:
             return
         
@@ -18143,7 +18479,7 @@ class PreProcessParamsWidget(QWidget):
     
     def selectAndLoadRecipe(self):
         filepath = self.selectRecipeFilepath(
-            preproc_recipes_path, 'preprocessing_recipe', 'INI', 'ini'
+            self.recipesPath, self.recipePrefix, 'INI', 'ini'
         )
         if filepath is None:
             return
@@ -18177,6 +18513,9 @@ class PreProcessParamsWidget(QWidget):
             path_to_browse=os.path.dirname(ini_filepath)
         )
         
+    def createSelector(self):
+        return widgets.PreProcessingSelector()
+
     def addStep(self, is_first=False):
         stepWidgets = {}
         
@@ -18187,7 +18526,7 @@ class PreProcessParamsWidget(QWidget):
         self.gridLayout.addWidget(label, self.row, 0)
         stepWidgets['stepLabel'] = label
         
-        selector = widgets.PreProcessingSelector()
+        selector = self.createSelector()
         self.gridLayout.addWidget(selector, self.row, 1)
         stepWidgets['selector'] = selector
         
@@ -18652,9 +18991,15 @@ class CombineChannelsWidget(PreProcessParamsWidget):
 class FormulaEditWidget(QWidget):
     sigFormulaChanged = Signal(str, bool)  # formula_str, is_valid
 
-    def __init__(self, variable_names=None, parent=None):
+    def __init__(
+            self, variable_names=None, parent=None, *,
+            validator=None, allow_empty=True
+        ):
         super().__init__(parent)
         self._variable_names = variable_names or []
+        self._validator = validator
+        self._allow_empty = allow_empty
+        self._live_validation = True
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -18672,8 +19017,6 @@ class FormulaEditWidget(QWidget):
         self._edit.textChanged.connect(self._onTextChanged)
         self._clearStatus()
         
-        self.parent = parent
-
     def setVariableNames(self, variable_names):
         """Allows setting the variables.
 
@@ -18694,11 +19037,44 @@ class FormulaEditWidget(QWidget):
         """Sets the formula text."""
         self._edit.setText(text)
 
+    def setLiveValidation(self, enabled):
+        """Enable or disable running the equation validator while typing."""
+        self._live_validation = bool(enabled)
+        if not self._live_validation:
+            self._clearStatus()
+
+    def toPlainText(self):
+        return self.text()
+
+    def setPlainText(self, text):
+        self.setText(text)
+
+    def insert(self, text):
+        self._edit.insert(text)
+
+    def backspace(self):
+        self._edit.backspace()
+
+    def referencedVariableNames(self):
+        """Return known input names, excluding names inside string literals."""
+        names = {
+            name for name, _, _ in measurements.equation_variable_spans(self.text())
+        }
+        return [name for name in self._variable_names if name in names]
+
+    def replaceVariableNames(self, replacements):
+        return measurements.replace_equation_variables(self.text(), replacements)
+
     def _clearStatus(self):
         self._status_label.setText('')
         self._status_label.setStyleSheet('font-size: 11px;')
 
+    @timepoint_debug_trace
     def _onTextChanged(self, text):
+        if not self._live_validation:
+            self._clearStatus()
+            self.sigFormulaChanged.emit(text, False)
+            return
         if not text.strip():
             self._clearStatus()
 
@@ -18718,25 +19094,24 @@ class FormulaEditWidget(QWidget):
         self.sigFormulaChanged.emit(text, success)
 
     def checkValidity(self, variable_names=None):
+        """Use a custom evaluator, or SymPy for numerical image formulas."""
+        if not self.text().strip() and not self._allow_empty:
+            return False, 'Equation cannot be empty'
+        if self._validator is not None:
+            return self._validator(self.text())
+        return self.checkSymbolicValidity(variable_names)
+
+    def checkSymbolicValidity(self, variable_names=None):
         if variable_names is None:
             variable_names = self._variable_names
         formula_str = self._edit.text()
         arrays = {name: 1 for name in variable_names}
         success = False
         reconstructed_str = 'ERROR'
-        forb_ch = self.parent.forbiddenChannels
-        if forb_ch:
-            stepsWidgets = self.parent.combineChannelsWidget.stepsWidgets
-            channels = {stepsWidget['selector'].currentText() for stepsWidget in stepsWidgets.values()}
-            if forb_ch.intersection(channels):
-                reconstructed_str = (
-                    'Channels that are forbidden are not allowed to be used!:\n'
-                    f'{forb_ch}'
-                )
-                return False, reconstructed_str
-        if formula_str == '':
-            reconstructed_str = 'First channel is returned/applied'
-            return True, reconstructed_str
+        if not formula_str.strip():
+            if self._allow_empty:
+                return True, 'First channel is returned/applied'
+            return False, 'Equation cannot be empty'
         try:
             symbols = {name: sp.Symbol(name) for name in arrays}
             expr = sp.sympify(formula_str, locals=symbols)
@@ -18745,10 +19120,6 @@ class FormulaEditWidget(QWidget):
                 reconstructed_str = f'Missing variables: {missing}'
                 return False, reconstructed_str
 
-            if formula_str == '':
-                reconstructed_str = ''
-                return True, reconstructed_str
-            
             # filter out expressions that have no variables
             if not any(s.is_Symbol for s in expr.free_symbols):
                 reconstructed_str = 'No variables used'
@@ -19457,7 +19828,219 @@ class FucciPreprocessDialog(FunctionParamsDialog):
         self.firstChannelName = self.firstChNameWidget.currentText()
         self.secondChannelName = self.secondChNameWidget.currentText()
         super().ok_cb()
-        
+
+
+class BackgroundValuesParamsDialog(QBaseDialog):
+    """Parameters of the "Compute background intensity" utility.
+
+    After `exec_`, `cancel` is False when the user pressed Ok and `params`
+    holds the keys documented in `workers.ComputeBackgroundValuesWorker`.
+
+    `findExistingFile(name)` returns the name of an existing file that the
+    background table `<basename><name>.csv` would collide with, or None.
+
+    `presetParams` (any subset of the `params` keys) prefill the widgets:
+    with `channels`, only these channels are checked. `presetNote` is shown
+    on top (e.g. why the values are preset).
+    """
+    def __init__(
+            self, channelNames, findExistingFile=None, parent=None,
+            presetParams=None, presetNote=''
+        ):
+        super().__init__(parent=parent)
+        self.setWindowTitle('Compute background intensity')
+        self.cancel = True
+        self.params = None
+        self.findExistingFile = findExistingFile
+
+        mainLayout = QVBoxLayout()
+        if presetNote:
+            noteLabel = QLabel(html_utils.paragraph(presetNote))
+            noteLabel.setWordWrap(True)
+            mainLayout.addWidget(noteLabel)
+        mainLayout.addWidget(QLabel(html_utils.paragraph(
+            'For every frame, the background of each selected channel is the '
+            '<b>intensity of the pixels outside of the segmented '
+            'objects</b>.<br>'
+            'You will select the segmentation file next: use one where '
+            '<b>(nearly) all cells are segmented</b>.'
+        )))
+
+        mainLayout.addWidget(QLabel(html_utils.paragraph(
+            '<b>Channels</b>:'
+        )))
+        self.channelsListWidget = QListWidget()
+        for channel in channelNames:
+            item = QListWidgetItem(channel)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked)
+            self.channelsListWidget.addItem(item)
+        self.channelsListWidget.setMaximumHeight(
+            max(60, min(160, 24*len(channelNames) + 8))
+        )
+        mainLayout.addWidget(self.channelsListWidget)
+
+        gridLayout = QGridLayout()
+        row = 0
+        gridLayout.addWidget(
+            QLabel('Background statistic subtracted from cells:'), row, 0
+        )
+        self.statisticCombobox = QComboBox()
+        self.statisticCombobox.addItems(['mean', 'median'])
+        gridLayout.addWidget(self.statisticCombobox, row, 1)
+        gridLayout.addWidget(widgets.infoPushButton(
+            info_title='Background statistic',
+            info_text=html_utils.paragraph(
+                'Both the mean and the median of the background pixels are '
+                'saved for every frame. This statistic is the one subtracted '
+                'from the mean intensity of the cells and used for the '
+                'normalization constants.'
+            )
+        ), row, 2)
+
+        row += 1
+        self.excludeZeroCheckbox = QCheckBox(
+            'Ignore pixels with intensity 0 (e.g., padding from alignment)'
+        )
+        self.excludeZeroCheckbox.setChecked(True)
+        gridLayout.addWidget(self.excludeZeroCheckbox, row, 0, 1, 3)
+
+        row += 1
+        gridLayout.addWidget(QLabel('Name of the background table:'), row, 0)
+        self.outputNameLineEdit = widgets.alphaNumericLineEdit()
+        self.outputNameLineEdit.setText('background_values')
+        gridLayout.addWidget(self.outputNameLineEdit, row, 1)
+        gridLayout.addWidget(widgets.infoPushButton(
+            info_title='Background table',
+            info_text=html_utils.paragraph(
+                'The per-frame background values of each Position are saved '
+                'in the Images folder as '
+                '<code>&lt;basename&gt;&lt;name&gt;.csv</code>, the pooled '
+                'summary in each experiment folder as '
+                '<code>&lt;name&gt;_summary.csv</code>. Existing files are '
+                'overwritten.'
+            )
+        ), row, 2)
+        gridLayout.setColumnStretch(1, 1)
+        mainLayout.addLayout(gridLayout)
+
+        self.normalizationGroupbox = QGroupBox(
+            'Compute normalization constants from an acdc_output table'
+        )
+        self.normalizationGroupbox.setCheckable(True)
+        self.normalizationGroupbox.setChecked(True)
+        groupLayout = QGridLayout()
+        groupLayout.addWidget(QLabel(html_utils.paragraph(
+            'Reads <code>&lt;channel&gt;_mean</code> of the cells from the '
+            'selected acdc_output table (the table is not modified).<br>'
+            'The percentiles below of these values minus the constant '
+            'background, pooled over all cells,<br>'
+            'frames and Positions, are the min/max values of the "Min-max '
+            'normalization" measurement processing.'
+        )), 0, 0, 1, 2)
+        groupLayout.addWidget(QLabel('Percentile mapped to 0:'), 1, 0)
+        self.lowPercentileSpinbox = widgets.DoubleSpinBox()
+        self.lowPercentileSpinbox.setMinimum(0)
+        self.lowPercentileSpinbox.setMaximum(100)
+        self.lowPercentileSpinbox.setValue(5)
+        groupLayout.addWidget(self.lowPercentileSpinbox, 1, 1)
+        groupLayout.addWidget(QLabel('Percentile mapped to 1:'), 2, 0)
+        self.highPercentileSpinbox = widgets.DoubleSpinBox()
+        self.highPercentileSpinbox.setMinimum(0)
+        self.highPercentileSpinbox.setMaximum(100)
+        self.highPercentileSpinbox.setValue(95)
+        groupLayout.addWidget(self.highPercentileSpinbox, 2, 1)
+        self.normalizationGroupbox.setLayout(groupLayout)
+        mainLayout.addWidget(self.normalizationGroupbox)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+        mainLayout.addSpacing(10)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+        if presetParams:
+            self.setParams(presetParams)
+
+    def setParams(self, params):
+        """Prefill the widgets with `params` (any subset of the keys of
+        `self.params`)."""
+        if 'channels' in params:
+            selected = set(params['channels'])
+            for i in range(self.channelsListWidget.count()):
+                item = self.channelsListWidget.item(i)
+                checked = item.text() in selected
+                item.setCheckState(Qt.Checked if checked else Qt.Unchecked)
+        if params.get('statistic') in ('mean', 'median'):
+            self.statisticCombobox.setCurrentText(params['statistic'])
+        if 'exclude_zero_pixels' in params:
+            self.excludeZeroCheckbox.setChecked(
+                bool(params['exclude_zero_pixels'])
+            )
+        if params.get('output_name'):
+            self.outputNameLineEdit.setText(params['output_name'])
+        if 'use_acdc_output' in params:
+            self.normalizationGroupbox.setChecked(
+                bool(params['use_acdc_output'])
+            )
+        if 'low_percentile' in params:
+            self.lowPercentileSpinbox.setValue(params['low_percentile'])
+        if 'high_percentile' in params:
+            self.highPercentileSpinbox.setValue(params['high_percentile'])
+
+    def selectedChannels(self):
+        channels = []
+        for i in range(self.channelsListWidget.count()):
+            item = self.channelsListWidget.item(i)
+            if item.checkState() == Qt.Checked:
+                channels.append(item.text())
+        return channels
+
+    def _warn(self, text):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Invalid parameters', html_utils.paragraph(text))
+
+    def ok_cb(self):
+        channels = self.selectedChannels()
+        if not channels:
+            self._warn('Select at least one channel.')
+            return
+        outputName = self.outputNameLineEdit.text().strip()
+        if not outputName:
+            self._warn('The name of the background table cannot be empty.')
+            return
+        existingFile = None
+        if self.findExistingFile is not None:
+            existingFile = self.findExistingFile(outputName)
+        if existingFile is not None:
+            self._warn(
+                f'The name "{outputName}" is already used by the file '
+                f'<code>{existingFile}</code>.<br><br>'
+                'Please choose a different name for the background table.'
+            )
+            return
+        low = self.lowPercentileSpinbox.value()
+        high = self.highPercentileSpinbox.value()
+        useAcdcOutput = self.normalizationGroupbox.isChecked()
+        if low >= high:
+            self._warn(
+                'The percentile mapped to 0 must be lower than the percentile '
+                'mapped to 1.'
+            )
+            return
+        self.params = {
+            'channels': channels,
+            'statistic': self.statisticCombobox.currentText(),
+            'exclude_zero_pixels': self.excludeZeroCheckbox.isChecked(),
+            'output_name': outputName,
+            'use_acdc_output': useAcdcOutput,
+            'low_percentile': low,
+            'high_percentile': high,
+        }
+        self.cancel = False
+        self.close()
+
 class ViewCcaTableWindow(pdDataFrameWidget):
     sigUpdateCcaTable = Signal(object)
     
@@ -19655,6 +20238,7 @@ class PreProcessRecipeDialog(QBaseDialog):
     sigValuesChanged = Signal(list)
     sigSavePreprocData = Signal(object)
     sigClose = Signal(object)
+    paramsWidgetClass = PreProcessParamsWidget
     
     def __init__(
             self, 
@@ -19690,7 +20274,7 @@ class PreProcessRecipeDialog(QBaseDialog):
         )
         self.keepInputDataTypeLayout = keepInputDataTypeLayout
         
-        self.preProcessParamsWidget = PreProcessParamsWidget(
+        self.preProcessParamsWidget = self.paramsWidgetClass(
             df_metadata=df_metadata, 
             addApplyButton=addApplyButton, 
             parent=self
@@ -19915,6 +20499,8 @@ class PreProcessRecipeDialog(QBaseDialog):
         self.sigClose.emit(self)
 
 class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
+    selectionLabel = 'Select channel(s) to pre-process:'
+
     def __init__(
             self,
             channel_names: Iterable[str],
@@ -19933,15 +20519,11 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
             hideOnClosing=False
         )
                 
-        self.listSelector = widgets.listWidget(
-            isMultipleSelection=True, minimizeHeight=True
-        )
-        self.listSelector.addItems(channel_names)
-        self.listSelector.setCurrentRow(0)
+        self.listSelector = self.createListSelector(channel_names)
         
         self.mainLayout.insertWidget(0, self.listSelector)
         self.mainLayout.insertWidget(
-            0, QLabel('Select channel(s) to pre-process:')
+            0, QLabel(self.selectionLabel)
         )
         self.mainLayout.insertSpacing(2, 10)
         self.mainLayout.insertWidget(2, widgets.QHLine())
@@ -19963,27 +20545,42 @@ class PreProcessRecipeDialogUtil(PreProcessRecipeDialog):
         
         buttonsLayout.addItem(saveRecipeButtonItem, 0, 2)
     
+    def createListSelector(self, names):
+        selector = widgets.listWidget(
+            isMultipleSelection=True, minimizeHeight=True
+        )
+        selector.addItems(names)
+        selector.setCurrentRow(0)
+        return selector
+
     def warnChannelSelectionEmpty(self):
         txt = html_utils.paragraph("""
             You did <b>not select any channel</b>.<br><br>
             <b>Channel selection cannot be empty</b>.<br><br>
             Thank you for your patience!
         """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'No channel selected', txt)
     
     def ok_cb(self):
-        selectedChannelItems = self.listSelector.selectedItems()
+        selectedChannelItems = self.listSelector.selectedIndexes()
         if not selectedChannelItems:
             self.warnChannelSelectionEmpty()
+            return
         
         recipe = self.recipe()
         if recipe is None:
             return
         
         self.selectedRecipe = recipe
-        self.selectedChannels = [item.text() for item in selectedChannelItems]
+        self.selectedChannels = [item.data() for item in selectedChannelItems]
         
         self.cancel = False
         self.close()
+
+
+
+
 
 
 # class ComboDelegate(QStyledItemDelegate):
@@ -20050,7 +20647,9 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         self.combineChannelsWidget.groupbox.setCheckable(False)
         self.combineChannelsWidget.groupbox.setTitle('Combine and manipulate channels and/or segmentation files')
         
-        self.formulaEditWidget = FormulaEditWidget(parent=self)
+        self.formulaEditWidget = FormulaEditWidget(
+            parent=self, validator=self._validateFormula
+        )
         self._updateFormulaVariableNames()
         self.formulaEditWidget.sigFormulaChanged.connect(self.formulaChanged)
         self.formulaEditWidget.setToolTip(
@@ -20115,6 +20714,18 @@ class CombineChannelsSetupDialog(PreProcessRecipeDialog):
         
         self.keepInputDataTypeLayout.insertWidget(0, label)
         self.keepInputDataTypeLayout.insertWidget(1, self.saveAsSegmCheckbox)
+
+    def _validateFormula(self, formula):
+        channels = {
+            step['selector'].currentText()
+            for step in self.combineChannelsWidget.stepsWidgets.values()
+        }
+        if self.forbiddenChannels.intersection(channels):
+            return False, (
+                'Channels that are forbidden are not allowed to be used!:\n'
+                f'{self.forbiddenChannels}'
+            )
+        return self.formulaEditWidget.checkSymbolicValidity()
 
     def setLoadLastRecipe(self):
         filepath = self._lastRecipePath()
@@ -20618,6 +21229,7 @@ class QTreeDialog(QBaseDialog):
             title='Select item',
             path_to_browse=None,
             additional_buttons=None,
+            cancelButtonText=None,
         ):
         self.cancel = True
         super().__init__(parent)
@@ -20646,6 +21258,16 @@ class QTreeDialog(QBaseDialog):
         # self.treeWidget.header().setStretchLastSection(False)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
+        if cancelButtonText is not None:
+            buttonsLayout.cancelButton.setText(cancelButtonText)
+        buttonsLayout.okButton.setEnabled(
+            self.treeWidget.currentItem() is not None
+        )
+        self.treeWidget.currentItemChanged.connect(
+            lambda current, previous: buttonsLayout.okButton.setEnabled(
+                current is not None
+            )
+        )
         
         if path_to_browse is not None:
             browseButton = widgets.showInFileManagerButton(
@@ -21549,7 +22171,7 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.againstPrevLineWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
         self.againstPrevContourColorButton.sigColorChanging.connect(self.emitValuesChanged)
         self.againstPrevContourWidthSpinBox.valueChanged.connect(self.emitValuesChanged)
-        self.showOnlyVisible3DCheckBox.stateChanged.connect(self.emitValuesChanged)
+        self.showOnlyVisible3DCheckBox.toggled.connect(self.emitValuesChanged)
 
         self._historyTrackWidgets = (
             self.lengthWidget,
@@ -21594,7 +22216,9 @@ class AnnotateObjTrackSettingsDialog(QBaseDialog):
         self.againstPrevContourWidthSpinBox.setValue(
             int(settings['against_prev_contour_width'])
         )
-        self.showOnlyVisible3DCheckBox.stateChanged.connect(self.emitValuesChanged)
+        self.showOnlyVisible3DCheckBox.setChecked(
+            bool(settings.get('3D_show_only_visible', False))
+        )
         self._syncRanges()
         self._updateRelevantOptionsState()
 
@@ -22424,9 +23048,9 @@ class SearchableListboxDialog(QBaseDialog):
         )
 
         self.sortByGoodnessCheckBox.setToolTip(
-            'When enabled, better matches appear first, with recency used to '
-            'break ties. When disabled, matching items stay in the original '
-            'recent-first order.'
+            'When enabled, better matches appear '
+            'first, with recency used to break ties.\n'
+            'When disabled, matching items stay in the original recent-first order.'
         )
 
         self.listWidget = QTreeWidget()
@@ -22521,7 +23145,9 @@ class SearchableListboxDialog(QBaseDialog):
         except OSError as err:
             return (
                 'Unavailable',
-                f'Could not read filesystem modification time: {err}',
+                qutils.wrap_tooltip(
+                    f'Could not read filesystem modification time: {err}'
+                ),
             )
 
         return (

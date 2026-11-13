@@ -58,6 +58,7 @@ from .utils import splitVideoIntoFrameTiffs as utilSplitVideoTiffs
 from .utils import acdcOutputToCtcTable as utilAcdcToCtc
 from .utils import toTrackastraInputData as ultilToTrackastra
 from .utils import editMetadata as utilsEditMetadata
+from .utils import computeBackgroundValues as utilsComputeBackgroundValues
 from .info import utilsInfo
 from . import is_win, is_linux, settings_folderpath, issues_url, is_mac
 from . import settings_csv_path
@@ -251,6 +252,7 @@ class mainWin(QMainWindow):
         self.guiWins = []
         self.spotmaxWins = []
         self.dataPrepWins = []
+        self.measurementsViewerWins = []
         self._version = None
         self.progressWin = None
         self.forceClose = False
@@ -442,7 +444,9 @@ class mainWin(QMainWindow):
         measurementsMenu.addAction(self.countObjectsInSegmAction)
         measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
         measurementsMenu.addAction(self.generateMothBudTotTableAction) 
-        
+        measurementsMenu.addAction(self.launchMeasurementsViewerAction)
+        measurementsMenu.addAction(self.computeBackgroundValuesAction)
+
         concatMenu = utilsMenu.addMenu('Concatenate')
         concatMenu.addAction(self.concatAcdcDfsAction)    
         if SPOTMAX_INSTALLED:
@@ -463,7 +467,7 @@ class mainWin(QMainWindow):
         dataPrepMenu.addAction(self.fucciPreprocessAction)
         dataPrepMenu.addAction(self.customPreprocessAction)
         dataPrepMenu.addAction(self.combineChannelsAction)
-        
+
         utilsMenu.addAction(self.renameAction)
         utilsMenu.addAction(self.editMetadataAction)
 
@@ -838,12 +842,18 @@ class mainWin(QMainWindow):
         self.generateMothBudTotTableAction = QAction(
             'Generate mothers, buds, and total cell table...'
         )
+        self.launchMeasurementsViewerAction = QAction(
+            'Measurements viewer...'
+        )
         self.toSymDivAction = QAction(
             'Add lineage tree table to one or more experiments...'
         )
         self.renameAction = QAction('Rename files by appending additional text...')
         self.editMetadataAction = QAction(
             'Edit metadata of one or more experiments...'
+        )
+        self.computeBackgroundValuesAction = QAction(
+            'Compute background intensity outside of segmented objects...'
         )
         self.alignAction = QAction('Align or revert alignment...')
 
@@ -943,6 +953,9 @@ class mainWin(QMainWindow):
         self.generateMothBudTotTableAction.triggered.connect(
             self.launchGenerateMothBudTotTableUtil
         )        
+        self.launchMeasurementsViewerAction.triggered.connect(
+            self.launchMeasurementsViewer
+        )
         
         self.batchConverterAction.triggered.connect(
             self.launchImageBatchConverter
@@ -960,6 +973,9 @@ class mainWin(QMainWindow):
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
         self.editMetadataAction.triggered.connect(self.launchEditMetadataUtil)
+        self.computeBackgroundValuesAction.triggered.connect(
+            self.launchComputeBackgroundValuesUtil
+        )
         if SPOTMAX_INSTALLED:
             self.aboutSmaxAction.triggered.connect(self.showAboutSmax)
 
@@ -1715,6 +1731,25 @@ class mainWin(QMainWindow):
         )
         self.editMetadataWin.show()
 
+    def launchComputeBackgroundValuesUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Compute background intensity'
+        )
+        if selectedExpPaths is None:
+            return
+
+        title = 'Compute background intensity'
+        infoText = 'Launching compute background intensity process...'
+        progressDialogueTitle = 'Computing background intensity'
+        self.computeBackgroundValuesWin = (
+            utilsComputeBackgroundValues.ComputeBackgroundValuesUtil(
+                selectedExpPaths, self.app, title, infoText,
+                progressDialogueTitle, parent=self
+            )
+        )
+        self.computeBackgroundValuesWin.show()
+
     def launchToSymDicUtil(self):
         self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths('Lineage tree utility')
@@ -2100,6 +2135,22 @@ class mainWin(QMainWindow):
         except ValueError:
             pass
         self._gc_collect()
+
+    def launchMeasurementsViewer(self, checked=False):
+        self.logger.info('Opening measurements viewer...')
+        # Imported lazily: the viewer module is large and only needed here
+        from . import measurements_viewer
+        win = measurements_viewer.MeasurementsViewerWin()
+        self.measurementsViewerWins.append(win)
+        win.sigClosed.connect(self.measurementsViewerClosed)
+        win.show()
+
+    def measurementsViewerClosed(self, win):
+        try:
+            self.measurementsViewerWins.remove(win)
+        except ValueError:
+            pass
+        self._gc_collect()
         
     def _gc_collect(self):
         QTimer.singleShot(100, gc.collect)
@@ -2272,6 +2323,8 @@ class mainWin(QMainWindow):
             openModules.extend(self.guiWins)
         if self.spotmaxWins:
             openModules.extend(self.spotmaxWins)
+        if self.measurementsViewerWins:
+            openModules.extend(self.measurementsViewerWins)
         return openModules
 
 

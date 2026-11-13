@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "channel_placeholders": {
+    "GREEN": "Green fluorescence channel (e.g. GFP), displayed as main image",
+    "RED": "Red fluorescence channel (e.g. mCherry), displayed as overlay"
+  },
+  "channel": "{GREEN}",
+  "segm_endname": "",
+  "overlay_channels": ["{RED}"],
+  "visible_channels": ["{GREEN}", "{RED}"],
+  "measurement_processing": [],
+  "combined_measurements": [
+    {
+      "order": 0,
+      "equations": {
+        "{GREEN}_over_{RED}_mean": "`{GREEN}_mean` / `{RED}_mean`"
+      }
+    }
+  ],
+  "measurements_mode": 0,
+  "time_course_columns": [
+    "{GREEN}_mean",
+    "{RED}_mean",
+    "{GREEN}_over_{RED}_mean"
+  ],
+  "measurements_axes": {"X": "{GREEN}_mean", "Y": "{RED}_mean"},
+  "normalize_measurements": false,
+  "timepoint_identifiers": [],
+  "custom_annotations": [],
+  "phase_translator_rules": []
+}

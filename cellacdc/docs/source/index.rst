@@ -128,6 +128,8 @@ Contents
    overview
    installation
    getting-started
+   measurements-viewer
+   equation-editor
    video-tutorials
    data-structure
    restructure-loose-tiff-files
