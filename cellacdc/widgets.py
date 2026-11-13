@@ -2051,7 +2051,31 @@ class CheckBox(QCheckBox):
         self.blockSignals(True)
         self.setChecked(checked)
         self.blockSignals(False)
-    
+
+    def setCheckedAlwaysEmit(self, checked: bool):
+        """Set the checked state and emit `sigToggled` even if the state
+        does not change.
+
+        `setChecked` emits `toggled` (and hence `sigToggled`) only when the
+        state actually changes. Use this method when the slots connected to
+        `sigToggled` must run regardless (e.g., to refresh what they display).
+        Linked checkboxes are treated the same way.
+        """
+        if self.isChecked() != checked:
+            self.setChecked(checked)
+            return
+
+        for checkbox in self._linkedCheckboxes.values():
+            if checkbox.isChecked() != checked:
+                checkbox.setChecked(checked)
+            elif isinstance(checkbox, CheckBox):
+                checkbox.sigToggled.emit(checked, checkbox)
+
+        self.sigToggled.emit(checked, self)
+
+    def isLinkedTo(self, checkbox: QCheckBox):
+        return self._linkedCheckboxes.get(checkbox.text()) is checkbox
+
     def setLinkedCheckbox(self, checkbox: QCheckBox, linked: bool):
         if linked:
             self._linkedCheckboxes[checkbox.text()] = checkbox

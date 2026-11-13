@@ -4731,9 +4731,16 @@ When working with 3D segmentation masks:
 
     def onMotherDaughterLine(self, checked, checkbox, ax=0):
         if checked:
+            # Clear first since drawing adds points --> calling this slot
+            # when the lines are already drawn would duplicate them
+            self.getMothBudLineScatterItem(ax, True).clear()
+            self.getMothBudLineScatterItem(ax, False).clear()
             posData = self.data[self.pos_i]
             for obj in posData.rp:
                 self.drawObjMothBudLines(obj, posData, ax=ax)
+
+            if self.isLineageTreeLinesModeActive():
+                self.drawAllLineageTreeLines()
         else:
             self.getMothBudLineScatterItem(ax, True).clear()
             self.getMothBudLineScatterItem(ax, False).clear()
@@ -12167,6 +12174,9 @@ When working with 3D segmentation masks:
         if frame_i is None:
             frame_i = posData.frame_i
 
+        if frame_i == 0:
+            return
+
         moth_bud_pairs_cca = (
             posData.allData_li[frame_i-1].get('moth_bud_pairs_cca')
         )
@@ -17020,17 +17030,22 @@ When working with 3D segmentation masks:
         self.storeCurrentAnnotOptions(0)
         self.storeCurrentAnnotOptions(1)
 
-    def storeCurrentAnnotOptions(self, ax: int):
-        if not hasattr(self, 'annotOptionsToRestore'):
-            return
-        
+    def getCurrentAnnotOptions(self, ax: int):
+        options = {}
         for name, checkbox in self.annotOptionsCheckboxes[ax].items():
             try:
                 isChecked = checkbox.isChecked()
             except AttributeError:
                 continue
 
-            self.annotOptionsToRestore[ax][name] = isChecked
+            options[name] = isChecked
+        return options
+
+    def storeCurrentAnnotOptions(self, ax: int):
+        if not hasattr(self, 'annotOptionsToRestore'):
+            return
+
+        self.annotOptionsToRestore[ax].update(self.getCurrentAnnotOptions(ax))
 
     def restoreAnnotOptions(self, ax: int, options=None):
         if options is None and not hasattr(self, 'annotOptionsToRestore'):
@@ -26423,7 +26438,7 @@ When working with 3D segmentation masks:
             return 
 
         mode = str(self.modeComboBox.currentText())
-        if mode == 'Normal division: Lineage Tree':
+        if mode == 'Normal division: Lineage tree':
             return
 
         ID = obj.label
@@ -26462,52 +26477,96 @@ When working with 3D segmentation masks:
         self.ax2_newMothBudLinesItem.setData([], [])
         self.ax2_oldMothBudLinesItem.setData([], [])
 
+    def isLineageTreeLinesModeActive(self):
+        """Check whether mother-daughter lines should be drawn from the
+        lineage tree annotations (see `drawAllLineageTreeLines`) rather than
+        from the cell cycle annotations (see `drawAllMothBudLines`).
+
+        Lineage tree lines are drawn in "Normal division: Lineage tree" mode
+        and in the other modes (e.g., Viewer) when the current frame does
+        not have cell cycle annotations. Never drawn in
+        "Cell cycle analysis" mode.
+        """
+        mode = self.modeComboBox.currentText()
+        if mode == 'Normal division: Lineage tree':
+            return True
+
+        if mode == 'Cell cycle analysis':
+            return False
+
+        posData = self.data[self.pos_i]
+        if posData.cca_df is not None and not posData.cca_df.empty:
+            return False
+
+        return True
+
     def drawAllLineageTreeLines(self):
         """
         Draw all lineage tree lines on the GUI.
 
         This method retrieves the lineage tree data and draws the lineage tree lines
         connecting cells and their respective mothers when the mother has split.
-        """
-        if self.lineage_tree is None:
-            return
 
-        if len(self.lineage_tree.frames_for_dfs) < 2:
-            return
+        Outside of the "Normal division: Lineage tree" mode (i.e., when
+        `self.lineage_tree` is None) the lines are drawn from the lineage
+        tree annotations stored in the acdc_df (if present).
+        """
+        if self.lineage_tree is not None:
+            if len(self.lineage_tree.frames_for_dfs) < 2:
+                return
 
         self.clearAllCellToCellLines()
         posData = self.data[self.pos_i]
         frame_i = posData.frame_i
 
         if frame_i == 0:
-            return 
+            return
 
         lin_tree_df = posData.allData_li[frame_i]['acdc_df']
+        if lin_tree_df is None or 'parent_ID_tree' not in lin_tree_df.columns:
+            return
+
         lin_tree_df_prev = posData.allData_li[frame_i-1]['acdc_df']
         rp = posData.rp
         prev_rp = posData.allData_li[frame_i-1]['regionprops']
+        if prev_rp is None:
+            return
 
-        self.setTitleText()
+        if self.lineage_tree is not None:
+            self.setTitleText()
 
-        new_cells = lin_tree_df.index.difference(lin_tree_df_prev.index) # I could use this for the if already but this is probably faster for frames where nothing changes
+        # In Viewer mode the previous frame might have never been visited
+        # --> use the IDs from its regionprops
+        if lin_tree_df_prev is not None:
+            prev_IDs = lin_tree_df_prev.index
+        else:
+            prev_IDs = prev_rp.IDs
+        new_cells = lin_tree_df.index.difference(prev_IDs) # I could use this for the if already but this is probably faster for frames where nothing changes
         if new_cells.shape[0] == 0:
             return
-        
+
         for ax in (0, 1):
             if not self.areMothBudLinesRequested(ax):
                 continue
 
             for ID in new_cells:
-                curr_obj = rp.get_obj_from_ID(ID)
+                curr_obj = rp.get_obj_from_ID(ID, warn=False)
+                if curr_obj is None:
+                    continue
+
                 lin_tree_df_ID = lin_tree_df.loc[ID]
+                parent_ID = lin_tree_df_ID['parent_ID_tree']
 
                 # lin_tree_df_mother_ID = lin_tree_df_prev.loc[lin_tree_df_ID["parent_ID_tree"]]
-                if lin_tree_df_ID['parent_ID_tree'] == -1: # make sure that new obj where the parents are not known get skipped
+                # make sure that new obj where the parents are not known
+                # (or not annotated) get skipped
+                if pd.isna(parent_ID) or parent_ID == -1:
                     continue
-                
-                mother_obj = prev_rp.get_obj_from_ID(lin_tree_df_ID['parent_ID_tree'])
 
-                emerg_frame_i = lin_tree_df_ID['emerg_frame_i']
+                mother_obj = prev_rp.get_obj_from_ID(int(parent_ID), warn=False)
+                if mother_obj is None:
+                    continue
+
                 isNew = False
 
                 self.drawObjLin_TreeMothBudLines(ax, curr_obj, mother_obj, isNew, ID=ID)
@@ -32038,9 +32097,8 @@ When working with 3D segmentation masks:
             compute=False
         )
 
-        mode = self.modeComboBox.currentText()
         self.drawAllMothBudLines()
-        if mode == 'Normal division: Lineage tree':
+        if self.isLineageTreeLinesModeActive():
             self.drawAllLineageTreeLines()
 
         self.highlightLostNew()      
@@ -35576,25 +35634,58 @@ When working with 3D segmentation masks:
             self.annotIDsCheckbox(1).setChecked(False)
             return True
 
+    def storeAnnotOptionsBeforeModeSwitch(self):
+        """Store the current annotation options so that they can be restored
+        when leaving the mode (see `restorePrevAnnotOptions`), and uncheck
+        "Do not annotate" so the mode-specific options can be set.
+        """
+        # Only the left image options are set by the modes and restored by
+        # `restorePrevAnnotOptions`. The right image options are changed
+        # too only when they are linked to the left ones (i.e., right image
+        # controls are not independent), otherwise leave them untouched.
+        doNotAnnotLeftCheckbox = self.annotDoNotAnntoateCheckbox(0)
+        doNotAnnotRightCheckbox = self.annotDoNotAnntoateCheckbox(1)
+        isRightLinked = doNotAnnotLeftCheckbox.isLinkedTo(
+            doNotAnnotRightCheckbox
+        )
+
+        self.prevAnnotOptions = {0: self.getCurrentAnnotOptions(0)}
+
+        # The options are now stored in `prevAnnotOptions`. Clear the
+        # options to restore, otherwise unchecking "Do not annotate"
+        # (also when it happens because a mutually exclusive option is
+        # checked) would restore them while the mode-specific options
+        # are being set (see `onDoNotAnnotateChecked`)
+        self.annotOptionsToRestore[0] = {}
+        if isRightLinked:
+            self.annotOptionsToRestore[1] = {}
+
+        # If linked, this unchecks the right image checkbox too
+        doNotAnnotLeftCheckbox.setChecked(False)
+
+        # Keep the double space bar state only if the (independent) right
+        # image is still not annotated, so that the next double space bar
+        # press restores its options
+        self.doubleSpaceBarState = (
+            self.doubleSpaceBarState and doNotAnnotRightCheckbox.isChecked()
+        )
+
     def setAnnotOptionsCcaMode(self):
-        self.storeCurrentAnnotationsOptions()
-        self.prevAnnotOptions = {
-            0: self.annotOptionsToRestore[0].copy(),
-            1: self.annotOptionsToRestore[1].copy(),
-        }
-        self.annotCellCycleInfoCheckbox(0).setChecked(True)
-        self.annotIDsCheckbox(0).setChecked(False)
-        self.annotMotherDaughterLineCheckbox(0).setChecked(True)
-    
+        self.storeAnnotOptionsBeforeModeSwitch()
+        # Use `setCheckedAlwaysEmit` so that the slots are called (and the
+        # annotations updated) even if the checkboxes are already in the
+        # requested state. Uncheck first, because the slot of an unchecked
+        # text annotation option clears all the text annotations.
+        self.annotIDsCheckbox(0).setCheckedAlwaysEmit(False)
+        self.annotCellCycleInfoCheckbox(0).setCheckedAlwaysEmit(True)
+        self.annotMotherDaughterLineCheckbox(0).setCheckedAlwaysEmit(True)
+
     def setAnnotOptionsLin_treeMode(self):
-        self.storeCurrentAnnotationsOptions()
-        self.prevAnnotOptions = {
-            0: self.annotOptionsToRestore[0].copy(),
-            1: self.annotOptionsToRestore[1].copy(),
-        }
-        self.annotLineageInfoCheckbox(0).setChecked(True)
-        self.annotIDsCheckbox(0).setChecked(False)
-        self.annotMotherDaughterLineCheckbox(0).setChecked(True)
+        self.storeAnnotOptionsBeforeModeSwitch()
+        # See comment in `setAnnotOptionsCcaMode`
+        self.annotIDsCheckbox(0).setCheckedAlwaysEmit(False)
+        self.annotLineageInfoCheckbox(0).setCheckedAlwaysEmit(True)
+        self.annotMotherDaughterLineCheckbox(0).setCheckedAlwaysEmit(True)
         
     def getOverlayItems(self, channelName, index):
         imageItem = widgets.OverlayImageItem()
