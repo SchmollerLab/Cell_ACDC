@@ -4991,8 +4991,16 @@ def check_install_trackastra():
 def parse_model_params(model_argspecs, model_params):
     parsed_model_params = {}
     for row, argspec in enumerate(model_argspecs):
-        value = model_params.get(argspec.name)
+        if argspec.name not in model_params:
+            # Missing parameter --> the model uses its default value
+            continue
+        value = model_params[argspec.name]
         if value is None:
+            # Keep explicit None values (e.g., `model_type = None` in a
+            # workflow config file). Dropping them would replace them with
+            # the default value, which can be invalid (e.g., cellpose
+            # `model_type='cpsam'` together with a custom `model_path`)
+            parsed_model_params[argspec.name] = None
             continue
         if argspec.type == bool:
             value = _parse_bool_str(value)
