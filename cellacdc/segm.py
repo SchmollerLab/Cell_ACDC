@@ -47,6 +47,12 @@ if os.name == 'nt':
     except:
         pass
 
+# Segmentation worker threads that did not stop in time (see
+# `segmWin.stopSegmWorkerThread`). Stored at module level and not on the
+# window, because destroying a QThread that is still running aborts the
+# process ("QThread: Destroyed while thread is still running")
+SEGM_ORPHAN_THREADS = []
+
 class QTerminal(QTextEdit):
     def write(self, message):
         message = message.replace('\r ', '')
@@ -144,9 +150,17 @@ class SegmWorker(QObject):
             self.kernel.close()
 
     @workers.worker_exception_handler
-    def run(self):
+    def _run(self):
         self.run_kernels()
-        self.signals.finished.emit(self)
+
+    def run(self):
+        try:
+            self._run()
+        finally:
+            # Always emit `finished`, also after an error
+            # (`worker_exception_handler` emits only `critical`), so that
+            # the thread is quit and the worker is deleted in its own thread
+            self.signals.finished.emit(self)
     
 class segmWin(QMainWindow):
     sigClosed = Signal()
@@ -862,18 +876,40 @@ class segmWin(QMainWindow):
             return
         
         t0 = time.perf_counter()
+        self.runSegmWorkers()
+        t1 = time.perf_counter()
+
+        self.processFinished(t1-t0)
+
+    def runSegmWorkers(self):
+        """Segment the positions in `self.user_ch_file_paths` one after the
+        other, each one with a new `SegmWorker` running in its own thread.
+
+        Stops at the first error.
+        """
         for pos_idx, img_path in enumerate(self.user_ch_file_paths):
             stop_frame_n = self.stopFrames[pos_idx]
             segmWorker, segmThread = self.startSegmWorker(
                 img_path, stop_frame_n
             )
             self.waitSegmWorker(segmWorker)
-            if segmWorker.is_error:
+            is_error = segmWorker.is_error
+            # `is_done` is False if the wait loop was exited before the
+            # worker finished (e.g., when the app is quitting)
+            is_done = segmWorker.is_done
+
+            # Release the thread only after it has finished, because
+            # destroying a running QThread aborts the process (see
+            # `stopSegmWorkerThread`). Release it before starting the
+            # next worker
+            timeout_ms = 30000 if is_done else 1000
+            stopped = self.stopSegmWorkerThread(
+                segmWorker, segmThread, timeout_ms=timeout_ms
+            )
+            del segmWorker, segmThread
+
+            if is_error or not is_done or not stopped:
                 break
-            
-        t1 = time.perf_counter()
-        
-        self.processFinished(t1-t0)
 
     def criticalImagesFolderEmpty(self, images_path):
         err_title = 'The images folder is empty'
@@ -909,8 +945,57 @@ class segmWin(QMainWindow):
         msg.critical(self, err_title, err_msg)
     
     def waitSegmWorker(self, worker):
-        worker.loop = QEventLoop(self)
+        if worker.is_done:
+            return
         worker.loop.exec_()
+
+    def stopSegmWorkerThread(self, worker, thread, timeout_ms=30000):
+        """Quit the thread of a segmentation worker and wait until it has
+        finished.
+
+        Must be called before releasing the last reference to the thread,
+        because destroying a QThread that is still running aborts the
+        process ("QThread: Destroyed while thread is still running"). The
+        worker emitting `finished` is not enough, because the thread still
+        needs the GIL to finish after that.
+
+        Parameters
+        ----------
+        worker : SegmWorker
+            The worker running in `thread`.
+        thread : QThread
+            The thread to stop.
+        timeout_ms : int, optional
+            Maximum time in milliseconds to wait for the thread. Default
+            is 30000
+
+        Returns
+        -------
+        bool
+            True if the thread finished. If it is still running after
+            `timeout_ms`, the thread and the worker are kept alive in
+            `SEGM_ORPHAN_THREADS` and False is returned.
+        """
+        try:
+            # Needed if the wait loop was exited before the worker emitted
+            # `finished` (connected to `thread.quit`)
+            thread.quit()
+
+            # Always wait, without checking `isRunning` first: `isRunning`
+            # is already False while the thread is still finishing. `wait`
+            # releases the GIL, which the thread needs to finish
+            if thread.wait(timeout_ms):
+                return True
+        except RuntimeError:
+            # The C++ thread was already deleted
+            return True
+
+        self.logger.warning(
+            f'Segmentation worker thread did not stop within {timeout_ms} ms.'
+        )
+        # Keep a reference to prevent destroying a running thread
+        SEGM_ORPHAN_THREADS.append((thread, worker))
+        return False
     
     def _saveConfigurationFile(self, filepath):
         init_args = {
@@ -1330,12 +1415,18 @@ class segmWin(QMainWindow):
         
         worker = SegmWorker(img_path, self, stop_frame_n)
         worker.is_error = False
-        
+        worker.is_done = False
+        # Created before starting the thread so that it exists when the
+        # `finished` and `critical` slots call `worker.loop.exit()`
+        worker.loop = QEventLoop()
+
         worker.moveToThread(thread)
         worker.signals.finished.connect(thread.quit)
         worker.signals.finished.connect(worker.deleteLater)
-        thread.finished.connect(thread.deleteLater)
-        
+        # NOTE: do not connect `thread.finished` to `thread.deleteLater`. The
+        # thread is owned by Python and released by the caller only after
+        # `stopSegmWorkerThread` waited for it to finish
+
         worker.signals.finished.connect(self.segmWorkerFinished)
         worker.signals.progress.connect(self.segmWorkerProgress)
         worker.signals.progressBar.connect(self.segmWorkerProgressBar)
@@ -1355,6 +1446,7 @@ class segmWin(QMainWindow):
     def workerCritical(self, out: Tuple[QObject, Exception]):
         worker, error = out
         worker.is_error = True
+        worker.is_done = True
         worker.loop.exit()
         raise error
 
@@ -1400,7 +1492,8 @@ class segmWin(QMainWindow):
         ETA = myutils.seconds_to_ETA(round(tot_seconds_left))
         total_ETA = self.ETA_label.setText(f'ETA: {ETA}')
 
-    def segmWorkerFinished(self, worker):     
+    def segmWorkerFinished(self, worker):
+        worker.is_done = True
         worker.loop.exit()
     
     def processFinished(self, total_exec_time):
