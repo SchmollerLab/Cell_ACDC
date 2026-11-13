@@ -260,75 +260,122 @@ def flat_view_range(viewer):
     return [xMin, xMax, yMin, yMax]
 
 
-def test_plotting_a_column_fits_y_and_keeps_x_zoom(viewer):
+def autoscaled_view_range(viewer):
+    """View range after pyqtgraph applied the pending auto range (done on
+    the next paint in the app)."""
+    viewer.measurementsPlot.getViewBox().updateAutoRange()
+    return view_range(viewer)
+
+
+def test_plotting_a_column_autoscales_x_and_y_like_the_auto_button(viewer):
     viewer.rescalePlotCheckbox.setChecked(False)
-    viewer.measurementsPlot.setXRange(0.5, 2.5, padding=0)
-    viewer.measurementsPlot.setYRange(10, 11, padding=0)
-    xRange, _ = view_range(viewer)
+    vb = viewer.measurementsPlot.getViewBox()
+    viewer.measurementsPlot.setRange(
+        xRange=(1.2, 1.4), yRange=(10, 11), padding=0
+    )
+    assert vb.autoRangeEnabled() == [False, False]
 
     # Cell 1: area 10, 20 and intensity 100, 250 at frames 1, 2
     set_plotted(viewer, 'intensity', True)
-    newXRange, (yMin, yMax) = view_range(viewer)
-    assert newXRange == pytest.approx(xRange)
+    assert vb.autoRangeEnabled() == [True, True]
+    (xMin, xMax), (yMin, yMax) = autoscaled_view_range(viewer)
+    assert xMin <= 1 and 2 <= xMax < 2.5
     assert yMin <= 10 and yMax >= 250
-    # x stays fixed, y keeps following the data in the visible x range
-    vb = viewer.measurementsPlot.getViewBox()
-    xAuto, yAuto = vb.autoRangeEnabled()
-    assert not xAuto and yAuto
 
-    # Changing cell ('Rescale plot' unchecked) keeps x and fits y to the
-    # new cell. Cell 2: area 30, 40 and intensity 150, 300 at frames 2, 3
-    viewer.setSelectedID(2)
+    # The same range as clicking the "A" button
+    autoscaled = flat_view_range(viewer)
+    viewer.measurementsPlot.setRange(xRange=(0, 1), yRange=(0, 1), padding=0)
+    viewer.measurementsPlot.getPlotItem().autoBtnClicked()
     vb.updateAutoRange()
-    newXRange, (yMin, yMax) = view_range(viewer)
-    assert newXRange == pytest.approx(xRange)
-    assert yMin <= 30 and 150 <= yMax < 300
+    assert flat_view_range(viewer) == pytest.approx(autoscaled)
 
-    # A manual zoom stops y from following the data
-    vb.scaleBy((1, 0.5))
+    # Changing cell ('Rescale plot' unchecked) follows the data on both
+    # axes. Cell 2: area 30, 40 and intensity 150, 300 at frames 2, 3
+    viewer.setSelectedID(2)
+    (xMin, xMax), (yMin, yMax) = autoscaled_view_range(viewer)
+    assert 1.5 < xMin <= 2 and xMax >= 3
+    assert yMin <= 30 and 300 <= yMax < 400
+
+    # A manual zoom is kept when changing cell
+    vb.scaleBy((0.5, 0.5))
     zoomed = flat_view_range(viewer)
     assert vb.autoRangeEnabled() == [False, False]
     viewer.setSelectedID(1)
+    assert flat_view_range(viewer) == pytest.approx(zoomed)
     vb.updateAutoRange()
     assert flat_view_range(viewer) == pytest.approx(zoomed)
 
-    # Removing a column fits y again
-    viewer.setSelectedID(1)
+    # Removing a column autoscales x and y again
     set_plotted(viewer, 'intensity', False)
-    _, (yMin, yMax) = view_range(viewer)
+    assert vb.autoRangeEnabled() == [True, True]
+    (xMin, xMax), (yMin, yMax) = autoscaled_view_range(viewer)
+    assert xMin <= 1 and 2 <= xMax < 2.5
     assert yMin <= 10 and 20 <= yMax < 100
-    assert view_range(viewer)[0] == pytest.approx(xRange)
 
 
-def test_y_fit_uses_only_values_in_the_current_x_range(viewer):
-    viewer.measurementsPlot.setXRange(0.5, 1.5, padding=0)
-    set_plotted(viewer, 'intensity', True)
-    # Frame 1 only: area 10, intensity 100 (frame 2 has 20 and 250)
-    _, (yMin, yMax) = view_range(viewer)
-    assert yMin <= 10 and 100 <= yMax < 250
+def test_rescale_plot_autoscales_after_manual_zoom(viewer):
+    viewer.rescalePlotCheckbox.setChecked(True)
+    vb = viewer.measurementsPlot.getViewBox()
+    viewer.measurementsPlot.setRange(xRange=(0, 1), yRange=(0, 1), padding=0)
+    assert vb.autoRangeEnabled() == [False, False]
+    # Cell 2: area 30, 40 at frames 2, 3
+    viewer.idScrollBar.setValue(viewer.IDs.index(2))
+    assert viewer.selectedID == 2
+    assert vb.autoRangeEnabled() == [True, True]
+    (xMin, xMax), (yMin, yMax) = autoscaled_view_range(viewer)
+    assert 1.5 < xMin <= 2 and xMax >= 3
+    assert yMin <= 30 and 40 <= yMax < 50
 
 
 # pyqtgraph computes the bounds of the all-NaN scatter
 @pytest.mark.filterwarnings('ignore:All-NaN slice:RuntimeWarning')
-def test_y_fit_ignores_nan_only_columns(viewer):
+def test_autoscale_waits_for_columns_with_values(viewer):
     viewer.acdc_df['empty'] = np.nan
     viewer.updateColumnsList()
     set_plotted(viewer, 'area', False)
-    viewer.measurementsPlot.setYRange(500, 501, padding=0)
+    vb = viewer.measurementsPlot.getViewBox()
+    viewer.measurementsPlot.setRange(
+        xRange=(0, 1), yRange=(500, 501), padding=0
+    )
     set_plotted(viewer, 'empty', True)
-    _, yRange = view_range(viewer)
-    assert yRange == pytest.approx((500, 501))
-    # The fit is pending until there is data to fit
+    assert vb.autoRangeEnabled() == [False, False]
+    assert flat_view_range(viewer) == pytest.approx([0, 1, 500, 501])
+    # The autoscale is pending until there is data to fit
     set_plotted(viewer, 'area', True)
-    _, (yMin, yMax) = view_range(viewer)
+    assert vb.autoRangeEnabled() == [True, True]
+    (xMin, xMax), (yMin, yMax) = autoscaled_view_range(viewer)
+    assert xMin <= 1 and 2 <= xMax < 2.5
     assert yMin <= 10 and 20 <= yMax < 500
 
 
-def test_toggling_normalization_fits_y(viewer):
-    viewer.measurementsPlot.setYRange(10, 11, padding=0)
+def test_phase_band_follows_the_autoscaled_time_course(viewer, tmp_path):
+    # The x-linked phase band (bars from frame - 0.5 to frame + 0.5) must
+    # not take over the x range: the time course fits its data points
+    viewer.settings_csv_path = str(tmp_path / 'settings.csv')
+    viewer.acdc_df['phase'] = ['G1', 'S', 'G1', 'S']
+    viewer.showPhasesCheckbox.setChecked(True)
+    viewer.measurementsPlot.setRange(xRange=(0, 1), yRange=(0, 1), padding=0)
     viewer.normalizeCheckbox.setChecked(True)
-    _, (yMin, yMax) = view_range(viewer)
-    assert yMin <= 0 and yMax >= 1 and yMax < 10
+    assert not viewer.phaseBandPlot.isHidden()
+    vb = viewer.measurementsPlot.getViewBox()
+    band = viewer.phaseBandPlot.getViewBox()
+    for cell, (first, last) in ((1, (1, 2)), (2, (2, 3))):
+        viewer.setSelectedID(cell)
+        band.updateAutoRange()
+        (xMin, xMax), _ = autoscaled_view_range(viewer)
+        assert vb.autoRangeEnabled() == [True, True]
+        assert first - 0.1 < xMin <= first and last <= xMax < last + 0.1
+        assert band.viewRange()[0] == pytest.approx([xMin, xMax])
+
+
+def test_toggling_normalization_autoscales_x_and_y(viewer):
+    viewer.measurementsPlot.setRange(
+        xRange=(1.2, 1.4), yRange=(10, 11), padding=0
+    )
+    viewer.normalizeCheckbox.setChecked(True)
+    (xMin, xMax), (yMin, yMax) = autoscaled_view_range(viewer)
+    assert xMin <= 1 and xMax >= 2
+    assert yMin <= 0 and 1 <= yMax < 10
 
 
 def test_comparison_autoranges_when_axes_change(viewer):
@@ -1196,3 +1243,41 @@ def test_apply_phases_cell_action_without_rules_shows_hint(
     viewer.applyPhasesCellAction.trigger()
     apply.assert_not_called()
     assert 'No phase rules' in viewer.statusBar().currentMessage()
+
+
+# Custom annotations are shown also when their button is not active
+
+def test_custom_annotations_of_inactive_buttons_are_shown(app, tmp_path):
+    from tests.test_measurement_viewer import make_timelapse_position
+    window = MeasurementsViewerWin()
+    window._startupConfigurationPrompted = True
+    try:
+        images_path = make_timelapse_position(
+            tmp_path, SizeT=2, extra_cells=((0, 2), (1, 2))
+        )
+        window.setData(
+            measurements_viewer.load_positions([images_path], 'phase')
+        )
+        # As the main GUI: the eye button "Show all custom annotations"
+        assert window.viewAllCustomAnnotAction.isChecked()
+        window.setCustomAnnotations([{
+            'type': 'Single time-point', 'name': 'Big',
+            'symbol': "'o' circle", 'shortcut': 'A', 'description': '',
+            'keepActive': True, 'isHideChecked': True,
+            'symbolColor': [255, 0, 0, 255],
+        }])
+        button = window.customAnnotButtonByName('Big')
+        assert not button.isChecked() and button.isHideChecked
+        assert window.toggleCustomAnnotation(button, 2)
+        window.doCustomAnnotation(0)
+        scatter = window.customAnnotDict[button]['scatterPlotItem']
+        assert len(scatter.getData()[0]) == 1
+
+        # Without "Show all", only the active annotation is shown
+        window.viewAllCustomAnnotAction.setChecked(False)
+        assert len(scatter.getData()[0]) == 0
+        button.setChecked(True)
+        assert len(scatter.getData()[0]) == 1
+    finally:
+        window.deleteLater()
+        app.processEvents()

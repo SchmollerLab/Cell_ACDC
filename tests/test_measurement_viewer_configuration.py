@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import tifffile
+from qtpy.QtGui import QKeySequence
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
@@ -314,6 +315,34 @@ def test_table_changes_are_tracked_and_saved(viewer, tmp_path):
     assert not viewer.unsavedAcdcDfPositions()
     viewer.setSelectedID(2)
     assert viewer.unsavedAcdcDfPositions() == [viewer.posData()]
+
+
+def test_save_tables_saves_only_changed_tables(viewer, tmp_path, monkeypatch):
+    paths, _ = load_clean_workflow(viewer, tmp_path)
+    saved = []
+    saveAcdcDfs = viewer.saveAcdcDfs
+
+    def record(positions):
+        saved.append(list(positions))
+        return saveAcdcDfs(positions)
+
+    monkeypatch.setattr(viewer, 'saveAcdcDfs', record)
+    # Replayed workflow columns are not on disk yet: all tables are saved
+    viewer.saveTablesAction.trigger()
+    assert saved == [viewer.data]
+    assert not viewer.unsavedAcdcDfPositions()
+    for images in paths:
+        saved_df = pd.read_csv(f'{images}/test_acdc_output.csv')
+        assert saved_df['final'].tolist() == [25., 49.]
+    # Only the edited table is written
+    viewer.setSelectedID(2)
+    edited = viewer.posData()
+    assert viewer.saveTables()
+    assert saved[1:] == [[edited]]
+    assert not viewer.unsavedAcdcDfPositions()
+    # Nothing to save: no file is written (keeps files saved elsewhere)
+    assert viewer.saveTables()
+    assert len(saved) == 2
 
 
 def test_empty_viewer_columns_are_not_changes(viewer, tmp_path):
@@ -887,17 +916,40 @@ def test_new_experiment_missing_overlays_prompt(
 
 def test_configuration_actions_in_menu_and_toolbar(viewer):
     actions = (
-        viewer.loadConfigurationAction, viewer.saveConfigurationAction,
-        viewer.saveConfigurationAsAction
+        viewer.saveTablesAction, viewer.loadConfigurationAction,
+        viewer.saveConfigurationAction, viewer.saveConfigurationAsAction
     )
     for action in actions:
         assert action in viewer.fileToolBar.actions()
         assert action in viewer.fileMenu.actions()
         assert not action.icon().isNull()
+    # Saving counterpart of loading: next to the load folder button
+    toolbarActions = viewer.fileToolBar.actions()
+    openIndex = toolbarActions.index(viewer.openFolderAction)
+    assert toolbarActions[openIndex + 1] is viewer.saveTablesAction
+    # The two save buttons are told apart
+    assert (
+        viewer.saveTablesAction.icon().cacheKey()
+        != viewer.saveConfigurationAction.icon().cacheKey()
+    )
+    # Ctrl+S saves the tables (as in the main GUI)
+    assert viewer.saveTablesAction.shortcut() == QKeySequence('Ctrl+S')
+    assert (
+        viewer.saveConfigurationAction.shortcut()
+        == QKeySequence('Ctrl+Shift+S')
+    )
+    assert viewer.saveConfigurationAsAction.shortcut().isEmpty()
+    hardcoded = viewer.getHardcodedShortcuts()
+    assert hardcoded[QKeySequence('Ctrl+S').toString()][1] is (
+        viewer.saveTablesAction
+    )
     viewer.setEnabledFileToolbar(False)
     assert viewer.loadConfigurationAction.isEnabled()
+    assert not viewer.saveTablesAction.isEnabled()
     assert not viewer.saveConfigurationAction.isEnabled()
     assert not viewer.saveConfigurationAsAction.isEnabled()
+    # Qt5 triggers disabled actions: nothing is loaded, nothing is saved
+    assert not viewer.saveTables()
 
 
 def test_input_choices_include_new_experiment(viewer, tmp_path, monkeypatch):

@@ -75,7 +75,10 @@ selection (`propsWidgetIDvalueChanged`, `syncPropsDockToSelectedID`).
 
 At startup, load a saved configuration or skip to start normally (unless
 started with a folder path, which is loaded directly). The File
-menu and the file toolbar can load, save or save a copy of a configuration. On closing, if any
+menu and the file toolbar can save the tables (`saveTables`, Ctrl+S: only the
+positions with unsaved changes, with the same backup and modified-on-disk
+check as below) and load, save (Ctrl+Shift+S) or save a copy of a
+configuration. On closing, if any
 position's table or the configuration changed since it was loaded/saved, a
 prompt offers to save the tables (overwriting each position's acdc_output
 file), the configuration (or save it as a new file), both, or neither
@@ -294,10 +297,14 @@ The ``Time points`` toolbar has ``Add time point identifier...`` to define a
 named time point (e.g., "Bud emergence") with a color, a keyboard shortcut
 (defaults Q, W, E, R, ...) and an optional per-cell predictor (an equation of
 the table columns or ``predictor(df)`` from a Python file, see
-``timepoint_predictors``). Each identifier gets its own toolbar action: hover
-over the time-course plot and press its shortcut to add a time point for the
-selected cell at the hovered frame (clicking the action adds it at the
-current frame), while ``Shift+shortcut`` re-evaluates its predictor on the
+``timepoint_predictors``). Each identifier gets its own toolbar action:
+clicking it adds a time point for the selected cell at the current frame,
+while hovering over the time-course plot and pressing its shortcut adds it
+at the hovered frame (the shortcut does nothing, with a status bar hint,
+when the plot is not hovered). Shortcut and click are told apart by the
+action (`_ShortcutAwareAction`), never by the cursor position, so a click
+works from anywhere (e.g., the toolbar extension menu); any other trigger
+counts as a click. ``Shift+shortcut`` re-evaluates its predictor on the
 selected cell. Shortcuts that already contain Shift get no such auto
 shortcut, and an auto shortcut already used by another action (e.g., from an
 older configuration) is left unset with a warning. A key is not available as
@@ -308,7 +315,9 @@ already used by another action (possible with 'Load annotation...' or a
 configuration, which skip the dialog checks) gets neither shortcut, with a
 warning and a tool tip note, because Qt triggers neither of two actions
 sharing a key. Time point lines can be dragged like the
-current frame line;
+current frame line and are drawn above it (z-value 11 over 10, so a time
+point added at the current frame is visible through the dashes; a drag at
+that frame moves the time point, not the current frame);
 right-click a line to remove it, or right-click an identifier action to edit,
 re-evaluate its predictor, clear or remove it. Automatic predictions require
 the identifier's ``autoApply`` flag and run only when a cell is first viewed.
@@ -335,8 +344,14 @@ conditions and recorded steps that read it, and drops the column's color
 and conditional formatting). Each annotation has a
 keyboard shortcut (defaults A, D, F, ...) that annotates/un-annotates the
 selected cell across its entire video history, while ``Shift+shortcut``
-re-evaluates its predictor on the selected cell. Alternatively, activate the 
-toolbar button and RIGHT-click on a cell. Like time points, annotations can 
+re-evaluates its predictor on the selected cell. Alternatively, activate the
+toolbar button and RIGHT-click on a cell. The symbols of all annotations are
+drawn, also of inactive buttons: as in the main GUI, ``setData`` checks the
+eye action ``Show all custom annotations`` (``viewAllCustomAnnotAction``);
+unchecked, only the active annotation and those whose ``Hide annotations``
+option (``isHideChecked``, kept per annotation name as the user setting
+``<name>_annotation_hidden``, which wins over the configuration) is off are
+drawn. Like time points, annotations can
 have a predictor (equation or ``predictor(df)`` from a Python file, see 
 ``custom_annotation_predictors``) that must return booleans (one per row, 
 or one for all rows of the cell). ``All`` (default), ``None`` or ``Most``
@@ -480,19 +495,22 @@ time course, and Measurement vs Measurement colors each point by its phase
 ``Show phases`` checkbox toggles both; its state is stored in the settings CSV
 (``measurements_viewer_show_phases``), like the navigation toggles ``Rescale
 plot`` (``rescalePlot``) and ``Only frames with selected cell``
-(``restrictFrames``). The time course x range is set to frames 1..SizeT
-when a position is loaded and when switching back from Measurement vs
-Measurement. The y range is fitted once (``fitTimecourseYRange``) to the
-plotted values within the current x range whenever the set of plotted columns
-changes (column plotted or removed from the list or its context menu, a
-configuration loaded), normalization is toggled or the x range was reset; the
-x zoom is kept and nothing changes when the plotted values are all NaN.
-After the fit the y range keeps following the plotted values within the
-visible x range (pyqtgraph y autorange with ``setAutoVisible``), e.g. when
-changing cell or editing the table, until the user zooms or pans by hand;
-the x range is kept. ``Rescale plot`` (checked) rescales the whole plot to
-the data when changing cell. Measurement vs Measurement always
-autoranges the scatter plot (e.g., when X or Y changes). Phase colors are edited in the
+(``restrictFrames``). Every automatic rescaling of the measurements plot is
+the same as clicking its "A" button (``autoscaleMeasurementsPlot``: x and y
+auto range, y restricted to the visible x range with ``setAutoVisible``), and
+the plot then keeps following the data (e.g. when changing cell or editing
+the table) until the user zooms or pans by hand. The time course is
+autoscaled whenever the set of plotted columns changes (column plotted or
+removed from the list or its context menu, a configuration loaded),
+normalization is toggled, a position is loaded or the view switches back from
+Measurement vs Measurement. These autoscales wait until a plotted value is
+finite; until then, without auto range, x shows frames 1..SizeT after loading
+a position. While pyqtgraph's auto range is on (after an autoscale, or with
+``Rescale plot`` checked) a cell whose plotted values are all NaN still fits
+x to its frames, as "A" does, and y is unchanged.
+``Rescale plot`` (checked) also autoscales when changing cell, even after a
+manual zoom. Measurement vs Measurement always autoscales the scatter plot
+(e.g., when X or Y changes). Phase colors are edited in the
 translator dialog's ``Phase colors`` box (committed on Apply or OK) and saved
 in the configuration's ``phase_colors`` ``{name: "#rrggbb"}``; phases without a
 color get the colorblind-friendly, red-free defaults of
@@ -691,48 +709,47 @@ APPLY_PHASES_CELL_SHORTCUT = 'Alt+P'
 
 MASK_UNANALYZED_TOOLTIP = (
     'Ignore frames after the last analyzed frame\n\n'
-    'When checked, the calculations of each position use only the frames '
-    'up to its last analyzed frame in the main GUI: the last cell cycle '
-    'annotated frame, or the last tracked frame (last frame of the '
-    'acdc_output table) when there are no cell cycle annotations.\n'
-    'Time point and custom annotation predictors, phases, measurement '
-    'processing, combined measurements and conditional formatting ignore '
-    'the later frames (the "SizeT" of equations is the number of analyzed '
-    'frames) and leave their outputs empty there. Images and plots still '
-    'show all frames (ignored frames are shaded in the plot).\n\n'
-    'Results calculated before changing this option are not recalculated '
-    'automatically (except phases evaluated automatically): re-evaluate '
-    'the predictors and the phases, or reload the configuration to '
-    'recalculate the measurement steps.\n'
-    'Saved in the configuration.'
+    'When checked, the calculations of each position use only the frames up to\n'
+    'its last analyzed frame in the main GUI: the last cell cycle annotated\n'
+    'frame, or the last tracked frame (last frame of the acdc_output table) when\n'
+    'there are no cell cycle annotations. Time point and custom annotation\n'
+    'predictors, phases, measurement processing, combined measurements and\n'
+    'conditional formatting ignore the later frames (the "SizeT" of equations is\n'
+    'the number of analyzed frames) and leave their outputs empty there. Images\n'
+    'and plots still show all frames (ignored frames are shaded in the plot).\n\n'
+    'Results calculated before changing this option are not recalculated\n'
+    'automatically (except phases evaluated automatically): re-evaluate\n'
+    'the predictors and the phases, or reload the configuration to\n'
+    'recalculate the measurement steps. Saved in the configuration.'
 )
 
 
 PHASE_TRANSLATOR_TOOLTIP = (
     'Time point to phase translator\n\n'
-    'Turn the time points of each cell into phases (e.g., "G1", '
-    '"S/G2/M"): the frames between two consecutive time points get the same '
-    'phase name.\n\n'
+    'Turn the time points of each cell into phases (e.g., "G1", "S/G2/M"):\n'
+    'the frames between two consecutive time points get the same phase name.\n\n'
     'How to use it:\n'
-    '1. Define time point identifiers ("Add time point identifier...") and '
-    'mark them on the cells (hover over the plot and press their shortcut, '
-    'or let their predictors find them).\n'
+    '1. Define time point identifiers ("Add time point identifier...")\n'
+    '   and mark them on the cells (hover over the plot and press\n'
+    '   their shortcut, or let their predictors find them).\n'
     '2. Open the translator and add a rule: check the time points that '
-    'separate the phases, put them in their order and name the phases '
-    'before, between and after them (optionally add a formula and required '
-    'custom annotations).\n'
-    '3. Click "Apply phase evaluation" on the displayed cell or on all '
-    'cells (or let the phases be evaluated automatically). Later, the '
-    '"Evaluate phases on displayed cell" button next to this one (shortcut '
-    '"' + APPLY_PHASES_CELL_SHORTCUT + '") re-evaluates the displayed cell '
-    'without opening the translator.\n'
-    '4. The phases are drawn as a colored band below the time course plot '
-    'and color the Measurement vs Measurement points. "Export '
-    'measurements..." saves the "phase" and "phase_<name>" columns.\n\n'
-    'Rules are tried from top to bottom; the first one that matches a cell '
-    'supplies its phases. Custom annotations with the "Overrides phases" '
-    'option come first: an annotated cell gets the annotation name as phase '
-    'on all its frames. Save the configuration to keep the rules.\n'
+    'separate\n'
+    '   the phases, put them in their order and name the phases before, '
+    'between\n'
+    '   and after them (optionally add a formula and required custom '
+    'annotations).\n'
+    '3. Click "Apply phase evaluation" on the displayed cell or on all cells\n'
+    '   (or let the phases be evaluated automatically). Later, the "Evaluate\n'
+    '   phases on displayed cell" button next to this one (shortcut "'
+    + APPLY_PHASES_CELL_SHORTCUT + '")\n'
+    '   re-evaluates the displayed cell without opening the translator.\n'
+    '4. The phases are drawn as a colored band below the time course\n'
+    '   plot and color the Measurement vs Measurement points. "Export\n'
+    '   measurements..." saves the "phase" and "phase_<name>" columns.\n\n'
+    'Rules are tried from top to bottom; the first one that matches a cell\n'
+    'supplies its phases. Custom annotations with the "Overrides phases"\n'
+    'option come first: an annotated cell gets the annotation name as\n'
+    'phase on all its frames. Save the configuration to keep the rules.\n'
     'Details: Help --> Measurements viewer user guide.'
 )
 
@@ -754,9 +771,10 @@ MEASUREMENTS_VIEWER_QUICK_START = (
         'annotations, and turn time points into phases with the '
         '<b>Time point to phase translator</b>.',
         '<b>Process measurements...</b> and <b>Combine measurements...</b> '
-        'add new columns; <b>Export measurements...</b> saves them. Save '
-        'the configuration (<code>File</code> menu) to reuse the setup on '
-        'other data.',
+        'add new columns; <b>Export measurements...</b> saves them. '
+        '<code>File &gt; Save tables</code> (<code>Ctrl+S</code>) saves the '
+        'acdc_output tables. Save the configuration (<code>File</code> menu, '
+        '<code>Ctrl+Shift+S</code>) to reuse the setup on other data.',
     ], ordered=True)
     + 'Press <code>Ctrl+F</code> to search for a Cell ID or a '
     'functionality.'
@@ -779,6 +797,30 @@ def auto_shortcut_text(shortcut):
     return QKeySequence(f'Shift+{text}').toString()
 
 
+class _ShortcutAwareAction(QAction):
+    """QAction that tells whether `triggered` is emitted by its shortcut.
+
+    `triggeredByShortcut` is True only while the action handles the
+    ``QEvent.Shortcut`` sent by Qt's shortcut map (i.e., during the
+    `triggered` slots of a key press), and False for a click on its toolbar
+    button (also from the toolbar extension) or `trigger()`. The time point
+    actions use it to add a time point at the hovered plot frame (shortcut)
+    or at the current frame (click), independently of the cursor position.
+    """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.triggeredByShortcut = False
+
+    def event(self, event):
+        if event.type() != QEvent.Shortcut:
+            return super().event(event)
+        self.triggeredByShortcut = True
+        try:
+            return super().event(event)
+        finally:
+            self.triggeredByShortcut = False
+
+
 class _TimepointLine(pg.InfiniteLine):
     """Draggable line of a time point of the selected cell."""
     sigRemoveRequested = Signal(object)
@@ -797,11 +839,15 @@ class _TimepointLine(pg.InfiniteLine):
         self.uid = identifier.uid
         self.ID = ID
         self.frame_i = frame_i
-        self.setToolTip(
+        self.setToolTip(qutils.wrap_tooltip(
             f'{identifier.name} (Cell ID {ID}, frame n. {frame_i+1})\n\n'
             'Drag to move. Right-click to remove.'
-        )
-        self.setZValue(9)
+        ))
+        # Above the current frame line (10), else a time point added at the
+        # current frame (button click) is hidden under it. The dash gaps keep
+        # the red line visible; dragging there moves the time point (user
+        # choice over an invisible new time point).
+        self.setZValue(11)
 
     def mouseClickEvent(self, ev):
         if ev.button() == Qt.MouseButton.RightButton and not self.moving:
@@ -1605,6 +1651,29 @@ class MeasurementsViewerWin(
                 f'Saved {len(positions)} acdc_output table(s).', 5000
             )
         return True
+
+    def saveTables(self, checked=False):
+        """Save the acdc_output tables of the positions with unsaved changes
+        (File > Save tables, Ctrl+S). Tables without changes are not written,
+        so that files saved by the main GUI in the meantime are kept. Return
+        False if saving was refused, cancelled or failed."""
+        if not self.isDataLoaded:
+            # Qt5 emits `triggered` also for a disabled action
+            self.statusBar().showMessage('Load data before saving tables.', 5000)
+            return False
+        if self._isLoadingData:
+            text = 'Wait for the data being loaded before saving the tables.'
+            self.logger.warning(text)
+            self.statusBar().showMessage(text, 8000)
+            return False
+        positions = self.unsavedAcdcDfPositions()
+        if not positions:
+            text = 'Save tables: no unsaved changes to the tables.'
+            self.logger.info(text)
+            self.statusBar().showMessage(text, 5000)
+            return True
+        self.logger.info(f'Save tables: {len(positions)} position(s)')
+        return self.saveAcdcDfs(positions)
 
     def askSaveBeforeClosing(self):
         """Prompt for unsaved tables/configuration. Return False to cancel."""
@@ -2416,40 +2485,51 @@ class MeasurementsViewerWin(
         )
         self.loadConfigurationAction.setToolTip(
             'Load a measurements viewer configuration\n\n'
-            'Restores inputs, measurement steps, plots, time point '
+            'Restores inputs, measurement steps, plots, time point\n'
             'identifiers, custom annotations and phase rules.'
         )
-        self.saveConfigurationAction = QAction(
-            QIcon(":file-save.svg"), 'Save configuration', self
+        # Ctrl+S saves the tables (as in the main GUI), the configuration has
+        # its own icon so that the two save buttons are told apart
+        self.saveTablesAction = QAction(
+            QIcon(":file-save.svg"), 'Save tables', self
         )
-        self.saveConfigurationAction.setShortcut('Ctrl+S')
+        self.saveTablesAction.setShortcut('Ctrl+S')
+        self.saveTablesAction.setToolTip(
+            'Save tables (Ctrl+S)\n\n'
+            'Overwrite the acdc_output table of every Position with unsaved\n'
+            'changes (time points, annotations, phases, measurement steps). The\n'
+            'previous file is backed up in the Position\'s "recovery" folder.'
+        )
+        self.saveConfigurationAction = QAction(
+            QIcon(":cog.svg"), 'Save configuration', self
+        )
+        self.saveConfigurationAction.setShortcut('Ctrl+Shift+S')
         self.saveConfigurationAction.setToolTip(
-            'Save the current configuration (Ctrl+S)'
+            'Save the current configuration (Ctrl+Shift+S)'
         )
         self.saveConfigurationAsAction = QAction(
             QIcon(":edit-copy.svg"), 'Save configuration as...', self
         )
-        self.saveConfigurationAsAction.setShortcut('Ctrl+Shift+S')
         self.saveConfigurationAsAction.setToolTip(
-            'Save the current configuration to a new file (Ctrl+Shift+S)'
+            'Save the current configuration to a new file'
         )
         self.addTimepointIdentifierAction = QAction(
             QIcon(":add.svg"), 'Add time point identifier...', self
         )
         self.addTimepointIdentifierAction.setToolTip(
             'Add time point identifier\n\n'
-            'Define a named time point (e.g., "Bud emergence") with a color, '
-            'a keyboard shortcut and an optional per-cell predictor.\n'
-            'Hover over the measurements plot and press the shortcut to add '
-            'a time point at the hovered frame.'
+            'Define a named time point (e.g., "Bud '
+            'emergence") with a color, a keyboard\n'
+            'shortcut and an optional per-cell predictor. Hover over the measurements\n'
+            'plot and press the shortcut to add a time point at the hovered frame.'
         )
         self.reevaluateAllTimepointsAction = QAction(
             QIcon(":reload.svg"), 'Re-evaluate predictors on all cells', self
         )
         self.reevaluateAllTimepointsAction.setToolTip(
             'Re-evaluate predictors on all cells\n\n'
-            'Run the predictors of all time point identifiers on every cell '
-            'of the current position, replacing their time points.\n'
+            'Run the predictors of all time point identifiers on every\n'
+            'cell of the current position, replacing their time points.\n'
             'You will be warned if manual edits would be overwritten.'
         )
         self.reevaluateCellTimepointsAction = QAction(
@@ -2458,9 +2538,9 @@ class MeasurementsViewerWin(
         )
         self.reevaluateCellTimepointsAction.setToolTip(
             'Re-evaluate predictors on displayed cell\n\n'
-            'Run the predictors of all time point identifiers only on the '
-            'displayed cell, replacing its time points.\n'
-            'You will be warned if manual edits would be overwritten.'
+            'Run the predictors of all time point identifiers only\n'
+            'on the displayed cell, replacing its time points. You\n'
+            'will be warned if manual edits would be overwritten.'
         )
         self.phaseTranslatorAction = QAction(
             phase_translator_icon(), 'Time point to phase translator...',
@@ -2481,11 +2561,14 @@ class MeasurementsViewerWin(
         self.applyPhasesCellAction.setToolTip(
             'Evaluate phases on displayed cell\n\n'
             'Apply the rules of the time point to phase translator (and the '
-            'custom annotations that override phases) to the displayed cell '
-            'only, replacing its phases (like "Apply phase evaluation" on '
-            'the displayed cell in the translator).\n'
-            'Define the rules first with "Time point to phase translator...".'
-            '\n\nShortcut: "' + APPLY_PHASES_CELL_SHORTCUT + '"'
+            'custom\n'
+            'annotations that override phases) to the displayed cell only, '
+            'replacing its\n'
+            'phases (like "Apply phase evaluation" on the displayed cell in '
+            'the\n'
+            'translator). Define the rules first with "Time point to phase '
+            'translator...".\n\n'
+            'Shortcut: "' + APPLY_PHASES_CELL_SHORTCUT + '"'
         )
         self.applyPhasesCellAction.setStatusTip(
             'Evaluate the phases of the displayed cell with the phase '
@@ -2538,9 +2621,9 @@ class MeasurementsViewerWin(
         )
         self.reevaluateAllCustomAnnotationsAction.setToolTip(
             'Re-evaluate annotation predictors on all cells\n\n'
-            'Run the predictors of all custom annotations on every cell of '
-            'the current position, replacing their annotations.\n'
-            'You will be warned if manual edits would be overwritten.'
+            'Run the predictors of all custom annotations on every cell\n'
+            'of the current position, replacing their annotations. You\n'
+            'will be warned if manual edits would be overwritten.'
         )
         self.reevaluateCellCustomAnnotationsAction = QAction(
             QIcon(":magic_wand.svg"),
@@ -2548,19 +2631,17 @@ class MeasurementsViewerWin(
         )
         self.reevaluateCellCustomAnnotationsAction.setToolTip(
             'Re-evaluate annotation predictors on displayed cell\n\n'
-            'Run the predictors of all custom annotations only on the '
-            'displayed cell, replacing its annotations.\n'
-            'You will be warned if manual edits would be overwritten.'
+            'Run the predictors of all custom annotations only on\n'
+            'the displayed cell, replacing its annotations. You\n'
+            'will be warned if manual edits would be overwritten.'
         )
         self.addCustomAnnotationAction.setToolTip(
             'Add custom annotation\n\n'
-            'Define an annotation (saved as a 0/1 column) with a symbol, a '
-            'keyboard shortcut and an optional predictor.\n'
-            'Select a cell and press the shortcut to annotate/un-annotate it '
-            'across its entire video history (Shift+shortcut re-evaluates '
-            'its predictor on the selected cell).\n'
-            'Alternatively, activate the toolbar button and right-click on '
-            'a cell.'
+            'Define an annotation (saved as a 0/1 column) with a symbol, a keyboard\n'
+            'shortcut and an optional predictor. Select a cell and press the\n'
+            'shortcut to annotate/un-annotate it across its entire video history\n'
+            '(Shift+shortcut re-evaluates its predictor on the selected cell).\n'
+            'Alternatively, activate the toolbar button and right-click on a cell.'
         )
         
         # Annotations actions (same as in the main GUI)
@@ -2568,8 +2649,8 @@ class MeasurementsViewerWin(
             'Fix text annotations to screen size'
         )
         self.scalingLabelsAction.setToolTip(
-            'When the text annotations are fixed to screen size, they do not '
-            'scale relative to the objects when zooming in/out.'
+            'When the text annotations are fixed to screen size, they\n'
+            'do not scale relative to the objects when zooming in/out.'
         )
         self.scalingLabelsAction.setChecked(
             self._get_setting_value('scalingLabels', False, cast=bool)
@@ -2578,9 +2659,10 @@ class MeasurementsViewerWin(
             'High resolution text annotations'
         )
         self.highLowResAction.setToolTip(
-            'Resolution of the text annotations. High resolution results '
-            'in slower update of the annotations.\n'
-            'Not recommended with a number of segmented objects > 500.'
+            'Resolution of the text annotations. High '
+            'resolution results in slower update\n'
+            'of the annotations. Not recommended with '
+            'a number of segmented objects > 500.'
         )
         self.highLowResAction.setChecked(
             self._get_setting_value('highLowRes', True, cast=bool)
@@ -2736,6 +2818,7 @@ class MeasurementsViewerWin(
         fileMenu.addAction(self.openFolderAction)
         fileMenu.addAction(self.openFileAction)
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
+        fileMenu.addAction(self.saveTablesAction)
         fileMenu.addSeparator()
         fileMenu.addAction(self.showInExplorerAction)
         fileMenu.addAction(self.reloadAction)
@@ -2819,6 +2902,8 @@ class MeasurementsViewerWin(
         fileToolBar = self.addToolBar("File")
         fileToolBar.setMovable(False)
         fileToolBar.addAction(self.openFolderAction)
+        # Saving counterpart of loading (only the tables can be edited)
+        fileToolBar.addAction(self.saveTablesAction)
         fileToolBar.addAction(self.openFileAction)
         fileToolBar.addAction(self.showInExplorerAction)
         fileToolBar.addAction(self.reloadAction)
@@ -2922,7 +3007,7 @@ class MeasurementsViewerWin(
         self.rulerButton.setIcon(QIcon(":ruler.svg"))
         self.rulerButton.setCheckable(True)
         self.rulerButton.setToolTip(
-            'Draw a straight line and show its length. '
+            'Draw a straight line and show its length.\n'
             'Length is displayed on the bottom-right corner.\n\n'
             'Hold "Ctrl" to snap the line to the closest 15° angle.'
         )
@@ -2966,6 +3051,7 @@ class MeasurementsViewerWin(
         self.acdcDocsAction.triggered.connect(self.openAcdcDocs)
         self.exitAction.triggered.connect(self.close)
         self.loadConfigurationAction.triggered.connect(self.loadConfiguration)
+        self.saveTablesAction.triggered.connect(self.saveTables)
         self.saveConfigurationAction.triggered.connect(self.saveConfiguration)
         self.saveConfigurationAsAction.triggered.connect(self.saveConfigurationAs)
         self.addTimepointIdentifierAction.triggered.connect(
@@ -3200,7 +3286,7 @@ class MeasurementsViewerWin(
         `guiWin.getHardcodedShortcuts`."""
         hard_shortcuts = {}
         actions = (
-            self.openFolderAction, self.reloadAction, 
+            self.openFolderAction, self.reloadAction, self.saveTablesAction,
             self.saveConfigurationAction, self.saveConfigurationAsAction,
             self.focusOnSearchAction, self.editShortcutsAction, 
             self.viewCcaTableAction, 
@@ -3520,6 +3606,11 @@ class MeasurementsViewerWin(
         self.initLut()
         self.initViewerTools()
         self.loadPosition(pos_i, frame_i=frame_i, ID=ID)
+        # As the main GUI (`loadingDataCompleted`): show the custom
+        # annotations of every button, not only of the active one
+        # (unchecking the eye button of the toolbar shows only the active
+        # one and those whose "Hide annotations" option is off)
+        self.viewAllCustomAnnotAction.setChecked(True)
         self.initViewerToolsAfterLoading()
         self.setEnabledFileToolbar(hasData)
         self.resizeBottomLayout()
@@ -4073,15 +4164,15 @@ class MeasurementsViewerWin(
         self.idNotPresentLabel.setFont(_font)
         self.followIDcheckbox = QCheckBox('Follow cell')
         self.followIDcheckbox.setToolTip(
-            'If active, the view zooms on the selected cell also when '
-            'changing frame or z-slice'
+            'If active, the view zooms on the selected\n'
+            'cell also when changing frame or z-slice'
         )
         self.restrictFramesCheckbox = QCheckBox(
             'Only frames with selected cell'
         )
         self.restrictFramesCheckbox.setToolTip(
-            'If active, the frames slider is restricted to the range of '
-            'frames where the selected cell ID is present'
+            'If active, the frames slider is restricted to the\n'
+            'range of frames where the selected cell ID is present'
         )
         self.rescalePlotCheckbox = QCheckBox('Rescale plot')
         self.rescalePlotCheckbox.setToolTip(
@@ -4090,13 +4181,13 @@ class MeasurementsViewerWin(
         
         self.normalizeCheckbox = QCheckBox('Normalize measurements (0-1)')
         self.normalizeCheckbox.setToolTip(
-            'Rescale each measurement to the range 0-1 to compare measurements with '
-            'different scales'
+            'Rescale each measurement to the range 0-1 to\n'
+            'compare measurements with different scales'
         )
         self.showPhasesCheckbox = QCheckBox('Show phases')
         self.showPhasesCheckbox.setToolTip(
-            'Show the evaluated phases (phase column) as a band below the '
-            'time course and as point colors in Measurement vs Measurement. '
+            'Show the evaluated phases (phase column) as a band below the\n'
+            'time course and as point colors in Measurement vs Measurement.\n'
             'Set colors in the time point to phase translator.'
         )
         self.showPhasesCheckbox.setChecked(self._get_setting_value(
@@ -4244,8 +4335,8 @@ class MeasurementsViewerWin(
         
         self.showAllContoursToggle = widgets.Toggle()
         showAllContoursTooltip = (
-            'If active, all contours will be displayed, including inner '
-            'contours (e.g. holes and sub-objects)'
+            'If active, all contours will be displayed, including\n'
+            'inner contours (e.g. holes and sub-objects)'
         )
         self.showAllContoursToggle.setToolTip(showAllContoursTooltip)
         showAllContourLabel = QLabel('Show all contours')
@@ -4375,8 +4466,8 @@ class MeasurementsViewerWin(
             Qt.ContextMenuPolicy.CustomContextMenu
         )
         self.columnsListWidget.setToolTip(
-            'Click a column to plot/unplot it. Right-click on a column to '
-            'change its color or conditional formatting.'
+            'Click a column to plot/unplot it. Right-click on a\n'
+            'column to change its color or conditional formatting.'
         )
         # Custom plotting colors set by the user {column: QColor}
         self.measurementsColors = {}
@@ -4392,9 +4483,10 @@ class MeasurementsViewerWin(
             ['Time course', 'Measurement vs Measurement']
         )
         self.measurementsModeCombobox.setToolTip(
-            'Time course: selected cell. Measurement vs Measurement: all cells and '
-            'all frames of the current position. Hover for details; click '
-            'a point to zoom to its cell.'
+            'Time course: selected cell. Measurement '
+            'vs Measurement: all cells and all frames\n'
+            'of the current position. Hover for details; '
+            'click a point to zoom to its cell.'
         )
         # Short how-to with a link to the user guide (also Help menu)
         self.measurementsHelpButton = widgets.infoPushButton()
@@ -4414,15 +4506,16 @@ class MeasurementsViewerWin(
         )
         self.processMeasurementsButton = widgets.setPushButton('Process measurements...')
         self.processMeasurementsButton.setToolTip(
-            'Apply a processing recipe (e.g., smoothing, min-max '
-            'normalization or ramp detection) to selected measurements of '
-            'the current position.\n\n'
-            'Each processed measurement is added as a new column (the '
-            'measurement name plus the output suffix chosen in the dialog; '
-            'the original columns are not changed), which can then be '
-            'plotted and used by predictors. The recipe is recorded in the '
-            'configuration and can be recalculated when the configuration '
-            'is loaded.\n\n'
+            'Apply a processing recipe (e.g., smoothing, min-max normalization or\n'
+            'ramp detection) to selected measurements of the current position.\n\n'
+            'Each processed measurement is added as '
+            'a new column (the measurement name plus\n'
+            'the output suffix chosen in the dialog; '
+            'the original columns are not changed),\n'
+            'which can then be plotted and used by '
+            'predictors. The recipe is recorded in\n'
+            'the configuration and can be recalculated '
+            'when the configuration is loaded.\n\n'
             'Use "Export measurements..." to save the new columns.'
         )
         self.processMeasurementsButton.clicked.connect(self.processMeasurements)
@@ -4430,7 +4523,7 @@ class MeasurementsViewerWin(
             'Combine measurements...'
         )
         self.combineMeasurementsButton.setToolTip(
-            'Add columns calculated from the current position. '
+            'Add columns calculated from the current position.\n'
             'Use Export measurements to save the results.'
         )
         self.combineMeasurementsButton.clicked.connect(self.combineMeasurements)
@@ -4660,7 +4753,7 @@ class MeasurementsViewerWin(
         self.plotMeasurements()
 
         if self.rescalePlotCheckbox.isChecked():
-            self.measurementsPlot.autoRange()
+            self.autoscaleMeasurementsPlot()
                 
     def updateCcaTableWin(self):
         """Show the cell cycle annotations of the current frame in the open
@@ -5116,8 +5209,8 @@ class MeasurementsViewerWin(
         # (`replayMeasurementSteps`)
         dialog.SizeT = self.analysisSizeT(posData)
         dialog.setToolTip(
-            'Results are added to the current position in memory. '
-            'Use Export measurements to save them.'
+            'Results are added to the current position in\n'
+            'memory. Use Export measurements to save them.'
         )
         dialog.sigOk.connect(
             partial(
@@ -5987,12 +6080,12 @@ class MeasurementsViewerWin(
         self.setSelectedID(ID)
         
         if self.rescalePlotCheckbox.isChecked():
-            self.measurementsPlot.autoRange()
+            self.autoscaleMeasurementsPlot()
             
     def rescalePlotToggled(self, checked):
         self.logger.info(f'Rescale plot {"on" if checked else "off"}')
         if checked:
-            self.measurementsPlot.autoRange()
+            self.autoscaleMeasurementsPlot()
         self._set_setting_value('rescalePlot', checked)
     
     def idSpinBoxEditingFinished(self):
@@ -6450,7 +6543,8 @@ class MeasurementsViewerWin(
         self.timepointIdentifiers.append(identifier)
         for acdc_df in self.allAcdcDfs():
             self.ensureTimepointColumns(acdc_df)
-        action = QAction(self)
+        # Shortcut: hovered plot frame, click: current frame
+        action = _ShortcutAwareAction(self)
         action.setShortcutContext(Qt.ShortcutContext.WindowShortcut)
         action.triggered.connect(
             partial(self.timepointActionTriggered, identifier.uid)
@@ -6519,14 +6613,14 @@ class MeasurementsViewerWin(
         predictorText = timepoint_predictors.TimepointPredictor.describe(
             identifier.predictor
         )
-        action.setToolTip(
+        action.setToolTip(qutils.wrap_tooltip(
             f'Time point: {identifier.name}\n\n'
+            'Click to add it for the selected cell at the current frame.\n'
             'Hover over the measurements plot and press the shortcut to add '
-            'it at the hovered frame for the selected cell.\n'
-            'Click to add it at the current frame.\n'
+            'it at the hovered frame.\n'
             'Right-click for more options.\n\n'
             f'{shortcutText}\nPredictor: {predictorText}'
-        )
+        ))
         
         # update AutoAction
         autoAction = self.timepointAutoActions[identifier.uid]
@@ -7267,8 +7361,8 @@ class MeasurementsViewerWin(
             predictor = f'{predictor} (auto apply on unvisited cells)'
         lines = [
             f'Custom annotation: {state["name"]}', '',
-            'Usage: select a cell and press the shortcut, or activate the '
-            'button and RIGHT-click on a cell.',
+            'Usage: select a cell and press the shortcut, or\n'
+            'activate the button and RIGHT-click on a cell.',
             shortcutText, f'Predictor: {predictor}'
         ]
         if state.get('overridesPhases', False):
@@ -7282,10 +7376,11 @@ class MeasurementsViewerWin(
         if description:
             lines.extend(['', f'Description: {description}'])
         lines.extend([
-            '', 'RIGHT-click on the button to modify, re-evaluate, clear or '
-            'remove the annotation.'
+            '', 'RIGHT-click on the button to modify,\n'
+                're-evaluate, clear or remove the annotation.'
         ])
-        return '\n'.join(lines)
+        # Names, descriptions and predictors are entered by the user
+        return qutils.wrap_tooltip('\n'.join(lines))
     
     def setCustomAnnotShortcut(self, button, shortcut):
         """The shortcut annotates the selected cell across its entire history
@@ -7334,11 +7429,11 @@ class MeasurementsViewerWin(
                 f'"{name}" is not set because it is already used by '
                 f'"{usedBy}".'
             )
-            button.setToolTip(
+            button.setToolTip(qutils.wrap_tooltip(
                 f'{button.toolTip()}\n\nNote: the shortcut "{keyText}" '
                 f'(and its auto shortcut) is not set because it is already '
                 f'used by "{usedBy}".'
-            )
+            ))
             shortcut = ''
             keySequence = QKeySequence()
         autoText, autoUsedBy = self.autoShortcutConflict(
@@ -7350,10 +7445,10 @@ class MeasurementsViewerWin(
                 f'"{name}" is not set because it is already used by '
                 f'"{autoUsedBy}".'
             )
-            button.setToolTip(
+            button.setToolTip(qutils.wrap_tooltip(
                 f'{button.toolTip()}\n\nNote: the auto shortcut "{autoText}" '
                 f'is not set because it is already used by "{autoUsedBy}".'
-            )
+            ))
             autoText = ''
         toggleAction.setShortcut(keySequence)
         autoAction.setShortcut(QKeySequence(autoText))
@@ -7674,6 +7769,11 @@ class MeasurementsViewerWin(
                 if self.plotReadsColumns([button.name]):
                     self.plotMeasurements()
         
+        if getattr(self.posData(), 'rp', None) is None:
+            # Position still loading (e.g., predictions run by
+            # `initIDsNavigation`): `updateImages` draws the annotations
+            # once its objects are computed (`get_data`)
+            return
         buttons = self.customAnnotButtonsToDraw()
         for button, annot in self.customAnnotDict.items():
             if button not in buttons:
@@ -7861,21 +7961,31 @@ class MeasurementsViewerWin(
         return self.clipFrame(int(round(viewPos.x())) - 1)
     
     def timepointActionTriggered(self, uid, checked=False):
+        """Add a time point of the identifier `uid` for the selected cell.
+
+        Its shortcut adds it at the frame under the mouse cursor in the
+        measurements plot (nothing when the plot is not hovered). A click on
+        its toolbar button (or any other trigger) adds it at the current
+        frame. The shortcut is recognised by the action
+        (`_ShortcutAwareAction`), not by the cursor position, which may be
+        anywhere when the button is clicked (e.g., toolbar extension).
+        """
         if not self.data:
             self.statusBar().showMessage('Load data to add time points.', 5000)
             return
         identifier = self.timepointIdentifier(uid)
-        frame_i = self.hoveredMeasurementsPlotFrame()
-        if frame_i is None:
-            toolbar = self.timepointsToolBar
-            toolbarPos = toolbar.mapFromGlobal(QCursor.pos())
-            if not toolbar.isVisible() or not toolbar.rect().contains(toolbarPos):
+        action = self.timepointActions.get(uid)
+        if getattr(action, 'triggeredByShortcut', False):
+            frame_i = self.hoveredMeasurementsPlotFrame()
+            if frame_i is None:
                 self.statusBar().showMessage(
                     f'Hover over the measurements plot to add a '
-                    f'"{identifier.name}" time point with its shortcut.', 5000
+                    f'"{identifier.name}" time point with its shortcut, or '
+                    'click its button to add it at the current frame.', 5000
                 )
                 return
-            frame_i = self.frame_i if self.data else None
+        else:
+            frame_i = self.frame_i
         self.addTimepoint(uid, frame_i)
     
     def addTimepoint(self, uid, frame_i, ID=None):
@@ -8034,9 +8144,9 @@ class MeasurementsViewerWin(
         )
         
         posData = self.posData()
-        # Frame range only on the first time course plot of a position
-        # (or after comparison mode): replots after cell changes and table
-        # edits keep the user's x zoom
+        # Frame range 1..SizeT on the first time course plot of a position
+        # (or after comparison mode), kept while nothing can be autoscaled
+        # (no column plotted or no values for the selected cell)
         xRangeKey = (self.pos_i, posData.SizeT)
         isNewXRange = getattr(self, '_timecourseXRangeKey', None) != xRangeKey
         if isNewXRange:
@@ -8052,19 +8162,20 @@ class MeasurementsViewerWin(
         else:
             self.measurementsPlot.setTitle(f'Cell ID {self.selectedID}')
 
-        # Fit y once when the plotted curves change (column plotted or
-        # removed, normalization toggled) or the x range was reset; then y
-        # follows the data (`fitTimecourseYRange`) until the user zooms.
-        # The key is stored only once a fit succeeded (cell with data).
-        yRangeKey = (frozenset(columns), isNormalized)
+        # Autoscale x and y (`autoscaleMeasurementsPlot`, as the plot's "A"
+        # button) when the plotted curves change (column plotted or
+        # removed, normalization toggled) or the frame range was reset; the
+        # plot then follows the data until the user zooms or pans by hand.
+        # The key is stored only once there was data to fit (cell with data).
+        rangeKey = (frozenset(columns), isNormalized)
         if isNewXRange or not columns:
-            self._timecourseYRangeKey = None
-        fitYRange = getattr(self, '_timecourseYRangeKey', None) != yRangeKey
+            self._timecourseRangeKey = None
+        autoscale = getattr(self, '_timecourseRangeKey', None) != rangeKey
 
         if df_ID is None or not columns:
             return
 
-        plottedData = []
+        plottedValues = []
 
         frames_n = df_ID.index.get_level_values(0).to_numpy() + 1
         phases = self.phaseValues(df_ID)
@@ -8125,49 +8236,32 @@ class MeasurementsViewerWin(
                 data=pointData
             )
             self.connectSignalPoints(item)
-            plottedData.append((frames_n, values))
+            plottedValues.append(values)
 
-        if fitYRange and self.fitTimecourseYRange(plottedData):
-            self._timecourseYRangeKey = yRangeKey
+        hasValues = any(np.isfinite(vals).any() for vals in plottedValues)
+        if autoscale and hasValues:
+            self.autoscaleMeasurementsPlot()
+            self._timecourseRangeKey = rangeKey
 
-    def fitTimecourseYRange(self, plottedData):
-        """Set the time course y range to the finite values of the plotted
-        curves within the current x range (all frames if none are visible).
+    def autoscaleMeasurementsPlot(self):
+        """Autoscale the measurements plot exactly like its "A" button
+        (`PlotItem.autoBtnClicked`): enable pyqtgraph's auto range on both
+        axes, so x and y fit the plotted data (time course or Measurement
+        vs Measurement) and keep following it (e.g. another cell or a table
+        edit) until the user zooms or pans by hand.
 
-        Then pyqtgraph's y autorange is enabled again, restricted to the
-        visible x range (`ViewBox.setAutoVisible`), so the y range keeps
-        following the data (e.g. of another cell, with ``Rescale plot``
-        unchecked) until the user zooms or pans by hand; the x range is
-        left as it is. Nothing changes when there are no finite values.
+        The y auto range uses only the data in the visible x range
+        (`ViewBox.setAutoVisible`), so it still follows the data when the
+        user pans or zooms only the x axis. pyqtgraph applies the range on
+        the next paint (tests call ``viewBox.updateAutoRange()``).
 
-        Parameters
-        ----------
-        plottedData : list of (np.ndarray, np.ndarray)
-            ``(frames_n, values)`` of each plotted curve.
-
-        Returns
-        -------
-        bool
-            True if the y range was set.
+        Every automatic rescaling of this plot must go through this method
+        (column plotted or removed, normalization toggled, ``Rescale plot``,
+        Measurement vs Measurement axes changed).
         """
-        if not plottedData:
-            return False
-        frames_n = np.concatenate([frames for frames, _ in plottedData])
-        values = np.concatenate([vals for _, vals in plottedData])
-        finite = np.isfinite(values)
-        xMin, xMax = self.measurementsPlot.getViewBox().viewRange()[0]
-        visible = finite & (frames_n >= xMin) & (frames_n <= xMax)
-        if not visible.any():
-            visible = finite
-        if not visible.any():
-            return False
-        yMin = values[visible].min()
-        yMax = values[visible].max()
-        self.measurementsPlot.setYRange(yMin, yMax)
         viewBox = self.measurementsPlot.getViewBox()
         viewBox.setAutoVisible(y=True)
-        viewBox.enableAutoRange(axis=viewBox.YAxis, enable=True)
-        return True
+        self.measurementsPlot.enableAutoRange()
 
     def measurementsModeChanged(self, *args):
         isComparison = self.measurementsModeCombobox.currentIndex() == 1
@@ -8188,11 +8282,11 @@ class MeasurementsViewerWin(
             )
         self.columnsModel.blockSignals(False)
         self.columnsListWidget.setToolTip(
-            'Click two columns to plot: first X, then Y. '
+            'Click two columns to plot: first X, then Y.\n'
             'Click a selected column again to free its axis.'
             if isComparison else
-            'Click a column to plot/unplot it. Right-click on a column to '
-            'change its color or conditional formatting.'
+            'Click a column to plot/unplot it. Right-click on a\n'
+            'column to change its color or conditional formatting.'
         )
         self.plotMeasurements()
 
@@ -8238,7 +8332,7 @@ class MeasurementsViewerWin(
         self.measurementsPlot.setLabel('bottom', f'{xCol}{suffix}')
         self.measurementsPlot.setLabel('left', f'{yCol}{suffix}')
         self.measurementsPlot.setTitle('All cells, all frames (current position)')
-        self.measurementsPlot.enableAutoRange()
+        self.autoscaleMeasurementsPlot()
         self._timecourseXRangeKey = None
         if self.acdc_df is None:
             self.measurementsPlot.setTitle('No measurements available')
@@ -8359,9 +8453,9 @@ class MeasurementsViewerWin(
             text.setPos((start + end) / 2, 0.5)
             self.phaseBandPlot.addItem(text, ignoreBounds=True)
             self.phaseBandItems.append(text)
-        self.phaseBandPlot.setToolTip('\n'.join(
+        self.phaseBandPlot.setToolTip(qutils.wrap_tooltip('\n'.join(
             f'{phase}: frames {start}-{end}' for start, end, phase in runs
-        ))
+        )))
         self.phaseBandPlot.setYRange(0, 1, padding=0)
         self.syncPhaseBandAxisWidth()
 
@@ -8423,7 +8517,8 @@ class MeasurementsViewerWin(
             lines.append(f'Phase: {data["phase"]}')
         if data.get('formatting'):
             lines.append(f'Formatting: {data["formatting"]}')
-        return '\n'.join(lines)
+        # Long column names, phase names or formatting conditions
+        return qutils.wrap_tooltip('\n'.join(lines))
 
     def measurementPointClicked(self, item, points, event):
         if event.button() != Qt.LeftButton or not len(points):
@@ -9090,7 +9185,7 @@ class MeasurementsViewerWin(
                 
             if self.measurementsPlot.underMouse():
                 if not doubleKeyPress:
-                    self.measurementsPlot.autoRange()
+                    self.autoscaleMeasurementsPlot()
                 else:
                     posData = self.posData()
                     max_frame_index = posData.SizeT

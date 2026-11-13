@@ -205,11 +205,15 @@ def test_time_course_replots_keep_x_zoom(viewer):
     viewer.refreshPlotForColumns(['area'])
     assert viewer.measurementsPlot.viewRange()[0] == xRange
 
-    # Switching back from comparison mode resets the frame range
+    # Switching back from comparison mode autoscales the time course (as
+    # the plot's "A" button) to the frames of cell 2 (2 and 3)
     viewer.measurementsModeCombobox.setCurrentIndex(1)
     viewer.measurementsModeCombobox.setCurrentIndex(0)
+    vb = viewer.measurementsPlot.getViewBox()
+    assert vb.autoRangeEnabled() == [True, True]
+    vb.updateAutoRange()
     xMin, xMax = viewer.measurementsPlot.viewRange()[0]
-    assert xMin < 1 and xMax > 3
+    assert 1.5 < xMin <= 2 and xMax >= 3
 
 
 def test_time_course_click_navigates_to_measurement(viewer, app):

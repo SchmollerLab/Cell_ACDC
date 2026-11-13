@@ -376,10 +376,11 @@ class customAnnotationDialog(QDialog):
         self.overridesPhasesToggle = None
         if self.hasPredictor:
             overridesPhasesTooltip = (
-                'Annotated cells get the annotation name as their phase on '
-                'every frame, regardless of the phase translator rules.\n'
-                'If a cell has several annotations with this option, the '
-                'first one in the list (toolbar order) wins.'
+                'Annotated cells get the annotation '
+                'name as their phase on every frame,\n'
+                'regardless of the phase translator '
+                'rules. If a cell has several annotations\n'
+                'with this option, the first one in the list (toolbar order) wins.'
             )
             self.overridesPhasesToggle = widgets.Toggle()
             self.overridesPhasesToggle.setToolTip(overridesPhasesTooltip)
@@ -717,13 +718,13 @@ class customAnnotationDialog(QDialog):
         
         if self.hasPredictor:
             usage = (
-                'select a cell and press the shortcut (or activate the '
-                'button and RIGHT-CLICK on the cell) to annotate it at the '
-                'all frames of its video history'
+                'select a cell and press the shortcut '
+                '(or activate the button and RIGHT-CLICK\n'
+                'on the cell) to annotate it at the all frames of its video history'
             )
         else:
             usage = 'activate the button and RIGHT-CLICK on cell to annotate'
-        self.toolTip = (
+        self.toolTip = qutils.wrap_tooltip(
             f'Name: {self.nameWidget.widget.text()}\n\n'
             f'Usage: {usage}\n\n'
             f'Description: {self.descWidget.widget.toPlainText()}\n\n'
@@ -6669,17 +6670,19 @@ class QDialogMetadata(QDialog):
         if ask_TimeIncrement or ask_PhysicalSizes:
             okAllButton = QPushButton('Apply to ALL Positions')
             okAllButton.setToolTip(
-                'Update existing Physical Sizes, Time interval, cell volume (fl), '
-                'cell area (um^2), and time (s) for all the positions '
-                'in the experiment folder.'
+                'Update existing Physical Sizes, Time '
+                'interval, cell volume (fl), cell\n'
+                'area (um^2), and time (s) for all the '
+                'positions in the experiment folder.'
             )
             self.okAllButton = okAllButton
 
             selectButton = QPushButton('Select the Positions to be updated')
             selectButton.setToolTip(
                 'Ask to select positions then update existing Physical Sizes, '
-                'Time interval, cell volume (fl), cell area (um^2), and time (s)'
-                'for selected positions.'
+                'Time interval,\n'
+                'cell volume (fl), cell area (um^2), and time (s) for selected '
+                'positions.'
             )
             self.selectButton = selectButton
         else:
@@ -23045,9 +23048,9 @@ class SearchableListboxDialog(QBaseDialog):
         )
 
         self.sortByGoodnessCheckBox.setToolTip(
-            'When enabled, better matches appear first, with recency used to '
-            'break ties. When disabled, matching items stay in the original '
-            'recent-first order.'
+            'When enabled, better matches appear '
+            'first, with recency used to break ties.\n'
+            'When disabled, matching items stay in the original recent-first order.'
         )
 
         self.listWidget = QTreeWidget()
@@ -23142,7 +23145,9 @@ class SearchableListboxDialog(QBaseDialog):
         except OSError as err:
             return (
                 'Unavailable',
-                f'Could not read filesystem modification time: {err}',
+                qutils.wrap_tooltip(
+                    f'Could not read filesystem modification time: {err}'
+                ),
             )
 
         return (

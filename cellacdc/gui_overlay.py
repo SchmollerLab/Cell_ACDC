@@ -24,7 +24,7 @@ from qtpy.QtWidgets import QAction, QActionGroup, QLabel, QMenu
 import pyqtgraph as pg
 
 from . import load, html_utils, myutils, widgets, colors, issues_url
-from . import _palettes
+from . import _palettes, qutils
 
 GREEN_HEX = _palettes.green()
 
@@ -833,11 +833,11 @@ class OverlayChannelsGuiElements:
         alphaScrollBar.setMinimum(0)
         alphaScrollBar.setMaximum(40)
         alphaScrollBar.setValue(20)
-        alphaScrollBar.setToolTip(
+        alphaScrollBar.setToolTip(qutils.wrap_tooltip(
             f'Control the alpha value of the overlaid channel {channelName}.\n'
             'alpha=0 results in NO overlay,\n'
             'alpha=1 results in only fluorescence data visible'
-        )
+        ))
         self.bottomLeftLayout.addWidget(
             alphaScrollBar.label, self.alphaScrollbarRow, 0, 
             alignment=Qt.AlignRight

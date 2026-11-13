@@ -3983,7 +3983,7 @@ class PointsLayerToolButton(ToolButtonCustomColor):
     def editAppearance(self):
         self.sigEditAppearance.emit(self)
 
-class customAnnotToolButton(ToolButtonCustomColor):
+class CustomAnnotToolButton(ToolButtonCustomColor):
     sigRemoveAction = Signal(object)
     sigKeepActiveAction = Signal(object)
     sigModifyAction = Signal(object)
@@ -4044,6 +4044,8 @@ class customAnnotToolButton(ToolButtonCustomColor):
         self.sigRemoveAction.emit(self)
 
     def hideAction(self, checked):
+        # The host window stores the option as a user setting
+        # (`CustomAnnotationsGuiElements.customAnnotHide`)
         self.isHideChecked = checked
         self.sigHideAction.emit(self)
 
@@ -13095,22 +13097,20 @@ class OverlayToolbar(ToolBar):
         )
         
         self.transparencyCheckbox.setToolTip(
-            'Activate to hierarchically blend channels using relative weights '
-            'derived from the scrollbars.\n\n'
-            'Each scrollbar controls the balance between adjacent channels, ' 
-            'allowing you to fine-tune their contributions to the '
-            'final blended image.'
+            'Activate to hierarchically blend channels using\n'
+            'relative weights derived from the scrollbars.\n\n'
+            'Each scrollbar controls the balance between adjacent channels, allowing\n'
+            'you to fine-tune their contributions to the final blended image.'
         )
-        
+
         self.alphaEncodedIntensityCheckbox = self.addCheckBox(
             text='Alpha-encoded intensity (RGBA composite)'
         )
         self.alphaEncodedIntensityCheckbox.setToolTip(
-            'Activate to encode pixel intensity as alpha transparency: '
-            'pixels with zero intensity are fully transparent,\n'
-            '50% intensity corresponds to 50% opacity, '
-            'and maximum intensity is fully opaque.\n\n'
-            'This allows low-intensity regions to appear transparent and '
+            'Activate to encode pixel intensity as alpha transparency: pixels\n'
+            'with zero intensity are fully transparent, 50% intensity\n'
+            'corresponds to 50% opacity, and maximum intensity is fully opaque.\n\n'
+            'This allows low-intensity regions to appear transparent and\n'
             'creates the perception of seeing through these regions.'
         )
         
@@ -13121,8 +13121,8 @@ class OverlayToolbar(ToolBar):
         )
         
         self.singleChannelCheckbox.setToolTip(
-            'When single channel mode is activated, selecting a channel '
-            'will display only that channel in the overlay.'
+            'When single channel mode is activated, selecting a\n'
+            'channel will display only that channel in the overlay.'
         )
         
         self.transparencyCheckbox.toggled.connect(self.transparencyToggled)

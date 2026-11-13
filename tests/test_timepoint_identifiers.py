@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 import pytest
-from qtpy.QtCore import Qt
+from qtpy.QtCore import Qt, QPoint
 from qtpy.QtGui import QCloseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
@@ -856,21 +856,90 @@ def test_add_identifier_creates_action_with_shortcut(viewer, monkeypatch):
     assert action.shortcut().toString() == 'Q'
 
 
-def test_shortcut_adds_timepoint_at_hovered_frame(viewer, monkeypatch):
+def press_key(viewer, app, key, modifier=Qt.NoModifier):
+    viewer.show()
+    viewer.activateWindow()
+    viewer.setFocus()
+    app.processEvents()
+    QTest.keyClick(viewer, key, modifier)
+    app.processEvents()
+
+
+def test_shortcut_adds_timepoint_at_hovered_frame(viewer, app, monkeypatch):
     identifier = TimepointIdentifier('Bud', (255, 0, 0), 'Q')
     viewer.addTimepointIdentifierItem(identifier)
+    action = viewer.timepointActions[identifier.uid]
+    assert viewer.frame_i == 0
     monkeypatch.setattr(viewer, 'hoveredMeasurementsPlotFrame', lambda: 2)
-    viewer.timepointActions[identifier.uid].trigger()
+    press_key(viewer, app, Qt.Key_Q)
+    # The hovered frame, not the current one
     assert timepoints(viewer, identifier.uid) == {1: [2]}
     assert lines(viewer) == [(identifier.uid, 1, 2)]
     line = viewer.timepointLines[0]
     assert isinstance(line, _TimepointLine)
     assert line.value() == 3
-    
-    # Not hovering the plot nor clicking the toolbar --> nothing added
+    assert not action.triggeredByShortcut
+
+    # Shortcut without hovering the plot --> nothing added, with a hint
     monkeypatch.setattr(viewer, 'hoveredMeasurementsPlotFrame', lambda: None)
-    viewer.timepointActions[identifier.uid].trigger()
+    press_key(viewer, app, Qt.Key_Q)
+    viewer.hide()
     assert timepoints(viewer, identifier.uid) == {1: [2]}
+    assert viewer.statusBar().currentMessage() == (
+        'Hover over the measurements plot to add a "Bud" time point with its '
+        'shortcut, or click its button to add it at the current frame.'
+    )
+    assert not action.triggeredByShortcut
+
+
+def test_clicking_timepoint_button_adds_at_current_frame(
+        viewer, app, monkeypatch
+    ):
+    # The click adds the time point for the selected cell at the current
+    # frame wherever the cursor is (e.g., a click in the toolbar extension
+    # menu or with screen coordinates that do not match the button) and
+    # even if a plot frame is "hovered".
+    identifier = TimepointIdentifier('Bud', (255, 0, 0), 'Q')
+    viewer.addTimepointIdentifierItem(identifier)
+    action = viewer.timepointActions[identifier.uid]
+    monkeypatch.setattr(viewer, 'hoveredMeasurementsPlotFrame', lambda: 0)
+    monkeypatch.setattr(
+        measurements_viewer.QCursor, 'pos', lambda: QPoint(-10000, -10000)
+    )
+    viewer.show()
+    app.processEvents()
+    viewer.setSelectedID(2)
+    viewer.setFrame(2)
+    assert (viewer.selectedID, viewer.frame_i) == (2, 2)
+    button = viewer.timepointsToolBar.widgetForAction(action)
+    QTest.mouseClick(button, Qt.LeftButton)
+    app.processEvents()
+    assert timepoints(viewer, identifier.uid) == {2: [2]}
+    assert lines(viewer) == [(identifier.uid, 2, 2)]
+    assert viewer.statusBar().currentMessage() == (
+        'Added "Bud" at frame n. 3 for Cell ID 2.'
+    )
+    # Not hidden under the current frame line at the same frame
+    line, = viewer.timepointLines
+    assert line.value() == viewer.currentFrameLine.value() == 3
+    assert line.zValue() > viewer.currentFrameLine.zValue()
+
+    # A second click at the same frame does not duplicate it
+    QTest.mouseClick(button, Qt.LeftButton)
+    app.processEvents()
+    assert timepoints(viewer, identifier.uid) == {2: [2]}
+    assert viewer.statusBar().currentMessage() == (
+        '"Bud" is already at frame n. 3 for Cell ID 2.'
+    )
+
+    # Any trigger other than the shortcut counts as a click
+    viewer.setFrame(3)
+    action.trigger()
+    viewer.hide()
+    assert timepoints(viewer, identifier.uid) == {2: [2, 3]}
+    assert sorted(lines(viewer)) == [
+        (identifier.uid, 2, 2), (identifier.uid, 2, 3)
+    ]
 
 
 def test_auto_shortcut_predicts_selected_cell_and_replots(viewer, app):

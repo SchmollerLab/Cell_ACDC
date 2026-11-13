@@ -576,6 +576,45 @@ def test_hide_annotations_menu_toggles_and_keeps_state(viewer, monkeypatch):
     assert viewer.savedCustomAnnot['Big']['isHideChecked']
 
 
+def test_hide_annotations_option_is_a_user_setting_per_annotation(
+        viewer, monkeypatch
+    ):
+    states = [annot_state(), annot_state('Small', 'S')]
+    viewer.setCustomAnnotations(states)
+    big = viewer.customAnnotButtonByName('Big')
+    # The button does not shadow `QObject.parent()`
+    assert big.parent() is not None
+    big.hideAction(False)
+    saved = pd.read_csv(viewer.settings_csv_path, index_col='setting')
+    assert saved.at['Big_annotation_hidden', 'value'] == 'False'
+    assert 'Small_annotation_hidden' not in saved.index
+
+    # Reloading annotations whose saved state hides them (e.g., from a
+    # configuration) keeps the user's choice of each annotation
+    viewer.setCustomAnnotations(states)
+    big = viewer.customAnnotButtonByName('Big')
+    small = viewer.customAnnotButtonByName('Small')
+    assert not big.isHideChecked and small.isHideChecked
+    assert not viewer.customAnnotDict[big]['state']['isHideChecked']
+    assert viewer.customAnnotDict[small]['state']['isHideChecked']
+    viewer.viewAllCustomAnnotAction.setChecked(False)
+    assert viewer.customAnnotButtonsToDraw() == [big]
+    checked = {}
+
+    def record_hide(menu, position):
+        checked[menu.parent().name] = next(
+            action.isChecked() for action in menu.actions()
+            if action.text() == 'Hide annotations'
+        )
+
+    monkeypatch.setattr(apps.widgets.QMenu, 'exec', record_hide)
+    event = Mock()
+    event.globalPos.return_value = QPoint()
+    big.showContextMenu(event)
+    small.showContextMenu(event)
+    assert checked == {'Big': False, 'Small': True}
+
+
 @pytest.mark.parametrize('hide', [False, True])
 @pytest.mark.parametrize('show_all', [False, True])
 def test_annotation_visibility_after_deactivation(viewer, monkeypatch, hide, show_all):
@@ -668,10 +707,10 @@ def test_annotation_shortcut_already_used_is_not_set(viewer):
     toggleAction, autoAction = viewer.customAnnotShortcutActions[button]
     assert toggleAction.shortcut().isEmpty()
     assert autoAction.shortcut().isEmpty()
-    assert 'the shortcut "Q" (and its auto shortcut) is not set' in (
-        button.toolTip()
-    )
-    assert f'used by "{identifier.name}"' in button.toolTip()
+    # The note is wrapped to the tool tip width (`qutils.wrap_tooltip`)
+    toolTip = ' '.join(button.toolTip().split())
+    assert 'the shortcut "Q" (and its auto shortcut) is not set' in toolTip
+    assert f'used by "{identifier.name}"' in toolTip
     assert timepointAction.shortcut() == QKeySequence('Q')
     # Reloading frees the keys of the removed annotations first
     viewer.setCustomAnnotations(states)

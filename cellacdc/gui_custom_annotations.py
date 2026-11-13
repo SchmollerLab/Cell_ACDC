@@ -4,7 +4,7 @@
 It is shared by the main GUI (`gui.guiWin`) and the measurements viewer 
 (`measurements_viewer.MeasurementsViewerWin`).
 
-Each annotation has a checkable toolbar button (`widgets.customAnnotToolButton`) 
+Each annotation has a checkable toolbar button (`widgets.CustomAnnotToolButton`) 
 and a scatter plot item that draws a symbol on the annotated objects. 
 `self.customAnnotDict` maps each button to 
 `{'action', 'state', 'annotatedIDs', 'scatterPlotItem'}`.
@@ -13,8 +13,13 @@ Requirements on the inheriting class
 ------------------------------------
 - `self.data`, `self.pos_i`, `self.logger`, `self.ax1`, `self.app`, 
   `self.isSnapshot`, `self.modeComboBox` and `self.switchPlaneCombobox`.
-- `self.customAnnotDict = {}` and `self.customAnnotButton = None` set in 
+- `self.customAnnotDict = {}` and `self.customAnnotButton = None` set in
   `__init__`. `self.checkableQButtonsGroup` is optional.
+- The user settings of `gui_core.GUICoreElements` (`_get_setting_value`,
+  `_set_setting_value`): the "Hide annotations" option of each button is
+  a per-user setting ``<name>_annotation_hidden``
+  (`customAnnotHiddenSettingName`) that takes precedence over the
+  ``isHideChecked`` saved with the annotation.
 - The methods of `gui_annotations.AnnotationsGuiElements` (`get_2Dlab`, 
   `isObjInCurrSlice`, `getObjCentroid`), `setHighlightID` and `resetCursor`.
 
@@ -43,7 +48,7 @@ from qtpy.QtWidgets import QAction
 
 import pyqtgraph as pg
 
-from . import widgets, apps, html_utils, myutils, load
+from . import widgets, apps, html_utils, myutils, load, qutils
 from . import settings_folderpath
 
 custom_annot_path = os.path.join(settings_folderpath, 'custom_annotations.json')
@@ -227,6 +232,23 @@ class CustomAnnotationsGuiElements:
             if annot['state']['name'] == name:
                 return button
     
+    def customAnnotHiddenSettingName(self, name):
+        """Key in the user settings of the "Hide annotations" option of the
+        custom annotation `name`."""
+        return f'{name}_annotation_hidden'
+
+    def customAnnotHiddenSetting(self, name, default):
+        """Saved "Hide annotations" option of the custom annotation `name`,
+        `default` (the annotation's ``isHideChecked``) if never set."""
+        return self._get_setting_value(
+            self.customAnnotHiddenSettingName(name), default, cast=bool
+        )
+
+    def setCustomAnnotHiddenSetting(self, name, hidden):
+        self._set_setting_value(
+            self.customAnnotHiddenSettingName(name), bool(hidden)
+        )
+
     def customAnnotButtonsToDraw(self):
         """Buttons whose annotations are displayed."""
         if self.viewAllCustomAnnotAction.isChecked():
@@ -296,6 +318,7 @@ class CustomAnnotationsGuiElements:
                 symbol, symbolColor, annotState['shortcut'], toolTip, name,
                 keepActive, isHideChecked
             )
+            annotState['isHideChecked'] = toolButton.isHideChecked
             allPosAnnotIDs = [
                 pos.customAnnotIDs.get(name, defaultdict(list)) 
                 for pos in self.data
@@ -312,7 +335,9 @@ class CustomAnnotationsGuiElements:
             self, symbol, symbolColor, shortcut, toolTip, annotName,
             keepActive, isHideChecked
         ):
-        toolButton = widgets.customAnnotToolButton(
+        # The user's "Hide annotations" choice wins over the saved state
+        isHideChecked = self.customAnnotHiddenSetting(annotName, isHideChecked)
+        toolButton = widgets.CustomAnnotToolButton(
             symbol, symbolColor, parent=self, keepToolActive=keepActive,
             isHideChecked=isHideChecked
         )
@@ -357,6 +382,7 @@ class CustomAnnotationsGuiElements:
             symbol, symbolColor, shortcut, toolTip, name,
             keepActive, isHideChecked
         )
+        state['isHideChecked'] = toolButton.isHideChecked
 
         self.customAnnotDict[toolButton] = {
             'action': action,
@@ -385,10 +411,10 @@ class CustomAnnotationsGuiElements:
             x, y = point.pos().x(), point.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            vb.setToolTip(
+            vb.setToolTip(qutils.wrap_tooltip(
                 f'Annotation name: {scatterPlotItem.button.name}\n'
                 f'ID = {ID}'
-            )
+            ))
         else:
             vb.setToolTip('')
     
@@ -487,6 +513,9 @@ class CustomAnnotationsGuiElements:
             self.logger.info('Custom annotation process cancelled.')
             return
 
+        # The option chosen in the dialog replaces an older setting of a
+        # previous annotation with the same name
+        self.setCustomAnnotHiddenSetting(name, isHideChecked)
         button = self.addCustomAnnotationItems(
             symbol, symbolColor, state['shortcut'], 
             self.customAnnotToolTip(state), name, keepActive, isHideChecked, 
@@ -567,6 +596,7 @@ class CustomAnnotationsGuiElements:
     def customAnnotHide(self, button):
         state = self.customAnnotDict[button]['state']
         state['isHideChecked'] = button.isHideChecked
+        self.setCustomAnnotHiddenSetting(state['name'], button.isHideChecked)
         state_to_save = custom_annot_state_to_save(state)
         self.savedCustomAnnot[state['name']] = state_to_save
         for posData in self.data:
@@ -616,6 +646,7 @@ class CustomAnnotationsGuiElements:
         button.name = name
         button.keepToolActive = state.get('keepActive', True)
         button.isHideChecked = state.get('isHideChecked', True)
+        self.setCustomAnnotHiddenSetting(name, button.isHideChecked)
         button.setToolTip(self.customAnnotToolTip(state))
         self.setCustomAnnotShortcut(button, state['shortcut'])
 

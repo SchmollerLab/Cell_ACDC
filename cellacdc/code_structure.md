@@ -29,7 +29,7 @@ The `addAnnotWin` window has the following attributes created in its `closeEvent
 
 - **state**: a dictionary with all the information needed to restore the annotations parameters, such as 'name', 'type', 'symbol'. Note that 'symbolColor' is a `QColor`.
 
-With this info, when the window is closed with the `Ok` button, a tool button is added to the toolbar with the function `addCustomAnnotationButton`. This function adds a `widgets.customAnnotToolButton` (custom `paintEvent`).
+With this info, when the window is closed with the `Ok` button, a tool button is added to the toolbar with the function `addCustomAnnotationButton`. This function adds a `widgets.CustomAnnotToolButton` (custom `paintEvent`).
 
 The tool button reference is used as a key to create a dictionary inside the `customAnnotDict` (initialized in `__init__` method of the gui). This dictionary has four keys:
 

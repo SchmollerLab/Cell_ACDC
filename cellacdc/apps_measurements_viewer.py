@@ -42,6 +42,7 @@ from . import (
     html_utils,
     myutils,
     phase_translator,
+    qutils,
     settings_folderpath,
     timepoint_predictors,
     urls,
@@ -381,8 +382,8 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             modes.index(mode) if mode in modes else 0
         )
         self.modeCombobox.setToolTip(
-            'The equation is evaluated for every frame of each cell. This '
-            'rule converts the per-frame results into the cell\'s time points.'
+            "The equation is evaluated for every frame of each cell. This\n"
+            "rule converts the per-frame results into the cell's time points."
         )
         modeLayout = QHBoxLayout()
         modeLayout.addWidget(QLabel('Time point(s) of each cell:'))
@@ -398,7 +399,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             if funcName in ('any', 'all', 'ANY', 'ALL'):
                 continue
             button = widgets.PushButton(funcName)
-            button.setToolTip(description)
+            button.setToolTip(qutils.wrap_tooltip(description))
             button.clicked.connect(
                 partial(self.insertEquationText, f'{funcName}(')
             )
@@ -464,13 +465,11 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
             mainCellCondition
         )
         filterTooltip = (
-            'Express "if" as a boolean condition, e.g. area > 5. '
-            'Combine conditions with & (and), | (or), and ~ (not), with '
-            'parentheses around each comparison: '
-            '(area > 5) & (cell_cycle_stage == "S"). '
-            'Do not use Python if/else statements or and/or. '
-            'SHIFT(area, 1) is the previous observed value of this cell '
-            '(not necessarily the previous video frame).'
+            'Express "if" as a boolean condition, e.g. area > 5. Combine conditions\n'
+            'with & (and), | (or), and ~ (not), with parentheses around each\n'
+            'comparison: (area > 5) & (cell_cycle_stage == "S"). Do not use Python\n'
+            'if/else statements or and/or. SHIFT(area, 1) is the previous observed\n'
+            'value of this cell (not necessarily the previous video frame).'
         )
         self.mainCellConditionEdit.setToolTip(filterTooltip)
         self.formulaEditWidget._edit.setToolTip(filterTooltip)
@@ -553,8 +552,8 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         )
         self.otherCellsConditionEdit = QLineEdit(self._otherCells['condition'])
         self.otherCellsConditionEdit.setToolTip(
-            filterTooltip + ' Candidate inputs use normal names; this_ '
-            'inputs refer to the enquiring cell at frame t, even when '
+            filterTooltip + '\nCandidate inputs use normal names; this_ '
+            'inputs refer to the enquiring\ncell at frame t, even when '
             'candidates come from another frame.'
         )
         self.otherCellsConditionButton = widgets.editPushButton('Edit filter...')
@@ -574,12 +573,13 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
                 self.otherCellsRangeStartEdit, self.otherCellsRangeEndEdit
             ):
             edit.setToolTip(
-                'Inclusive frame bounds relative to t, the frame being '
-                'predicted (e.g. t - 2 to t + 1). Shift both bounds to '
-                't - 1 for the previous frame (symmetric mother), or use '
-                't for budding relatives in the same frame. Unlike '
-                'SHIFT(column, 1), this selects an exact video frame; '
-                'missing frames are not padded.'
+                'Inclusive frame bounds relative to t, '
+                'the frame being predicted (e.g. t - 2 to\n'
+                't + 1). Shift both bounds to t - 1 for '
+                'the previous frame (symmetric mother),\n'
+                'or use t for budding relatives in the '
+                'same frame. Unlike SHIFT(column, 1),\n'
+                'this selects an exact video frame; missing frames are not padded.'
             )
         otherCellsLayout.addWidget(QLabel('Select cells:'), 0, 0)
         otherCellsLayout.addWidget(self.otherCellsSourceCombobox, 0, 1, 1, 2)
@@ -1173,7 +1173,7 @@ class _TimepointCellFilterEquationDialog(_CombineMetricsDialog):
             if name in ('any', 'all', 'ANY', 'ALL'):
                 continue
             button = widgets.PushButton(name)
-            button.setToolTip(description)
+            button.setToolTip(qutils.wrap_tooltip(description))
             button.clicked.connect(
                 partial(self.insertEquationText, f'{name}(')
             )
@@ -1510,8 +1510,8 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
             )
             computeButton.setToolTip(
                 'Run the "Compute background intensity" utility on the '
-                'Positions of this experiment with the settings of this '
-                f'configuration (background {spec["statistic"]}, '
+                'Positions of\nthis experiment with the settings of this '
+                f'configuration (background\n{spec["statistic"]}, '
                 f'{spec["low_percentile"]:g}th and '
                 f'{spec["high_percentile"]:g}th percentiles) and fill in '
                 'the values'
@@ -1523,9 +1523,9 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
             'Load calculated background values...'
         )
         loadButton.setToolTip(
-            'Fill in the values from the summary table saved by the "Compute '
-            'background intensity" utility (<name>_summary.csv in the '
-            'experiment folder)'
+            'Fill in the values from the summary '
+            'table saved by the "Compute background\n'
+            'intensity" utility (<name>_summary.csv in the experiment folder)'
         )
         loadButton.clicked.connect(self.loadBackgroundValuesTable)
         buttonsLayout.addWidget(loadButton)
@@ -2393,11 +2393,12 @@ class PhaseTranslatorDialog(QDialog):
             'change or phases are missing'
         )
         self.autoApplyCheckbox.setToolTip(
-            'Re-evaluate the phases of a cell whenever its time points are '
-            'added, moved, removed or predicted or its custom annotations '
-            'change (annotated, removed or predicted), and evaluate '
-            'displayed cells without phases. Applied with Apply or OK; save '
-            'the viewer configuration to keep this option.'
+            'Re-evaluate the phases of a cell whenever '
+            'its time points are added, moved,\n'
+            'removed or predicted or its custom '
+            'annotations change (annotated, removed\n'
+            'or predicted), and evaluate displayed cells without phases. Applied with\n'
+            'Apply or OK; save the viewer configuration to keep this option.'
         )
         applyButtons = QHBoxLayout()
         # Same icons as the "Apply" / "Apply to all Positions..." buttons
@@ -2465,7 +2466,7 @@ class PhaseTranslatorDialog(QDialog):
         layout.addLayout(controls)
         self.phaseColorsGroupbox = QGroupBox('Phase colors')
         self.phaseColorsGroupbox.setToolTip(
-            'Colors of the phase band below the time course and of the '
+            'Colors of the phase band below the time course and of the\n'
             'Measurement vs Measurement points. Click a color to change it.'
         )
         self.phaseColorsLayout = QGridLayout(self.phaseColorsGroupbox)
@@ -2510,7 +2511,7 @@ class PhaseTranslatorDialog(QDialog):
             toolTip = f'Color of phase "{name}"'
             if name in self.annotationOverrides:
                 toolTip += ' (custom annotation overriding phases)'
-            button.setToolTip(toolTip)
+            button.setToolTip(qutils.wrap_tooltip(toolTip))
             button.sigColorChanged.connect(
                 partial(self.phaseColorChanged, name)
             )
@@ -2631,8 +2632,8 @@ class TimepointIdentifierDialog(QBaseDialog):
         self.shortcutLineEdit.setText(shortcut)
         self.shortcutLineEdit.setToolTip(
             'Click and press a key (combination). Press Backspace to clear.\n\n'
-            'Hover over the measurements plot and press the shortcut to add '
-            'a time point at the frame under the mouse cursor.'
+            'Hover over the measurements plot and press the shortcut\n'
+            'to add a time point at the frame under the mouse cursor.'
         )
         formLayout.addRow('Shortcut:', self.shortcutLineEdit)
         
@@ -2658,12 +2659,11 @@ class TimepointIdentifierDialog(QBaseDialog):
         )
         self.predictorCombobox.setToolTip(
             'Predict the time points of each cell.\n\n'
-            'With "Auto apply on unvisited cells", each cell is predicted '
-            'when it is displayed for the first time; cells that were '
-            'already viewed are not predicted.\n'
-            'To predict all cells, right-click the identifier action and '
-            're-evaluate its predictor, or use "Re-evaluate predictors on '
-            'all cells" in the toolbar (Shift+shortcut: displayed cell).\n\n'
+            'With "Auto apply on unvisited cells", each cell is predicted when it\n'
+            'is displayed for the first time; cells that were already viewed are\n'
+            'not predicted. To predict all cells, right-click the identifier\n'
+            'action and re-evaluate its predictor, or use "Re-evaluate predictors\n'
+            'on all cells" in the toolbar (Shift+shortcut: displayed cell).\n\n'
             'Predicted time points can be moved or removed afterwards.'
         )
         formLayout.addRow('Predictor:', self.predictorCombobox)

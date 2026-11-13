@@ -10,11 +10,56 @@ and translate the time points into cell cycle phases (or any other phases).
 You can also plot two measurements against each other for all cells of a
 Position.
 
+.. admonition:: TL;DR
+
+    * **Open** the viewer from the launcher (**Utilities > Measurements >
+      Measurements viewer...**), pick a saved or premade configuration (or
+      start a new one) and load an experiment with **File > Load Folder...**
+      (:kbd:`Ctrl+O`). Premade configurations (e.g., FUCCI cell cycle) only
+      ask for your channels and input values.
+    * **Select a cell** by clicking it or with :kbd:`Up` / :kbd:`Down`, and
+      move in time with :kbd:`Left` / :kbd:`Right`. The time-course plot
+      always shows the selected cell.
+    * **Plot** a column by clicking it in **Columns to plot**:
+      **Time course** for the selected cell, **Measurement vs Measurement**
+      for all cells of the Position. Right-click a column to change its color
+      or add conditional formatting.
+    * **Add columns** with **Process measurements...** (smoothing,
+      normalization, ramp detection) and **Combine measurements...**
+      (equations). The original columns are never changed.
+    * **Time points** (e.g., bud emergence, division): add an identifier in
+      the **Time points** toolbar, then click its button to mark the current
+      frame, or hover over the plot at a frame and press its shortcut (Q, W,
+      E, ...). Drag a line to move it, right-click it to
+      remove it. Predictors (equations) can find time points automatically,
+      but never overwrite the cells you have already viewed.
+    * **Custom annotations** (e.g., "Excluded") label whole cells: press the
+      annotation's shortcut (A, D, F, ...) to annotate or un-annotate the
+      selected cell.
+    * **Phases**: the **Time point to phase translator** turns the time
+      points into a phase for every frame (e.g., G1 and S-G2-M) with ordered
+      rules, where the first matching rule wins. :kbd:`Alt+P` evaluates the
+      displayed cell; the phases are shown as a band below the plot.
+    * **Save**: the time points, annotations and phases of the cells are
+      saved in the ``acdc_output`` **tables** with **File > Save tables**
+      (:kbd:`Ctrl+S`; you are also asked when closing) or with
+      **Export measurements...**, while the **configuration**
+      (:kbd:`Ctrl+Shift+S`) stores your setup for reuse on other experiments.
+      After saving in the main GUI, press :kbd:`F5` to reload the table.
+
 .. tip::
 
     You can open this page from the viewer: use the **Help** menu or the
     info buttons of the dialogs. Hover over any button of the viewer to
     read a short description of what it does.
+
+.. seealso::
+
+    All equations of the viewer (combined measurements, time point and
+    annotation predictors, cell filters, conditional formatting and phase
+    rule eligibility formulas) are written in the same **equation editor**.
+    :doc:`equation-editor` explains step by step how to use it, with the
+    available inputs, functions and many examples.
 
 .. contents:: On this page
     :local:
@@ -150,8 +195,9 @@ in several ways:
   in **Measurement vs Measurement** mode).
 
 To move in time, use the frame scrollbar, the :kbd:`Left` / :kbd:`Right`
-arrow keys, or drag the **red vertical line** (current frame) in the plot.
-With z-stacks, the z-slice scrollbar selects the slice or the projection.
+arrow keys, or drag the **red vertical line** (current frame) in the plot
+(at a frame with a time point, the dashed time point line lies over it and
+the drag moves the time point instead). With z-stacks, the z-slice scrollbar selects the slice or the projection.
 Use the **Position** drop-down menu to switch between Positions.
 
 Options at the bottom of the **Navigate** box (below the Cell ID controls and
@@ -161,7 +207,8 @@ the overlay transparency sliders):
   frame or z-slice.
 * **Only frames with selected cell**: restrict the frame scrollbar to the
   frames where the selected cell exists.
-* **Rescale plot**: rescale the plot to the data whenever you change cell.
+* **Rescale plot**: fit the plot to the data whenever you change cell, also
+  after you zoomed by hand.
 * **Normalize measurements (0-1)**: display every plotted measurement scaled
   to the range 0-1, to compare measurements with different units. This only
   changes the display, not the table.
@@ -197,13 +244,14 @@ plotted.
   Custom colors are saved with the configuration (the premade FUCCI
   configuration plots the Geminin reporter in green and the Cdt1 reporter
   in red).
-* **Zoom**: when you add a column, the y axis is fitted to the plotted data
-  and the current x zoom is kept. Scroll or drag in the plot to zoom and pan.
-  With the mouse over the plot, press :kbd:`H` to fit the plot to the data
-  and press :kbd:`H` twice quickly to show all frames. After the fit, the y
-  axis keeps following the data within the visible frames (e.g. when you
-  change cell or edit time points) until you zoom or pan by hand; the x zoom
-  is kept unless **Rescale plot** is checked.
+* **Zoom**: when you add or remove a column, toggle normalization or load a
+  position, the plot is fitted to the plotted data on both axes, as when you
+  click the **A** button in the bottom-left corner of the plot. Scroll or
+  drag in the plot to zoom and pan. With the mouse over the plot, press
+  :kbd:`H` to fit the plot to the data and press :kbd:`H` twice quickly to
+  show all frames. After a fit, the plot keeps following the data (e.g. when
+  you change cell or edit time points) until you zoom or pan by hand; then
+  your zoom is kept unless **Rescale plot** is checked.
 * **Hover** over a point to see its frame, value and phase; **click** a point
   to go to that frame.
 
@@ -230,6 +278,9 @@ selected cell, for example::
 
     cell_area_pxl > 1.5 * FIRST(cell_area_pxl)
 
+Type the condition next to the rule or click **Edit...** to write it in the
+:doc:`equation editor <equation-editor>` (see
+:ref:`equation-editor-conditional-formatting`).
 The color is either a fixed color or a lighter/darker shade of the column
 color. The first rule that is true colors the point and the line to the next
 point; other frames keep the column color. Hover over a point to see which
@@ -276,9 +327,11 @@ from existing ones, for example the ratio of two reporters::
     GFP_mean / mCherry_mean
 
 Equations can also use the time points as yes/no inputs
-(``timepoint_<name>``), and ``any(condition)`` / ``all(condition)`` evaluate
-a condition over all frames of each cell. The equations are recorded in the
-configuration.
+(``timepoint_<name>``), per-cell functions such as ``MAX`` or ``FIRST``, and
+``any(condition)`` / ``all(condition)`` to evaluate a condition over all
+frames of each cell. The equations are recorded in the configuration. See
+:doc:`equation-editor` for how to build and test an equation, the naming of
+the new column and examples.
 
 Export and save
 ~~~~~~~~~~~~~~~
@@ -323,11 +376,17 @@ Each identifier gets its own button in the toolbar.
 Marking time points manually
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+* **Click** an identifier button in the **Time points** toolbar to add that
+  time point for the selected cell at the current frame (the frame shown in
+  the image, marked by the red line in the plot).
 * **Hover** with the mouse over the time-course plot at the right frame and
   press the identifier's shortcut. The time point is added for the selected
-  cell at the frame under the mouse cursor. Clicking the identifier button
-  adds it at the current frame.
-* **Drag** a time point line to move it.
+  cell at the frame under the mouse cursor, so you do not need to change
+  frame first.
+* **Drag** a time point line to move it. Time point lines are drawn over
+  the red current-frame line, so at a frame with a time point, dragging the
+  lines moves the time point; change frame with the arrow keys or the
+  scrollbar instead.
 * **Right-click** a time point line to remove it.
 * **Right-click** an identifier button to edit it, re-evaluate its predictor
   (on all cells or on the displayed cell), clear its time points or remove it.
@@ -358,6 +417,10 @@ frame) and ``SHIFT(x, n)`` (value ``n`` frames earlier) per frame.
 Optional filters select which cells are predicted (**Main-cell filter**), and
 **Other-cell measurements** can use the measurements of other cells, e.g. of
 the mother or sister cell. Use **Test predictor** to check the result.
+:doc:`equation-editor` describes the editor in detail, including the
+:ref:`per-cell functions <equation-editor-per-cell-functions>`, the
+filters and how
+:ref:`other-cell measurements <equation-editor-other-cells>` are selected.
 
 Advanced users can select **Select own function (Python file)**: the file
 must define ``predictor(df)``, which receives the table of one cell and
@@ -398,11 +461,17 @@ named like the annotation. Custom annotations are shared with the main GUI.
 * Select a cell and press the annotation's shortcut to annotate or
   un-annotate it **across its entire history**. Alternatively, activate the
   annotation button in the toolbar and **right-click** on a cell in the image.
+* The symbols of **all** annotations are shown on the annotated cells, also
+  when their button is not active (the eye button **Show all custom
+  annotations** is checked when data is loaded). Uncheck it to show only the
+  active annotation and those whose **Hide annotations** option (right-click
+  the annotation button) is off. Cell-ACDC remembers this option for each
+  annotation name, also when a configuration is loaded again.
 * A predictor works like a time point predictor, but it returns yes/no
   values (one per frame, or one for the whole cell). These are combined into
   one value per cell with **All** (default: yes only if yes in every frame),
   **None** (yes only if no frame is yes) or **Most** (yes if more than half of
-  the frames are yes; ties count as no).
+  the frames are yes; ties count as no). See :doc:`equation-editor`.
 * **Auto apply**, :kbd:`Shift` + shortcut and the toolbar buttons
   **Re-evaluate annotation predictors on all cells / on displayed cell** work
   as for time point identifiers. Right-click an annotation button to edit or
@@ -570,7 +639,8 @@ other-cell inputs), and the results are combined over the cell's frames with
 **All**, **None** or **Most**. For example, the equation
 ``cell_area_pxl > 200`` with **All** makes the rule apply only to cells that
 are always larger than 200 pixels. Keep **Always eligible (no formula)** to
-skip this check.
+skip this check. See :doc:`equation-editor` for how to write and test the
+formula.
 
 Automatic evaluation
 ~~~~~~~~~~~~~~~~~~~~
@@ -647,8 +717,14 @@ A configuration stores your setup, so you can reuse it on other experiments:
 The time points, annotations and phases of the cells are **not** stored in the
 configuration, but in the tables.
 
-* **Save configuration** (:kbd:`Ctrl+S`), **Save configuration as...**
-  (:kbd:`Ctrl+Shift+S`) and **Load configuration...** are in the **File** menu
+* **Save tables** (:kbd:`Ctrl+S`, **File** menu and toolbar) overwrites the
+  ``acdc_output`` file of every Position with unsaved changes (time points,
+  annotations, phases and the columns added by the measurement steps). The
+  previous file is backed up in the Position's ``recovery`` folder, and
+  Positions without changes are not written. If a file was changed on disk in
+  the meantime, you are asked first (see below).
+* **Save configuration** (:kbd:`Ctrl+Shift+S`), **Save configuration as...**
+  and **Load configuration...** are in the **File** menu
   and toolbar. Configurations are JSON files saved in the
   ``measurements_viewer_configurations`` folder of the Cell-ACDC settings
   folder (launcher: **Settings > Open settings folder...**).
@@ -717,8 +793,10 @@ shortcuts of the viewer tools.
       - Load folder
     * - :kbd:`F5`
       - Reload the ``acdc_output`` table from the file
-    * - :kbd:`Ctrl+S` / :kbd:`Ctrl+Shift+S`
-      - Save configuration / save configuration as
+    * - :kbd:`Ctrl+S`
+      - Save the ``acdc_output`` tables (Positions with unsaved changes)
+    * - :kbd:`Ctrl+Shift+S`
+      - Save configuration
     * - :kbd:`Ctrl+F`
       - Search for a Cell ID or a functionality (the search bar blinks)
     * - :kbd:`Up` / :kbd:`Down`
