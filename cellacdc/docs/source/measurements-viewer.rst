@@ -151,8 +151,8 @@ measurement steps. After annotating more frames in the main GUI, click
 **Reload table** (:kbd:`F5`): new calculations (and automatically evaluated
 phases) then use the new last analyzed frame. The outputs of the measurement
 steps stay empty after the frame they were calculated up to (the
-configuration remembers it) until you load the configuration again and
-choose **Calculate**.
+configuration remembers it, also when you open the data again) until you load
+the configuration again and choose **Calculate**.
 
 The window
 ~~~~~~~~~~
@@ -265,7 +265,9 @@ choose another one). The scatter plot shows
 **all cells and all frames** of the current Position, so it does not change
 when you select another cell. Hover for details and click a point to go to its
 cell and frame. When phases are evaluated, each point is colored by its
-phase (gray for frames without a phase). The selections of the two modes are
+phase (gray for frames without a phase). The plot is fitted to the data when
+you change X, Y or normalization, load a Position or switch to this mode;
+otherwise your zoom is kept. The selections of the two modes are
 independent.
 
 Conditional formatting
@@ -721,8 +723,10 @@ configuration, but in the tables.
   ``acdc_output`` file of every Position with unsaved changes (time points,
   annotations, phases and the columns added by the measurement steps). The
   previous file is backed up in the Position's ``recovery`` folder, and
-  Positions without changes are not written. If a file was changed on disk in
-  the meantime, you are asked first (see below).
+  Positions without changes are not written. Phases still waiting to be
+  updated in Positions that are not displayed are updated first, so these
+  Positions are saved too. If a file was changed on disk in the meantime, you
+  are asked first (see below).
 * **Save configuration** (:kbd:`Ctrl+Shift+S`), **Save configuration as...**
   and **Load configuration...** are in the **File** menu
   and toolbar. Configurations are JSON files saved in the
@@ -736,7 +740,9 @@ configuration, but in the tables.
   data, or to use the existing values.
 * Before loading data or a configuration, and when closing, the
   **Save changes?** dialog lets you save the tables, the configuration, both,
-  or neither (**Don't save**). **Cancel** keeps the loaded data. If an
+  or neither (**Don't save**). **Cancel** keeps the loaded data. If you
+  change something it did not list while it is open (e.g., you annotate a
+  cell), the dialog is shown again with the new changes. If an
   ``acdc_output`` file was changed on disk in the meantime (e.g., saved in
   the main GUI), you are asked whether to reload it before saving, to
   overwrite it, or to cancel.

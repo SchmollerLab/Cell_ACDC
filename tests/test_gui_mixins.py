@@ -3,6 +3,7 @@ measurements viewer, driven on minimal host objects."""
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 import pytest
@@ -61,6 +62,51 @@ def test_alpha_scrollbar_label_default_font_without_host_font(app):
         host, 'GFP', pg.ImageItem()
     )
     assert alphaScrollBar.label.font().pixelSize() == 11
+
+
+def _overlay_z_label_host(tmp_path, z, SizeZ=10):
+    from qtpy.QtCore import Qt
+    from qtpy.QtWidgets import QComboBox, QLabel
+    host = SimpleNamespace(
+        editIDToolbar=MagicMock(), SizeZlabel=QLabel(),
+        df_settings=pd.DataFrame({'value': []}, dtype=object),
+        settings_csv_path=str(tmp_path / 'settings.csv'),
+        overlay_z_label=MagicMock(), pos_i=0,
+        updateOverlayZslice=lambda *args: None,
+        data=[SimpleNamespace(
+            SizeZ=SizeZ, frame_i=0,
+            ol_data={'GFP': np.zeros((1, SizeZ, 2, 2))}
+        )]
+    )
+    host.overlay_z_label.isVisible.return_value = True
+    host.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
+    host.zSliceSpinbox.setMinimum(1)
+    host.zSliceSpinbox.setMaximum(SizeZ)
+    host.zSliceSpinbox.setValue(z+1)
+    for name in ('zSliceScrollBar', 'zSliceOverlay_SB'):
+        scrollbar = widgets.ScrollBar(Qt.Horizontal)
+        scrollbar.setMaximum(SizeZ-1)
+        scrollbar.setSliderPosition(z)
+        setattr(host, name, scrollbar)
+    for name in ('zProjOverlay_CB', 'zProjComboBox'):
+        combobox = QComboBox()
+        combobox.addItem('single z-slice')
+        setattr(host, name, combobox)
+    return host
+
+
+@pytest.mark.parametrize('z', [0, 4])
+@pytest.mark.parametrize('checked', [True, False])
+def test_overlay_z_label_matches_z_slice_spinbox(app, tmp_path, z, checked):
+    host = _overlay_z_label_host(tmp_path, z)
+    gui.guiWin.showZsliceIndexToggled(host, checked)
+    shown = host.zSliceSpinbox.text()
+    expected = f'Overlay z-slice {int(shown):02}/{10 - int(checked)}'
+    # Label set when toggling "Show z-slice index"...
+    assert host.overlay_z_label.setText.call_args.args[0] == expected
+    # ... and kept when the overlay is redrawn
+    OverlayChannelsGuiElements.getOlImg(host, 'GFP')
+    assert host.overlay_z_label.setText.call_args.args[0] == expected
 
 
 def test_view_cca_table_without_annotations_warns(app, monkeypatch):

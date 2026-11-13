@@ -413,6 +413,42 @@ def test_close_prompt_failed_save_cancels_close(viewer, tmp_path, monkeypatch):
     assert not viewer.askSaveBeforeClosing()
 
 
+def test_close_prompt_asks_again_for_changes_made_while_open(
+        viewer, tmp_path, monkeypatch
+    ):
+    # The prompt does not block the window: a table edited while it is open
+    # (selecting a cell marks it visited) must not be lost on closing
+    load_clean_workflow(viewer, tmp_path, steps=False)
+    assert viewer.saveAcdcDfs(viewer.data)
+    viewer.normalizeCheckbox.setChecked(True)
+    saveConfiguration = Mock(return_value=True)
+    monkeypatch.setattr(viewer, 'saveConfiguration', saveConfiguration)
+    prompts = []
+
+    class EditWhileOpenBox(FakeCloseBox):
+        def warning(self, parent, title, txt, detailsText=None, buttonsTexts=()):
+            prompts.append(list(buttonsTexts))
+            if len(prompts) == 1:
+                viewer.setSelectedID(2)
+                self.clickedButton = 'Save configuration'
+            else:
+                self.clickedButton = 'Save both'
+            return list(buttonsTexts)
+
+    monkeypatch.setattr(
+        measurements_viewer.widgets, 'myMessageBox', EditWhileOpenBox
+    )
+    assert viewer.askSaveBeforeClosing()
+    assert prompts == [
+        ['Cancel', "Don't save", 'Save configuration as...',
+         'Save configuration'],
+        ['Cancel', "Don't save", 'Save tables only', 'Save configuration only',
+         'Save both as...', 'Save both'],
+    ]
+    assert not viewer.unsavedAcdcDfPositions()
+    saveConfiguration.assert_called_once_with(save_as=False)
+
+
 def test_close_without_changes_does_not_prompt(viewer, tmp_path, monkeypatch):
     load_clean_workflow(viewer, tmp_path)
     viewer.saveAcdcDfs(viewer.data)

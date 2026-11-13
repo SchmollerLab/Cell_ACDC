@@ -152,6 +152,82 @@ def test_block_emission_is_used_and_skips_negative_zero(monkeypatch):
     assert perTarget.called
 
 
+def prepare_shared_and_per_target(monkeypatch, *args, **kwargs):
+    """prepare_inputs (result or error, warnings) with and without the
+    shared candidate selection of function-call filters."""
+    results = []
+    for shared in (True, False):
+        with monkeypatch.context() as patch, warnings.catch_warnings(
+                record=True) as caught:
+            warnings.simplefilter('always')
+            patch.setattr(
+                tp.OtherCellMeasurements, '_SHARED_CANDIDATE_SELECTION', shared
+            )
+            try:
+                output = tp.OtherCellMeasurements.prepare_inputs(*args, **kwargs)
+            except Exception as err:
+                output = (type(err), str(err))
+        results.append((output, [str(warning.message) for warning in caught]))
+    return results
+
+
+@pytest.mark.parametrize('mode', ['where_true', 'any', 'all'])
+@pytest.mark.parametrize('condition', [
+    'area >= MEDIAN(area)', '(COUNT(area) >= 2) & (FIRST(stage) != "S")',
+])
+def test_shared_candidate_selection_matches_per_target(
+        monkeypatch, condition, mode
+    ):
+    # Function-call filters without this_ inputs: one selection per frame
+    # window instead of one per target (tracking gaps, NaN/inf, t-2..t).
+    df = random_table(8, nCells=6, nFrames=5)
+    settings = dict(
+        tp.CellFilter.default_other(), condition=condition,
+        condition_mode=mode, range_start='t - 2', range_end='t'
+    )
+    for equation in (AGGREGATES, 'area > MEAN(area_other) + `GFP mean_other`'):
+        (actual, actualWarnings), (expected, expectedWarnings) = (
+            prepare_shared_and_per_target(
+                monkeypatch, df, equation, settings, 5,
+                return_alternatives=True
+            )
+        )
+        pd.testing.assert_frame_equal(actual[0], expected[0], check_exact=True)
+        assert actual[1] == expected[1]
+        assert_alternatives_equal(actual[2], expected[2])
+        assert actualWarnings == expectedWarnings
+
+
+def test_shared_candidate_selection_evaluates_each_cell_once_per_frame(
+        monkeypatch):
+    df = random_table(9, nCells=6, nFrames=4)
+    flat = tp.CellTable.flatten(df)
+    evaluate = Mock(wraps=tp.CellEquation.evaluate)
+    monkeypatch.setattr(tp.CellEquation, 'evaluate', evaluate)
+    settings = dict(tp.CellFilter.default_other(), condition='MAX(area) > 1')
+    tp.OtherCellMeasurements.prepare_inputs(df, 'COUNT(area_other)', settings, 4)
+    # One evaluation per (frame, cell), not per (target, candidate cell).
+    assert evaluate.call_count == len(flat.groupby(['frame_i', 'Cell_ID']))
+
+
+def test_shared_candidate_selection_reports_errors_as_per_target(monkeypatch):
+    # The filter fails only on cell 5's rows: cell 5 itself is never its
+    # own candidate, so predicting only cell 5 must still work.
+    df = random_table(8, nCells=6, nFrames=5)
+    settings = dict(
+        tp.CellFilter.default_other(), condition='(MAX(Cell_ID) == 5) * 2'
+    )
+    for IDs in ([5], None):
+        (actual, _), (expected, _) = prepare_shared_and_per_target(
+            monkeypatch, df, 'COUNT(area_other)', settings, 5, IDs
+        )
+        if IDs is None:
+            assert actual == expected
+            assert 'candidate 5 with condition' in actual[1]
+        else:
+            pd.testing.assert_frame_equal(actual[0], expected[0])
+
+
 def test_block_reductions_match_numpy_per_row():
     # emit_block reduces blocks of targets with the same number of finite
     # values row-wise; NumPy must give each row its 1D result bit for bit.

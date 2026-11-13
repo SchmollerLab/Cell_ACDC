@@ -388,12 +388,11 @@ class OverlayChannelsGuiElements:
                         self.updateOverlayZslice
                     )
             if zProjHow == 'single z-slice':
-                start_value =  self.zSliceSpinbox.getStartValue()
-                if start_value is None:
-                    start_value = self.zSliceSpinbox.minimum()
+                start_value = self.zSliceSpinbox.getStartValue()
                 correction = start_value - self.zSliceSpinbox.minimum()
+                # Same numbering as the z-slice spinbox (0- or 1-based)
                 self.overlay_z_label.setText(
-                    f'Overlay z-slice {z-correction:02}'
+                    f'Overlay z-slice {z+start_value:02}'
                     f'/{posData.SizeZ+correction}'
                 )
                 ol_img = img[z].copy()

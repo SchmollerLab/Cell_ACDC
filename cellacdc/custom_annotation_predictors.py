@@ -93,15 +93,9 @@ class CustomAnnotationPredictor:
                 if settings['condition']:
                     description += f', filter: {settings["condition"]}'
                 description += ')'
-            mainFilter = predictor.get('main_cell_filter')
-            if mainFilter is not None:
-                settings = CellFilter.validate_main(mainFilter)
-                if settings['condition'].strip():
-                    description += (
-                        f' [cells: {settings["condition_mode"]} of '
-                        f'{settings["condition"]}]'
-                    )
-            return description
+            return description + CellFilter.describe_main(
+                predictor.get('main_cell_filter')
+            )
         if kind == PREDICTOR_FILE:
             mode = predictor.get('consolidation', 'all').capitalize()
             return f'{mode}: predictor(df) from "{predictor["filepath"]}"'

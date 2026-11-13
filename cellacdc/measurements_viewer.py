@@ -97,7 +97,10 @@ viewer's time points, custom annotations, visited cells and the phases
 evaluated in this session, like Reload table), to overwrite it, or to cancel.
 The same prompt appears before loading a configuration or opening a folder,
 file or recent folder replaces loaded data; Cancel aborts the load and keeps
-the loaded data and their edits.
+the loaded data and their edits. The prompt does not block the window: if
+tables or the configuration get changes it did not list while it is open,
+any answer but Cancel shows it again with the new changes, and its saves use
+the tables changed when it is answered (`askSaveChanges`).
 Reading the positions (and the regionprops of the first displayed position,
 `precompute_position_regionprops`, and the overlay channel files of a loaded
 configuration, `preload_overlay_channels`, which `load_fluo_data` then
@@ -168,9 +171,10 @@ the ignored frames) so they stay plottable. The frame up to which each
 position's step outputs were calculated is recorded
 (``measurementStepsLastFrames``, configuration key
 ``measurement_steps_last_frames`` ``{Images folder: frame index}``; no
-entry = all frames): saved step outputs used as existing values, or read
-back on Reload table, are set to NaN after the smaller of that frame and the
-current last analyzed frame, also in the "as on disk" snapshot (NaN saved in
+entry = all frames): saved step outputs used as existing values (also when
+opening data while steps are recorded), or read back on Reload table, are
+set to NaN after the smaller of that frame and the current last analyzed
+frame (`blankSavedStepOutputs`), also in the "as on disk" snapshot (NaN saved in
 tables with cell cycle columns is read back as 0; restoring it is not an
 edit). Toggling the option does not recalculate earlier results (except
 phases evaluated automatically, which are re-evaluated on all cells):
@@ -481,7 +485,10 @@ the status bar. While measurement processing runs, these evaluations are
 postponed until it finishes; cells of a position that is no longer displayed
 by then are evaluated when that position is displayed again, or before its
 table is saved (`flushPendingPhaseEvaluations` in `saveAcdcDfs`, also for
-the other positions' cells of an annotation rename or removal). Export
+the other positions' cells of an annotation rename or removal). Save tables
+and the ``Save changes?`` prompt first run the pending evaluations of every
+loaded position, so that positions whose phases change are saved (or listed)
+even if their tables had no other change. Export
 measurements prompts to evaluate all cells
 when rules or overriding annotations are configured, and exports ``phase`` (string, empty if unassigned)
 and ``phase_<name>`` (boolean) columns. These output names are reserved by the
@@ -515,8 +522,10 @@ a position. While pyqtgraph's auto range is on (after an autoscale, or with
 ``Rescale plot`` checked) a cell whose plotted values are all NaN still fits
 x to its frames, as "A" does, and y is unchanged.
 ``Rescale plot`` (checked) also autoscales when changing cell, even after a
-manual zoom. Measurement vs Measurement always autoscales the scatter plot
-(e.g., when X or Y changes). Phase colors are edited in the
+manual zoom. Measurement vs Measurement autoscales the scatter plot when X,
+Y or normalization change, a position is loaded or the view switches to it
+(`_comparisonRangeKey`); other redraws (e.g. phases evaluated automatically
+when selecting a cell) keep the zoom. Phase colors are edited in the
 translator dialog's ``Phase colors`` box (committed on Apply or OK) and saved
 in the configuration's ``phase_colors`` ``{name: "#rrggbb"}``; phases without a
 color get the colorblind-friendly, red-free defaults of
@@ -1672,7 +1681,7 @@ class MeasurementsViewerWin(
             self.logger.warning(text)
             self.statusBar().showMessage(text, 8000)
             return False
-        positions = self.unsavedAcdcDfPositions()
+        positions = self.unsavedChangesToSave()[0]
         if not positions:
             text = 'Save tables: no unsaved changes to the tables.'
             self.logger.info(text)
@@ -1693,13 +1702,53 @@ class MeasurementsViewerWin(
             return True
         return self.askSaveChanges('loading other data')
 
+    def unsavedChangesToSave(self):
+        """Return the positions with unsaved tables and whether the
+        configuration has unsaved changes, after running the deferred phase
+        evaluations of every loaded position (`flushPendingPhaseEvaluations`):
+        they change tables of positions that are not displayed (e.g.
+        "Overrides phases" switched), which would otherwise be neither listed
+        nor saved."""
+        self.flushPendingPhaseEvaluations(list(self.data or []))
+        return self.unsavedAcdcDfPositions(), self.hasUnsavedConfiguration()
+
     def askSaveChanges(self, action='closing'):
         """Prompt for unsaved tables/configuration before `action` (text of
-        the prompt). Return False to cancel."""
-        positions = self.unsavedAcdcDfPositions()
-        configChanged = self.hasUnsavedConfiguration()
-        if not positions and not configChanged:
+        the prompt). Return False to cancel.
+
+        The prompt does not block the window: if tables or the configuration
+        get changes it did not list while it is open, any answer but Cancel
+        shows it again with the new changes. Save tables saves the tables
+        changed when it is answered."""
+        positions, configChanged = self.unsavedChangesToSave()
+        while positions or configChanged:
+            choice = self.promptSaveChanges(positions, configChanged, action)
+            if choice is None:
+                return False
+            listed = {id(posData) for posData in positions}
+            wasConfigChanged = configChanged
+            positions, configChanged = self.unsavedChangesToSave()
+            if (any(id(posData) not in listed for posData in positions)
+                    or configChanged and not wasConfigChanged):
+                self.logger.info(
+                    'Changes made while the "Save changes?" prompt was open: '
+                    'asking again'
+                )
+                continue
+            saveTables, saveConfig = choice
+            if saveTables and not self.saveAcdcDfs(positions):
+                return False
+            if saveConfig is not None and not self.saveConfiguration(
+                    save_as=saveConfig == 'save_as'):
+                return False
             return True
+        return True
+
+    def promptSaveChanges(self, positions, configChanged, action):
+        """Show the "Save changes?" prompt for the unsaved tables of
+        `positions` and the configuration (`configChanged`). Return the
+        chosen ``(saveTables, saveConfig)`` (`saveConfig`: None, 'save' or
+        'save_as') or None if cancelled."""
         hasFile = self.configurationFilepath is not None
         saveConfigText = (
             'Save configuration' if hasFile else 'Save configuration...'
@@ -1745,23 +1794,14 @@ class MeasurementsViewerWin(
         )
         if msg.cancel:
             self.logger.info(f'Save changes before {action}: Cancel')
-            return False
+            return None
         texts = dict(zip(buttons, (text for text, _ in options)))
         self.logger.info(
             f'Save changes before {action}: '
             f'"{texts.get(msg.clickedButton, "Cancel")}"'
         )
-        actions = dict(zip(buttons, (action for _, action in options)))
-        action = actions.get(msg.clickedButton)
-        if action is None:
-            return False
-        saveTables, saveConfig = action
-        if saveTables and not self.saveAcdcDfs(positions):
-            return False
-        if saveConfig is not None and not self.saveConfiguration(
-                save_as=saveConfig == 'save_as'):
-            return False
-        return True
+        choices = dict(zip(buttons, (choice for _, choice in options)))
+        return choices.get(msg.clickedButton)
 
     def selectConfigurationInput(self, configuration):
         options = self.configurationInputOptions(configuration)
@@ -2219,13 +2259,9 @@ class MeasurementsViewerWin(
                 # Saved outputs are empty (read back as 0 from a table with
                 # cell cycle columns) after the frame they were calculated
                 # up to, and must be ignored after the current one
-                for posData in data:
-                    last = min_frame(
-                        stepsLastFrames.get(position_key(posData)),
-                        analysis_last_frame(posData, mask)
-                    )
-                    self.blankStepOutputs(posData, outputs, last)
-                    self.recordStepsLastFrame(stepsLastFrames, posData, last)
+                self.blankSavedStepOutputs(
+                    data, outputs, mask, stepsLastFrames
+                )
             for posData in data:
                 legacyIDs = legacyViewed.get(
                     os.path.normcase(os.path.abspath(posData.pos_path)), []
@@ -3470,6 +3506,23 @@ class MeasurementsViewerWin(
         )
         if mask is None:
             return
+
+        # The recorded measurement steps stay: their saved outputs are used
+        # as existing values (as in `loadConfiguration`)
+        outputs = self.measurementStepOutputs(self.configurationSteps())
+        if outputs:
+            lastFrames = self.blankSavedStepOutputs(
+                data, outputs, mask, self.measurementStepsLastFrames
+            )
+            for posData, last in zip(data, lastFrames):
+                current = analysis_last_frame(posData, mask)
+                if last is not None and (current is None or last < current):
+                    self.logger.info(
+                        f'{position_name(posData.images_path)}: the '
+                        'measurement steps are calculated only up to frame '
+                        f'n. {last+1}: load the configuration again and '
+                        'choose "Calculate" to update them.'
+                    )
 
         self.isSegm3D = None
         self.setMaskUnanalyzedFrames(mask, update=False)
@@ -4767,6 +4820,7 @@ class MeasurementsViewerWin(
         self.ax1.autoRange()
         self.zoomToSelectedID()
         self._timecourseXRangeKey = None
+        self._comparisonRangeKey = None
         self.plotMeasurements()
 
         if self.rescalePlotCheckbox.isChecked():
@@ -5151,11 +5205,9 @@ class MeasurementsViewerWin(
         # (saved NaN is read back as 0 from tables with cell cycle columns)
         # and are ignored after the current last analyzed frame
         outputs = self.measurementStepOutputs(self.configurationSteps())
-        stepsLast = self.measurementStepsLastFrames.get(position_key(posData))
-        blankFrom = min_frame(stepsLast, last)
-        self.blankStepOutputs(posData, outputs, blankFrom)
-        self.recordStepsLastFrame(
-            self.measurementStepsLastFrames, posData, blankFrom
+        blankFrom, = self.blankSavedStepOutputs(
+            [posData], outputs, self.maskUnanalyzedFrames,
+            self.measurementStepsLastFrames
         )
         if last != previousLast:
             text = (
@@ -5257,7 +5309,11 @@ class MeasurementsViewerWin(
             )
             return
         equations, _ = dialog.getEquationsDict()
-        collisions = set(equations).intersection(equationSource.columns)
+        # Index levels too: a column named like one (e.g. frame_i) would be
+        # read instead of the index (`mask_frames`) and break `reset_index`
+        collisions = set(equations).intersection({
+            *equationSource.columns, *source.index.names, *INDEX_COLUMNS
+        })
         if collisions:
             self.measurementProcessingWarning(
                 'Invalid measurement name',
@@ -6142,9 +6198,12 @@ class MeasurementsViewerWin(
         self.selectedID = ID
         comparisonData = self.comparisonPlotData()
         self.ensureTimepointPredictions()
-        self.updateFramesRange()
+        isFrameChanged = self.updateFramesRange()
         self.zoomToSelectedID(goToZslice=True)
         self.updateImages()
+        if isFrameChanged:
+            # Moved into the cell's frames ("Only frames with selected cell")
+            self.update3DViewer()
         if (comparisonData is not None
                 and comparisonData.equals(self.comparisonPlotData())):
             # The comparison scatter shows all cells: replotting it is slow
@@ -6184,7 +6243,8 @@ class MeasurementsViewerWin(
         """Restrict the frames navigation widgets to `framesRange` and move 
         the current frame into the range if it is outside. 
         
-        Returns True if the current frame changed (images not updated).
+        Returns True if the current frame changed (images and the 3D viewer,
+        `update3DViewer`, not updated).
         """
         posData = self.posData()
         first_i, last_i = self.framesRange()
@@ -6225,6 +6285,7 @@ class MeasurementsViewerWin(
         self.updateImages()
         if self.followIDcheckbox.isChecked():
             self.zoomToSelectedID()
+        self.update3DViewer()
 
     def followIDtoggled(self, checked):
         self.logger.info(f'Follow cell {"on" if checked else "off"}')
@@ -8172,6 +8233,8 @@ class MeasurementsViewerWin(
         if isComparison:
             self.plotMeasurementsComparison()
             return
+        # Switching back to Measurement vs Measurement autoscales it
+        self._comparisonRangeKey = None
 
         self.measurementsPlot.setLabel('bottom', 'Frame n.')
         isNormalized = self.normalizeCheckbox.isChecked()
@@ -8368,7 +8431,13 @@ class MeasurementsViewerWin(
         self.measurementsPlot.setLabel('bottom', f'{xCol}{suffix}')
         self.measurementsPlot.setLabel('left', f'{yCol}{suffix}')
         self.measurementsPlot.setTitle('All cells, all frames (current position)')
-        self.autoscaleMeasurementsPlot()
+        # Autoscale only when the scatter's axes change (or a position is
+        # loaded, or after the time course): redraws for other reasons (e.g.
+        # phases evaluated when selecting a cell) keep the user's zoom
+        rangeKey = (self.pos_i, xCol, yCol, isNormalized)
+        if getattr(self, '_comparisonRangeKey', None) != rangeKey:
+            self.autoscaleMeasurementsPlot()
+            self._comparisonRangeKey = rangeKey
         self._timecourseXRangeKey = None
         if self.acdc_df is None:
             self.measurementsPlot.setTitle('No measurements available')

@@ -478,6 +478,53 @@ def test_saving_tables_evaluates_pending_cells_of_other_positions(
     assert id(second) not in viewer._pendingPhaseIDs
 
 
+@pytest.mark.parametrize('save', ['save_tables', 'save_changes_prompt'])
+def test_saving_includes_positions_changed_only_by_pending_phases(
+        viewer, app, monkeypatch, save
+    ):
+    """Switching "Overrides phases" off leaves the table of a position that
+    is not displayed unchanged until its cells are re-evaluated: Save tables
+    and the "Save changes?" prompt evaluate and save it too."""
+    viewer.isDataLoaded = True
+    configure(viewer, app, [annot_state(overrides=True)])
+    second = second_position(viewer, [3])
+    for posData in viewer.data:
+        posData.savedAcdcDf = posData.acdc_df.copy()
+    assert not viewer.unsavedAcdcDfPositions()
+    modify_annotation(
+        viewer, monkeypatch, 'Arrested', annot_state(overrides=False)
+    )
+    app.processEvents()
+    assert id(second) in viewer._pendingPhaseIDs
+    assert position_phases(second, 3) == ['Arrested'] * 4
+    saved = []
+    monkeypatch.setattr(
+        viewer, 'saveAcdcDfs',
+        lambda positions: saved.append(list(positions)) or True
+    )
+    if save == 'save_tables':
+        assert viewer.saveTables()
+    else:
+        class FakeSaveBox:
+            def __init__(self, *args, **kwargs):
+                self.cancel = False
+
+            def warning(self, parent, title, txt, detailsText=None,
+                        buttonsTexts=()):
+                self.clickedButton = 'Save tables'
+                return list(buttonsTexts)
+
+        monkeypatch.setattr(viewer, 'hasUnsavedConfiguration', lambda: False)
+        monkeypatch.setattr(
+            measurements_viewer.widgets, 'myMessageBox', FakeSaveBox
+        )
+        assert viewer.askSaveBeforeClosing()
+    assert len(saved) == 1
+    assert any(posData is second for posData in saved[0])
+    assert position_phases(second, 3) == RULE_PHASES
+    assert id(second) not in viewer._pendingPhaseIDs
+
+
 def test_translator_dialog_gets_and_applies_overriding_annotations(
         viewer, app, monkeypatch, capsys
     ):

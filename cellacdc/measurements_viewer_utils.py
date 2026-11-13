@@ -246,10 +246,11 @@ def get_channel_from_filepath(file_path):
 
 
 def load_position(images_path, channel, segm_endname='segm'):
-    """Load image, segmentation, acdc_output table and metadata of one 
-    Position. 
-    
-    Image and segmentation data always have the time axis first.
+    """Load image, segmentation, acdc_output table and metadata of one
+    Position.
+
+    Image and segmentation data always have the time axis first and are
+    cut to ``SizeT``, the number of frames of the shorter of both.
     """
     img_path = load.get_filename_from_channel(images_path, channel)
     if not img_path:
@@ -282,6 +283,10 @@ def load_position(images_path, channel, segm_endname='segm'):
         posData.segm_data = posData.segm_data[np.newaxis]
     
     posData.SizeT = min(len(posData.img_data), len(posData.segm_data))
+    # Per-frame structures (e.g. `allData_li`) are built from `segm_data`
+    # with `SizeT` items: frames beyond the shorter file are not shown
+    posData.img_data = posData.img_data[:posData.SizeT]
+    posData.segm_data = posData.segm_data[:posData.SizeT]
     normalize_loaded_acdc_df(posData)
     update_last_analyzed_frame(posData)
     posData.savedAcdcDf = acdc_df_snapshot(getattr(posData, 'acdc_df', None))
@@ -1613,6 +1618,24 @@ class MeasurementsViewerUtils:
         blank_unanalyzed_outputs(
             getattr(posData, 'savedAcdcDf', None), outputs, last
         )
+
+    def blankSavedStepOutputs(self, data, outputs, mask, stepsLastFrames):
+        """Saved step `outputs` of the positions `data` read from file and
+        used as existing values: set them to NaN (`blankStepOutputs`) after
+        the smaller of the frame they were calculated up to
+        (`stepsLastFrames`) and the current last analyzed frame (with
+        `mask`), and record that frame (`recordStepsLastFrame`). Return
+        these frames (None: all frames) in the order of `data`."""
+        lastFrames = []
+        for posData in data:
+            last = min_frame(
+                stepsLastFrames.get(position_key(posData)),
+                analysis_last_frame(posData, mask)
+            )
+            self.blankStepOutputs(posData, outputs, last)
+            self.recordStepsLastFrame(stepsLastFrames, posData, last)
+            lastFrames.append(last)
+        return lastFrames
 
     def dialogAnalysisDf(self, acdc_df, posData):
         """`analysisDf` for the editor dialogs (`posData` may be None)."""

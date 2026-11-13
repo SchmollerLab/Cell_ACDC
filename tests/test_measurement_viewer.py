@@ -190,6 +190,55 @@ def test_comparison_keeps_scatter_and_zoom_when_selecting_cell(viewer):
     np.testing.assert_array_equal(newItem.xData, [10, 20, 30, 50])
 
 
+def test_comparison_zoom_kept_when_selected_cell_gets_phases(viewer, app):
+    # Automatic phase evaluation of a newly selected cell redraws the
+    # scatter (phase colors): only changing the axes autoscales it
+    viewer.data[0].acdc_df = viewer.acdc_df
+    viewer.phaseTranslatorRules = [{
+        'name': 'All', 'predictor': {'type': 'none'}, 'timepoints': [],
+        'annotations': [], 'phases': ['Whole'],
+    }]
+    viewer.autoApplyPhases = True
+    comparison(viewer)
+    vb = viewer.measurementsPlot.getViewBox()
+    viewer.measurementsPlot.setRange(xRange=(12, 18), yRange=(0, 5), padding=0)
+    zoomed = viewer.measurementsPlot.viewRange()
+    viewer.setSelectedID(2)
+    app.processEvents()
+    assert viewer.acdc_df.xs(2, level='Cell_ID')['phase'].tolist() == [
+        'Whole', 'Whole'
+    ]
+    assert vb.autoRangeEnabled() == [False, False]
+    assert viewer.measurementsPlot.viewRange() == zoomed
+    # Toggling normalization changes the axes: autoscaled
+    viewer.normalizeCheckbox.setChecked(True)
+    assert vb.autoRangeEnabled() == [True, True]
+
+
+def test_frames_restricted_to_selected_cell_update_the_3d_viewer(viewer):
+    # Cell 1: frames 0-1, cell 2: frames 1-2 ("Only frames with selected
+    # cell" is checked by the fixture)
+    renderer = Mock()
+    renderer.are_frames_synced.return_value = True
+    viewer._volume_renderer = renderer
+    try:
+        viewer.setFrame(0)
+        renderer.set_frame_number.reset_mock()
+        viewer.setSelectedID(2)
+        assert viewer.frame_i == 1
+        renderer.set_frame_number.assert_called_once_with(2)
+        # Checking the option moves the frame into the cell's frames too
+        viewer.restrictFramesCheckbox.setChecked(False)
+        viewer.setFrame(2)
+        viewer.setSelectedID(1)
+        renderer.set_frame_number.reset_mock()
+        viewer.restrictFramesCheckbox.setChecked(True)
+        assert viewer.frame_i == 1
+        renderer.set_frame_number.assert_called_once_with(2)
+    finally:
+        viewer._volume_renderer = None
+
+
 def test_time_course_replots_keep_x_zoom(viewer):
     viewer.rescalePlotCheckbox.setChecked(False)
     column(viewer, 'area').setCheckState(Qt.Checked)
@@ -1115,6 +1164,27 @@ def test_loading_shorter_timelapse_resets_navigation(real_viewer, tmp_path):
     assert real_viewer.frame_i == real_viewer.posData().frame_i == 0
     assert real_viewer.navigateScrollBar.value() == 1
     assert real_viewer.navigateScrollBar.maximum() == 3
+
+
+def test_loading_channel_shorter_than_segmentation(real_viewer, tmp_path):
+    # Image and segmentation are cut to the shorter of both (per-frame
+    # structures such as allData_li have SizeT items)
+    import tifffile
+
+    images = make_timelapse_position(tmp_path, SizeT=5)
+    tifffile.imwrite(
+        os.path.join(images, 'test_short.tif'),
+        np.zeros((3, 30, 30), dtype=np.uint16)
+    )
+    real_viewer.setData(
+        measurements_viewer.load_display_positions([images], 'short')
+    )
+    posData = real_viewer.posData()
+    assert posData.SizeT == 3
+    assert len(posData.img_data) == len(posData.segm_data) == 3
+    assert len(posData.allData_li) == 3
+    assert real_viewer.navigateScrollBar.maximum() == 3
+    assert not real_viewer.slotErrors
 
 
 def test_loading_smaller_zstack_resets_z_navigation(real_viewer, tmp_path):

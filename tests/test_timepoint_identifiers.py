@@ -787,6 +787,73 @@ def test_cell_functions_ignore_nan():
     ) == {1: [1]}
 
 
+def stage_table():
+    """Text column: cell 1 G1 G1 S S G1 S, cell 2 S S S G1 G1 S."""
+    stages = {
+        1: ['G1', 'G1', 'S', 'S', 'G1', 'S'],
+        2: ['S', 'S', 'S', 'G1', 'G1', 'S'],
+    }
+    return pd.DataFrame([
+        (t, ID, stage) for ID, cellStages in stages.items()
+        for t, stage in enumerate(cellStages)
+    ], columns=['frame_i', 'Cell_ID', 'stage']).set_index(
+        ['frame_i', 'Cell_ID']
+    )
+
+
+@pytest.mark.parametrize('equation, mode, expected', [
+    ('FIRST(stage) == "G1"', 'first_true', {1: [0], 2: []}),
+    ('LAST(stage) == "S"', 'first_true', {1: [0], 2: [0]}),
+    ('COUNT(stage) == 6', 'first_true', {1: [0], 2: [0]}),
+    # Stage changes (the first frame has no previous stage: NaN != stage).
+    ('SHIFT(stage) != stage', 'rising_true', {1: [0, 2, 4], 2: [0, 3, 5]}),
+    ('(stage == "S") & (SHIFT(stage) == "G1")', 'rising_true',
+     {1: [2, 5], 2: [5]}),
+    ('SHIFT(stage, -1) == "G1"', 'rising_true', {1: [0, 3], 2: [2]}),
+])
+def test_cell_functions_on_text_columns(equation, mode, expected):
+    assert timepoint_predictors.TimepointPredictor.from_equation(
+        stage_table(), equation, mode
+    ) == expected
+
+
+def test_text_columns_in_filters_and_other_cell_functions():
+    df = stage_table()
+    predict = timepoint_predictors.TimepointPredictor.from_equation
+    assert predict(df, 'stage == "S"', 'first_true', main_cell_filter={
+        'condition': 'FIRST(stage) == "G1"', 'condition_mode': 'any',
+    }) == {1: [2]}
+    other = timepoint_predictors.CellFilter.default_other()
+    assert predict(
+        df, 'COUNT(stage_other) > 0', 'first_true', other_cells=other
+    ) == {1: [0], 2: [0]}
+    assert predict(
+        df, 'FIRST(stage_other) == "G1"', 'rising_true', other_cells=other
+    ) == {1: [3], 2: [0, 4]}
+    # Numerical functions refuse text instead of giving NaN.
+    for equation in ('MAX(stage) == "S"', 'MEDIAN(stage) > 0', 'DIFF(stage) > 0'):
+        with pytest.raises(ValueError, match=r'\(stage\) requires a numerical'):
+            predict(df, equation, 'first_true')
+    with pytest.raises(ValueError, match=r'MAX\(stage_other\) requires a num'):
+        predict(df, 'MAX(stage_other) > 0', 'first_true', other_cells=other)
+
+
+def test_describe_names_the_main_cell_filter():
+    predictor = {
+        'type': timepoint_predictors.PREDICTOR_EQUATION,
+        'equation': 'area > 1', 'mode': 'first_true',
+        'main_cell_filter': {
+            'condition': 'LAST(frame_i) == SizeT - 1', 'condition_mode': 'any',
+        },
+    }
+    describe = timepoint_predictors.TimepointPredictor.describe
+    assert describe(predictor).endswith(
+        '[cells: any of LAST(frame_i) == SizeT - 1]'
+    )
+    predictor['main_cell_filter']['condition'] = ' '
+    assert 'cells:' not in describe(predictor)
+
+
 def test_file_predictor_receives_single_cell(tmp_path, acdc_df):
     filepath = tmp_path / 'pred.py'
     filepath.write_text(

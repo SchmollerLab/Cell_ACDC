@@ -547,6 +547,36 @@ def test_toggling_mask_reapplies_automatic_phases(viewer, tmp_path):
     assert not viewer.slotErrors
 
 
+def test_toggling_mask_saves_reevaluated_phases_of_other_positions(
+        viewer, tmp_path
+    ):
+    # The re-evaluation of a position that is not displayed waits until it
+    # is displayed: Save tables runs it first, so that its table is saved
+    paths = [make_position(tmp_path, pos=pos) for pos in (1, 2)]
+    viewer.loadImagesPaths(paths, channel='phase')
+    viewer.phaseTranslatorRules = [fallback_rule()]
+    viewer.autoApplyPhases = True
+    viewer.posCombobox.setCurrentIndex(1)
+    second = viewer.posData()
+    assert viewer.applyPhaseTranslator(allCells=True)
+    viewer.posCombobox.setCurrentIndex(0)
+    assert viewer.applyPhaseTranslator(allCells=True)
+    QTest.qWait(20)
+    assert viewer.saveTables()
+    assert not viewer.unsavedAcdcDfPositions()
+    viewer.maskUnanalyzedFramesAction.trigger()
+    QTest.qWait(20)
+    assert id(second) in viewer._pendingPhaseIDs
+    assert viewer.saveTables()
+    assert cell_values(second.acdc_df, 'phase') == ['Other'] * SIZE_T
+    saved = pd.read_csv(os.path.join(paths[1], 'test_acdc_output.csv'))
+    assert saved.loc[saved['Cell_ID'] == 1, 'phase'].tolist() == (
+        ['Other'] * SIZE_T
+    )
+    assert not viewer.unsavedAcdcDfPositions()
+    assert not viewer.slotErrors
+
+
 def test_phase_translator_dialog_options_use_analyzed_frames(
         viewer, tmp_path, monkeypatch
     ):
@@ -1133,6 +1163,34 @@ def test_reload_keeps_step_outputs_empty_on_newly_analyzed_frames(
     # Still calculated only up to frame 2
     assert viewer.measurementStepsLastFrames == {key: LAST}
     assert_snapshot_matches(posData, ['double'])
+    assert not viewer.slotErrors
+
+
+@pytest.mark.parametrize('mask', [True, False])
+def test_open_folder_keeps_step_outputs_empty_after_recorded_frame(
+        viewer, tmp_path, monkeypatch, capsys, mask
+    ):
+    # Opening the data again keeps the recorded steps, whose saved outputs
+    # are used as existing values: empty after the recorded frame (saved
+    # NaN is read back as 0), also with "Use all frames" or more frames
+    # annotated in the main GUI meanwhile
+    path = load(viewer, tmp_path, mask=True)
+    accept_formula(monkeypatch, 'signal * 2', 'double')
+    viewer.combineMeasurements()
+    key = measurements_viewer.position_key(viewer.posData())
+    assert viewer.measurementStepsLastFrames == {key: LAST}
+    set_column(path, 'double', {0: 0., 1: 20., 2: 40., 3: 0., 4: 0., 5: 0.})
+    rewrite_cca_frames(path, range(5))
+    viewer.askMaskUnanalyzedFrames.return_value = mask
+    viewer.loadImagesPaths([path], channel='phase')
+    posData = viewer.posData()
+    assert viewer.analysisLastFrame(posData) == (4 if mask else None)
+    double = cell_values(posData.acdc_df, 'double')
+    assert double[:LAST + 1] == [0., 20., 40.]
+    assert_nan_after(double)
+    assert viewer.measurementStepsLastFrames == {key: LAST}
+    assert_snapshot_matches(posData, ['double'])
+    assert 'calculated only up to frame n. 3' in capsys.readouterr().out
     assert not viewer.slotErrors
 
 

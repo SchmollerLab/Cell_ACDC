@@ -176,6 +176,28 @@ def test_validate_and_describe():
     assert 'area > 1' in CustomAnnotationPredictor.describe(equation('area > 1'))
     assert CustomAnnotationPredictor.describe(None).startswith('None')
     assert DEFAULT_SHORTCUTS[:4] == ('A', 'S', 'D', 'F')
+    filtered = dict(equation('area > 1'), main_cell_filter={
+        'condition': 'FIRST(frame_i) == 0', 'condition_mode': 'all',
+    })
+    assert CustomAnnotationPredictor.describe(filtered).endswith(
+        ' [cells: all of FIRST(frame_i) == 0]'
+    )
+
+
+def test_text_column_per_cell_functions():
+    # Per-cell functions of text columns (e.g. cell_cycle_stage) used to
+    # give NaN, so ``LAST(stage) == "S"`` annotated nothing.
+    df = pd.DataFrame({
+        'frame_i': [0, 1, 2, 0, 1, 2],
+        'Cell_ID': [1, 1, 1, 2, 2, 2],
+        'stage': ['G1', 'S', 'S', 'S', 'S', 'G1'],
+    }).set_index(['frame_i', 'Cell_ID'])
+    assert CustomAnnotationPredictor.predict(
+        df, equation('LAST(stage) == "S"'), SizeT=3
+    ) == {1: [0, 1, 2]}
+    assert CustomAnnotationPredictor.predict(
+        df, equation('any((stage == "S") & (SHIFT(stage) == "G1"))'), SizeT=3
+    ) == {1: [0, 1, 2]}
 
 
 # --- Measurements viewer ----------------------------------------------------

@@ -15041,10 +15041,13 @@ When working with 3D segmentation masks:
         if not self.overlay_z_label.isVisible():
             return
         
-        z = self.zSliceScrollBar.sliderPosition()
+        # 0-based slice drawn by the overlay (`getOlImg` keeps the overlay
+        # scrollbar in sync with the main one in "same as above" mode),
+        # displayed as `z + start_value` like the z-slice spinbox
+        z = self.zSliceOverlay_SB.sliderPosition()
         posData = self.data[self.pos_i]
         self.overlay_z_label.setText(
-            f'Overlay z-slice {z+correction:02}/{posData.SizeZ+correction}'
+            f'Overlay z-slice {z+start_value:02}/{posData.SizeZ+correction}'
         )
     
     def defaultRescaleIntensLutActionToggled(self, action):

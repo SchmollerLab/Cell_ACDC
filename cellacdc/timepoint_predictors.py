@@ -36,6 +36,9 @@ are used when bud annotations exist or the lineage tree (``parent_ID_tree``)
 has no valid IDs, so tree-tracked tables with placeholder cell cycle columns
 use the tree relatives.
 ``SHIFT(column, 1)`` instead shifts values by one observed row of a cell.
+``FIRST``, ``LAST``, ``COUNT``, ``NUNIQUE`` and ``SHIFT`` also take text
+columns (e.g. ``FIRST(cell_cycle_stage) == "G1"``); the numerical
+aggregates and ``DIFF`` raise a ValueError for text.
 
 Class-based API
 ---------------
@@ -620,10 +623,52 @@ class CellEquation:
         return pd.to_numeric(pd.Series(values), errors='coerce').to_numpy(float)
 
     @staticmethod
+    def _text(x: ArrayLike) -> NDArray | None:
+        """The values of ``x`` if it holds text (a value that is neither
+        missing nor a number, e.g. ``cell_cycle_stage``), else None.
+
+        Numbers stored as text keep the numerical path (_numeric)."""
+        values = np.atleast_1d(np.asarray(x)).ravel()
+        if values.dtype.kind in 'biuf':
+            return None
+        numbers = pd.to_numeric(pd.Series(values), errors='coerce').to_numpy(float)
+        if (np.isnan(numbers) & ~pd.isna(values)).any():
+            return values
+        return None
+
+    @staticmethod
+    def _text_result(x: ArrayLike, values):
+        """Text result of a function of ``x``: a Series on the index of
+        ``x`` (scalars repeated) when pandas eval passed a Series.
+
+        pandas eval rewrites ``== "G1"`` to ``in ["G1"]``, which works on a
+        Series but neither on an array nor on a text scalar (wrapped in a
+        list itself), so ``FIRST(cell_cycle_stage) == "G1"`` needs a Series.
+        """
+        if isinstance(x, pd.Series):
+            return pd.Series(values, index=x.index, dtype=object)
+        return values
+
+    @staticmethod
+    def _require_number(x: ArrayLike, function: str) -> None:
+        """Raise a ValueError naming ``function`` if ``x`` holds text."""
+        if CellEquation._text(x) is None:
+            return
+        name = getattr(x, 'name', None)
+        if isinstance(name, str) and name:
+            raise ValueError(
+                f'{function}({name}) requires a numerical input; '
+                f'"{name}" contains text.'
+            )
+        raise ValueError(f'{function}(x) requires a numerical input.')
+
+    @staticmethod
     def _nan_aggregate(
-            func: Callable[[NDArray[np.float64]], float | np.float64]
+            func: Callable[[NDArray[np.float64]], float | np.float64],
+            function: str
         ) -> Callable[[ArrayLike], float]:
         def aggregate(x: ArrayLike) -> float:
+            CellEquation._require_number(x, function)
             values = CellEquation._numeric(x)
             finite = values[np.isfinite(values)]
             if not finite.size:
@@ -633,36 +678,54 @@ class CellEquation:
 
     @staticmethod
     def _first(x: ArrayLike) -> float:
+        text = CellEquation._text(x)
+        if text is not None:
+            return CellEquation._text_result(x, text[~pd.isna(text)][0])
         values = CellEquation._numeric(x)
         finite = values[np.isfinite(values)]
         return float(finite[0]) if len(finite) else np.nan
 
     @staticmethod
     def _last(x: ArrayLike) -> float:
+        text = CellEquation._text(x)
+        if text is not None:
+            return CellEquation._text_result(x, text[~pd.isna(text)][-1])
         values = CellEquation._numeric(x)
         finite = values[np.isfinite(values)]
         return float(finite[-1]) if len(finite) else np.nan
 
     @staticmethod
     def _shift(x: ArrayLike, n: int = 1) -> NDArray[np.float64]:
-        values = CellEquation._numeric(x)
+        text = CellEquation._text(x)
+        if text is None:
+            values = CellEquation._numeric(x)
+            shifted = np.full_like(values, np.nan)
+        else:
+            # Text is shifted as is, NaN where nothing shifts in.
+            values = text.astype(object)
+            shifted = np.full(len(values), np.nan, dtype=object)
         n = int(n)
-        shifted = np.full_like(values, np.nan)
         if n == 0:
-            return values
-        if abs(n) < len(values):
+            shifted = values
+        elif abs(n) < len(values):
             if n > 0:
                 shifted[n:] = values[:-n]
             else:
                 shifted[:n] = values[-n:]
-        return shifted
+        if text is None:
+            return shifted
+        return CellEquation._text_result(x, shifted)
 
     @staticmethod
     def _diff(x: ArrayLike) -> NDArray[np.float64]:
+        CellEquation._require_number(x, 'DIFF')
         return CellEquation._numeric(x) - CellEquation._shift(x, 1)
 
     @staticmethod
     def _count(x: ArrayLike) -> int:
+        text = CellEquation._text(x)
+        if text is not None:
+            return int((~pd.isna(text)).sum())
         return int(np.isfinite(CellEquation._numeric(x)).sum())
 
     @staticmethod
@@ -894,14 +957,17 @@ _NAN_AGGREGATES = {
 # single cell (one row per frame, sorted by frame_i). The aggregates
 # (MIN, MAX, MEAN, ...) ignore NaNs; SHIFT and DIFF use the cell's observed
 # rows (tracking gaps are skipped, not padded) and propagate NaNs.
+# FIRST, LAST, COUNT, SHIFT and NUNIQUE also take text (e.g.
+# cell_cycle_stage, see CellEquation._text: missing = NaN/None); the
+# aggregates and DIFF raise a ValueError for text.
 CELL_FUNCTIONS = {
-    'MIN': (CellEquation._nan_aggregate(_NAN_AGGREGATES['MIN']), 'Minimum over all frames of the cell'),
-    'MAX': (CellEquation._nan_aggregate(_NAN_AGGREGATES['MAX']), 'Maximum over all frames of the cell'),
-    'MEAN': (CellEquation._nan_aggregate(_NAN_AGGREGATES['MEAN']), 'Mean over all frames of the cell'),
-    'AVERAGE': (CellEquation._nan_aggregate(_NAN_AGGREGATES['AVERAGE']), 'Same as MEAN'),
-    'MEDIAN': (CellEquation._nan_aggregate(_NAN_AGGREGATES['MEDIAN']), 'Median over all frames of the cell'),
-    'SUM': (CellEquation._nan_aggregate(_NAN_AGGREGATES['SUM']), 'Sum over all frames of the cell'),
-    'STD': (CellEquation._nan_aggregate(_NAN_AGGREGATES['STD']), 'Standard deviation over all frames of the cell'),
+    'MIN': (CellEquation._nan_aggregate(_NAN_AGGREGATES['MIN'], 'MIN'), 'Minimum over all frames of the cell'),
+    'MAX': (CellEquation._nan_aggregate(_NAN_AGGREGATES['MAX'], 'MAX'), 'Maximum over all frames of the cell'),
+    'MEAN': (CellEquation._nan_aggregate(_NAN_AGGREGATES['MEAN'], 'MEAN'), 'Mean over all frames of the cell'),
+    'AVERAGE': (CellEquation._nan_aggregate(_NAN_AGGREGATES['AVERAGE'], 'AVERAGE'), 'Same as MEAN'),
+    'MEDIAN': (CellEquation._nan_aggregate(_NAN_AGGREGATES['MEDIAN'], 'MEDIAN'), 'Median over all frames of the cell'),
+    'SUM': (CellEquation._nan_aggregate(_NAN_AGGREGATES['SUM'], 'SUM'), 'Sum over all frames of the cell'),
+    'STD': (CellEquation._nan_aggregate(_NAN_AGGREGATES['STD'], 'STD'), 'Standard deviation over all frames of the cell'),
     'FIRST': (CellEquation._first, 'Value at the first frame of the cell'),
     'LAST': (CellEquation._last, 'Value at the last frame of the cell'),
     'COUNT': (CellEquation._count, 'Number of frames of the cell with a value'),
@@ -1063,6 +1129,20 @@ class CellFilter:
         if settings['condition_mode'] not in ('any', 'all'):
             raise ValueError('Invalid main-cell filter mode.')
         return settings
+
+    @staticmethod
+    def describe_main(main_cell_filter: dict[str, str] | None) -> str:
+        """Suffix of predictor descriptions naming the main-cell filter,
+        e.g. ``' [cells: any of LAST(frame_i) == SizeT - 1]'`` ('' if none)."""
+        if main_cell_filter is None:
+            return ''
+        settings = CellFilter.validate_main(main_cell_filter)
+        if not settings['condition'].strip():
+            return ''
+        return (
+            f' [cells: {settings["condition_mode"]} of '
+            f'{settings["condition"]}]'
+        )
 
     @staticmethod
     def other_presets(
@@ -1564,27 +1644,60 @@ class OtherCellMeasurements:
                 ).transform(mode).to_numpy()
             return candidates.loc[mask]
         selected = []
+        for candidateID, rows, err in OtherCellMeasurements._select_cells(
+                candidates, condition, mode,
+                {column: target[column] for column in this_columns}, variables):
+            if err is not None:
+                raise OtherCellMeasurements._candidate_error(
+                    target['frame_i'], target['Cell_ID'], candidateID,
+                    condition, err
+                ) from err
+            if rows is not None:
+                selected.append(rows)
+        return (
+            pd.concat(selected).sort_values(['frame_i', 'Cell_ID'])
+            if selected else candidates.iloc[:0]
+        )
+
+    @staticmethod
+    def _select_cells(
+            candidates: pd.DataFrame, condition: str, mode: str,
+            this_values: Mapping[str, object],
+            variables: Mapping[str, object] | None
+        ) -> Iterator[tuple[object, pd.DataFrame | None, Exception | None]]:
+        """Yield ``(candidateID, selected rows, error)`` per candidate cell.
+
+        ``condition`` (with function calls) is evaluated on all rows of
+        each cell together, with the ``this_<col>`` inputs set to
+        ``this_values``. ``rows`` is None if the cell is left out (any/all)
+        or its evaluation raised ``error``.
+        """
         for candidateID, rows in candidates.groupby('Cell_ID', sort=False):
             evaluation = rows.reset_index(drop=True).copy()
-            for column in this_columns:
-                evaluation[f'{THIS_PREFIX}{column}'] = target[column]
+            for column, value in this_values.items():
+                evaluation[f'{THIS_PREFIX}{column}'] = value
             try:
                 mask = CellFilter.boolean_values(CellEquation.evaluate(
                     evaluation, condition, variables, enforce_dtype_output=bool
                 ), len(rows))
             except Exception as err:
-                raise ValueError(
-                    f'Other-cell filter failed at frame {int(target["frame_i"])} '
-                    f'for enquiring cell {int(target["Cell_ID"])}, '
-                    f'candidate {candidateID} with condition {condition!r}: {err}'
-                ) from err
+                yield candidateID, None, err
+                continue
             if mode == 'where_true':
-                selected.append(rows.loc[mask])
+                yield candidateID, rows.loc[mask], None
             elif (mode == 'any' and mask.any()) or (mode == 'all' and mask.all()):
-                selected.append(rows)
-        return (
-            pd.concat(selected).sort_values(['frame_i', 'Cell_ID'])
-            if selected else candidates.iloc[:0]
+                yield candidateID, rows, None
+            else:
+                yield candidateID, None, None
+
+    @staticmethod
+    def _candidate_error(
+            t, targetID, candidateID, condition: str, err: Exception
+        ) -> ValueError:
+        return ValueError(
+            f'Other-cell filter failed at frame {int(t)} '
+            f'for enquiring cell {int(targetID)}, '
+            f'candidate {candidateID} with condition {condition!r}: {err}'
         )
 
     # Maximum number of (target, candidate row) pairs handled at once by
@@ -1593,6 +1706,10 @@ class OtherCellMeasurements:
     # Whether prepare_inputs may store blocks of targets with array
     # operations (False: target by target; the tests compare both).
     _BLOCKWISE_EMIT = True
+    # Whether prepare_inputs selects the candidate cells of a condition with
+    # function calls and no this_ input once per frame window for all its
+    # targets (False: once per target; the tests compare both).
+    _SHARED_CANDIDATE_SELECTION = True
 
     @staticmethod
     def _equality_candidates(
@@ -1966,7 +2083,10 @@ class OtherCellMeasurements:
         or contain as a top-level ``&`` conjunct, an equality
         ``col == this_col`` (all lineage source presets) narrow candidates
         through rows pre-indexed by value instead of scanning frame windows
-        (_equality_candidates); the selected rows are the same.
+        (_equality_candidates); the selected rows are the same. Conditions
+        with function calls and no ``this_`` input select the candidate
+        cells once per frame window for all its targets
+        (_SHARED_CANDIDATE_SELECTION), with the same rows and errors.
         """
         # Two syntaxes: legacy MEAN_OTHER(col) and MEAN(col_other). Direct
         # inputs are bare ``col_other`` names outside such calls.
@@ -2014,7 +2134,11 @@ class OtherCellMeasurements:
                 if column not in columns:
                     raise ValueError(f'Unknown other-cell input column "{column}".')
                 if (function in ('MEAN', 'AVERAGE', 'SUM', 'STD')
-                        and not pd.api.types.is_numeric_dtype(flatDf[column])):
+                        and not pd.api.types.is_numeric_dtype(flatDf[column])
+                        ) or (_OTHER_AGGREGATIONS[function] in _NAN_AGGREGATES
+                        and CellEquation._text(flatDf[column]) is not None):
+                    # MIN/MAX/MEDIAN: text columns (object columns of
+                    # numbers keep working, as in the per-cell functions).
                     raise ValueError(
                         f'{function}({column}_other) requires a numerical input; '
                         f'"{column}" is not numerical.'
@@ -2421,6 +2545,42 @@ class OtherCellMeasurements:
             # Case 3: general per-target selection (function calls or other
             # unparseable syntax).
             window = sortedDf.iloc[left:right]
+            if (not this_columns
+                    and OtherCellMeasurements._SHARED_CANDIDATE_SELECTION):
+                # Without this_ inputs, a candidate cell's selection depends
+                # only on its own rows in the window, so it is the same for
+                # every target of this frame: select once from all cells
+                # and leave out each target's own rows (instead of
+                # evaluating every candidate cell again for each target).
+                cells = list(OtherCellMeasurements._select_cells(
+                    window, condition, mode, {}, variables
+                ))
+                errors = [(ID, err) for ID, _, err in cells if err is not None]
+                pieces = [rows for _, rows, _ in cells if rows is not None]
+                selected = (
+                    pd.concat(pieces).sort_values(['frame_i', 'Cell_ID'])
+                    if pieces else window.iloc[:0]
+                )
+                selectedIDs = selected['Cell_ID'].to_numpy()
+                selectedValues = {
+                    column: selected[column].to_numpy()
+                    for column in valueColumns
+                }
+                for position in group:
+                    targetID = targetIDs[position]
+                    # As per target: the first failing candidate (in window
+                    # order) other than the target itself.
+                    for candidateID, err in errors:
+                        if candidateID != targetID:
+                            raise OtherCellMeasurements._candidate_error(
+                                t, targetID, candidateID, condition, err
+                            ) from err
+                    keep = selectedIDs != targetID
+                    emit(position, t, {
+                        column: values[keep]
+                        for column, values in selectedValues.items()
+                    } or {'Cell_ID': selectedIDs[keep]})
+                continue
             for position in group:
                 target = {
                     column: values[position]
@@ -2580,7 +2740,9 @@ class TimepointPredictor:
                 if settings['condition']:
                     description += f', filter: {settings["condition"]}'
                 description += ')'
-            return description
+            return description + CellFilter.describe_main(
+                predictor.get('main_cell_filter')
+            )
         if kind == PREDICTOR_FILE:
             return f'predictor(df) from "{predictor["filepath"]}"'
         return 'None (manual annotation)'

@@ -126,6 +126,20 @@ def test_existing_columns_are_not_overwritten(viewer, monkeypatch, formula, name
     viewer.plotMeasurements.assert_not_called()
 
 
+@pytest.mark.parametrize('name', ['frame_i', 'Cell_ID'])
+def test_index_level_names_are_refused(viewer, monkeypatch, name):
+    # A column named like an index level would be read instead of the index
+    # (e.g. `mask_frames`) and duplicate the header of the saved table
+    original = viewer.acdc_df
+    dialogs = accept_formula(monkeypatch, 'stage == "G1"', name)
+    viewer.combineMeasurements()
+    assert viewer.acdc_df is original
+    assert name not in original.columns
+    viewer.measurementProcessingWarning.assert_called_once()
+    assert viewer.measurementProcessingWarning.call_args.args[0] == 'Invalid measurement name'
+    assert dialogs[0].cancel
+
+
 def test_failed_channel_expansion_is_atomic(viewer, monkeypatch):
     viewer.acdc_df = viewer.acdc_df.drop(columns='RFP_mean')
     viewer.posData().acdc_df = viewer.acdc_df

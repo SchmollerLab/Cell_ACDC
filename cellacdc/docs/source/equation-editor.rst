@@ -271,6 +271,12 @@ where the cell is larger than half of its maximum area.
 
 * The aggregates ignore missing values, and ``FIRST`` / ``LAST`` give the
   first / last value that is not missing.
+* ``FIRST``, ``LAST``, ``COUNT``, ``NUNIQUE`` and ``SHIFT`` also work on text
+  inputs, e.g. ``FIRST(cell_cycle_stage) == "G1"`` or
+  ``(cell_cycle_stage == "S") & (SHIFT(cell_cycle_stage) == "G1")`` (the
+  frames where S phase starts after G1). ``MIN``, ``MAX``, ``MEAN``,
+  ``MEDIAN``, ``SUM``, ``STD`` and ``DIFF`` need numbers: on text they give
+  an error.
 * ``DIFF`` and ``SHIFT`` move along the **frames where the cell exists**, not
   along the video: if the cell is missing at some frames (tracking gap),
   ``SHIFT(x, 1)`` is its value at the previous frame where it exists.
@@ -507,7 +513,8 @@ For each frame *t* of the cell being predicted (the **enquiring cell**):
    the selected rows into one value for frame *t*, e.g.
    ``MEAN(GFP_mean_other)``. Available: ``MAX``, ``MIN``, ``MEAN``,
    ``AVERAGE``, ``MEDIAN``, ``SUM``, ``STD``, ``COUNT``, ``NUNIQUE``,
-   ``FIRST`` and ``LAST``.
+   ``FIRST`` and ``LAST`` (only the last four for text inputs, e.g.
+   ``COUNT(cell_cycle_stage_other)``).
 
 .. important::
 
