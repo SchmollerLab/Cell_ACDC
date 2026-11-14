@@ -454,7 +454,7 @@ Edit tools: Segmentation and tracking
         * To enforce erasing all objects no matter where you start from double-press "X" key. If double-press is successfull, then eraser button is red and eraser cursor always red.
 * **Curvature Tool (** |curvToolButton| **"C"):** Left-clicks for manual spline anchors, right button for drawing auto-contour.
 * **Magic Wand (** |wandToolButton| **"Ctrl+D"):** Create a new object using neighbouring pixels whose intensity is within a selected tolerance. Left-click for single selection or left-click and then drag for continous selection.
-* **Magic prompts (** |magicPromptsToolButton| **"W"):** Use promptable models (e.g., Segment Anything) to refine objects or generate new ones interactively with prompts (e.g., points). Prompts are added with both the left, right, and middle-click
+* **Magic prompts (** |magicPromptsToolButton| **"W"):** Use promptable models (e.g., Segment Anything) to refine objects or generate new ones interactively with prompts (e.g., points). Prompts are added with both the left, right, and middle-click. Models that learn from brush strokes (e.g., ConvPaint) use the "Brush strokes" prompt type instead: paint the foreground with the left button and the background with the right button, then click "Train" and "Segment image" or "Segment stack" on the toolbar.
 * **Copy lost contour (** |copyLostObjButton| **"V"):** Hover onto lost object contour --> right-click to copy the contour as a new object.
 * **Lock ID and annotate single object (** |manualAnnotPastButton| **"Y"):**
     1. Activate to automatically set the brush ID to the hovered ID. 

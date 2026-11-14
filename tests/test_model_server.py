@@ -46,6 +46,11 @@ def test_schema_models():
     assert info.name == "test_model"
     assert info.capabilities.segment is True
     assert info.capabilities.segment3DT is False
+    assert info.capabilities.train is False
+    assert info.prompt_types == ["point"]
+    # Defaults are not shared between instances
+    info.prompt_types.append("brush_stroke")
+    assert InfoResponse(name="other").prompt_types == ["point"]
 
     health = HealthResponse(status="ok", model="test_model")
     assert health.status == "ok"
@@ -2267,6 +2272,275 @@ def test_worker_runs_promptable_model_protocol(monkeypatch):
     np.testing.assert_array_equal(
         np.load(io.BytesIO(response.body)), np.full((2, 2), 7)
     )
+    info = endpoints['/info']()
+    assert info.prompt_types == ['point']
+    assert info.capabilities.train is False
+
+
+def _promptable_endpoints(monkeypatch, Model):
+    import types
+    from cellacdc import myutils_models
+    from cellacdc.service import worker
+
+    monkeypatch.setattr(
+        myutils_models, 'import_promptable_segment_module',
+        lambda name: types.SimpleNamespace(Model=Model),
+    )
+    app = worker.create_app('fake', model_kind='promptable')
+    return {
+        route.path: route.endpoint
+        for route in app.routes if hasattr(route, 'methods')
+    }
+
+
+def _brush_strokes_model_class(models):
+    """Fake promptable model that learns from brush strokes (ConvPaint)."""
+    class Model:
+        prompt_types = ('brush_stroke',)
+
+        def __init__(self):
+            self.prompts = {}
+            self.is_trained = False
+            self.train_kwargs = None
+            models.append(self)
+
+        def add_prompt(
+                self, prompt, prompt_id=0, *args, image=None,
+                prompt_type='point', frame_i=0, pos_i=0, **kwargs
+            ):
+            self.prompts[(pos_i, frame_i)] = (image, prompt, prompt_type)
+
+        def train(self, **kwargs):
+            if not self.prompts:
+                raise ValueError('No brush strokes were added.')
+            self.train_kwargs = kwargs
+            num_foreground = sum(
+                np.count_nonzero(annot == 2)
+                for _, annot, _ in self.prompts.values()
+            )
+            self.prompts = {}
+            self.is_trained = True
+            # numpy scalars: the worker must send them as JSON numbers
+            return {
+                'num_images': np.int64(1),
+                'num_foreground_pixels': np.int64(num_foreground),
+                'fraction': np.float32(0.5),
+            }
+
+        def segment(self, image, **kwargs):
+            assert self.is_trained
+            return (image > 5).astype(np.uint32)
+
+    return Model
+
+
+def test_worker_trains_promptable_model(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+    from cellacdc.service import payload
+
+    models = []
+    endpoints = _promptable_endpoints(
+        monkeypatch, _brush_strokes_model_class(models)
+    )
+    info = endpoints['/info']()
+    assert info.capabilities.train is True
+    assert info.prompt_types == ['brush_stroke']
+
+    image = np.arange(12, dtype=np.uint16).reshape(3, 4)
+    annot = np.zeros(image.shape, dtype=np.uint8)
+    annot[0, :2] = 1
+    annot[2, 1:] = 2
+    kwargs, data = payload.encode({
+        'prompt': annot, 'prompt_id': 0, 'image': image,
+        'image_origin': (0, 0, 0), 'prompt_type': 'brush_stroke',
+        'frame_i': 3, 'pos_i': 1,
+    })
+    result = asyncio.run(endpoints['/add_prompt'](
+        kwargs=kwargs, data=_FakeUploadBytes(data)
+    ))
+    assert result == {'status': 'ok'}
+    model, = models
+    prompt_image, prompt, prompt_type = model.prompts[(1, 3)]
+    np.testing.assert_array_equal(prompt_image, image)
+    np.testing.assert_array_equal(prompt, annot)
+    assert prompt_type == 'brush_stroke'
+
+    result = asyncio.run(endpoints['/train'](kwargs='{}', data=None))
+    assert result == {
+        'status': 'ok',
+        'result': {
+            'num_images': 1, 'num_foreground_pixels': 3, 'fraction': 0.5
+        },
+    }
+    assert type(result['result']['num_images']) is int
+    json.dumps(result)
+    assert model.is_trained and model.prompts == {}
+
+    response = asyncio.run(endpoints['/segment'](
+        image=_FakeUpload(image), params=json.dumps({'lab': None}),
+        embedding_meta='', embeddings=None,
+    ))
+    np.testing.assert_array_equal(
+        np.load(io.BytesIO(response.body)), (image > 5).astype(np.uint32)
+    )
+
+    # Optional array kwargs travel in the `.npz` attachment
+    model.prompts[(0, 0)] = (image, annot, 'brush_stroke')
+    kwargs, data = payload.encode({'weights': np.ones(3), 'note': 'x'})
+    asyncio.run(endpoints['/train'](
+        kwargs=kwargs, data=_FakeUploadBytes(data)
+    ))
+    np.testing.assert_array_equal(model.train_kwargs['weights'], np.ones(3))
+    assert model.train_kwargs['note'] == 'x'
+
+    # Model errors (e.g. no brush strokes) are reported with the traceback
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(endpoints['/train'](kwargs='{}', data=None))
+    assert err.value.status_code == 500
+    assert 'No brush strokes were added.' in err.value.detail
+
+
+def test_worker_train_requires_trainable_model(monkeypatch):
+    import asyncio
+    from fastapi import HTTPException
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def add_prompt(self, prompt, prompt_id, **kwargs):
+            pass
+
+        def segment(self, image, **kwargs):
+            return image
+
+    endpoints = _promptable_endpoints(monkeypatch, Model)
+    info = endpoints['/info']()
+    assert info.capabilities.train is False
+    assert info.prompt_types == ['point']
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(endpoints['/train'](kwargs='{}', data=None))
+    assert err.value.status_code == 400
+
+
+def test_model_client_trains_promptable_model_over_http(monkeypatch):
+    import asyncio
+
+    models = []
+    endpoints = _promptable_endpoints(
+        monkeypatch, _brush_strokes_model_class(models)
+    )
+
+    def to_response(url, payload):
+        result = requests.Response()
+        result.status_code = 200
+        result.url = url
+        if hasattr(payload, 'model_dump'):
+            payload = payload.model_dump()
+        elif hasattr(payload, 'dict'):
+            payload = payload.dict()
+        result._content = json.dumps(payload).encode()
+        result.headers['Content-Type'] = 'application/json'
+        return result
+
+    class Session:
+        def get(self, url, timeout=None):
+            path = url.removeprefix('http://testserver')
+            return to_response(url, endpoints[path]())
+
+        def post(self, url, data=None, files=None, timeout=None):
+            path = url.removeprefix('http://testserver')
+            upload = None if files is None else _FakeUploadBytes(
+                files['data'][1]
+            )
+            response = asyncio.run(endpoints[path](
+                kwargs=data['kwargs'], data=upload
+            ))
+            return to_response(url, response)
+
+    client = ModelClient.__new__(ModelClient)
+    client.base_url = 'http://testserver'
+    client.timeout = None
+    client.session = Session()
+    client.refresh_info()
+    assert client.prompt_types == ('brush_stroke',)
+    assert client.info.capabilities.train is True
+
+    image = np.arange(12, dtype=np.uint16).reshape(3, 4)
+    annot = np.zeros(image.shape, dtype=np.uint8)
+    annot[0, :2] = 1
+    annot[2, 1:] = 2
+    client.add_prompt(
+        prompt=annot, prompt_id=0, image=image, image_origin=(0, 0, 0),
+        prompt_type='brush_stroke', frame_i=3, pos_i=1,
+    )
+    model, = models
+    np.testing.assert_array_equal(model.prompts[(1, 3)][1], annot)
+
+    assert client.train() == {
+        'num_images': 1, 'num_foreground_pixels': 3, 'fraction': 0.5
+    }
+    assert model.is_trained and model.prompts == {}
+
+
+def test_model_client_train_forwarding_and_capability():
+    from cellacdc.service import payload
+
+    posted = []
+    info_payload = {
+        'name': 'ConvPaint', 'capabilities': {'train': True},
+        'prompt_types': ['brush_stroke'],
+    }
+
+    class FakeResponse:
+        ok = True
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+        def raise_for_status(self):
+            pass
+
+    class FakeSession:
+        def get(self, url, timeout=None):
+            return FakeResponse(info_payload)
+
+        def post(self, url, data=None, files=None, timeout=None):
+            posted.append((url, data, files))
+            return FakeResponse({'status': 'ok', 'result': {'trained': 1}})
+
+    client = ModelClient.__new__(ModelClient)
+    client.base_url = 'http://x'
+    client.timeout = None
+    client.session = FakeSession()
+    client.refresh_info()
+    assert client.prompt_types == ('brush_stroke',)
+
+    assert client.train() == {'trained': 1}
+    url, data, files = posted[-1]
+    assert url == 'http://x/train'
+    assert json.loads(data['kwargs']) == {}
+    assert files is None
+
+    weights = np.arange(3.0)
+    client.train(weights=weights, iterations=2)
+    url, data, files = posted[-1]
+    assert files['data'][0] == 'train.npz'
+    decoded = payload.decode(data['kwargs'], files['data'][1])
+    np.testing.assert_array_equal(decoded['weights'], weights)
+    assert decoded['iterations'] == 2
+
+    # Point-prompt models and workers without these fields
+    info_payload = {'name': 'sam2'}
+    client.refresh_info()
+    assert client.prompt_types == ('point',)
+    with pytest.raises(NotImplementedError):
+        client.train()
+    assert len(posted) == 2
 
 
 @pytest.mark.parametrize('num_slices,single_slice_payload', [
@@ -2408,7 +2682,7 @@ def test_worker_roundtrips_sam_embeddings(
 
 @pytest.mark.parametrize('path', [
     '/init', '/segment', '/segment3DT', '/second_ch_img_to_stack',
-    '/predictCcaState',
+    '/predictCcaState', '/add_prompt', '/train',
 ])
 def test_worker_model_operations_leave_event_loop_responsive(monkeypatch, path):
     import asyncio
@@ -2427,11 +2701,14 @@ def test_worker_model_operations_leave_event_loop_responsive(monkeypatch, path):
             raise RuntimeError('Event loop did not release the model operation')
         if path == '/predictCcaState':
             return pd.DataFrame({'state': [1]})
-        return args[0]
+        if path == '/train':
+            return {'num_images': 1}
+        return args[0] if args else None
 
     endpoints, _ = _jobs_app(
         monkeypatch, operation, segment3DT=operation,
         second_ch_img_to_stack=operation, predictCcaState=operation,
+        add_prompt=operation, train=operation,
     )
     instantiate = worker.instantiate_model
 
@@ -2441,7 +2718,7 @@ def test_worker_model_operations_leave_event_loop_responsive(monkeypatch, path):
 
     monkeypatch.setattr(worker, 'instantiate_model', initialize)
     arr = np.ones((2, 2))
-    if path == '/init':
+    if path in ('/init', '/add_prompt', '/train'):
         kwargs = {'kwargs': '{}', 'data': None}
     elif path == '/second_ch_img_to_stack':
         kwargs = {'first': _FakeUpload(arr), 'second': _FakeUpload(arr)}
@@ -2473,6 +2750,10 @@ def test_worker_model_operations_leave_event_loop_responsive(monkeypatch, path):
         elif path == '/predictCcaState':
             result = pd.read_json(io.StringIO(response['cca_df']), orient='table')
             pd.testing.assert_frame_equal(result, pd.DataFrame({'state': [1]}))
+        elif path == '/add_prompt':
+            assert response == {'status': 'ok'}
+        elif path == '/train':
+            assert response == {'status': 'ok', 'result': {'num_images': 1}}
         else:
             np.testing.assert_array_equal(np.load(io.BytesIO(response.body)), arr)
 

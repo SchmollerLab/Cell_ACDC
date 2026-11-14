@@ -19,9 +19,17 @@ def import_promptable_segment_module(model_name):
             f'cellacdc.promptable_models.{model_name}.acdcPromptSegment'
         )
     except ModuleNotFoundError as e:
+        # Do not mask missing dependencies imported by the module itself
+        # (or a cancelled installation, e.g., in its `__init__.py`)
+        expected_missing_module = f'cellacdc.promptable_models.{model_name}'
+        if e.name != expected_missing_module:
+            raise
+
         # Check if custom model
         cp = config.ConfigParser()
         cp.read(promptable_models_list_file_path)
+        if model_name not in cp:
+            raise
         model_path = cp[model_name]['path']
         spec = importlib.util.spec_from_file_location(
             'acdcPromptSegment', model_path

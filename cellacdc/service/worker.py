@@ -57,7 +57,9 @@ Typical sequence of requests (what `LocalBackend.start` + `ModelClient` do)
    auxiliary segmentation that cannot be passed on the command line).
 3. `GET /info` to learn the model's capabilities.
 4. `POST /segment` (or `/segment3DT`, or the `/jobs/...` endpoints) for each
-   image.
+   image. Promptable models (`--model-kind promptable`) first receive their
+   prompts with `POST /add_prompt`; models that learn from the prompts
+   (e.g. ConvPaint brush strokes) are then trained with `POST /train`.
 5. `POST /shutdown` when done.
 """
 
@@ -149,6 +151,18 @@ def _filter_kwargs(func, kwargs: Dict[str, Any]) -> Dict[str, Any]:
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
         return kwargs
     return {k: v for k, v in kwargs.items() if k in params}
+
+def _json_safe(value):
+    """Convert a model method's return value to JSON types (e.g. numpy
+    scalars to Python numbers). Unknown objects become strings."""
+    def default(obj):
+        if isinstance(obj, np.generic):
+            return obj.item()
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return str(obj)
+
+    return json.loads(json.dumps(value, default=default))
 
 async def _decode_segment_params(params, params_data):
     from cellacdc.service import payload
@@ -419,9 +433,10 @@ def create_app(
         """Describe the loaded model (read by `ModelClient` when connecting).
 
         Response (JSON, see `schema.InfoResponse`): name, version, whether a
-        GPU is available, and which optional methods the model implements
-        (`segment3DT`, `second_ch_img_to_stack`, `predictCcaState`). HTTP 503
-        before `/init`.
+        GPU is available, which optional methods the model implements
+        (`segment3DT`, `second_ch_img_to_stack`, `predictCcaState`, `train`),
+        and the prompt types of promptable models (default `['point']`).
+        HTTP 503 before `/init`.
         """
         with model_lock:
             model = state['model']
@@ -441,7 +456,11 @@ def create_app(
                     segment3DT=has_segment3DT,
                     second_ch_img_to_stack=has_second_ch,
                     predictCcaState=hasattr(model, "predictCcaState"),
-                )
+                    train=hasattr(model, "train"),
+                ),
+                prompt_types=list(
+                    getattr(model, "prompt_types", ("point",))
+                ),
             )
 
     # ---------------------------------------------------- direct segmentation
@@ -534,6 +553,35 @@ def create_app(
                 call_model_method, 'add_prompt', **decoded
             )
             return {'status': 'ok'}
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    @app.post('/train')
+    async def train(
+            kwargs: str = Form('{}'), data: Optional[UploadFile] = File(None)
+        ):
+        """Train a promptable model on the prompts added with `/add_prompt`
+        (e.g. ConvPaint on brush strokes).
+
+        Request (multipart form, see `ModelClient.train`): same as
+        `/add_prompt` (JSON kwargs and an optional `.npz` with arrays).
+        Response (JSON): `{"status": "ok", "result": <model.train() return
+        value converted to JSON, or None>}`. HTTP 400 if the model has no
+        `train` method, 500 with the traceback on errors.
+        """
+        if not hasattr(model, 'train'):
+            raise HTTPException(
+                status_code=400,
+                detail=f'Model {model_name} does not support train',
+            )
+        try:
+            content = await data.read() if data is not None else None
+            decoded = payload.decode(kwargs, content)
+            result = await run_in_threadpool(
+                call_model_method, 'train', **decoded
+            )
+            return {'status': 'ok', 'result': _json_safe(result)}
         except Exception:
             import traceback
             raise HTTPException(status_code=500, detail=traceback.format_exc())

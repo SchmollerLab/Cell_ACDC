@@ -13,7 +13,7 @@ import inspect
 import logging
 import uuid
 import json
-from collections import defaultdict, Counter
+from collections import defaultdict, Counter, deque
 import psutil
 import zipfile
 from functools import partial
@@ -107,6 +107,7 @@ from . import gui_combine
 from .config import STANDARD_MOUSE_BUTTONS
 from . import rst_utils
 from . import core_split_IDs
+from .promptable_models import utils as prompt_utils
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -612,7 +613,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.labelRoiModel = None
         # model_name -> ModelExecution (environment chosen once per session)
         self.modelExecutions = {}
-        self.promptModelExecutions = {}
+        # Kept when loading new data: the magic prompts toolbar keeps its
+        # initialized model (and execution) across data loads
+        self.promptModelExecutions = getattr(
+            self, 'promptModelExecutions', {}
+        )
         # model_idx -> (settings key, model_name, model) for lost IDs
         self.segForLostIDsModels = {}
         self.autoSegmDoNotAskAgain = False
@@ -638,6 +643,20 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.isMovingLabel = False
         self.isRightClickDragImg1 = False
         self.clickObjYc, self.clickObjXc = None, None
+
+        # Brush strokes prompts (e.g., ConvPaint)
+        # {pos_i: {frame_i: uint8 array with shape segm_data.shape[1:]}}
+        self.brushStrokesAnnotData = {}
+        # {(pos_i, frame_i): deque of (z or None, array copy)}
+        self.brushStrokesUndo = {}
+        self.isBrushStrokeDragImg1 = False
+        self.brushStrokePaintValue = 0
+        self.brushStrokeLastYX = None
+        # (pos_i, frame_i, z) being painted by the current stroke
+        self.brushStrokeDragTarget = None
+        self.brushStrokesChangedSinceTraining = True
+        self.brushStrokesDiskMasks = {}
+        self.brushStrokesWarnedNotPaintable = False
 
         self.cca_df_colnames = cca_df_colnames
         self.cca_df_dtypes = [
@@ -1068,9 +1087,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 magicPromptsON = self.magicPromptsToolButton.isChecked()
                 pointsLayerON = self.togglePointsLayerAction.isChecked()
                 addPointsByClickingButton = self.buttonAddPointsByClickingActive()
-                if (addPointsByClickingButton is not None 
+                if (addPointsByClickingButton is not None
                     and (magicPromptsON or pointsLayerON)
-                    and addPointsByClickingButton.isChecked()):
+                    and addPointsByClickingButton.isChecked()
+                    and not self.isBrushStrokesPromptActive()):
                     return 'toggle_points_layer', tool.icon()
                 else:
                     continue
@@ -2961,6 +2981,24 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.magicPromptsToolbar.sigInterpolateZslice.connect(
             self.magicPromptsInterpolateZsliceToggled
+        )
+        self.magicPromptsToolbar.sigPromptTypeChanged.connect(
+            self.magicPromptsPromptTypeChanged
+        )
+        self.magicPromptsToolbar.sigTrain.connect(
+            self.magicPromptsTrainTriggered
+        )
+        self.magicPromptsToolbar.sigSegmentImage.connect(
+            self.magicPromptsSegmentImageTriggered
+        )
+        self.magicPromptsToolbar.sigSegmentStack.connect(
+            self.magicPromptsSegmentStackTriggered
+        )
+        self.magicPromptsToolbar.sigClearStrokes.connect(
+            partial(self.magicPromptsClearBrushStrokes, only_zoom=False)
+        )
+        self.magicPromptsToolbar.sigClearStrokesOnZoom.connect(
+            partial(self.magicPromptsClearBrushStrokes, only_zoom=True)
         )
 
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
@@ -5345,6 +5383,17 @@ When working with 3D segmentation masks:
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
 
+        # Brush strokes prompts overlay (1 = background, 2 = foreground)
+        self.brushStrokesLayerImg1 = widgets.BaseLabelsImageItem()
+        self.brushStrokesLayerImg1.setLookupTable(np.array(
+            [[0, 0, 0, 0], [60, 160, 255, 255], [255, 80, 80, 255]],
+            dtype=np.uint8
+        ))
+        self.brushStrokesLayerImg1.setLevels([0, 3])
+        self.brushStrokesLayerImg1.setOpacity(0.55)
+        self.brushStrokesLayerImg1.setVisible(False)
+        self.topLayerItems.append(self.brushStrokesLayerImg1)
+
         # Highlighted ID layer items
         self.highLightIDLayerImg1 = pg.ImageItem()
         self.topLayerItems.append(self.highLightIDLayerImg1)  
@@ -6875,13 +6924,18 @@ When working with 3D segmentation masks:
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
-        
+
+        if self.isBrushStrokeDragImg1:
+            # Painting brush strokes prompts (clipped at image borders)
+            self.brushStrokesPaintAt(x, y)
+            return
+
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
-        
+
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             self.drawAutoContour(y, x)
 
@@ -7416,7 +7470,14 @@ When working with 3D segmentation masks:
             self.setHoverToolSymbolData([], [], eraserCursors)
 
         # Draw Brush circle
-        if cursorsInfo['setBrushCursor']:
+        if cursorsInfo['setBrushStrokesCursor']:
+            x, y = event.pos()
+            radius = self.magicPromptsToolbar.brushSizeSpinbox.value()
+            self.setHoverToolSymbolData(
+                [x], [y], self.activeBrushCircleCursors(isHoverImg1),
+                size=2*radius
+            )
+        elif cursorsInfo['setBrushCursor']:
             x, y = event.pos()
             self.updateBrushCursor(x, y, isHoverImg1=isHoverImg1)
             self.hideItemsHoverBrush(xy=(x, y))
@@ -7605,11 +7666,17 @@ When working with 3D segmentation masks:
         magicPromptsON = self.magicPromptsToolButton.isChecked()
         pointsLayerON = self.togglePointsLayerAction.isChecked()
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+        isBrushStrokesPromptActive = self.isBrushStrokesPromptActive()
         setAddPointCursor = (
             (pointsLayerON or magicPromptsON)
             and addPointsByClickingButton is not None
             and not event.isExit()
             and noModifier
+            and not isBrushStrokesPromptActive
+        )
+        setBrushStrokesCursor = (
+            isBrushStrokesPromptActive and not event.isExit() and not alt
+            and not setDelRoiCursor
         )
         overrideCursor = self.app.overrideCursor()
         setPanImageCursor = alt and not event.isExit()
@@ -7639,7 +7706,8 @@ When working with 3D segmentation masks:
             'setManualBackgroundCursor': setManualBackgroundCursor,
             'setAddPointCursor': setAddPointCursor,
             'setZoomRectCursor': setZoomRectCursor,
-            'setEditIDCursor': setEditIDCursor
+            'setEditIDCursor': setEditIDCursor,
+            'setBrushStrokesCursor': setBrushStrokesCursor,
         }
     
     def warnAddingPointWithExistingId(self, point_id, table_endname=''):
@@ -7917,17 +7985,22 @@ When working with 3D segmentation masks:
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
         right_click = event.button() == Qt.MouseButton.RightButton and not alt
-        
+
+        if self.isBrushStrokeDragImg1:
+            # End of brush strokes prompts painting
+            self.brushStrokesEndDrag()
+            return
+
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             return
-        
+
         whitelistIDsON = self.whitelistIDsButton.isChecked()
         drawWhitelistRegionON = (
             whitelistIDsON and self.whitelistIDsToolbar.isRoiToggled()
         )
-        
+
         Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
@@ -8373,7 +8446,10 @@ When working with 3D segmentation masks:
             b.isChecked() for b in self.checkableQButtonsGroup.buttons()
         ])
         self.typingEditID = False
-        showLabelsGradMenu = right_click and not is_right_click_action_ON
+        showLabelsGradMenu = (
+            right_click and not is_right_click_action_ON
+            and not self.isBrushStrokesPromptActive()
+        )
         if showLabelsGradMenu:
             self.gui_rightImageShowContextMenu(event)
             event.ignore()
@@ -8503,7 +8579,21 @@ When working with 3D segmentation masks:
         )
         if isClickOnDelRoi:
             return
-        
+
+        # Ctrl+right-click in snapshot mode annotates divisions
+        isSnapshotDivisionClick = right_click and ctrl and self.isSnapshot
+        isBrushStrokesClick = (
+            (left_click or right_click) and not middle_click and not alt
+            and not isSnapshotDivisionClick
+            and self.isBrushStrokesPromptActive()
+        )
+        if isBrushStrokesClick:
+            # Paint brush strokes prompts (left = foreground,
+            # right = background, Shift = erase). Do not ignore the event
+            # so that img1 grabs the mouse (no pan nor context menu)
+            self.brushStrokesMousePress(event, left_click, modifiers)
+            return
+
         dragImgLeft = (
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
@@ -15184,7 +15274,21 @@ When working with 3D segmentation masks:
         for button in self.leftClickButtons:
             if button != sender:
                 button.setChecked(False)
-        
+
+        isBrushStrokesPromptON = (
+            self.magicPromptsToolButton.isChecked()
+            and self.magicPromptsToolbar.promptType() == 'brush_stroke'
+        )
+        isOtherTool = (
+            sender is not None
+            and sender is not self.magicPromptsToolButton
+            and sender not in self.promptPointsLayerClickButtons()
+        )
+        if isBrushStrokesPromptON and isOtherTool:
+            # Activating another left-click tool (e.g., brush) deactivates
+            # painting brush strokes prompts (W is not a left-click button)
+            self.magicPromptsToolButton.setChecked(False)
+
         if button != self.labelRoiButton:
             # self.labelRoiButton is disconnected so we manually call uncheck
             self.labelRoi_cb(False)
@@ -15221,7 +15325,9 @@ When working with 3D segmentation masks:
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
-        self.magicPromptsToolButton.toggled.connect(self.magicPrompts_cb)
+        # NOTE: `magicPromptsToolButton` is not in `leftClickButtons`, hence
+        # it is never disconnected --> do not connect it here again (it
+        # would call `magicPrompts_cb` multiple times per toggle)
         self.clearFreehandRoiButton.toggled.connect(self.clearFreehandRoi_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiButton.toggled.connect(self.addDelPolyLineRoi_cb)
@@ -15342,16 +15448,33 @@ When working with 3D segmentation masks:
             self.uncheckLeftClickButtons(self.magicPromptsToolButton)
             self.connectLeftClickButtons()
             self.magicPromptsToolbar.setVisible(True)
-            self.promptSegmentPointsLayerToolbar.setVisible(True)
-            if not self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
-                self.addPointsLayerTriggered(
-                    toolbar=self.promptSegmentPointsLayerToolbar
-                )
+            isModelInit = (
+                self.magicPromptsToolbar.viewModelParamsAction.isEnabled()
+            )
+            if not isModelInit:
+                # The prompt type depends on the model --> select the
+                # model first (prompt type applied once initialised)
+                QTimer.singleShot(200, self._magicPromptsSelectModelIfNeeded)
+            else:
+                self.applyMagicPromptsPromptType()
         else:
+            self.brushStrokesEndDrag()
             self.resetCursors()
             self.promptSegmentPointsLayerToolbar.setVisible(False)
             self.magicPromptsToolbar.setVisible(False)
-    
+            self.brushStrokesLayerImg1.setVisible(False)
+            self.setHoverToolSymbolData(
+                [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
+            )
+
+    def _magicPromptsSelectModelIfNeeded(self):
+        if not self.magicPromptsToolButton.isChecked():
+            return
+        if self.magicPromptsToolbar.viewModelParamsAction.isEnabled():
+            # Model already initialised in the meantime
+            return
+        self.magicPromptsToolbar.selectModelAction.trigger()
+
     def copyLostObjContour_cb(self, checked):
         self.copyLostObjToolbar.setVisible(checked)
         
@@ -18341,6 +18464,9 @@ When working with 3D segmentation masks:
         self.enqAutosave()
 
     def undo(self):
+        if self.isBrushStrokesPromptActive() and self.undoBrushStrokes():
+            return
+
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         if addPointsByClickingButton is not None:
             done = self.undoAddPoint(addPointsByClickingButton.action)
@@ -18736,6 +18862,13 @@ When working with 3D segmentation masks:
         apps.downloadModel(model_name, parent=self).download()
         init_kwargs = win.init_kwargs
         execution = self.getPromptModelExecution(model_name)
+        # `prepare` returns the cached spec if already prepared (it is needed
+        # e.g., if the execution was created after loading new data)
+        if execution.prepare() is None:
+            self.logger.info(
+                f'Initialization of {model_name} promptable model cancelled.'
+            )
+            return
         previous_model = getattr(toolbar, 'model', None)
         model = execution.init_model(
             init_kwargs, posData, replace=previous_model
@@ -18751,15 +18884,25 @@ When working with 3D segmentation masks:
         toolbar.model_segment_kwargs = win.model_kwargs
         toolbar.model_name = model_name
         toolbar.viewModelParamsAction.setDisabled(False)
-        
+        toolbar.isModelTrained = False
+        self.brushStrokesChangedSinceTraining = True
+
         self.magicPromptsToolbar.setInitializedModel(
             init_kwargs, toolbar.model_segment_kwargs
         )
-        
+
+        prompt_types = tuple(getattr(model, 'prompt_types', ('point',)))
+        self.magicPromptsToolbar.blockSignals(True)
+        self.magicPromptsToolbar.setSupportedPromptTypes(prompt_types)
+        self.magicPromptsToolbar.blockSignals(False)
+
         self.logger.info(
-            f'Promptable model {model_name} successfully initialised!'
+            f'Promptable model {model_name} successfully initialised '
+            f'(supported prompt types: {prompt_types})!'
         )
-        
+
+        self.applyMagicPromptsPromptType()
+
         # update title
         self.setTitleText()
     
@@ -18798,6 +18941,7 @@ When working with 3D segmentation masks:
             model_name, posData, win, acdcPromptSegment, toolbar
         )
     
+    @exception_handler
     def viewSetMagicPromptModelParams(
             self, 
             model_name, 
@@ -18825,11 +18969,24 @@ When working with 3D segmentation masks:
         win = out.get('win')
         if win.cancel:
             return
-        
-        if win.model_kwargs != segment_kwargs or win.init_kwargs != init_kwargs:
-            self._importInitMagicPromptModel(
-                model_name, posData, win, acdcPromptSegment, toolbar
-            )
+
+        if win.init_kwargs == init_kwargs:
+            if win.model_kwargs != segment_kwargs:
+                # Only segment parameters changed --> do not re-initialise
+                # the model (it would discard e.g., the trained classifier)
+                toolbar.model_segment_kwargs = win.model_kwargs
+                self.magicPromptsToolbar.setInitializedModel(
+                    init_kwargs, toolbar.model_segment_kwargs
+                )
+                self.logger.info(
+                    f'Segmentation parameters of promptable model '
+                    f'{model_name} updated.'
+                )
+            return
+
+        self._importInitMagicPromptModel(
+            model_name, posData, win, acdcPromptSegment, toolbar
+        )
     
     def getMagicPromptsInputs(self, toolbar):
         if not self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
@@ -18978,26 +19135,31 @@ When working with 3D segmentation masks:
         )
     
     def startMagicPromptsWorkerAndWait(
-            self, image, df_points, model, model_segment_kwargs, 
-            image_origin=(0, 0, 0), zoom_slice=None
+            self, image, df_points, model, model_segment_kwargs,
+            image_origin=(0, 0, 0), zoom_slice=None, global_image=None,
+            id_offset=0
         ):
         desc = (
             'Running promptable segmentation model...'
         )
         self.logger.info(desc)
         posData = self.data[self.pos_i]
-        
+
+        if global_image is None:
+            global_image = posData.img_data[posData.frame_i]
+
         self.progressWin = apps.QDialogWorkerProgress(
             title=desc, parent=self, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(0)
         self.progressWin.show(self.app)
-        
+
         self.magicPromptsThread = QThread()
         self.magicPromptsWorker = workers.MagicPromptsWorker(
-            posData, image, df_points, model, model_segment_kwargs, 
+            posData, image, df_points, model, model_segment_kwargs,
             image_origin=image_origin,
-            global_image=posData.img_data[posData.frame_i]
+            global_image=global_image,
+            id_offset=id_offset
         )
         
         self.magicPromptsWorker.moveToThread(
@@ -19027,7 +19189,10 @@ When working with 3D segmentation masks:
             self.workerProgress
         )
         self.magicPromptsWorker.signals.finished.connect(
-            partial(self.magicPromptsWorkerFinished, zoom_slice=zoom_slice)
+            partial(
+                self.magicPromptsWorkerFinished, zoom_slice=zoom_slice,
+                image=global_image
+            )
         )
         
         self.magicPromptsThread.started.connect(
@@ -19042,7 +19207,8 @@ When working with 3D segmentation masks:
         self.magicPromptsWorkerLoop.exit()
         self.workerCritical(error)
     
-    def magicPromptsWorkerFinished(self, output, zoom_slice=None):
+    @exception_handler
+    def magicPromptsWorkerFinished(self, output, zoom_slice=None, image=None):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
@@ -19058,9 +19224,11 @@ When working with 3D segmentation masks:
             zoom_slice = (slice(None), slice(None))
             is_zoom = False
         
-        img = (
-            posData.img_data[posData.frame_i][..., zoom_slice[0], zoom_slice[1]]
-        )
+        if image is None:
+            image = posData.img_data[posData.frame_i]
+        # `image` is the image the model segmented (e.g., the 2D z-slice for
+        # 2D segmentation of z-stack data), which matches the labels shape
+        img = image[..., zoom_slice[0], zoom_slice[1]]
         images = [img, img, img, img]
         labels_overlays = [
             posData.lab[..., zoom_slice[0], zoom_slice[1]], 
@@ -19117,18 +19285,649 @@ When working with 3D segmentation masks:
         selected_idx = promptSegmResultsWindow.selected_idx
         zoom_out_lab = results[selected_idx][..., zoom_slice[0], zoom_slice[1]]
         zoom_out_lab_mask = zoom_out_lab > 0
-        
-        lab = posData.allData_li[posData.frame_i]['labels']        
+
+        # Write directly into current labels (writing into the stored
+        # labels and calling `get_data` would discard unsaved edits and
+        # fail if the frame was never stored)
+        lab = posData.lab
         lab[..., zoom_slice[0], zoom_slice[1]][zoom_out_lab_mask] = (
             zoom_out_lab[zoom_out_lab_mask]
         )
-        
-        posData.allData_li[posData.frame_i]['labels'] = lab
-        self.get_data()
+
         self.update_rp()
         self.store_data(autosave=False)
         self.updateAllImages()
-        
+
+    def isBrushStrokesPromptActive(self):
+        """True if Magic prompts is active with the 'brush_stroke' prompt
+        type in a mode where segmentation masks can be edited"""
+        try:
+            if not self.magicPromptsToolButton.isChecked():
+                return False
+            if self.magicPromptsToolbar.promptType() != 'brush_stroke':
+                return False
+        except AttributeError:
+            return False
+
+        # Another tool (e.g., brush, eraser, add points, keep IDs, or
+        # right-click tools like edit ID or separate) is active
+        otherToolButtons = [*getattr(self, 'leftClickButtons', [])]
+        checkableQButtonsGroup = getattr(self, 'checkableQButtonsGroup', None)
+        if checkableQButtonsGroup is not None:
+            otherToolButtons.extend(checkableQButtonsGroup.buttons())
+        for button in otherToolButtons:
+            if button.isChecked():
+                return False
+
+        mode = str(self.modeComboBox.currentText())
+        return (
+            mode == 'Segmentation and Tracking'
+            or getattr(self, 'isSnapshot', False)
+        )
+
+    def magicPromptsPromptTypeChanged(self, toolbar, prompt_type):
+        self.applyMagicPromptsPromptType()
+
+    def applyMagicPromptsPromptType(self):
+        brushCircles = (self.ax2_BrushCircle, self.ax1_BrushCircle)
+        if not self.magicPromptsToolButton.isChecked():
+            self.brushStrokesLayerImg1.setVisible(False)
+            return
+
+        prompt_type = self.magicPromptsToolbar.promptType()
+        if prompt_type == 'brush_stroke':
+            self.promptSegmentPointsLayerToolbar.setVisible(False)
+            # Deactivate adding prompt points (e.g., middle-click would add
+            # points instead of deleting objects, and Ctrl+Z would undo
+            # hidden points)
+            self.deactivatePromptPointsLayerClickButtons()
+            # Neutral colours for the brush circle (the points layer
+            # sets the circle colours to the layer colour)
+            for brushCircle in brushCircles:
+                brushCircle.setPen(self.ax2_BrushCirclePen)
+                brushCircle.setBrush(self.ax2_BrushCircleBrush)
+            self.setBrushStrokesLayerImage()
+            return
+
+        self.brushStrokesEndDrag()
+        self.brushStrokesLayerImg1.setVisible(False)
+        self.setHoverToolSymbolData([], [], brushCircles)
+        self.reactivatePromptPointsLayerClickButtons()
+        addPointsByClickingButton = self.buttonAddPointsByClickingActive()
+        if addPointsByClickingButton is not None:
+            action = addPointsByClickingButton.action
+            self.ax1_BrushCircle.setBrush(action.brushColor)
+            self.ax1_BrushCircle.setPen(action.penColor)
+        self.promptSegmentPointsLayerToolbar.setVisible(True)
+        if not self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
+            # Deferred so that the (non-modal) dialog is not opened while
+            # the window is disabled (e.g., during model initialization)
+            QTimer.singleShot(100, self._magicPromptsAddPointsLayerIfNeeded)
+
+    def promptPointsLayerClickButtons(self):
+        """Buttons to add points by clicking of the promptable models
+        points layer"""
+        buttons = []
+        for action in self.promptSegmentPointsLayerToolbar.actions()[1:]:
+            if getattr(action, 'layerTypeIdx', None) != 4:
+                continue
+            buttons.append(action.button)
+        return buttons
+
+    def deactivatePromptPointsLayerClickButtons(self):
+        toRecheck = getattr(self, 'promptPointsButtonsToRecheck', [])
+        for button in self.promptPointsLayerClickButtons():
+            if not button.isChecked():
+                continue
+            button.setChecked(False)
+            # Hide points of the hidden layer (also done by
+            # `addPointsByClickingButtonToggled` when connected)
+            button.action.scatterItem.setVisible(False)
+            if button not in toRecheck:
+                toRecheck.append(button)
+        self.promptPointsButtonsToRecheck = toRecheck
+
+    def reactivatePromptPointsLayerClickButtons(self):
+        toRecheck = getattr(self, 'promptPointsButtonsToRecheck', [])
+        self.promptPointsButtonsToRecheck = []
+        validButtons = self.promptPointsLayerClickButtons()
+        for button in toRecheck:
+            if button not in validButtons or button.isChecked():
+                continue
+            # Same as clicking on the button (`addPointsByClickingButtonToggled`)
+            button.setChecked(True)
+            button.action.scatterItem.setVisible(True)
+
+    def _magicPromptsAddPointsLayerIfNeeded(self):
+        if not self.magicPromptsToolButton.isChecked():
+            return
+        if self.magicPromptsToolbar.promptType() != 'point':
+            return
+        if self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
+            return
+        self.addPointsLayerTriggered(
+            toolbar=self.promptSegmentPointsLayerToolbar
+        )
+
+    def getBrushStrokesAnnotShape(self, posData):
+        segm_data = getattr(posData, 'segm_data', None)
+        if segm_data is not None and segm_data.ndim >= 3:
+            return tuple(segm_data.shape[1:])
+        return tuple(posData.lab.shape)
+
+    def getBrushStrokesAnnot(self, pos_i=None, frame_i=None, create=True):
+        """Get the brush strokes annotation array (uint8, 0 = unlabelled,
+        1 = background, 2 = foreground) with shape (Y, X) or (Z, Y, X) of
+        position `pos_i` and frame `frame_i` (default current ones)."""
+        if pos_i is None:
+            pos_i = self.pos_i
+        posData = self.data[pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
+
+        shape = self.getBrushStrokesAnnotShape(posData)
+        posAnnotData = self.brushStrokesAnnotData.get(pos_i, {})
+        annot = posAnnotData.get(frame_i)
+        if annot is not None and annot.shape != shape:
+            self.logger.warning(
+                f'[WARNING]: Discarding brush strokes of frame n. '
+                f'{frame_i+1} because their shape {annot.shape} is '
+                f'different from the segmentation masks shape {shape}.'
+            )
+            posAnnotData.pop(frame_i, None)
+            annot = None
+
+        if annot is None and create:
+            annot = np.zeros(shape, dtype=np.uint8)
+            self.brushStrokesAnnotData.setdefault(pos_i, {})[frame_i] = annot
+
+        return annot
+
+    def getBrushStrokesDepthAxes(self):
+        if not self.switchPlaneCombobox.isEnabled():
+            return 'z'
+        return self.switchPlaneCombobox.depthAxes()
+
+    def isBrushStrokesViewPaintable(self, annot_ndim):
+        if self.getBrushStrokesDepthAxes() != 'z':
+            return False
+        if annot_ndim == 2:
+            return True
+        return self.zProjComboBox.currentText() == 'single z-slice'
+
+    def getBrushStrokesAnnot2D(self, create=True, return_z=False):
+        """Get the writable 2D view of the brush strokes annotation of the
+        current frame used for painting. Returns None if the current view
+        is display-only (z-projections or plane views other than z)."""
+        posData = self.data[self.pos_i]
+        annot_ndim = len(self.getBrushStrokesAnnotShape(posData))
+        view, z = None, None
+        if self.isBrushStrokesViewPaintable(annot_ndim):
+            annot = self.getBrushStrokesAnnot(create=create)
+            if annot is None:
+                pass
+            elif annot.ndim == 2:
+                view = annot
+            else:
+                z = self.zSliceScrollBar.sliderPosition()
+                z = min(max(z, 0), len(annot)-1)
+                view = annot[z]
+
+        if return_z:
+            return view, z
+
+        return view
+
+    def getBrushStrokesAnnotDisplay(self):
+        """Get the 2D image of the brush strokes of the current frame as
+        displayed (current z-slice, plane, or max projection)"""
+        annot = self.getBrushStrokesAnnot(create=False)
+        if annot is None:
+            return
+
+        depthAxes = self.getBrushStrokesDepthAxes()
+        if annot.ndim == 2:
+            return annot if depthAxes == 'z' else None
+
+        idx = max(self.zSliceScrollBar.sliderPosition(), 0)
+        if depthAxes == 'y':
+            return annot[:, min(idx, annot.shape[1]-1)]
+
+        if depthAxes == 'x':
+            return annot[:, :, min(idx, annot.shape[2]-1)]
+
+        if self.zProjComboBox.currentText() != 'single z-slice':
+            return annot.max(axis=0)
+
+        return annot[min(idx, len(annot)-1)]
+
+    def setBrushStrokesLayerImage(self):
+        item = getattr(self, 'brushStrokesLayerImg1', None)
+        if item is None:
+            return
+
+        isActive = self.isBrushStrokesPromptActive()
+        item.setVisible(isActive)
+        if not isActive:
+            return
+
+        # Keep brush strokes undo available when coming back to a frame
+        # (`get_data` disables the undo action if there are no masks undo
+        # states)
+        posData = self.data[self.pos_i]
+        undoQueues = getattr(self, 'brushStrokesUndo', {})
+        if undoQueues.get((self.pos_i, posData.frame_i)):
+            self.undoAction.setEnabled(True)
+
+        annot2D = self.getBrushStrokesAnnotDisplay()
+        if annot2D is None:
+            item.clear()
+            return
+
+        item.setImage(annot2D, autoLevels=False)
+
+    def getBrushStrokesDiskMask(self, radius):
+        diskMask = self.brushStrokesDiskMasks.get(radius)
+        if diskMask is None:
+            diskMask = prompt_utils.get_brush_disk_mask(radius)
+            self.brushStrokesDiskMasks[radius] = diskMask
+        return diskMask
+
+    def warnBrushStrokesNotPaintable(self):
+        txt = (
+            'Brush strokes can be painted only in "single z-slice" mode '
+            'viewing the z-slices (z-projections and other planes are '
+            'display-only).'
+        )
+        self.titleLabel.setText(txt, color='r')
+        if self.brushStrokesWarnedNotPaintable:
+            return
+        self.brushStrokesWarnedNotPaintable = True
+        self.logger.warning(f'[WARNING]: {txt}')
+
+    def brushStrokesMousePress(self, event, left_click, modifiers):
+        annot2D, z = self.getBrushStrokesAnnot2D(create=True, return_z=True)
+        if annot2D is None:
+            self.warnBrushStrokesNotPaintable()
+            return
+
+        x, y = event.pos().x(), event.pos().y()
+        Y, X = annot2D.shape
+        if not myutils.is_in_bounds(int(x), int(y), X, Y):
+            return
+
+        self.storeBrushStrokesUndo(annot2D, z)
+
+        if modifiers == Qt.ShiftModifier:
+            # Erase
+            self.brushStrokePaintValue = 0
+        elif left_click:
+            # Foreground
+            self.brushStrokePaintValue = 2
+        else:
+            # Background
+            self.brushStrokePaintValue = 1
+
+        self.brushStrokesChangedSinceTraining = True
+        self.isBrushStrokeDragImg1 = True
+        self.brushStrokeLastYX = None
+        self.brushStrokeDragTarget = self.getBrushStrokesPaintTarget(z)
+        self.brushStrokesPaintAt(x, y)
+
+    def getBrushStrokesPaintTarget(self, z):
+        posData = self.data[self.pos_i]
+        return (self.pos_i, posData.frame_i, z)
+
+    def brushStrokesPaintAt(self, x, y):
+        annot2D, z = self.getBrushStrokesAnnot2D(create=True, return_z=True)
+        if annot2D is None:
+            self.brushStrokesEndDrag()
+            return
+
+        target = self.getBrushStrokesPaintTarget(z)
+        if target != getattr(self, 'brushStrokeDragTarget', target):
+            # Frame, position or z-slice changed during the stroke (e.g.,
+            # with the keyboard) --> end the stroke (the undo state was
+            # stored for the previous target only)
+            self.brushStrokesEndDrag()
+            return
+
+        radius = self.magicPromptsToolbar.brushSizeSpinbox.value()
+        prompt_utils.paint_brush_stroke(
+            annot2D, y, x, self.brushStrokePaintValue, radius,
+            last_yx=self.brushStrokeLastYX,
+            disk_mask=self.getBrushStrokesDiskMask(radius)
+        )
+        self.brushStrokeLastYX = (y, x)
+        self.brushStrokesLayerImg1.setVisible(True)
+        self.brushStrokesLayerImg1.setImage(annot2D, autoLevels=False)
+
+    def brushStrokesEndDrag(self):
+        self.isBrushStrokeDragImg1 = False
+        self.brushStrokeLastYX = None
+        self.brushStrokeDragTarget = None
+
+    def storeBrushStrokesUndo(self, annot, z=None):
+        """Store a copy of `annot` (2D z-slice `z` or the full annotation of
+        the current frame if `z` is None) to undo brush strokes"""
+        posData = self.data[self.pos_i]
+        key = (self.pos_i, posData.frame_i)
+        undoQueue = self.brushStrokesUndo.get(key)
+        if undoQueue is None:
+            undoQueue = deque(maxlen=20)
+            self.brushStrokesUndo[key] = undoQueue
+        undoQueue.append((z, annot.copy()))
+        self.undoAction.setEnabled(True)
+
+    def undoBrushStrokes(self):
+        posData = self.data[self.pos_i]
+        key = (self.pos_i, posData.frame_i)
+        undoQueue = self.brushStrokesUndo.get(key)
+        if not undoQueue:
+            return False
+
+        z, prevAnnot = undoQueue.pop()
+        annot = self.getBrushStrokesAnnot(create=True)
+        target = annot if z is None else annot[z]
+        if target.shape != prevAnnot.shape:
+            return False
+
+        target[...] = prevAnnot
+        self.brushStrokesChangedSinceTraining = True
+        self.setBrushStrokesLayerImage()
+        return True
+
+    def getBrushStrokesZoomRegion(self, annot):
+        """Indexing of `annot` corresponding to the zoomed area (all the
+        depth axis)"""
+        ((xmin, xmax), (ymin, ymax)) = self.ax1.viewRange()
+        depthAxes = 'z'
+        if annot.ndim == 3:
+            depthAxes = self.getBrushStrokesDepthAxes()
+
+        if depthAxes == 'y':
+            numRows, numCols = annot.shape[0], annot.shape[2]
+        elif depthAxes == 'x':
+            numRows, numCols = annot.shape[0], annot.shape[1]
+        else:
+            numRows, numCols = annot.shape[-2:]
+
+        row_start, row_end = int(max(0, ymin)), int(min(numRows, ymax))
+        col_start, col_end = int(max(0, xmin)), int(min(numCols, xmax))
+        if row_start >= row_end or col_start >= col_end:
+            return
+
+        rows = slice(row_start, row_end)
+        cols = slice(col_start, col_end)
+        if depthAxes == 'y':
+            return (rows, slice(None), cols)
+
+        if depthAxes == 'x':
+            return (rows, cols, slice(None))
+
+        return (Ellipsis, rows, cols)
+
+    def magicPromptsClearBrushStrokes(self, toolbar, only_zoom=False):
+        annot = self.getBrushStrokesAnnot(create=False)
+        if annot is None or not annot.any():
+            return
+
+        if only_zoom:
+            region = self.getBrushStrokesZoomRegion(annot)
+            if region is None:
+                return
+        else:
+            region = (Ellipsis,)
+
+        self.storeBrushStrokesUndo(annot, None)
+        annot[region] = 0
+        self.brushStrokesChangedSinceTraining = True
+        self.setBrushStrokesLayerImage()
+
+        where = 'in the zoomed area ' if only_zoom else ''
+        self.logger.info(f'Brush strokes {where}of current frame cleared.')
+
+    def getBrushStrokesTrainingItems(self):
+        """List of (pos_i, frame_i, annot) with at least one brush stroke
+        across all loaded positions"""
+        items = []
+        for pos_i, posAnnotData in sorted(self.brushStrokesAnnotData.items()):
+            if pos_i >= len(self.data):
+                continue
+            for frame_i, annot in sorted(posAnnotData.items()):
+                if annot is None or not annot.any():
+                    continue
+                items.append((pos_i, frame_i, annot))
+        return items
+
+    @exception_handler
+    @disableWindow
+    def magicPromptsTrainTriggered(self, toolbar):
+        self.magicPromptsTrainBrushStrokes(toolbar)
+
+    def magicPromptsTrainBrushStrokes(self, toolbar):
+        """Train the promptable model on all the brush strokes. Returns
+        True if training was successful."""
+        if not toolbar.viewModelParamsAction.isEnabled():
+            _warnings.warnPromptSegmentModelNotInit(qparent=self)
+            return False
+
+        items = self.getBrushStrokesTrainingItems()
+        if not items:
+            _warnings.warnBrushStrokesMissing(qparent=self)
+            return False
+
+        hasForeground = any((annot == 2).any() for _, _, annot in items)
+        hasBackground = any((annot == 1).any() for _, _, annot in items)
+        if not hasForeground or not hasBackground:
+            _warnings.warnBrushStrokesMissingClass(
+                hasForeground, hasBackground, qparent=self
+            )
+            return False
+
+        prompts_data = []
+        for pos_i, frame_i, annot in items:
+            image = prompt_utils.get_brush_strokes_image(
+                self.data[pos_i], frame_i, annot.ndim
+            )
+            prompts_data.append((pos_i, frame_i, annot.copy(), image))
+
+        model_name = getattr(toolbar, 'model_name', 'promptable model')
+        desc = f'Training {model_name} on brush strokes...'
+        self.logger.info(
+            f'{desc} (number of annotated images = {len(prompts_data)})'
+        )
+        self.titleLabel.setText(desc, color=self.titleColor)
+
+        from .service import model_execution
+
+        progressWin = apps.QDialogWorkerProgress(
+            title=desc, parent=self, pbarDesc=desc
+        )
+        progressWin.mainPbar.setMaximum(0)
+        progressWin.show(self.app)
+        wasEnabled = self.isEnabled()
+        self.setDisabled(True)
+        try:
+            result = model_execution.run_in_background(
+                self, prompt_utils.train_model_on_brush_strokes,
+                toolbar.model, prompts_data, log_func=self.logger.info
+            )
+        finally:
+            progressWin.workerFinished = True
+            progressWin.close()
+            if wasEnabled:
+                self.setDisabled(False)
+
+        toolbar.isModelTrained = True
+        self.brushStrokesChangedSinceTraining = False
+        self.logger.info(
+            f'{model_name} successfully trained on brush strokes. '
+            f'Training summary: {result}'
+        )
+        self.titleLabel.setText(
+            f'{model_name} successfully trained on brush strokes!',
+            color='g'
+        )
+        return True
+
+    def magicPromptsEnsureBrushStrokesTrained(self, toolbar):
+        """(Re-)train the model if not trained or if the brush strokes
+        changed since last training. Returns True if the model is ready
+        to segment."""
+        if not toolbar.viewModelParamsAction.isEnabled():
+            _warnings.warnPromptSegmentModelNotInit(qparent=self)
+            return False
+
+        hasStrokes = len(self.getBrushStrokesTrainingItems()) > 0
+        isModelTrained = getattr(toolbar, 'isModelTrained', False)
+        needsTraining = (
+            not isModelTrained
+            or (self.brushStrokesChangedSinceTraining and hasStrokes)
+        )
+        if not needsTraining:
+            return True
+
+        if not hasStrokes:
+            _warnings.warnBrushStrokesMissing(qparent=self)
+            return False
+
+        if isModelTrained:
+            self.logger.info(
+                'Brush strokes changed since last training --> '
+                're-training the model...'
+            )
+
+        return self.magicPromptsTrainBrushStrokes(toolbar)
+
+    @exception_handler
+    @disableWindow
+    def magicPromptsSegmentImageTriggered(self, toolbar):
+        isReady = self.magicPromptsEnsureBrushStrokesTrained(toolbar)
+        if not isReady:
+            self.logger.info('Segmentation with brush strokes cancelled.')
+            return
+
+        posData = self.data[self.pos_i]
+        image = prompt_utils.get_brush_strokes_image(
+            posData, posData.frame_i, posData.lab.ndim
+        )
+        # New IDs from skimage.measure.label start at 1 --> offset them to
+        # avoid collisions with existing IDs
+        id_offset = self.setBrushID(return_val=True) - 1
+
+        self.logger.info(
+            f'Segmenting current image with {toolbar.model_name}...'
+        )
+        self.startMagicPromptsWorkerAndWait(
+            image, None, toolbar.model, toolbar.model_segment_kwargs,
+            global_image=image, id_offset=id_offset
+        )
+
+    @exception_handler
+    def magicPromptsSegmentStackTriggered(self, toolbar):
+        posData = self.data[self.pos_i]
+        if posData.SizeT == 1:
+            self.logger.info(
+                'Loaded data has only one frame --> segmenting only the '
+                'current image.'
+            )
+            self.magicPromptsSegmentImageTriggered(toolbar)
+            return
+
+        isReady = self.magicPromptsEnsureBrushStrokesTrained(toolbar)
+        if not isReady:
+            self.logger.info('Segmentation with brush strokes cancelled.')
+            return
+
+        model_name = toolbar.model_name
+        win = apps.startStopFramesDialog(
+            posData.SizeT, currentFrameNum=posData.frame_i+1, parent=self,
+            windowTitle=(
+                f'Select frame range to segment with {model_name} '
+                '(existing masks will be replaced)'
+            )
+        )
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Segmentation of multiple frames cancelled.')
+            return
+
+        startFrameNum, stopFrameNum = win.startFrame, win.stopFrame
+
+        # Never re-initialize past the current frame: the frames after the
+        # last validated frame (incl. the first segmented one when starting
+        # after the current frame) are then tracked when visited
+        from_frame_i = min(startFrameNum-1, posData.frame_i)
+        cancel = self.warnReinitLastSegmFrame(frame_n=from_frame_i+1)
+        if cancel:
+            self.logger.info('Segmentation of multiple frames cancelled.')
+            return
+
+        # Store current edits since `segmVideoWorkerFinished` calls get_data
+        self.store_data(autosave=False)
+        self.extendSegmDataIfNeeded(stopFrameNum)
+        self.reInitLastSegmFrame(
+            from_frame_i=from_frame_i, updateImages=False, force=True
+        )
+
+        # `segmVideoWorkerFinished` releases `self.segmVideoModel` --> make
+        # sure it is not the promptable model (and release stale models)
+        previous = getattr(self, 'segmVideoModel', None)
+        if previous is not None:
+            self.segmVideoModel = None
+            self.releaseSegmModel(*previous)
+
+        annot_ndim = len(self.getBrushStrokesAnnotShape(posData))
+
+        self.titleLabel.setText(
+            f'{model_name} is segmenting frames... '
+            '(check progress in terminal/console)', color=self.titleColor
+        )
+
+        self.progressWin = apps.QDialogWorkerProgress(
+            title=f'Segmenting frames with {model_name}', parent=self,
+            pbarDesc=(
+                f'Segmenting from frame n. {startFrameNum} to '
+                f'{stopFrameNum}...'
+            )
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(stopFrameNum-startFrameNum+1)
+
+        self.magicPromptsSegmStackThread = QThread()
+        self.magicPromptsSegmStackWorker = (
+            workers.MagicPromptsSegmStackWorker(
+                posData, toolbar.model, toolbar.model_segment_kwargs,
+                startFrameNum, stopFrameNum, annot_ndim
+            )
+        )
+        worker = self.magicPromptsSegmStackWorker
+        thread = self.magicPromptsSegmStackThread
+        worker.moveToThread(thread)
+
+        # The worker uses the toolbar's model --> prevent training or
+        # segmenting (or re-initializing the model) while it runs. Connected
+        # first so that the toolbar is re-enabled even if the next slots fail
+        worker.finished.connect(self._magicPromptsSegmStackDone)
+        worker.critical.connect(self._magicPromptsSegmStackDone)
+
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+
+        worker.critical.connect(self.workerCritical)
+        worker.finished.connect(self.segmVideoWorkerFinished)
+        worker.progressBar.connect(self.workerUpdateProgressbar)
+        worker.progress.connect(self.workerProgress)
+
+        thread.started.connect(worker.run)
+        self.magicPromptsToolbar.setDisabled(True)
+        thread.start()
+
+    def _magicPromptsSegmStackDone(self, *args):
+        self.magicPromptsToolbar.setDisabled(False)
+
     def manualTracking_cb(self, checked):
         self.manualTrackingToolbar.setVisible(checked)
         if checked:
@@ -21216,7 +22015,8 @@ When working with 3D segmentation masks:
         posData.UndoRedoCcaStates = [[] for _ in range(posData.SizeT)]
         if hasattr(self, 'undoAddPointQueueMapper'):
             self.undoAddPointQueueMapper = defaultdict(list)
-    
+        self.brushStrokesUndo = {}
+
     def updatePos(self):
         self.clearUndoQueue()
         self.setStatusBarLabel()
@@ -23274,6 +24074,7 @@ When working with 3D segmentation masks:
             self.setGraphicalAnnotZsliceScrolling()
             self.setOverlayLabelsItems()
             self.drawPointsLayers(computePointsLayers=False)
+            self.setBrushStrokesLayerImage()
             self.zSliceScrollBarStartedMoving = False
             self.highlightSearchedID(self.highlightedID, force=True)
             
@@ -23583,6 +24384,7 @@ When working with 3D segmentation masks:
         self.keepIDsTempLayerRight.clear()
         self.highLightIDLayerImg1.clear()
         self.highLightIDLayerRightImage.clear()
+        self.brushStrokesLayerImg1.clear()
         self.searchedIDitemLeft.clear()
         self.searchedIDitemRight.clear()
         self.ax1_contoursImageItem.clear()
@@ -28451,9 +29253,18 @@ When working with 3D segmentation masks:
             self.promptSegmentPointsLayerToolbar.isPointsLayerInit = True
             self.magicPromptsToolbar.clearPointsAction.setDisabled(False)
             self.magicPromptsToolbar.clearPointsActionOnZoom.setDisabled(False)
-            QTimer.singleShot(
-                200, self.magicPromptsToolbar.selectModelAction.trigger
+            isModelInit = (
+                self.magicPromptsToolbar.viewModelParamsAction.isEnabled()
             )
+            if not isModelInit:
+                QTimer.singleShot(
+                    200, self.magicPromptsToolbar.selectModelAction.trigger
+                )
+            elif self.magicPromptsToolbar.promptType() == 'brush_stroke':
+                # Layer created from a dialog left open while switching to
+                # a brush-strokes model --> do not add points with clicks
+                self.promptSegmentPointsLayerToolbar.setVisible(False)
+                self.deactivatePromptPointsLayerClickButtons()
         
         self.addPointsWin = None
     
@@ -32233,6 +33044,7 @@ When working with 3D segmentation masks:
         self.updateTempLayerKeepIDs()
         self.whitelistUpdateTempLayer()
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
+        self.setBrushStrokesLayerImage()
         self.setManualBackgroundImage()
         self.annotateAssignedObjsAcdcTrackerSecondStep()
         
@@ -34102,8 +34914,11 @@ When working with 3D segmentation masks:
             
         return tracked_lab, assignments
     
-    def warnReinitLastSegmFrame(self):
-        current_frame_n = self.navigateScrollBar.value()
+    def warnReinitLastSegmFrame(self, frame_n=None):
+        if frame_n is None:
+            current_frame_n = self.navigateScrollBar.value()
+        else:
+            current_frame_n = frame_n
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
             Are you sure you want to <b>re-initialize the last visited and 

@@ -271,6 +271,47 @@ def warnPromptSegmentModelNotInit(qparent=None):
     )
     return msg.cancel
 
+def warnBrushStrokesMissing(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        There are <b>no brush strokes</b> to train the model on!<br><br>
+        Please, paint <b>foreground</b> strokes (left-click and drag) and
+        <b>background</b> strokes (right-click and drag) on the image
+        first.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Brush strokes missing', txt,
+    )
+    return msg.cancel
+
+def warnBrushStrokesMissingClass(
+        hasForeground, hasBackground, qparent=None
+    ):
+    from cellacdc import widgets
+    missing = []
+    if not hasForeground:
+        missing.append(
+            '<b>foreground</b> strokes (left-click and drag)'
+        )
+    if not hasBackground:
+        missing.append(
+            '<b>background</b> strokes (right-click and drag)'
+        )
+    missing_txt = ' and '.join(missing)
+    txt = html_utils.paragraph(f"""
+        To train the model you need <b>both foreground and background</b>
+        brush strokes.<br><br>
+        Please, paint {missing_txt} on at least one image.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Foreground or background brush strokes missing', txt,
+    )
+    return msg.cancel
+
 def warnNotEnoughG1Cells(numCellsG1, frame_i, numNewCells, qparent=None):
     from cellacdc import widgets
     if numCellsG1 == 0:

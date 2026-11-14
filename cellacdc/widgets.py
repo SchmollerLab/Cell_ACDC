@@ -12773,16 +12773,28 @@ class MagicPromptsToolbar(ToolBar):
         str, object, list, list, str, object, object, object
     )
     sigInterpolateZslice = Signal(bool)
-    
+    sigTrain = Signal(object)
+    sigSegmentImage = Signal(object)
+    sigSegmentStack = Signal(object)
+    sigClearStrokes = Signal(object)
+    sigClearStrokesOnZoom = Signal(object)
+
+    promptTypeTextToKey = {
+        'Points': 'point',
+        'Brush strokes': 'brush_stroke',
+    }
+    promptTypeKeyToText = {
+        key: text for text, key in promptTypeTextToKey.items()
+    }
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self._parent = parent
-        
-        prompt_types = (
-            'Points',
-        )
-        
+        self.isModelTrained = False
+
+        prompt_types = tuple(self.promptTypeTextToKey.keys())
+
         self.selectModelAction = self.addButton(':select-list.svg')
         self.selectModelAction.setToolTip(
             'Select the promptable model to use'
@@ -12799,9 +12811,14 @@ class MagicPromptsToolbar(ToolBar):
         self.promptTypeCombobox = self.addComboBox(
             prompt_types, label='Prompt type: ',
         )
-        
+        self.promptTypeCombobox.setToolTip(
+            'Type of prompts used by the promptable model.\n\n'
+            'The available types depend on the selected model (e.g., '
+            'ConvPaint uses brush strokes).'
+        )
+
         self.addSeparator()
-        
+
         self.interpolateZslicesCheckbox = self.addCheckBox(
             'Interpolate points on missing z-slices', checked=False
         )
@@ -12814,9 +12831,9 @@ class MagicPromptsToolbar(ToolBar):
             'NOTE: The points will be added only when running the model and '
             'removed afterwards.'
         )
-        
-        self.addSeparator()
-        
+
+        interpolateSeparator = self.addSeparator()
+
         self.computeOnZoomAction = self.addButton(':compute-zoom.svg')
         self.computeOnZoomAction.setToolTip(
             'Compute the segmentation on the zoomed area of the image '
@@ -12839,16 +12856,87 @@ class MagicPromptsToolbar(ToolBar):
             'Clear all points on the zoomed area of the image'
         )
         self.clearPointsActionOnZoom.setDisabled(True)
-        
-        self.addSeparator()
-        
+
+        pointsActionsSeparator = self.addSeparator()
+
+        # Brush strokes widgets (e.g., ConvPaint)
+        self.brushSizeSpinbox = self.addSpinBox(label='Brush size: ')
+        self.brushSizeSpinbox.setMinimum(1)
+        self.brushSizeSpinbox.setMaximum(200)
+        self.brushSizeSpinbox.setValue(4)
+        self.brushSizeSpinbox.setToolTip(
+            'Radius in pixels of the brush used to paint the brush strokes'
+        )
+
+        brushSizeSeparator = self.addSeparator()
+
+        self.trainAction = self.addButton(':train.svg')
+        self.trainAction.setToolTip(
+            'Train the model on the brush strokes painted on all the '
+            'frames and positions\n\n'
+            'Left-click and drag to paint foreground, right-click and drag '
+            'to paint background.'
+        )
+
+        self.segmentImageAction = self.addButton(':segment.svg')
+        self.segmentImageAction.setToolTip(
+            'Segment the current image with the trained model\n\n'
+            'NOTE: The model is automatically (re-)trained if it is not '
+            'trained yet or if the brush strokes changed since the last '
+            'training.'
+        )
+
+        self.segmentStackAction = self.addButton(':frames_end.svg')
+        self.segmentStackAction.setToolTip(
+            'Segment a range of frames with the trained model '
+            '(existing masks will be replaced)\n\n'
+            'NOTE: The model is automatically (re-)trained if it is not '
+            'trained yet or if the brush strokes changed since the last '
+            'training.'
+        )
+
+        self.clearStrokesAction = self.addButton(':clear-points.svg')
+        self.clearStrokesAction.setToolTip(
+            'Clear brush strokes on current frame'
+        )
+
+        self.clearStrokesOnZoomAction = self.addButton(
+            ':clear-points-zoom.svg'
+        )
+        self.clearStrokesOnZoomAction.setToolTip(
+            'Clear brush strokes in the zoomed area of the current frame'
+        )
+
+        brushActionsSeparator = self.addSeparator()
+
         self.infoAction = self.addButton(':info.svg')
         self.infoAction.setToolTip(
             'Show instructions how to use promptable models'
         )
-        
+
         self.addSeparator()
-        
+
+        self._pointsOnlyActions = [
+            self.interpolateZslicesCheckbox.action,
+            *interpolateSeparator._actions,
+            self.computeOnZoomAction,
+            self.computeAction,
+            self.clearPointsAction,
+            self.clearPointsActionOnZoom,
+            *pointsActionsSeparator._actions,
+        ]
+        self._brushStrokesOnlyActions = [
+            self.brushSizeSpinbox.labelAction,
+            self.brushSizeSpinbox.action,
+            *brushSizeSeparator._actions,
+            self.trainAction,
+            self.segmentImageAction,
+            self.segmentStackAction,
+            self.clearStrokesAction,
+            self.clearStrokesOnZoomAction,
+            *brushActionsSeparator._actions,
+        ]
+
         self.infoAction.triggered.connect(self.showHelp)
         self.selectModelAction.triggered.connect(self.selectModel)
         self.viewModelParamsAction.triggered.connect(self.viewModelParams)
@@ -12870,7 +12958,88 @@ class MagicPromptsToolbar(ToolBar):
         self.interpolateZslicesCheckbox.toggled.connect(
             self.sigInterpolateZslice.emit
         )
-    
+        self.trainAction.triggered.connect(self.emitSigTrain)
+        self.segmentImageAction.triggered.connect(self.emitSigSegmentImage)
+        self.segmentStackAction.triggered.connect(self.emitSigSegmentStack)
+        self.clearStrokesAction.triggered.connect(self.emitSigClearStrokes)
+        self.clearStrokesOnZoomAction.triggered.connect(
+            self.emitSigClearStrokesOnZoom
+        )
+
+        self._updatePromptTypeActions('point')
+
+    def promptType(self):
+        text = self.promptTypeCombobox.currentText()
+        return self.promptTypeTextToKey.get(text, 'point')
+
+    def setPromptType(self, prompt_type):
+        text = self.promptTypeKeyToText.get(prompt_type)
+        if text is None:
+            raise ValueError(
+                f'Prompt type "{prompt_type}" is not valid. Valid prompt '
+                f'types are {list(self.promptTypeKeyToText.keys())}'
+            )
+        self.promptTypeCombobox.setCurrentText(text)
+        # Combobox does not emit if text did not change --> update anyway
+        self._updatePromptTypeActions(prompt_type)
+
+    def setSupportedPromptTypes(self, prompt_types=None):
+        """Enable only the prompt types in `prompt_types` and select the
+        first supported one. If `prompt_types` is None, enable all the
+        prompt types.
+        """
+        if prompt_types is None:
+            supported = list(self.promptTypeKeyToText.keys())
+        else:
+            if isinstance(prompt_types, str):
+                prompt_types = (prompt_types,)
+            supported = [
+                prompt_type for prompt_type in prompt_types
+                if prompt_type in self.promptTypeKeyToText
+            ]
+            if not supported:
+                supported = ['point']
+
+        model = self.promptTypeCombobox.model()
+        for i in range(self.promptTypeCombobox.count()):
+            text = self.promptTypeCombobox.itemText(i)
+            key = self.promptTypeTextToKey.get(text)
+            item = model.item(i) if hasattr(model, 'item') else None
+            if item is not None:
+                item.setEnabled(key in supported)
+
+        if prompt_types is None:
+            self.promptTypeCombobox.setDisabled(False)
+            self._updatePromptTypeActions(self.promptType())
+            return
+
+        self.setPromptType(supported[0])
+        self.promptTypeCombobox.setDisabled(len(supported) == 1)
+
+    def _setActionsVisible(self, actions, visible):
+        for action in actions:
+            action.setVisible(visible)
+
+    def _updatePromptTypeActions(self, prompt_type):
+        isBrushStrokes = prompt_type == 'brush_stroke'
+        self._setActionsVisible(self._pointsOnlyActions, not isBrushStrokes)
+        self._setActionsVisible(self._brushStrokesOnlyActions, isBrushStrokes)
+
+    def emitSigTrain(self):
+        self.sigTrain.emit(self)
+
+    def emitSigSegmentImage(self):
+        self.sigSegmentImage.emit(self)
+
+    def emitSigSegmentStack(self):
+        self.sigSegmentStack.emit(self)
+
+    def emitSigClearStrokes(self):
+        self.sigClearStrokes.emit(self)
+
+    def emitSigClearStrokesOnZoom(self):
+        self.sigClearStrokesOnZoom.emit(self)
+
     def showHelp(self):
         msg = myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
@@ -12912,13 +13081,52 @@ class MagicPromptsToolbar(ToolBar):
             Finally, you can <b>clear all points</b> by clicking on the 
             "Clear points" button.<br><br>
             
-            Note that you can also save the points by clicking on the 
-            "<b>Save points</b>" button to load them later and start from 
+            Note that you can also save the points by clicking on the
+            "<b>Save points</b>" button to load them later and start from
             where you left.<br><br>
-        """)  
+
+            <b>Brush strokes (e.g., ConvPaint)</b><br><br>
+
+            Some models (e.g., ConvPaint) are trained from <b>brush
+            strokes</b> instead of points.<br>
+            When such a model is selected, the prompt type is set to
+            "Brush strokes" and you can paint directly on the image:<br><br>
+
+            - <b>Left-click and drag</b> to paint <b>foreground</b>
+            (value 2, shown in red)<br>
+            - <b>Right-click and drag</b> to paint <b>background</b>
+            (value 1, shown in blue)<br>
+            - <b>Shift+drag</b> (left or right) to <b>erase</b> brush
+            strokes<br>
+            - Set the radius of the brush with the "<b>Brush size</b>"
+            control<br>
+            - Press <b>Ctrl+Z</b> to undo the last brush stroke<br><br>
+
+            You need both foreground and background strokes. You can paint
+            on multiple frames and positions.<br>
+            With z-stacks, paint in "single z-slice" mode (projections are
+            display-only).<br><br>
+
+            Then use the following buttons:<br><br>
+
+            - "<b>Train</b>": train the model on the brush strokes
+            painted on all frames and positions<br>
+            - "<b>Segment image</b>": segment the current image and choose
+            how to combine the result with the existing masks<br>
+            - "<b>Segment stack</b>": segment a range of frames
+            (existing masks of those frames are replaced)<br><br>
+
+            The model is automatically (re-)trained before segmenting if
+            it was not trained yet or if the brush strokes changed since
+            the last training.<br><br>
+
+            Finally, you can <b>clear the brush strokes</b> of the current
+            frame (or only in the zoomed area) with the corresponding
+            buttons.
+        """)
         msg.information(
             self, 'Promptable models help', txt
-        )  
+        )
         
     def emitSigClearPoints(self):
         self.sigClearPoints.emit(self)
@@ -12933,12 +13141,23 @@ class MagicPromptsToolbar(ToolBar):
         self.sigComputeOnImage.emit(self)
     
     def selectModel(self):
+        if getattr(self, '_isSelectingModel', False):
+            # Model selection (or initialization) already in progress
+            return
+
+        self._isSelectingModel = True
+        try:
+            self._selectModel()
+        finally:
+            self._isSelectingModel = False
+
+    def _selectModel(self):
         win = apps.SelectPromptableModelDialog(parent=self._parent)
         win.exec_()
         if win.cancel:
             print('Promptable model selection cancelled')
             return
-        
+
         model_name = win.model_name
         print(f'Preparing promptable model {model_name}...')
 
@@ -12963,7 +13182,9 @@ class MagicPromptsToolbar(ToolBar):
         )
     
     def emitPromptTypeChanged(self, text):
-        self.sigPromptTypeChanged.emit(self, text)
+        prompt_type = self.promptTypeTextToKey.get(text, 'point')
+        self._updatePromptTypeActions(prompt_type)
+        self.sigPromptTypeChanged.emit(self, prompt_type)
 
 class KeySequenceFromText(QKeySequence):
     def __init__(self, text: str):

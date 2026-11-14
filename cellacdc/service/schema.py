@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Type, TypeVar
+from typing import Dict, Any, List, Optional, Type, TypeVar
 from pydantic import BaseModel, Field
 
 _Model = TypeVar('_Model', bound=BaseModel)
@@ -24,6 +24,8 @@ class Capabilities(BaseModel):
     segment3DT: bool = False
     second_ch_img_to_stack: bool = True
     predictCcaState: bool = False
+    # Promptable models that learn from the prompts (e.g. ConvPaint)
+    train: bool = False
 
 class InfoResponse(BaseModel):
     name: str
@@ -32,6 +34,8 @@ class InfoResponse(BaseModel):
     capabilities: Capabilities = Field(default_factory=Capabilities)
     init_params: Dict[str, Any] = Field(default_factory=dict)
     segment_params: Dict[str, Any] = Field(default_factory=dict)
+    # Prompt types accepted by a promptable model's `add_prompt`
+    prompt_types: List[str] = Field(default_factory=lambda: ['point'])
 
 class JobStatusResponse(BaseModel):
     job_id: str
