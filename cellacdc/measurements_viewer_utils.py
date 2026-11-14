@@ -1896,7 +1896,9 @@ class MeasurementsViewerUtils:
         Phases (``posData.phaseTranslatorColumns``) are carried over only
         when they were evaluated in memory, so that they stay consistent
         with the kept time points: rows missing from `previous` get ``''``
-        and translator outputs of the file dropped in memory are removed."""
+        and translator outputs of the file dropped in memory are removed
+        (all of them when every phase was cleared in memory: empty
+        ``phaseTranslatorColumns``)."""
         acdc_df = getattr(posData, 'acdc_df', None)
         if previous is None or acdc_df is None or acdc_df.empty:
             return
@@ -1917,7 +1919,14 @@ class MeasurementsViewerUtils:
         if VISITED_COLUMN in previous:
             marked = previous.index[parse_flags(previous[VISITED_COLUMN]).to_numpy()]
             acdc_df[VISITED_COLUMN] = acdc_df.index.isin(marked)
-        owned = set(getattr(posData, 'phaseTranslatorColumns', ()) or ())
+        owned = getattr(posData, 'phaseTranslatorColumns', None)
+        if owned is not None and not owned:
+            # Every phase was cleared in memory (evaluation without rules
+            # and overrides removes all outputs)
+            acdc_df = acdc_df.drop(columns=sorted(
+                phase_translator.existing_output_columns(acdc_df)
+            ))
+        owned = set(owned or ())
         if 'phase' in owned and 'phase' in previous.columns:
             stale = {
                 column for column in

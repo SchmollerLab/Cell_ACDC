@@ -16,7 +16,7 @@ from qtpy.QtWidgets import (
 )
 
 from cellacdc.measurements_viewer import MeasurementsViewerWin
-from cellacdc import measurements_viewer, widgets
+from cellacdc import annotate, measurements_viewer, widgets
 from cellacdc import measurements_viewer_utils
 
 
@@ -1217,6 +1217,59 @@ def test_loading_2d_data_resets_viewed_plane(real_viewer, tmp_path):
     assert real_viewer.zProjComboBox.isEnabled()
 
 
+def make_zstack_overlay_position(root, SizeT=2, SizeZ=5):
+    """z-stack position with 3D segmentation and a GFP channel"""
+    import tifffile
+
+    images = make_timelapse_position(root, SizeT=SizeT, SizeZ=SizeZ)
+    shape = (SizeT, SizeZ, 30, 30)
+    tifffile.imwrite(
+        os.path.join(images, 'test_GFP.tif'),
+        np.arange(np.prod(shape), dtype=np.uint16).reshape(shape)
+    )
+    labels = np.zeros(shape, dtype=np.uint16)
+    labels[:, 1:4, 2:5, 3:7] = 1
+    np.savez_compressed(os.path.join(images, 'test_segm.npz'), labels)
+    return images
+
+
+def test_overlay_is_turned_off_on_zy_zx_planes(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    # As in the main GUI: `getOlImg` would index the overlay z-stack with
+    # the y/x index of the z-slice scrollbar (IndexError on every update)
+    load_real(real_viewer, [make_zstack_overlay_position(tmp_path)])
+    assert real_viewer.isSegm3D
+    monkeypatch.setattr(
+        real_viewer, 'askSelectOverlayChannel', lambda: ['GFP']
+    )
+    button = real_viewer.overlayButton
+    button.setChecked(True)
+    assert real_viewer.configuration()['overlay_channels'] == ['GFP']
+    real_viewer.switchPlaneCombobox.setPlane('zy')
+    assert not real_viewer.slotErrors
+    assert not button.isChecked() and not button.isEnabled()
+    assert real_viewer.img1.image.shape == (5, 30)
+    real_viewer.zSliceScrollBar.setSliderPosition(20)
+    # zy -> zx keeps the state of the xy plane, also in configurations
+    real_viewer.switchPlaneCombobox.setPlane('zx')
+    assert real_viewer.configuration()['overlay_channels'] == ['GFP']
+    real_viewer.switchPlaneCombobox.setPlane('xy')
+    assert not real_viewer.slotErrors
+    assert button.isChecked() and button.isEnabled()
+    overlayImage = real_viewer.overlayLayersItems['GFP'][0].image
+    assert overlayImage.shape == real_viewer.img1.image.shape == (30, 30)
+    # Reloading the position resets the plane: the overlay stays off but
+    # can be turned on again
+    real_viewer.switchPlaneCombobox.setPlane('zy')
+    real_viewer.loadPosition(0)
+    assert real_viewer.switchPlaneCombobox.depthAxes() == 'z'
+    assert button.isEnabled() and not button.isChecked()
+    assert real_viewer.configuration()['overlay_channels'] == []
+    button.setChecked(True)
+    assert not real_viewer.slotErrors
+
+
 def test_loading_fewer_positions_resets_position(real_viewer, tmp_path):
     paths = [
         make_timelapse_position(tmp_path / 'A', pos=pos) for pos in (1, 2)
@@ -1321,6 +1374,81 @@ def test_count_objects_snapshots_with_unvisited_positions(
     assert not real_viewer.slotErrors
 
 
+def test_live_object_counts_compute_undisplayed_positions_once(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    # Live counts run on every image update: the regionprops of positions
+    # without `allData_li` must not be recomputed every time
+    paths = [
+        make_timelapse_position(tmp_path, pos=pos, SizeT=1)
+        for pos in (1, 2, 3)
+    ]
+    load_real(real_viewer, paths)
+    undisplayed = real_viewer.data[1:]
+    assert not any(hasattr(posData, 'allData_li') for posData in undisplayed)
+    computed = []
+    acdcRegionProps = real_viewer._acdcRegionProps
+
+    def countingRegionProps(lab, *args, **kwargs):
+        for posData in undisplayed:
+            if np.shares_memory(lab, posData.segm_data):
+                computed.append(posData)
+        return acdcRegionProps(lab, *args, **kwargs)
+
+    monkeypatch.setattr(real_viewer, '_acdcRegionProps', countingRegionProps)
+    real_viewer.countObjsButton.setChecked(True)
+    assert real_viewer.countObjsWindow.isVisible()
+    for _ in range(2):
+        real_viewer.updateImages()
+    assert len(computed) == len(undisplayed)
+    counts = real_viewer.countObjectsSnapshots()
+    assert counts['In all loaded positions'] == 3
+    real_viewer.countObjsButton.setChecked(False)
+    assert not real_viewer.slotErrors
+
+
+def test_slideshow_shows_the_viewer_z_slice(real_viewer, tmp_path):
+    # Without segmInfo.csv (`segmInfo_df` None). The slideshow's own z-slider
+    # wrote `segmInfo_df` (AttributeError) and did not change the image
+    load_real(real_viewer, [make_timelapse_position(tmp_path, SizeZ=3)])
+    posData = real_viewer.posData()
+    assert getattr(posData, 'segmInfo_df', None) is None
+    real_viewer.slideshowButton.setChecked(True)
+    assert not real_viewer.slotErrors
+    win = real_viewer.slideshowWin
+    assert not win.zSliceScrollBar.isVisibleTo(win)
+    assert not win.zSliceScrollBar.isEnabled()
+    zstack = posData.img_data[0]
+    np.testing.assert_array_equal(win.img.image, zstack[1])
+    real_viewer.zSliceScrollBar.setSliderPosition(0)
+    np.testing.assert_array_equal(win.img.image, zstack[0])
+    real_viewer.zProjComboBox.setCurrentText('max z-projection')
+    np.testing.assert_array_equal(win.img.image, zstack.max(axis=0))
+    # Not linked to the frames: it keeps its frame, but shows the z-slice
+    win.linkWindowCheckbox.setChecked(False)
+    real_viewer.setFrame(1)
+    real_viewer.zProjComboBox.setCurrentText('single z-slice')
+    np.testing.assert_array_equal(win.img.image, zstack[0])
+    real_viewer.slideshowButton.setChecked(False)
+    assert real_viewer.slideshowWin is None
+    assert not real_viewer.slotErrors
+
+
+def test_slideshow_of_snapshots_survives_image_updates(real_viewer, tmp_path):
+    # Single frames: the slideshow has no "Link" checkbox, while the viewer
+    # calls `updateViewerWindow` on every `updateImages`
+    paths = [
+        make_timelapse_position(tmp_path, pos=pos, SizeT=1) for pos in (1, 2)
+    ]
+    load_real(real_viewer, paths)
+    real_viewer.slideshowButton.setChecked(True)
+    real_viewer.updateImages()
+    real_viewer.loadPosition(1)
+    assert real_viewer.pos_i == 1
+    real_viewer.slideshowButton.setChecked(False)
+    assert not real_viewer.slotErrors
+
+
 def test_restore_default_settings_un_inverts_black_white(
         real_viewer, tmp_path
     ):
@@ -1344,6 +1472,59 @@ def test_restore_default_settings_un_inverts_black_white(
     # Default colors follow the dark background again (yellow, not black)
     item, = real_viewer.measurementsPlot.listDataItems()
     assert pg.mkPen(item.opts['pen']).color().name() == '#f0e442'
+    assert not real_viewer.slotErrors
+
+
+def test_inverted_text_colors_survive_position_switch(real_viewer, tmp_path):
+    # The viewer recreates the text items on every position switch
+    # (`gui_setTextAnnotColors`): the S-phase/G1 cell cycle texts must keep
+    # the inverted colors too, not only the IDs (regression)
+    paths = [
+        make_timelapse_position(tmp_path, pos=pos, SizeT=2, cca_frames=[0])
+        for pos in (1, 2)
+    ]
+    load_real(real_viewer, paths)
+
+    def textColors():
+        colors = real_viewer.textAnnot[0].colors()
+        return {
+            name: tuple(colors[name][:3])
+            for name in annotate.INVERTIBLE_COLOR_NAMES
+        }
+
+    dark = textColors()
+    real_viewer.invertBwAction.setChecked(True)
+    inverted = textColors()
+    assert inverted == {
+        name: tuple(255 - value for value in rgb)
+        for name, rgb in dark.items()
+    }
+    real_viewer.loadPosition(1)
+    assert textColors() == inverted
+    real_viewer.invertBwAction.setChecked(False)
+    assert textColors() == dark
+    real_viewer.loadPosition(0)
+    assert textColors() == dark
+    assert not real_viewer.slotErrors
+
+
+def test_text_resolution_toggle_keeps_text_above_annotations(
+        real_viewer, tmp_path
+    ):
+    # `changeResolution` replaces the text item: it must keep z-value 1
+    # above the annotation layers (0.5-0.6), as when it was created
+    load_real(real_viewer, [make_timelapse_position(tmp_path, SizeT=2)])
+    layers = (
+        real_viewer.labelsLayerImg1, real_viewer.ax1_contoursImageItem,
+        real_viewer.searchedIDitemLeft
+    )
+    top = max(item.zValue() for item in layers)
+    item = real_viewer.textAnnot[0].item
+    for _ in range(2):
+        real_viewer.highLowResAction.trigger()
+        assert real_viewer.textAnnot[0].item is not item
+        item = real_viewer.textAnnot[0].item
+        assert item.zValue() > top
     assert not real_viewer.slotErrors
 
 
@@ -1440,16 +1621,17 @@ def test_on_demand_ax1_items_stay_above_overlays_after_reload(
         )
         paths.append(path)
     load_real(real_viewer, [paths[0]])
-    real_viewer.addScaleBar(True)
-    real_viewer.addTimestamp(True)
     tracksCheckbox = real_viewer.annotObjectTracksCheckbox(0)
     tracksCheckbox.blockSignals(True)
     tracksCheckbox.setChecked(True)
     tracksCheckbox.blockSignals(False)
     real_viewer.setFrame(2)
     real_viewer.annotateAllObjectTracks()
-    # The overlay layers are re-added (z-value 0) on every load
+    # The overlay layers are re-added (z-value 0) on every load (which
+    # removes the scale bar and the timestamp)
     load_real(real_viewer, [paths[1]])
+    real_viewer.addScaleBar(True)
+    real_viewer.addTimestamp(True)
     assert not real_viewer.slotErrors
     below = [
         real_viewer.rgbaImg1,
@@ -1462,6 +1644,102 @@ def test_on_demand_ax1_items_stay_above_overlays_after_reload(
     )
     for item in onDemandItems:
         assert item.zValue() > max(other.zValue() for other in below)
+
+
+def accept_scale_bar_and_timestamp_dialogs(monkeypatch):
+    from cellacdc import apps
+
+    dialogs = (apps.ScaleBarPropertiesDialog, apps.TimestampPropertiesDialog)
+    for dialog in dialogs:
+        monkeypatch.setattr(
+            dialog, 'exec_', lambda self, *args, **kwargs: self.ok_cb()
+        )
+
+
+def test_loading_data_removes_scale_bar_and_timestamp(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    # As the main GUI's `reInitGui`: they keep the pixel size and time
+    # increment of the data they were added to (wrong values on new data)
+    accept_scale_bar_and_timestamp_dialogs(monkeypatch)
+    paths = [
+        make_timelapse_position(tmp_path / folder, SizeT=3)
+        for folder in ('A', 'B')
+    ]
+    load_real(real_viewer, [paths[0]])
+    real_viewer.addScaleBarAction.setChecked(True)
+    real_viewer.addTimestampAction.setChecked(True)
+    items = (
+        real_viewer.scaleBar.plotItem, real_viewer.scaleBar.labelItem,
+        real_viewer.timestamp
+    )
+    assert all(item in real_viewer.ax1.items for item in items)
+    load_real(real_viewer, [paths[1]])
+    assert not real_viewer.slotErrors
+    assert not real_viewer.addScaleBarAction.isChecked()
+    assert not real_viewer.addTimestampAction.isChecked()
+    assert not real_viewer.imgGrad.addScaleBarAction.isChecked()
+    assert not real_viewer.imgGrad.addTimestampAction.isChecked()
+    assert not any(item in real_viewer.ax1.items for item in items)
+    # They can be added again for the new data
+    real_viewer.addScaleBarAction.setChecked(True)
+    assert real_viewer.scaleBar.plotItem in real_viewer.ax1.items
+    assert not real_viewer.slotErrors
+
+
+def test_loading_data_while_scale_bar_and_timestamp_dialogs_are_open(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    # Their dialogs are not modal: data can be loaded while one is open
+    from cellacdc import apps
+
+    paths = [
+        make_timelapse_position(tmp_path / folder, SizeT=3)
+        for folder in ('A', 'B')
+    ]
+    load_real(real_viewer, [paths[0]])
+    closedByLoad = []
+
+    def loadWhileOpen(dialog, *args, **kwargs):
+        load_real(real_viewer, [paths[1]])
+        closedByLoad.append(not dialog.isVisible())
+        dialog.ok_cb()
+
+    dialogs = (apps.ScaleBarPropertiesDialog, apps.TimestampPropertiesDialog)
+    for dialog in dialogs:
+        monkeypatch.setattr(dialog, 'exec_', loadWhileOpen)
+    real_viewer.addScaleBarAction.setChecked(True)
+    real_viewer.addTimestampAction.setChecked(True)
+    assert not real_viewer.slotErrors
+    assert closedByLoad == [True, True]
+    for action in (
+            real_viewer.addScaleBarAction, real_viewer.addTimestampAction,
+            real_viewer.imgGrad.addScaleBarAction,
+            real_viewer.imgGrad.addTimestampAction
+        ):
+        assert not action.isChecked()
+    items = (real_viewer.scaleBar.plotItem, real_viewer.timestamp)
+    assert not any(item in real_viewer.ax1.items for item in items)
+    assert real_viewer.scaleBarDialog is None
+    assert real_viewer.timestampDialog is None
+
+
+def test_scale_bar_keeps_the_zoom(real_viewer, tmp_path, monkeypatch):
+    # The bar is placed in the zoomed view: rescaling would move it to the
+    # middle of the image and lose the user's zoom
+    accept_scale_bar_and_timestamp_dialogs(monkeypatch)
+    load_real(real_viewer, [make_timelapse_position(tmp_path, SizeT=2)])
+    real_viewer.followIDcheckbox.setChecked(False)
+    real_viewer.ax1.setRange(xRange=(5, 15), yRange=(5, 15), padding=0)
+    # Settle the aspect ratio lock
+    QTest.qWait(20)
+    zoomed = np.array(real_viewer.ax1.viewRange())
+    assert zoomed.min() > 0 and zoomed.max() < 25
+    for checked in (True, False):
+        real_viewer.addScaleBarAction.setChecked(checked)
+        QTest.qWait(20)
+        np.testing.assert_allclose(real_viewer.ax1.viewRange(), zoomed)
+    assert not real_viewer.slotErrors
 
 
 def formatted_brushes(window, column):

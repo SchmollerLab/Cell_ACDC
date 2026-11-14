@@ -247,6 +247,9 @@ class _CustomAnnotationPredictorGroupbox(QGroupBox):
             )
         with disabled_while_nested(self):
             win.exec_()
+        # Deferred (its result is read below): editors are children of
+        # dialogs that stay alive and keep references to the table
+        win.deleteLater()
         if win.cancel:
             return
         self.equation = win.equation
@@ -810,6 +813,8 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         )
         with disabled_while_nested(self):
             dialog.exec_()
+        # It holds a flattened copy of the table (`acdcDfs`)
+        dialog.deleteLater()
         if not dialog.cancel:
             self.otherCellsConditionEdit.setText(dialog.equation)
 
@@ -831,6 +836,7 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
         )
         with disabled_while_nested(self):
             dialog.exec_()
+        dialog.deleteLater()
         if not dialog.cancel:
             self.mainCellConditionEdit.setText(dialog.equation)
     
@@ -884,21 +890,44 @@ class TimepointPredictorEquationDialog(_CombineMetricsDialog):
                 column = self.otherMeasurementColumns[otherName]
                 if self.acdcDf is not None and column not in available:
                     return False, f'Unknown input column "{column}".'
-            if (
-                    self._predictors._OTHER_FUNCTION_PATTERN.search(formula)
-                    or otherMeasurementCalls
-                ):
+            legacyCalls = bool(
+                self._predictors._OTHER_FUNCTION_PATTERN.search(formula)
+            )
+            if legacyCalls or otherMeasurementCalls:
                 for match in self._predictors._OTHER_FUNCTION_PATTERN.finditer(formula):
                     column = match.group('column').strip('`')
                     if self.acdcDf is not None and column not in available:
                         return False, f'Unknown input column "{column}".'
+            if self.acdcDf is not None and (legacyCalls or otherInputNames):
+                # Real candidate values with their dtypes (yes/no inputs
+                # with ~) and frame_i_other/Cell_ID_other, as in the
+                # library and _TimepointCellFilterEquationDialog
+                df, evaluated, alternatives = (
+                    self._predictors.OtherCellMeasurements.prepare_inputs(
+                        self.acdcDf, formula, settings, self.SizeT,
+                        max_targets=10, return_alternatives=True
+                    )
+                )
+                self.evaluateEquation(df, evaluated, alternatives=alternatives)
+                return True, formula
+            # Without a loaded table: placeholder values
+            if legacyCalls or otherMeasurementCalls:
                 formula = self._predictors._OTHER_FUNCTION_PATTERN.sub(
                     '1', formula
                 )
                 formula = self._predictors._OTHER_MEASUREMENT_PATTERN.sub(
                     '1', formula
                 )
-            self.evaluateEquation(self.getTestData(preview=True), formula)
+            df = self.getTestData(preview=True)
+            if self.acdcDf is None:
+                usedIndexInputs = (
+                    {*indexInputs, *(f'{name}_other' for name in indexInputs)}
+                    & self._predictors.CellEquation.names(formula)
+                )
+                for name in usedIndexInputs:
+                    if name not in df and name not in df.index.names:
+                        df[name] = 0
+            self.evaluateEquation(df, formula)
         except Exception as err:
             return False, str(err)
         return True, formula
@@ -1429,8 +1458,8 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
     each linked channel placeholder is the row of its selected channel
     (the user picks another row when the table has none). Changing the
     channel of a linked placeholder after filling refills its values from
-    the same table. While the background values are computed, the dialog
-    is disabled.
+    the same table. While the background values are computed or a table
+    row is asked, the dialog is disabled.
     After `exec_`, `mapping` is `{placeholder: channel}` and `values` is
     `{input name: typed value}` unless `cancel` is True.
     """
@@ -1691,20 +1720,27 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
         Returns `{input name: value}` of the filled inputs."""
         spec = self.backgroundValues
         mapping = self.currentMapping()
+        linkedMapping = self.linkedBackgroundMapping()
         rows = {
             str(row['channel']): row for _, row in summary.iterrows()
         }
         tableRows = {}
-        for link in spec['inputs'].values():
-            placeholder = link['channel']
-            if placeholder in tableRows:
-                continue
-            channel = mapping[placeholder]
-            if channel not in rows:
-                channel = self.askTableChannel(
-                    placeholder, channel, list(rows)
-                )
-            tableRows[placeholder] = channel
+        # The row prompts are not modal: OK would accept the values before
+        # they are filled in, and a channel changed meanwhile would get the
+        # values of the previous one
+        with disabled_while_nested(self):
+            for link in spec['inputs'].values():
+                placeholder = link['channel']
+                if placeholder in tableRows:
+                    continue
+                channel = mapping[placeholder]
+                if channel not in rows:
+                    channel = self.askTableChannel(
+                        placeholder, channel, list(rows)
+                    )
+                tableRows[placeholder] = channel
+        if self._closed:
+            return {}
         filled, empty, skipped = {}, [], []
         for name, link in spec['inputs'].items():
             channel = tableRows[link['channel']]
@@ -1725,8 +1761,7 @@ class ChannelPlaceholderMappingDialog(apps.QBaseDialog):
             self.inputLineEdits[name].setText(f'{value:.10g}')
             filled[name] = value
         self.backgroundFill = {
-            'summary': summary, 'source': source,
-            'mapping': self.linkedBackgroundMapping(),
+            'summary': summary, 'source': source, 'mapping': linkedMapping,
         }
         notes = self._backgroundSettingsNotes(
             {ch: rows[ch] for ch in tableRows.values() if ch is not None},
@@ -2848,6 +2883,8 @@ class TimepointIdentifierDialog(QBaseDialog):
             )
         with disabled_while_nested(self):
             win.exec_()
+        # Deferred: its result is read below
+        win.deleteLater()
         if win.cancel:
             return
         self.equation = win.equation

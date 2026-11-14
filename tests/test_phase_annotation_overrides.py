@@ -12,7 +12,7 @@ import pytest
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import gui_custom_annotations, measurements_viewer, phase_translator
+from cellacdc import gui_custom_annotations, load, measurements_viewer, phase_translator
 from cellacdc import measurements_viewer_utils
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
@@ -447,12 +447,55 @@ def test_without_rules_last_override_gone_clears_its_phase(
         assert 'is cleared' in texts[0]
     assert not viewer.hasPhaseTranslation()
     app.processEvents()
-    for ID in (1, 2, 3):
-        assert phases(viewer, ID) == [''] * 4
-        assert position_phases(second, ID) == [''] * 4
+    # No cell keeps a phase: 'phase' is removed too (saved without markers,
+    # it would not be recognized as a phase output when loaded again)
     for table in (viewer.acdc_df, viewer.posData().acdc_df, second.acdc_df):
+        assert 'phase' not in table
         assert 'phase_Arrested' not in table
+    for posData in (viewer.posData(), second):
+        assert posData.phaseTranslatorColumns == set()
     assert viewer._pendingPhaseClears == {}
+
+
+def test_phases_cleared_in_memory_stay_cleared_and_can_be_evaluated_again(
+        viewer, app, monkeypatch, tmp_path
+    ):
+    """Without rules, switching off the last overriding annotation clears
+    every phase: reloading the (older) table keeps them cleared, and the
+    saved table can be evaluated again in a new session."""
+    viewer.isDataLoaded = True
+    configure(
+        viewer, app, [annot_state(overrides=True)], rules=(),
+        autoApply=False, evaluate=False
+    )
+    toggle(viewer, 'Arrested', 1)
+    assert viewer.applyPhaseTranslator()
+    posData = viewer.posData()
+    onDisk = posData.acdc_df.copy()
+    modify_annotation(
+        viewer, monkeypatch, 'Arrested', annot_state(overrides=False)
+    )
+    app.processEvents()
+    assert 'phase' not in viewer.acdc_df
+    # Reload table (before saving): the phases of the file stay cleared
+    previous = posData.acdc_df
+    posData.acdc_df = onDisk
+    viewer.restoreTimepointColumns(posData, previous)
+    assert not posData.acdc_df.columns.str.startswith('phase').any()
+    # Saved, then loaded in a new session (no phaseTranslatorColumns)
+    path = tmp_path / 'acdc_output.csv'
+    posData.acdc_df.to_csv(path)
+    loaded = load._load_acdc_df_file(path)
+    del posData.phaseTranslatorColumns
+    posData.acdc_df = loaded
+    viewer.acdc_df = loaded
+    modify_annotation(
+        viewer, monkeypatch, 'Arrested', annot_state(overrides=True)
+    )
+    app.processEvents()
+    assert viewer.applyPhaseTranslator()
+    assert phases(viewer, 1) == ['Arrested'] * 4
+    assert phases(viewer, 2) == [''] * 4
 
 
 def test_saving_tables_evaluates_pending_cells_of_other_positions(

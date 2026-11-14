@@ -33,7 +33,10 @@ Hooks that the inheriting class can override
 - `initCustomAnnotColumn`, `renameCustomAnnotColumn`,
   `removeCustomAnnotColumn`: storage of the annotations in the acdc_df.
 - `customAnnotColumnConflict`: refuse names whose existing column must not
-  be reused (adding and loading annotations; none in the main GUI).
+  be reused (adding and loading annotations; none in the main GUI). Hosts
+  that have conflicts also pass it as ``columnConflict`` in
+  `customAnnotationDialogKwargs`, so that OK keeps the dialog open with the
+  entered values (`addCustomAnnotation` checks it again afterwards).
 - `saveCustomAnnotPositionParams`: persist the annotations of a position.
 - `onCustomAnnotationChanged`, `onCustomAnnotationRemoved`: called after 
   an annotation is added/modified or removed.

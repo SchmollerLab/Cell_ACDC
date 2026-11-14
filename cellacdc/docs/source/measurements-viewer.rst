@@ -161,7 +161,9 @@ The window
 ~~~~~~~~~~
 
 * **Toolbars** (top): files and configurations, viewer tools (search, zoom,
-  overlay of other channels, ruler, etc.), **Time points**,
+  overlay of other channels, ruler, etc.; loading other data turns them
+  off, as well as the scale bar and the timestamp of the **Image** menu),
+  **Time points**,
   **Custom annotations** and **Phases**, with the button of the
   `Time point to phase translator`_ (icon of a colored band split by two
   time point markers; hover over it for a description).
@@ -201,6 +203,8 @@ To move in time, use the frame scrollbar, the :kbd:`Left` / :kbd:`Right`
 arrow keys, or drag the **red vertical line** (current frame) in the plot
 (at a frame with a time point, the dashed time point line lies over it and
 the drag moves the time point instead). With z-stacks, the z-slice scrollbar selects the slice or the projection.
+With 3D segmentation masks you can also view the zy/zx planes: the overlay of
+other channels is turned off there and comes back on the xy plane.
 Use the **Position** drop-down menu to switch between Positions.
 
 Options at the bottom of the **Navigate** box (below the Cell ID controls and
@@ -466,7 +470,8 @@ named like the annotation. Custom annotations are shared with the main GUI.
   with the annotation's name (e.g., exported before) keeps its values. A name
   is refused when the table already has a column with that name holding other
   values (e.g., a measurement) or when the column belongs to a time point,
-  the phases or a combined/processed measurement. For the same reason,
+  the phases or a combined/processed measurement: the dialog then stays open,
+  so you only need to change the name. For the same reason,
   loading a configuration or opening data is refused when the tables have
   such a column named like one of the annotations (annotations stay when
   you open other data): rename or remove the annotation first.
@@ -671,7 +676,8 @@ bar. This option is saved in the configuration.
 If there are no phase rules and you turn off or remove the last annotation
 that overrides phases, its name is removed from the phases of its cells
 (also without automatic evaluation), because nothing else could assign them
-a phase.
+a phase. When no cell has a phase left, the phase columns are removed from
+the table.
 
 Phase colors and phase band
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -844,7 +850,8 @@ shortcuts of the viewer tools.
     * - :kbd:`Shift+Z`
       - Zoom to a rectangular area
     * - :kbd:`Ctrl+W`
-      - Open a window to browse frames or channels
+      - Open a window to browse frames or channels (at the z-slice or
+        projection selected in the viewer)
     * - :kbd:`Ctrl+Shift+C`
       - Count objects in the current view
     * - :kbd:`Ctrl+P`

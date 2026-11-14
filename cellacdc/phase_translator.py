@@ -55,6 +55,8 @@ without either, evaluating a table that has phase outputs (owned or
 recognized, see below) resets the phases of the selected cells to ``''``
 and drops the ``phase_<name>`` outputs no cell uses anymore (e.g. after the
 last overriding annotation was removed from a configuration without rules).
+Once no cell keeps a phase, ``phase`` is dropped too and the returned
+``columns`` are empty, as for a table that was never evaluated.
 
 Evaluation returns a new position table with a shared ``phase`` string column
 and boolean ``phase_<name>`` columns. It does not modify or save the input table.
@@ -85,7 +87,10 @@ and saves the ``phase_<name>`` columns as ``'True'``/``'False'``/``'0'``
 strings; such bool-like marker columns are recognized by their parsed
 values. Call ``normalize_loaded_outputs`` on a freshly loaded table to
 restore unassigned phases to ``''``, recovered names to strings and
-recognized marker columns to bool.
+recognized marker columns to bool. A ``phase`` column without any phase
+(only missing values, ``''`` or 0) and without matching markers is not
+recognized, but holds nothing to protect: evaluation with rules or overrides
+overwrites it.
 
 ``phase_names`` lists the distinct phase names of the rules (by first use),
 then the names of the overriding annotations that are not listed yet, so
@@ -620,7 +625,8 @@ def evaluate(
         Rule list in descending priority (see the module docstring). It may
         be empty when ``annotation_overrides`` is not, or, to clear the
         phases of the selected cells, when df has phase outputs (owned or
-        recognized).
+        recognized); once no cell keeps a phase, every output, ``phase``
+        included, is removed and the returned ``columns`` are empty.
     IDs
         Cells whose phases should be recalculated; None selects all cells.
         The full df remains available to predictors that use other-cell inputs.
@@ -708,6 +714,14 @@ def evaluate(
             'Add at least one phase rule (or a custom annotation that '
             'overrides phases) before applying evaluation.'
         )
+    if (
+        'phase' not in owned and phase_strings is not None
+        and not phase_strings.ne('').any()
+    ):
+        # A phase column without any phase (only missing values, '' or the
+        # loader's 0), e.g. saved without phase_<name> markers, holds nothing
+        # to protect: overwrite it instead of refusing it as a measurement.
+        owned.add('phase')
     result = df.copy()
     if 'phase' not in result:
         result['phase'] = ''
@@ -727,6 +741,11 @@ def evaluate(
     retained = columns | {
         f'phase_{phase}' for phase in pd.unique(phase_values) if phase
     }
+    if retained == {'phase'}:
+        # Cleared without rules and overrides, and no cell keeps a phase:
+        # remove 'phase' too. Saved without markers, it would not be
+        # recognized as an output when the table is loaded again.
+        retained = set()
     collisions = retained.intersection(df.columns).difference(owned)
     if collisions:
         raise ValueError(

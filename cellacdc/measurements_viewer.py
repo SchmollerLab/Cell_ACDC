@@ -51,8 +51,15 @@ the main GUI (`gui.guiWin`) through the mixins in:
   3D viewer, objects properties, cell cycle table and objects count). The
   3D viewer follows the frame, z-slice/projection, plane, pan/zoom and the
   mouse cursor of the image (`update3DViewer`, `update3DViewerViewRegion`,
-  `update3DViewerCursor`).
+  `update3DViewerCursor`). The slideshow shows the viewer's z-slice,
+  projection and plane (its own z-slider is hidden). Loading data turns
+  the tools off (`uncheckViewerTools`, as the main GUI's `reInitGui`), also
+  the scale bar and the timestamp, which keep the pixel size and time
+  increment of the data they were added to. Adding or removing the scale
+  bar keeps the zoom (the bar is placed in the current view).
 - `gui_overlay`: overlay of other channels and of other segmentation files.
+  As in the main GUI, the channels overlay is turned off and disabled on
+  zy/zx planes and restored back on xy (`setOverlayEnabledForPlane`).
 - `gui_custom_annotations`: custom annotations of the objects.
 
 Open it from the launcher (Utilities > Measurements > Measurements viewer...)
@@ -394,7 +401,9 @@ Adding or loading an annotation refuses names whose column is not a 0/1
 flag column of a loaded table (e.g., a measurement) or is written by a time
 point, another annotation, the phases, a recorded step or the visited
 tracking (``customAnnotColumnConflict``), so no column is turned into 0/1.
-For the same reason, loading a configuration or opening data (annotations
+The add/modify dialog checks it on OK and stays open with the entered values
+(``columnConflict`` of `apps.customAnnotationDialog`; renaming checks only
+the new name). For the same reason, loading a configuration or opening data (annotations
 persist across loading) is refused, before any data is replaced, when one
 of its annotations is named like a column of the new tables that is not a
 flag column (``flag_column_conflicts``).
@@ -507,7 +516,9 @@ other overriding annotations are left after switching off or removing an
 overriding annotation, nothing could evaluate its cells again: the phase
 named after it is cleared instead, on every loaded position and also with
 automatic evaluation off (`clearPendingPhases`, which evaluates the cells
-without rules and overrides; the unused ``phase_<name>`` output is dropped).
+without rules and overrides; the unused ``phase_<name>`` output is dropped,
+and ``phase`` too once no cell keeps a phase, also when the table is
+reloaded before saving: `restoreTimepointColumns`).
 A displayed cell without
 evaluated phases (no ``phase`` column or only empty phases) is evaluated once
 per session (after its automatic predictors); errors and warnings then go to
@@ -522,7 +533,8 @@ even if their tables had no other change. Export
 measurements prompts to evaluate all cells
 when rules or overriding annotations are configured, and exports ``phase`` (string, empty if unassigned)
 and ``phase_<name>`` (boolean) columns. These output names are reserved by the
-translator; existing unrelated measurements are not overwritten. Rule
+translator; existing unrelated measurements are not overwritten (a ``phase``
+column without any phase name holds none and is overwritten). Rule
 definitions, but not evaluated table values, are saved in viewer configurations.
 Empty phases read back from a saved acdc_output file (which the loader fills
 with 0 when the table has cell cycle columns) are restored to ``''``, and
@@ -1260,9 +1272,13 @@ class MeasurementsViewerWin(
             os.path.basename(posData.segm_npz_path)
         )[0]
         segm_endname = segm_filename[len(posData.basename):].lstrip('_')
+        # The overlay is turned off only while a zy/zx plane is viewed
+        # (`setOverlayEnabledForPlane`)
+        isOverlayOn = (
+            self.overlayButton.isChecked() or bool(self.overlayButtonPrevState)
+        )
         overlay_channels = (
-            sorted(self.checkedOverlayChannels)
-            if self.overlayButton.isChecked() else []
+            sorted(self.checkedOverlayChannels) if isOverlayOn else []
         )
         visible_channels = [
             channel for channel, button in self.allOverlayToolbuttons.items()
@@ -2499,6 +2515,9 @@ class MeasurementsViewerWin(
         self.tempSegmentON = False
         self.isMouseDragImg1 = False
         self.invertBwAlreadyCalledOnce = False
+        # Overlay state on the xy plane while a zy/zx plane turned it off,
+        # None on the xy plane (`setOverlayEnabledForPlane`)
+        self.overlayButtonPrevState = None
         self.currentPropsID = -1
         # True while the code (hover, sync with the selected cell) writes
         # the Object ID of the "Cell-ACDC objects" dock: only user edits
@@ -3855,13 +3874,23 @@ class MeasurementsViewerWin(
     def uncheckViewerTools(self):
         """Uncheck the viewer tools (with signals, so that their slots run
         their teardown). Called by `setData` while the previous data is
-        still loaded. The 3D viewer closes about 300 ms later
-        (`launch3dViewerToggled` defers `_launch3dViewer`), which is
-        harmless: closing it does not read `posData`."""
+        still loaded. As the main GUI's `reInitGui`, this also removes the
+        scale bar and the timestamp: they keep the pixel size and time
+        increment of the data they were added to. The 3D viewer closes
+        about 300 ms later (`launch3dViewerToggled` defers
+        `_launch3dViewer`), which is harmless: closing it does not read
+        `posData`."""
+        # Their properties dialogs are not modal: close one still open (an
+        # `addScaleBar(True)` / `addTimestamp(True)` waiting in it then
+        # returns, as the item was removed meanwhile)
+        for dialog in (self.scaleBarDialog, self.timestampDialog):
+            if dialog is not None:
+                dialog.close()
         for button in (
                 self.overlayButton, self.overlayLabelsButton,
                 self.rulerButton, self.zoomRectButton, self.countObjsButton,
-                self.slideshowButton
+                self.slideshowButton, self.addScaleBarAction,
+                self.addTimestampAction
             ):
             if button.isChecked():
                 button.setChecked(False)
@@ -5031,6 +5060,9 @@ class MeasurementsViewerWin(
         self.switchPlaneCombobox.setPlane('xy')
         self.switchPlaneCombobox.blockSignals(False)
         self.zProjComboBox.setDisabled(False)
+        # Disabled (and turned off) on zy/zx planes: it stays off here
+        self.overlayButton.setDisabled(False)
+        self.overlayButtonPrevState = None
 
         if not isZstack:
             return
@@ -6316,18 +6348,46 @@ class MeasurementsViewerWin(
         # As in `gui.guiWin.next_frame`: frame of the open 3D viewer
         self.update3DViewer()
     
+    def launchSlideshow(self):
+        super().launchSlideshow()
+        win = self.slideshowWin
+        if win is None:
+            return
+        # The slideshow shows the viewer's z-slice, projection and plane
+        # (`imageViewer.update_img` asks `getImage`). Its own z-slider
+        # would only write the main GUI's `segmInfo_df` (not used here)
+        win.zSliceScrollBar.setDisabled(True)
+        win.zSliceScrollBar.setVisible(False)
+        win.z_label.setVisible(False)
+
+    def refreshUnlinkedSlideshow(self):
+        """Show a new z-slice/projection/plane also in a slideshow not
+        linked to the frames (`updateImages` -> `updateViewerWindow`
+        refreshes only a linked one). Not on position changes: its frame
+        might not exist there."""
+        win = self.slideshowWin
+        if win is None:
+            return
+        if win.linkWindow and win.linkWindowCheckbox.isChecked():
+            return
+        if win.frame_i >= self.posData().SizeT:
+            return
+        win.update_img()
+
     def update_z_slice(self, z):
         self.zSliceSpinbox.setValueNoEmit(z+1)
         self.updateImages()
+        self.refreshUnlinkedSlideshow()
 
         self.update3DViewerViewRegion()
 
     def updateZproj(self, how):
         self.setZSliceWidgetsEnabled(how)
         self.updateImages()
+        self.refreshUnlinkedSlideshow()
 
         self.update3DViewerViewRegion()
-    
+
     def switchViewedPlane(self, previousPlane, currentPlane):
         posData = self.posData()
         depthAxes = self.switchPlaneCombobox.depthAxes()
@@ -6348,15 +6408,38 @@ class MeasurementsViewerWin(
         self.zSliceScrollBar.setSliderPosition(depthSize // 2)
         self.zSliceScrollBar.blockSignals(False)
         self.zSliceSpinbox.setValueNoEmit(depthSize // 2 + 1)
-        
+
         self.initContoursImage()
+        self.setOverlayEnabledForPlane(depthAxes)
         self.updateImages()
+        self.refreshUnlinkedSlideshow()
         self.ax1.autoRange()
         self.zoomToSelectedID()
         # The z-slice widgets changed without signals above --> send the
         # new plane and slice also if the view range did not change
         self.update3DViewerViewRegion()
-    
+
+    def setOverlayEnabledForPlane(self, depthAxes):
+        """As `gui.guiWin.switchViewedPlane`: overlay channels are drawn
+        only on the xy plane (`getOlImg` would index the z-stack with the
+        y/x index of the scrollbar). On zy/zx turn the overlay off and
+        disable its button, back on xy restore the previous state."""
+        if depthAxes != 'z':
+            if self.overlayButtonPrevState is None:
+                # Coming from xy (not from the other of zy/zx)
+                self.overlayButtonPrevState = self.overlayButton.isChecked()
+            if self.overlayButton.isChecked():
+                self.overlayButton.setChecked(False)
+            self.overlayButton.setDisabled(True)
+            return
+        if self.overlayButtonPrevState is None:
+            return
+        wasChecked = self.overlayButtonPrevState
+        self.overlayButtonPrevState = None
+        self.overlayButton.setDisabled(False)
+        if wasChecked:
+            self.overlayButton.setChecked(True)
+
     def idScrollBarValueChanged(self, idx):
         if not self.IDs:
             return
@@ -6802,6 +6885,9 @@ class MeasurementsViewerWin(
         )
         dialog.autoApplyCheckBox.setChecked(identifier.autoApply)
         dialog.exec_()
+        # Deferred (result read below): a child of the viewer otherwise
+        # keeps it and its nested editors (and their tables) alive
+        dialog.deleteLater()
         if dialog.cancel:
             return
         return dialog.identifier
@@ -7531,7 +7617,8 @@ class MeasurementsViewerWin(
         names of removed or switched off overriding annotations) in the
         loaded `positions` (default: all), by evaluating their cells
         without rules and overrides (`phase_translator.evaluate` then
-        resets them and drops the unused ``phase_<name>`` outputs). If
+        resets them and drops the unused outputs, ``phase`` too once no
+        cell keeps a phase). If
         phases can be evaluated again by now, the cells are scheduled for
         automatic evaluation instead. Postponed while measurement
         processing runs (`measurementProcessingFinished`)."""
@@ -7657,6 +7744,13 @@ class MeasurementsViewerWin(
                 name for name in self.customAnnotNames()
                 if state is None or name != state['name']
             ],
+            # Checked on OK (the dialog stays open), the modified annotation
+            # keeps its own column
+            'columnConflict': (
+                lambda name: ''
+                if state is not None and name == state['name']
+                else self.customAnnotColumnConflict(name)
+            ),
         }
         if state is None:
             kwargs['state'] = {
@@ -9055,6 +9149,7 @@ class MeasurementsViewerWin(
             condition=condition, parent=self
         )
         dialog.exec_()
+        dialog.deleteLater()
         if dialog.cancel:
             return None
         return dialog.equation
@@ -9228,10 +9323,10 @@ class MeasurementsViewerWin(
         self.raiseOnDemandAx1Items()
 
     def addScaleBar(self, checked):
+        # No rescale: the bar is placed in the current view (the user's
+        # zoom), and `ScaleBar.addToAxis` ignores its bounds
         super().addScaleBar(checked)
         self.raiseOnDemandAx1Items()
-        # Rescale once the scale bar items and the dialog are settled
-        QTimer.singleShot(0, self.autoRange)
 
     def autoRange(self):
         self.ax1.autoRange()

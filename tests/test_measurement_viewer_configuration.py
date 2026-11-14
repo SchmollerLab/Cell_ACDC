@@ -10,11 +10,12 @@ import numpy as np
 import pandas as pd
 import pytest
 import tifffile
+from qtpy.QtCore import QTimer
 from qtpy.QtGui import QKeySequence
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
 
-from cellacdc import apps, measurements_viewer
+from cellacdc import apps, measurements_viewer, widgets
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 from cellacdc.measurements_viewer import MeasurementsViewerWin, VISITED_COLUMN
 from cellacdc.timepoint_predictors import TimepointIdentifier
@@ -2708,6 +2709,49 @@ def test_setup_dialog_is_disabled_while_computing(app, monkeypatch):
     # Closed meanwhile: nothing is filled
     assert dialog.inputLineEdits['GEMININ_MIN'].text() == '0.0'
     assert dialog.backgroundFill is None
+
+
+def test_setup_dialog_is_disabled_while_a_table_row_is_asked(
+        app, monkeypatch
+    ):
+    # The row prompt is not modal: OK of the setup dialog accepted the
+    # values before they were filled in, and a channel changed meanwhile
+    # was recorded with the values of the previous channel
+    dialog = fucci_setup_dialog()
+    warnings = capture_warnings(monkeypatch)
+    dialog.comboboxes['GEMININ'].setCurrentText('phase')  # not in the table
+    dialog.show()
+    states = []
+
+    def answer(closeSetup=False):
+        prompt, = [
+            win for win in dialog.findChildren(widgets.QDialogListbox)
+            if win.isVisible()
+        ]
+        states.append((dialog.isEnabled(), prompt.isEnabled()))
+        if closeSetup:
+            dialog.close()
+            prompt.cancel_cb(None)
+            return
+        prompt.listBox.setCurrentRow(0)  # GFP
+        prompt.ok_cb()
+
+    QTimer.singleShot(50, answer)
+    filled = dialog.fillBackgroundValues(background_summary(), 'test')
+    assert states == [(False, True)]
+    assert dialog.isEnabled()
+    assert filled['GEMININ_MIN'] == 10.5
+    assert dialog.backgroundFill['mapping'] == {
+        'GEMININ': 'phase', 'CDT1': 'mCherry'
+    }
+    # Closed while the row is asked: nothing is filled
+    dialog.inputLineEdits['GEMININ_MIN'].setText('1')
+    QTimer.singleShot(50, partial(answer, closeSetup=True))
+    assert dialog.fillBackgroundValues(background_summary(), 'other') == {}
+    assert states[-1] == (False, True)
+    assert dialog.inputLineEdits['GEMININ_MIN'].text() == '1'
+    assert dialog.backgroundFill['source'] == 'test'
+    assert not warnings
 
 
 def test_fucci_hints_preselect_reporter_channels_for_calculation(app):

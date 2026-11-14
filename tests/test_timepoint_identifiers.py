@@ -9,13 +9,14 @@ import pytest
 from qtpy.QtCore import Qt, QPoint
 from qtpy.QtGui import QCloseEvent, QKeySequence
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication
+from qtpy.QtWidgets import QApplication, QDialog
 
 from cellacdc import apps, apps_measurements_viewer, measurements_viewer, timepoint_predictors
 from cellacdc import measurements_viewer_utils
 from cellacdc.custom_annotation_predictors import CustomAnnotationPredictor
 from cellacdc.measurements_viewer import MeasurementsViewerWin, _TimepointLine, VISITED_COLUMN
 from cellacdc.timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
+from tests.conftest import flushDeferredDeletes
 
 load_configuration = MeasurementsViewerWin.loadConfiguration
 
@@ -748,6 +749,9 @@ def test_equation_dialog_accepts_index_only_inputs(
 @pytest.mark.parametrize('source, equation', [
     ('mother', 'COUNT(Cell_ID_other) > 0'),
     ('daughter', '(COUNT(area_other) > 0) & (MIN(frame_i_other) > frame_i)'),
+    # Direct inputs (not only aggregates)
+    ('mother', '(COUNT(area_other) > 0) & (Cell_ID_other == 1)'),
+    ('mother', '(COUNT(area_other) > 0) & (frame_i_other == frame_i - 1)'),
 ])
 def test_equation_dialog_accepts_other_cell_index_inputs(
         app, lineage_df, Dialog, source, equation
@@ -763,6 +767,56 @@ def test_equation_dialog_accepts_other_cell_index_inputs(
             dialog.otherCellsSourceCombobox.findData(source)
         )
         assert dialog.validateEquation(equation)[0]
+        dialog.formulaEditWidget.setText(equation)
+        dialog.test_cb()
+        assert dialog.okButton.isEnabled(), dialog.statusLabel.text()
+    finally:
+        dialog.deleteLater()
+
+
+@pytest.mark.parametrize('Dialog', [
+    apps_measurements_viewer.TimepointPredictorEquationDialog,
+    apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
+])
+@pytest.mark.parametrize('equation', [
+    '(area > 5) & ~flag_other',
+    '(COUNT(area_other) > 0) & flag_other',
+])
+def test_equation_dialog_keeps_dtype_of_direct_other_inputs(
+        app, lineage_df, Dialog, equation
+    ):
+    # Yes/no _other inputs stay boolean in the preview (random float
+    # placeholders made ~ and & fail although the library accepts them)
+    df = lineage_df.assign(flag=[False, True, False, False, True, False, False])
+    dialog = Dialog([], False, False, acdc_df=df, SizeT=4)
+    try:
+        dialog.otherCellsGroup.setChecked(True)
+        dialog.otherCellsSourceCombobox.setCurrentIndex(
+            dialog.otherCellsSourceCombobox.findData('mother')
+        )
+        timepoint_predictors.TimepointPredictor.from_equation(
+            df, equation, 'first_true', SizeT=4,
+            other_cells=dialog.currentOtherCells()
+        )
+        dialog.formulaEditWidget.setText(equation)
+        assert dialog.validateEquation(equation)[0]
+        dialog.test_cb()
+        assert dialog.okButton.isEnabled(), dialog.statusLabel.text()
+    finally:
+        dialog.deleteLater()
+
+
+@pytest.mark.parametrize('equation', [
+    'Cell_ID == 1', '(COUNT(area_other) > 0) & (Cell_ID_other == 1)',
+    'frame_i_other == frame_i',
+])
+def test_equation_dialog_accepts_index_inputs_without_table(app, equation):
+    # Before data are loaded the index inputs get placeholder values too
+    dialog = apps_measurements_viewer.TimepointPredictorEquationDialog(
+        [], False, False, SizeT=4
+    )
+    try:
+        dialog.otherCellsGroup.setChecked(True)
         dialog.formulaEditWidget.setText(equation)
         dialog.test_cb()
         assert dialog.okButton.isEnabled(), dialog.statusLabel.text()
@@ -2246,6 +2300,72 @@ def test_nested_editors_disable_the_calling_dialog(app, acdc_df, monkeypatch):
     assert identifierDialog.isEnabled() and predictorDialog.isEnabled()
     identifierDialog.deleteLater()
     predictorDialog.deleteLater()
+
+
+def test_nested_editors_are_deleted_after_use(app, acdc_df, monkeypatch):
+    # The callers stay alive (children of the viewer): every kept editor
+    # held the table, the other-cell filter editor a flattened copy of it
+    mv = apps_measurements_viewer
+
+    def cancel(editor):
+        # Counted by name: after deleteLater() PyQt may collect the Python
+        # wrapper (findChildren(<Python class>) then misses the C++ object)
+        editor.setObjectName('nested_editor')
+        editor.cancel = True
+
+    def numEditors(caller):
+        return len(caller.findChildren(QDialog, 'nested_editor'))
+
+    for cls in (
+            mv.TimepointPredictorEquationDialog,
+            mv._TimepointCellFilterEquationDialog
+        ):
+        monkeypatch.setattr(cls, 'exec_', cancel)
+    identifierDialog = mv.TimepointIdentifierDialog(
+        'M', (255, 0, 0), 'Q', acdc_df=acdc_df, SizeT=4, allChNames=['GFP']
+    )
+    identifierDialog.editEquation()
+    predictorDialog = mv.TimepointPredictorEquationDialog(
+        ['GFP'], False, False, acdc_df=acdc_df, SizeT=4,
+        otherCells=timepoint_predictors.CellFilter.default_other(),
+        mainCellFilter=timepoint_predictors.CellFilter.default_main()
+    )
+    for combobox in (
+            predictorDialog.mainCellFilterCombobox,
+            predictorDialog.otherCellsSourceCombobox
+        ):
+        combobox.setCurrentIndex(combobox.findData('custom'))
+    predictorDialog.editOtherCellsCondition()
+    predictorDialog.editOtherCellsCondition()
+    predictorDialog.editMainCellCondition()
+    groupbox = mv._CustomAnnotationPredictorGroupbox(
+        {'acdc_df': acdc_df, 'SizeT': 4}
+    )
+    groupbox.editEquation()
+    callers = [identifierDialog, predictorDialog, groupbox]
+    assert [numEditors(caller) for caller in callers] == [1, 3, 1]
+    flushDeferredDeletes()
+    assert [numEditors(caller) for caller in callers] == [0, 0, 0]
+    for caller in callers:
+        caller.deleteLater()
+
+
+def test_viewer_deletes_identifier_and_condition_dialogs(viewer, monkeypatch):
+    mv = apps_measurements_viewer
+
+    def cancel(dialog):
+        dialog.setObjectName('viewer_dialog')
+        dialog.cancel = True
+
+    for cls in (mv.TimepointIdentifierDialog, mv._FormattingConditionDialog):
+        monkeypatch.setattr(cls, 'exec_', cancel)
+    viewer.execTimepointIdentifierDialog(
+        viewer.defaultTimepointIdentifier(), 'Add time point identifier'
+    )
+    assert viewer.editFormattingCondition('area > 5') is None
+    assert len(viewer.findChildren(QDialog, 'viewer_dialog')) == 2
+    flushDeferredDeletes()
+    assert not viewer.findChildren(QDialog, 'viewer_dialog')
 
 
 def test_predictor_equation_dialog_functions(app, acdc_df):

@@ -175,6 +175,10 @@ class ScaleBarTimestampGuiElements:
             )
             self.timestampDialog.sigValueChanged.connect(self.updateTimestamp)
             self.timestampDialog.exec_()
+            if self.timestampDialog is None:
+                # Removed while the (non-modal) dialog was open, e.g. by
+                # loading other data in the measurements viewer
+                return
         else:
             self.timestamp.removeFromAxis(self.ax1)
         
@@ -221,6 +225,10 @@ class ScaleBarTimestampGuiElements:
             self.scaleBar.draw(**self.scaleBarDialog.kwargs())
             self.scaleBarDialog.sigValueChanged.connect(self.updateScaleBar)
             self.scaleBarDialog.exec_()
+            if self.scaleBarDialog is None:
+                # Removed while the (non-modal) dialog was open, e.g. by
+                # loading other data in the measurements viewer
+                return
             if self.scaleBarDialog.cancel:
                 self.addScaleBarAction.setChecked(False)
                 return
@@ -453,9 +461,13 @@ class ColorSchemeGuiElements:
         self.textAnnot[0].invertBlackAndWhite()
         self.textAnnot[1].invertBlackAndWhite()
 
-        self.objLabelAnnotRgb = tuple(
-            self.textAnnot[0].item.colors()['label'][:3]
-        )
+        # Keep all inverted colors (`annotate.INVERTIBLE_COLOR_NAMES`): text
+        # items created later (`gui_setTextAnnotColors`, e.g. when the
+        # viewer switches position) must get the current scheme
+        textColors = self.textAnnot[0].item.colors()
+        self.objLabelAnnotRgb = tuple(textColors['label'][:3])
+        self.SphaseAnnotRgb = tuple(textColors['S_phase_mother'][:3])
+        self.G1phaseAnnotRgba = tuple(textColors['G1_phase'])
         self.textIDsColorButton.setColor(self.objLabelAnnotRgb)
         self.imgGrad.textColorButton.setColor(self.objLabelAnnotRgb)
         for items in self.overlayLayersItems.values():
@@ -725,14 +737,22 @@ class CountObjectsGuiElements:
             # position is first displayed (`initPosAnnotData`)
             stored = getattr(_posData, 'allData_li', None)
             rp = stored[0]['regionprops'] if stored else None
-            if rp is None:
-                rp = self._acdcRegionProps(
-                    _posData.segm_data[0], precache_centroids=False
-                )
-            IDs = rp.IDs
+            if rp is not None:
+                IDs = rp.IDs
+            else:
+                # Computed once (live counts run on every image update):
+                # the viewer never edits `segm_data` and every load
+                # creates new posData objects
+                IDs = getattr(_posData, '_countObjectsIDs', None)
+                if IDs is None:
+                    IDs = self._acdcRegionProps(
+                        _posData.segm_data[0], precache_centroids=False
+                    ).IDs
+                    _posData._countObjectsIDs = IDs
             if os.path.exists(_posData.acdc_output_csv_path):
                 numObjectsVisitedPosPrevious += len(IDs)
-            if IDs:
+            if IDs or rp is None:
+                # rp None: `IDs` already come from `segm_data[0]`
                 numObjs = len(IDs)
                 numObjectsAllPos += len(IDs)
             else:
@@ -1467,7 +1487,12 @@ class SlideshowGuiElements:
             if posData.SizeZ > 1:
                 z_slice = self.zSliceScrollBar.sliderPosition()
                 self.slideshowWin.img.setCurrentZsliceIndex(z_slice)
+                # No `update_z_slice`: the z index, label and image are set
+                # here, and it would write `segmInfo_df` (None in the
+                # measurements viewer)
+                self.slideshowWin.zSliceScrollBar.blockSignals(True)
                 self.slideshowWin.zSliceScrollBar.setSliderPosition(z_slice)
+                self.slideshowWin.zSliceScrollBar.blockSignals(False)
                 self.slideshowWin.z_label.setText(
                     f'z-slice  {z_slice+1:02}/{posData.SizeZ}'
                 )
@@ -1493,7 +1518,9 @@ class SlideshowGuiElements:
         if self.slideshowWin is None:
             return
 
-        if self.slideshowWin.linkWindow is None:
+        # False for single frames: no "Link" checkbox (the measurements
+        # viewer calls this on every `updateImages`)
+        if not self.slideshowWin.linkWindow:
             return
 
         if not self.slideshowWin.linkWindowCheckbox.isChecked():

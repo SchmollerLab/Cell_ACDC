@@ -214,7 +214,7 @@ class customAnnotationDialog(QDialog):
     def __init__(
             self, savedCustomAnnot, parent=None, state=None, 
             predictorOptions=None, reservedShortcuts=None, existingNames=(),
-            allowDeleteSaved=True
+            allowDeleteSaved=True, columnConflict=None
         ):
         """Dialog to set the parameters of a custom annotation.
 
@@ -238,6 +238,11 @@ class customAnnotationDialog(QDialog):
             If True (default), the dialog listing the saved annotations has
             a button to delete them (`sigDeleteSelecAnnot`). False when the
             host cannot persist the deletion (measurements viewer).
+        columnConflict : callable, optional
+            `columnConflict(name)` returns why the table column `name`
+            cannot store the annotation ('' if it can), checked on OK so
+            that the dialog stays open with the entered values (measurements
+            viewer: `customAnnotColumnConflict`).
         """
         self.cancel = True
         self.loop = None
@@ -246,6 +251,7 @@ class customAnnotationDialog(QDialog):
         self.allowDeleteSaved = allowDeleteSaved
         self.reservedShortcuts = dict(reservedShortcuts or {})
         self.existingNames = set(existingNames)
+        self.columnConflict = columnConflict
         self.hasPredictor = predictorOptions is not None
 
         self.internalNames = measurements.get_all_acdc_df_colnames(
@@ -685,7 +691,24 @@ class customAnnotationDialog(QDialog):
             event.ignore()
             self.cancel = True
             return
-        
+
+        conflict = (
+            self.columnConflict(name) if self.columnConflict is not None
+            else ''
+        )
+        if self.clickedButton==self.okButton and conflict:
+            msg = widgets.myMessageBox()
+            msg.warning(
+                self, 'Name cannot be used', html_utils.paragraph(
+                    f'<code>{html.escape(name)}</code> cannot be used as '
+                    f'annotation column: {html.escape(conflict)}<br><br>'
+                    'Choose a different name.'
+                )
+            )
+            event.ignore()
+            self.cancel = True
+            return
+
         shortcut = self.shortcutWidget.widget.text().strip()
         usedBy = self.reservedShortcuts.get(
             QKeySequence(shortcut).toString() if shortcut else None

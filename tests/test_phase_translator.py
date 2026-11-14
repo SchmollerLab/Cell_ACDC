@@ -622,6 +622,46 @@ def test_obsolete_override_outputs_are_removed(table, tmp_path):
         assert result.table['phase'].tolist() == ['G1', 'S', 'S', 'G2'] * 2
 
 
+@pytest.mark.parametrize('cell_cycle', [False, True])
+def test_clearing_every_phase_removes_phase_column(table, tmp_path, cell_cycle):
+    """Clearing (no rules, no overrides) the last phase removes 'phase' too:
+    saved without markers, it was not recognized after reload and every
+    later evaluation refused to overwrite it."""
+    from cellacdc import base_cca_dict, load
+    if cell_cycle:
+        for column, value in base_cca_dict.items():
+            table[column] = value
+    table['Excluded'] = [0, 1, 0, 0] + [0] * 4
+    first = phase_translator.evaluate(
+        table, [], annotation_overrides=['Excluded']
+    )
+    # Cell 2 keeps no phase: clearing only cell 1 leaves nothing either
+    cleared = phase_translator.evaluate(
+        first.table, [], IDs=[1], owned_columns=first.columns
+    )
+    assert cleared.columns == set()
+    assert not cleared.table.columns.str.startswith('phase').any()
+    pd.testing.assert_frame_equal(cleared.table, table)
+    path = tmp_path / 'acdc_output.csv'
+    cleared.table.to_csv(path)
+    loaded = load._load_acdc_df_file(path)
+    for rules, overrides in (([rule()], []), ([], ['Excluded'])):
+        result = phase_translator.evaluate(
+            loaded, rules, annotation_overrides=overrides
+        )
+        assert 'phase' in result.columns
+    # A bare phase column without any phase (as saved before) is no
+    # measurement: overwritten by an evaluation, but nothing to clear
+    first.table.drop(columns='phase_Excluded').assign(phase='').to_csv(path)
+    loaded = load._load_acdc_df_file(path)
+    assert phase_translator.normalize_loaded_outputs(loaded) == set()
+    result = phase_translator.evaluate(loaded, [rule()])
+    for ID in (1, 2):
+        assert cell_phases(result, ID) == ['G1', 'S', 'S', 'G2']
+    with pytest.raises(ValueError, match='at least one phase rule'):
+        phase_translator.evaluate(loaded, [])
+
+
 def test_phase_names_output_columns_and_validation_with_overrides():
     rules = [rule(), fallback()]
     names = phase_translator.phase_names(

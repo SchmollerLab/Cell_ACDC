@@ -1323,6 +1323,44 @@ def test_adding_annotation_named_like_another_output_is_refused(
     assert viewer.customAnnotColumnConflict('Dead') == ''
 
 
+def test_add_dialog_stays_open_on_column_conflict(viewer, monkeypatch):
+    """The column conflict is checked on OK of the real dialog, which stays
+    open with the entered values (regression: it closed and they were
+    lost)."""
+    viewer.acdc_df['GFP_ratio'] = viewer.acdc_df['area'] / 7
+    warnings = record_warnings(monkeypatch)
+    monkeypatch.setattr(viewer, 'checkNameExists', lambda name: True)
+    record = {}
+
+    def fillAndAccept():
+        dialog = viewer.addAnnotWin
+        dialog.nameWidget.widget.setText('GFP_ratio')
+        dialog.descWidget.widget.setPlainText('Typed by the user')
+        dialog.okButton.click()
+        record['refused'] = (
+            dialog.isVisible(), dialog.descWidget.widget.toPlainText(),
+            len(warnings)
+        )
+        dialog.nameWidget.widget.setText('GFP_ratio_flag')
+        dialog.okButton.click()
+        record['acceptedVisible'] = dialog.isVisible()
+
+    QTimer.singleShot(0, fillAndAccept)
+    button = viewer.addCustomAnnotation()
+    assert record['refused'] == (True, 'Typed by the user', 1)
+    assert '<code>GFP_ratio</code>' in warnings[0]
+    assert not record['acceptedVisible']
+    assert button is not None
+    assert viewer.customAnnotNames() == ['GFP_ratio_flag']
+    state = viewer.customAnnotDict[button]['state']
+    assert state['description'] == 'Typed by the user'
+    assert len(warnings) == 1
+    # Modifying an annotation keeps its own column
+    kwargs = viewer.customAnnotationDialogKwargs(state=state)
+    assert kwargs['columnConflict']('GFP_ratio_flag') == ''
+    assert 'other than 0/1' in kwargs['columnConflict']('GFP_ratio')
+
+
 def test_export_contains_cellwide_annotation_column(viewer, tmp_path, monkeypatch):
     viewer.setCustomAnnotations([annot_state()])
     button = viewer.customAnnotButtonByName('Big')
