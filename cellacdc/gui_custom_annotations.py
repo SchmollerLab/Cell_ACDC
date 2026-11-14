@@ -526,22 +526,38 @@ class CustomAnnotationsGuiElements:
         self.selectAnnotWin.listBox.clear()
         self.selectAnnotWin.listBox.addItems(items)
 
+    def execCustomAnnotationDialog(self, state=None):
+        """Show `apps.customAnnotationDialog` (`self.addAnnotWin` while it
+        is open; `state` of the annotation to modify) and return it once
+        closed. The dialog is then scheduled for deletion: its result
+        (`cancel`, `state`, `symbol`) stays readable, but parented to this
+        window it would stay alive for the whole session, and in the
+        measurements viewer its predictor settings keep a table
+        (`customAnnotationDialogKwargs`)."""
+        # The hook may give the initial state of a new annotation
+        stateKwargs = {} if state is None else {'state': state}
+        dialog = apps.customAnnotationDialog(
+            self.savedCustomAnnot, parent=self,
+            allowDeleteSaved=self.canDeleteSavedCustomAnnot(),
+            **stateKwargs, **self.customAnnotationDialogKwargs(state=state)
+        )
+        self.addAnnotWin = dialog
+        dialog.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
+        dialog.exec_()
+        self.addAnnotWin = None
+        dialog.deleteLater()
+        return dialog
+
     def addCustomAnnotation(self):
         self.readSavedCustomAnnot()
 
-        self.addAnnotWin = apps.customAnnotationDialog(
-            self.savedCustomAnnot, parent=self,
-            allowDeleteSaved=self.canDeleteSavedCustomAnnot(),
-            **self.customAnnotationDialogKwargs()
-        )
-        self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
-        self.addAnnotWin.exec_()
-        if self.addAnnotWin.cancel:
+        dialog = self.execCustomAnnotationDialog()
+        if dialog.cancel:
             self.logger.info('Custom annotation process cancelled.')
             return
 
-        state = self.addAnnotWin.state
-        symbol = self.addAnnotWin.symbol
+        state = dialog.state
+        symbol = dialog.symbol
         symbolColor = state['symbolColor']
         name = state['name']
         keepActive = state.get('keepActive', True)
@@ -668,17 +684,11 @@ class CustomAnnotationsGuiElements:
 
     def customAnnotModify(self, button):
         oldState = self.customAnnotDict[button]['state']
-        self.addAnnotWin = apps.customAnnotationDialog(
-            self.savedCustomAnnot, parent=self, state=oldState,
-            allowDeleteSaved=self.canDeleteSavedCustomAnnot(),
-            **self.customAnnotationDialogKwargs(state=oldState)
-        )
-        self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
-        self.addAnnotWin.exec_()
-        if self.addAnnotWin.cancel:
+        dialog = self.execCustomAnnotationDialog(state=oldState)
+        if dialog.cancel:
             return
 
-        state = self.addAnnotWin.state
+        state = dialog.state
         oldName = oldState['name']
         name = state['name']
         if name != oldName:
@@ -700,7 +710,7 @@ class CustomAnnotationsGuiElements:
         button.setToolTip(self.customAnnotToolTip(state))
         self.setCustomAnnotShortcut(button, state['shortcut'])
 
-        symbol = self.addAnnotWin.symbol
+        symbol = dialog.symbol
         symbolColor = pg.mkColor(state['symbolColor'])
         button.symbol = symbol
         button.setColor(symbolColor)

@@ -381,6 +381,22 @@ def test_shared_tokens_preserve_replacement_spans():
     ]
 
 
+@pytest.mark.parametrize('equation, expected', [
+    ('`561_mean` / cell_area_pxl', ['561_mean', 'cell_area_pxl']),
+    ('`GFP-488_mean` + (`405nm` * area', ['GFP-488_mean', '405nm', 'area']),
+    ('stage == "a`b" + `561_mean` + area', ['stage', '561_mean', 'area']),
+    ('area + `561_mean', ['area']),
+])
+def test_shared_tokens_keep_names_after_digit_quoted_names(equation, expected):
+    # Python >= 3.12 cannot tokenize these quoted names (3.10/3.11 split
+    # them): the names after them must still be found, else Combine
+    # measurements reports "No measurement inputs used".
+    spans = equation_variable_spans(equation)
+    assert [name for name, _, _ in spans] == expected
+    for name, start, end in spans:
+        assert equation[start:end] in (name, f'`{name}`')
+
+
 def test_measurement_replacement_uses_shared_tokens():
     from cellacdc import measurements
 

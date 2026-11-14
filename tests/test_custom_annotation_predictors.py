@@ -1,5 +1,6 @@
 import json
 import os
+import weakref
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -8,7 +9,8 @@ import pandas as pd
 import pytest
 from qtpy.QtCore import QPoint, QTimer
 from qtpy.QtGui import QKeySequence
-from qtpy.QtWidgets import QApplication, QLabel
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import QApplication, QDialog, QLabel
 
 from cellacdc import apps, apps_measurements_viewer, gui_custom_annotations, measurements_viewer
 from cellacdc import measurements_viewer_utils
@@ -19,6 +21,7 @@ from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import (
     CellFilter, TIMEPOINT_PREFIX, TimepointPredictor
 )
+from tests.conftest import flushDeferredDeletes
 
 
 load_configuration = MeasurementsViewerWin.loadConfiguration
@@ -974,7 +977,7 @@ def test_modify_rename_and_remove(viewer, monkeypatch):
     newState['symbolColor'] = measurements_viewer.QColor(0, 255, 0)
     dialog = SimpleNamespace(
         cancel=False, state=newState, symbol='o', exec_=Mock(),
-        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock())
+        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
         gui_custom_annotations.apps, 'customAnnotationDialog', 
@@ -1037,7 +1040,7 @@ def modify_annotation(viewer, monkeypatch, button, state):
     state['symbolColor'] = measurements_viewer.QColor(*state['symbolColor'])
     dialog = SimpleNamespace(
         cancel=False, state=state, symbol='o', exec_=Mock(),
-        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock())
+        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
         gui_custom_annotations.apps, 'customAnnotationDialog',
@@ -1290,7 +1293,7 @@ def test_adding_annotation_named_like_another_output_is_refused(
     state['symbolColor'] = measurements_viewer.QColor(*state['symbolColor'])
     dialog = SimpleNamespace(
         cancel=False, state=state, symbol='o', exec_=Mock(),
-        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock())
+        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
         gui_custom_annotations.apps, 'customAnnotationDialog',
@@ -1359,6 +1362,53 @@ def test_add_dialog_stays_open_on_column_conflict(viewer, monkeypatch):
     kwargs = viewer.customAnnotationDialogKwargs(state=state)
     assert kwargs['columnConflict']('GFP_ratio_flag') == ''
     assert 'other than 0/1' in kwargs['columnConflict']('GFP_ratio')
+
+
+def test_annotation_dialogs_are_deleted_after_use(viewer, monkeypatch):
+    """The add/modify dialogs are children of the viewer and each one kept
+    its predictor table alive (here masked copies, one per dialog): they
+    are deleted once their result is read. Cancel and the X button return
+    from `exec_` (regression: its event loop never exited on cancel)."""
+    viewer.maskUnanalyzedFrames = True
+    viewer.data[0].lastAnalyzedFrame = 2
+    viewer.setCustomAnnotations([annot_state()])
+    tables, loopsRunning = [], []
+
+    def closeWith(how):
+        def close():
+            dialog = viewer.addAnnotWin
+            # Counted by name (see test_nested_editors_are_deleted_after_use)
+            dialog.setObjectName('custom_annotation_dialog')
+            tables.append(weakref.ref(dialog.predictorGroupbox.acdc_df))
+            if how == 'cancel':
+                dialog.cancelButton.click()
+            else:
+                dialog.close()
+            loopsRunning.append(dialog.loop.isRunning())
+            if dialog.loop.isRunning():
+                dialog.loop.exit()  # do not hang without the fix
+        return close
+
+    def numDialogs():
+        return len(viewer.findChildren(QDialog, 'custom_annotation_dialog'))
+
+    QTimer.singleShot(0, closeWith('cancel'))
+    assert viewer.addCustomAnnotation() is None
+    QTimer.singleShot(0, closeWith('x'))
+    assert viewer.addCustomAnnotation() is None
+    QTimer.singleShot(0, closeWith('cancel'))
+    viewer.customAnnotModify(viewer.customAnnotButtonByName('Big'))
+    assert loopsRunning == [False, False, False]
+    assert viewer.addAnnotWin is None
+    assert len(tables) == 3
+    flushDeferredDeletes()
+    assert numDialogs() == 0
+    # PyQt releases the slots connected to the deleted widgets (they
+    # reference the dialog) in the event loop
+    QTest.qWait(10)
+    flushDeferredDeletes()
+    assert [table() for table in tables] == [None, None, None]
+    assert viewer.customAnnotNames() == ['Big']
 
 
 def test_export_contains_cellwide_annotation_column(viewer, tmp_path, monkeypatch):

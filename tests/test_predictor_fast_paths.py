@@ -550,30 +550,29 @@ def test_quoted_equation_keeps_all_columns_if_names_are_missed(monkeypatch):
     assert seen == [list(df.columns)]
 
 
-def test_quoted_equation_keeps_all_columns_if_tokenizing_fails(monkeypatch):
+def test_quoted_equation_names_survive_tokenizer_errors(monkeypatch):
     df = pd.DataFrame({
         "a'b": [1.0, 2.0], 'GFP mean': [1.0, 2.0], 'area': [3.0, 4.0],
         'other': [0.0, 0.0],
     })
     equation = "area + `a'b` + `GFP mean`"
-    names = tp.CellEquation.names(equation)
+    # The pure-Python tokenizer (< 3.12) recovers from the apostrophe
+    # (error token); 3.12+ stops there and equation_variable_spans masks
+    # the quoted name and goes on: all names are found on every version
+    assert tp.CellEquation.names(equation) == {'area', "a'b", 'GFP mean'}
     if sys.version_info < (3, 12):
-        # The pure-Python tokenizer recovers from the apostrophe (error
-        # token), so all names are found; pandas (same tokenizer) evaluates
-        # the equation on the narrowed table
-        assert names == {'area', "a'b", 'GFP mean'}
+        # pandas (same tokenizer) evaluates it on the narrowed table
         seen = spy_eval_columns(monkeypatch)
         values = tp.CellEquation.evaluate(df, equation)
         assert list(values) == [5.0, 8.0]
         assert seen == [["a'b", 'GFP mean', 'area']]
         return
-    # Python 3.12+: the apostrophe in the quoted name stops tokenizing after
-    # ``area``, so CellEquation.names misses both quoted names: the whole
-    # table is passed and pandas reports the same error as without narrowing
-    assert names == {'area'}
+    # Python 3.12+: pandas cannot parse the name; narrowing the table keeps
+    # the error of the evaluation on the whole table
     with pytest.raises(Exception) as expected:
         df.eval(equation)
     seen = spy_eval_columns(monkeypatch)
-    with pytest.raises(type(expected.value)):
+    with pytest.raises(type(expected.value)) as narrowed:
         tp.CellEquation.evaluate(df, equation)
-    assert seen == [list(df.columns)]
+    assert str(narrowed.value) == str(expected.value)
+    assert seen == [["a'b", 'GFP mean', 'area']]

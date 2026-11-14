@@ -17,7 +17,7 @@ If the user loads time-lapse data then the annotation mode needs to be activated
 A custom annotation can be added by clicking on the `addCustomAnnotationAction`
 tool button on the left side toolbar. This action is connected (with `triggered` slot) to the `addCustomAnnotation` function.
 
-This function will open the dialog `apps.customAnnotationDialog` (with custom `exec_` function) and the window reference is stored in `addAnnotWin` attribute of the gui.
+This function will open the dialog `apps.customAnnotationDialog` (with custom `exec_` function) through `execCustomAnnotationDialog`: while it is open the window reference is stored in the `addAnnotWin` attribute of the gui; once its result is read the dialog is deleted (`deleteLater`).
 
 The `addAnnotWin` window has the following attributes created in its `closeEvent`:
 
@@ -40,7 +40,7 @@ The tool button reference is used as a key to create a dictionary inside the `cu
 
 Next, the parameters of the annotation are saved as a json file to both `cellacdc/temp/custom_annotations.json` path (initialized as a global variable after the imports) and to the `<posData.images_path>/<basename>custom_annot_params.json` path (initialized in `load.loadData.buildPaths`). The saving is performed in the `saveCustomAnnot` function of the gui.
 
-Finally, we create a `pg.ScatterPlotItem` and we add it to the `ax1` (left plot). We also add a column of 0s to the `acdc_df` filled with 0s and with column name = self.addAnnotWin.state['name'].
+Finally, we create a `pg.ScatterPlotItem` and we add it to the `ax1` (left plot). We also add a column of 0s to the `acdc_df` filled with 0s and with column name = the dialog's `state['name']`.
 
 ### Usage
 

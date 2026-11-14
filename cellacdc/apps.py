@@ -649,6 +649,9 @@ class customAnnotationDialog(QDialog):
         if self.clickedButton is None or self.clickedButton==self.cancelButton:
             # cancel button or closed with 'x' button
             self.cancel = True
+            # Return from `exec_` so that the caller sees the cancel
+            if self.loop is not None:
+                self.loop.exit()
             return
 
         if self.clickedButton==self.okButton and not self.nameWidget.widget.text():

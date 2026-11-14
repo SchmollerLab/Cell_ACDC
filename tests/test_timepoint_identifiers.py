@@ -1023,6 +1023,35 @@ def test_text_columns_in_filters_and_other_cell_functions():
         predict(df, 'MAX(stage_other) > 0', 'first_true', other_cells=other)
 
 
+def test_nunique_description_examples_match_evaluation():
+    # The description is the NUNIQUE button tool tip and part of the
+    # predictor Help: equations run on one cell's rows, so NUNIQUE(Cell_ID)
+    # is always 1 and must not be suggested as the number of cells.
+    description = timepoint_predictors.CELL_FUNCTIONS['NUNIQUE'][1]
+    assert 'NUNIQUE(Cell_ID)' not in description
+    assert 'NUNIQUE(frame_i): number of frames of the cell' in description
+    assert (
+        'NUNIQUE(Cell_ID_other): number of selected other cells'
+        in description
+    )
+    df = pd.DataFrame({
+        'frame_i': [0, 1, 2, 3, 0, 1, 2, 1, 2],
+        'Cell_ID': [1, 1, 1, 1, 2, 2, 2, 3, 3],
+        'area': [1.] * 9,
+    }).set_index(['frame_i', 'Cell_ID'])
+    predict = timepoint_predictors.TimepointPredictor.from_equation
+    assert predict(df, 'NUNIQUE(frame_i) == 3', 'first_true') == {
+        1: [], 2: [0], 3: []
+    }
+    other = timepoint_predictors.CellFilter.default_other()
+    assert predict(
+        df, 'NUNIQUE(Cell_ID_other) == 2', 'rising_true', other_cells=other
+    ) == {1: [1], 2: [1], 3: [1]}
+    assert predict(
+        df, 'NUNIQUE(Cell_ID_other) == 0', 'first_true', other_cells=other
+    ) == {1: [3], 2: [], 3: []}
+
+
 def test_describe_names_the_main_cell_filter():
     predictor = {
         'type': timepoint_predictors.PREDICTOR_EQUATION,

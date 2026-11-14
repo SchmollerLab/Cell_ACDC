@@ -135,7 +135,7 @@ def modify_annotation(viewer, monkeypatch, name, state):
     state['symbolColor'] = QColor(*state['symbolColor'])
     dialog = SimpleNamespace(
         cancel=False, state=state, symbol='o', exec_=Mock(),
-        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock())
+        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
         gui_custom_annotations.apps, 'customAnnotationDialog',
@@ -652,7 +652,7 @@ def test_adding_overriding_annotation_with_annotated_cells(
     state['symbolColor'] = QColor(*state['symbolColor'])
     dialog = SimpleNamespace(
         cancel=False, state=state, symbol='o', exec_=Mock(),
-        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock())
+        sigDeleteSelecAnnot=SimpleNamespace(connect=Mock()), deleteLater=Mock()
     )
     monkeypatch.setattr(
         gui_custom_annotations.apps, 'customAnnotationDialog',

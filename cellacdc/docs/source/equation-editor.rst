@@ -127,6 +127,15 @@ are not plain Python names (with spaces, dashes or other punctuation, or
 starting with a digit) are inserted between backticks, e.g.
 ```GFP-x mean```. When you type such a name yourself, add the backticks too.
 
+.. note::
+
+    With Python 3.12 or newer, equations cannot use names in which a number
+    directly followed by a letter or ``_`` starts the name or comes right
+    after a dash, space or other punctuation (e.g. ``561_mean``,
+    ``GFP-488_mean`` or ``405nm_mean``), not even between backticks: the
+    test fails with "Failed to parse backticks in ...". Rename the channel,
+    annotation or column, e.g. ``ch561`` instead of ``561``.
+
 Searching
 ~~~~~~~~~
 
@@ -704,6 +713,13 @@ Troubleshooting
     The name is misspelled or the column is not in the table of the current
     Position. Insert names by double-clicking them in the lists; names with
     spaces or punctuation need backticks.
+
+**"Failed to parse backticks in ...".**
+    Also shown after "Evaluating the equation failed ...". A name between
+    backticks starts with a number followed by a letter or ``_``, or has one
+    right after a dash, space or other punctuation (e.g. ``561_mean`` or
+    ``GFP-488_mean``). Python 3.12 and newer cannot read such names: rename
+    the channel, annotation or column (e.g. ``ch561``, see `Input lists`_).
 
 **A combined condition gives unexpected results.**
     Put parentheses around each comparison, e.g.

@@ -982,7 +982,10 @@ CELL_FUNCTIONS = {
     'COUNT': (CellEquation._count, 'Number of frames of the cell with a value'),
     'NUNIQUE': (
         CellEquation._nunique, 
-        'Number of unique values, e.g. NUNIQUE(Cell_ID): number of cells'
+        'Number of different values over the frames of the cell, e.g. '
+        'NUNIQUE(frame_i): number of frames of the cell; with other-cell '
+        'measurements, NUNIQUE(Cell_ID_other): number of selected other '
+        'cells'
     ),
     'DIFF': (
         CellEquation._diff,

@@ -1214,6 +1214,8 @@ def test_partially_overlapping_outputs_are_refused(viewer, monkeypatch):
             self.saveNames = ['b_s']
         def exec_(self):
             pass
+        def deleteLater(self):
+            pass
     monkeypatch.setattr(
         measurements_viewer.apps_measurements_viewer,
         'MeasurementProcessingRecipeDialog', Dialog

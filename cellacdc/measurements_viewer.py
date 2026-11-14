@@ -5592,6 +5592,8 @@ class MeasurementsViewerWin(
         self.logger.info('Opening "Process measurements" dialog...')
         posData = self.posData()
         dialog.exec_()
+        # It keeps the table alive: delete it, its result stays readable
+        dialog.deleteLater()
         if dialog.cancel:
             self.logger.info('Process measurements cancelled')
             return

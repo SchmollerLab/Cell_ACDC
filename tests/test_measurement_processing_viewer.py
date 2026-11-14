@@ -1,4 +1,5 @@
 import time
+import weakref
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -7,10 +8,11 @@ import pandas as pd
 import pytest
 from qtpy.QtCore import QItemSelectionModel, QMutex, QWaitCondition, Qt
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication, QLabel
+from qtpy.QtWidgets import QApplication, QLabel, QWidget
 
 from cellacdc import apps, apps_measurements_viewer, measurements_viewer, widgets, workers
 from cellacdc.measurements_viewer import MeasurementsViewerWin
+from tests.conftest import flushDeferredDeletes
 
 
 @pytest.fixture(scope='module')
@@ -493,7 +495,7 @@ def test_accept_passes_dialog_output_names_to_processing(viewer, monkeypatch):
     dialog = SimpleNamespace(
         cancel=False, selectedChannels=['area'],
         selectedRecipe=[{'method': 'Dummy', 'kwargs': {}}],
-        saveNames=['area_new'], exec_=Mock()
+        saveNames=['area_new'], exec_=Mock(), deleteLater=Mock()
     )
     dialogClass = Mock(return_value=dialog)
     monkeypatch.setattr(
@@ -514,7 +516,7 @@ def test_accept_passes_dialog_output_names_to_processing(viewer, monkeypatch):
 def test_cancel_does_not_process(viewer, monkeypatch):
     dialog = SimpleNamespace(
         cancel=True, selectedChannels=['area'], selectedRecipe=[],
-        saveNames=['area_new'], exec_=Mock()
+        saveNames=['area_new'], exec_=Mock(), deleteLater=Mock()
     )
     monkeypatch.setattr(
         apps_measurements_viewer, 'MeasurementProcessingRecipeDialog',
@@ -525,6 +527,31 @@ def test_cancel_does_not_process(viewer, monkeypatch):
     viewer.processMeasurements()
     dialog.exec_.assert_called_once()
     start.assert_not_called()
+
+
+def test_recipe_dialog_is_deleted_after_use(viewer, monkeypatch):
+    # A child of the viewer, it kept the table it was opened with alive for
+    # the whole session (e.g. after a position switch or Reload table)
+    def cancel(dialog):
+        # Counted by name (see test_nested_editors_are_deleted_after_use)
+        dialog.setObjectName('recipe_dialog')
+        dialog.cancel = True
+
+    monkeypatch.setattr(
+        apps_measurements_viewer.MeasurementProcessingRecipeDialog, 'exec_',
+        cancel
+    )
+    table = weakref.ref(viewer.acdc_df)
+    viewer.processMeasurements()
+    viewer.acdc_df = viewer.acdc_df.sort_index().copy()
+    viewer.posData().acdc_df = viewer.acdc_df
+    flushDeferredDeletes()
+    assert viewer.findChildren(QWidget, 'recipe_dialog') == []
+    # PyQt releases the slots connected to the deleted widgets (they
+    # reference the dialog) in the event loop
+    QTest.qWait(10)
+    flushDeferredDeletes()
+    assert table() is None
 
 
 def recipe_dialog_class(saveNames, onExec):
@@ -540,6 +567,9 @@ def recipe_dialog_class(saveNames, onExec):
 
         def exec_(self):
             onExec()
+
+        def deleteLater(self):
+            pass
 
     return Dialog
 

@@ -2,6 +2,7 @@
 import pandas as pd
 import pytest
 
+from cellacdc import base_cca_dict
 from cellacdc import lineage_tree_integrity as lti
 
 # Lineage: 1 divides into 3 + 4 (frame 3), 3 divides into 5 + 6 (frame 6).
@@ -431,6 +432,33 @@ def test_budding_lineage_tree_and_missing_columns():
     assert lti.check_lineage_tree(no_tree).issues == []
     with pytest.raises(ValueError):
         lti.check_lineage_tree(no_tree.drop(columns='Cell_ID'))
+
+
+def test_unset_cell_id_tree_keeps_structural_checks():
+    # Trackastra / imported tracking table: budding cca columns and
+    # Cell_ID_tree == Cell_ID (myutils.df_ctc_to_acdc_df)
+    df = make_table(extra_sister_col=False)
+    for col, value in base_cca_dict.items():
+        if col not in df.columns:
+            df[col] = value
+    df['Cell_ID_tree'] = df['Cell_ID']
+    set_value(df, 5, 'parent_ID_tree', 5, frames=[8, 9])
+    # Cell 7 added by the GUI in frame 9 (store_data fill value 0 everywhere)
+    fill_row = {col: 0 for col in df.columns}
+    fill_row.update(frame_i=9, Cell_ID=7)
+    with_fill_row = pd.concat([df, pd.DataFrame([fill_row])], ignore_index=True)
+    # Cell_ID_tree of cell 6 never written (NaN filled with 0 on load)
+    unset_cell_id_tree = df.copy()
+    set_value(unset_cell_id_tree, 6, 'Cell_ID_tree', 0)
+    for table in (with_fill_row, unset_cell_id_tree):
+        report = lti.check_lineage_tree(table)
+        assert not issues_of(report, 'budding_lineage_tree')
+        assert [(i.Cell_ID, i.first_frame_i, i.last_frame_i) for i in issues_of(
+            report, 'self_parent'
+        )] == [(5, 8, 9)]
+        assert not report.ok
+    fill = issues_of(lti.check_lineage_tree(with_fill_row), 'fill_value_rows')
+    assert [(i.Cell_ID, i.first_frame_i) for i in fill] == [(7, 9)]
 
 
 def test_report_outputs(tmp_path):

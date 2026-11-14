@@ -814,6 +814,37 @@ def test_incomplete_multiline_equation_does_not_break_live_editor(dialog):
     assert not dialog.okButton.isEnabled()
 
 
+@pytest.mark.parametrize('name', ['561_mean', 'GFP-488_mean'])
+def test_digit_quoted_names_are_inputs(app, name):
+    # Python >= 3.12 cannot parse these names, even in backticks (pandas:
+    # "Failed to parse backticks"); 3.10/3.11 can. Either way the inputs
+    # are recognised, never "No measurement inputs used".
+    df = pd.DataFrame({
+        'frame_i': [0, 1, 0], 'Cell_ID': [1, 1, 2],
+        name: [1., 2., 3.], 'cell_area_pxl': [10., 20., 30.],
+    }).set_index(['frame_i', 'Cell_ID'])
+    dialog = apps.CombineMetricsEquationDialog(
+        [name.rsplit('_', 1)[0]], False, False, acdc_df=df,
+        saveToConfig=False, allowCellAggregations=True,
+        limitToLoadedColumns=True, closeOnOk=False
+    )
+    try:
+        item, = dialog.metricsTreeWidgets[0].findItems(
+            name, Qt.MatchExactly | Qt.MatchRecursive
+        )
+        dialog.addColname(item, 0)
+        dialog.formulaEditWidget.insert(' / cell_area_pxl')
+        equation = dialog.formulaEditWidget.text()
+        assert equation == f'`{name}` / cell_area_pxl'
+        assert sorted(dialog.equationColNames) == sorted(
+            [name, 'cell_area_pxl']
+        )
+        valid, message = dialog.validateEquation(equation)
+        assert valid or 'Failed to parse backticks' in message, message
+    finally:
+        dialog.deleteLater()
+
+
 def test_full_table_test_catches_errors_outside_preview(app):
     dialog = apps.CombineMetricsMultiDfsDialog({
         'first': pd.DataFrame({'value': ['1'] * 10 + ['bad']})

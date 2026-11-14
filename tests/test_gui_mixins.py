@@ -328,7 +328,8 @@ def test_modify_dialog_hide_option_updates_drawn_symbols(
         item.setData([5, 6], [5, 6])
     dialog = SimpleNamespace(
         cancel=False, state={**state, 'isHideChecked': hide}, symbol='o',
-        exec_=lambda: None, sigDeleteSelecAnnot=MagicMock()
+        exec_=lambda: None, sigDeleteSelecAnnot=MagicMock(),
+        deleteLater=lambda: None
     )
     monkeypatch.setattr(
         apps, 'customAnnotationDialog', lambda *args, **kwargs: dialog

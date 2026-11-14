@@ -63,6 +63,10 @@ checks; empty or invalid generation/root/sister values only skip the checks
 of those values. Tables whose ``Cell_ID_tree`` differs from
 ``Cell_ID`` (lineage tree built from budding annotations by
 ``core.LineageTree``, one node per cell cycle) only get the value checks.
+``Cell_ID_tree`` values 0 / -1 (unset, e.g. GUI fill value or NaN filled
+with 0 on load) and fill value rows do not count as differing, so tables
+with ``Cell_ID_tree == Cell_ID`` (Trackastra output, imported tracking
+tables) keep the structural checks.
 
 Issues are grouped per cell and check (one issue covers consecutive frames
 with the same values). ``first_frame_i`` / ``last_frame_i`` of the issues are
@@ -790,10 +794,13 @@ def check_lineage_tree(acdc_df, max_daughters=2, source=None):
         )
 
     if 'Cell_ID_tree' in values.columns:
+        # 0 / -1 (fill values, e.g. a cell added by the GUI to a Trackastra
+        # table) are unset, not the node ID of a budding lineage tree
         differs = (
             values['Cell_ID_tree'].notna()
+            & ~values['Cell_ID_tree'].isin([-1, 0])
             & (values['Cell_ID_tree'] != df['Cell_ID'])
-            & (values['Cell_ID_tree'] != -1)
+            & ~fill_rows
         )
         if differs.any():
             issues.append(LineageTreeIssue(
