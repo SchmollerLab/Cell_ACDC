@@ -165,6 +165,11 @@ class ModelClient:
         self.prompt_types = tuple(
             getattr(self.info, 'prompt_types', None) or ('point',)
         )
+        # Like the `saved_model_ext` attribute of in-process promptable
+        # models: None if the model cannot save and load trained models
+        self.saved_model_ext = None
+        if self.info.capabilities.save_load:
+            self.saved_model_ext = self.info.saved_model_ext
 
     def _fetch_info(self) -> InfoResponse:
         res = self.session.get(f"{self.base_url}/info", timeout=10)
@@ -336,6 +341,38 @@ class ModelClient:
         )
         self._raise_for_status(res)
         return res.json().get('result')
+
+    def _post_save_load(self, endpoint, filepath):
+        from cellacdc.service import payload
+
+        if not self.info.capabilities.save_load:
+            raise NotImplementedError(
+                f"Model {self.model_name} does not support saving and "
+                "loading trained models"
+            )
+        kwargs_json, _ = payload.encode({'filepath': os.fspath(filepath)})
+        res = self.session.post(
+            f'{self.base_url}/{endpoint}',
+            data={'kwargs': kwargs_json},
+            timeout=self.timeout,
+        )
+        self._raise_for_status(res)
+        return res.json().get('result')
+
+    def save_model(self, filepath):
+        """Save the worker's trained promptable model to `filepath`.
+
+        Returns the (JSON) result of the model's `save_model` method (the
+        path of the saved file).
+        """
+        return self._post_save_load('save_model', filepath)
+
+    def load_model(self, filepath):
+        """Load a trained model from `filepath` into the worker.
+
+        Returns the (JSON) result of the model's `load_model` method.
+        """
+        return self._post_save_load('load_model', filepath)
 
     def second_ch_img_to_stack(
             self, 

@@ -108,6 +108,7 @@ from .config import STANDARD_MOUSE_BUTTONS
 from . import rst_utils
 from . import core_split_IDs
 from .promptable_models import utils as prompt_utils
+from .promptable_models import saved_models
 np.seterr(invalid='ignore')
 
 if os.name == 'nt':
@@ -2999,6 +3000,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.magicPromptsToolbar.sigClearStrokesOnZoom.connect(
             partial(self.magicPromptsClearBrushStrokes, only_zoom=True)
+        )
+        self.magicPromptsToolbar.sigSaveModel.connect(
+            self.magicPromptsSaveModelTriggered
+        )
+        self.magicPromptsToolbar.sigLoadModel.connect(
+            self.magicPromptsLoadModelTriggered
         )
 
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
@@ -18885,10 +18892,21 @@ When working with 3D segmentation masks:
         toolbar.model_name = model_name
         toolbar.viewModelParamsAction.setDisabled(False)
         toolbar.isModelTrained = False
+        # Name of the saved model loaded with "Load trained model" (None if
+        # the model was trained in this session or not trained)
+        toolbar.loadedModelName = None
+        # False if the model was trained in this session and not saved
+        toolbar.isModelSaved = False
+        # Name of the saved model that holds the current model (saved or
+        # loaded), to check that it was not removed from the list
+        toolbar.savedModelName = None
         self.brushStrokesChangedSinceTraining = True
 
         self.magicPromptsToolbar.setInitializedModel(
             init_kwargs, toolbar.model_segment_kwargs
+        )
+        self.magicPromptsToolbar.setSaveLoadModelSupported(
+            saved_models.get_saved_model_ext(model) is not None
         )
 
         prompt_types = tuple(getattr(model, 'prompt_types', ('point',)))
@@ -18905,7 +18923,8 @@ When working with 3D segmentation masks:
 
         # update title
         self.setTitleText()
-    
+        return True
+
     @exception_handler
     @disableWindow
     def magicPromptsInitModel(self, model_name):
@@ -18920,26 +18939,39 @@ When working with 3D segmentation masks:
             return
         init_argspecs, segment_argspecs, help_url = model_spec
         acdcPromptSegment = None
-        toolbar._acdcPromptSegment = None
-        toolbar._init_argspecs = init_argspecs
-        toolbar._segment_argspecs = segment_argspecs
-        toolbar._help_url = help_url
-        
+
         out = prompts.init_prompt_model_params(
-            posData, model_name, init_argspecs, segment_argspecs, 
+            posData, model_name, init_argspecs, segment_argspecs,
             help_url=help_url, qparent=self, init_last_params=True
         )
         win = out.get('win')
-        if win.cancel:
+        cancelled = (
+            win.cancel
+            or not self.magicPromptsConfirmReplaceModel(
+                toolbar, f'Initializing {model_name}'
+            )
+        )
+        if cancelled:
             execution.cancel_preparation()
             self.logger.info(
                 f'Initialization of {model_name} promptable model cancelled.'
             )
             return
-        
-        self._importInitMagicPromptModel(
+
+        isInitialized = self._importInitMagicPromptModel(
             model_name, posData, win, acdcPromptSegment, toolbar
         )
+        if not isInitialized:
+            return
+
+        # Set only now, so that a cancelled selection of another model does
+        # not mix its parameters with the initialized model (e.g., in "View
+        # model parameters")
+        toolbar._model_name = model_name
+        toolbar._acdcPromptSegment = acdcPromptSegment
+        toolbar._init_argspecs = init_argspecs
+        toolbar._segment_argspecs = segment_argspecs
+        toolbar._help_url = help_url
     
     @exception_handler
     def viewSetMagicPromptModelParams(
@@ -18982,6 +19014,16 @@ When working with 3D segmentation masks:
                     f'Segmentation parameters of promptable model '
                     f'{model_name} updated.'
                 )
+            return
+
+        isConfirmed = self.magicPromptsConfirmReplaceModel(
+            toolbar, f'Re-initializing {model_name} with the new parameters'
+        )
+        if not isConfirmed:
+            self.logger.info(
+                f'Re-initialization of {model_name} promptable model '
+                'cancelled.'
+            )
             return
 
         self._importInitMagicPromptModel(
@@ -19737,29 +19779,15 @@ When working with 3D segmentation masks:
         self.logger.info(
             f'{desc} (number of annotated images = {len(prompts_data)})'
         )
-        self.titleLabel.setText(desc, color=self.titleColor)
-
-        from .service import model_execution
-
-        progressWin = apps.QDialogWorkerProgress(
-            title=desc, parent=self, pbarDesc=desc
+        result = self.magicPromptsRunModelTask(
+            desc, prompt_utils.train_model_on_brush_strokes,
+            toolbar.model, prompts_data, log_func=self.logger.info
         )
-        progressWin.mainPbar.setMaximum(0)
-        progressWin.show(self.app)
-        wasEnabled = self.isEnabled()
-        self.setDisabled(True)
-        try:
-            result = model_execution.run_in_background(
-                self, prompt_utils.train_model_on_brush_strokes,
-                toolbar.model, prompts_data, log_func=self.logger.info
-            )
-        finally:
-            progressWin.workerFinished = True
-            progressWin.close()
-            if wasEnabled:
-                self.setDisabled(False)
 
         toolbar.isModelTrained = True
+        toolbar.isModelSaved = False
+        toolbar.savedModelName = None
+        toolbar.loadedModelName = None
         self.brushStrokesChangedSinceTraining = False
         self.logger.info(
             f'{model_name} successfully trained on brush strokes. '
@@ -19792,6 +19820,18 @@ When working with 3D segmentation masks:
             _warnings.warnBrushStrokesMissing(qparent=self)
             return False
 
+        loadedModelName = getattr(toolbar, 'loadedModelName', None)
+        if isModelTrained and loadedModelName is not None:
+            answer = self.askRetrainLoadedPromptModel(
+                toolbar.model_name, loadedModelName
+            )
+            if answer == 'cancel':
+                return False
+            if answer == 'use_loaded':
+                # Do not ask again until the brush strokes change again
+                self.brushStrokesChangedSinceTraining = False
+                return True
+
         if isModelTrained:
             self.logger.info(
                 'Brush strokes changed since last training --> '
@@ -19799,6 +19839,364 @@ When working with 3D segmentation masks:
             )
 
         return self.magicPromptsTrainBrushStrokes(toolbar)
+
+    def askRetrainLoadedPromptModel(self, model_name, loadedModelName):
+        """Ask whether to replace the loaded model by re-training it on the
+        brush strokes. Returns 'retrain', 'use_loaded', or 'cancel'."""
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            The current {model_name} model was <b>loaded</b> from the saved
+            model <code>{loadedModelName}</code> and the brush strokes
+            changed since then.<br><br>
+            <b>Re-training</b> creates a new model trained <b>only on the
+            current brush strokes</b><br>
+            (the loaded model is replaced, but its saved file is not
+            modified).<br><br>
+            What do you want to do?
+        """)
+        _, useLoadedButton, retrainButton = msg.question(
+            self, 'Re-train loaded model?', txt,
+            buttonsTexts=(
+                'Cancel', 'Use loaded model', 'Re-train on brush strokes'
+            )
+        )
+        if msg.clickedButton == retrainButton:
+            return 'retrain'
+        if msg.clickedButton == useLoadedButton:
+            return 'use_loaded'
+        return 'cancel'
+
+    def magicPromptsRunModelTask(self, desc, func, *args, **kwargs):
+        """Run `func(*args, **kwargs)` (e.g., training or loading a model)
+        in a background thread while showing a busy progress window, and
+        return its result."""
+        from .service import model_execution
+
+        self.titleLabel.setText(desc, color=self.titleColor)
+        progressWin = apps.QDialogWorkerProgress(
+            title=desc, parent=self, pbarDesc=desc
+        )
+        progressWin.mainPbar.setMaximum(0)
+        progressWin.show(self.app)
+        wasEnabled = self.isEnabled()
+        self.setDisabled(True)
+        try:
+            return model_execution.run_in_background(
+                self, func, *args, **kwargs
+            )
+        finally:
+            progressWin.workerFinished = True
+            progressWin.close()
+            if wasEnabled:
+                self.setDisabled(False)
+
+    def magicPromptsSavedModelExt(self, toolbar):
+        """Extension of the saved model files of the toolbar's model, or
+        None (with a warning) if the model is not initialized or cannot be
+        saved."""
+        if not toolbar.viewModelParamsAction.isEnabled():
+            _warnings.warnPromptSegmentModelNotInit(qparent=self)
+            return None
+
+        ext = saved_models.get_saved_model_ext(toolbar.model)
+        if ext is None:
+            self.logger.info(
+                f'{toolbar.model_name} cannot save or load trained models.'
+            )
+        return ext
+
+    @exception_handler
+    @disableWindow
+    def magicPromptsSaveModelTriggered(self, toolbar):
+        self.magicPromptsSaveModel(toolbar)
+
+    def magicPromptsSaveModel(self, toolbar, retrain=True):
+        """Ask for a name and save the trained model in the saved models
+        folder. Returns the `saved_models.SavedModel` (None if not saved).
+
+        If `retrain` is True, the model is (re-)trained first if the brush
+        strokes changed since the last training (like "Segment image"),
+        otherwise the current trained model is saved as is.
+        """
+        ext = self.magicPromptsSavedModelExt(toolbar)
+        if ext is None:
+            return None
+
+        model_name = toolbar.model_name
+        if retrain:
+            isReady = self.magicPromptsEnsureBrushStrokesTrained(toolbar)
+        else:
+            isReady = getattr(toolbar, 'isModelTrained', False)
+        if not isReady:
+            self.logger.info(f'Saving {model_name} model cancelled.')
+            return None
+
+        folderpath = saved_models.get_folderpath(model_name)
+        helpText = (f"""
+            The model is saved in the following folder:<br><br>
+            <code>{folderpath}</code><br><br>
+            You can load it later (e.g., to segment other data) with the
+            "<b>Load trained model</b>" button of the promptable models
+            toolbar.
+        """)
+        win = apps.filenameDialog(
+            ext=ext,
+            title=f'Save trained {model_name} model',
+            hintText=html_utils.paragraph(
+                f'Insert a <b>name</b> for the trained {model_name} model:'
+            ),
+            existingNames=saved_models.get_saved_model_names(
+                model_name, ext
+            ),
+            # Model files names are case-insensitive on Windows and macOS
+            caseInsensitiveNames=True,
+            allowEmpty=False,
+            helpText=helpText,
+            parent=self
+        )
+        win.exec_()
+        if win.cancel:
+            self.logger.info(f'Saving {model_name} model cancelled.')
+            return None
+
+        name = saved_models.sanitize_name(win.filename[:-len(ext)])
+        # Saved in a staging folder first: an existing model with the same
+        # name is replaced only if saving succeeds
+        stagedFilepath = saved_models.prepare_save(model_name, name, ext)
+        try:
+            self.magicPromptsRunModelTask(
+                f'Saving {model_name} model "{name}"...',
+                toolbar.model.save_model, stagedFilepath
+            )
+        except Exception:
+            saved_models.cancel_save(stagedFilepath)
+            raise
+        savedModel = saved_models.finish_save(model_name, stagedFilepath)
+
+        toolbar.isModelSaved = True
+        toolbar.savedModelName = savedModel.name
+        self.logger.info(
+            f'Trained {model_name} model "{name}" saved to '
+            f'"{savedModel.filepath}"'
+        )
+        self.titleLabel.setText(
+            f'Trained {model_name} model "{name}" saved!', color='g'
+        )
+        return savedModel
+
+    def magicPromptsRefreshSavedState(self, toolbar, ext):
+        """The model is not saved anymore if its saved model was removed
+        from the list (e.g., with "Remove from list" in the load dialog)."""
+        if not getattr(toolbar, 'isModelSaved', False):
+            return
+
+        name = getattr(toolbar, 'savedModelName', None)
+        savedModel = None
+        if name is not None:
+            savedModel = saved_models.get_saved_model(
+                toolbar.model_name, name, ext
+            )
+        if savedModel is None or not savedModel.exists:
+            toolbar.isModelSaved = False
+            toolbar.savedModelName = None
+
+    def askReplaceUnsavedPromptModel(self, model_name, action):
+        """Ask what to do with the trained model (not saved) before `action`
+        (e.g., 'Loading another model') replaces it. Returns 'save',
+        'replace', or 'cancel'."""
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            The current {model_name} model was <b>trained</b> in this
+            session and it was <b>not saved</b>.<br><br>
+            {action} <b>replaces</b> it.<br><br>
+            Do you want to save the current model first?
+        """)
+        _, replaceButton, saveButton = msg.warning(
+            self, 'Save current model?', txt,
+            buttonsTexts=(
+                'Cancel', 'Continue without saving',
+                'Save current model first...'
+            )
+        )
+        if msg.clickedButton == saveButton:
+            return 'save'
+        if msg.clickedButton == replaceButton:
+            return 'replace'
+        return 'cancel'
+
+    def magicPromptsConfirmReplaceModel(self, toolbar, action):
+        """Before `action` replaces the current model: if it was trained and
+        not saved, ask whether to save it first. Returns False if the action
+        must be cancelled, otherwise the saved model (or True if there was
+        nothing to save)."""
+        ext = saved_models.get_saved_model_ext(getattr(toolbar, 'model', None))
+        if ext is None:
+            return True
+
+        self.magicPromptsRefreshSavedState(toolbar, ext)
+        isUnsaved = (
+            getattr(toolbar, 'isModelTrained', False)
+            and not getattr(toolbar, 'isModelSaved', False)
+        )
+        if not isUnsaved:
+            return True
+
+        answer = self.askReplaceUnsavedPromptModel(toolbar.model_name, action)
+        if answer == 'replace':
+            return True
+        if answer == 'save':
+            # Save the trained model as is (no re-training)
+            savedModel = self.magicPromptsSaveModel(toolbar, retrain=False)
+            if savedModel is not None:
+                return savedModel
+        return False
+
+    def warnLoadedPromptModelClasses(self, model_name, name, classes):
+        """Warn if the loaded classifier does not have exactly the classes
+        1 (background) and 2 (foreground), e.g., trained in napari with more
+        classes."""
+        if classes is None or set(classes) == {1, 2}:
+            return
+
+        classes_str = ', '.join(str(c) for c in classes)
+        if 2 in classes:
+            details = (
+                'Cell-ACDC uses only class <b>2 as foreground</b>, all the '
+                'other classes are considered background.'
+            )
+        else:
+            details = (
+                'The model does <b>not have the class 2</b>, which Cell-ACDC '
+                'uses as foreground, so <b>no objects will be segmented</b>.'
+            )
+        self.logger.warning(
+            f'The loaded {model_name} model "{name}" has the classes '
+            f'{classes_str} (Cell-ACDC uses class 2 as foreground).'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            The loaded {model_name} model <code>{name}</code> has the
+            classes <code>{classes_str}</code>.<br><br>
+            {details}
+        """)
+        msg.warning(self, 'Model classes', txt)
+
+    @exception_handler
+    @disableWindow
+    def magicPromptsLoadModelTriggered(self, toolbar):
+        ext = self.magicPromptsSavedModelExt(toolbar)
+        if ext is None:
+            return
+
+        model_name = toolbar.model_name
+        win = apps.LoadSavedPromptableModelDialog(
+            model_name, ext, start_dir=myutils.getMostRecentPath(),
+            parent=self
+        )
+        win.exec_()
+        # The saved model of the current model may have been removed
+        self.magicPromptsRefreshSavedState(toolbar, ext)
+        if win.cancel:
+            self.logger.info(f'Loading trained {model_name} model cancelled.')
+            return
+
+        savedModel = win.selectedModel
+        confirmed = self.magicPromptsConfirmReplaceModel(
+            toolbar, 'Loading another model'
+        )
+        if not confirmed:
+            self.logger.info(f'Loading trained {model_name} model cancelled.')
+            return
+
+        isSelectedOverwritten = (
+            isinstance(confirmed, saved_models.SavedModel)
+            and not win.isNewLink
+            and confirmed.name.casefold() == savedModel.name.casefold()
+        )
+        if isSelectedOverwritten:
+            # The current model was saved with the name of the model
+            # selected for loading --> the selected model does not exist
+            # anymore and loading it would load the current model again
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(f"""
+                The current model was saved as <code>{confirmed.name}</code>,
+                replacing the model selected for loading.<br><br>
+                Loading cancelled.
+            """)
+            msg.warning(self, 'Selected model replaced', txt)
+            self.logger.info(f'Loading trained {model_name} model cancelled.')
+            return
+
+        self.logger.info(
+            f'Loading trained {model_name} model "{savedModel.name}" from '
+            f'"{savedModel.filepath}"...'
+        )
+        # The model will not match its init parameters anymore --> its
+        # worker (isolated environment) must not be reused for them (also if
+        # loading fails half-way)
+        execution = self.promptModelExecutions.get(model_name)
+        if execution is not None:
+            execution.forget_init_kwargs(toolbar.model)
+
+        params = self.magicPromptsRunModelTask(
+            f'Loading {model_name} model "{savedModel.name}"...',
+            toolbar.model.load_model, savedModel.filepath
+        )
+
+        if win.isNewLink:
+            # Selected with "Browse..." --> add it to the list as a link
+            # now that it loaded successfully
+            try:
+                savedModel = saved_models.add_link(
+                    model_name, savedModel.filepath, ext
+                )
+            except Exception as err:
+                self.logger.warning(
+                    f'The model file "{savedModel.filepath}" could not be '
+                    f'added to the list of saved models: {err}'
+                )
+
+        toolbar.isModelTrained = True
+        toolbar.isModelSaved = True
+        toolbar.savedModelName = savedModel.name
+        toolbar.loadedModelName = savedModel.name
+        # The loaded model is used as is until new brush strokes are painted
+        self.brushStrokesChangedSinceTraining = False
+
+        # Show the parameters of the loaded model in "View model parameters"
+        init_kwargs = dict(getattr(toolbar, '_init_kwargs', None) or {})
+        if isinstance(params, dict):
+            for key, value in params.items():
+                if key in init_kwargs and value is not None:
+                    init_kwargs[key] = value
+        toolbar.setInitializedModel(init_kwargs, toolbar.model_segment_kwargs)
+
+        self.logger.info(
+            f'Trained {model_name} model "{savedModel.name}" loaded. '
+            f'Model parameters: {params}'
+        )
+        isCustomFeatureExtractor = (
+            isinstance(params, dict)
+            and 'feature_extractor' in init_kwargs
+            and params.get('feature_extractor', '') is None
+        )
+        if isCustomFeatureExtractor:
+            self.logger.warning(
+                f'The feature extractor of the loaded model '
+                f'("{params.get("fe_name")}", layers {params.get("fe_layers")}) '
+                'is not one of the options of "View model parameters", '
+                'which shows the previous feature extractor. Changing the '
+                'initialization parameters there creates a new model with '
+                'the feature extractor shown.'
+            )
+        self.titleLabel.setText(
+            f'Trained {model_name} model "{savedModel.name}" loaded!',
+            color='g'
+        )
+        if isinstance(params, dict):
+            self.warnLoadedPromptModelClasses(
+                model_name, savedModel.name, params.get('classes')
+            )
 
     @exception_handler
     @disableWindow
@@ -19826,6 +20224,19 @@ When working with 3D segmentation masks:
 
     @exception_handler
     def magicPromptsSegmentStackTriggered(self, toolbar):
+        # The dialogs of this flow do not block the main window --> disable
+        # the toolbar (e.g., "Load trained model") until the frames are
+        # segmented (re-enabled by `_magicPromptsSegmStackDone`)
+        self.magicPromptsToolbar.setDisabled(True)
+        isStarted = False
+        try:
+            isStarted = self._magicPromptsSegmentStack(toolbar)
+        finally:
+            if not isStarted:
+                self.magicPromptsToolbar.setDisabled(False)
+
+    def _magicPromptsSegmentStack(self, toolbar):
+        """Returns True if the worker segmenting the frames was started."""
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
             self.logger.info(
@@ -19924,6 +20335,7 @@ When working with 3D segmentation masks:
         thread.started.connect(worker.run)
         self.magicPromptsToolbar.setDisabled(True)
         thread.start()
+        return True
 
     def _magicPromptsSegmStackDone(self, *args):
         self.magicPromptsToolbar.setDisabled(False)

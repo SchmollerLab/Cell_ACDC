@@ -509,6 +509,11 @@ models_list_file_path = os.path.join(settings_folderpath, 'custom_models_paths.i
 promptable_models_list_file_path = os.path.join(
     settings_folderpath, 'custom_promptable_models_paths.ini'
 )
+# Trained promptable models (e.g., ConvPaint) saved from the GUI, one
+# sub-folder per model name
+saved_promptable_models_path = os.path.join(
+    settings_folderpath, 'saved_promptable_models'
+)
 favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
 )

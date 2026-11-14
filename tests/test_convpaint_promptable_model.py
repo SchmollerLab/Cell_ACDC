@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 import sys
+import types
 import warnings
 
 import numpy as np
@@ -44,9 +45,32 @@ def _load_module():
 
 class FakeConvpaintModel:
     """Records the calls. Pixels > 0 are foreground (2), the rest
-    background (1), like a trained ConvPaint model (no zeros)."""
-    def __init__(self, alias=None):
+    background (1), like a trained ConvPaint model (no zeros).
+
+    `save` writes the parameters as JSON to `<path>.pkl` (and `<path>.yml`)
+    and `FakeConvpaintModel(model_path=...)` reads them back, like
+    ConvPaint's own save/load.
+    """
+    FE_NAMES = {
+        'vgg': 'vgg16', 'vgg-m': 'vgg16', 'gaussian': 'gaussian_features',
+    }
+    # Defaults of the feature extractors (`fe_model.get_default_params()`)
+    FE_DEFAULTS = {
+        'vgg16': {'fe_layers': ['l0'], 'fe_scalings': [1, 2, 4]},
+        'gaussian_features': {'fe_layers': None, 'fe_scalings': [1]},
+    }
+    # Like ConvPaint's aliases: only some FE parameters are specified
+    STD_MODELS = {
+        'vgg': types.SimpleNamespace(fe_name='vgg16', fe_layers=None),
+        'vgg-m': types.SimpleNamespace(
+            fe_name='vgg16', fe_layers=['l0', 'l2'], fe_scalings=[1, 2]
+        ),
+        'gaussian': types.SimpleNamespace(fe_name='gaussian_features'),
+    }
+
+    def __init__(self, alias=None, model_path=None):
         self.alias = alias
+        self.model_path = model_path
         self.params = {}
         self.set_params_calls = []
         self.locked_devices = {}
@@ -54,6 +78,64 @@ class FakeConvpaintModel:
         self.segment_calls = []
         self.classifier = None
         self.train_error = None
+        self.fe_name = self.FE_NAMES.get(alias, 'vgg16')
+        defaults = self.FE_DEFAULTS[self.fe_name]
+        self.fe_layers = defaults['fe_layers']
+        self.fe_scalings = defaults['fe_scalings']
+        self.fe_order = 0
+        self.classes = None
+        self.num_trainings = 0
+        if model_path is not None:
+            assert model_path.endswith('.pkl')
+            self.model_path_content = open(model_path).read()
+            data = json.loads(self.model_path_content)
+            self.params = data['params']
+            self.fe_name = data['fe_name']
+            self.fe_layers = data['fe_layers']
+            self.fe_scalings = data['fe_scalings']
+            self.fe_order = data['fe_order']
+            if data['trained']:
+                self.classifier = types.SimpleNamespace()
+                if data['classes'] is not None:
+                    self.classifier.classes_ = np.array(data['classes'])
+        self.fe_model = types.SimpleNamespace(
+            get_default_params=self._fe_default_params
+        )
+
+    def _fe_default_params(self):
+        defaults = self.FE_DEFAULTS.get(self.fe_name, {})
+        return types.SimpleNamespace(
+            fe_name=self.fe_name, fe_layers=defaults.get('fe_layers'),
+            fe_scalings=defaults.get('fe_scalings', [1]), fe_order=0,
+            fe_use_min_features=False,
+        )
+
+    def get_params(self):
+        params = {
+            'fe_name': self.fe_name, 'fe_layers': self.fe_layers,
+            'fe_scalings': self.fe_scalings, 'fe_order': self.fe_order,
+            'fe_use_min_features': False, 'tile_image': None,
+            'clf_iterations': None, 'clf_learning_rate': None,
+            'clf_depth': None, 'normalize': None, 'image_downsample': None,
+            'channel_mode': 'single',
+        }
+        params.update(self.params)
+        return types.SimpleNamespace(**params)
+
+    def save(self, model_path, create_pkl=True, create_yml=True):
+        data = {
+            'params': self.params, 'fe_name': self.fe_name,
+            'fe_layers': self.fe_layers, 'fe_scalings': self.fe_scalings,
+            'fe_order': self.fe_order,
+            'trained': self.classifier is not None,
+            'classes': self.classes,
+        }
+        if create_pkl:
+            with open(f'{model_path}.pkl', 'w') as file:
+                json.dump(data, file)
+        if create_yml:
+            with open(f'{model_path}.yml', 'w') as file:
+                json.dump(self.params, file)
 
     def set_params(self, param=None, ignore_warnings=False, **kwargs):
         self.set_params_calls.append(
@@ -80,10 +162,12 @@ class FakeConvpaintModel:
             'skip_norm': skip_norm,
             'memory_mode': memory_mode,
         })
+        # Like ConvPaint: the classifier is replaced before fitting it
+        self.classifier = object()
+        self.num_trainings = getattr(self, 'num_trainings', 0) + 1
         if self.train_error is not None:
             raise self.train_error
         # Like ConvPaint: the (not JSON-serializable) classifier is returned
-        self.classifier = object()
         return self.classifier
 
     def segment(
@@ -338,6 +422,52 @@ def test_train_errors_clear_the_prompts(monkeypatch):
     assert model.is_trained
 
 
+def test_failed_training_keeps_previous_classifier(monkeypatch, tmp_path):
+    """E.g., re-training a loaded model fails in CatBoost: the loaded
+    classifier must still be usable (ConvPaint replaces it before fitting)."""
+    _, model = _make_model(monkeypatch)
+    _train(model)
+    saved = model.save_model(str(tmp_path / 'model.pkl'))
+    model.load_model(saved)
+    classifier = model.model.classifier
+    num_trainings = getattr(model.model, 'num_trainings', None)
+
+    model.model.train_error = RuntimeError('CUDA out of memory')
+    with pytest.raises(RuntimeError, match='CUDA'):
+        _train(model)
+    assert model.model.classifier is classifier
+    assert getattr(model.model, 'num_trainings', None) == num_trainings
+    assert model.is_trained
+    image = np.zeros((4, 4))
+    image[1, 1] = 5
+    assert model.segment(image).max() == 1
+
+
+def test_percentile_normalization_for_percentile_feature_extractors(
+        monkeypatch
+    ):
+    _, model = _make_model(monkeypatch, normalization='Each z-slice')
+    model.model.fe_model.norm_mode = 'percentile'
+    rng = np.random.default_rng(0)
+    stack = rng.normal(100, 10, size=(2, 20, 20)).astype(np.float32)
+    stack[1] *= 3
+    normalized = model._normalize(stack)
+    assert normalized.min() == 0 and normalized.max() == 1
+    for z in range(2):
+        low, high = np.percentile(stack[z], (1, 99))
+        expected = np.clip((stack[z] - low) / (high - low), 0, 1)
+        np.testing.assert_allclose(normalized[z], expected, atol=1e-5)
+
+    model.normalization = 'Whole image (z-stack)'
+    low, high = np.percentile(stack, (1, 99))
+    np.testing.assert_allclose(
+        model._normalize(stack),
+        np.clip((stack - low) / (high - low), 0, 1), atol=1e-5
+    )
+    model.normalization = 'None'
+    np.testing.assert_array_equal(model._normalize(stack), stack)
+
+
 @pytest.mark.parametrize('verbose', [False, True])
 def test_convpaint_output_is_hidden_unless_verbose(
         monkeypatch, capsys, verbose
@@ -445,6 +575,233 @@ def test_normalization_modes(monkeypatch, normalization):
     # Training and segmentation are normalized the same way
     train_plane, = model.model.train_calls[0]['images']
     np.testing.assert_array_equal(train_plane, planes[1])
+
+
+def test_save_model_requires_training(monkeypatch, tmp_path):
+    _, model = _make_model(monkeypatch)
+    with pytest.raises(ValueError, match='not trained'):
+        model.save_model(str(tmp_path / 'model.pkl'))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_save_and_load_model(monkeypatch, tmp_path):
+    from cellacdc.promptable_models import saved_models
+
+    module, trained = _make_model(
+        monkeypatch, feature_extractor='gaussian',
+        normalization='Each z-slice', image_downsample=2,
+        classifier_iterations=50, classifier_depth=4, device='gpu',
+    )
+    assert module.Model.saved_model_ext == '.pkl'
+    assert saved_models.get_saved_model_ext(trained) == '.pkl'
+    _train(trained)
+
+    # Missing folders are created and the extension is added
+    saved = trained.save_model(str(tmp_path / 'models' / 'my_model'))
+    assert saved == str(tmp_path / 'models' / 'my_model.pkl')
+    assert sorted(os.listdir(tmp_path / 'models')) == [
+        'my_model.pkl', 'my_model.yml'
+    ]
+    # A path with the extension gives the same files
+    assert trained.save_model(saved) == saved
+
+    # A model with other parameters gets the parameters of the loaded one,
+    # but keeps its device options
+    _, model = _make_model(
+        monkeypatch, feature_extractor='vgg', normalization='None',
+        classifier_iterations=5, device='cpu', train_classifier_on_gpu=True,
+    )
+    initial_convpaint = model.model
+    params = model.load_model(saved)
+    assert params == {
+        'feature_extractor': 'gaussian',
+        'normalization': 'Each z-slice',
+        'image_downsample': 2,
+        'tile_image': False,
+        'classifier_iterations': 50,
+        'classifier_learning_rate': 0.1,
+        'classifier_depth': 4,
+        'fe_name': 'gaussian_features',
+        'fe_layers': [],
+        'classes': None,
+        'is_trained': True,
+    }
+    assert params == model.get_model_params()
+    assert model.model is not initial_convpaint
+    # Loaded from a temporary copy (deleted afterwards)
+    assert model.model.model_path != saved
+    assert model.model.model_path.endswith('.pkl')
+    assert not os.path.exists(model.model.model_path)
+    with open(saved) as file:
+        assert model.model.model_path_content == file.read()
+    assert model.model.locked_devices == {'fe': 'cpu', 'clf': 'auto'}
+    assert model.is_trained
+    assert model.normalization == 'Each z-slice'
+    assert model.image_downsample == 2
+
+    # The loaded classifier segments without training
+    image = np.zeros((6, 6))
+    image[1:3, 1:3] = 5
+    lab = model.segment(image)
+    assert lab.max() == 1
+    assert model.model.train_calls == []
+
+    # A loaded model can be saved again
+    assert model.save_model(str(tmp_path / 'again.pkl')) == str(
+        tmp_path / 'again.pkl'
+    )
+
+
+@pytest.mark.parametrize('normalize, normalization', [
+    (1, 'None'), (2, 'Whole image (z-stack)'), (3, 'Each z-slice'),
+    (None, 'None'),
+])
+def test_load_model_normalization(
+        monkeypatch, tmp_path, normalize, normalization
+    ):
+    _, trained = _make_model(monkeypatch)
+    _train(trained)
+    trained.model.params['normalize'] = normalize
+    saved = trained.save_model(str(tmp_path / 'model.pkl'))
+
+    _, model = _make_model(monkeypatch, normalization='Whole image (z-stack)')
+    assert model.load_model(saved)['normalization'] == normalization
+    assert model.normalization == normalization
+
+
+def test_load_model_feature_extractor_alias(monkeypatch, tmp_path):
+    _, model = _make_model(monkeypatch)
+    _train(model)
+    convpaint = model.model
+
+    cases = (
+        # Defaults of VGG16 (first layer)
+        ('vgg16', ['l0'], [1, 2, 4], 0, 'vgg'),
+        # All the parameters of 'vgg-m' match
+        ('vgg16', ['l0', 'l2'], [1, 2], 0, 'vgg-m'),
+        # Custom VGG16 models (e.g., trained in napari) are not 'vgg'
+        ('vgg16', ['l0', 'l5'], [1, 2, 4], 0, None),
+        ('vgg16', ['l0'], [1], 0, None),
+        ('vgg16', ['l0'], [1, 2, 4], 1, None),
+        ('gaussian_features', [], [1], 0, 'gaussian'),
+        ('gaussian_features', [], [1, 2], 0, None),
+        # E.g., a model trained in napari with another FE
+        ('cellpose_backbone', [], [1], 0, None),
+    )
+    for i, (fe_name, fe_layers, fe_scalings, fe_order, alias) in (
+            enumerate(cases)
+        ):
+        convpaint.fe_name = fe_name
+        convpaint.fe_layers = fe_layers
+        convpaint.fe_scalings = fe_scalings
+        convpaint.fe_order = fe_order
+        saved = model.save_model(str(tmp_path / f'model_{i}.pkl'))
+        params = model.load_model(saved)
+        assert params['feature_extractor'] == alias, cases[i]
+        assert params['fe_name'] == fe_name
+        convpaint = model.model
+
+
+def test_load_model_copies_file_and_reports_classes(monkeypatch, tmp_path):
+    _, model = _make_model(monkeypatch)
+    _train(model)
+    model.model.classes = [1, 2, 3]
+    saved = model.save_model(str(tmp_path / 'model'))
+    # Upper-case extension (ConvPaint itself only accepts '.pkl')
+    upper = tmp_path / 'MODEL.PKL'
+    os.replace(saved, upper)
+    content = upper.read_text()
+    mtime = os.path.getmtime(upper)
+
+    _, other = _make_model(monkeypatch)
+    params = other.load_model(str(upper))
+    assert params['classes'] == [1, 2, 3]
+    assert other.model.model_path.endswith('.pkl')
+    assert other.is_trained
+    # The loaded file is not modified
+    assert upper.read_text() == content
+    assert os.path.getmtime(upper) == mtime
+
+
+def test_load_model_errors(monkeypatch, tmp_path):
+    _, model = _make_model(monkeypatch)
+    _train(model)
+    saved = model.save_model(str(tmp_path / 'model.pkl'))
+
+    _, other = _make_model(monkeypatch)
+    initial_convpaint = other.model
+
+    with pytest.raises(ValueError, match='.pkl'):
+        other.load_model(str(tmp_path / 'model.yml'))
+    with pytest.raises(FileNotFoundError):
+        other.load_model(str(tmp_path / 'missing.pkl'))
+
+    # Models without a trained classifier
+    untrained_path = str(tmp_path / 'untrained')
+    initial_convpaint.save(untrained_path)
+    with pytest.raises(ValueError, match='trained classifier'):
+        other.load_model(f'{untrained_path}.pkl')
+
+    # RGB or multi-channel models
+    model.model.params['channel_mode'] = 'rgb'
+    rgb_path = model.save_model(str(tmp_path / 'rgb.pkl'))
+    with pytest.raises(ValueError, match='single-channel'):
+        other.load_model(rgb_path)
+
+    # The current model is kept after errors
+    assert other.model is initial_convpaint
+    assert not other.is_trained
+
+    # ...and a valid model can still be loaded
+    other.load_model(saved)
+    assert other.is_trained
+
+
+def _real_convpaint_available():
+    return all(
+        importlib.util.find_spec(name) is not None
+        for name in ('napari_convpaint', 'catboost', 'torch')
+    )
+
+
+@pytest.mark.skipif(
+    not _real_convpaint_available(),
+    reason='napari-convpaint (and its dependencies) not installed'
+)
+def test_real_convpaint_save_and_load(tmp_path):
+    """Train, save, and load with the real napari-convpaint (Gaussian
+    features, nothing to download)."""
+    module = _load_module()
+    rng = np.random.default_rng(0)
+    image = rng.normal(0, 0.2, (64, 64)).astype(np.float32)
+    image[10:30, 10:30] += 3
+    image[40:55, 35:60] += 3
+    annot = np.zeros(image.shape, np.uint8)
+    annot[15:20, 15:20] = 2
+    annot[45:50, 40:50] = 2
+    annot[0:5, :] = 1
+    annot[:, 62:] = 1
+
+    trained = module.Model(
+        feature_extractor='gaussian', normalization='Each z-slice',
+        classifier_iterations=30, classifier_depth=4, device='cpu',
+    )
+    trained.add_prompt(annot, image=image)
+    trained.train()
+    lab = trained.segment(image)
+    assert lab.max() == 2
+    saved = trained.save_model(str(tmp_path / 'model.pkl'))
+    assert (tmp_path / 'model.yml').exists()
+
+    model = module.Model(
+        feature_extractor='gaussian', normalization='None',
+        classifier_iterations=5, device='cpu',
+    )
+    params = model.load_model(saved)
+    assert params['feature_extractor'] == 'gaussian'
+    assert params['normalization'] == 'Each z-slice'
+    assert params['classifier_iterations'] == 30
+    np.testing.assert_array_equal(model.segment(image), lab)
 
 
 def _remove_napari_convpaint_modules():

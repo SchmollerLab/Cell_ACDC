@@ -581,6 +581,57 @@ def test_promptable_model_execution_uses_isolated_worker(monkeypatch):
     assert model is backend.start.return_value
 
 
+def test_model_execution_does_not_reuse_worker_after_load_model(monkeypatch):
+    """A worker whose model loaded a trained model (`load_model`) does not
+    match its init kwargs anymore: it is re-initialized, not reused as is."""
+    from unittest.mock import Mock
+    from cellacdc.service.model_execution import ModelExecution
+
+    backends = []
+
+    def make_backend(**kwargs):
+        backend = Mock(url=f'url-{len(backends)}')
+        backend.start.return_value = object()
+        backend.is_running.return_value = True
+        backends.append(backend)
+        return backend
+
+    _patch_model_execution(
+        monkeypatch, LocalBackend=Mock(side_effect=make_backend)
+    )
+    execution = ModelExecution(
+        'ConvPaint', model_kind='promptable', log_func=Mock()
+    )
+    execution.prepare()
+    kwargs = {'feature_extractor': 'vgg'}
+
+    model = execution.init_model(kwargs)
+    # Same kwargs --> the running model is reused as is
+    same = execution.init_model(kwargs, replace=model)
+    assert same is model
+    backends[0].reinitialize.assert_not_called()
+
+    execution.forget_init_kwargs(model)
+    # Replacing it --> its worker is re-initialized with the kwargs
+    again = execution.init_model(kwargs, replace=model)
+    assert again is model
+    backends[0].reinitialize.assert_called_once_with(kwargs)
+    assert len(backends) == 1
+    # ...and then it matches the kwargs again
+    assert execution.init_model(kwargs, replace=again) is model
+    backends[0].reinitialize.assert_called_once_with(kwargs)
+
+    execution.forget_init_kwargs(model)
+    # In use --> a new worker is started for the same kwargs
+    other = execution.init_model(kwargs)
+    assert other is not model and len(backends) == 2
+
+    # Unknown models and in-process executions: no-op
+    execution.forget_init_kwargs(object())
+    in_process = ModelExecution('ConvPaint', model_kind='promptable')
+    in_process.forget_init_kwargs(model)
+
+
 def test_model_execution_restarts_for_required_env_change(monkeypatch):
     from unittest.mock import Mock
     from cellacdc.service import model_execution
@@ -2540,6 +2591,179 @@ def test_model_client_train_forwarding_and_capability():
     assert client.prompt_types == ('point',)
     with pytest.raises(NotImplementedError):
         client.train()
+    assert len(posted) == 2
+
+
+def _saveable_model_class(models):
+    """Fake promptable model that can save and load trained models."""
+    class Model:
+        prompt_types = ('brush_stroke',)
+        saved_model_ext = '.pkl'
+
+        def __init__(self):
+            self.is_trained = False
+            self.loaded_from = None
+            models.append(self)
+
+        def add_prompt(self, prompt, prompt_id=0, **kwargs):
+            pass
+
+        def segment(self, image, **kwargs):
+            return image
+
+        def save_model(self, filepath):
+            if not self.is_trained:
+                raise ValueError('The model is not trained yet.')
+            with open(filepath, 'w') as file:
+                file.write('trained')
+            return filepath
+
+        def load_model(self, filepath):
+            with open(filepath) as file:
+                assert file.read() == 'trained'
+            self.loaded_from = filepath
+            self.is_trained = True
+            # numpy scalars: the worker must send them as JSON numbers
+            return {
+                'classifier_iterations': np.int64(30),
+                'feature_extractor': 'gaussian',
+                'fe_layers': [],
+            }
+
+    return Model
+
+
+def test_worker_saves_and_loads_promptable_model(monkeypatch, tmp_path):
+    import asyncio
+    from fastapi import HTTPException
+
+    models = []
+    endpoints = _promptable_endpoints(
+        monkeypatch, _saveable_model_class(models)
+    )
+    info = endpoints['/info']()
+    assert info.capabilities.save_load is True
+    assert info.saved_model_ext == '.pkl'
+    model, = models
+
+    filepath = str(tmp_path / 'my_model.pkl')
+    kwargs = json.dumps({'filepath': filepath})
+
+    # Model errors (e.g. not trained) are reported with the traceback
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(endpoints['/save_model'](kwargs=kwargs))
+    assert err.value.status_code == 500
+    assert 'The model is not trained yet.' in err.value.detail
+
+    model.is_trained = True
+    result = asyncio.run(endpoints['/save_model'](kwargs=kwargs))
+    assert result == {'status': 'ok', 'result': filepath}
+    assert (tmp_path / 'my_model.pkl').read_text() == 'trained'
+
+    model.is_trained = False
+    result = asyncio.run(endpoints['/load_model'](kwargs=kwargs))
+    assert result == {
+        'status': 'ok',
+        'result': {
+            'classifier_iterations': 30, 'feature_extractor': 'gaussian',
+            'fe_layers': [],
+        },
+    }
+    assert type(result['result']['classifier_iterations']) is int
+    json.dumps(result)
+    assert model.is_trained and model.loaded_from == filepath
+
+    with pytest.raises(HTTPException) as err:
+        asyncio.run(endpoints['/load_model'](
+            kwargs=json.dumps({'filepath': str(tmp_path / 'missing.pkl')})
+        ))
+    assert err.value.status_code == 500
+
+
+def test_worker_save_load_requires_saveable_model(monkeypatch, tmp_path):
+    import asyncio
+    from fastapi import HTTPException
+
+    models = []
+    # `save_model`/`load_model` without `saved_model_ext` is not enough
+    Model = _saveable_model_class(models)
+    Model.saved_model_ext = None
+    for Model in (Model, _brush_strokes_model_class(models)):
+        endpoints = _promptable_endpoints(monkeypatch, Model)
+        info = endpoints['/info']()
+        assert info.capabilities.save_load is False
+        assert info.saved_model_ext is None
+        kwargs = json.dumps({'filepath': str(tmp_path / 'model.pkl')})
+        for path in ('/save_model', '/load_model'):
+            with pytest.raises(HTTPException) as err:
+                asyncio.run(endpoints[path](kwargs=kwargs))
+            assert err.value.status_code == 400
+    assert not (tmp_path / 'model.pkl').exists()
+
+
+def test_model_client_save_load_forwarding_and_capability(tmp_path):
+    from cellacdc.promptable_models import saved_models
+
+    posted = []
+    info_payload = {
+        'name': 'ConvPaint',
+        'capabilities': {'train': True, 'save_load': True},
+        'prompt_types': ['brush_stroke'],
+        'saved_model_ext': '.pkl',
+    }
+
+    class FakeResponse:
+        ok = True
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def json(self):
+            return self._payload
+
+        def raise_for_status(self):
+            pass
+
+    class FakeSession:
+        def get(self, url, timeout=None):
+            return FakeResponse(info_payload)
+
+        def post(self, url, data=None, files=None, timeout=None):
+            posted.append((url, data, files))
+            return FakeResponse({'status': 'ok', 'result': {'url': url}})
+
+    client = ModelClient.__new__(ModelClient)
+    client.base_url = 'http://x'
+    client.timeout = None
+    client.session = FakeSession()
+    client.refresh_info()
+    assert client.saved_model_ext == '.pkl'
+    assert saved_models.get_saved_model_ext(client) == '.pkl'
+
+    filepath = tmp_path / 'model.pkl'
+    assert client.save_model(filepath) == {'url': 'http://x/save_model'}
+    url, data, files = posted[-1]
+    assert url == 'http://x/save_model'
+    assert json.loads(data['kwargs']) == {'filepath': str(filepath)}
+    assert files is None
+
+    assert client.load_model(str(filepath)) == {'url': 'http://x/load_model'}
+    url, data, files = posted[-1]
+    assert url == 'http://x/load_model'
+    assert json.loads(data['kwargs']) == {'filepath': str(filepath)}
+
+    # Models that cannot save (and workers without these fields)
+    for info_payload in (
+            {'name': 'ConvPaint', 'saved_model_ext': '.pkl'},
+            {'name': 'sam2'},
+        ):
+        client.refresh_info()
+        assert client.saved_model_ext is None
+        assert saved_models.get_saved_model_ext(client) is None
+        with pytest.raises(NotImplementedError):
+            client.save_model(filepath)
+        with pytest.raises(NotImplementedError):
+            client.load_model(filepath)
     assert len(posted) == 2
 
 

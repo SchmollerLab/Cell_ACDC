@@ -13,6 +13,11 @@ Typical sequence of calls (made by the GUI):
 2. `train()` trains a new classifier on all the added annotations.
 3. `segment(image)` as many times as needed (the classifier is kept).
 
+A trained model can be saved with `save_model(filepath)` and loaded with
+`load_model(filepath)`. The files are the ones of napari-convpaint (a `.pkl`
+file with the classifier and the parameters, plus a `.yml` file with the
+parameters only), so models trained in napari can be loaded too.
+
 Only the model part of napari-convpaint is used. Its package is imported
 without running `napari_convpaint/__init__.py`, which imports napari and Qt
 (see `import_convpaint_model`).
@@ -21,7 +26,9 @@ import contextlib
 import importlib.util
 import io
 import os
+import shutil
 import sys
+import tempfile
 import threading
 import warnings
 
@@ -45,6 +52,28 @@ class Device:
 _CONVPAINT_NORMALIZE = {
     'None': 1, 'Whole image (z-stack)': 2, 'Each z-slice': 3
 }
+_NORMALIZATION_FROM_CONVPAINT = {
+    value: key for key, value in _CONVPAINT_NORMALIZE.items()
+}
+
+def _strip_model_ext(filepath):
+    filepath = os.fspath(filepath)
+    if filepath[-4:].lower() in ('.pkl', '.yml'):
+        filepath = filepath[:-4]
+    return filepath
+
+# ConvPaint parameters that define the feature extractor
+_FE_PARAMS = (
+    'fe_name', 'fe_layers', 'fe_scalings', 'fe_order', 'fe_use_min_features'
+)
+
+def _as_comparable(value):
+    if isinstance(value, (list, tuple)):
+        return [_as_comparable(item) for item in value]
+    return value
+
+# Attributes of `ConvpaintModel` changed by training (restored on errors)
+_CLASSIFIER_STATE = ('classifier', 'num_features', 'num_trainings')
 
 def import_convpaint_model():
     """Import `ConvpaintModel` without running `napari_convpaint/__init__.py`.
@@ -78,6 +107,8 @@ def import_convpaint_model():
 
 class Model:
     prompt_types = ('brush_stroke',)
+    # Extension of the files written by `save_model` and read by `load_model`
+    saved_model_ext = '.pkl'
 
     def __init__(
             self,
@@ -165,6 +196,10 @@ class Model:
         self.verbose = verbose
         self.normalization = normalization
         self.image_downsample = image_downsample
+        # Device policies are not saved with the model --> re-applied to
+        # the models loaded with `load_model`
+        self.device = device
+        self.train_classifier_on_gpu = bool(train_classifier_on_gpu)
         # ConvPaint is not re-entrant (it stores intermediate shapes on the
         # instance) and `_quiet` swaps the process-wide stdout --> serialize
         # training and segmentation (e.g., called from different threads)
@@ -183,14 +218,17 @@ class Model:
                 clf_depth=int(classifier_depth),
                 normalize=_CONVPAINT_NORMALIZE[normalization],
             )
-        self.model.lock_device(device, part='fe')
-        self.model.lock_device(
-            'auto' if train_classifier_on_gpu else 'cpu', part='clf'
-        )
+        self._lock_devices(self.model)
 
         # {(pos_i, frame_i): (image, annotation)}, cleared by `train`
         self.prompts = {}
         self.is_trained = False
+
+    def _lock_devices(self, convpaint_model):
+        convpaint_model.lock_device(self.device, part='fe')
+        convpaint_model.lock_device(
+            'auto' if self.train_classifier_on_gpu else 'cpu', part='clf'
+        )
 
     @contextlib.contextmanager
     def _quiet(self, stdout=True):
@@ -213,6 +251,10 @@ class Model:
         ConvPaint is always called with `skip_norm=True`, so that training
         and segmentation are normalized the same way and z-stacks can be
         segmented z-slice by z-slice.
+
+        Feature extractors that require percentile normalization (e.g., the
+        Cellpose feature extractor of models trained in napari) get it like
+        in ConvPaint: the 1st and 99th percentiles are rescaled to 0 and 1.
         """
         image = np.asarray(image, dtype=np.float32)
         if self.normalization == 'None':
@@ -222,6 +264,16 @@ class Model:
             axis = (1, 2)
         else:
             axis = None
+
+        fe_norm_mode = getattr(
+            getattr(self.model, 'fe_model', None), 'norm_mode', None
+        )
+        if fe_norm_mode == 'percentile':
+            low, high = np.percentile(image, (1, 99), axis=axis, keepdims=True)
+            scale = np.maximum(high - low, 1e-6)
+            image = (image - low.astype(np.float32)) / scale.astype(np.float32)
+            return np.clip(image, 0, 1, out=image)
+
         mean = image.mean(axis=axis, keepdims=True, dtype=np.float64)
         std = image.std(axis=axis, keepdims=True, dtype=np.float64)
         std = np.maximum(std, 1e-6)
@@ -397,10 +449,20 @@ class Model:
             foreground and background pixels.
         """
         with self._lock:
+            # ConvPaint replaces the classifier before fitting it --> restore
+            # the previous one (e.g., of a loaded model) if training fails
+            previous_state = {
+                attr: getattr(self.model, attr)
+                for attr in _CLASSIFIER_STATE if hasattr(self.model, attr)
+            }
             try:
                 images, annots, summary = self._get_training_data()
                 with self._quiet():
                     self._train(images, annots)
+            except BaseException:
+                for attr, value in previous_state.items():
+                    setattr(self.model, attr, value)
+                raise
             finally:
                 self.prompts = {}
 
@@ -422,6 +484,222 @@ class Model:
                 '(larger brush size) or use a smaller `image_downsample`.\n\n'
                 f'Original error: {err}'
             ) from err
+
+    def save_model(self, filepath):
+        """Save the trained model (pixel classifier and parameters).
+
+        The files are the same as the ones saved by napari-convpaint: a
+        `.pkl` file with the classifier and the parameters, and a `.yml`
+        file with the parameters only (same name, same folder).
+
+        Parameters
+        ----------
+        filepath : str
+            Path of the `.pkl` file (the extension is added if missing).
+            The folder is created if it does not exist. Existing files are
+            overwritten.
+
+        Returns
+        -------
+        str
+            Path of the saved `.pkl` file.
+
+        Raises
+        ------
+        ValueError
+            If the model is not trained yet.
+        """
+        if not self.is_trained:
+            raise ValueError(
+                'The ConvPaint model is not trained yet. Train it on brush '
+                'strokes (or load a trained model) before saving it.'
+            )
+        basepath = _strip_model_ext(filepath)
+        folderpath = os.path.dirname(basepath)
+        if folderpath:
+            os.makedirs(folderpath, exist_ok=True)
+        with self._lock:
+            with self._quiet():
+                self.model.save(basepath, create_pkl=True, create_yml=True)
+        return f'{basepath}.pkl'
+
+    @staticmethod
+    def _get_alias(ConvpaintModel, param, fe_defaults=None):
+        """Feature extractor option (see `FeatureExtractor`) matching the
+        feature extractor of `param`, or None (e.g., a model trained in
+        napari with another feature extractor or other layers).
+
+        Like `ConvpaintModel(alias=...)`, the expected feature extractor
+        parameters of an option are the defaults of the feature extractor
+        (`fe_defaults`, e.g., the first layer of VGG16) updated with the
+        parameters specified by the option (e.g., the layers of 'vgg-m').
+        """
+        if fe_defaults is not None and (
+                getattr(fe_defaults, 'fe_name', None) != param.fe_name
+            ):
+            fe_defaults = None
+
+        best_alias, best_score = None, -1
+        for alias in FeatureExtractor.values:
+            alias_param = ConvpaintModel.STD_MODELS.get(alias)
+            if alias_param is None:
+                continue
+            specified = {
+                key: value for key, value in vars(alias_param).items()
+                if key in _FE_PARAMS and value is not None
+            }
+            if specified.get('fe_name') != param.fe_name:
+                continue
+            expected = {}
+            if fe_defaults is not None:
+                expected = {
+                    key: getattr(fe_defaults, key, None)
+                    for key in _FE_PARAMS
+                }
+            expected.update(specified)
+            expected = {
+                key: value for key, value in expected.items()
+                if value is not None
+            }
+            is_match = all(
+                _as_comparable(getattr(param, key, None))
+                == _as_comparable(value)
+                for key, value in expected.items()
+            )
+            if is_match and len(expected) > best_score:
+                best_alias, best_score = alias, len(expected)
+        return best_alias
+
+    def _get_fe_defaults(self):
+        get_default_params = getattr(
+            getattr(self.model, 'fe_model', None), 'get_default_params', None
+        )
+        if get_default_params is None:
+            return None
+        try:
+            return get_default_params()
+        except Exception:
+            return None
+
+    def get_model_params(self):
+        """Parameters of the current model, with the same names as the
+        `__init__` parameters (e.g., to show them after `load_model`).
+
+        `feature_extractor` is None if the feature extractor is not one of
+        the `FeatureExtractor` options (e.g., a model trained in napari).
+        `classes` are the classes of the trained classifier (None if not
+        trained), where Cell-ACDC uses class 2 as foreground.
+        """
+        ConvpaintModel = import_convpaint_model()
+        with self._lock:
+            param = self.model.get_params()
+            classes = getattr(
+                getattr(self.model, 'classifier', None), 'classes_', None
+            )
+            if classes is not None:
+                classes = [int(c) for c in np.asarray(classes).ravel()]
+            params = {
+                'feature_extractor': self._get_alias(
+                    ConvpaintModel, param,
+                    fe_defaults=self._get_fe_defaults()
+                ),
+                'normalization': self.normalization,
+                'image_downsample': self.image_downsample,
+                'tile_image': param.tile_image,
+                'classifier_iterations': param.clf_iterations,
+                'classifier_learning_rate': param.clf_learning_rate,
+                'classifier_depth': param.clf_depth,
+                'fe_name': param.fe_name,
+                'fe_layers': list(param.fe_layers or []),
+                'classes': classes,
+                'is_trained': self.is_trained,
+            }
+        return params
+
+    def load_model(self, filepath):
+        """Load a trained model saved with `save_model` (or with
+        napari-convpaint), replacing the current model and classifier.
+
+        The device options of this model (`device` and
+        `train_classifier_on_gpu`) are kept, while all the other parameters
+        (e.g., feature extractor, normalization, and downsampling) are the
+        ones of the loaded model.
+
+        WARNING: `.pkl` files can execute code when they are loaded. Load
+        only models from sources you trust.
+
+        The model is loaded from a temporary copy of the file, so the file
+        is never modified (ConvPaint may otherwise update old files in
+        place) and the extension can have any case (e.g., `.PKL`).
+
+        Only class 2 of the classifier is used as foreground (see the
+        `classes` returned).
+
+        Parameters
+        ----------
+        filepath : str
+            Path of the `.pkl` file.
+
+        Returns
+        -------
+        dict
+            Parameters of the loaded model (see `get_model_params`).
+
+        Raises
+        ------
+        ValueError
+            If the file is not a `.pkl` file, if it does not contain a
+            trained classifier, or if the model was trained on RGB or
+            multi-channel images.
+        """
+        filepath = os.fspath(filepath)
+        if not filepath.lower().endswith('.pkl'):
+            raise ValueError(
+                'ConvPaint models are loaded from `.pkl` files (the `.yml` '
+                'files contain only the parameters, without the trained '
+                f'classifier), not from "{filepath}".'
+            )
+        if not os.path.isfile(filepath):
+            raise FileNotFoundError(
+                f'The ConvPaint model file "{filepath}" does not exist.'
+            )
+
+        ConvpaintModel = import_convpaint_model()
+        with self._lock:
+            # ConvPaint requires the lower-case `.pkl` extension
+            temp_folderpath = tempfile.mkdtemp(prefix='acdc_convpaint_')
+            try:
+                temp_filepath = os.path.join(temp_folderpath, 'model.pkl')
+                shutil.copyfile(filepath, temp_filepath)
+                # Keep stdout: it shows the download progress of the weights
+                with self._quiet(stdout=False):
+                    model = ConvpaintModel(model_path=temp_filepath)
+            finally:
+                shutil.rmtree(temp_folderpath, ignore_errors=True)
+
+            if getattr(model, 'classifier', None) is None:
+                raise ValueError(
+                    f'The ConvPaint model "{filepath}" does not contain a '
+                    'trained classifier.'
+                )
+
+            param = model.get_params()
+            channel_mode = getattr(param, 'channel_mode', None) or 'single'
+            if channel_mode != 'single':
+                raise ValueError(
+                    f'The ConvPaint model "{filepath}" was trained on '
+                    f'"{channel_mode}" images, but Cell-ACDC supports only '
+                    'single-channel images with ConvPaint.'
+                )
+
+            self._lock_devices(model)
+            self.model = model
+            self.normalization = _NORMALIZATION_FROM_CONVPAINT.get(
+                param.normalize, 'None'
+            )
+            self.image_downsample = int(param.image_downsample or 1)
+            self.is_trained = True
+            return self.get_model_params()
 
     @staticmethod
     def _remove_small_objects(lab, min_size):
@@ -495,8 +773,16 @@ class Model:
                 f'{seg_smoothening}.'
             )
 
-        image = self._normalize(image)
+        # The lock also covers the normalization, so that `load_model` (e.g.,
+        # from another thread) cannot change it during the segmentation
         with self._lock:
+            if not self.is_trained:
+                raise ValueError(
+                    'ConvPaint model is not trained yet. Paint foreground '
+                    '(left button) and background (right button) brush '
+                    'strokes and train the model first.'
+                )
+            image = self._normalize(image)
             self.model.set_param('seg_smoothening', seg_smoothening)
             with self._quiet():
                 if image.ndim == 2:

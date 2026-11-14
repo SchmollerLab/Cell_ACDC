@@ -12778,6 +12778,8 @@ class MagicPromptsToolbar(ToolBar):
     sigSegmentStack = Signal(object)
     sigClearStrokes = Signal(object)
     sigClearStrokesOnZoom = Signal(object)
+    sigSaveModel = Signal(object)
+    sigLoadModel = Signal(object)
 
     promptTypeTextToKey = {
         'Points': 'point',
@@ -12805,9 +12807,27 @@ class MagicPromptsToolbar(ToolBar):
             'View the currently selected model parameters'
         )
         self.viewModelParamsAction.setDisabled(True)
-        
+
+        # Only for models that can save and load trained models (ConvPaint)
+        self.saveModelAction = self.addButton(':file-save.svg')
+        self.saveModelAction.setToolTip(
+            'Save the trained model...\n\n'
+            'The model is saved in the Cell-ACDC settings folder with the '
+            'name you choose, and you can load it later with the "Load '
+            'trained model" button.\n\n'
+            'NOTE: The model is automatically (re-)trained before saving if '
+            'the brush strokes changed since the last training.'
+        )
+        self.loadModelAction = self.addButton(':folder-open.svg')
+        self.loadModelAction.setToolTip(
+            'Load a trained model...\n\n'
+            'Select one of the saved models or browse for a model file '
+            'saved somewhere else (e.g., trained in napari).'
+        )
+        self.setSaveLoadModelSupported(False)
+
         self.addSeparator()
-        
+
         self.promptTypeCombobox = self.addComboBox(
             prompt_types, label='Prompt type: ',
         )
@@ -12965,8 +12985,22 @@ class MagicPromptsToolbar(ToolBar):
         self.clearStrokesOnZoomAction.triggered.connect(
             self.emitSigClearStrokesOnZoom
         )
+        self.saveModelAction.triggered.connect(self.emitSigSaveModel)
+        self.loadModelAction.triggered.connect(self.emitSigLoadModel)
 
         self._updatePromptTypeActions('point')
+
+    def setSaveLoadModelSupported(self, supported):
+        """Show the "Save trained model" and "Load trained model" buttons
+        only if the initialized model can save and load trained models."""
+        self.saveModelAction.setVisible(supported)
+        self.loadModelAction.setVisible(supported)
+
+    def emitSigSaveModel(self):
+        self.sigSaveModel.emit(self)
+
+    def emitSigLoadModel(self):
+        self.sigLoadModel.emit(self)
 
     def promptType(self):
         text = self.promptTypeCombobox.currentText()
@@ -13120,9 +13154,16 @@ class MagicPromptsToolbar(ToolBar):
             it was not trained yet or if the brush strokes changed since
             the last training.<br><br>
 
-            Finally, you can <b>clear the brush strokes</b> of the current
+            You can <b>clear the brush strokes</b> of the current
             frame (or only in the zoomed area) with the corresponding
-            buttons.
+            buttons.<br><br>
+
+            Finally, you can <b>save the trained model</b> with the
+            "<b>Save trained model</b>" button and <b>load it</b> later
+            (e.g., on other data) with the "<b>Load trained model</b>"
+            button.<br>
+            When loading, you can also browse for a model saved somewhere
+            else (e.g., a ConvPaint model trained in napari).
         """)
         msg.information(
             self, 'Promptable models help', txt
@@ -13161,8 +13202,8 @@ class MagicPromptsToolbar(ToolBar):
         model_name = win.model_name
         print(f'Preparing promptable model {model_name}...')
 
-        self._model_name = model_name
-
+        # `_model_name` (used by "View model parameters") is set by the
+        # receiver once the model is initialized
         self.sigInitSelectedModel.emit(model_name)
     
     def setInitializedModel(self, init_kwargs, segment_kwargs):

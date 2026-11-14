@@ -491,6 +491,18 @@ class ModelExecution:
         self._discard_dead_workers()
         return any(worker.model is model for worker in self._workers)
 
+    def forget_init_kwargs(self, model) -> None:
+        """Mark `model` as no longer matching the init kwargs it was created
+        with (e.g., a trained model was loaded into it with `load_model`).
+
+        Its worker is then never reused by `init_model` as an already
+        initialized model with those kwargs (it can still be re-initialized
+        with `POST /init` once released). No-op in-process.
+        """
+        for worker in self._workers:
+            if worker.model is model:
+                worker.key = None
+
     def release(self, model) -> None:
         """Give back an instance from `init_model` (no-op in-process).
 
