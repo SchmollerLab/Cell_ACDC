@@ -9,6 +9,11 @@ Directory uploads are not supported.
 Embedding responses use a single binary body: an 8-byte big-endian metadata
 length, that many bytes of UTF-8 JSON, then the optional ``.npz`` attachment.
 Metadata stays out of HTTP headers, whose line lengths are limited.
+
+The JSON text is sent as a form field, which the worker (Starlette) limits to
+``MAX_FORM_FIELD_SIZE`` bytes. Larger JSON text (e.g. a table of point prompts
+with tens of thousands of rows) goes into the ``.npz`` attachment instead, and
+the form field contains only a placeholder.
 """
 
 from contextlib import ExitStack
@@ -25,6 +30,12 @@ _DATAFRAME = '__acdc_dataframe__'
 _FILE = '__acdc_file__'
 _DICT = '__acdc_dict__'
 _TUPLE = '__acdc_tuple__'
+_JSON_IN_ATTACHMENT = '__acdc_json_in_attachment__'
+_JSON_KEY = '__acdc_json__'
+
+# Starlette (the worker's web framework) rejects form fields larger than 1 MiB
+# ("Part exceeded maximum size of 1024KB.")
+MAX_FORM_FIELD_SIZE = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -50,9 +61,45 @@ def needs_payload(kwargs: Dict[str, Any]) -> bool:
     )
 
 
+def _move_large_json(
+        text: str, arrays: Dict[str, np.ndarray], max_size: Optional[int]
+    ) -> str:
+    """Return `text`, or a placeholder if it is larger than `max_size` bytes.
+
+    The text is then stored in `arrays` (sent in the `.npz` attachment). The
+    placeholder is a JSON list, which older workers cannot decode as kwargs:
+    they fail with an error instead of silently ignoring the kwargs.
+    """
+    if max_size is None:
+        return text
+    encoded = text.encode('utf-8')
+    if len(encoded) <= max_size:
+        return text
+    arrays[_JSON_KEY] = np.frombuffer(encoded, dtype=np.uint8)
+    return json.dumps([_JSON_IN_ATTACHMENT, _JSON_KEY])
+
+
+def _load_json(text: str, arrays) -> Any:
+    """Inverse of `_move_large_json`."""
+    value = json.loads(text)
+    if (
+        isinstance(value, list) and len(value) == 2
+        and value[0] == _JSON_IN_ATTACHMENT
+        and isinstance(value[1], str) and value[1] in arrays
+    ):
+        value = json.loads(arrays[value[1]].tobytes().decode('utf-8'))
+    return value
+
+
 def encode(
         kwargs: Dict[str, Any], file_params: Collection[str] = (),
+        max_text_size: Optional[int] = MAX_FORM_FIELD_SIZE,
     ) -> Tuple[str, Optional[bytes]]:
+    """Encode `kwargs` as JSON text plus an optional `.npz` attachment.
+
+    JSON text larger than `max_text_size` bytes is moved to the attachment
+    (None: never move it).
+    """
     plain, arrays = {}, {}
     for key, value in kwargs.items():
         if key in file_params and value not in (None, '', 'None'):
@@ -67,18 +114,19 @@ def encode(
             plain[key] = {_DATAFRAME: value.to_json(orient='split')}
         else:
             plain[key] = value
+    text = _move_large_json(json.dumps(plain), arrays, max_text_size)
     data = None
     if arrays:
         buf = io.BytesIO()
         np.savez_compressed(buf, **arrays)
         data = buf.getvalue()
-    return json.dumps(plain), data
+    return text, data
 
 
 def decode(kwargs_json: str, data: Optional[bytes] = None) -> Dict[str, Any]:
-    kwargs = json.loads(kwargs_json) if kwargs_json else {}
     with ExitStack() as stack:
         arrays = stack.enter_context(np.load(io.BytesIO(data))) if data else {}
+        kwargs = _load_json(kwargs_json, arrays) if kwargs_json else {}
         for key, value in kwargs.items():
             if isinstance(value, dict) and _FILE in value:
                 kwargs[key] = ModelFile(
@@ -94,8 +142,14 @@ def decode(kwargs_json: str, data: Optional[bytes] = None) -> Dict[str, Any]:
     return kwargs
 
 
-def encode_value(value: Any) -> Tuple[str, Optional[bytes]]:
-    """Safely encode a nested value containing arrays or tensor-like values."""
+def encode_value(
+        value: Any, max_text_size: Optional[int] = None,
+    ) -> Tuple[str, Optional[bytes]]:
+    """Safely encode a nested value containing arrays or tensor-like values.
+
+    JSON text larger than `max_text_size` bytes is moved to the attachment
+    (pass `MAX_FORM_FIELD_SIZE` when sending the text as a form field).
+    """
     arrays = {}
 
     def encode_item(item):
@@ -123,7 +177,9 @@ def encode_value(value: Any) -> Tuple[str, Optional[bytes]]:
             return item.item()
         return item
 
-    encoded = json.dumps(encode_item(value))
+    encoded = _move_large_json(
+        json.dumps(encode_item(value)), arrays, max_text_size
+    )
     data = None
     if arrays:
         buf = io.BytesIO()
@@ -134,9 +190,9 @@ def encode_value(value: Any) -> Tuple[str, Optional[bytes]]:
 
 def decode_value(value_json: str, data: Optional[bytes] = None) -> Any:
     """Decode a value produced by :func:`encode_value` without pickle."""
-    encoded = json.loads(value_json)
     with ExitStack() as stack:
         arrays = stack.enter_context(np.load(io.BytesIO(data))) if data else {}
+        encoded = _load_json(value_json, arrays)
 
         def decode_item(item):
             if isinstance(item, list):

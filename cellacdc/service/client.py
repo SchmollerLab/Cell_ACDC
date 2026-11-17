@@ -59,7 +59,8 @@ def _encode_segment_kwargs(kwargs: Dict[str, Any]):
     """Encode segment kwargs, preserving arrays and DataFrames.
 
     Arrays go into the `.npz` attachment (out of size-limited multipart text
-    fields); DataFrames are transported by `payload.encode` as JSON.
+    fields); DataFrames are transported by `payload.encode` as JSON (in the
+    attachment too if the JSON text is too large for a form field).
     """
     from cellacdc.service import payload
 
@@ -75,6 +76,22 @@ def _encode_segment_kwargs(kwargs: Dict[str, Any]):
     plain.update(data_kwargs)
     return payload.encode(plain)
 
+def _multipart_form(
+        fields: Dict[str, str], files: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+    """Return the `files` argument of `requests.post` for a multipart form
+    with the text `fields` and the `files`.
+
+    The text fields are parts without a filename, which the worker reads as
+    form fields. Passed as `data` without files, requests would URL-encode
+    them instead, which makes JSON up to 3 times larger, while the worker
+    accepts at most `payload.MAX_FORM_FIELD_SIZE` bytes per field.
+    """
+    form = {name: (None, text) for name, text in fields.items()}
+    form.update(files or {})
+    return form
+
+
 def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
     """Initialize a worker started with `--defer-init` (sends data, not paths)."""
     from cellacdc import myutils
@@ -89,14 +106,13 @@ def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
     }
     with startup_timer("model initialization payload encoding"):
         kwargs_json, data = payload.encode(init_kwargs, file_params=file_params)
-    files = None
+    files = {}
     if data is not None:
-        files = {"data": ("init.npz", data, "application/octet-stream")}
+        files["data"] = ("init.npz", data, "application/octet-stream")
     with startup_timer("worker /init request (model construction and weights)"):
         res = requests.post(
             f"{base_url.rstrip('/')}/init",
-            data={"kwargs": kwargs_json},
-            files=files,
+            files=_multipart_form({"kwargs": kwargs_json}, files),
             timeout=timeout,
         )
         ModelClient._raise_for_status(res)
@@ -219,7 +235,7 @@ class ModelClient:
                     posData, 'sam_embeddings', {}
                 ).get(frame_i, {}))
             embedding_meta, embedding_data = payload.encode_value(
-                frame_embeddings
+                frame_embeddings, max_text_size=payload.MAX_FORM_FIELD_SIZE
             )
             data['embedding_meta'] = embedding_meta
             if embedding_data is not None:
@@ -290,17 +306,14 @@ class ModelClient:
         from cellacdc.service import payload
 
         kwargs_json, attachment = payload.encode(kwargs)
-        files = None
+        files = {}
         if attachment is not None:
-            files = {
-                'data': (
-                    'prompt.npz', attachment, 'application/octet-stream'
-                )
-            }
+            files['data'] = (
+                'prompt.npz', attachment, 'application/octet-stream'
+            )
         res = self.session.post(
             f'{self.base_url}/add_prompt',
-            data={'kwargs': kwargs_json},
-            files=files,
+            files=_multipart_form({'kwargs': kwargs_json}, files),
             timeout=self.timeout,
         )
         self._raise_for_status(res)

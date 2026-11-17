@@ -382,7 +382,9 @@ def create_app(
         Request (multipart form, see `client.post_init`):
             kwargs: JSON text with the init kwargs; arrays are replaced by
                     placeholders, DataFrames are embedded as JSON (see
-                    `payload.py`).
+                    `payload.py`). If the JSON text is larger than a form
+                    field allows, it is in `data` and `kwargs` is a
+                    placeholder.
             data:   optional `.npz` file with arrays and model-file bytes.
         Response: `{"status": "initialized"}` or HTTP 500 with the traceback.
         """

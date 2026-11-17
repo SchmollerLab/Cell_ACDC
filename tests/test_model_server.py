@@ -1472,6 +1472,195 @@ def test_value_body_rejects_truncated_metadata(body):
         payload.decode_value_body(body)
 
 
+def _points_df(num_rows):
+    import pandas as pd
+
+    # int64, like the columns decoded by `pd.read_json` (on Windows with
+    # numpy < 2 the default integer type is int32)
+    index = np.arange(num_rows, dtype=np.int64)
+    return pd.DataFrame({
+        'x': index % 1800, 'y': index % 350, 'id': index + 1,
+        'frame_i': index // 25,
+    })
+
+
+@pytest.mark.parametrize('with_array', [False, True])
+def test_payload_moves_large_json_to_attachment(with_array):
+    """The worker limits each form field to 1 MiB, so JSON text larger than
+    `max_text_size` (e.g. a large table of point prompts) is sent in the
+    `.npz` attachment. Smaller JSON text is sent unchanged.
+    """
+    import pandas as pd
+    from cellacdc.service import payload
+
+    assert payload.MAX_FORM_FIELD_SIZE == 1024 * 1024
+    kwargs = {'input_points_df': _points_df(100), 'gpu': False}
+    if with_array:
+        kwargs['segm_data'] = np.arange(6, dtype=np.uint32).reshape(2, 3)
+    text, _ = payload.encode(kwargs, max_text_size=None)
+    size = len(text.encode('utf-8'))
+
+    # Up to `max_text_size`: the same JSON text as without a limit
+    inline_text, inline_data = payload.encode(kwargs, max_text_size=size)
+    assert inline_text == text
+    assert isinstance(json.loads(inline_text), dict)
+    assert (inline_data is not None) == with_array
+
+    # Larger: a placeholder that is not a dict, so that older workers fail
+    # to decode it instead of ignoring the kwargs
+    moved_text, moved_data = payload.encode(kwargs, max_text_size=size - 1)
+    assert len(moved_text) < 100
+    assert not isinstance(json.loads(moved_text), dict)
+    assert moved_data is not None
+
+    for encoded in ((inline_text, inline_data), (moved_text, moved_data)):
+        decoded = payload.decode(*encoded)
+        pd.testing.assert_frame_equal(
+            decoded['input_points_df'], kwargs['input_points_df']
+        )
+        assert decoded['gpu'] is False
+        if with_array:
+            np.testing.assert_array_equal(
+                decoded['segm_data'], kwargs['segm_data']
+            )
+
+
+def test_value_payload_moves_large_json_to_attachment(tmp_path):
+    import zipfile
+    from cellacdc import sam_embeddings
+    from cellacdc.service import payload
+
+    # By default the text is never moved, also when it is larger than a form
+    # field: SAM embedding files and worker responses keep their format
+    big = {'text': 'x'*payload.MAX_FORM_FIELD_SIZE}
+    big_text, big_data = payload.encode_value(big)
+    assert big_data is None
+    assert payload.decode_value(big_text) == big
+    body = payload.encode_value_body(big)
+    assert body[8:] == big_text.encode('utf-8')
+    sam_embeddings.save(big, tmp_path / 'embeddings.zip')
+    with zipfile.ZipFile(tmp_path / 'embeddings.zip') as archive:
+        assert archive.namelist() == [sam_embeddings._METADATA]
+        assert archive.read(sam_embeddings._METADATA).decode() == big_text
+
+    value = {
+        z: {'original_size': (2, 2), 'features': np.full((1, 2), z)}
+        for z in range(50)
+    }
+    text, data = payload.encode_value(value)
+    size = len(text.encode('utf-8'))
+    # Up to `max_text_size`: the same text
+    assert payload.encode_value(value, max_text_size=size) == (text, data)
+
+    moved_text, moved_data = payload.encode_value(value, max_text_size=size - 1)
+    assert len(moved_text) < 100
+    decoded = payload.decode_value(moved_text, moved_data)
+    assert set(decoded) == set(value)
+    for z, embedding in decoded.items():
+        assert embedding['original_size'] == (2, 2)
+        np.testing.assert_array_equal(embedding['features'], value[z]['features'])
+
+    # A value that looks like the placeholder is decoded as itself
+    lookalike = [payload._JSON_IN_ATTACHMENT, payload._JSON_KEY]
+    assert payload.decode_value(*payload.encode_value(lookalike)) == lookalike
+
+
+def _serve_app(app):
+    """Serve `app` with uvicorn in a thread; return (url, stop function)."""
+    import threading
+    import time
+    import uvicorn
+    from cellacdc.service.client import _find_free_port
+
+    port = _find_free_port()
+    # `log_config=None`: do not reconfigure the logging of the test process
+    server = uvicorn.Server(uvicorn.Config(
+        app, host='127.0.0.1', port=port, lifespan='off', log_config=None,
+    ))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    def stop():
+        server.should_exit = True
+        thread.join(10)
+
+    for _ in range(100):
+        if server.started:
+            return f'http://127.0.0.1:{port}', stop
+        time.sleep(0.1)
+    stop()
+    raise RuntimeError('The test server did not start')
+
+
+def test_worker_accepts_large_json_form_fields(monkeypatch):
+    """Over real HTTP: the worker (Starlette) rejects form fields larger than
+    1 MiB. A table of point prompts for SAM (`input_points_df`) with ~28k
+    rows failed with "Field exceeded maximum size of 1024KB." at model init.
+    """
+    import types
+    from cellacdc import myutils_models
+    from cellacdc.service import payload, worker
+    from cellacdc.service.client import post_init
+
+    received = {}
+
+    class Model:
+        def __init__(self, input_points_df=None, text=''):
+            received['init'] = (input_points_df, text)
+
+        def segment(self, image, points_df=None, posData=None):
+            received['segment'] = points_df
+            if posData is not None:
+                received['embeddings'] = posData.frame_embeddings
+            return np.zeros(image.shape, np.uint32)
+
+        def add_prompt(self, prompt, prompt_id, image, points_df=None):
+            received['add_prompt'] = points_df
+
+    monkeypatch.setattr(
+        myutils_models, 'import_segment_module',
+        lambda name: types.SimpleNamespace(Model=Model),
+    )
+    url, stop = _serve_app(worker.create_app('fake', defer_init=True))
+    try:
+        # Without arrays: the JSON text (0.7 MiB) was URL-encoded (> 1 MiB)
+        df = _points_df(30_000)
+        post_init(url, {'input_points_df': df}, timeout=60)
+        assert received['init'][0].equals(df)
+
+        # JSON text larger than one form field
+        df = _points_df(60_000)
+        assert len(df.to_json(orient='split')) > payload.MAX_FORM_FIELD_SIZE
+        post_init(url, {'input_points_df': df}, timeout=60)
+        assert received['init'][0].equals(df)
+
+        # JSON text of exactly the maximum size is sent as a form field
+        padding = payload.MAX_FORM_FIELD_SIZE - len(json.dumps({'text': ''}))
+        for text in ('x'*padding, 'x'*(padding + 1)):
+            post_init(url, {'text': text}, timeout=60)
+            assert received['init'][1] == text
+
+        client = ModelClient(url, timeout=60)
+        image = np.zeros((4, 4), np.uint8)
+        client.segment(image, points_df=df)
+        assert received['segment'].equals(df)
+
+        client.add_prompt(prompt=(0, 1, 1), prompt_id=1, image=image, points_df=df)
+        assert received['add_prompt'].equals(df)
+
+        pos_data = types.SimpleNamespace(sam_embeddings={0: {
+            z: {'original_size': (2, 2), 'features': np.zeros((1, 2))}
+            for z in range(20_000)
+        }})
+        client.segment(
+            image, frame_i=0, posData=pos_data, use_loaded_embeddings=True
+        )
+        assert len(received['embeddings']) == 20_000
+        client.close()
+    finally:
+        stop()
+
+
 # def test_sam_embeddings_portable_and_legacy_roundtrip(tmp_path, monkeypatch):
 #     import builtins
 #     import torch
@@ -1779,9 +1968,10 @@ def test_remote_backend_uploads_and_reinitializes_model_files(
         assert url == 'http://worker/spec'
         return response(url, endpoints['/spec']())
 
-    def post(url, data, files, **kwargs):
+    def post(url, files, **kwargs):
         assert url == 'http://worker/init'
-        assert str(tmp_path) not in data['kwargs']
+        kwargs_json = files['kwargs'][1]
+        assert str(tmp_path) not in kwargs_json
         upload = types.SimpleNamespace()
 
         async def read():
@@ -1790,7 +1980,7 @@ def test_remote_backend_uploads_and_reinitializes_model_files(
         upload.read = read
         try:
             result = asyncio.run(endpoints['/init'](
-                kwargs=data['kwargs'], data=upload,
+                kwargs=kwargs_json, data=upload,
             ))
         except HTTPException as err:
             return response(url, {'detail': err.detail}, err.status_code)
