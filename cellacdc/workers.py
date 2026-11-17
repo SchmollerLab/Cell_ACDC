@@ -1,5 +1,6 @@
 import re
 import os
+import inspect
 import shutil
 import time
 import json
@@ -6615,7 +6616,8 @@ class relabelSequentialWorker(QObject):
 class MagicPromptsWorker(QObject):
     def __init__(
             self, posData, image, df_points, model, model_segment_kwargs,
-            image_origin=(0, 0, 0), global_image=None, id_offset=0
+            image_origin=(0, 0, 0), global_image=None, id_offset=0,
+            z_slice=None
         ):
         QObject.__init__(self)
 
@@ -6635,6 +6637,22 @@ class MagicPromptsWorker(QObject):
         # Added to the IDs of model output (e.g., to avoid collisions of
         # new objects with existing IDs)
         self.id_offset = id_offset
+        # If not None, only this z-slice of the z-stack `global_image` is
+        # segmented (passed to the model as `z_slice`) and combined with the
+        # same z-slice of the 3D labels
+        self.z_slice = z_slice
+
+    @staticmethod
+    def _accepts_kwarg(func, name):
+        try:
+            params = inspect.signature(func).parameters
+        except (TypeError, ValueError):
+            return True
+        if name in params:
+            return True
+        return any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
 
     @worker_exception_handler
     def run(self):
@@ -6657,19 +6675,48 @@ class MagicPromptsWorker(QObject):
                 )
             edited_IDs = self.df_points['Cell_ID'].unique()
 
+        lab = self.posData.lab
+        image = self.global_image
+        segment_kwargs = dict(self.model_segment_kwargs)
+        if self.z_slice is not None:
+            lab = lab[self.z_slice]
+            if self._accepts_kwarg(self.model.segment, 'z_slice'):
+                segment_kwargs['z_slice'] = self.z_slice
+            else:
+                # The model cannot segment one z-slice of a z-stack (e.g.,
+                # a custom model) --> give it only the z-slice
+                image = image[self.z_slice]
+
         lab_out = self.model.segment(
-            self.global_image,
-            lab=self.posData.lab,
-            **self.model_segment_kwargs
+            image,
+            lab=lab,
+            **segment_kwargs
         )
 
+        lab_out = np.asarray(lab_out)
+        is_whole_zstack = (
+            self.z_slice is not None
+            and lab_out.ndim == lab.ndim + 1
+            and lab_out.shape[1:] == lab.shape
+        )
+        if is_whole_zstack:
+            # The model ignored `z_slice` (e.g., dropped by the model server
+            # because the model does not accept it) and segmented the
+            # entire z-stack
+            lab_out = lab_out[self.z_slice]
+        if lab_out.shape != lab.shape:
+            raise ValueError(
+                f'The model output has shape {lab_out.shape} which is '
+                f'different from the segmentation masks shape {lab.shape}.'
+            )
+
         if self.id_offset:
-            lab_out = np.asarray(lab_out).astype(np.uint32)
+            lab_out = lab_out.astype(np.uint32)
             lab_out[lab_out > 0] += np.uint32(self.id_offset)
 
         lab_new, lab_union, lab_interesection = (
             utils.insert_model_output_into_labels(
-                self.posData.lab,
+                lab,
                 lab_out,
                 edited_IDs=edited_IDs
             )

@@ -422,6 +422,51 @@ def test_train_errors_clear_the_prompts(monkeypatch):
     assert model.is_trained
 
 
+@pytest.mark.parametrize('normalization', NORMALIZATIONS)
+def test_segment_single_z_slice(monkeypatch, normalization):
+    _, model = _make_model(monkeypatch, normalization=normalization)
+    _train(model)
+    rng = np.random.default_rng(3)
+    stack = rng.normal(0, 1, size=(4, 6, 8)).astype(np.float32)
+    stack[2] += 5  # Brighter z-slice: whole-stack and per-slice stats differ
+
+    full = model.segment(stack)
+    model.model.segment_calls.clear()
+    for z in range(len(stack)):
+        lab = model.segment(
+            stack, z_slice=z, lab=np.zeros(stack.shape[1:], np.uint32)
+        )
+        assert lab.shape == stack.shape[1:] and lab.dtype == np.uint32
+        # Same pixels as the z-slice of the 3D segmentation (labels of a
+        # single z-slice are labelled in 2D)
+        np.testing.assert_array_equal(lab > 0, full[z] > 0)
+    # Only one plane per call, normalized with the whole z-stack
+    planes = [call['image'] for call in model.model.segment_calls]
+    assert [p.shape for p in planes] == [(6, 8)] * 4
+    np.testing.assert_allclose(
+        np.stack(planes), model._normalize(stack), atol=1e-6
+    )
+
+    # `min_object_size` (voxels) on a single z-slice: only objects too
+    # small also if present in all the z-slices are removed
+    cylinder = np.full((4, 12, 12), -1.0, np.float32)
+    cylinder[:, 2:7, 2:7] = 1      # 25 px per z-slice, 100 voxels
+    cylinder[1, 10, 10] = 1        # 1 px noise
+    for z_slice, expected in ((None, 1), (1, 1)):
+        lab = model.segment(cylinder, z_slice=z_slice, min_object_size=50)
+        assert lab.max() == expected, (z_slice, lab.max())
+        assert (lab[..., 2:7, 2:7] > 0).all()
+        assert not lab[..., 10, 10].any()
+    assert model.segment(cylinder, z_slice=1, min_object_size=101).max() == 0
+
+    with pytest.raises(ValueError, match='only with 3D'):
+        model.segment(stack[0], z_slice=0)
+    with pytest.raises(ValueError, match='out of range'):
+        model.segment(stack, z_slice=4)
+    with pytest.raises(ValueError, match='same dimensions'):
+        model.segment(stack, z_slice=0, lab=np.zeros(stack.shape, np.uint32))
+
+
 def test_failed_training_keeps_previous_classifier(monkeypatch, tmp_path):
     """E.g., re-training a loaded model fails in CatBoost: the loaded
     classifier must still be usable (ConvPaint replaces it before fitting)."""

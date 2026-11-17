@@ -12775,6 +12775,7 @@ class MagicPromptsToolbar(ToolBar):
     sigInterpolateZslice = Signal(bool)
     sigTrain = Signal(object)
     sigSegmentImage = Signal(object)
+    sigSegmentZstack = Signal(object)
     sigSegmentStack = Signal(object)
     sigClearStrokes = Signal(object)
     sigClearStrokesOnZoom = Signal(object)
@@ -12901,6 +12902,20 @@ class MagicPromptsToolbar(ToolBar):
         self.segmentImageAction = self.addButton(':segment.svg')
         self.segmentImageAction.setToolTip(
             'Segment the current image with the trained model\n\n'
+            'With 3D segmentation masks (z-stacks), only the displayed '
+            'z-slice is segmented (use "Segment z-stack" to segment all the '
+            'z-slices).\n\n'
+            'NOTE: The model is automatically (re-)trained if it is not '
+            'trained yet or if the brush strokes changed since the last '
+            'training.'
+        )
+
+        self.segmentZstackAction = self.addButton(':3d.svg')
+        self.segmentZstackAction.setToolTip(
+            'Segment the entire z-stack of the current frame with the '
+            'trained model\n\n'
+            'Each z-slice is segmented and the objects are then labelled in '
+            '3D. Requires 3D segmentation masks.\n\n'
             'NOTE: The model is automatically (re-)trained if it is not '
             'trained yet or if the brush strokes changed since the last '
             'training.'
@@ -12910,6 +12925,8 @@ class MagicPromptsToolbar(ToolBar):
         self.segmentStackAction.setToolTip(
             'Segment a range of frames with the trained model '
             '(existing masks will be replaced)\n\n'
+            'With 3D segmentation masks, the entire z-stack of each frame '
+            'is segmented.\n\n'
             'NOTE: The model is automatically (re-)trained if it is not '
             'trained yet or if the brush strokes changed since the last '
             'training.'
@@ -12951,6 +12968,7 @@ class MagicPromptsToolbar(ToolBar):
             *brushSizeSeparator._actions,
             self.trainAction,
             self.segmentImageAction,
+            self.segmentZstackAction,
             self.segmentStackAction,
             self.clearStrokesAction,
             self.clearStrokesOnZoomAction,
@@ -12980,6 +12998,7 @@ class MagicPromptsToolbar(ToolBar):
         )
         self.trainAction.triggered.connect(self.emitSigTrain)
         self.segmentImageAction.triggered.connect(self.emitSigSegmentImage)
+        self.segmentZstackAction.triggered.connect(self.emitSigSegmentZstack)
         self.segmentStackAction.triggered.connect(self.emitSigSegmentStack)
         self.clearStrokesAction.triggered.connect(self.emitSigClearStrokes)
         self.clearStrokesOnZoomAction.triggered.connect(
@@ -13058,12 +13077,24 @@ class MagicPromptsToolbar(ToolBar):
         isBrushStrokes = prompt_type == 'brush_stroke'
         self._setActionsVisible(self._pointsOnlyActions, not isBrushStrokes)
         self._setActionsVisible(self._brushStrokesOnlyActions, isBrushStrokes)
+        self.segmentZstackAction.setVisible(
+            isBrushStrokes and getattr(self, '_isZstackData', True)
+        )
+
+    def setZstackData(self, isZstack):
+        """Show the "Segment z-stack" button (brush strokes) only if the
+        loaded data are z-stacks."""
+        self._isZstackData = bool(isZstack)
+        self._updatePromptTypeActions(self.promptType())
 
     def emitSigTrain(self):
         self.sigTrain.emit(self)
 
     def emitSigSegmentImage(self):
         self.sigSegmentImage.emit(self)
+
+    def emitSigSegmentZstack(self):
+        self.sigSegmentZstack.emit(self)
 
     def emitSigSegmentStack(self):
         self.sigSegmentStack.emit(self)
@@ -13146,7 +13177,10 @@ class MagicPromptsToolbar(ToolBar):
             - "<b>Train</b>": train the model on the brush strokes
             painted on all frames and positions<br>
             - "<b>Segment image</b>": segment the current image and choose
-            how to combine the result with the existing masks<br>
+            how to combine the result with the existing masks (with 3D
+            masks, only the displayed z-slice)<br>
+            - "<b>Segment z-stack</b>": segment all the z-slices of the
+            current frame (3D masks)<br>
             - "<b>Segment stack</b>": segment a range of frames
             (existing masks of those frames are replaced)<br><br>
 

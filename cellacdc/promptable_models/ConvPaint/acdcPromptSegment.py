@@ -731,17 +731,30 @@ class Model:
             classification (0 or 1 means no smoothing). Default is 1
         min_object_size : int, optional
             Objects with fewer pixels (voxels for z-stacks) than this value
-            are removed. Default is 0 (no objects are removed)
+            are removed. When segmenting a single z-slice of a z-stack (see
+            Notes), objects are removed only if they would be too small even
+            if they were present in all the z-slices (area smaller than
+            `min_object_size` divided by the number of z-slices).
+            Default is 0 (no objects are removed)
 
         Returns
         -------
         np.ndarray of np.uint32
-            Instance segmentation (labels) with the same shape as `image`.
+            Instance segmentation (labels) with the same shape as `image`
+            (2D if `z_slice` is passed).
 
         Raises
         ------
         ValueError
             If the model is not trained yet.
+
+        Notes
+        -----
+        Pass the keyword argument `z_slice` (int) with a z-stack `image` to
+        segment only that z-slice (e.g., to quickly check the result on the
+        displayed z-slice). The z-slice is normalized with the statistics
+        of the whole z-stack, like the brush strokes used for training.
+        It is not a GUI parameter (passed in `kwargs`).
         """
         if not self.is_trained:
             raise ValueError(
@@ -757,8 +770,23 @@ class Model:
                 f'z-stack, not an image with shape {image.shape}.'
             )
 
+        z_slice = kwargs.get('z_slice')
+        if z_slice is not None:
+            if image.ndim != 3:
+                raise ValueError(
+                    '`z_slice` can be used only with 3D (Z, Y, X) z-stacks, '
+                    f'not with an image with shape {image.shape}.'
+                )
+            z_slice = int(z_slice)
+            if not 0 <= z_slice < len(image):
+                raise ValueError(
+                    f'`z_slice` {z_slice} is out of range for a z-stack '
+                    f'with {len(image)} z-slices.'
+                )
+
         lab = kwargs.get('lab')
-        if lab is not None and getattr(lab, 'ndim', image.ndim) != image.ndim:
+        lab_ndim = 2 if z_slice is not None else image.ndim
+        if lab is not None and getattr(lab, 'ndim', lab_ndim) != lab_ndim:
             raise ValueError(
                 f'The image has shape {image.shape}, while the segmentation '
                 f'has shape {lab.shape}. ConvPaint requires single-channel '
@@ -782,7 +810,15 @@ class Model:
                     '(left button) and background (right button) brush '
                     'strokes and train the model first.'
                 )
+            # Normalized as a whole, also when segmenting only one z-slice
             image = self._normalize(image)
+            min_object_size = int(min_object_size)
+            if z_slice is not None:
+                # `min_object_size` is in voxels of 3D objects --> remove
+                # only the objects that would be too small also if they
+                # were present in all the z-slices
+                min_object_size = int(np.ceil(min_object_size / len(image)))
+                image = image[z_slice]
             self.model.set_param('seg_smoothening', seg_smoothening)
             with self._quiet():
                 if image.ndim == 2:

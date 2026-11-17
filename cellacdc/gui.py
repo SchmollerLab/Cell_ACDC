@@ -2992,6 +2992,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.magicPromptsToolbar.sigSegmentImage.connect(
             self.magicPromptsSegmentImageTriggered
         )
+        self.magicPromptsToolbar.sigSegmentZstack.connect(
+            self.magicPromptsSegmentZstackTriggered
+        )
         self.magicPromptsToolbar.sigSegmentStack.connect(
             self.magicPromptsSegmentStackTriggered
         )
@@ -19179,7 +19182,7 @@ When working with 3D segmentation masks:
     def startMagicPromptsWorkerAndWait(
             self, image, df_points, model, model_segment_kwargs,
             image_origin=(0, 0, 0), zoom_slice=None, global_image=None,
-            id_offset=0
+            id_offset=0, z_slice=None
         ):
         desc = (
             'Running promptable segmentation model...'
@@ -19201,7 +19204,8 @@ When working with 3D segmentation masks:
             posData, image, df_points, model, model_segment_kwargs,
             image_origin=image_origin,
             global_image=global_image,
-            id_offset=id_offset
+            id_offset=id_offset,
+            z_slice=z_slice
         )
         
         self.magicPromptsWorker.moveToThread(
@@ -19233,7 +19237,7 @@ When working with 3D segmentation masks:
         self.magicPromptsWorker.signals.finished.connect(
             partial(
                 self.magicPromptsWorkerFinished, zoom_slice=zoom_slice,
-                image=global_image
+                image=global_image, z_slice=z_slice
             )
         )
         
@@ -19250,30 +19254,39 @@ When working with 3D segmentation masks:
         self.workerCritical(error)
     
     @exception_handler
-    def magicPromptsWorkerFinished(self, output, zoom_slice=None, image=None):
+    def magicPromptsWorkerFinished(
+            self, output, zoom_slice=None, image=None, z_slice=None
+        ):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
             self.progressWin = None
         self.magicPromptsWorkerLoop.exit()
-        
+
         lab_new, lab_union, lab_interesection = output
-        
+
         posData = self.data[self.pos_i]
-        
+
         is_zoom = True
         if zoom_slice is None:
             zoom_slice = (slice(None), slice(None))
             is_zoom = False
-        
+
         if image is None:
             image = posData.img_data[posData.frame_i]
+        # Labels the output is combined with: the z-slice `z_slice` of the 3D
+        # labels if only that z-slice was segmented (a view, edited in place)
+        lab = posData.lab
+        if z_slice is not None:
+            lab = lab[z_slice]
+            if image.ndim == lab.ndim + 1:
+                image = image[z_slice]
         # `image` is the image the model segmented (e.g., the 2D z-slice for
         # 2D segmentation of z-stack data), which matches the labels shape
         img = image[..., zoom_slice[0], zoom_slice[1]]
         images = [img, img, img, img]
         labels_overlays = [
-            posData.lab[..., zoom_slice[0], zoom_slice[1]], 
+            lab[..., zoom_slice[0], zoom_slice[1]],
             lab_new[..., zoom_slice[0], zoom_slice[1]], 
             lab_union[..., zoom_slice[0], zoom_slice[1]], 
             lab_interesection[..., zoom_slice[0], zoom_slice[1]],
@@ -19330,8 +19343,8 @@ When working with 3D segmentation masks:
 
         # Write directly into current labels (writing into the stored
         # labels and calling `get_data` would discard unsaved edits and
-        # fail if the frame was never stored)
-        lab = posData.lab
+        # fail if the frame was never stored). `lab` is `posData.lab` or a
+        # view of one of its z-slices
         lab[..., zoom_slice[0], zoom_slice[1]][zoom_out_lab_mask] = (
             zoom_out_lab[zoom_out_lab_mask]
         )
@@ -19388,6 +19401,12 @@ When working with 3D segmentation masks:
             for brushCircle in brushCircles:
                 brushCircle.setPen(self.ax2_BrushCirclePen)
                 brushCircle.setBrush(self.ax2_BrushCircleBrush)
+            # "Segment z-stack" only for z-stack data
+            try:
+                isZstack = self.data[self.pos_i].SizeZ > 1
+            except (AttributeError, IndexError):
+                isZstack = True
+            self.magicPromptsToolbar.setZstackData(isZstack)
             self.setBrushStrokesLayerImage()
             return
 
@@ -20201,11 +20220,56 @@ When working with 3D segmentation masks:
     @exception_handler
     @disableWindow
     def magicPromptsSegmentImageTriggered(self, toolbar):
+        """Segment the displayed image with the model trained on brush
+        strokes: the current frame with 2D masks, and only the displayed
+        z-slice with 3D masks (see `magicPromptsSegmentZstackTriggered` to
+        segment all the z-slices)."""
+        posData = self.data[self.pos_i]
+        z_slice = None
+        if posData.lab.ndim == 3:
+            if not self.isBrushStrokesViewPaintable(3):
+                _warnings.warnSegmentImageRequiresZslice(qparent=self)
+                self.logger.info('Segmentation with brush strokes cancelled.')
+                return
+            z_slice = self.zSliceScrollBar.sliderPosition()
+            z_slice = min(max(z_slice, 0), len(posData.lab)-1)
+
         isReady = self.magicPromptsEnsureBrushStrokesTrained(toolbar)
         if not isReady:
             self.logger.info('Segmentation with brush strokes cancelled.')
             return
 
+        self.magicPromptsSegmentCurrentFrame(toolbar, z_slice=z_slice)
+
+    @exception_handler
+    @disableWindow
+    def magicPromptsSegmentZstackTriggered(self, toolbar):
+        """Segment all the z-slices of the current frame with the model
+        trained on brush strokes (3D segmentation masks only)."""
+        posData = self.data[self.pos_i]
+        isZstack = getattr(posData, 'SizeZ', 1) > 1
+        if isZstack and posData.lab.ndim != 3:
+            _warnings.warnSegmentZstackRequires3DMasks(qparent=self)
+            self.logger.info('Segmentation of the z-stack cancelled.')
+            return
+
+        if not isZstack:
+            self.logger.info(
+                'Loaded data is not a z-stack --> segmenting the current '
+                'image.'
+            )
+
+        isReady = self.magicPromptsEnsureBrushStrokesTrained(toolbar)
+        if not isReady:
+            self.logger.info('Segmentation with brush strokes cancelled.')
+            return
+
+        self.magicPromptsSegmentCurrentFrame(toolbar)
+
+    def magicPromptsSegmentCurrentFrame(self, toolbar, z_slice=None):
+        """Segment the current frame (only the z-slice `z_slice` of a
+        z-stack, if not None) with the trained model and show the results
+        to choose how to combine them with the existing masks."""
         posData = self.data[self.pos_i]
         image = prompt_utils.get_brush_strokes_image(
             posData, posData.frame_i, posData.lab.ndim
@@ -20214,12 +20278,16 @@ When working with 3D segmentation masks:
         # avoid collisions with existing IDs
         id_offset = self.setBrushID(return_val=True) - 1
 
-        self.logger.info(
-            f'Segmenting current image with {toolbar.model_name}...'
-        )
+        if z_slice is not None:
+            what = f'z-slice n. {z_slice+1} of the current frame'
+        elif image.ndim == 3:
+            what = 'z-stack of the current frame'
+        else:
+            what = 'current image'
+        self.logger.info(f'Segmenting {what} with {toolbar.model_name}...')
         self.startMagicPromptsWorkerAndWait(
             image, None, toolbar.model, toolbar.model_segment_kwargs,
-            global_image=image, id_offset=id_offset
+            global_image=image, id_offset=id_offset, z_slice=z_slice
         )
 
     @exception_handler
@@ -20241,9 +20309,13 @@ When working with 3D segmentation masks:
         if posData.SizeT == 1:
             self.logger.info(
                 'Loaded data has only one frame --> segmenting only the '
-                'current image.'
+                'current frame.'
             )
-            self.magicPromptsSegmentImageTriggered(toolbar)
+            # Entire z-stack with 3D masks, the 2D image otherwise
+            if posData.lab.ndim == 3:
+                self.magicPromptsSegmentZstackTriggered(toolbar)
+            else:
+                self.magicPromptsSegmentImageTriggered(toolbar)
             return
 
         isReady = self.magicPromptsEnsureBrushStrokesTrained(toolbar)
