@@ -2225,6 +2225,238 @@ def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
     assert seen == [None]
 
 
+def _asgi_messages(response):
+    """Run a Starlette response and return the ASGI messages it sends."""
+    import asyncio
+
+    messages = []
+
+    async def send(message):
+        messages.append(message)
+
+    async def receive():
+        return {'type': 'http.request', 'body': b'', 'more_body': False}
+
+    asyncio.run(response({'type': 'http'}, receive, send))
+    return messages
+
+
+def _check_chunked_messages(messages, chunk_size):
+    """Check the ASGI messages of a `_ChunkedResponse` and return its body."""
+    start, *body_messages = messages
+    assert start['type'] == 'http.response.start'
+    assert all(m['type'] == 'http.response.body' for m in body_messages)
+    assert all(len(m['body']) <= chunk_size for m in body_messages)
+    assert [m['more_body'] for m in body_messages] == (
+        [True]*(len(body_messages) - 1) + [False]
+    )
+    body = b''.join(m['body'] for m in body_messages)
+    headers = dict(start['headers'])
+    assert int(headers[b'content-length']) == len(body)
+    assert headers[b'content-type'] == b'application/octet-stream'
+    return body, len(body_messages)
+
+
+@pytest.mark.parametrize('size, chunk_size, num_messages', [
+    (0, 4, 1), (1, 4, 1), (4, 4, 1), (5, 4, 2), (8, 4, 2), (9, 4, 3),
+    (10, 1000, 1),
+])
+def test_chunked_response_splits_body(monkeypatch, size, chunk_size, num_messages):
+    """On Windows, one socket write of more than 4 GiB - 1 bytes fails
+    ("ValueError: buffer too large"), so the worker sends the body of binary
+    responses in chunks of at most `RESPONSE_CHUNK_SIZE` bytes.
+    """
+    from cellacdc.service import worker
+
+    monkeypatch.setattr(worker, 'RESPONSE_CHUNK_SIZE', chunk_size)
+    content = bytes(range(256))*(size // 256) + bytes(range(size % 256))
+    response = worker._ChunkedResponse(content=content)
+    assert response.body == content
+
+    body, num_body_messages = _check_chunked_messages(
+        _asgi_messages(response), chunk_size
+    )
+    assert body == content
+    assert num_body_messages == num_messages
+
+
+def test_response_chunk_size_is_within_socket_write_limits():
+    """Chunks must fit in one Windows `WSASend` (4 GiB - 1) and be large
+    enough that asyncio pauses the writer after each one (high-water mark of
+    64 KiB), so that chunks are never merged into one larger write.
+    """
+    from cellacdc.service import worker
+
+    assert 64 * 1024 < worker.RESPONSE_CHUNK_SIZE <= 2**31
+
+
+@pytest.mark.parametrize('path', [
+    '/segment', '/segment_embeddings', '/segment3DT',
+    '/second_ch_img_to_stack', '/jobs/{job_id}/result',
+])
+def test_worker_sends_binary_responses_in_chunks(monkeypatch, path):
+    """Every endpoint that returns arrays sends them in bounded chunks.
+
+    A (1153, 358, 1822, 3) uint16 stack (4.2 GiB) returned by
+    `second_ch_img_to_stack` made the worker fail on Windows.
+    """
+    import asyncio
+    from cellacdc.service import payload, worker
+
+    chunk_size = 1000
+    monkeypatch.setattr(worker, 'RESPONSE_CHUNK_SIZE', chunk_size)
+    result = np.arange(5000, dtype=np.uint32).reshape(50, 100)
+    endpoints, executor = _jobs_app(
+        monkeypatch, lambda image: result,
+        segment3DT=lambda image: result,
+        second_ch_img_to_stack=lambda first, second: result,
+    )
+    image = _FakeUpload(np.zeros((2, 2), np.uint8))
+    if path == '/segment':
+        response = asyncio.run(endpoints[(path, ('POST',))](
+            image=image, params='{}', embedding_meta='', embeddings=None,
+            params_data=None,
+        ))
+    elif path == '/segment_embeddings':
+        embedding_meta, _ = payload.encode_value({})
+        response = asyncio.run(endpoints[('/segment', ('POST',))](
+            image=image, params='{}', embedding_meta=embedding_meta,
+            embeddings=None, params_data=None,
+        ))
+    elif path == '/segment3DT':
+        response = asyncio.run(endpoints[(path, ('POST',))](
+            image=image, params='{}', params_data=None,
+        ))
+    elif path == '/second_ch_img_to_stack':
+        response = asyncio.run(endpoints[(path, ('POST',))](
+            first=image, second=image,
+        ))
+    else:
+        job_id = _submit_job(endpoints, np.zeros((2, 2)))
+        fn, args = executor.calls.pop()
+        fn(*args)
+        response = endpoints[(path, ('GET',))](job_id)
+
+    assert isinstance(response, worker._ChunkedResponse)
+    body, num_messages = _check_chunked_messages(
+        _asgi_messages(response), chunk_size
+    )
+    assert num_messages > 1
+    if path == '/segment_embeddings':
+        decoded = payload.decode_value_body(body)
+        assert decoded['embeddings'] == {}
+        labels = decoded['labels']
+    else:
+        labels = np.load(io.BytesIO(body))
+    np.testing.assert_array_equal(labels, result)
+    assert labels.dtype == result.dtype
+
+
+def test_model_client_receives_responses_larger_than_one_socket_write(
+        monkeypatch
+    ):
+    """Real HTTP (uvicorn) where each write to the transport fails above a
+    limit, like `WSASend` on Windows above 4 GiB - 1 bytes. The worker must
+    send results larger than the limit in chunks, and the client must read
+    them back. The limit is above asyncio's write buffer limit (64 KiB), like
+    the real chunk size, so the transport does not merge chunks.
+    """
+    import threading
+    import time
+    import types
+    import uvicorn
+    from fastapi.responses import Response
+    from uvicorn.protocols.http.h11_impl import H11Protocol
+    from cellacdc import myutils_models
+    from cellacdc.service import worker
+    from cellacdc.service.client import _find_free_port
+
+    write_limit = 256 * 1024
+    monkeypatch.setattr(worker, 'RESPONSE_CHUNK_SIZE', write_limit)
+    monkeypatch.setattr(worker, '_jobs', {})
+    result = np.arange(600*600, dtype=np.uint32).reshape(600, 600)
+    assert result.nbytes > 5*write_limit
+    writes = []
+
+    class LimitedTransport:
+        def __init__(self, transport):
+            self._transport = transport
+
+        def write(self, data):
+            writes.append(len(data))
+            if len(data) > write_limit:
+                raise ValueError('buffer too large')
+            self._transport.write(data)
+
+        def __getattr__(self, name):
+            return getattr(self._transport, name)
+
+    class LimitedH11Protocol(H11Protocol):
+        def connection_made(self, transport):
+            super().connection_made(LimitedTransport(transport))
+
+    class Model:
+        def segment(self, image):
+            return result
+
+        def segment3DT(self, video_data):
+            return result
+
+        def second_ch_img_to_stack(self, first_ch_data, second_ch_data):
+            return result
+
+    monkeypatch.setattr(
+        myutils_models, 'import_segment_module',
+        lambda name: types.SimpleNamespace(Model=Model),
+    )
+    app = worker.create_app('fake')
+    # Control: an unchunked response larger than the limit fails
+    app.add_api_route(
+        '/unchunked', lambda: Response(content=bytes(write_limit + 1))
+    )
+
+    port = _find_free_port()
+    # `log_config=None`: do not reconfigure the logging of the test process
+    server = uvicorn.Server(uvicorn.Config(
+        app, host='127.0.0.1', port=port, http=LimitedH11Protocol,
+        lifespan='off', log_config=None,
+    ))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        for _ in range(100):
+            if server.started:
+                break
+            time.sleep(0.1)
+        assert server.started
+        url = f'http://127.0.0.1:{port}'
+        with pytest.raises(requests.exceptions.RequestException):
+            requests.get(f'{url}/unchunked', timeout=10).content
+
+        client = ModelClient(url, timeout=30)
+        image = np.zeros((2, 2), np.uint8)
+        job_id = client.submit_job(image)
+        for _ in range(100):
+            if client.get_job_status(job_id)['status'] == 'completed':
+                break
+            time.sleep(0.05)
+        outputs = [
+            client.segment(image),
+            client.segment3DT(image[None]),
+            client.second_ch_img_to_stack(image, image),
+            client.get_job_result(job_id),
+        ]
+        client.close()
+    finally:
+        server.should_exit = True
+        thread.join(10)
+
+    for out in outputs:
+        np.testing.assert_array_equal(out, result)
+        assert out.dtype == result.dtype
+    assert sum(size == write_limit for size in writes) >= 4*5
+
+
 def test_worker_runs_promptable_model_protocol(monkeypatch):
     import asyncio
     import types
