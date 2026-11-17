@@ -6605,6 +6605,162 @@ class ROI(pg.ROI):
         
         return ymin, xmin, ymax, xmax
 
+class _PromptBoxHandle(pg.graphicsItems.ROI.Handle):
+    """Corner handle of `PromptBoxROI`: Alt+drag is left to the view (pan
+    the image, like on the rest of the image)."""
+    def mouseDragEvent(self, ev):
+        isAltStart = (
+            ev.isStart()
+            and ev.modifiers() == Qt.KeyboardModifier.AltModifier
+        )
+        if isAltStart:
+            ev.ignore()
+            return
+        super().mouseDragEvent(ev)
+
+class PromptBoxROI(ROI):
+    """Box prompt of the promptable models (e.g., micro-sam).
+
+    When the box is editable (see `setEditable`), it can be moved by
+    dragging its border, resized with the corner handles, and removed with
+    the right-click context menu of its border. Only the border catches the
+    mouse, so that new boxes can be drawn inside existing ones (e.g.,
+    touching objects). The ID of the object is displayed at the top-left
+    corner. `boxData` is the dictionary of the box in the GUI prompts data.
+    """
+    # Width in screen pixels of the border that catches the mouse
+    BORDER_WIDTH_PX = 10
+
+    def __init__(
+            self, pos, size, box_id, color, maxBounds=None, editable=True,
+            boxData=None
+        ):
+        rgb = tuple(int(c) for c in color[:3])
+        penEditable = pg.mkPen(rgb, width=2)
+        super().__init__(
+            pos, size, maxBounds=maxBounds, scaleSnap=True,
+            translateSnap=True, pen=penEditable,
+            hoverPen=pg.mkPen(rgb, width=4), rotatable=False,
+            removable=True
+        )
+        self.box_id = box_id
+        self.boxData = boxData
+        self._editable = True
+        self._penEditable = penEditable
+        self._penNotEditable = pg.mkPen(rgb, width=2, style=Qt.DashLine)
+        # Resize only with the handles (they respect `maxBounds`, while
+        # pyqtgraph's Shift+drag scaling does not)
+        self.mouseDragHandler.scaleModifier = None
+        self.labelItem = pg.TextItem(str(box_id), color=rgb, anchor=(0, 1))
+        self.labelItem.setParentItem(self)
+        for pos, center in (
+                ([1, 1], [0, 0]), ([0, 0], [1, 1]),
+                ([1, 0], [0, 1]), ([0, 1], [1, 0])):
+            handle = _PromptBoxHandle(
+                self.handleSize, typ='s', pen=self.handlePen,
+                hoverPen=self.handleHoverPen, parent=self,
+                antialias=self._antialias
+            )
+            self.addScaleHandle(pos, center, item=handle)
+        self.setEditable(editable)
+
+    def setEditable(self, editable):
+        # The shape (mouse area) depends on the editability
+        self.prepareGeometryChange()
+        self._editable = bool(editable)
+        self.translatable = self._editable
+        # The handles resize the box (see `__init__`)
+        self.resizable = False
+        for handle in self.getHandles():
+            handle.setVisible(self._editable)
+        self.setPen(
+            self._penEditable if self._editable else self._penNotEditable
+        )
+        if not self._editable:
+            self.setMouseHover(False)
+
+    def isEditable(self):
+        return self._editable
+
+    def _boxRect(self):
+        return QRectF(
+            0, 0, self.state['size'][0], self.state['size'][1]
+        ).normalized()
+
+    def _bandWidth(self):
+        """Width (in item coordinates) of the band around the border that
+        catches the mouse, constant on screen."""
+        try:
+            pixelLength = self.pixelLength(pg.Point(1, 0))
+        except Exception as err:
+            pixelLength = None
+        if pixelLength:
+            return self.BORDER_WIDTH_PX*pixelLength
+        rect = self._boxRect()
+        return max(min(rect.width(), rect.height())*0.1, 1)
+
+    def boundingRect(self):
+        # Include the outer half of the band (`paint` uses the box size)
+        margin = self._bandWidth()/2
+        return self._boxRect().adjusted(-margin, -margin, margin, margin)
+
+    def shape(self):
+        """Only a band centered on the border catches the mouse (hover,
+        drag and context menu)."""
+        from qtpy.QtGui import QPainterPathStroker
+
+        path = QPainterPath()
+        if not getattr(self, '_editable', True):
+            # Read-only boxes do not catch the mouse (e.g., pans starting on
+            # their border)
+            return path
+        path.addRect(self._boxRect())
+        stroker = QPainterPathStroker()
+        stroker.setWidth(self._bandWidth())
+        return stroker.createStroke(path)
+
+    def viewTransformChanged(self):
+        # The band width depends on the zoom
+        self.prepareGeometryChange()
+        super().viewTransformChanged()
+
+    def contextMenuEnabled(self):
+        return self._editable
+
+    def setSelected(self, s):
+        # pyqtgraph selects the ROI (and shows its handles) at the start of
+        # every left drag --> keep the handles hidden when not editable
+        if s and not getattr(self, "_editable", True):
+            return
+        super().setSelected(s)
+
+    def mouseClickEvent(self, ev):
+        if ev.button() == Qt.MouseButton.RightButton and self.isMoving:
+            # Right-click while moving only cancels the move (no menu)
+            ev.accept()
+            self.cancelMove()
+            return
+        super().mouseClickEvent(ev)
+
+    def raiseContextMenu(self, ev):
+        # Only the box menu (without the menus of the parent items, e.g.,
+        # the view and the plot)
+        if not self.contextMenuEnabled():
+            return
+        pos = ev.screenPos()
+        self.getMenu().popup(QPoint(int(pos.x()), int(pos.y())))
+
+    def getMenu(self):
+        if self.menu is None:
+            self.menu = QMenu()
+            removeAction = QAction(
+                f'Remove box prompt (ID {self.box_id})', self.menu
+            )
+            removeAction.triggered.connect(self.removeClicked)
+            self.menu.addAction(removeAction)
+            self.menu.remAct = removeAction
+        return self.menu
+
 class ZoomROI(ROI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -12781,9 +12937,12 @@ class MagicPromptsToolbar(ToolBar):
     sigClearStrokesOnZoom = Signal(object)
     sigSaveModel = Signal(object)
     sigLoadModel = Signal(object)
+    sigClearBoxes = Signal(object)
+    sigClearBoxesOnZoom = Signal(object)
 
     promptTypeTextToKey = {
         'Points': 'point',
+        'Boxes': 'box',
         'Brush strokes': 'brush_stroke',
     }
     promptTypeKeyToText = {
@@ -12835,7 +12994,10 @@ class MagicPromptsToolbar(ToolBar):
         self.promptTypeCombobox.setToolTip(
             'Type of prompts used by the promptable model.\n\n'
             'The available types depend on the selected model (e.g., '
-            'ConvPaint uses brush strokes).'
+            'ConvPaint uses brush strokes).\n\n'
+            'Points and boxes can be combined (e.g., with micro-sam): switch '
+            'type to add the other kind of prompts. Prompts with the same ID '
+            'belong to the same object.'
         )
 
         self.addSeparator()
@@ -12877,6 +13039,17 @@ class MagicPromptsToolbar(ToolBar):
             'Clear all points on the zoomed area of the image'
         )
         self.clearPointsActionOnZoom.setDisabled(True)
+
+        # Box prompts widgets (e.g., micro-sam)
+        self.clearBoxesAction = self.addButton(':clear-points.svg')
+        self.clearBoxesAction.setToolTip(
+            'Clear all the box prompts of the current frame'
+        )
+
+        self.clearBoxesOnZoomAction = self.addButton(':clear-points-zoom.svg')
+        self.clearBoxesOnZoomAction.setToolTip(
+            'Clear the box prompts in the zoomed area of the current frame'
+        )
 
         pointsActionsSeparator = self.addSeparator()
 
@@ -12956,11 +13129,18 @@ class MagicPromptsToolbar(ToolBar):
         self._pointsOnlyActions = [
             self.interpolateZslicesCheckbox.action,
             *interpolateSeparator._actions,
-            self.computeOnZoomAction,
-            self.computeAction,
             self.clearPointsAction,
             self.clearPointsActionOnZoom,
+        ]
+        # Actions used with both point and box prompts
+        self._pointsOrBoxesActions = [
+            self.computeOnZoomAction,
+            self.computeAction,
             *pointsActionsSeparator._actions,
+        ]
+        self._boxesOnlyActions = [
+            self.clearBoxesAction,
+            self.clearBoxesOnZoomAction,
         ]
         self._brushStrokesOnlyActions = [
             self.brushSizeSpinbox.labelAction,
@@ -13006,6 +13186,10 @@ class MagicPromptsToolbar(ToolBar):
         )
         self.saveModelAction.triggered.connect(self.emitSigSaveModel)
         self.loadModelAction.triggered.connect(self.emitSigLoadModel)
+        self.clearBoxesAction.triggered.connect(self.emitSigClearBoxes)
+        self.clearBoxesOnZoomAction.triggered.connect(
+            self.emitSigClearBoxesOnZoom
+        )
 
         self._updatePromptTypeActions('point')
 
@@ -13037,9 +13221,10 @@ class MagicPromptsToolbar(ToolBar):
         self._updatePromptTypeActions(prompt_type)
 
     def setSupportedPromptTypes(self, prompt_types=None):
-        """Enable only the prompt types in `prompt_types` and select the
-        first supported one. If `prompt_types` is None, enable all the
-        prompt types.
+        """Enable only the prompt types in `prompt_types` and keep the
+        current prompt type if supported (e.g., re-initializing a model that
+        supports points and boxes), otherwise select the first supported
+        one. If `prompt_types` is None, enable all the prompt types.
         """
         if prompt_types is None:
             supported = list(self.promptTypeKeyToText.keys())
@@ -13066,7 +13251,8 @@ class MagicPromptsToolbar(ToolBar):
             self._updatePromptTypeActions(self.promptType())
             return
 
-        self.setPromptType(supported[0])
+        current = self.promptType()
+        self.setPromptType(current if current in supported else supported[0])
         self.promptTypeCombobox.setDisabled(len(supported) == 1)
 
     def _setActionsVisible(self, actions, visible):
@@ -13075,7 +13261,13 @@ class MagicPromptsToolbar(ToolBar):
 
     def _updatePromptTypeActions(self, prompt_type):
         isBrushStrokes = prompt_type == 'brush_stroke'
-        self._setActionsVisible(self._pointsOnlyActions, not isBrushStrokes)
+        isBoxes = prompt_type == 'box'
+        isPoints = not isBrushStrokes and not isBoxes
+        self._setActionsVisible(self._pointsOnlyActions, isPoints)
+        self._setActionsVisible(
+            self._pointsOrBoxesActions, not isBrushStrokes
+        )
+        self._setActionsVisible(self._boxesOnlyActions, isBoxes)
         self._setActionsVisible(self._brushStrokesOnlyActions, isBrushStrokes)
         self.segmentZstackAction.setVisible(
             isBrushStrokes and getattr(self, '_isZstackData', True)
@@ -13086,6 +13278,12 @@ class MagicPromptsToolbar(ToolBar):
         loaded data are z-stacks."""
         self._isZstackData = bool(isZstack)
         self._updatePromptTypeActions(self.promptType())
+
+    def emitSigClearBoxes(self):
+        self.sigClearBoxes.emit(self)
+
+    def emitSigClearBoxesOnZoom(self):
+        self.sigClearBoxesOnZoom.emit(self)
 
     def emitSigTrain(self):
         self.sigTrain.emit(self)
@@ -13149,6 +13347,33 @@ class MagicPromptsToolbar(ToolBar):
             Note that you can also save the points by clicking on the
             "<b>Save points</b>" button to load them later and start from
             where you left.<br><br>
+
+            <b>Boxes (e.g., micro-sam)</b><br><br>
+
+            Some models (e.g., micro-sam) also accept <b>box prompts</b>.
+            Select "Boxes" in the "Prompt type" selector and:<br><br>
+
+            - <b>Left-click and drag</b> to draw a box around a <b>new
+            object</b><br>
+            - <b>Right-click and drag</b> to draw a box for the object of
+            the "Right-click ID" (e.g., an object with point prompts)<br>
+            - <b>Drag the border</b> of a box to move it and its
+            <b>corners</b> to resize it (dragging inside a box draws a new
+            box, e.g., for touching objects)<br>
+            - <b>Right-click</b> on a box (without dragging) to remove it<br>
+            - Press another mouse button while drawing to cancel the box<br>
+            - Press <b>Ctrl+Z</b> to undo the last change to the boxes<br><br>
+
+            Each object can have one box per z-slice (drawing another box
+            replaces it). Boxes and points with the same ID are combined
+            (switch prompt type to add points to a box, the box ID is set
+            as "Right-click ID").<br>
+            With z-stacks, draw the boxes in "single z-slice" mode. With 3D
+            segmentation masks, micro-sam segments the z-slices with prompts
+            and then propagates the masks to the other z-slices.<br><br>
+
+            Then click "<b>Compute on zoomed area</b>" or "<b>Compute on
+            whole image</b>" as for points.<br><br>
 
             <b>Brush strokes (e.g., ConvPaint)</b><br><br>
 

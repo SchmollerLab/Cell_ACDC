@@ -34,6 +34,11 @@ Entry fields (all optional):
         and optional check (Python code). A successful check skips the step;
         after setup the check must succeed. Output is streamed and errors raised.
         Commands never use a shell. Without a check, a step runs on every setup.
+        A step with optional=True (e.g., a dependency of only some model
+        types) logs a warning instead of raising when it fails or is declined.
+    init_timeout: seconds allowed to start the model worker and initialize
+        the model (default 120). Increase it for models that download large
+        weights the first time they are initialized.
     required_env: environment variables the model needs at runtime (e.g.
         access tokens). Each item is a dict with ``name``, optional
         ``description``, ``secret`` (mask the input) and
@@ -220,6 +225,39 @@ MODEL_ENVS = {
                 'commands': [
                     ['-m', 'pip', 'install', '--no-deps',
                      'napari-convpaint>=1.2'],
+                ],
+            },
+        ],
+    },
+    # Promptable model, installed with pip as in the official micro-sam
+    # documentation (it also installs napari and Qt, which only live in this
+    # isolated environment). MobileSAM, needed only by the `vit_t` models, is
+    # not on PyPI: it is installed from the GitHub archive (no git required)
+    # at the commit pinned by micro-sam.
+    'micro-sam': {
+        'python': '3.12',
+        'torch': True,
+        'torch_version': '>=2.5,<3',
+        # The first initialization of each model downloads its weights
+        # (from ~40 MB for vit_t up to ~2.5 GB for vit_h)
+        'init_timeout': 3600,
+        'packages': [
+            {'pkg_name': 'micro_sam', 'min_version': '1.8',
+             'include_lower_version': True},
+        ],
+        'setup_steps': [
+            {
+                'name': 'MobileSAM',
+                'description': 'Install MobileSAM from GitHub (optional, '
+                               'required only by the vit_t models of '
+                               'micro-sam).',
+                # The other micro-sam models do not need it
+                'optional': True,
+                'check': 'import mobile_sam',
+                'commands': [
+                    ['-m', 'pip', 'install',
+                     'https://github.com/ChaoningZhang/MobileSAM/archive/'
+                     'f706ad9c4eb7f219c00d9050e46328518ffb65d2.zip'],
                 ],
             },
         ],

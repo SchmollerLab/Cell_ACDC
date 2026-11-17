@@ -659,6 +659,23 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.brushStrokesDiskMasks = {}
         self.brushStrokesWarnedNotPaintable = False
 
+        # Box prompts (e.g., micro-sam)
+        # {pos_i: {frame_i: [{'id', 'z', 'ymin', 'xmin', 'ymax', 'xmax'}]}}
+        # where 'z' is None for 2D data and max coordinates are excluded
+        self.magicPromptsBoxesData = {}
+        # {(pos_i, frame_i): deque of copies of the frame boxes}
+        self.magicPromptsBoxesUndo = {}
+        # `widgets.PromptBoxROI` items of the displayed boxes
+        for item in getattr(self, 'magicPromptsBoxItems', []):
+            try:
+                self.ax1.removeItem(item)
+            except Exception as err:
+                pass
+        self.magicPromptsBoxItems = []
+        # ROI and start point of the box being drawn
+        self.magicPromptsDrawingBox = None
+        self.isBoxPromptDragImg1 = False
+
         self.cca_df_colnames = cca_df_colnames
         self.cca_df_dtypes = [
             str, int, int, str, int, int, bool, bool, int
@@ -1091,7 +1108,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
                 if (addPointsByClickingButton is not None
                     and (magicPromptsON or pointsLayerON)
                     and addPointsByClickingButton.isChecked()
-                    and not self.isBrushStrokesPromptActive()):
+                    and not self.isBrushStrokesPromptActive()
+                    and not self.isBoxPromptActive()):
                     return 'toggle_points_layer', tool.icon()
                 else:
                     continue
@@ -1125,6 +1143,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             center = 'curvature'
         elif 'polyline_deletion_roi' in active_tools:
             center = 'polyline'
+        elif 'magic_prompts' in active_tools and self.isBoxPromptActive():
+            # Drawing box prompts
+            center = 'crosshair'
         elif 'toggle_points_layer' in active_tools:
             center = 'crosshair'
         elif isLeftClickActive:
@@ -3009,6 +3030,12 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         )
         self.magicPromptsToolbar.sigLoadModel.connect(
             self.magicPromptsLoadModelTriggered
+        )
+        self.magicPromptsToolbar.sigClearBoxes.connect(
+            partial(self.magicPromptsClearBoxes, only_zoom=False)
+        )
+        self.magicPromptsToolbar.sigClearBoxesOnZoom.connect(
+            partial(self.magicPromptsClearBoxes, only_zoom=True)
         )
 
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
@@ -5985,6 +6012,14 @@ When working with 3D segmentation masks:
         
     @exception_handler
     def gui_mousePressEventImg2(self, event: QGraphicsSceneMouseEvent):
+        if getattr(self, 'magicPromptsBoxItems', None):
+            if self.isMovingMagicPromptsBox():
+                # Another button pressed while a box prompt is moved or
+                # resized --> leave it to pyqtgraph (img2 must not grab the
+                # mouse, otherwise the move is never finished)
+                event.ignore()
+                return
+
         modifiers = QGuiApplication.keyboardModifiers()
         alt = modifiers == Qt.AltModifier
         shift = modifiers == Qt.ShiftModifier
@@ -6940,6 +6975,11 @@ When working with 3D segmentation masks:
             self.brushStrokesPaintAt(x, y)
             return
 
+        if self.isBoxPromptDragImg1:
+            # Drawing a box prompt (clipped at image borders)
+            self.boxPromptsDragTo(x, y)
+            return
+
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab, force_z=False).shape
         xdata, ydata = int(x), int(y)
@@ -7683,6 +7723,7 @@ When working with 3D segmentation masks:
             and not event.isExit()
             and noModifier
             and not isBrushStrokesPromptActive
+            and not self.isBoxPromptActive()
         )
         setBrushStrokesCursor = (
             isBrushStrokesPromptActive and not event.isExit() and not alt
@@ -7999,6 +8040,11 @@ When working with 3D segmentation masks:
         if self.isBrushStrokeDragImg1:
             # End of brush strokes prompts painting
             self.brushStrokesEndDrag()
+            return
+
+        if self.isBoxPromptDragImg1:
+            # End of box prompt drawing
+            self.boxPromptsEndDrag(event)
             return
 
         posData = self.data[self.pos_i]
@@ -8459,6 +8505,7 @@ When working with 3D segmentation masks:
         showLabelsGradMenu = (
             right_click and not is_right_click_action_ON
             and not self.isBrushStrokesPromptActive()
+            and not self.isBoxPromptActive()
         )
         if showLabelsGradMenu:
             self.gui_rightImageShowContextMenu(event)
@@ -8490,6 +8537,21 @@ When working with 3D segmentation masks:
     @exception_handler
     def gui_mousePressEventImg1(self, event: QMouseEvent):
         self.typingEditID = False
+        if getattr(self, 'magicPromptsDrawingBox', None) is not None:
+            # Another mouse button pressed while drawing a box prompt -->
+            # cancel the box (before any other action of that button, e.g.,
+            # middle-click deleting an object)
+            self.boxPromptsCancelDrag()
+            return
+
+        if getattr(self, 'magicPromptsBoxItems', None):
+            if self.isMovingMagicPromptsBox():
+                # Another button pressed while a box prompt is moved or
+                # resized --> leave it to pyqtgraph (img1 must not grab the
+                # mouse, otherwise the move is never finished)
+                event.ignore()
+                return
+
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
@@ -8604,6 +8666,29 @@ When working with 3D segmentation masks:
             self.brushStrokesMousePress(event, left_click, modifiers)
             return
 
+        isBoxPromptClick = (
+            (left_click or right_click) and not middle_click and not alt
+            and not isSnapshotDivisionClick
+            and self.isBoxPromptActive()
+        )
+        if isBoxPromptClick:
+            # Draw box prompts (left = new object, right = object of the
+            # "Right-click ID"). Left-presses on the border or handles of a
+            # box are left to the box (move, resize) and right-clicks
+            # without dragging open the menu of the box (remove)
+            self.boxPromptsMousePress(event, right_click)
+            return
+
+        isBoxPromptOtherClick = (
+            (middle_click or (right_click and alt))
+            and self.isBoxPromptActive()
+        )
+        if isBoxPromptOtherClick:
+            # With box prompts, points (also the negative ones) are added
+            # only with the "Points" prompt type, and middle-click does not
+            # delete objects (like with points)
+            return
+
         dragImgLeft = (
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
@@ -8616,6 +8701,14 @@ When working with 3D segmentation masks:
         )
         if isPanImageClick:
             dragImgLeft = True
+            if self.hoveredMagicPromptsBox() is not None:
+                # The hovered box prompt claimed the left drags (pyqtgraph
+                # hover) but ignores Alt+drag --> re-send the hover with the
+                # pressed button, so that the view gets the pan
+                try:
+                    self.ax1.scene().sendHoverEvents(event)
+                except Exception as err:
+                    pass
 
         is_right_click_custom_ON = any([
             b.isChecked() for b in self.customAnnotDict.keys()
@@ -11850,12 +11943,17 @@ When working with 3D segmentation masks:
             self.ax2.removeDelRoiItem(roi)
             self.ax1.removeDelRoiItem(roi)
 
-        for item in self.ax2.items:
-            if isinstance(item, pg.ROI):
+        # Only deletion ROIs (they have a `key`): e.g., the box prompts of
+        # promptable models (`widgets.PromptBoxROI`) are other ROIs. Iterate
+        # over copies because the items are removed from the lists
+        for item in list(self.ax2.items):
+            if isinstance(item, pg.ROI) and hasattr(item, 'key'):
                 self.ax2.removeDelRoiItem(item)
-        
-        for item in self.ax1.items:
-            if isinstance(item, pg.ROI) and item != self.labelRoiItem:
+
+        for item in list(self.ax1.items):
+            if item is self.labelRoiItem:
+                continue
+            if isinstance(item, pg.ROI) and hasattr(item, 'key'):
                 self.ax1.removeDelRoiItem(item)
         # if self.polyLineRoi is shown also clear it
         
@@ -15285,18 +15383,19 @@ When working with 3D segmentation masks:
             if button != sender:
                 button.setChecked(False)
 
-        isBrushStrokesPromptON = (
+        isBrushStrokesOrBoxPromptON = (
             self.magicPromptsToolButton.isChecked()
-            and self.magicPromptsToolbar.promptType() == 'brush_stroke'
+            and self.magicPromptsToolbar.promptType() in ('brush_stroke', 'box')
         )
         isOtherTool = (
             sender is not None
             and sender is not self.magicPromptsToolButton
             and sender not in self.promptPointsLayerClickButtons()
         )
-        if isBrushStrokesPromptON and isOtherTool:
+        if isBrushStrokesOrBoxPromptON and isOtherTool:
             # Activating another left-click tool (e.g., brush) deactivates
-            # painting brush strokes prompts (W is not a left-click button)
+            # painting brush strokes or drawing box prompts (W is not a
+            # left-click button)
             self.magicPromptsToolButton.setChecked(False)
 
         if button != self.labelRoiButton:
@@ -15469,6 +15568,8 @@ When working with 3D segmentation masks:
                 self.applyMagicPromptsPromptType()
         else:
             self.brushStrokesEndDrag()
+            self.boxPromptsCancelDrag()
+            self.drawMagicPromptsBoxes()
             self.resetCursors()
             self.promptSegmentPointsLayerToolbar.setVisible(False)
             self.magicPromptsToolbar.setVisible(False)
@@ -18477,8 +18578,14 @@ When working with 3D segmentation masks:
         if self.isBrushStrokesPromptActive() and self.undoBrushStrokes():
             return
 
+        isBoxPromptActive = self.isBoxPromptActive()
+        if isBoxPromptActive and self.undoMagicPromptsBoxes():
+            return
+
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
-        if addPointsByClickingButton is not None:
+        # With box prompts the prompts points layer stays active, but clicks
+        # do not add points (nothing to undo there)
+        if addPointsByClickingButton is not None and not isBoxPromptActive:
             done = self.undoAddPoint(addPointsByClickingButton.action)
             if done:
                 return
@@ -19034,26 +19141,43 @@ When working with 3D segmentation masks:
         )
     
     def getMagicPromptsInputs(self, toolbar):
-        if not self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
-            _warnings.warnPromptSegmentPointsLayerNotInit(qparent=self)
-            return
-        
-        if not self.magicPromptsToolbar.viewModelParamsAction.isEnabled():
+        isModelInit = self.magicPromptsToolbar.viewModelParamsAction.isEnabled()
+        if not isModelInit:
             _warnings.warnPromptSegmentModelNotInit(qparent=self)
             return
-        
+
+        isPointsLayerInit = (
+            self.promptSegmentPointsLayerToolbar.isPointsLayerInit
+        )
+        df_boxes = self.getMagicPromptsBoxesDf(toolbar)
+        if not isPointsLayerInit and df_boxes is None:
+            if toolbar.promptType() == 'box':
+                _warnings.warnNoBoxPrompts(qparent=self)
+            else:
+                _warnings.warnPromptSegmentPointsLayerNotInit(qparent=self)
+            return
+
         posData = self.data[self.pos_i]
         image = self.getDisplayedZstack()
-        df_points = self.promptSegmentPointsLayerToolbar.pointsLayerDf(
-            posData, isSegm3D=self.isSegm3D
-        )
-        
+        if isPointsLayerInit:
+            df_points = self.promptSegmentPointsLayerToolbar.pointsLayerDf(
+                posData, isSegm3D=self.isSegm3D
+            )
+            # Only the points of the segmented frame
+            df_points = df_points[df_points['frame_i'] == posData.frame_i]
+        else:
+            df_points = pd.DataFrame(
+                columns=['frame_i', 'Cell_ID', 'z', 'y', 'x', 'id']
+            )
+
         self.logger.info(
             f'Starting {toolbar.model_name} promptable segmentation with the '
             f'following prompts:\n\n{df_points}'
         )
-        
-        return image, df_points
+        if df_boxes is not None:
+            self.logger.info(f'Box prompts:\n\n{df_boxes}')
+
+        return image, df_points, df_boxes
     
     @disableWindow
     def magicPromptsComputeOnZoomTriggered(self, toolbar):
@@ -19065,8 +19189,8 @@ When working with 3D segmentation masks:
             return
         
         posData = self.data[self.pos_i]
-        image, df_points = inputs
-        
+        image, df_points, df_boxes = inputs
+
         ((xmin, xmax), (ymin, ymax)) = self.ax1.viewRange()
         Y, X = image.shape[-2:]
         
@@ -19093,16 +19217,42 @@ When working with 3D segmentation masks:
         df_points['x'] -= xmin
         
         df_points = df_points[ df_points['frame_i'] == posData.frame_i]
-        
+
+        if df_boxes is not None:
+            df_boxes = self.clipMagicPromptsBoxesToZoom(
+                df_boxes, ymin, xmin, ymax, xmax
+            )
+
         self.logger.info(
             f'Image origin = {image_origin}\n'
             f'Image shape = {image.shape}'
         )
-        
+
         self.startMagicPromptsWorkerAndWait(
-            image, df_points, toolbar.model, toolbar.model_segment_kwargs, 
-            image_origin=image_origin, zoom_slice=zoom_slice
+            image, df_points, toolbar.model, toolbar.model_segment_kwargs,
+            image_origin=image_origin, zoom_slice=zoom_slice,
+            df_boxes=df_boxes
         )
+
+    @staticmethod
+    def clipMagicPromptsBoxesToZoom(df_boxes, ymin, xmin, ymax, xmax):
+        """Box prompts clipped to the zoomed area (ymin:ymax, xmin:xmax) in
+        the coordinates of the zoomed area (None if no box is inside)."""
+        df_boxes = df_boxes.copy()
+        df_boxes[['ymin', 'ymax']] = (
+            df_boxes[['ymin', 'ymax']].clip(ymin, ymax) - ymin
+        )
+        df_boxes[['xmin', 'xmax']] = (
+            df_boxes[['xmin', 'xmax']].clip(xmin, xmax) - xmin
+        )
+        isInside = (
+            (df_boxes['ymax'] - df_boxes['ymin'] >= 1)
+            & (df_boxes['xmax'] - df_boxes['xmin'] >= 1)
+        )
+        df_boxes = df_boxes[isInside]
+        if df_boxes.empty:
+            return
+        return df_boxes
     
     def magicPromptsInterpolateZsliceToggled(self, checked):
         # See 'self.promptSegmentPointsLayerToolbar.addPointsZslicesInterpolation'
@@ -19173,16 +19323,17 @@ When working with 3D segmentation masks:
             )
             return
 
-        image, df_points = inputs
-        
+        image, df_points, df_boxes = inputs
+
         self.startMagicPromptsWorkerAndWait(
-            image, df_points, toolbar.model, toolbar.model_segment_kwargs
+            image, df_points, toolbar.model, toolbar.model_segment_kwargs,
+            df_boxes=df_boxes
         )
-    
+
     def startMagicPromptsWorkerAndWait(
             self, image, df_points, model, model_segment_kwargs,
             image_origin=(0, 0, 0), zoom_slice=None, global_image=None,
-            id_offset=0, z_slice=None
+            id_offset=0, z_slice=None, df_boxes=None
         ):
         desc = (
             'Running promptable segmentation model...'
@@ -19205,7 +19356,8 @@ When working with 3D segmentation masks:
             image_origin=image_origin,
             global_image=global_image,
             id_offset=id_offset,
-            z_slice=z_slice
+            z_slice=z_slice,
+            df_boxes=df_boxes
         )
         
         self.magicPromptsWorker.moveToThread(
@@ -19281,6 +19433,15 @@ When working with 3D segmentation masks:
             lab = lab[z_slice]
             if image.ndim == lab.ndim + 1:
                 image = image[z_slice]
+        elif image.ndim == lab.ndim + 1 and image.shape[1:] == lab.shape:
+            # 2D masks of z-stack data (e.g., micro-sam projects the masks of
+            # the prompted z-slices) --> show the displayed z-slice or a
+            # projection (display only)
+            if self.zProjComboBox.currentText() == 'single z-slice':
+                z = self.zSliceScrollBar.sliderPosition()
+                image = image[min(max(int(z), 0), len(image)-1)]
+            else:
+                image = image.max(axis=0)
         # `image` is the image the model segmented (e.g., the 2D z-slice for
         # 2D segmentation of z-stack data), which matches the labels shape
         img = image[..., zoom_slice[0], zoom_slice[1]]
@@ -19387,9 +19548,16 @@ When working with 3D segmentation masks:
         brushCircles = (self.ax2_BrushCircle, self.ax1_BrushCircle)
         if not self.magicPromptsToolButton.isChecked():
             self.brushStrokesLayerImg1.setVisible(False)
+            self.boxPromptsCancelDrag()
+            self.drawMagicPromptsBoxes()
             return
 
         prompt_type = self.magicPromptsToolbar.promptType()
+        if prompt_type != 'box':
+            self.boxPromptsCancelDrag()
+        # Boxes are displayed with points and boxes prompt types (editable
+        # only with boxes)
+        self.drawMagicPromptsBoxes()
         if prompt_type == 'brush_stroke':
             self.promptSegmentPointsLayerToolbar.setVisible(False)
             # Deactivate adding prompt points (e.g., middle-click would add
@@ -19414,11 +19582,27 @@ When working with 3D segmentation masks:
         self.brushStrokesLayerImg1.setVisible(False)
         self.setHoverToolSymbolData([], [], brushCircles)
         self.reactivatePromptPointsLayerClickButtons()
+        if prompt_type == 'box':
+            # The points stay visible (they are combined with the boxes) and
+            # their "Left-click ID" and "Right-click ID" are used for the
+            # boxes too, but clicks draw boxes
+            self.promptSegmentPointsLayerToolbar.setVisible(
+                self.promptSegmentPointsLayerToolbar.isPointsLayerInit
+            )
+            self.gui_refreshToolCursor()
+            return
+
         addPointsByClickingButton = self.buttonAddPointsByClickingActive()
         if addPointsByClickingButton is not None:
             action = addPointsByClickingButton.action
             self.ax1_BrushCircle.setBrush(action.brushColor)
             self.ax1_BrushCircle.setPen(action.penColor)
+            # Keep the points undo available when coming back from the
+            # boxes or brush strokes prompt types (their undo may have
+            # disabled the undo action)
+            undoQueues = getattr(self, 'undoAddPointQueueMapper', None) or {}
+            if undoQueues.get(action):
+                self.undoAction.setEnabled(True)
         self.promptSegmentPointsLayerToolbar.setVisible(True)
         if not self.promptSegmentPointsLayerToolbar.isPointsLayerInit:
             # Deferred so that the (non-modal) dialog is not opened while
@@ -19469,6 +19653,537 @@ When working with 3D segmentation masks:
         self.addPointsLayerTriggered(
             toolbar=self.promptSegmentPointsLayerToolbar
         )
+
+    def isBoxPromptActive(self):
+        """True if Magic prompts is active with the 'box' prompt type in a
+        mode where segmentation masks can be edited"""
+        try:
+            if not self.magicPromptsToolButton.isChecked():
+                return False
+            if self.magicPromptsToolbar.promptType() != 'box':
+                return False
+            # The buttons of the prompts points layer stay checked with
+            # boxes (the points are displayed and combined with the boxes)
+            promptPointsButtons = self.promptPointsLayerClickButtons()
+        except AttributeError:
+            return False
+
+        otherToolButtons = [*getattr(self, 'leftClickButtons', [])]
+        checkableQButtonsGroup = getattr(self, 'checkableQButtonsGroup', None)
+        if checkableQButtonsGroup is not None:
+            otherToolButtons.extend(checkableQButtonsGroup.buttons())
+        for button in otherToolButtons:
+            if button in promptPointsButtons:
+                continue
+            if button is self.magicPromptsToolButton:
+                continue
+            if button.isChecked():
+                return False
+
+        mode = str(self.modeComboBox.currentText())
+        return (
+            mode == 'Segmentation and Tracking'
+            or getattr(self, 'isSnapshot', False)
+        )
+
+    def isModelSupportingBoxPrompts(self):
+        model = getattr(self.magicPromptsToolbar, 'model', None)
+        return 'box' in tuple(getattr(model, 'prompt_types', ()))
+
+    def areMagicPromptsBoxesVisible(self):
+        if not self.magicPromptsToolButton.isChecked():
+            return False
+        if self.magicPromptsToolbar.promptType() not in ('point', 'box'):
+            return False
+        if getattr(self.magicPromptsToolbar, 'model', None) is None:
+            # No model initialized yet: all the prompt types can be selected
+            # (boxes drawn now are used if the model supports them)
+            return True
+        return self.isModelSupportingBoxPrompts()
+
+    def getMagicPromptsBoxes(self, pos_i=None, frame_i=None, create=False):
+        """List of the box prompts (dicts) of position `pos_i` and frame
+        `frame_i` (default current ones)."""
+        if pos_i is None:
+            pos_i = self.pos_i
+        if frame_i is None:
+            frame_i = self.data[pos_i].frame_i
+        posBoxesData = self.magicPromptsBoxesData.get(pos_i)
+        if posBoxesData is None:
+            if not create:
+                return []
+            posBoxesData = {}
+            self.magicPromptsBoxesData[pos_i] = posBoxesData
+        boxes = posBoxesData.get(frame_i)
+        if boxes is None:
+            if not create:
+                return []
+            boxes = []
+            posBoxesData[frame_i] = boxes
+        return boxes
+
+    def isMagicPromptsBoxViewEditable(self):
+        """Boxes can be drawn only in single z-slice view of z-stacks"""
+        posData = self.data[self.pos_i]
+        if posData.SizeZ == 1:
+            return True
+        return self.zProjComboBox.currentText() == 'single z-slice'
+
+    def magicPromptsBoxesZ(self):
+        """z-slice of the boxes drawn now (None for 2D data)"""
+        posData = self.data[self.pos_i]
+        if posData.SizeZ == 1:
+            return None
+        return int(self.zSliceScrollBar.sliderPosition())
+
+    def magicPromptsBoxColor(self, box_id):
+        """Colour of the labels of object `box_id` (RGB, 0-255)"""
+        lut = getattr(self, 'lut', None)
+        if lut is None or len(lut) < 2:
+            return (255, 255, 0)
+        if box_id < len(lut):
+            rgb = lut[box_id]
+        else:
+            rgb = lut[1 + (box_id-1) % (len(lut)-1)]
+        return tuple(int(c) for c in rgb[:3])
+
+    def magicPromptsPointsLayerButton(self):
+        """Button of the prompts points layer with "Left-click ID" and
+        "Right-click ID" controls (None if the layer is not initialized)"""
+        buttons = self.promptPointsLayerClickButtons()
+        if not buttons:
+            return
+        return buttons[0]
+
+    def magicPromptsUsedPromptIds(self):
+        """IDs of the point and box prompts of the current frame"""
+        posData = self.data[self.pos_i]
+        ids = {box['id'] for box in self.getMagicPromptsBoxes()}
+        button = self.magicPromptsPointsLayerButton()
+        if button is None:
+            return ids
+        pointsDataPos = button.action.pointsData.get(self.pos_i, {})
+        framePointsData = pointsDataPos.get(posData.frame_i)
+        if not framePointsData:
+            return ids
+        if 'x' in framePointsData:
+            ids.update(framePointsData['id'])
+        else:
+            for zSlicePointsData in framePointsData.values():
+                ids.update(zSlicePointsData['id'])
+        ids.discard(0)
+        return ids
+
+    def magicPromptsNewObjectId(self):
+        """New object ID not used by the masks nor by the prompts"""
+        new_id = self.setBrushID(return_val=True)
+        used_ids = self.magicPromptsUsedPromptIds()
+        if used_ids:
+            new_id = max(new_id, max(used_ids)+1)
+        return int(new_id)
+
+    def getNewBoxPromptId(self, right_click):
+        """ID of a new box: for right-click, the "Right-click ID" (or, without
+        prompts points layer, the ID of the last box added to the current
+        frame), otherwise the ID of a new object (the same logic as the
+        "Left-click ID" of the points)"""
+        button = self.magicPromptsPointsLayerButton()
+        if right_click:
+            if button is not None:
+                box_id = button.rightClickIDSpinbox.value()
+            else:
+                boxes = self.getMagicPromptsBoxes()
+                box_id = boxes[-1]['id'] if boxes else None
+            if box_id:
+                return int(box_id)
+
+        if button is None:
+            return self.magicPromptsNewObjectId()
+
+        box_id = button.pointIdSpinbox.value()
+        if box_id <= 0:
+            # ID 0 is for negative point prompts
+            return self.magicPromptsNewObjectId()
+        box_id = self.getClickedPointNewId(
+            button.action, box_id, button.pointIdSpinbox, isMagicPrompts=True
+        )
+        proceed = self.warnAddingPointWithExistingId(box_id)
+        if not proceed:
+            return
+        return int(box_id)
+
+    def storeMagicPromptsBoxesUndo(self):
+        posData = self.data[self.pos_i]
+        key = (self.pos_i, posData.frame_i)
+        undoQueue = self.magicPromptsBoxesUndo.get(key)
+        if undoQueue is None:
+            undoQueue = deque(maxlen=50)
+            self.magicPromptsBoxesUndo[key] = undoQueue
+        undoQueue.append([dict(box) for box in self.getMagicPromptsBoxes()])
+        self.undoAction.setEnabled(True)
+
+    def dropRedundantMagicPromptsBoxesUndo(self):
+        """Remove the last undo state of the boxes if it is identical to
+        the current boxes (e.g., a move that did not change the box)."""
+        posData = self.data[self.pos_i]
+        undoQueue = self.magicPromptsBoxesUndo.get(
+            (self.pos_i, posData.frame_i)
+        )
+        if not undoQueue:
+            return
+        if undoQueue[-1] != self.getMagicPromptsBoxes():
+            return
+        undoQueue.pop()
+        if not undoQueue:
+            self.undoAction.setEnabled(self.isMasksUndoAvailable())
+
+    def undoMagicPromptsBoxes(self):
+        """Undo the last change to the boxes of the current frame. Returns
+        False if there is nothing to undo."""
+        posData = self.data[self.pos_i]
+        key = (self.pos_i, posData.frame_i)
+        undoQueue = self.magicPromptsBoxesUndo.get(key)
+        if not undoQueue:
+            return False
+        boxes = undoQueue.pop()
+        self.magicPromptsBoxesData.setdefault(self.pos_i, {})[
+            posData.frame_i
+        ] = boxes
+        self.drawMagicPromptsBoxes()
+        if not undoQueue:
+            # Nothing left to undo for the boxes --> undo stays available
+            # only for the masks
+            self.undoAction.setEnabled(self.isMasksUndoAvailable())
+        return True
+
+    def isMasksUndoAvailable(self):
+        """True if `undo` can restore a previous state of the masks of the
+        current frame"""
+        posData = self.data[self.pos_i]
+        try:
+            states = posData.UndoRedoStates[posData.frame_i]
+        except Exception as err:
+            return False
+        if self.UndoCount == 0:
+            # `undo` stores the current state first
+            return len(states) > 0
+        return self.UndoCount < len(states) - 1
+
+    def addMagicPromptsBox(self, box_id, ymin, xmin, ymax, xmax):
+        """Add a box prompt for object `box_id` on the displayed z-slice
+        (it replaces the box of the same object on the same z-slice)."""
+        z = self.magicPromptsBoxesZ()
+        self.storeMagicPromptsBoxesUndo()
+        boxes = self.getMagicPromptsBoxes(create=True)
+        boxes[:] = [
+            box for box in boxes
+            if not (box['id'] == box_id and box['z'] == z)
+        ]
+        boxes.append({
+            'id': int(box_id), 'z': z,
+            'ymin': int(ymin), 'xmin': int(xmin),
+            'ymax': int(ymax), 'xmax': int(xmax)
+        })
+
+        button = self.magicPromptsPointsLayerButton()
+        if button is not None:
+            # Right-click adds points (or boxes) to the same object
+            button.rightClickIDSpinbox.setValue(int(box_id))
+            next_id = self.getClickedPointNewId(
+                button.action, int(box_id), button.pointIdSpinbox,
+                isMagicPrompts=True
+            )
+            button.pointIdSpinbox.setValue(next_id, setLinkedWidget=False)
+
+        self.logger.info(
+            f'Added box prompt for object ID {box_id} '
+            f'(x={xmin}-{xmax}, y={ymin}-{ymax}'
+            f'{"" if z is None else f", z-slice={z+1}"})'
+        )
+        self.drawMagicPromptsBoxes()
+
+    def drawMagicPromptsBoxes(self):
+        """Display the box prompts of the current frame (and z-slice)"""
+        ax1 = getattr(self, 'ax1', None)
+        if ax1 is None:
+            return
+        for item in self.magicPromptsBoxItems:
+            ax1.removeItem(item)
+        self.magicPromptsBoxItems = []
+
+        try:
+            if not self.areMagicPromptsBoxesVisible():
+                return
+        except AttributeError:
+            return
+
+        posData = self.data[self.pos_i]
+        isBoxPromptActive = self.isBoxPromptActive()
+        if isBoxPromptActive:
+            # Keep the boxes undo available when coming back to a frame
+            # (`get_data` disables the undo action if there are no masks
+            # undo states)
+            undoQueue = self.magicPromptsBoxesUndo.get(
+                (self.pos_i, posData.frame_i)
+            )
+            if undoQueue:
+                self.undoAction.setEnabled(True)
+
+        boxes = self.getMagicPromptsBoxes()
+        if not boxes:
+            return
+
+        isZstack = posData.SizeZ > 1
+        isZslice = self.isMagicPromptsBoxViewEditable()
+        z = self.magicPromptsBoxesZ() if isZstack and isZslice else None
+        editable = isBoxPromptActive and isZslice
+        Y, X = self.currentLab2D.shape
+        maxBounds = QRectF(QRect(0, 0, X, Y))
+        for box in boxes:
+            if z is not None and box['z'] != z:
+                continue
+            roi = widgets.PromptBoxROI(
+                (box['xmin'], box['ymin']),
+                (box['xmax']-box['xmin'], box['ymax']-box['ymin']),
+                box['id'], self.magicPromptsBoxColor(box['id']),
+                maxBounds=maxBounds, editable=editable, boxData=box
+            )
+            roi.sigRegionChangeStarted.connect(
+                self.magicPromptsBoxMoveStarted
+            )
+            roi.sigRegionChangeFinished.connect(self.magicPromptsBoxMoved)
+            roi.sigRemoveRequested.connect(
+                self.magicPromptsBoxRemoveRequested
+            )
+            # The band of the border must not change the auto range
+            ax1.addItem(roi, ignoreBounds=True)
+            self.magicPromptsBoxItems.append(roi)
+
+    def magicPromptsBoxMoveStarted(self, roi):
+        self.storeMagicPromptsBoxesUndo()
+
+    def magicPromptsBoxMoved(self, roi):
+        box = roi.boxData
+        bbox = roi.bbox()
+        ymin, xmin, ymax, xmax = bbox
+        # Keep the box inside the image
+        Y, X = self.currentLab2D.shape
+        ymin, ymax = max(0, ymin), min(Y, ymax)
+        xmin, xmax = max(0, xmin), min(X, xmax)
+        if box is None or xmax - xmin < 1 or ymax - ymin < 1:
+            # Box resized to nothing --> restore it
+            QTimer.singleShot(0, self.drawMagicPromptsBoxes)
+            return
+        newCoords = dict(ymin=ymin, xmin=xmin, ymax=ymax, xmax=xmax)
+        if all(box.get(key) == value for key, value in newCoords.items()):
+            # Not moved (e.g., move cancelled) --> drop the undo state
+            # stored when the move started
+            self.dropRedundantMagicPromptsBoxesUndo()
+            if (ymin, xmin, ymax, xmax) != tuple(bbox):
+                # Displayed outside the image --> show the stored box
+                QTimer.singleShot(0, self.drawMagicPromptsBoxes)
+            return
+        box.update(**newCoords)
+        if (ymin, xmin, ymax, xmax) != tuple(bbox):
+            # Redraw after the signal of the box is processed
+            QTimer.singleShot(0, self.drawMagicPromptsBoxes)
+
+    def magicPromptsBoxRemoveRequested(self, roi):
+        boxes = self.getMagicPromptsBoxes()
+        if roi.boxData not in boxes:
+            return
+        self.storeMagicPromptsBoxesUndo()
+        boxes.remove(roi.boxData)
+        self.logger.info(f'Removed box prompt of object ID {roi.box_id}')
+        # Redraw after the signal of the removed box is processed
+        QTimer.singleShot(0, self.drawMagicPromptsBoxes)
+
+    def hoveredMagicPromptsBox(self):
+        """Editable displayed box whose border or handle is under the mouse
+        (None if there is none). Presses inside the boxes draw new boxes."""
+        for roi in self.magicPromptsBoxItems:
+            if not roi.isEditable():
+                continue
+            if roi.mouseHovering or self.gui_isHoveringRoiHandle(roi):
+                return roi
+
+    def isClickOnMagicPromptsBox(self):
+        return self.hoveredMagicPromptsBox() is not None
+
+    def isMovingMagicPromptsBox(self):
+        """True while a box (or one of its handles) is dragged"""
+        boxItems = set()
+        for roi in self.magicPromptsBoxItems:
+            boxItems.add(roi)
+            boxItems.update(roi.getHandles())
+        if any(getattr(item, 'isMoving', False) for item in boxItems):
+            return True
+        try:
+            dragItem = getattr(self.ax1.scene(), 'dragItem', None)
+        except Exception as err:
+            return False
+        return dragItem is not None and dragItem in boxItems
+
+    def magicPromptsBoxesAt(self, x, y):
+        """Editable displayed boxes containing (x, y), smallest first"""
+        rois = []
+        for roi in self.magicPromptsBoxItems:
+            if not roi.isEditable():
+                continue
+            ymin, xmin, ymax, xmax = roi.bbox()
+            if xmin <= x <= xmax and ymin <= y <= ymax:
+                rois.append(roi)
+        rois.sort(key=lambda roi: roi.size()[0]*roi.size()[1])
+        return rois
+
+    def boxPromptsMousePress(self, event, right_click):
+        if self.magicPromptsDrawingBox is not None:
+            # Another mouse button pressed while drawing a box --> cancel
+            # the box (like pyqtgraph ROIs cancel a move)
+            self.boxPromptsCancelDrag()
+            return
+
+        hoveredRoi = self.hoveredMagicPromptsBox()
+        isMoving = self.isMovingMagicPromptsBox()
+        if isMoving or (hoveredRoi is not None and not right_click):
+            # Left-press on the border or a handle: move or resize the box
+            # (pyqtgraph). Another button pressed while moving a box: the
+            # box cancels the move
+            event.ignore()
+            return
+
+        x, y = event.pos().x(), event.pos().y()
+
+        if not self.isMagicPromptsBoxViewEditable():
+            _warnings.warnCannotAddRemoveBoxesProjection(qparent=self)
+            return
+
+        Y, X = self.currentLab2D.shape
+        if hoveredRoi is not None:
+            # The band of the border extends a little outside the image
+            x, y = min(max(x, 0), X-1), min(max(y, 0), Y-1)
+        elif not (0 <= x < X and 0 <= y < Y):
+            return
+
+        try:
+            screenPos = QPointF(event.screenPos())
+        except Exception as err:
+            screenPos = None
+
+        xdata, ydata = int(x), int(y)
+        pen = pg.mkPen((255, 255, 0), width=2, style=Qt.DashLine)
+        roi = widgets.ROI(
+            (xdata, ydata), (0, 0), pen=pen, hoverPen=pen,
+            movable=False, rotatable=False, resizable=False
+        )
+        self.ax1.addItem(roi)
+        self.magicPromptsDrawingBox = {
+            'roi': roi, 'x0': xdata, 'y0': ydata, 'right_click': right_click,
+            'screenPos': screenPos, 'hoveredRoi': hoveredRoi
+        }
+        self.isBoxPromptDragImg1 = True
+
+    def boxPromptsDragTo(self, x, y):
+        drawing = self.magicPromptsDrawingBox
+        if drawing is None:
+            return
+        Y, X = self.currentLab2D.shape
+        x = int(round(min(max(x, 0), X)))
+        y = int(round(min(max(y, 0), Y)))
+        xmin, xmax = sorted((drawing['x0'], x))
+        ymin, ymax = sorted((drawing['y0'], y))
+        roi = drawing['roi']
+        roi.setPos((xmin, ymin), update=False, finish=False)
+        roi.setSize((xmax-xmin, ymax-ymin), finish=False)
+
+    def boxPromptsCancelDrag(self):
+        drawing = self.magicPromptsDrawingBox
+        self.magicPromptsDrawingBox = None
+        self.isBoxPromptDragImg1 = False
+        if drawing is not None:
+            self.ax1.removeItem(drawing['roi'])
+        return drawing
+
+    def boxPromptsEndDrag(self, event=None):
+        drawing = self.boxPromptsCancelDrag()
+        if drawing is None:
+            return
+        ymin, xmin, ymax, xmax = drawing['roi'].bbox()
+        # Click or drag is decided on screen (independent of the zoom)
+        isClick = None
+        screenPos = drawing.get('screenPos')
+        if event is not None and screenPos is not None:
+            try:
+                delta = QPointF(event.screenPos()) - screenPos
+                isClick = (
+                    abs(delta.x()) + abs(delta.y())
+                    < QApplication.startDragDistance()
+                )
+            except Exception as err:
+                isClick = None
+        if isClick is None:
+            isClick = xmax - xmin < 2 or ymax - ymin < 2
+        if isClick:
+            # Right-click on a box (border or inside) --> context menu of
+            # the box (of the smallest one inside several boxes)
+            if drawing['right_click']:
+                rois = [drawing.get('hoveredRoi')]
+                if rois[0] not in self.magicPromptsBoxItems:
+                    rois = self.magicPromptsBoxesAt(
+                        drawing['x0'], drawing['y0']
+                    )
+                if rois:
+                    rois[0].getMenu().popup(QCursor.pos())
+            return
+        if xmax - xmin < 1 or ymax - ymin < 1:
+            # Dragged only along one axis
+            return
+        box_id = self.getNewBoxPromptId(drawing['right_click'])
+        if box_id is None:
+            return
+        self.addMagicPromptsBox(box_id, ymin, xmin, ymax, xmax)
+
+    def magicPromptsClearBoxes(self, toolbar, only_zoom=False):
+        boxes = self.getMagicPromptsBoxes()
+        if not boxes:
+            return
+
+        if only_zoom:
+            ((xmin, xmax), (ymin, ymax)) = self.ax1.viewRange()
+            toRemove = [
+                box for box in boxes
+                if box['xmin'] < xmax and box['xmax'] > xmin
+                and box['ymin'] < ymax and box['ymax'] > ymin
+            ]
+        else:
+            toRemove = list(boxes)
+
+        if not toRemove:
+            return
+
+        self.storeMagicPromptsBoxesUndo()
+        for box in toRemove:
+            boxes.remove(box)
+        self.drawMagicPromptsBoxes()
+
+    def getMagicPromptsBoxesDf(self, toolbar):
+        """Box prompts of the current frame as a DataFrame (None if there
+        are no boxes or if the model does not support box prompts)."""
+        boxes = self.getMagicPromptsBoxes()
+        if not boxes:
+            return
+        if not self.isModelSupportingBoxPrompts():
+            self.logger.warning(
+                f'[WARNING]: The box prompts are ignored because the model '
+                f'{toolbar.model_name} does not support them.'
+            )
+            return
+        posData = self.data[self.pos_i]
+        df_boxes = pd.DataFrame(boxes, columns=[
+            'id', 'z', 'ymin', 'xmin', 'ymax', 'xmax'
+        ])
+        df_boxes.insert(0, 'frame_i', posData.frame_i)
+        return df_boxes
 
     def getBrushStrokesAnnotShape(self, posData):
         segm_data = getattr(posData, 'segm_data', None)
@@ -22500,6 +23215,7 @@ When working with 3D segmentation masks:
         if hasattr(self, 'undoAddPointQueueMapper'):
             self.undoAddPointQueueMapper = defaultdict(list)
         self.brushStrokesUndo = {}
+        self.magicPromptsBoxesUndo = {}
 
     def updatePos(self):
         self.clearUndoQueue()
@@ -24559,6 +25275,7 @@ When working with 3D segmentation masks:
             self.setOverlayLabelsItems()
             self.drawPointsLayers(computePointsLayers=False)
             self.setBrushStrokesLayerImage()
+            self.drawMagicPromptsBoxes()
             self.zSliceScrollBarStartedMoving = False
             self.highlightSearchedID(self.highlightedID, force=True)
             
@@ -29177,7 +29894,13 @@ When working with 3D segmentation masks:
         self.undoAction.setEnabled(True)
         
     def undoAddPoint(self, action):
-        undoAddPointQueue = self.undoAddPointQueueMapper.get(action)
+        undoAddPointQueueMapper = getattr(
+            self, 'undoAddPointQueueMapper', None
+        )
+        if not undoAddPointQueueMapper:
+            # No point added yet
+            return False
+        undoAddPointQueue = undoAddPointQueueMapper.get(action)
         if undoAddPointQueue is None:
             return False
         
@@ -29847,9 +30570,9 @@ When working with 3D segmentation masks:
             is_already_new = self.isPointIdAlreadyNew(current_id, action)
             if is_already_new:
                 return current_id
-            
-            new_ID = self.setBrushID(return_val=True)
-            new_id = max(current_id, new_ID) + 1
+
+            # New ID not used by the masks nor by the point and box prompts
+            new_id = max(current_id + 1, self.magicPromptsNewObjectId())
             return new_id
         else:
             pointsDataPos = action.pointsData.get(self.pos_i)
@@ -29885,7 +30608,12 @@ When working with 3D segmentation masks:
         posData = self.data[self.pos_i]
         if point_id in posData.rp.IDs:
             return False
-        
+
+        # Used by a box prompt (e.g., micro-sam)
+        boxes = self.getMagicPromptsBoxes()
+        if any(box['id'] == point_id for box in boxes):
+            return False
+
         is_ID = point_id in posData.rp.IDs
         pointsDataPos = action.pointsData.get(self.pos_i)
         if pointsDataPos is None:
@@ -33529,6 +34257,7 @@ When working with 3D segmentation masks:
         self.whitelistUpdateTempLayer()
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
         self.setBrushStrokesLayerImage()
+        self.drawMagicPromptsBoxes()
         self.setManualBackgroundImage()
         self.annotateAssignedObjsAcdcTrackerSecondStep()
         

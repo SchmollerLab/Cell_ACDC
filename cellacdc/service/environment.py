@@ -547,6 +547,9 @@ def _ensure_model_setup_steps(
     for step in config.get("setup_steps", []):
         name = step["name"]
         check = step.get("check")
+        # Optional steps (e.g., dependencies of only some model types) do
+        # not block the model when they fail or are declined
+        optional = step.get("optional", False)
         if check:
             result = subprocess.run(
                 [python_exec, "-c", check, "--server"],
@@ -558,25 +561,39 @@ def _ensure_model_setup_steps(
             logger_func(f"{model_name}: {name} check failed:\n{result.stderr or result.stdout}")
         if not auto_install:
             from . import prompts
+            approved = prompt_func is not None and prompt_func(prompts.confirm(
+                f"Set up {model_name}", step.get("description", name),
+            ))
+            if not approved and optional:
+                logger_func(
+                    f"{model_name}: optional setup step {name} skipped."
+                )
+                continue
             if prompt_func is None:
                 raise RuntimeError(f"{model_name}: {name} requires setup approval.")
-            if not prompt_func(prompts.confirm(
-                f"Set up {model_name}", step.get("description", name),
-            )):
+            if not approved:
                 raise RuntimeError(f"{model_name}: {name} setup cancelled.")
         logger_func(f"{model_name}: {step.get('description', name)}")
-        for args in step["commands"]:
-            run_streaming([python_exec, *args], logger_func, check=True)
-        if check:
-            result = subprocess.run(
-                [python_exec, "-c", check, "--server"],
-                capture_output=True, text=True,
-            )
-            if result.returncode != 0:
-                raise RuntimeError(
-                    f"{model_name}: {name} verification failed in {python_exec}:\n"
-                    f"{result.stderr or result.stdout}"
+        try:
+            for args in step["commands"]:
+                run_streaming([python_exec, *args], logger_func, check=True)
+            if check:
+                result = subprocess.run(
+                    [python_exec, "-c", check, "--server"],
+                    capture_output=True, text=True,
                 )
+                if result.returncode != 0:
+                    raise RuntimeError(
+                        f"{model_name}: {name} verification failed in {python_exec}:\n"
+                        f"{result.stderr or result.stdout}"
+                    )
+        except (subprocess.CalledProcessError, RuntimeError, OSError) as err:
+            if not optional:
+                raise
+            logger_func(
+                f"[WARNING]: {model_name}: the optional setup step {name} "
+                f"failed ({err}). Continuing without it."
+            )
 
 
 def ensure_worker_dependencies(
