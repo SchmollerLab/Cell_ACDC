@@ -6711,6 +6711,12 @@ class MagicPromptsWorker(QObject):
             )
 
         if self.id_offset:
+            max_output_id = int(lab_out.max()) if lab_out.size else 0
+            if int(self.id_offset) + max_output_id > np.iinfo(np.uint32).max:
+                raise ValueError(
+                    'Cannot add new objects: their IDs would exceed the uint32 '
+                    'range. Relabel the existing objects before segmenting.'
+                )
             lab_out = lab_out.astype(np.uint32)
             lab_out[lab_out > 0] += np.uint32(self.id_offset)
 
