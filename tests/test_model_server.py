@@ -1497,16 +1497,10 @@ def test_payload_uploads_files_on_disk(tmp_path):
     assert kwargs['points_path'] == points
 
 
-@pytest.mark.xfail(
-    strict=True, raises=TypeError,
-    reason=(
-        'BUG (minor, also before protocol 2): payload.encode sends path-like '
-        'values that are not existing files unchanged to json.dumps, which '
-        'raises TypeError instead of sending them as strings like str paths'
-    ),
-)
 @pytest.mark.parametrize('name', ['folder', 'missing.pt'])
 def test_payload_sends_other_path_like_values_as_strings(tmp_path, name):
+    """Path-like values that are not existing files (folders, missing files)
+    are not uploaded, but sent as strings, like str paths."""
     from cellacdc.service import payload
 
     (tmp_path / 'folder').mkdir()
@@ -1575,22 +1569,17 @@ def test_payload_decode_rejects_truncated_body(body):
             payload.decode(body)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=(zipfile.BadZipFile, KeyError),
-    reason=(
-        'BUG (minor): payload.decode raises zipfile.BadZipFile (truncated '
-        '.npz part) or KeyError (.npz part missing) instead of ValueError'
-    ),
-)
 @pytest.mark.parametrize('cut', ['npz_end', 'whole_npz'])
 def test_payload_decode_rejects_truncated_npz(cut):
+    """A truncated (zipfile.BadZipFile) or missing (KeyError) `.npz` part is
+    reported as ValueError, like other invalid attachments."""
     from cellacdc.service import payload
 
     body = payload.encode({'segm_data': np.arange(100)})
     json_end = 8 + int.from_bytes(body[:8], 'big')
     assert len(body) > json_end + 10
     truncated = body[:-10] if cut == 'npz_end' else body[:json_end]
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match='Invalid or truncated'):
         payload.decode(truncated)
 
 
@@ -1888,7 +1877,14 @@ def test_worker_rejects_clients_of_other_protocol_versions(monkeypatch):
                 )
                 assert res.status_code == 426, (sent, path, res.text)
                 detail = res.json()['detail']
-                assert f'client uses model worker protocol {sent or 1}' in detail
+                if sent is None:
+                    assert (
+                        f'request has no {protocol.PROTOCOL_HEADER} header'
+                        in detail
+                    )
+                    assert 'clients before protocol 2' in detail
+                else:
+                    assert f'client uses model worker protocol {sent}' in detail
                 assert f'uses protocol {version}' in detail
                 assert str(cellacdc.__version__) in detail
 
@@ -2480,36 +2476,49 @@ def test_install_cellacdc_cli_relinks_source_checkout(
     ]
 
 
-@pytest.mark.parametrize('imported', ['env_copy', 'other_checkout', 'this_checkout', 'none'])
+@pytest.mark.parametrize('imported', [
+    'env_copy', 'other_checkout', 'this_checkout', 'none', 'check_failed',
+])
 def test_uninstall_shadowing_cellacdc_removes_only_copies_in_env(
         monkeypatch, tmp_path, imported,
     ):
+    """Only a Cell-ACDC copy inside the environment is uninstalled, never a
+    checkout (even this one, here inside the environment's folder). The copy
+    is located without importing it, since it may be broken."""
+    import json
+    from types import SimpleNamespace
     from unittest.mock import Mock
-    from cellacdc.service import environment, protocol
+    from cellacdc.service import environment
 
     prefix = tmp_path / 'env'
-    checkout = tmp_path / 'checkout'
-    files = {
+    checkout = prefix / 'src' / 'checkout'
+    origins = {
         'env_copy': prefix / 'Lib' / 'site-packages' / 'cellacdc' / '__init__.py',
         'other_checkout': tmp_path / 'other' / 'cellacdc' / '__init__.py',
         'this_checkout': checkout / 'cellacdc' / '__init__.py',
     }
-    identity = None if imported == 'none' else {
-        'protocol': protocol.PROTOCOL_VERSION, 'version': '1.7.0',
-        'file': str(files[imported]), 'prefix': str(prefix),
-    }
+    if imported == 'check_failed':
+        stdout = ''
+    else:
+        origin = origins.get(imported)
+        stdout = json.dumps({
+            'origin': None if origin is None else str(origin),
+            'prefix': str(prefix),
+        }) + '\n'
     monkeypatch.setattr(
         environment, '_get_cellacdc_source_root', lambda: str(checkout)
     )
-    monkeypatch.setattr(
-        environment, '_read_cellacdc_runtime',
-        lambda python: (identity, True, ''),
-    )
+    find = Mock(return_value=SimpleNamespace(returncode=0, stdout=stdout))
+    monkeypatch.setattr(environment.subprocess, 'run', find)
     run = Mock(return_value=0)
     monkeypatch.setattr(environment, 'run_streaming', run)
 
     environment._uninstall_shadowing_cellacdc('model-python', Mock())
 
+    find.assert_called_once()
+    assert find.call_args.args[0] == [
+        'model-python', '-c', environment._CELLACDC_ORIGIN_CODE,
+    ]
     if imported == 'env_copy':
         run.assert_called_once()
         assert run.call_args.args[0] == [
@@ -2518,6 +2527,22 @@ def test_uninstall_shadowing_cellacdc_removes_only_copies_in_env(
         ]
     else:
         run.assert_not_called()
+
+
+def test_cellacdc_origin_code_finds_cellacdc_without_importing_it():
+    import json
+    import subprocess
+    import cellacdc
+    from cellacdc.service import environment
+
+    res = subprocess.run(
+        [sys.executable, '-c', environment._CELLACDC_ORIGIN_CODE],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert res.returncode == 0, res.stderr
+    found = json.loads(res.stdout.strip().splitlines()[-1])
+    assert environment._same_path(found['origin'], cellacdc.__file__)
+    assert environment._same_path(found['prefix'], sys.prefix)
 
 
 @pytest.mark.parametrize('automatic_save', [False, True])
@@ -3784,6 +3809,11 @@ def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
         def start(self):
             return object()
 
+    checked = []
+    monkeypatch.setattr(
+        client_module, 'check_worker_version',
+        lambda url, timeout=10.0, session=None: checked.append(url),
+    )
     monkeypatch.setattr(myutils, 'resolve_segm_model_init_data', fake_resolve)
     monkeypatch.setattr(client_module, 'RemoteBackend', FakeRemote)
     monkeypatch.setattr(client_module, 'LocalBackend', FakeLocal)
@@ -3806,6 +3836,9 @@ def test_kernel_sends_data_and_init_kwargs_to_worker(monkeypatch, backend_type):
     assert received['kwargs']['segm_data'] is segm
     assert 'segm_endname' not in received['kwargs']
     assert kernel.model_kwargs['threshold'] == 2.5
+    # A remote worker's protocol is checked before its arguments are read
+    # (the local worker here runs in this environment: nothing to check)
+    assert checked == (['http://gpu:8520'] if backend_type == 'remote' else [])
 
 
 def test_pkg_spec_accepts_distribution_name():
@@ -3899,6 +3932,9 @@ def _version_checked_backend(
 
     `versions` are the results of the successive `/version` checks: None
     (same protocol) or an exception to raise. Free ports are 50001, 50002...
+    With `managed`, `env_python` belongs to a model environment created by
+    Cell-ACDC; for the client's own interpreter, that is the client's own
+    environment (`sys.prefix`), which is never repaired either.
     """
     import collections
     from unittest.mock import Mock
@@ -3930,7 +3966,14 @@ def _version_checked_backend(
     monkeypatch.setattr(backend, '_launch', launch)
     monkeypatch.setattr(backend, 'stop', lambda: events.append(('stop',)))
     monkeypatch.setattr(client_module, 'check_worker_version', check_version)
-    monkeypatch.setattr(environment, 'is_managed_model_env', lambda python: managed)
+    def managed_env_dir(python):
+        if not managed:
+            return None
+        if python == sys.executable:
+            return sys.prefix
+        return os.path.join('envs', '_acdc_test_model')
+
+    monkeypatch.setattr(environment, 'managed_model_env_dir', managed_env_dir)
     monkeypatch.setattr(environment, 'repair_cellacdc_runtime', repair)
     return backend, events, find_port
 
