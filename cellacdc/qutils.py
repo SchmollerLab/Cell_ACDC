@@ -7,8 +7,16 @@ from qtpy.QtCore import QObject, Signal
 from qtpy.QtCore import (
     Qt, QTimer, QEventLoop
 )
-from qtpy.QtWidgets import QWidget, QAction, QToolButton
+from qtpy.QtWidgets import QWidget, QAction, QToolButton, QApplication
 from qtpy.QtGui import QCursor
+
+# Widgets that use the arrow keys themselves when they have the focus (text
+# cursor, value, current item): windows navigating with the arrow keys
+# whatever widget has the focus leave them these key presses
+ARROW_KEYS_WIDGET_CLASSES = (
+    'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox',
+    'QComboBox', 'QAbstractItemView'
+)
 
 
 def is_same_cursor(cursor1: QCursor, cursor2: QCursor) -> bool:
@@ -24,6 +32,40 @@ def is_same_cursor(cursor1: QCursor, cursor2: QCursor) -> bool:
         cursor1.pixmap().cacheKey() == cursor2.pixmap().cacheKey()
         and cursor1.hotSpot() == cursor2.hotSpot()
     )
+
+
+def focus_widget_uses_arrow_keys() -> bool:
+    """Return True if the widget with the keyboard focus uses the arrow keys
+    itself (one of `ARROW_KEYS_WIDGET_CLASSES`)."""
+    widget = QApplication.focusWidget()
+    if widget is None:
+        return False
+    return any(widget.inherits(cls) for cls in ARROW_KEYS_WIDGET_CLASSES)
+
+
+def is_key_event_for_window(window: QWidget, receiver: QObject) -> bool:
+    """Return True if a key event seen by an application event filter on
+    `receiver` is for `window` or for a window owned by it (its parent chain
+    reaches `window`).
+
+    Application event filters see a key press first on the ``QWindow`` of
+    the window with the focus, then on the focus widget and its parents:
+    for a ``QWindow`` the focus widget (else the active window) tells the
+    target. Return True if the target is unknown (no focus or active window),
+    so that the filter keeps working, e.g., for key events sent directly to
+    a window that is not active.
+    """
+    if receiver is not None and receiver.isWidgetType():
+        widget = receiver
+    else:
+        widget = QApplication.focusWidget() or QApplication.activeWindow()
+        if widget is None:
+            return True
+    while widget is not None:
+        if widget is window:
+            return True
+        widget = widget.parentWidget()
+    return False
 
 
 class QWhileLoop:

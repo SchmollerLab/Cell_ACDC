@@ -39,8 +39,12 @@ The window loads data on its own (menu `File --> Load Folder...`,
 `Open Image File...` or `Open Recent`) and it shares only GUI elements with 
 the main GUI (`gui.guiWin`) through the mixins in:
 
-- `gui_navigation`: frames/z-slices navigation, zoom to object, recent paths 
-  and LUT.
+- `gui_navigation`: frames/z-slices navigation, zoom to object, recent paths
+  and LUT. The arrow keys (Left/Right: frames or z-slices, Up/Down: Cell
+  IDs) are handled by an application event filter (`eventFilter`) whatever
+  widget of the window has the focus (buttons and check boxes would move
+  the focus with them), except text inputs, spin boxes, drop-down menus and
+  lists (`qutils.ARROW_KEYS_WIDGET_CLASSES`).
 - `gui_annotations`: display of contours, segm. masks, IDs, cell cycle and 
   lineage info, mother-daughter lines and object tracks. As in the main
   GUI's 'Viewer' mode, mother-daughter lines come from the cell cycle
@@ -766,6 +770,8 @@ def phase_apply_icon(size=64):
 
 
 APPLY_PHASES_CELL_SHORTCUT = 'Alt+P'
+# Left/Right: frames (or z-slices), Up/Down: Cell IDs (`navigateWithArrowKey`)
+ARROW_KEYS = (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down)
 
 MASK_UNANALYZED_TOOLTIP = (
     'Ignore frames after the last analyzed frame\n\n'
@@ -1197,8 +1203,54 @@ class MeasurementsViewerWin(
         self.initShortcuts()
         self.readRecentPaths()
         self.postInitLoadSetSettings()
-        
+
         self.setData(data, pos_i=pos_i, frame_i=frame_i, ID=ID)
+        # Arrow keys navigate whatever widget has the focus (`eventFilter`)
+        QApplication.instance().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        # Installed on the application: the arrow keys reach `keyPressEvent`
+        # only if the focus widget ignores them, while buttons and check
+        # boxes use them to move the focus (e.g., the first toolbar button,
+        # focused when the window is activated again after a dialog)
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and self.isArrowNavigationKeyPress(obj, event)
+        ):
+            self.navigateWithArrowKey(event.key())
+            return True
+        return super().eventFilter(obj, event)
+
+    def isArrowNavigationKeyPress(self, obj, event):
+        """Whether the key press `event` of `obj` (seen by `eventFilter`) is
+        an arrow key navigating frames/z-slices or cells: no modifiers, sent
+        to a widget of this window, and not to a widget that uses the arrow
+        keys itself (text, spin boxes, drop-down menus, lists)."""
+        if event.key() not in ARROW_KEYS:
+            return False
+        # Arrow keys always have the keypad modifier on macOS
+        modifiers = event.modifiers()
+        if (modifiers != Qt.KeyboardModifier.NoModifier
+                and modifiers != Qt.KeyboardModifier.KeypadModifier):
+            return False
+        if not self.data:
+            return False
+        if not obj.isWidgetType() or obj.window() is not self:
+            return False
+        return not qutils.focus_widget_uses_arrow_keys()
+
+    def navigateWithArrowKey(self, key):
+        """Left/Right: previous/next frame (z-slice when the z-slice
+        navigation is active), Up/Down: next/previous Cell ID."""
+        if key in (Qt.Key_Left, Qt.Key_Right):
+            step = 1 if key == Qt.Key_Right else -1
+            if self.isZsliceNavigationActive():
+                z = self.zSliceScrollBar.sliderPosition() + step
+                self.zSliceScrollBar.setSliderPosition(z)
+            else:
+                self.setFrame(self.frame_i + step)
+        else:
+            self.stepID(1 if key == Qt.Key_Up else -1)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -9669,15 +9721,10 @@ class MeasurementsViewerWin(
                 self.zSliceCheckbox.setChecked(
                     not self.zSliceCheckbox.isChecked()
                 )
-        elif key in (Qt.Key_Left, Qt.Key_Right):
-            step = 1 if key == Qt.Key_Right else -1
-            if self.isZsliceNavigationActive():
-                z = self.zSliceScrollBar.sliderPosition() + step
-                self.zSliceScrollBar.setSliderPosition(z)
-            else:
-                self.setFrame(self.frame_i + step)
-        elif key in (Qt.Key_Up, Qt.Key_Down):
-            self.stepID(1 if key == Qt.Key_Up else -1)
+        elif key in ARROW_KEYS:
+            # Also reached with modifiers or when a widget that uses the
+            # arrow keys ignored them (`eventFilter` handles the others)
+            self.navigateWithArrowKey(key)
         else:
             super().keyPressEvent(event)
     

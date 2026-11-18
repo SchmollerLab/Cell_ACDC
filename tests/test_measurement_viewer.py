@@ -13,10 +13,11 @@ from qtpy.QtGui import QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QApplication, QAbstractItemView, QStyle, QStyleOptionViewItem, QLineEdit,
+    QWidget,
 )
 
 from cellacdc.measurements_viewer import MeasurementsViewerWin
-from cellacdc import annotate, measurements_viewer, widgets
+from cellacdc import annotate, measurements_viewer, qutils, widgets
 from cellacdc import measurements_viewer_utils
 
 
@@ -1151,6 +1152,82 @@ def load_real(window, paths, **kwargs):
     window.setData(
         measurements_viewer.load_positions(paths, 'phase'), **kwargs
     )
+
+
+def focus_in_active_window(app, window, widget):
+    window.show()
+    window.activateWindow()
+    QTest.qWaitForWindowActive(window, 1000)
+    widget.setFocus()
+    app.processEvents()
+    assert QApplication.focusWidget() is widget
+
+
+def test_arrow_keys_navigate_whatever_widget_has_the_focus(
+        real_viewer, app, tmp_path
+    ):
+    # Buttons and check boxes use the arrow keys to move the focus (e.g.,
+    # the first toolbar button, focused when the window is activated again
+    # after a dialog): the viewer's event filter navigates instead
+    images = make_timelapse_position(
+        tmp_path, SizeT=4, extra_cells=[(frame_i, 2) for frame_i in range(4)]
+    )
+    load_real(real_viewer, [images])
+    for widget in (real_viewer.zoomRectButton, real_viewer.followIDcheckbox):
+        focus_in_active_window(app, real_viewer, widget)
+        frame_i = real_viewer.frame_i
+        QTest.keyClick(widget, Qt.Key_Right)
+        assert real_viewer.frame_i == frame_i + 1
+        QTest.keyClick(widget, Qt.Key_Left)
+        assert real_viewer.frame_i == frame_i
+        assert real_viewer.currID() == 1
+        QTest.keyClick(widget, Qt.Key_Up)
+        assert real_viewer.currID() == 2
+        QTest.keyClick(widget, Qt.Key_Down)
+        assert real_viewer.currID() == 1
+        # The focus stays where it was
+        assert QApplication.focusWidget() is widget
+    assert not real_viewer.slotErrors
+
+
+def test_arrow_keys_stay_with_text_inputs(real_viewer, app, tmp_path):
+    images = make_timelapse_position(tmp_path, SizeT=4)
+    load_real(real_viewer, [images])
+    lineEdit = QLineEdit(real_viewer.measurementsPlot.parentWidget())
+    lineEdit.setText('abc')
+    lineEdit.show()
+    focus_in_active_window(app, real_viewer, lineEdit)
+    lineEdit.setCursorPosition(0)
+    QTest.keyClick(lineEdit, Qt.Key_Right)
+    assert lineEdit.cursorPosition() == 1
+    assert real_viewer.frame_i == 0
+    assert not real_viewer.slotErrors
+
+
+def test_key_events_of_other_windows_are_not_for_the_window(app):
+    # The main GUI's app event filter handles the arrow keys only for its
+    # own windows (and the windows they own), not, e.g., for the viewer
+    window = QWidget()
+    child = QLineEdit(window)
+    owned = QWidget(window, Qt.WindowType.Window)
+    other = QWidget()
+    otherChild = QLineEdit(other)
+    try:
+        assert qutils.is_key_event_for_window(window, window)
+        assert qutils.is_key_event_for_window(window, child)
+        assert qutils.is_key_event_for_window(window, owned)
+        assert not qutils.is_key_event_for_window(window, other)
+        assert not qutils.is_key_event_for_window(window, otherChild)
+        # Seen on the QWindow first: the focus widget tells the target
+        focus_in_active_window(app, other, otherChild)
+        handle = other.windowHandle()
+        assert not qutils.is_key_event_for_window(window, handle)
+        assert qutils.is_key_event_for_window(other, handle)
+    finally:
+        for widget in (window, owned, other):
+            widget.hide()
+            widget.deleteLater()
+        app.processEvents()
 
 
 def test_loading_shorter_timelapse_resets_navigation(real_viewer, tmp_path):
