@@ -1335,7 +1335,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.log(f'Loading channels {channels_to_load}...')
         
         self._load_image_data(posData, channels_to_load)
-        
+
+        # Arrays loaded from the dataPrep background archives are cached
+        # to avoid re-reading (and decompressing) them for every frame
+        self._bkgr_archive_cache = {}
+
         acdc_df_li = []
         keys = []
         for frame_i in range(stop_frame_n):
@@ -1441,7 +1445,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             if saveDataWorker is not None:
                 saveDataWorker.emitUpdateProgressBar()
-        
+
+        self._bkgr_archive_cache = None
+
         if not acdc_df_li:
             print('-'*30)
             self.log(
@@ -1814,9 +1820,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 )
     
     def _add_custom_metrics(
-            self, posData, frame_i, isSegm3D, df, rp, custom_metrics_params, 
-            lab, calc_for_each_zslice_mapper
+            self, posData, frame_i, isSegm3D, df, rp, custom_metrics_params,
+            lab, calc_for_each_zslice_mapper, all_channels_projections=None
         ):
+        if all_channels_projections is None:
+            all_channels_projections = {}
         iter_channels = zip(
             posData.loadedChNames, 
             posData.fluo_data_dict.items()
@@ -1855,15 +1863,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             # Repeat measureemnts for each z-slice
             pbar_z = tqdm(
-                total=posData.SizeZ, desc='Computing for z-slices: ', 
+                total=posData.SizeZ, desc='Computing for z-slices: ',
                 ncols=100, leave=False, unit='z-slice'
             )
+            # Only 'zSlice' is used --> pass the projections computed
+            # earlier to avoid re-computing them for every z-slice
+            projections = all_channels_projections.get(channel)
             for z in range(posData.SizeZ):
                 foregr_data = measurements.get_foregr_data(
-                    foregr_img, isSegm3D, z
+                    foregr_img, isSegm3D, z, projections=projections
                 )
                 foregr_data = {'zSlice': foregr_data['zSlice']}
-                
+
                 df = measurements.add_custom_metrics(
                     df, rp, channel, foregr_data, 
                     custom_metrics_params[channel], 
@@ -1883,6 +1894,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         all_channels_foregr_data = {}
         all_channels_foregr_imgs = {}
         all_channels_z_slices = {}
+        all_channels_projections = {}
+        bkgr_archive_cache = getattr(self, '_bkgr_archive_cache', None)
         isSegm3D = self.isSegm3D
         bkgr_metrics_params = self.bkgr_metrics_params
         metrics_func = self.metrics_func
@@ -1909,15 +1922,27 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
             # Get the z-slice if we have z-stacks
             z = posData.zSliceSegmentation(filename, frame_i)
-            
+
+            # Compute z-projections only once per channel
+            projections = None
+            if foregr_img.ndim == 3:
+                projections = measurements.get_zstack_projections(
+                    foregr_img
+                )
+            all_channels_projections[channel] = projections
+
             # Get the background data
             bkgr_data = measurements.get_bkgr_data(
                 foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab,
+                projections=projections,
+                bkgr_archive_cache=bkgr_archive_cache
             )
-            
-            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
-            
+
+            foregr_data = measurements.get_foregr_data(
+                foregr_img, isSegm3D, z, projections=projections
+            )
+
             all_channels_foregr_data[channel] = foregr_data
             all_channels_foregr_imgs[channel] = foregr_img
             all_channels_z_slices[channel] = z
@@ -1947,18 +1972,21 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 ncols=100, leave=False, unit='z-slice'
             )
             for z in range(posData.SizeZ):
-                # Get the background data
+                # Get the background data (only 'zSlice' is used)
                 bkgr_data = measurements.get_bkgr_data(
                     foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab,
+                    projections=projections,
+                    bkgr_archive_cache=bkgr_archive_cache,
+                    only_zslice=True
                 )
                 bkgr_data = {
                     'autoBkgr': {'zSlice': bkgr_data['autoBkgr']['zSlice']},
                     'dataPrepBkgr': {'zSlice': bkgr_data['dataPrepBkgr']['zSlice']}
                 }
-                
+
                 foregr_data = measurements.get_foregr_data(
-                    foregr_img, isSegm3D, z
+                    foregr_img, isSegm3D, z, projections=projections
                 )
                 foregr_data = {'zSlice': foregr_data['zSlice']}
 
@@ -2009,8 +2037,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.regionPropsCritical.emit(traceback_format, str(error))
 
         acdc_df = self._add_custom_metrics(
-            posData, frame_i, isSegm3D, acdc_df, rp, custom_metrics_params, 
-            lab, calc_for_each_zslice_mapper
+            posData, frame_i, isSegm3D, acdc_df, rp, custom_metrics_params,
+            lab, calc_for_each_zslice_mapper,
+            all_channels_projections=all_channels_projections
         )
         
         acdc_df = measurements.add_ch_indipend_custom_metrics(
@@ -2139,24 +2168,28 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             .sort_index()
         )
         acdc_df['disappears_before_end'] = 0
+        # IDs of the previous frame are re-used from the previous iteration
+        # instead of computing regionprops twice for each frame
+        prev_IDs = None
         for frame_i, lab in enumerate(saved_segm_data):
             if frame_i == 0:
                 continue
-            
+
             try:
                 df_frame = acdc_df.loc[frame_i]
             except KeyError:
                 break
-                
-            prev_lab = saved_segm_data[frame_i-1]
-            prev_rp = skimage.measure.regionprops(prev_lab)
-            
+
+            if prev_IDs is None:
+                prev_lab = saved_segm_data[frame_i-1]
+                prev_rp = skimage.measure.regionprops(prev_lab)
+                prev_IDs = [obj.label for obj in prev_rp]
+
             curr_rp = skimage.measure.regionprops(lab)
-            curr_rp_mapper = {obj.label: obj for obj in curr_rp}
-            lost_IDs = []
-            for prev_obj in prev_rp:
-                if curr_rp_mapper.get(prev_obj.label) is None:
-                    lost_IDs.append(prev_obj.label)
+            curr_IDs = [obj.label for obj in curr_rp]
+            curr_IDs_set = set(curr_IDs)
+            lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs_set]
+            prev_IDs = curr_IDs
             
             if 'parent_ID_tree' in df_frame.columns:
                 parent_IDs = set(df_frame['parent_ID_tree'].values)
