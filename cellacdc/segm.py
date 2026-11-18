@@ -164,6 +164,10 @@ class SegmWorker(QObject):
     
 class segmWin(QMainWindow):
     sigClosed = Signal()
+
+    # Maximum time to wait for the thread of a finished segmentation worker
+    # to stop (see `stopSegmWorkerThread`)
+    SEGM_THREAD_STOP_TIMEOUT_MS = 30000
     
     def __init__(
             self, parent=None, allowExit=False, buttonToRestore=None, 
@@ -876,16 +880,59 @@ class segmWin(QMainWindow):
             return
         
         t0 = time.perf_counter()
-        self.runSegmWorkers()
+        status = self.runSegmWorkers()
         t1 = time.perf_counter()
 
-        self.processFinished(t1-t0)
+        self.segmRunEnded(status, t1-t0)
+
+    def segmRunEnded(self, status, total_exec_time):
+        """Report the end of the segmentation run and close the window.
+
+        Parameters
+        ----------
+        status : str
+            Return value of `runSegmWorkers`.
+        total_exec_time : float
+            Execution time of the run in seconds.
+        """
+        if status == 'interrupted':
+            # The wait loop was exited before the worker finished (e.g.,
+            # the app is quitting): do not report the run as finished and
+            # do not open a dialog
+            self.logger.info('Segmentation process interrupted.')
+            self.close()
+            return
+
+        if status == 'thread_timeout':
+            self.warnSegmWorkerThreadTimeout()
+            self.close()
+            return
+
+        # 'finished' or 'error' (the error was already reported by
+        # `workerCritical`)
+        self.processFinished(total_exec_time)
 
     def runSegmWorkers(self):
         """Segment the positions in `self.user_ch_file_paths` one after the
         other, each one with a new `SegmWorker` running in its own thread.
 
-        Stops at the first error.
+        Stops at the first error, or if a worker thread could not be
+        stopped.
+
+        Returns
+        -------
+        str
+            How the run ended:
+            - 'finished': all positions were segmented.
+            - 'error': a worker raised an error (already reported by
+              `workerCritical`). The remaining positions were skipped.
+            - 'interrupted': the wait loop was exited before the worker
+              finished (e.g., the app is quitting). The remaining positions
+              were skipped.
+            - 'thread_timeout': the worker finished but its thread did not
+              stop within `SEGM_THREAD_STOP_TIMEOUT_MS`. The thread is kept
+              in `SEGM_ORPHAN_THREADS` and the remaining positions were
+              skipped.
         """
         for pos_idx, img_path in enumerate(self.user_ch_file_paths):
             stop_frame_n = self.stopFrames[pos_idx]
@@ -902,14 +949,45 @@ class segmWin(QMainWindow):
             # destroying a running QThread aborts the process (see
             # `stopSegmWorkerThread`). Release it before starting the
             # next worker
-            timeout_ms = 30000 if is_done else 1000
+            timeout_ms = self.SEGM_THREAD_STOP_TIMEOUT_MS if is_done else 1000
             stopped = self.stopSegmWorkerThread(
                 segmWorker, segmThread, timeout_ms=timeout_ms
             )
             del segmWorker, segmThread
 
-            if is_error or not is_done or not stopped:
-                break
+            if not is_done:
+                return 'interrupted'
+
+            if is_error:
+                return 'error'
+
+            skipped_paths = self.user_ch_file_paths[pos_idx+1:]
+            if not stopped and skipped_paths:
+                # If this was the last position, all positions were
+                # segmented and the run is finished
+                skipped_paths_txt = '\n'.join(
+                    f'  - {path}' for path in skipped_paths
+                )
+                self.logger.warning(
+                    f'Segmentation stopped after "{img_path}". '
+                    f'Positions not segmented:\n{skipped_paths_txt}'
+                )
+                return 'thread_timeout'
+
+        return 'finished'
+
+    def warnSegmWorkerThreadTimeout(self):
+        txt = html_utils.paragraph(f"""
+            The segmentation worker thread <b>did not stop</b> within
+            {self.SEGM_THREAD_STOP_TIMEOUT_MS/1000:.0f} seconds
+            after segmenting a position.<br><br>
+            The segmentation process was <b>stopped</b> and any remaining
+            positions were <b>not segmented</b>
+            (see the log for the list of positions).<br><br>
+            You can run the segmentation again on the remaining positions.
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(self, 'Segmentation process stopped', txt)
 
     def criticalImagesFolderEmpty(self, images_path):
         err_title = 'The images folder is empty'

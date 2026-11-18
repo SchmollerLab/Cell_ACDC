@@ -13,6 +13,8 @@ import pytest
     ("error", "run"),
     ("error", "finish"),
     ("orphan", None),
+    ("timeout", "first"),
+    ("timeout", "last"),
 ])
 def test_segm_worker_threads_are_finished_before_release(mode, delay):
     """Destroying a QThread that is still running aborts the process with
@@ -27,6 +29,12 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
     `QThreadPrivate::finish` ("finish", when `isRunning` is already False).
     In "orphan" mode the wait loop is exited before the worker finished
     (like when the app quits) and the thread must be kept alive.
+    In "timeout" mode the worker finishes but the thread of the "first" or
+    "last" position does not stop in time: the thread must be kept alive
+    and the run reported as stopped only if positions were skipped.
+
+    `runSegmWorkers` must return how the run ended, so that `main` does not
+    report an interrupted or stopped run as finished.
     """
     script = textwrap.dedent("""
         import gc
@@ -70,12 +78,22 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
 
         cellacdc._critical_exception_gui = report_error
 
+        release_worker = threading.Event()
+
         thread_refs = []
         class TestQThread(segm.QThread):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 # Weak reference: a strong one would hide the bug
                 thread_refs.append(weakref.ref(self))
+                stuck_idx = {'first': 0, 'last': 3}.get(delay)
+                if mode == 'timeout' and len(thread_refs)-1 == stuck_idx:
+                    # Keep the thread inside `QThreadPrivate::finish`
+                    # after the worker finished
+                    self.finished.connect(
+                        lambda: release_worker.wait(30),
+                        Qt.ConnectionType.DirectConnection
+                    )
                 if delay == 'finish':
                     # Keep the thread inside `QThreadPrivate::finish`
                     # with a slot that needs the GIL
@@ -106,7 +124,6 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
                 return getattr(self._signals, name)
 
         processed = []
-        release_worker = threading.Event()
         def init_kernel(worker, mainWin):
             if delay == 'run':
                 worker.signals = WorkerSignals(worker.signals)
@@ -127,11 +144,23 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
         win = segm.segmWin()
         win.user_ch_file_paths = [f'pos{i}' for i in range(4)]
         win.stopFrames = [1]*4
-        win.runSegmWorkers()
+        if mode == 'timeout':
+            win.SEGM_THREAD_STOP_TIMEOUT_MS = 200
+        status = win.runSegmWorkers()
+
+        expected_status = {
+            'success': 'finished',
+            'error': 'error',
+            'orphan': 'interrupted',
+            'timeout': 'thread_timeout' if delay == 'first' else 'finished',
+        }[mode]
+        assert status == expected_status, (status, expected_status)
 
         if mode == 'orphan':
             # The still running thread is kept alive and the loop stopped
             assert processed == [], processed
+
+        if mode in ('orphan', 'timeout'):
             assert len(segm.SEGM_ORPHAN_THREADS) == 1
             release_worker.set()
             thread, worker = segm.SEGM_ORPHAN_THREADS.pop()
@@ -148,7 +177,8 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
             assert errors == [
                 ('workerCritical', 'simulated segmentation error')
             ], errors
-        elif mode == 'orphan':
+        elif mode == 'orphan' or (mode == 'timeout' and delay == 'first'):
+            # The remaining positions were skipped
             assert processed == ['pos0'], processed
             assert not errors, errors
         else:
@@ -175,6 +205,44 @@ def test_segm_worker_threads_are_finished_before_release(mode, delay):
     assert "QThread: Destroyed while thread is still running" not in output
     assert result.returncode == 0, output
     assert "Segmentation worker threads released safely" in result.stdout
+
+
+@pytest.mark.parametrize("status, expected_calls", [
+    ("finished", ["processFinished"]),
+    ("error", ["processFinished"]),
+    ("interrupted", ["close"]),
+    ("thread_timeout", ["warnSegmWorkerThreadTimeout", "close"]),
+])
+def test_segm_run_ended_reports_only_completed_runs_as_finished(
+        status, expected_calls
+    ):
+    """An interrupted run (e.g., the app is quitting) or a run stopped
+    because a worker thread did not stop must not be reported as
+    "Segmentation process finished!".
+    """
+    pytest.importorskip("qtpy")
+    from cellacdc import segm
+
+    calls = []
+
+    class FakeLogger:
+        def info(self, text):
+            pass
+
+    class FakeSegmWin:
+        logger = FakeLogger()
+
+        def processFinished(self, total_exec_time):
+            calls.append('processFinished')
+
+        def warnSegmWorkerThreadTimeout(self):
+            calls.append('warnSegmWorkerThreadTimeout')
+
+        def close(self):
+            calls.append('close')
+
+    segm.segmWin.segmRunEnded(FakeSegmWin(), status, 1.0)
+    assert calls == expected_calls
 
 
 ArgSpec = namedtuple('ArgSpec', ['name', 'type'])
