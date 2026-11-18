@@ -84,6 +84,30 @@ def _get_manager():
     _manager = _WindowStackingManager(app)
     return _manager
 
+def _is_deleted(widget):
+    """True if the C++ object wrapped by `widget` was already deleted.
+
+    Windows listed by ``QApplication.topLevelWidgets()`` can be deleted
+    before we access them, e.g., when the garbage collector (which any
+    allocation can trigger) frees their Python-owned parent. Accessing them
+    then raises ``RuntimeError: wrapped C/C++ object ... has been deleted``.
+    """
+    try:
+        widget.isWindow()
+    except RuntimeError:
+        return True
+    return False
+
+def _top_level_widgets():
+    """``QApplication.topLevelWidgets()`` without the deleted ones.
+
+    Each widget is checked right before it is yielded, so that widgets
+    deleted while iterating are skipped as well (see `_is_deleted`).
+    """
+    for widget in QApplication.topLevelWidgets():
+        if not _is_deleted(widget):
+            yield widget
+
 def _is_kept_on_top(widget):
     return bool(widget.property(KEEP_ON_TOP_PROPERTY))
 
@@ -100,7 +124,7 @@ def _parent_windows(widget):
 def _descendant_windows(window):
     """Visible windows owned (directly or not) by `window`, parents first"""
     descendants = []
-    for widget in QApplication.topLevelWidgets():
+    for widget in _top_level_widgets():
         if widget is window:
             continue
         if not widget.isVisible() or not _is_regular_window(widget):
@@ -113,7 +137,7 @@ def _descendant_windows(window):
     return [widget for _, widget in descendants]
 
 def _widget_for_window_handle(window_handle):
-    for widget in QApplication.topLevelWidgets():
+    for widget in _top_level_widgets():
         if widget.windowHandle() is window_handle:
             return widget
 
@@ -144,6 +168,8 @@ def _root_window(window):
 
 def _raise_windows(windows):
     for window in windows:
+        if _is_deleted(window):
+            continue
         if window.isMinimized() or not _is_kept_on_top(window):
             continue
         window.raise_()
@@ -157,7 +183,7 @@ class _WindowStackingManager(QObject):
         if _NATIVE_OWNERSHIP:
             return
         
-        for widget in QApplication.topLevelWidgets():
+        for widget in _top_level_widgets():
             window_handle = widget.windowHandle()
             if window_handle is None:
                 continue
@@ -180,7 +206,7 @@ class _WindowStackingManager(QObject):
             # restoring another ancestor does not restore branches whose
             # closer ancestor is still minimized.
             for descendant in descendants:
-                if descendant.isMinimized():
+                if _is_deleted(descendant) or descendant.isMinimized():
                     continue
                 descendant.setProperty(_MINIMIZED_BY_PROPERTY, token)
                 descendant.showMinimized()
@@ -191,6 +217,8 @@ class _WindowStackingManager(QObject):
         window.setProperty(_MINIMIZED_BY_PROPERTY, None)
 
         for descendant in descendants:
+            if _is_deleted(descendant):
+                continue
             if descendant.property(_MINIMIZED_BY_PROPERTY) != token:
                 continue
             descendant.setProperty(_MINIMIZED_BY_PROPERTY, None)
@@ -231,7 +259,7 @@ class _WindowStackingManager(QObject):
         # Parentless kept-on-top windows stay above all other ACDC windows,
         # with the most recently active one on top
         kept_on_top = [
-            widget for widget in QApplication.topLevelWidgets()
+            widget for widget in _top_level_widgets()
             if widget is not focused
             and widget.parentWidget() is None
             and widget.isVisible()
@@ -240,6 +268,8 @@ class _WindowStackingManager(QObject):
         ]
         kept_on_top.sort(key=_last_active)
         for widget in kept_on_top:
+            if _is_deleted(widget):
+                continue
             widget.raise_()
             if not _NATIVE_OWNERSHIP:
                 _raise_windows(_descendant_windows(widget))
