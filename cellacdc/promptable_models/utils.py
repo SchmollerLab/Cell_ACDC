@@ -217,6 +217,55 @@ def paint_brush_stroke(
         xc = x0 + t*(x - x0)
         stamp_brush_disk(annot2D, yc, xc, disk_mask, value)
 
+def add_objects_to_brush_strokes(annot, lab, foreground_ids):
+    """Add segmentation masks to the brush strokes annotation (in-place):
+    the objects of `lab` with IDs in `foreground_ids` become foreground
+    (value 2) and the background of `lab` (value 0) becomes background
+    (value 1). The other objects are left not annotated.
+
+    Only the pixels that are not annotated yet (value 0 in `annot`) are
+    modified, i.e., the existing brush strokes are kept.
+
+    Parameters
+    ----------
+    annot : np.ndarray
+        Brush strokes annotation (0 = not annotated, 1 = background,
+        2 = foreground) modified in-place. It can be a view (e.g., a
+        z-slice or a cutout) of a larger annotation array.
+    lab : np.ndarray
+        Segmentation masks (labels) with the same shape as `annot`.
+    foreground_ids : iterable of int
+        IDs of the objects of `lab` used as foreground. IDs that are not
+        in `lab` are ignored.
+
+    Returns
+    -------
+    tuple of ints
+        Number of foreground and background pixels added.
+
+    Raises
+    ------
+    ValueError
+        If `annot` and `lab` do not have the same shape.
+    """
+    if annot.shape != lab.shape:
+        raise ValueError(
+            f'The brush strokes shape {annot.shape} is different from the '
+            f'segmentation masks shape {lab.shape}.'
+        )
+
+    foreground_ids = np.asarray(list(foreground_ids), dtype=np.int64)
+    not_annotated_mask = annot == 0
+    foreground_mask = (
+        np.isin(lab, foreground_ids) & (lab > 0) & not_annotated_mask
+    )
+    background_mask = (lab == 0) & not_annotated_mask
+    annot[foreground_mask] = 2
+    annot[background_mask] = 1
+    num_foreground = int(np.count_nonzero(foreground_mask))
+    num_background = int(np.count_nonzero(background_mask))
+    return num_foreground, num_background
+
 
 def log_mask_selection(prompt_id, masks, scores, mask_idx, z_slice=None):
     """Log mask sizes and scores for debugging prompt segmentation."""

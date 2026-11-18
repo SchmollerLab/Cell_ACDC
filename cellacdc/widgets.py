@@ -12762,6 +12762,135 @@ class MergeIDsToolbar(ToolBar):
         """)
         msg.information(self, 'Merge multiple IDs', txt)
 
+class BrushStrokesSelectCellsToolbar(ToolBar):
+    """Controls to select cells of the segmentation masks and add them to
+    the brush strokes (i.e., the training data) of the promptable models
+    trained from brush strokes (e.g., ConvPaint).
+
+    The selection works like the "Keep IDs" controls (same IDs list and
+    line edit).
+    """
+    sigAddToTrainingData = Signal(object)
+    sigSelectedIDsEdited = Signal(object, list)
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        self.addToTrainingDataAction = self.addButton(':greenTick.svg')
+        self.addToTrainingDataAction.setToolTip(
+            'Add the selected cells to the brush strokes (training data) of '
+            'the current frame\n\n'
+            'The selected cells are added as foreground and the pixels '
+            'without segmentation masks as background (pixels that already '
+            'have brush strokes are not modified).\n\n'
+            'Shortcut: Enter'
+        )
+
+        self.addLabel('  Selected IDs: ')
+        instructionsText = (
+            '  (Click on the cells to select them or press Ctrl+A to select '
+            'all. Separate IDs by comma. Use a dash to denote a range of IDs)'
+        )
+        instructionsLabel = QLabel(instructionsText)
+        self.selectedIDsLineEdit = KeepIDsLineEdit(
+            instructionsLabel, parent=self
+        )
+        self.selectedIDsLineEdit.setToolTip(
+            'IDs of the selected cells (you can also type them)'
+        )
+        self.addWidget(self.selectedIDsLineEdit)
+
+        self.addSeparator()
+
+        self.onlyZoomCheckbox = self.addCheckBox(
+            'Only in zoomed area', checked=False
+        )
+        self.onlyZoomCheckbox.setToolTip(
+            'If checked, only the cutout of the image that is currently '
+            'displayed (zoomed area) is added to the brush strokes.\n\n'
+            'This is useful to add only a region where all the cells are '
+            'correctly segmented, and to keep the training fast with large '
+            'images.'
+        )
+
+        self.addWidget(instructionsLabel)
+        spacer = QWidget()
+        spacer.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.addWidget(spacer)
+
+        self.selectedIDs = KeptObjectIDsList(
+            self.selectedIDsLineEdit, self.addToTrainingDataAction
+        )
+
+        self.addToTrainingDataAction.triggered.connect(
+            self.emitSigAddToTrainingData
+        )
+        self.selectedIDsLineEdit.sigEnterPressed.connect(
+            self.emitSigAddToTrainingData
+        )
+        self.selectedIDsLineEdit.sigIDsChanged.connect(
+            self.emitSigSelectedIDsEdited
+        )
+
+    def emitSigAddToTrainingData(self):
+        if not self.addToTrainingDataAction.isEnabled():
+            # No cells selected
+            return
+        self.sigAddToTrainingData.emit(self)
+
+    def emitSigSelectedIDsEdited(self, IDs):
+        self.sigSelectedIDsEdited.emit(self, IDs)
+
+    def setSelectedIDs(self, IDs=None):
+        """Replace the selection with `IDs` (empty selection if None)
+        without emitting `sigSelectedIDsEdited`."""
+        self.selectedIDsLineEdit.blockSignals(True)
+        try:
+            self.selectedIDs = KeptObjectIDsList(
+                self.selectedIDsLineEdit, self.addToTrainingDataAction
+            )
+            if IDs is not None:
+                for ID in IDs:
+                    if ID in self.selectedIDs:
+                        continue
+                    self.selectedIDs.append(int(ID), editText=False)
+                self.selectedIDs.setText()
+        finally:
+            self.selectedIDsLineEdit.blockSignals(False)
+        self.selectedIDsLineEdit.setInstructionsText()
+
+    def resetSelection(self):
+        self.setSelectedIDs(None)
+
+    def toggleSelectedID(self, ID):
+        """Select `ID` or unselect it if it is already selected. Returns
+        True if `ID` is selected."""
+        ID = int(ID)
+        self.selectedIDsLineEdit.blockSignals(True)
+        try:
+            if ID in self.selectedIDs:
+                self.selectedIDs.remove(ID)
+                isSelected = False
+            else:
+                self.selectedIDs.append(ID)
+                isSelected = True
+        finally:
+            self.selectedIDsLineEdit.blockSignals(False)
+        self.selectedIDsLineEdit.setInstructionsText()
+        return isSelected
+
+    def syncSelectedIDs(self, IDs):
+        """Update the selection to `IDs` (e.g., typed in the line edit)
+        without modifying the text of the line edit."""
+        for ID in list(self.selectedIDs):
+            if ID not in IDs:
+                self.selectedIDs.remove(ID, editText=False)
+        for ID in IDs:
+            if ID not in self.selectedIDs:
+                self.selectedIDs.append(ID, editText=False)
+
 class MagicPromptsToolbar(ToolBar):
     sigPromptTypeChanged = Signal(object, str)
     sigComputeOnZoom = Signal(object)
@@ -12781,6 +12910,8 @@ class MagicPromptsToolbar(ToolBar):
     sigClearStrokesOnZoom = Signal(object)
     sigSaveModel = Signal(object)
     sigLoadModel = Signal(object)
+    sigSelectCellsToggled = Signal(object, bool)
+    sigSelectAllCells = Signal(object)
 
     promptTypeTextToKey = {
         'Points': 'point',
@@ -12891,15 +13022,42 @@ class MagicPromptsToolbar(ToolBar):
 
         brushSizeSeparator = self.addSeparator()
 
-        self.trainAction = self.addButton(':train.svg')
-        self.trainAction.setToolTip(
-            'Train the model on the brush strokes painted on all the '
-            'frames and positions\n\n'
-            'Left-click and drag to paint foreground, right-click and drag '
-            'to paint background.'
+        self.selectCellsAction = self.addButton(
+            ':keep_objects.svg', checkable=True
+        )
+        self.selectCellsAction.setToolTip(
+            'Select cells of the segmentation masks to add them to the '
+            'training data\n\n'
+            'Click on the cells to select (or unselect) them, then press '
+            '"Enter" (or the green tick) to add them to the brush strokes of '
+            'the current frame: the selected cells as foreground and the '
+            'background of the segmentation masks as background.\n\n'
+            'NOTE: Make sure that all the cells in the area are segmented, '
+            'because the pixels without masks are used as background (use '
+            'the "Only in zoomed area" option to add only a cutout).'
         )
 
-        self.segmentImageAction = self.addButton(':segment.svg')
+        self.selectAllCellsAction, selectAllCellsButton = self.addButton(
+            ':select_all.svg', ret_widget=True
+        )
+        self.selectAllCellsAction.setShortcut('Ctrl+A')
+        self.selectAllCellsAction.setToolTip(
+            'Select all the cells of the current frame to add them to the '
+            'training data\n\n'
+            'Shortcut: "Ctrl+A"'
+        )
+        self.widgetsWithShortcut['Select all cells (magic prompts)'] = (
+            self.selectAllCellsAction
+        )
+        self.widgetsForActions['Select all cells (magic prompts)'] = (
+            selectAllCellsButton
+        )
+
+        selectCellsSeparator = self.addSeparator()
+
+        self.segmentImageAction, self.segmentImageButton = self.addButton(
+            ':segment.svg', ret_widget=True
+        )
         self.segmentImageAction.setToolTip(
             'Segment the current image with the trained model\n\n'
             'With 3D segmentation masks (z-stacks), only the displayed '
@@ -12907,7 +13065,27 @@ class MagicPromptsToolbar(ToolBar):
             'z-slices).\n\n'
             'NOTE: The model is automatically (re-)trained if it is not '
             'trained yet or if the brush strokes changed since the last '
-            'training.'
+            'training.\n\n'
+            'Right-click for more options (e.g., "Train only, do not '
+            'segment").'
+        )
+        # Right-click menu of the "Segment image" button
+        self.trainAction = QAction(
+            QIcon(':train.svg'), 'Train only, do not segment', self
+        )
+        self.trainAction.setToolTip(
+            'Train the model on the brush strokes painted on all the '
+            'frames and positions without segmenting (the model is '
+            're-trained even if the brush strokes did not change)'
+        )
+        self.segmentImageContextMenu = QMenu(self)
+        self.segmentImageContextMenu.setToolTipsVisible(True)
+        self.segmentImageContextMenu.addAction(self.trainAction)
+        self.segmentImageButton.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.segmentImageButton.customContextMenuRequested.connect(
+            self.showSegmentImageContextMenu
         )
 
         self.segmentZstackAction = self.addButton(':3d.svg')
@@ -12966,7 +13144,9 @@ class MagicPromptsToolbar(ToolBar):
             self.brushSizeSpinbox.labelAction,
             self.brushSizeSpinbox.action,
             *brushSizeSeparator._actions,
-            self.trainAction,
+            self.selectCellsAction,
+            self.selectAllCellsAction,
+            *selectCellsSeparator._actions,
             self.segmentImageAction,
             self.segmentZstackAction,
             self.segmentStackAction,
@@ -12997,6 +13177,8 @@ class MagicPromptsToolbar(ToolBar):
             self.sigInterpolateZslice.emit
         )
         self.trainAction.triggered.connect(self.emitSigTrain)
+        self.selectCellsAction.toggled.connect(self.emitSigSelectCellsToggled)
+        self.selectAllCellsAction.triggered.connect(self.emitSigSelectAllCells)
         self.segmentImageAction.triggered.connect(self.emitSigSegmentImage)
         self.segmentZstackAction.triggered.connect(self.emitSigSegmentZstack)
         self.segmentStackAction.triggered.connect(self.emitSigSegmentStack)
@@ -13075,6 +13257,9 @@ class MagicPromptsToolbar(ToolBar):
 
     def _updatePromptTypeActions(self, prompt_type):
         isBrushStrokes = prompt_type == 'brush_stroke'
+        if not isBrushStrokes:
+            # Selecting cells is only for brush strokes
+            self.selectCellsAction.setChecked(False)
         self._setActionsVisible(self._pointsOnlyActions, not isBrushStrokes)
         self._setActionsVisible(self._brushStrokesOnlyActions, isBrushStrokes)
         self.segmentZstackAction.setVisible(
@@ -13089,6 +13274,19 @@ class MagicPromptsToolbar(ToolBar):
 
     def emitSigTrain(self):
         self.sigTrain.emit(self)
+
+    def showSegmentImageContextMenu(self, pos):
+        if not self.segmentImageAction.isEnabled():
+            return
+        self.segmentImageContextMenu.exec(
+            self.segmentImageButton.mapToGlobal(pos)
+        )
+
+    def emitSigSelectCellsToggled(self, checked):
+        self.sigSelectCellsToggled.emit(self, checked)
+
+    def emitSigSelectAllCells(self):
+        self.sigSelectAllCells.emit(self)
 
     def emitSigSegmentImage(self):
         self.sigSegmentImage.emit(self)
@@ -13172,10 +13370,40 @@ class MagicPromptsToolbar(ToolBar):
             With z-stacks, paint in "single z-slice" mode (projections are
             display-only).<br><br>
 
+            Note that the brush strokes are <b>not meant to cover all the
+            cells</b>. They simply provide some <b>example pixels</b> of
+            foreground and background<br>
+            that the model learns from. A few strokes on some cells and on
+            the background are usually enough<br>
+            (add strokes where the model makes mistakes, e.g., at the cell
+            borders or between touching cells).<br><br>
+
+            <b>Use existing segmentation masks as training data</b><br><br>
+
+            You can also add cells of the current segmentation masks to the
+            training data:<br><br>
+
+            - Click on the "<b>Select cells</b>" button and then click on
+            the cells to select (or unselect) them<br>
+            - Press <b>Ctrl+A</b> (or the "<b>Select all cells</b>" button)
+            to select all the cells of the current frame<br>
+            - Press <b>Enter</b> (or the green tick) to add them to the
+            brush strokes of the current frame:<br>
+            &nbsp;&nbsp;the selected cells are added as <b>foreground</b>
+            and the pixels without masks as <b>background</b><br>
+            - Check "<b>Only in zoomed area</b>" to add only the cutout
+            that is currently displayed<br><br>
+
+            Make sure that all the cells in the area are segmented, because
+            the pixels without masks are used as background.<br>
+            Existing brush strokes are not modified, and you can undo with
+            <b>Ctrl+Z</b>. With 3D segmentation masks, only the displayed
+            z-slice is added.<br>
+            NOTE: The more pixels you add, the slower the training (e.g.,
+            use "Only in zoomed area" with large images).<br><br>
+
             Then use the following buttons:<br><br>
 
-            - "<b>Train</b>": train the model on the brush strokes
-            painted on all frames and positions<br>
             - "<b>Segment image</b>": segment the current image and choose
             how to combine the result with the existing masks (with 3D
             masks, only the displayed z-slice)<br>
@@ -13186,7 +13414,11 @@ class MagicPromptsToolbar(ToolBar):
 
             The model is automatically (re-)trained before segmenting if
             it was not trained yet or if the brush strokes changed since
-            the last training.<br><br>
+            the last training.<br>
+            To train the model without segmenting (e.g., to re-train a
+            loaded model on the current brush strokes),<br>
+            <b>right-click</b> on the "Segment image" button and select
+            "<b>Train only, do not segment</b>".<br><br>
 
             You can <b>clear the brush strokes</b> of the current
             frame (or only in the zoomed area) with the corresponding

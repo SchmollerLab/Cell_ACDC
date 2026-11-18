@@ -237,3 +237,121 @@ def test_train_model_on_brush_strokes_forwards_prompts():
     assert kwargs['pos_i'] == 0
     assert model.calls[1][1]['pos_i'] == 1
     assert logs
+
+
+def _three_objects_lab():
+    lab = np.zeros((6, 8), dtype=np.uint32)
+    lab[0:2, 0:2] = 1
+    lab[0:2, 4:6] = 2
+    lab[4:6, 5:8] = 3
+    return lab
+
+
+def test_add_objects_to_brush_strokes_2D():
+    lab = _three_objects_lab()
+    annot = np.zeros(lab.shape, dtype=np.uint8)
+    num_fg, num_bg = utils.add_objects_to_brush_strokes(annot, lab, [1, 3])
+    assert annot.dtype == np.uint8
+    assert (annot[np.isin(lab, [1, 3])] == 2).all()
+    assert (annot[lab == 0] == 1).all()
+    # Not selected objects are left not annotated
+    assert (annot[lab == 2] == 0).all()
+    assert num_fg == np.count_nonzero(np.isin(lab, [1, 3]))
+    assert num_bg == np.count_nonzero(lab == 0)
+    assert set(np.unique(annot)) <= {0, 1, 2}
+
+
+def test_add_objects_to_brush_strokes_keeps_existing_strokes():
+    lab = _three_objects_lab()
+    annot = np.zeros(lab.shape, dtype=np.uint8)
+    # Foreground stroke on a cell without masks (lab == 0) and background
+    # stroke on a selected cell --> both are kept
+    annot[3, 0] = 2
+    annot[0, 0] = 1
+    num_fg, num_bg = utils.add_objects_to_brush_strokes(annot, lab, [1])
+    assert annot[3, 0] == 2
+    assert annot[0, 0] == 1
+    assert num_fg == np.count_nonzero(lab == 1) - 1
+    assert num_bg == np.count_nonzero(lab == 0) - 1
+
+    # Second call: everything relevant is already annotated
+    assert utils.add_objects_to_brush_strokes(annot, lab, [1]) == (0, 0)
+
+
+def test_add_objects_to_brush_strokes_ids_types_and_missing_ids():
+    lab = _three_objects_lab()
+    for ids in ([1, 99], {1}, np.array([1]), [np.uint32(1)], (1, 0)):
+        annot = np.zeros(lab.shape, dtype=np.uint8)
+        utils.add_objects_to_brush_strokes(annot, lab, ids)
+        # ID 0 (background) is never used as foreground
+        assert (annot[lab == 1] == 2).all()
+        assert (annot[lab == 0] == 1).all()
+        assert (annot[np.isin(lab, [2, 3])] == 0).all()
+
+
+def test_add_objects_to_brush_strokes_empty_selection_background_only():
+    lab = _three_objects_lab()
+    annot = np.zeros(lab.shape, dtype=np.uint8)
+    num_fg, num_bg = utils.add_objects_to_brush_strokes(annot, lab, [])
+    assert num_fg == 0
+    assert num_bg == np.count_nonzero(lab == 0)
+    assert not (annot == 2).any()
+
+
+def test_add_objects_to_brush_strokes_select_all_covers_image():
+    lab = _three_objects_lab()
+    annot = np.zeros(lab.shape, dtype=np.uint8)
+    utils.add_objects_to_brush_strokes(annot, lab, np.unique(lab)[1:])
+    assert (annot > 0).all()
+
+
+def test_add_objects_to_brush_strokes_inplace_on_views():
+    # z-slice view of a 3D annotation
+    lab3D = np.zeros((3, 6, 8), dtype=np.uint32)
+    lab3D[1] = _three_objects_lab()
+    annot3D = np.zeros(lab3D.shape, dtype=np.uint8)
+    utils.add_objects_to_brush_strokes(annot3D[1], lab3D[1], [2])
+    assert not annot3D[[0, 2]].any()
+    assert (annot3D[1][lab3D[1] == 2] == 2).all()
+
+    # Cutout (e.g., zoomed area)
+    lab = _three_objects_lab()
+    annot = np.zeros(lab.shape, dtype=np.uint8)
+    region = (Ellipsis, slice(0, 3), slice(0, 3))
+    utils.add_objects_to_brush_strokes(annot[region], lab[region], [1])
+    outside = np.ones(lab.shape, dtype=bool)
+    outside[region] = False
+    assert not annot[outside].any()
+    assert (annot[region][lab[region] == 1] == 2).all()
+    assert (annot[region][lab[region] == 0] == 1).all()
+
+
+def test_add_objects_to_brush_strokes_3D():
+    lab = np.zeros((2, 4, 4), dtype=np.uint32)
+    lab[0, :2, :2] = 5
+    lab[1, 2:, 2:] = 6
+    annot = np.zeros(lab.shape, dtype=np.uint8)
+    utils.add_objects_to_brush_strokes(annot, lab, [6])
+    assert (annot[lab == 6] == 2).all()
+    assert (annot[lab == 5] == 0).all()
+    assert (annot[lab == 0] == 1).all()
+
+
+def test_add_objects_to_brush_strokes_shape_mismatch_raises():
+    annot = np.zeros((4, 4), dtype=np.uint8)
+    lab = np.zeros((4, 5), dtype=np.uint32)
+    _assert_raises(
+        ValueError, utils.add_objects_to_brush_strokes, annot, lab, [1]
+    )
+    assert not annot.any()
+
+
+def test_add_objects_to_brush_strokes_trainable_annotation():
+    lab = _three_objects_lab()
+    annot = np.zeros(lab.shape, dtype=np.uint8)
+    utils.add_objects_to_brush_strokes(annot, lab, [1, 2])
+    model = _FakePromptableModel()
+    utils.train_model_on_brush_strokes(
+        model, [(0, 0, annot, np.ones(lab.shape))], logger_func=lambda x: x
+    )
+    assert model.calls[0][1]['prompt'] is annot

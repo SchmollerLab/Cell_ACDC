@@ -658,6 +658,8 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.brushStrokesChangedSinceTraining = True
         self.brushStrokesDiskMasks = {}
         self.brushStrokesWarnedNotPaintable = False
+        # Cells selected to be added to the brush strokes
+        self.brushStrokesSelectCellsToolbar.resetSelection()
 
         self.cca_df_colnames = cca_df_colnames
         self.cca_df_dtypes = [
@@ -1038,6 +1040,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ('eraser', self.eraserButton, False, 'Segmentation and Tracking'),
             ('curvature', self.curvToolButton, False, 'Segmentation and Tracking'),
             ('magic_wand', self.wandToolButton, False, 'Segmentation and Tracking'),
+            ('magic_prompts_select_cells', self.magicPromptsToolbar.selectCellsAction, True, 'Segmentation and Tracking'),
             ('magic_prompts', self.magicPromptsToolButton, True, 'Segmentation and Tracking'),
             ('label_roi', self.labelRoiButton, True, 'Segmentation and Tracking'),
             ('ruler', self.rulerButton, True, 'Segmentation and Tracking'),
@@ -1068,6 +1071,7 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
             ('copy_lost_contour', self.copyLostObjButton, True, 'Segmentation and Tracking'),
             ('curvature', self.curvToolButton, False, 'Segmentation and Tracking'),
             ('label_roi', self.labelRoiButton, True, 'Segmentation and Tracking'),
+            ('magic_prompts_select_cells', self.magicPromptsToolbar.selectCellsAction, True, 'Segmentation and Tracking'),
             ('magic_prompts', self.magicPromptsToolButton, True, 'Segmentation and Tracking'),
             ('toggle_points_layer', self.togglePointsLayerAction, True, 'Segmentation and Tracking'),
         )
@@ -1083,6 +1087,11 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         curr_mode = str(self.modeComboBox.currentText())
         for name, tool, draw_icon, mode in tools:
             if mode != curr_mode and not curr_mode == 'Snapshot':
+                continue
+            if name == 'magic_prompts_select_cells':
+                # Only while selecting cells with brush strokes prompts
+                if self.isBrushStrokesSelectCellsActive():
+                    return name, tool.icon()
                 continue
             if name == 'toggle_points_layer':
                 magicPromptsON = self.magicPromptsToolButton.isChecked()
@@ -2124,8 +2133,10 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         widgets = None
         if isinstance(target, QAction):
             if name in self.widgetsForActions:
+                # Only the button of the action (on PyQt5,
+                # `associatedWidgets` also returns the parent toolbar)
                 widgets = [self.widgetsForActions[name]]
-            if hasattr(target, 'associatedWidgets'):
+            elif hasattr(target, 'associatedWidgets'):
                 widgets = target.associatedWidgets()
             elif hasattr(target, 'widgetsforAction'):
                 widgets = target.widgetsforAction()
@@ -2961,7 +2972,9 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.magicPromptsToolbar = widgets.MagicPromptsToolbar(self)
         for name, action in self.magicPromptsToolbar.widgetsWithShortcut.items():
             self.widgetsWithShortcut[name] = action
-        
+        for name, widget in self.magicPromptsToolbar.widgetsForActions.items():
+            self.widgetsForActions[name] = widget
+
         self.magicPromptsToolbar.sigComputeOnZoom.connect(
             self.magicPromptsComputeOnZoomTriggered
         )
@@ -3010,12 +3023,41 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         self.magicPromptsToolbar.sigLoadModel.connect(
             self.magicPromptsLoadModelTriggered
         )
+        self.magicPromptsToolbar.sigSelectCellsToggled.connect(
+            self.brushStrokesSelectCellsToggled
+        )
+        self.magicPromptsToolbar.sigSelectAllCells.connect(
+            self.brushStrokesSelectAllCells
+        )
 
         self.addToolBar(Qt.TopToolBarArea, self.magicPromptsToolbar)
         self.magicPromptsToolbar.setVisible(False)
         self.magicPromptsToolbar.keepVisibleWhenActive = True
         self.controlToolBars.append(self.magicPromptsToolbar)
-        
+
+        # Controls to add cells of the segmentation masks to the brush
+        # strokes (shown only while selecting cells)
+        self.brushStrokesSelectCellsToolbar = (
+            widgets.BrushStrokesSelectCellsToolbar(
+                'Select cells controls', self
+            )
+        )
+        self.brushStrokesSelectCellsToolbar.setContextMenuPolicy(
+            Qt.PreventContextMenu
+        )
+        self.brushStrokesSelectCellsToolbar.sigAddToTrainingData.connect(
+            self.magicPromptsAddSelectedCellsToBrushStrokes
+        )
+        self.brushStrokesSelectCellsToolbar.sigSelectedIDsEdited.connect(
+            self.brushStrokesSelectedIDsEdited
+        )
+        self.addToolBar(
+            Qt.TopToolBarArea, self.brushStrokesSelectCellsToolbar
+        )
+        self.brushStrokesSelectCellsToolbar.setVisible(False)
+        self.brushStrokesSelectCellsToolbar.keepVisibleWhenActive = True
+        self.controlToolBars.append(self.brushStrokesSelectCellsToolbar)
+
         self.promptSegmentPointsLayerToolbar = (
             widgets.PromptableModelPointsLayerToolbar(parent=self)
         )
@@ -5404,6 +5446,13 @@ When working with 3D segmentation masks:
         self.brushStrokesLayerImg1.setVisible(False)
         self.topLayerItems.append(self.brushStrokesLayerImg1)
 
+        # Cells selected to be added to the brush strokes (same look as the
+        # "Keep IDs" selection, see `setBrushStrokesSelectedCellsLayerImage`)
+        self.brushStrokesSelectedCellsLayerImg1 = pg.ImageItem()
+        self.brushStrokesSelectedCellsLayerImg1.setOpacity(0.6)
+        self.brushStrokesSelectedCellsLayerImg1.setVisible(False)
+        self.topLayerItems.append(self.brushStrokesSelectedCellsLayerImg1)
+
         # Highlighted ID layer items
         self.highLightIDLayerImg1 = pg.ImageItem()
         self.topLayerItems.append(self.highLightIDLayerImg1)  
@@ -7687,6 +7736,7 @@ When working with 3D segmentation masks:
         setBrushStrokesCursor = (
             isBrushStrokesPromptActive and not event.isExit() and not alt
             and not setDelRoiCursor
+            and not self.isBrushStrokesSelectCellsActive()
         )
         overrideCursor = self.app.overrideCursor()
         setPanImageCursor = alt and not event.isExit()
@@ -8592,6 +8642,17 @@ When working with 3D segmentation masks:
 
         # Ctrl+right-click in snapshot mode annotates divisions
         isSnapshotDivisionClick = right_click and ctrl and self.isSnapshot
+        isSelectCellsClick = (
+            (left_click or right_click) and not middle_click and not alt
+            and not isSnapshotDivisionClick
+            and self.isBrushStrokesSelectCellsActive()
+        )
+        if isSelectCellsClick:
+            # Select (or unselect) cells to add them to the brush strokes.
+            # Do not ignore the event (no pan nor context menu)
+            self.brushStrokesSelectCellClick(event)
+            return
+
         isBrushStrokesClick = (
             (left_click or right_click) and not middle_click and not alt
             and not isSnapshotDivisionClick
@@ -15470,6 +15531,9 @@ When working with 3D segmentation masks:
         else:
             self.brushStrokesEndDrag()
             self.resetCursors()
+            # Stop selecting cells (hides the selection controls)
+            self.magicPromptsToolbar.selectCellsAction.setChecked(False)
+            self.applyBrushStrokesSelectCellsMode()
             self.promptSegmentPointsLayerToolbar.setVisible(False)
             self.magicPromptsToolbar.setVisible(False)
             self.brushStrokesLayerImg1.setVisible(False)
@@ -17817,8 +17881,17 @@ When working with 3D segmentation masks:
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
-        elif ev.key() == Qt.Key_Escape:            
-            self.onEscape(isTypingIDFunctionChecked=isTypingIDFunctionChecked)
+            elif self.isBrushStrokesSelectCellsActive():
+                controls = self.brushStrokesSelectCellsToolbar
+                # Enter in the IDs line edit is handled by the line edit
+                if not controls.selectedIDsLineEdit.hasFocus():
+                    controls.emitSigAddToTrainingData()
+        elif ev.key() == Qt.Key_Escape:
+            isEscapeHandled = self.brushStrokesSelectCellsEscape()
+            if not isEscapeHandled:
+                self.onEscape(
+                    isTypingIDFunctionChecked=isTypingIDFunctionChecked
+                )
         elif isAltModifier:
             isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
             # Alt is pressed while cursor is on images --> set SizeAllCursor
@@ -19385,6 +19458,10 @@ When working with 3D segmentation masks:
 
     def applyMagicPromptsPromptType(self):
         brushCircles = (self.ax2_BrushCircle, self.ax1_BrushCircle)
+        # Hide the "Select cells" controls if not selecting cells anymore
+        # (e.g., model initialization switches to points while the toolbar
+        # signals are blocked)
+        self.applyBrushStrokesSelectCellsMode()
         if not self.magicPromptsToolButton.isChecked():
             self.brushStrokesLayerImg1.setVisible(False)
             return
@@ -19569,6 +19646,7 @@ When working with 3D segmentation masks:
 
         isActive = self.isBrushStrokesPromptActive()
         item.setVisible(isActive)
+        self.setBrushStrokesSelectedCellsLayerImage()
         if not isActive:
             return
 
@@ -19747,6 +19825,250 @@ When working with 3D segmentation masks:
 
         where = 'in the zoomed area ' if only_zoom else ''
         self.logger.info(f'Brush strokes {where}of current frame cleared.')
+
+    def isBrushStrokesSelectCellsActive(self):
+        """True if selecting cells to add them to the brush strokes (i.e.,
+        "Select cells" is checked and brush strokes prompts are active)"""
+        try:
+            isChecked = self.magicPromptsToolbar.selectCellsAction.isChecked()
+        except AttributeError:
+            return False
+        return isChecked and self.isBrushStrokesPromptActive()
+
+    def brushStrokesSelectCellsToggled(self, toolbar, checked):
+        if checked:
+            self.brushStrokesEndDrag()
+        self.brushStrokesSelectCellsToolbar.resetSelection()
+        self.applyBrushStrokesSelectCellsMode()
+        if checked:
+            self.titleLabel.setText(
+                'Click on the cells to select them (Ctrl+A to select all), '
+                'then press Enter to add them to the brush strokes.',
+                color=self.titleColor
+            )
+        QTimer.singleShot(20, self.gui_refreshToolCursor)
+
+    def applyBrushStrokesSelectCellsMode(self):
+        """Show the "Select cells" controls only while selecting cells with
+        brush strokes prompts, and update the selected cells layer"""
+        controls = self.brushStrokesSelectCellsToolbar
+        isSelecting = (
+            self.magicPromptsToolButton.isChecked()
+            and self.magicPromptsToolbar.promptType() == 'brush_stroke'
+            and self.magicPromptsToolbar.selectCellsAction.isChecked()
+        )
+        if not isSelecting:
+            controls.resetSelection()
+        controls.setVisible(isSelecting)
+        self.setBrushStrokesSelectedCellsLayerImage()
+        # The brush circle is not used while selecting cells (redrawn on
+        # next hover if needed)
+        self.setHoverToolSymbolData(
+            [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
+        )
+
+    def setBrushStrokesSelectedCellsLayerImage(self):
+        """Show the cells selected to be added to the brush strokes (same
+        look as the "Keep IDs" selection)"""
+        item = getattr(self, 'brushStrokesSelectedCellsLayerImg1', None)
+        controls = getattr(self, 'brushStrokesSelectCellsToolbar', None)
+        if item is None or controls is None:
+            return
+
+        selectedIDs = controls.selectedIDs
+        # Objects are drawn on the displayed z-slice/projection only (other
+        # planes are display-only for brush strokes)
+        isVisible = (
+            len(selectedIDs) > 0
+            and self.isBrushStrokesSelectCellsActive()
+            and self.getBrushStrokesDepthAxes() == 'z'
+        )
+        if not isVisible:
+            item.clear()
+            item.setVisible(False)
+            return
+
+        self.initKeepObjLabelsLayers(imageItem=item)
+        item.setImage(self.getObjectsLab2D(selectedIDs), autoLevels=False)
+        item.setVisible(True)
+
+    def brushStrokesSelectCellClick(self, event):
+        """Select (or unselect) the clicked cell to add it to the brush
+        strokes"""
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        lab2D = self.currentLab2D
+        Y, X = lab2D.shape[-2:]
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            return
+
+        ID = int(lab2D[ydata, xdata])
+        if ID == 0:
+            self.titleLabel.setText(
+                'You clicked on the background. Click on a cell to select it '
+                '(or press Ctrl+A to select all the cells).', color='r'
+            )
+            return
+
+        controls = self.brushStrokesSelectCellsToolbar
+        isSelected = controls.toggleSelectedID(ID)
+        self.setBrushStrokesSelectedCellsLayerImage()
+        action = 'selected' if isSelected else 'unselected'
+        numSelected = len(controls.selectedIDs)
+        self.titleLabel.setText(
+            f'ID {ID} {action} (number of selected cells = {numSelected}). '
+            'Press Enter to add the selected cells to the brush strokes.',
+            color=self.titleColor
+        )
+
+    def brushStrokesSelectAllCells(self, toolbar):
+        """Select all the cells of the current frame to add them to the
+        brush strokes (e.g., with Ctrl+A)"""
+        if not self.isBrushStrokesPromptActive():
+            return
+
+        if not toolbar.selectCellsAction.isChecked():
+            toolbar.selectCellsAction.setChecked(True)
+
+        posData = self.data[self.pos_i]
+        IDs = [int(ID) for ID in posData.IDs]
+        controls = self.brushStrokesSelectCellsToolbar
+        controls.setSelectedIDs(IDs)
+        self.setBrushStrokesSelectedCellsLayerImage()
+        if not IDs:
+            self.titleLabel.setText(
+                'There are no cells in the current frame.', color='r'
+            )
+            return
+
+        self.titleLabel.setText(
+            f'All the {len(IDs)} cells of the current frame selected. Press '
+            'Enter to add them to the brush strokes.',
+            color=self.titleColor
+        )
+
+    def brushStrokesSelectedIDsEdited(self, controls, IDs):
+        """The IDs of the selected cells were typed in the line edit"""
+        posData = self.data[self.pos_i]
+        existingIDs = set(posData.IDs)
+        validIDs = [ID for ID in IDs if ID in existingIDs]
+        controls.syncSelectedIDs(validIDs)
+        if len(validIDs) < len(IDs):
+            controls.selectedIDsLineEdit.warnNotExistingID()
+        else:
+            controls.selectedIDsLineEdit.setInstructionsText()
+        self.setBrushStrokesSelectedCellsLayerImage()
+
+    def brushStrokesSelectCellsEscape(self):
+        """Escape key while selecting cells: clear the selection, or stop
+        selecting cells if nothing is selected. Returns True if handled."""
+        if not self.isBrushStrokesSelectCellsActive():
+            return False
+
+        controls = self.brushStrokesSelectCellsToolbar
+        if controls.selectedIDs:
+            controls.resetSelection()
+            self.setBrushStrokesSelectedCellsLayerImage()
+            self.titleLabel.setText('Selection cleared.', color=self.titleColor)
+            return True
+
+        self.magicPromptsToolbar.selectCellsAction.setChecked(False)
+        return True
+
+    @exception_handler
+    def magicPromptsAddSelectedCellsToBrushStrokes(self, controls):
+        """Add the selected cells to the brush strokes of the current frame
+        as foreground and the pixels without masks as background. Only the
+        pixels without brush strokes are modified. With 3D masks, only the
+        displayed z-slice is added."""
+        if not self.isBrushStrokesSelectCellsActive():
+            return
+
+        posData = self.data[self.pos_i]
+        existingIDs = set(posData.IDs)
+        selectedIDs = [ID for ID in controls.selectedIDs if ID in existingIDs]
+        if not selectedIDs:
+            self.titleLabel.setText(
+                'None of the selected cells exist in the current frame.',
+                color='r'
+            )
+            return
+
+        annot2D, z = self.getBrushStrokesAnnot2D(create=True, return_z=True)
+        if annot2D is None:
+            self.warnBrushStrokesNotPaintable()
+            return
+
+        lab2D = posData.lab if z is None else posData.lab[z]
+        if lab2D.shape != annot2D.shape:
+            self.logger.warning(
+                f'[WARNING]: Cannot add the selected cells to the brush '
+                f'strokes because the segmentation masks shape '
+                f'{lab2D.shape} is different from the brush strokes shape '
+                f'{annot2D.shape}.'
+            )
+            return
+
+        where = 'current frame'
+        if controls.onlyZoomCheckbox.isChecked():
+            region = self.getBrushStrokesZoomRegion(annot2D)
+            if region is None:
+                self.titleLabel.setText(
+                    'The zoomed area is outside of the image.', color='r'
+                )
+                return
+            where = 'zoomed area of the current frame'
+        else:
+            region = (Ellipsis,)
+
+        if z is not None:
+            where = f'{where} (z-slice n. {z+1})'
+
+        # Only the selected cells that are in the added area (displayed
+        # z-slice and/or zoomed area)
+        regionIDs = np.unique(lab2D[region])
+        selectedIDs = [ID for ID in selectedIDs if ID in regionIDs]
+        if not selectedIDs:
+            self.titleLabel.setText(
+                f'None of the selected cells are in the {where}.', color='r'
+            )
+            return
+
+        prevAnnot2D = annot2D.copy()
+        numForeground, numBackground = (
+            prompt_utils.add_objects_to_brush_strokes(
+                annot2D[region], lab2D[region], selectedIDs
+            )
+        )
+        if numForeground + numBackground == 0:
+            self.titleLabel.setText(
+                'No pixels added: all the pixels already have brush strokes '
+                '(clear them first to replace them).', color='r'
+            )
+            return
+
+        # Undo state stored only if something changed (the undo queue has a
+        # maximum length)
+        self.storeBrushStrokesUndo(prevAnnot2D, z)
+        self.brushStrokesChangedSinceTraining = True
+        controls.resetSelection()
+        self.setBrushStrokesLayerImage()
+
+        numCells = len(selectedIDs)
+        cells = 'cell' if numCells == 1 else 'cells'
+        txt = (
+            f'Added {numCells} {cells} to the brush strokes of the {where} '
+            f'({numForeground} foreground and {numBackground} background '
+            'pixels).'
+        )
+        self.logger.info(txt)
+        self.titleLabel.setText(txt, color='g')
+        if numForeground + numBackground > 1_000_000:
+            self.logger.info(
+                'NOTE: The more pixels are annotated, the slower the '
+                'training. With large images, consider adding only a '
+                'cutout (check "Only in zoomed area").'
+            )
 
     def getBrushStrokesTrainingItems(self):
         """List of (pos_i, frame_i, annot) with at least one brush stroke
@@ -22503,6 +22825,9 @@ When working with 3D segmentation masks:
 
     def updatePos(self):
         self.clearUndoQueue()
+        # IDs of other positions are unrelated --> clear the cells selected
+        # to be added to the brush strokes
+        self.brushStrokesSelectCellsToolbar.resetSelection()
         self.setStatusBarLabel()
         self.checkManageVersions()
         self.removeAlldelROIsCurrentFrame()
@@ -24869,6 +25194,7 @@ When working with 3D segmentation masks:
         self.highLightIDLayerImg1.clear()
         self.highLightIDLayerRightImage.clear()
         self.brushStrokesLayerImg1.clear()
+        self.brushStrokesSelectedCellsLayerImg1.clear()
         self.searchedIDitemLeft.clear()
         self.searchedIDitemRight.clear()
         self.ax1_contoursImageItem.clear()
@@ -28495,24 +28821,30 @@ When working with 3D segmentation masks:
         self.labelsLayerImg1.setOpacity(alpha)
         self.labelsLayerRightImg.setOpacity(alpha)
     
-    def initKeepObjLabelsLayers(self):
+    def initKeepObjLabelsLayers(self, imageItem=None):
+        """Set the lookup table (labels colors, transparent background) of
+        the layer showing the selected objects (default "Keep IDs" layer)"""
+        if imageItem is None:
+            imageItem = self.keepIDsTempLayerLeft
         lut = np.zeros((len(self.lut), 4), dtype=np.uint8)
         lut[:,:-1] = self.lut
         lut[:,-1:] = 255
         lut[0] = [0,0,0,0]
-        self.keepIDsTempLayerLeft.setLevels([0, len(lut)])
-        self.keepIDsTempLayerLeft.setLookupTable(lut)
-        
-    
-    def updateTempLayerKeepIDs(self):
-        if not self.keepIDsButton.isChecked():
-            return
-        
-        keptLab = np.zeros_like(self.currentLab2D)
+        imageItem.setLevels([0, len(lut)])
+        imageItem.setLookupTable(lut)
+
+    def getObjectsLab2D(self, IDs):
+        """Get the displayed 2D labels (current z-slice or projection) with
+        only the objects whose ID is in `IDs` (e.g., the "Keep IDs"
+        selection)"""
+        IDs = set(IDs)
+        objsLab2D = np.zeros_like(self.currentLab2D)
+        if not IDs:
+            return objsLab2D
 
         posData = self.data[self.pos_i]
         for obj in posData.rp:
-            if obj.label not in self.keptObjectsIDs:
+            if obj.label not in IDs:
                 continue
 
             if not self.isObjInCurrSlice(obj.bbox):
@@ -28521,8 +28853,15 @@ When working with 3D segmentation masks:
             _slice = self.getObjSlice(obj.slice)
             _objMask = self.getObjImage(obj.image, obj.bbox)
 
-            keptLab[_slice][_objMask] = obj.label
+            objsLab2D[_slice][_objMask] = obj.label
 
+        return objsLab2D
+
+    def updateTempLayerKeepIDs(self):
+        if not self.keepIDsButton.isChecked():
+            return
+
+        keptLab = self.getObjectsLab2D(self.keptObjectsIDs)
         self.keepIDsTempLayerLeft.setImage(keptLab, autoLevels=False)
 
     def highlightLabelID(self, ID, ax=0):        
