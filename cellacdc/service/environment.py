@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 from typing import Optional, Union, Tuple, Literal, List
@@ -187,8 +188,234 @@ WORKER_RUNTIME_DEPENDENCIES = [
 ]
 
 
+def managed_model_env_dir(python_exec: str) -> Optional[str]:
+    """The directory of the model environment created by Cell-ACDC (named
+    `_acdc_<model>`, see `get_model_env_name`) that `python_exec` belongs
+    to, or None if it belongs to another environment.
+
+    The path is not resolved: in a venv on Linux/macOS, `bin/python` is a
+    link to the base interpreter.
+    """
+    directory = os.path.dirname(os.path.abspath(python_exec))
+    # <env>/bin/python, <env>/Scripts/python.exe, <env>/python.exe (conda)
+    if os.path.basename(directory).lower() in ("bin", "scripts"):
+        directory = os.path.dirname(directory)
+    if os.path.basename(directory).startswith("_acdc_"):
+        return directory
+    return None
+
+
+def is_managed_model_env(python_exec: str) -> bool:
+    """True if `python_exec` belongs to a model environment created by
+    Cell-ACDC (see `managed_model_env_dir`).
+
+    Only these environments are repaired automatically (Cell-ACDC is
+    reinstalled in them); other environments belong to the user.
+    """
+    return managed_model_env_dir(python_exec) is not None
+
+
+# Run in a model environment: print which Cell-ACDC it imports. Old Cell-ACDC
+# versions without `cellacdc.service.protocol` use protocol 1.
+_RUNTIME_MARKER = "__ACDC_RUNTIME__"
+_RUNTIME_IDENTITY_CODE = f'''
+def _acdc_runtime_identity():
+    import json, os, sys
+    import cellacdc
+    try:
+        from cellacdc.service.protocol import PROTOCOL_VERSION as protocol
+    except ImportError:
+        protocol = 1
+    try:
+        from importlib.metadata import version
+        dist_version = version("cellacdc")
+    except Exception:
+        dist_version = None
+    try:
+        from importlib.metadata import distribution
+        direct_url = json.loads(
+            distribution("cellacdc").read_text("direct_url.json") or "null"
+        )
+    except Exception:
+        direct_url = None
+    print({_RUNTIME_MARKER!r} + json.dumps({{
+        "protocol": protocol, "version": dist_version,
+        "direct_url": direct_url,
+        "file": os.path.abspath(cellacdc.__file__), "prefix": sys.prefix,
+    }}), flush=True)
+_acdc_runtime_identity()
+'''
+_RUNTIME_IMPORTS_OK = "__ACDC_RUNTIME_IMPORTS_OK__"
+_RUNTIME_CHECK_CODE = _RUNTIME_IDENTITY_CODE + f'''
+import cellacdc.core
+import cellacdc.myutils
+import cellacdc.service.worker
+print({_RUNTIME_IMPORTS_OK!r})
+'''
+
+
+def _parse_runtime_identity(output: str) -> Optional[dict]:
+    for line in output.splitlines():
+        if line.startswith(_RUNTIME_MARKER):
+            try:
+                return json.loads(line[len(_RUNTIME_MARKER):])
+            except ValueError:
+                return None
+    return None
+
+
+def _same_path(path, other) -> bool:
+    return (
+        os.path.normcase(os.path.realpath(path))
+        == os.path.normcase(os.path.realpath(other))
+    )
+
+
+def _is_within(path: str, root: str) -> bool:
+    """True if `path` is `root` or inside it."""
+    path = os.path.normcase(os.path.realpath(path))
+    root = os.path.normcase(os.path.realpath(root))
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def _installed_cellacdc_version() -> Optional[str]:
+    """Version of the installed Cell-ACDC distribution, or None."""
+    from importlib.metadata import version
+
+    try:
+        return version("cellacdc")
+    except PackageNotFoundError:
+        return None
+
+
+def _installed_cellacdc_direct_url() -> Optional[dict]:
+    """Where the installed Cell-ACDC was installed from (PEP 610
+    `direct_url.json`), or None (e.g. installed from PyPI)."""
+    try:
+        text = distribution("cellacdc").read_text("direct_url.json")
+        return json.loads(text) if text else None
+    except (PackageNotFoundError, ValueError):
+        return None
+
+
+def _build_mismatch(identity: dict) -> Optional[str]:
+    """Why the installed (not linked) Cell-ACDC build of `identity` differs
+    from this one, or None.
+
+    Compares what `_installed_cellacdc_spec` installs: the commit of a VCS
+    install, the URL of an archive install, otherwise the version (a VCS
+    build's version string can change for the same commit, e.g. when the
+    commit is tagged later).
+    """
+    expected_url = _installed_cellacdc_direct_url() or {}
+    actual_url = identity.get("direct_url") or {}
+    commit = (expected_url.get("vcs_info") or {}).get("commit_id")
+    if commit:
+        actual_commit = (actual_url.get("vcs_info") or {}).get("commit_id")
+        if actual_commit != commit:
+            return (
+                f"it has Cell-ACDC {identity.get('version')} from "
+                f"{actual_url.get('url') or 'a package index'}"
+                f"{f' (commit {actual_commit})' if actual_commit else ''}, "
+                f"but this Cell-ACDC is commit {commit}"
+            )
+        return None
+    if expected_url.get("archive_info") is not None and expected_url.get("url"):
+        if actual_url.get("url") != expected_url["url"]:
+            return (
+                f"it has Cell-ACDC {identity.get('version')} from "
+                f"{actual_url.get('url') or 'a package index'}, but this "
+                f"Cell-ACDC was installed from {expected_url['url']}"
+            )
+        return None
+    expected = _installed_cellacdc_version()
+    if expected is not None and identity.get("version") != expected:
+        return (
+            f"it has Cell-ACDC {identity.get('version')}, but this is "
+            f"Cell-ACDC {expected}"
+        )
+    return None
+
+
+def _runtime_mismatch(identity: Optional[dict]) -> Optional[str]:
+    """Why the Cell-ACDC of a model environment (`identity`, printed by
+    `_RUNTIME_IDENTITY_CODE`) differs from this one, or None if it is the
+    same.
+
+    From a source checkout, the environment must import this checkout (it is
+    linked, see `link_cellacdc_to_env`). Otherwise it must have the same
+    Cell-ACDC build installed (see `_build_mismatch`).
+    """
+    from cellacdc.service.protocol import PROTOCOL_VERSION
+
+    if identity is None:
+        return "Cell-ACDC cannot be imported"
+    imported_root = os.path.dirname(os.path.dirname(identity.get("file") or ""))
+    if imported_root and _same_path(imported_root, os.getcwd()):
+        # Python searches the working directory first. Reinstalling cannot
+        # fix this, so say why
+        cwd_note = (
+            f" (it is the Cell-ACDC in the current working directory "
+            f"{os.getcwd()}; start Cell-ACDC from another directory)"
+        )
+    else:
+        cwd_note = ""
+    if identity.get("protocol") != PROTOCOL_VERSION:
+        return (
+            f"it uses model worker protocol {identity.get('protocol')}, but "
+            f"this Cell-ACDC uses protocol {PROTOCOL_VERSION}{cwd_note}"
+        )
+    source_root = _get_cellacdc_source_root()
+    if source_root is not None:
+        if not imported_root or not _same_path(imported_root, source_root):
+            return (
+                f"it imports Cell-ACDC from {identity.get('file')}, not from "
+                f"this source checkout ({source_root}){cwd_note}"
+            )
+        return None
+    mismatch = _build_mismatch(identity)
+    return f"{mismatch}{cwd_note}" if mismatch else None
+
+
+def _read_cellacdc_runtime(python_exec: str) -> Tuple[Optional[dict], bool, str]:
+    """Run `_RUNTIME_CHECK_CODE` in `python_exec`.
+
+    Returns the identity of its Cell-ACDC (None if it cannot be imported),
+    whether the worker runtime can be imported, and the process output.
+    """
+    try:
+        res = subprocess.run(
+            [python_exec, "-c", _RUNTIME_CHECK_CODE, "--server"],
+            capture_output=True, text=True, timeout=120,
+        )
+    except Exception as err:
+        return None, False, f"{type(err).__name__}: {err}"
+    output = (res.stdout or "") + (res.stderr or "")
+    imports_ok = (
+        res.returncode == 0
+        and _RUNTIME_IMPORTS_OK in (res.stdout or "").splitlines()
+    )
+    return _parse_runtime_identity(res.stdout or ""), imports_ok, output
+
+
+def cellacdc_runtime_mismatch(python_exec: str) -> Optional[str]:
+    """Why the Cell-ACDC runtime in `python_exec` cannot run this Cell-ACDC's
+    model workers (missing, another version, or broken dependencies), or
+    None if it can."""
+    identity, imports_ok, output = _read_cellacdc_runtime(python_exec)
+    mismatch = _runtime_mismatch(identity)
+    if mismatch is None and not imports_ok:
+        mismatch = "its Cell-ACDC runtime dependencies cannot be imported"
+    if mismatch is not None and not imports_ok and output.strip():
+        mismatch = f"{mismatch}:\n{output.strip()}"
+    return mismatch
+
+
 def is_cellacdc_cli_installed(python_exec: str) -> bool:
-    """Check if the lightweight Cell-ACDC runtime is importable in the environment."""
+    """Check if the lightweight Cell-ACDC runtime is importable in the environment.
+
+    Does not check its version, see `cellacdc_runtime_mismatch`.
+    """
     test_code = (
         "import cellacdc; "
         "import cellacdc.core; "
@@ -207,22 +434,70 @@ def is_cellacdc_cli_installed(python_exec: str) -> bool:
         return False
 
 
-def install_cellacdc_cli(
+# Run in a model environment: where `import cellacdc` would load it from,
+# without executing the package
+_CELLACDC_ORIGIN_CODE = (
+    "import importlib.util, json, sys; "
+    "spec = importlib.util.find_spec('cellacdc'); "
+    "print(json.dumps({'origin': spec.origin if spec else None, "
+    "'prefix': sys.prefix}))"
+)
+
+
+def _uninstall_shadowing_cellacdc(
     python_exec: str, logger_func: Callable = print
+):
+    """Uninstall a Cell-ACDC copy installed in the environment, which is
+    imported instead of the linked source checkout (site-packages come
+    before the `.pth` link on `sys.path`).
+
+    The copy is located without importing it (it may be broken, e.g. when
+    its dependencies are missing).
+    """
+    source_root = _get_cellacdc_source_root()
+    try:
+        res = subprocess.run(
+            [python_exec, "-c", _CELLACDC_ORIGIN_CODE],
+            capture_output=True, text=True, timeout=60,
+        )
+        found = json.loads(res.stdout.strip().splitlines()[-1])
+    except Exception:
+        return
+    imported, prefix = found.get("origin"), found.get("prefix")
+    if not imported or not prefix or not _is_within(imported, prefix):
+        return
+    if source_root is not None and _is_within(imported, source_root):
+        return
+    logger_func(f"Uninstalling the Cell-ACDC copy at {imported}...")
+    run_streaming(
+        [python_exec, "-m", "pip", "uninstall", "-y",
+         "--disable-pip-version-check", "cellacdc"],
+        logger_func,
+    )
+
+
+def install_cellacdc_cli(
+    python_exec: str, logger_func: Callable = print, reinstall: bool = False,
 ) -> bool:
     """Install a lightweight Cell-ACDC runtime into the target environment.
 
     Cell-ACDC itself is linked (source checkout) or installed with `--no-deps`
     (released package), then only `WORKER_RUNTIME_DEPENDENCIES` are installed.
+    With `reinstall`, an installed Cell-ACDC is replaced: the package is
+    reinstalled (`--force-reinstall`), or, from a source checkout, a copy
+    that hides the linked checkout is uninstalled.
     """
     pip_cmd = [python_exec, "-m", "pip", "install", "--disable-pip-version-check"]
     try:
         if _get_cellacdc_source_root() is not None:
+            if reinstall:
+                _uninstall_shadowing_cellacdc(python_exec, logger_func)
             link_cellacdc_to_env(python_exec, logger_func=logger_func)
         else:
             spec = _installed_cellacdc_spec()
+            options = ["--no-deps"] + (["--force-reinstall"] if reinstall else [])
             logger_func(f"Installing {spec} (no dependencies)...")
-            if run_streaming(pip_cmd + ["--no-deps", spec], logger_func) != 0:
+            if run_streaming(pip_cmd + options + [spec], logger_func) != 0:
                 logger_func(f"Warning: pip install of {spec} failed.")
                 return False
 
@@ -274,16 +549,128 @@ def _installed_cellacdc_spec() -> str:
     )
 
 
+def repair_cellacdc_runtime(
+    python_exec: str, logger_func: Callable = print
+) -> bool:
+    """(Re)install this Cell-ACDC build in the environment of `python_exec`
+    and check the result.
+
+    Used when the environment has no Cell-ACDC, another version (e.g. it was
+    created by an older Cell-ACDC), or a worker with another protocol version
+    (see `protocol.py`). Returns False if it still differs afterwards.
+
+    Several processes (e.g. cluster jobs sharing an environment) may try to
+    repair the same environment: a lock file lets one of them reinstall,
+    and the others then find the environment repaired.
+    """
+    try:
+        with _repair_lock(python_exec, logger_func) as waited:
+            if waited and cellacdc_runtime_mismatch(python_exec) is None:
+                return True
+            if not install_cellacdc_cli(
+                python_exec, logger_func=logger_func, reinstall=True
+            ):
+                return False
+            mismatch = cellacdc_runtime_mismatch(python_exec)
+    except TimeoutError as err:
+        logger_func(f"Warning: {err}")
+        return False
+    if mismatch is not None:
+        logger_func(
+            f"Warning: Cell-ACDC in {python_exec} still differs from this "
+            f"Cell-ACDC after reinstalling it: {mismatch}"
+        )
+        return False
+    return True
+
+
+_REPAIR_LOCK_NAME = ".cellacdc-repair.lock"
+# A lock older than this is left over by a process that was killed
+_REPAIR_LOCK_STALE_SECONDS = 30 * 60
+
+
+@contextlib.contextmanager
+def _repair_lock(
+    python_exec: str, logger_func: Callable = print,
+    timeout: float = _REPAIR_LOCK_STALE_SECONDS, poll: float = 1.0,
+):
+    """Hold the repair lock of the environment of `python_exec`.
+
+    Yields whether another process held it first (then the environment may
+    already be repaired). Raises TimeoutError after `timeout` seconds.
+    """
+    import time
+
+    env_dir = managed_model_env_dir(python_exec) or os.path.dirname(
+        os.path.abspath(python_exec)
+    )
+    path = os.path.join(env_dir, _REPAIR_LOCK_NAME)
+    t0 = time.monotonic()
+    waited = False
+    fd = None
+    while fd is None:
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            pass
+        except OSError:
+            # The directory is not writable: repair without a lock
+            break
+        else:
+            break
+        try:
+            age = time.time() - os.path.getmtime(path)
+        except OSError:
+            continue  # Released meanwhile
+        if age > _REPAIR_LOCK_STALE_SECONDS:
+            logger_func(f"Removing the stale lock {path}")
+            try:
+                os.remove(path)
+            except OSError:
+                pass
+            continue
+        if time.monotonic() - t0 > timeout:
+            raise TimeoutError(
+                f"Another process has been repairing Cell-ACDC in "
+                f"{env_dir} for too long (lock file {path})."
+            )
+        if not waited:
+            logger_func(
+                f"Waiting for another process that repairs Cell-ACDC in "
+                f"{env_dir}..."
+            )
+        waited = True
+        time.sleep(poll)
+    if fd is None:
+        yield waited
+        return
+    try:
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        yield waited
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 def ensure_cellacdc_cli(
     python_exec: str, logger_func: Callable = print
 ) -> bool:
-    """Ensure the lightweight Cell-ACDC runtime is installed and importable."""
-    with startup_timer("Cell-ACDC runtime import check", logger_func):
-        installed = is_cellacdc_cli_installed(python_exec)
-    if installed:
+    """Ensure the environment runs this Cell-ACDC build.
+
+    Installs the lightweight Cell-ACDC runtime if it is missing, and
+    reinstalls it if the environment has another Cell-ACDC version or
+    protocol version (see `cellacdc_runtime_mismatch`).
+    """
+    with startup_timer("Cell-ACDC runtime version check", logger_func):
+        mismatch = cellacdc_runtime_mismatch(python_exec)
+    if mismatch is None:
         return True
+    logger_func(f"Cell-ACDC in {python_exec}: {mismatch}")
     with startup_timer("Cell-ACDC runtime installation", logger_func):
-        return install_cellacdc_cli(python_exec, logger_func=logger_func)
+        return repair_cellacdc_runtime(python_exec, logger_func=logger_func)
 
 
 def load_model_env_config(model_name: str) -> dict:
@@ -455,6 +842,7 @@ with startup_timer("Cell-ACDC runtime imports"):
     import cellacdc.core
     from cellacdc import myutils
     import cellacdc.service.worker
+{_RUNTIME_IDENTITY_CODE}
 if {bool(config.get("torch"))!r}:
     with startup_timer("torch/torchvision imports (shared process)"):
         exec({_torch_import_check(config.get("torch_version"))!r})
@@ -482,7 +870,14 @@ print("__ACDC_ENV_OK__")
         if line.startswith("[model startup]"):
             logger_func(line)
     if result.returncode == 0 and "__ACDC_ENV_OK__" in result.stdout.splitlines():
-        return True
+        mismatch = _runtime_mismatch(_parse_runtime_identity(result.stdout))
+        if mismatch is None:
+            return True
+        logger_func(
+            f"{model_name}: Cell-ACDC in {python_exec} differs from this "
+            f"Cell-ACDC ({mismatch}); reinstalling it."
+        )
+        return False
     logger_func(
         f"{model_name}: combined environment check failed; "
         f"checking dependencies individually for repair.\n"

@@ -24,13 +24,15 @@ FastAPI in a nutshell
 
   - `image: UploadFile = File(...)`: an uploaded file (here: a `.npy` array).
     `File(...)` means required, `File(None)` means optional.
-  - `params: str = Form("{}")`: a text field of the form (here: JSON text with
-    the keyword arguments); `"{}"` is the default if it is missing.
+  - `params: UploadFile = File(...)`: the keyword arguments for the model,
+    encoded by `payload.encode` (JSON plus binary data such as arrays and
+    files). Arguments are always sent as files, never as text fields of the
+    form, because Starlette limits text fields to 1 MiB.
   - `job_id: str` matching `{job_id}` in the path: taken from the URL, e.g.
     `/jobs/abc123` -> `job_id = "abc123"`.
 
-  File and form fields are sent by the client as a "multipart" request (like a
-  web form with a file upload); parsing them requires `python-multipart`.
+  Files are sent by the client as a "multipart" request (like a web form with
+  a file upload); parsing them requires `python-multipart`.
 * The return value is sent back to the client:
 
   - a `dict` or a pydantic model (from `schema.py`) is sent as JSON.
@@ -39,8 +41,9 @@ FastAPI in a nutshell
 * `raise HTTPException(status_code, detail)` sends an error response. The
   client (`ModelClient._raise_for_status`) turns it into a `RuntimeError`
   that includes `detail` (we put the full traceback there). Status codes used:
-  400 = bad request, 404 = not found, 500 = error in the model,
-  503 = model not initialized yet.
+  400 = bad request, 404 = not found, 426 = the client uses another protocol
+  version (see `protocol.py`), 500 = error in the model, 503 = model not
+  initialized yet.
 * `async def` handlers can `await` (e.g. reading the uploaded file) without
   blocking the server; plain `def` handlers are run in a thread pool by
   FastAPI. Both behave the same from the client's point of view.
@@ -52,7 +55,8 @@ FastAPI in a nutshell
 
 Typical sequence of requests (what `LocalBackend.start` + `ModelClient` do)
 -------------------------------------------------------------------------
-1. `GET /health` repeatedly until the server answers (startup is done).
+1. `GET /health` repeatedly until the server answers (startup is done), then
+   `GET /version` to check that client and worker use the same protocol.
 2. Optionally `POST /init` (only with `--defer-init`, to send data such as an
    auxiliary segmentation that cannot be passed on the command line).
 3. `GET /info` to learn the model's capabilities.
@@ -71,12 +75,25 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, Any, Optional
 
 import numpy as np
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, BackgroundTasks
-from fastapi.responses import Response
+from fastapi import (
+    BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, UploadFile,
+)
+from fastapi.responses import JSONResponse, Response
 from fastapi.concurrency import run_in_threadpool
 
-from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
+from cellacdc.service.schema import (
+    HealthResponse, InfoResponse, Capabilities, JobStatusResponse,
+    VersionResponse,
+)
+from cellacdc.service.protocol import PROTOCOL_HEADER, PROTOCOL_VERSION
 from cellacdc._model_startup import startup_timer
+
+# Endpoints that clients of any protocol version may call: the version check
+# itself, liveness, shutdown and FastAPI's documentation pages.
+_UNVERSIONED_PATHS = frozenset((
+    '/health', '/version', '/shutdown', '/docs', '/docs/oauth2-redirect',
+    '/redoc', '/openapi.json',
+))
 
 # Background jobs (`/jobs/...`) run in these threads, so that the HTTP request
 # that submits a job returns immediately with a job id.
@@ -150,13 +167,31 @@ def _filter_kwargs(func, kwargs: Dict[str, Any]) -> Dict[str, Any]:
         return kwargs
     return {k: v for k, v in kwargs.items() if k in params}
 
-async def _decode_segment_params(params, params_data):
+async def _read_kwargs(upload) -> Dict[str, Any]:
+    """Decode the model arguments sent as a file part (see `payload.encode`)."""
     from cellacdc.service import payload
 
-    content = (
-        await params_data.read() if hasattr(params_data, 'read') else None
-    )
-    return payload.decode(params, content)
+    return payload.decode(await upload.read())
+
+def _materialize_files(kwargs: Dict[str, Any], stack) -> Dict[str, Any]:
+    """Replace uploaded files (`payload.ModelFile`) in `kwargs` by the paths
+    of temporary copies, which are deleted when the `ExitStack` `stack` is
+    closed. Returns a new dict."""
+    import tempfile
+    from cellacdc.service.payload import ModelFile
+
+    kwargs = dict(kwargs)
+    for key, value in kwargs.items():
+        if not isinstance(value, ModelFile):
+            continue
+        directory = stack.enter_context(
+            tempfile.TemporaryDirectory(prefix='cellacdc-model-')
+        )
+        path = os.path.join(directory, value.name)
+        with open(path, 'wb') as stream:
+            stream.write(value.data)
+        kwargs[key] = path
+    return kwargs
 
 
 class _EmbeddingPosData:
@@ -190,15 +225,17 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
 
     The worker may run on another machine, so it never receives client file
     paths: the client loads files itself and sends the data (`segm_data`,
-    `input_points_df`, or uploaded model/CSV files). Uploaded files are stored
-    in temporary directories until the model is released. Raw client paths
-    and directory selections are rejected with an error.
+    `input_points_df`), and uploads every argument that is the path of a file
+    on its disk (see `payload.encode`). Uploaded files are stored in temporary
+    directories until the model is released. Path-typed arguments that were
+    not uploaded (files missing on the client, folders, or bare file names
+    without a folder, see `payload.is_file_path`) are rejected with an
+    error.
     Models whose `__init__` has a required positional argument receive the
     auxiliary segmentation as that argument.
     """
     from contextlib import ExitStack
     import inspect
-    import tempfile
     import weakref
     from cellacdc import myutils_models
     from cellacdc.service.payload import ModelFile
@@ -213,14 +250,6 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
         key for key, value in init_kwargs.items()
         if isinstance(value, ModelFile)
     }
-    invalid_uploads = {
-        key for key in uploaded
-        if path_params.get(key) not in ('path', 'csv_path')
-    }
-    if invalid_uploads:
-        raise ValueError(
-            f'Init kwargs {sorted(invalid_uploads)} do not accept file uploads.'
-        )
     unsupported_paths = {
         key for key in (set(path_params) & set(init_kwargs)) - uploaded
         if path_params[key] in ('path', 'csv_path', 'folder')
@@ -230,10 +259,13 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
         )
     }
     if unsupported_paths:
+        paths = {key: init_kwargs[key] for key in sorted(unsupported_paths)}
         raise ValueError(
-            f'Init kwargs {sorted(unsupported_paths)} reference client files. '
-            'The worker cannot access client-side paths; send the file data '
-            'instead.'
+            f'Init kwargs {sorted(unsupported_paths)} reference client paths '
+            f'that were not uploaded: {paths}. The client uploads only '
+            'existing files given as absolute paths or with a folder (not '
+            'folders or bare file names), and the worker cannot access '
+            'client-side paths.'
         )
     # Empty selections ('' / 'None') mean "no file" and carry no client path
     for key in ('segm_endname', 'input_points_path'):
@@ -253,15 +285,7 @@ def instantiate_model(acdcSegment, init_kwargs: Dict[str, Any]):
     if 'is_rgb' not in args:
         init_kwargs.pop('is_rgb', None)
     with ExitStack() as files:
-        for key in uploaded:
-            upload = init_kwargs[key]
-            directory = files.enter_context(
-                tempfile.TemporaryDirectory(prefix='cellacdc-model-')
-            )
-            path = os.path.join(directory, upload.name)
-            with open(path, 'wb') as stream:
-                stream.write(upload.data)
-            init_kwargs[key] = path
+        init_kwargs = _materialize_files(init_kwargs, files)
         if myutils_models.model_init_requires_segm_data(acdcSegment):
             if segm_data is None:
                 raise ValueError(
@@ -348,6 +372,16 @@ def create_app(
             method = getattr(current_model, method_name)
             return method(*args, **_filter_kwargs(method, kwargs))
 
+    def call_model_method_with_files(method_name, *args, **kwargs):
+        """`call_model_method`, with uploaded files (`payload.ModelFile`)
+        passed as paths of temporary copies, deleted after the call."""
+        from contextlib import ExitStack
+
+        with ExitStack() as files:
+            return call_model_method(
+                method_name, *args, **_materialize_files(kwargs, files)
+            )
+
     class _ModelProxy:
         """Stands in for the model in the endpoints below.
 
@@ -364,33 +398,78 @@ def create_app(
 
     model = _ModelProxy()
 
+    def protocol_header(
+            protocol: Optional[str] = Header(
+                str(PROTOCOL_VERSION), alias=PROTOCOL_HEADER
+            ),
+        ):
+        """Declares the protocol header in the OpenAPI schema, so that the
+        `/docs` page sends it (pre-filled). The check itself is done by the
+        `check_protocol_version` middleware on the raw request headers."""
+
     # Title/description/version only appear on the automatic /docs page
     app = FastAPI(
         title=f"Cell-ACDC {model_name} Worker",
         description="Worker service serving Cell-ACDC segmentation models.",
-        version="1.0.0"
+        version="1.0.0",
+        dependencies=[Depends(protocol_header)],
     )
+
+    @app.middleware("http")
+    async def check_protocol_version(request, call_next):
+        """Reject requests from clients with another protocol version.
+
+        Runs before every endpoint. Clients send their version in the
+        `PROTOCOL_HEADER` header (see `protocol.py`); clients with protocol 1
+        send none. `_UNVERSIONED_PATHS` are answered for every client, so
+        that it can check the version (`/version`) and stop the worker.
+        """
+        sent = request.headers.get(PROTOCOL_HEADER)
+        if (
+            request.url.path not in _UNVERSIONED_PATHS
+            and sent != str(PROTOCOL_VERSION)
+        ):
+            import cellacdc
+            client = (
+                f"The client uses model worker protocol {sent}"
+                if sent is not None else
+                f"The request has no {PROTOCOL_HEADER} header (Cell-ACDC "
+                "clients before protocol 2 do not send it)"
+            )
+            return JSONResponse(status_code=426, content={"detail": (
+                f"{client}, but this worker (Cell-ACDC {cellacdc.__version__})"
+                f" uses protocol {PROTOCOL_VERSION}. Use the same Cell-ACDC "
+                "version for the client and the model environment."
+            )})
+        return await call_next(request)
 
     # ---------------------------------------------------------------- setup
 
+    @app.get("/version", response_model=VersionResponse)
+    def version():
+        """Protocol and Cell-ACDC version of this worker (see `protocol.py`).
+
+        Read by the client before it uses the worker. Answered for clients of
+        any protocol version.
+        """
+        import cellacdc
+        return VersionResponse(
+            protocol_version=PROTOCOL_VERSION,
+            cellacdc_version=str(cellacdc.__version__),
+        )
+
     @app.post("/init")
-    async def init(
-            kwargs: str = Form("{}"), data: Optional[UploadFile] = File(None)
-        ):
+    async def init(kwargs: UploadFile = File(...)):
         """Create (or re-create) the model from data sent by the client.
 
         Request (multipart form, see `client.post_init`):
-            kwargs: JSON text with the init kwargs; arrays are replaced by
-                    placeholders, DataFrames are embedded as JSON (see
-                    `payload.py`). If the JSON text is larger than a form
-                    field allows, it is in `data` and `kwargs` is a
-                    placeholder.
-            data:   optional `.npz` file with arrays and model-file bytes.
+            kwargs: the init kwargs encoded by `payload.encode`: arrays
+                    (e.g. `segm_data`), DataFrames (e.g. `input_points_df`)
+                    and uploaded files (e.g. a custom model's weights).
         Response: `{"status": "initialized"}` or HTTP 500 with the traceback.
         """
         try:
-            content = await data.read() if data is not None else None
-            decoded = payload.decode(kwargs, content)
+            decoded = await _read_kwargs(kwargs)
             await run_in_threadpool(initialize_model, decoded)
             return {"status": "initialized"}
         except Exception:
@@ -451,42 +530,35 @@ def create_app(
 
     @app.post("/segment")
     async def segment(
-            image: UploadFile = File(...), params: str = Form("{}"),
-            embedding_meta: str = Form(""),
+            image: UploadFile = File(...), params: UploadFile = File(...),
             embeddings: Optional[UploadFile] = File(None),
-            params_data: Optional[UploadFile] = File(None),
         ):
         """Run `model.segment(image, **params)` and return the labels.
 
         Request (multipart form, see `ModelClient.segment`):
             image:  the image saved with `np.save` (`.npy` bytes).
-            params: JSON text with the segment kwargs (e.g. `frame_i`).
-                    Kwargs the model's `segment` does not accept are dropped.
-            params_data: optional `.npz` attachment for array kwargs such as
-                    the promptable model's existing labels (`lab`). Arrays
-                    stay binary to avoid the multipart text-field size limit.
-            embedding_meta/embeddings: optional safe payload containing SAM
-                    embeddings from the client-side position data.
+            params: the segment kwargs (e.g. `frame_i`, or the promptable
+                    model's existing labels `lab`) encoded by
+                    `payload.encode`. Kwargs the model's `segment` does not
+                    accept are dropped.
+            embeddings: optional SAM embeddings from the client-side position
+                    data, encoded by `payload.encode_value_body`. Sent for
+                    every SAM embedding operation (possibly empty).
         Response: the labels as `.npy` bytes, or HTTP 500 with the traceback.
                   SAM embedding operations return a safe payload containing
                   both labels and updated embeddings in the body (see
                   `payload.encode_value_body`), not in response headers.
         """
         try:
-            p = await _decode_segment_params(params, params_data)
+            p = await _read_kwargs(params)
             # Read the uploaded bytes and turn them back into a numpy array
             content = await image.read()
             arr = np.load(io.BytesIO(content))
             embedding_pos_data = None
-            if isinstance(embedding_meta, str) and embedding_meta:
-                embedding_content = (
-                    await embeddings.read()
-                    if embeddings is not None and hasattr(embeddings, 'read')
-                    else None
-                )
+            if embeddings is not None:
                 frame_i = p.get('frame_i')
-                frame_embeddings = payload.decode_value(
-                    embedding_meta, embedding_content
+                frame_embeddings = payload.decode_value_body(
+                    await embeddings.read()
                 )
                 embedding_pos_data = _EmbeddingPosData(
                     model, frame_i, frame_embeddings,
@@ -498,7 +570,9 @@ def create_app(
                     ),
                 )
                 p['posData'] = embedding_pos_data
-            out = await run_in_threadpool(call_model_method, "segment", arr, **p)
+            out = await run_in_threadpool(
+                call_model_method_with_files, "segment", arr, **p
+            )
             if embedding_pos_data is not None:
                 result_data = payload.encode_value_body({
                     'labels': out,
@@ -520,20 +594,18 @@ def create_app(
             raise HTTPException(status_code=500, detail=traceback.format_exc())
 
     @app.post('/add_prompt')
-    async def add_prompt(
-            kwargs: str = Form('{}'), data: Optional[UploadFile] = File(None)
-        ):
-        """Update a promptable model with one serialized prompt."""
+    async def add_prompt(kwargs: UploadFile = File(...)):
+        """Update a promptable model with one prompt (`kwargs` encoded by
+        `payload.encode`, see `ModelClient.add_prompt`)."""
         if not hasattr(model, 'add_prompt'):
             raise HTTPException(
                 status_code=400,
                 detail=f'Model {model_name} does not support add_prompt',
             )
         try:
-            content = await data.read() if data is not None else None
-            decoded = payload.decode(kwargs, content)
+            decoded = await _read_kwargs(kwargs)
             await run_in_threadpool(
-                call_model_method, 'add_prompt', **decoded
+                call_model_method_with_files, 'add_prompt', **decoded
             )
             return {'status': 'ok'}
         except Exception:
@@ -542,8 +614,7 @@ def create_app(
 
     @app.post("/segment3DT")
     async def segment3DT(
-            image: UploadFile = File(...), params: str = Form("{}"),
-            params_data: Optional[UploadFile] = File(None),
+            image: UploadFile = File(...), params: UploadFile = File(...),
         ):
         """Like `/segment`, but for a whole time-lapse via `model.segment3DT`.
 
@@ -551,14 +622,16 @@ def create_app(
         """
         if not hasattr(model, "segment3DT"):
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=f"Model {model_name} does not support segment3DT"
             )
         try:
-            p = await _decode_segment_params(params, params_data)
+            p = await _read_kwargs(params)
             content = await image.read()
             arr = np.load(io.BytesIO(content))
-            out = await run_in_threadpool(call_model_method, "segment3DT", arr, **p)
+            out = await run_in_threadpool(
+                call_model_method_with_files, "segment3DT", arr, **p
+            )
             buf = io.BytesIO()
             np.save(buf, out)
             return Response(
@@ -651,10 +724,9 @@ def create_app(
         if not _transition_job(job_id, "running", progress=0.1):
             return
         try:
-            if is_3dt:
-                out = call_model_method("segment3DT", arr, **params)
-            else:
-                out = call_model_method("segment", arr, **params)
+            out = call_model_method_with_files(
+                "segment3DT" if is_3dt else "segment", arr, **params
+            )
         except Exception:
             import traceback
             _transition_job(job_id, "failed", error=traceback.format_exc())
@@ -663,17 +735,20 @@ def create_app(
 
     @app.post("/jobs/segment")
     async def submit_job(
-            image: UploadFile = File(...), params: str = Form("{}"),
-            params_data: Optional[UploadFile] = File(None),
+            image: UploadFile = File(...), params: UploadFile = File(...),
         ):
         """Start segmenting in the background (same request as `/segment`).
 
         Response (JSON): `{"job_id": "<id>"}`, returned immediately.
         """
         job_id = uuid.uuid4().hex
-        p = await _decode_segment_params(params, params_data)
-        content = await image.read()
-        arr = np.load(io.BytesIO(content))
+        try:
+            p = await _read_kwargs(params)
+            content = await image.read()
+            arr = np.load(io.BytesIO(content))
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
         new_job = {
             "status": "pending",
             "progress": 0.0,

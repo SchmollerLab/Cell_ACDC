@@ -2,12 +2,13 @@ import io
 import json
 import os
 import sys
+import zipfile
 import numpy as np
 import pytest
 import requests
 
 from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
-from cellacdc.service.client import LocalBackend, ModelClient
+from cellacdc.service.client import LocalBackend, ModelClient, RemoteBackend
 from cellacdc import cli, myutils_models
 
 
@@ -1406,6 +1407,12 @@ def test_required_env_cancel_and_custom_model_path(monkeypatch):
     assert environment.ensure_required_env("thresholding", {}, None)
 
 
+def _payload_json(body):
+    """The JSON part of an attachment encoded by `payload.encode`."""
+    size = int.from_bytes(body[:8], 'big')
+    return json.loads(body[8:8 + size].decode('utf-8'))
+
+
 def test_init_payload_roundtrip():
     import pandas as pd
     from cellacdc.service import payload
@@ -1413,14 +1420,178 @@ def test_init_payload_roundtrip():
     segm = np.arange(12, dtype=np.uint32).reshape(3, 4)
     df = pd.DataFrame({'x': [1, 2], 'y': [3, 4], 'id': [1, 0]})
     kwargs = {'segm_data': segm, 'input_points_df': df, 'gpu': False}
-    assert payload.needs_payload(kwargs)
-    assert not payload.needs_payload({'gpu': False})
 
-    kwargs_json, data = payload.encode(kwargs)
-    decoded = payload.decode(kwargs_json, data)
+    body = payload.encode(kwargs)
+    assert isinstance(body, bytes)
+    # The array is in the `.npz` part, not in the JSON
+    assert not isinstance(_payload_json(body)['segm_data'], list)
+    decoded = payload.decode(body)
     np.testing.assert_array_equal(decoded['segm_data'], segm)
+    assert decoded['segm_data'].dtype == segm.dtype
     pd.testing.assert_frame_equal(decoded['input_points_df'], df)
     assert decoded['gpu'] is False
+
+    # Without arrays or files: only the JSON, no `.npz` part
+    body = payload.encode({'gpu': False})
+    assert len(body) == 8 + len(json.dumps({'gpu': False}).encode('utf-8'))
+    assert payload.decode(body) == {'gpu': False}
+
+
+def test_payload_uploads_files_on_disk(tmp_path):
+    """Every argument that is the path (str or path-like) of an existing file
+    is uploaded: the worker receives a `ModelFile`, never the client's path.
+    Other strings (folders, missing files, '' and 'None') are sent as they
+    are.
+    """
+    import pandas as pd
+    from cellacdc.service import payload
+
+    path = tmp_path / 'FUCCI (1).txt'
+    path.write_bytes(b'\x00custom model\xff')
+    points = tmp_path / 'points.csv'
+    points.write_bytes(b'x,y\n1,2\n')
+    folder = tmp_path / 'weights folder'
+    folder.mkdir()
+    segm = np.arange(6, dtype=np.uint16).reshape(2, 3)
+    df = pd.DataFrame({'x': [1, 2], 'y': [3, 4]})
+    kwargs = {
+        'model_path': str(path), 'points_path': points, 'label': str(path),
+        'segm_data': segm, 'input_points_df': df,
+        'folder': str(folder), 'missing': str(tmp_path / 'missing.pt'),
+        'denoise_model_path': 'None', 'empty_path': '', 'unset_path': None,
+        'model_type': 'cyto3', 'diameter': 30.5,
+    }
+    for key in ('model_path', 'points_path'):
+        assert payload.is_file_path(kwargs[key])
+    for key in ('folder', 'missing', 'denoise_model_path', 'empty_path',
+                'unset_path', 'model_type', 'diameter'):
+        assert not payload.is_file_path(kwargs[key])
+
+    body = payload.encode(kwargs)
+    meta = _payload_json(body)
+    assert meta['model_path']['name'] == path.name
+    assert meta['points_path']['name'] == points.name
+    # The client's paths of uploaded files are not sent
+    for client_path in (path, points):
+        for text in (str(client_path), json.dumps(str(client_path))[1:-1]):
+            assert text.encode('utf-8') not in body
+
+    decoded = payload.decode(body)
+    assert set(decoded) == set(kwargs)
+    model_file = payload.ModelFile(path.name, path.read_bytes())
+    assert decoded['model_path'] == model_file
+    assert decoded['label'] == model_file
+    assert decoded['points_path'] == payload.ModelFile(
+        points.name, points.read_bytes()
+    )
+    np.testing.assert_array_equal(decoded['segm_data'], segm)
+    assert decoded['segm_data'].dtype == np.uint16
+    pd.testing.assert_frame_equal(decoded['input_points_df'], df)
+    for key in ('folder', 'missing', 'denoise_model_path', 'empty_path',
+                'model_type', 'diameter'):
+        assert decoded[key] == kwargs[key]
+        assert type(decoded[key]) is type(kwargs[key])
+    assert decoded['unset_path'] is None
+    # The client's arguments are not modified
+    assert kwargs['model_path'] == str(path)
+    assert kwargs['points_path'] == points
+
+
+@pytest.mark.xfail(
+    strict=True, raises=TypeError,
+    reason=(
+        'BUG (minor, also before protocol 2): payload.encode sends path-like '
+        'values that are not existing files unchanged to json.dumps, which '
+        'raises TypeError instead of sending them as strings like str paths'
+    ),
+)
+@pytest.mark.parametrize('name', ['folder', 'missing.pt'])
+def test_payload_sends_other_path_like_values_as_strings(tmp_path, name):
+    from cellacdc.service import payload
+
+    (tmp_path / 'folder').mkdir()
+    value = tmp_path / name
+    decoded = payload.decode(payload.encode({'path': value}))
+    assert decoded == {'path': str(value)}
+
+
+def test_payload_kwarg_names_never_collide(tmp_path):
+    """The `.npz` keys are generated, never kwarg names: kwargs named like
+    internal keys do not overwrite each other."""
+    from cellacdc.service import payload
+
+    first = tmp_path / 'first.bin'
+    first.write_bytes(b'first')
+    second = tmp_path / 'second.bin'
+    second.write_bytes(b'second')
+    kwargs = {
+        'array_0': np.array([1, 2], dtype=np.int16),
+        'file_0': str(second),
+        'array_1': np.array([3.5]),
+        'file_1': first,
+        'file_2': np.array([7], dtype=np.uint8),
+        'array_2': str(first),
+        '__acdc_json__': 'json-like name',
+        '__acdc_array__': 'array_0',
+        '__acdc_file__': 'file_0',
+        '__acdc_dataframe__': 1,
+        'name': 'first.bin',
+    }
+    decoded = payload.decode(payload.encode(kwargs))
+
+    assert set(decoded) == set(kwargs)
+    np.testing.assert_array_equal(decoded['array_0'], [1, 2])
+    assert decoded['array_0'].dtype == np.int16
+    np.testing.assert_array_equal(decoded['array_1'], [3.5])
+    np.testing.assert_array_equal(decoded['file_2'], [7])
+    assert decoded['file_0'] == payload.ModelFile('second.bin', b'second')
+    assert decoded['file_1'] == payload.ModelFile('first.bin', b'first')
+    assert decoded['array_2'] == payload.ModelFile('first.bin', b'first')
+    for key in ('__acdc_json__', '__acdc_array__', '__acdc_file__',
+                '__acdc_dataframe__', 'name'):
+        assert decoded[key] == kwargs[key]
+
+
+@pytest.mark.parametrize('text', ['[1, 2]', '"text"', 'null', '3'])
+def test_payload_decode_rejects_non_object_json(text):
+    from cellacdc.service import payload
+
+    data = text.encode('utf-8')
+    with pytest.raises(ValueError, match='JSON object'):
+        payload.decode(len(data).to_bytes(8, 'big') + data)
+
+
+@pytest.mark.parametrize('body', [
+    b'', b'\x00' * 7, (100).to_bytes(8, 'big') + b'{}',
+    (3).to_bytes(8, 'big') + b'{"a',
+])
+def test_payload_decode_rejects_truncated_body(body):
+    from cellacdc.service import payload
+
+    with pytest.raises(ValueError):
+        payload.decode(body)
+    if len(body) < 8 or int.from_bytes(body[:8], 'big') > len(body) - 8:
+        with pytest.raises(ValueError, match='Truncated payload'):
+            payload.decode(body)
+
+
+@pytest.mark.xfail(
+    strict=True, raises=(zipfile.BadZipFile, KeyError),
+    reason=(
+        'BUG (minor): payload.decode raises zipfile.BadZipFile (truncated '
+        '.npz part) or KeyError (.npz part missing) instead of ValueError'
+    ),
+)
+@pytest.mark.parametrize('cut', ['npz_end', 'whole_npz'])
+def test_payload_decode_rejects_truncated_npz(cut):
+    from cellacdc.service import payload
+
+    body = payload.encode({'segm_data': np.arange(100)})
+    json_end = 8 + int.from_bytes(body[:8], 'big')
+    assert len(body) > json_end + 10
+    truncated = body[:-10] if cut == 'npz_end' else body[:json_end]
+    with pytest.raises(ValueError):
+        payload.decode(truncated)
 
 
 def test_nested_array_payload_roundtrip():
@@ -1484,60 +1655,53 @@ def _points_df(num_rows):
     })
 
 
+_FORM_FIELD_LIMIT = 1024 * 1024  # Starlette's limit for one form field
+
+
 @pytest.mark.parametrize('with_array', [False, True])
-def test_payload_moves_large_json_to_attachment(with_array):
-    """The worker limits each form field to 1 MiB, so JSON text larger than
-    `max_text_size` (e.g. a large table of point prompts) is sent in the
-    `.npz` attachment. Smaller JSON text is sent unchanged.
+def test_payload_keeps_large_json_in_one_attachment(with_array):
+    """The worker (Starlette) limits each form field to 1 MiB, so all
+    arguments are sent in one attachment, which has no size limit: JSON far
+    larger than a form field (e.g. a large table of point prompts) is sent
+    as it is, next to the `.npz` part with the arrays.
     """
     import pandas as pd
     from cellacdc.service import payload
 
-    assert payload.MAX_FORM_FIELD_SIZE == 1024 * 1024
-    kwargs = {'input_points_df': _points_df(100), 'gpu': False}
+    kwargs = {'input_points_df': _points_df(200_000), 'gpu': False}
     if with_array:
         kwargs['segm_data'] = np.arange(6, dtype=np.uint32).reshape(2, 3)
-    text, _ = payload.encode(kwargs, max_text_size=None)
-    size = len(text.encode('utf-8'))
+    body = payload.encode(kwargs)
+    json_size = int.from_bytes(body[:8], 'big')
+    assert json_size > 4 * _FORM_FIELD_LIMIT
+    assert isinstance(_payload_json(body), dict)
+    # The `.npz` part only holds arrays (and files)
+    assert (len(body) > 8 + json_size) == with_array
 
-    # Up to `max_text_size`: the same JSON text as without a limit
-    inline_text, inline_data = payload.encode(kwargs, max_text_size=size)
-    assert inline_text == text
-    assert isinstance(json.loads(inline_text), dict)
-    assert (inline_data is not None) == with_array
-
-    # Larger: a placeholder that is not a dict, so that older workers fail
-    # to decode it instead of ignoring the kwargs
-    moved_text, moved_data = payload.encode(kwargs, max_text_size=size - 1)
-    assert len(moved_text) < 100
-    assert not isinstance(json.loads(moved_text), dict)
-    assert moved_data is not None
-
-    for encoded in ((inline_text, inline_data), (moved_text, moved_data)):
-        decoded = payload.decode(*encoded)
-        pd.testing.assert_frame_equal(
-            decoded['input_points_df'], kwargs['input_points_df']
-        )
-        assert decoded['gpu'] is False
-        if with_array:
-            np.testing.assert_array_equal(
-                decoded['segm_data'], kwargs['segm_data']
-            )
+    decoded = payload.decode(body)
+    pd.testing.assert_frame_equal(
+        decoded['input_points_df'], kwargs['input_points_df']
+    )
+    assert decoded['gpu'] is False
+    if with_array:
+        np.testing.assert_array_equal(decoded['segm_data'], kwargs['segm_data'])
+        assert decoded['segm_data'].dtype == np.uint32
 
 
-def test_value_payload_moves_large_json_to_attachment(tmp_path):
-    import zipfile
+def test_value_payload_keeps_large_json_inline(tmp_path):
     from cellacdc import sam_embeddings
     from cellacdc.service import payload
 
-    # By default the text is never moved, also when it is larger than a form
-    # field: SAM embedding files and worker responses keep their format
-    big = {'text': 'x'*payload.MAX_FORM_FIELD_SIZE}
+    # The text is never moved, also when it is larger than a form field: SAM
+    # embedding files and worker responses keep their format
+    big = {'text': 'x' * (2 * _FORM_FIELD_LIMIT)}
     big_text, big_data = payload.encode_value(big)
     assert big_data is None
     assert payload.decode_value(big_text) == big
     body = payload.encode_value_body(big)
+    assert int.from_bytes(body[:8], 'big') == len(big_text.encode('utf-8'))
     assert body[8:] == big_text.encode('utf-8')
+    assert payload.decode_value_body(body) == big
     sam_embeddings.save(big, tmp_path / 'embeddings.zip')
     with zipfile.ZipFile(tmp_path / 'embeddings.zip') as archive:
         assert archive.namelist() == [sam_embeddings._METADATA]
@@ -1548,21 +1712,29 @@ def test_value_payload_moves_large_json_to_attachment(tmp_path):
         for z in range(50)
     }
     text, data = payload.encode_value(value)
-    size = len(text.encode('utf-8'))
-    # Up to `max_text_size`: the same text
-    assert payload.encode_value(value, max_text_size=size) == (text, data)
+    assert data is not None
+    body = payload.encode_value_body(value)
+    assert body[8:8 + len(text.encode('utf-8'))] == text.encode('utf-8')
+    for decoded in (
+            payload.decode_value(text, data), payload.decode_value_body(body),
+        ):
+        assert set(decoded) == set(value)
+        for z, embedding in decoded.items():
+            assert embedding['original_size'] == (2, 2)
+            np.testing.assert_array_equal(
+                embedding['features'], value[z]['features']
+            )
 
-    moved_text, moved_data = payload.encode_value(value, max_text_size=size - 1)
-    assert len(moved_text) < 100
-    decoded = payload.decode_value(moved_text, moved_data)
-    assert set(decoded) == set(value)
-    for z, embedding in decoded.items():
-        assert embedding['original_size'] == (2, 2)
-        np.testing.assert_array_equal(embedding['features'], value[z]['features'])
-
-    # A value that looks like the placeholder is decoded as itself
-    lookalike = [payload._JSON_IN_ATTACHMENT, payload._JSON_KEY]
-    assert payload.decode_value(*payload.encode_value(lookalike)) == lookalike
+    # Values that look like the internal markers are decoded as themselves
+    for lookalike in (
+            ['__acdc_array__', '__acdc_dict__', '__acdc_tuple__'],
+            {'__acdc_array__': 'array_0'}, {'__acdc_dict__': []},
+            {'__acdc_tuple__': [1, 2]}, {'__acdc_file__': 'file_0'},
+        ):
+        assert payload.decode_value(*payload.encode_value(lookalike)) == lookalike
+        assert payload.decode_value_body(
+            payload.encode_value_body(lookalike)
+        ) == lookalike
 
 
 def _serve_app(app):
@@ -1592,10 +1764,13 @@ def _serve_app(app):
     raise RuntimeError('The test server did not start')
 
 
-def test_worker_accepts_large_json_form_fields(monkeypatch):
-    """Over real HTTP: the worker (Starlette) rejects form fields larger than
-    1 MiB. A table of point prompts for SAM (`input_points_df`) with ~28k
-    rows failed with "Field exceeded maximum size of 1024KB." at model init.
+def test_worker_accepts_arguments_larger_than_form_fields(monkeypatch):
+    """Over real HTTP (uvicorn and the real client): the worker (Starlette)
+    rejects form fields larger than 1 MiB. A table of point prompts for SAM
+    (`input_points_df`) with ~28k rows failed with "Field exceeded maximum
+    size of 1024KB." at model init. All arguments are attachments now, so
+    there is no size limit for /init (with and without arrays), /segment,
+    /add_prompt and SAM embeddings.
     """
     import types
     from cellacdc import myutils_models
@@ -1605,58 +1780,346 @@ def test_worker_accepts_large_json_form_fields(monkeypatch):
     received = {}
 
     class Model:
-        def __init__(self, input_points_df=None, text=''):
-            received['init'] = (input_points_df, text)
+        def __init__(self, input_points_df=None, text='', mask=None):
+            received['init'] = (input_points_df, text, mask)
 
         def segment(self, image, points_df=None, posData=None):
             received['segment'] = points_df
             if posData is not None:
                 received['embeddings'] = posData.frame_embeddings
-            return np.zeros(image.shape, np.uint32)
+            return np.ones(image.shape, np.uint32)
 
         def add_prompt(self, prompt, prompt_id, image, points_df=None):
-            received['add_prompt'] = points_df
+            received['add_prompt'] = (prompt, prompt_id, image, points_df)
 
     monkeypatch.setattr(
         myutils_models, 'import_segment_module',
         lambda name: types.SimpleNamespace(Model=Model),
     )
+    df = _points_df(200_000)
+    assert len(df.to_json(orient='split')) > 4 * _FORM_FIELD_LIMIT
+    mask = np.arange(12, dtype=np.uint16).reshape(3, 4)
     url, stop = _serve_app(worker.create_app('fake', defer_init=True))
     try:
-        # Without arrays: the JSON text (0.7 MiB) was URL-encoded (> 1 MiB)
-        df = _points_df(30_000)
+        # /init without arrays: only the JSON in the attachment
         post_init(url, {'input_points_df': df}, timeout=60)
         assert received['init'][0].equals(df)
+        assert received['init'][2] is None
 
-        # JSON text larger than one form field
-        df = _points_df(60_000)
-        assert len(df.to_json(orient='split')) > payload.MAX_FORM_FIELD_SIZE
-        post_init(url, {'input_points_df': df}, timeout=60)
+        # /init with arrays: JSON and `.npz` in the attachment
+        post_init(url, {'input_points_df': df, 'mask': mask}, timeout=60)
         assert received['init'][0].equals(df)
+        np.testing.assert_array_equal(received['init'][2], mask)
+        assert received['init'][2].dtype == np.uint16
 
-        # JSON text of exactly the maximum size is sent as a form field
-        padding = payload.MAX_FORM_FIELD_SIZE - len(json.dumps({'text': ''}))
-        for text in ('x'*padding, 'x'*(padding + 1)):
-            post_init(url, {'text': text}, timeout=60)
-            assert received['init'][1] == text
+        # A plain string larger than one form field
+        text = 'x' * (2 * _FORM_FIELD_LIMIT)
+        post_init(url, {'text': text}, timeout=60)
+        assert received['init'][1] == text
 
         client = ModelClient(url, timeout=60)
         image = np.zeros((4, 4), np.uint8)
-        client.segment(image, points_df=df)
+        labels = client.segment(image, points_df=df)
+        np.testing.assert_array_equal(labels, np.ones((4, 4)))
         assert received['segment'].equals(df)
 
         client.add_prompt(prompt=(0, 1, 1), prompt_id=1, image=image, points_df=df)
-        assert received['add_prompt'].equals(df)
+        prompt, prompt_id, prompt_image, prompt_df = received['add_prompt']
+        assert prompt == [0, 1, 1] and prompt_id == 1
+        np.testing.assert_array_equal(prompt_image, image)
+        assert prompt_df.equals(df)
 
-        pos_data = types.SimpleNamespace(sam_embeddings={0: {
-            z: {'original_size': (2, 2), 'features': np.zeros((1, 2))}
+        embeddings = {
+            z: {'original_size': (2, 2), 'features': np.full((1, 2), z)}
             for z in range(20_000)
-        }})
-        client.segment(
+        }
+        embeddings_json, _ = payload.encode_value(embeddings)
+        assert len(embeddings_json) > _FORM_FIELD_LIMIT
+        pos_data = types.SimpleNamespace(sam_embeddings={0: dict(embeddings)})
+        labels = client.segment(
             image, frame_i=0, posData=pos_data, use_loaded_embeddings=True
         )
+        np.testing.assert_array_equal(labels, np.ones((4, 4)))
         assert len(received['embeddings']) == 20_000
+        assert received['embeddings'][19_999]['original_size'] == (2, 2)
+        np.testing.assert_array_equal(
+            received['embeddings'][19_999]['features'], [[19_999, 19_999]]
+        )
+        # The (large) response with the embeddings reaches the client too
+        assert set(pos_data.sam_embeddings[0]) == set(embeddings)
         client.close()
+    finally:
+        stop()
+
+
+def test_worker_rejects_clients_of_other_protocol_versions(monkeypatch):
+    """Over real HTTP: requests without the client's protocol version (e.g.
+    from an older Cell-ACDC) or with another version are answered with
+    HTTP 426, except the endpoints for checking the version, liveness,
+    shutdown and FastAPI's documentation."""
+    import threading
+    import cellacdc
+    from cellacdc import myutils_models
+    from cellacdc.service import protocol, worker
+
+    version = protocol.PROTOCOL_VERSION
+    killed = threading.Event()
+    # /shutdown stops the worker process after answering: not this one
+    monkeypatch.setattr(worker.os, 'kill', lambda pid, sig: killed.set())
+    monkeypatch.setattr(
+        myutils_models, 'import_segment_module',
+        lambda name: _fake_segment_module(requires_segm=False),
+    )
+    url, stop = _serve_app(worker.create_app('fake', defer_init=True))
+    try:
+        versioned = [
+            ('GET', '/info'), ('GET', '/spec'), ('POST', '/init'),
+            ('POST', '/segment'), ('POST', '/segment3DT'),
+            ('POST', '/add_prompt'), ('POST', '/second_ch_img_to_stack'),
+            ('POST', '/predictCcaState'), ('POST', '/jobs/segment'),
+            ('GET', '/jobs/abc'), ('GET', '/jobs/abc/result'),
+            ('DELETE', '/jobs/abc'),
+        ]
+        for sent in (None, '1', str(version + 1), 'abc'):
+            headers = {} if sent is None else {protocol.PROTOCOL_HEADER: sent}
+            for method, path in versioned:
+                res = requests.request(
+                    method, f'{url}{path}', headers=headers, timeout=10
+                )
+                assert res.status_code == 426, (sent, path, res.text)
+                detail = res.json()['detail']
+                assert f'client uses model worker protocol {sent or 1}' in detail
+                assert f'uses protocol {version}' in detail
+                assert str(cellacdc.__version__) in detail
+
+        # With the client's version, requests reach the endpoints
+        headers = protocol.headers()
+        assert headers == {protocol.PROTOCOL_HEADER: str(version)}
+        res = requests.get(f'{url}/spec', headers=headers, timeout=10)
+        assert res.status_code == 200 and 'init_params' in res.json()
+        res = requests.get(f'{url}/info', headers=headers, timeout=10)
+        assert res.status_code == 503  # not initialized, but not rejected
+
+        # Unversioned endpoints answer clients of any version
+        for headers in ({}, {protocol.PROTOCOL_HEADER: '1'}, protocol.headers()):
+            res = requests.get(f'{url}/version', headers=headers, timeout=10)
+            assert res.status_code == 200
+            assert res.json() == {
+                'protocol_version': version,
+                'cellacdc_version': str(cellacdc.__version__),
+            }
+            res = requests.get(f'{url}/health', headers=headers, timeout=10)
+            assert res.status_code == 200
+            assert res.json() == {'status': 'ok', 'model': 'fake'}
+            for path in ('/docs', '/openapi.json'):
+                res = requests.get(f'{url}{path}', headers=headers, timeout=10)
+                assert res.status_code == 200, path
+        res = requests.post(f'{url}/shutdown', timeout=10)
+        assert res.status_code == 200
+        assert res.json() == {'status': 'shutting down'}
+        assert killed.wait(5)
+    finally:
+        stop()
+
+
+def _version_session(status, data=None):
+    """A session whose `get` answers `GET /version` with `status`/`data`."""
+    from types import SimpleNamespace
+
+    requested = []
+
+    def get(url, timeout):
+        requested.append((url, timeout))
+        res = requests.Response()
+        res.url, res.status_code = url, status
+        res._content = json.dumps(data).encode()
+        return res
+
+    return SimpleNamespace(get=get, requested=requested)
+
+
+def test_check_worker_version():
+    from cellacdc.service import client as client_module, protocol
+    from cellacdc.service.schema import VersionResponse
+
+    version = protocol.PROTOCOL_VERSION
+    WorkerVersionError = client_module.WorkerVersionError
+
+    # Same protocol
+    session = _version_session(200, {
+        'protocol_version': version, 'cellacdc_version': '1.2.3',
+    })
+    result = client_module.check_worker_version(
+        'http://worker/', timeout=4, session=session
+    )
+    assert isinstance(result, VersionResponse)
+    assert result.protocol_version == version
+    assert result.cellacdc_version == '1.2.3'
+    assert session.requested == [('http://worker/version', 4)]
+
+    # Protocol 1 workers have no /version endpoint
+    session = _version_session(404, {'detail': 'Not Found'})
+    with pytest.raises(WorkerVersionError) as raised:
+        client_module.check_worker_version('http://worker', session=session)
+    assert isinstance(raised.value, RuntimeError)
+    assert raised.value.worker_protocol == 1
+    assert raised.value.worker_version is None
+    assert raised.value.base_url == 'http://worker'
+    assert 'an older Cell-ACDC (protocol 1)' in str(raised.value)
+    assert f'uses protocol {version}' in str(raised.value)
+
+    # Another protocol
+    session = _version_session(200, {
+        'protocol_version': version + 1, 'cellacdc_version': '9.0',
+    })
+    with pytest.raises(WorkerVersionError) as raised:
+        client_module.check_worker_version('http://worker', session=session)
+    assert raised.value.worker_protocol == version + 1
+    assert raised.value.worker_version == '9.0'
+    assert f'Cell-ACDC 9.0 (protocol {version + 1})' in str(raised.value)
+
+    # Other errors are not version mismatches
+    session = _version_session(500, {'detail': 'worker crashed'})
+    with pytest.raises(RuntimeError, match='worker crashed') as raised:
+        client_module.check_worker_version('http://worker', session=session)
+    assert not isinstance(raised.value, WorkerVersionError)
+
+
+def _recording_worker_app(requested, worker_protocol=None):
+    """A minimal worker app with the protocol `worker_protocol` (None: the
+    client's; 1: no `/version` endpoint). Records each request as
+    `(method, path, protocol header)` in `requested`, and the parts sent to
+    `/init` in `app.state.init_parts` (`(kind, decoded value)`)."""
+    from fastapi import FastAPI, Request
+    from cellacdc.service import payload, protocol
+
+    app = FastAPI()
+    app.state.init_parts = None
+
+    @app.middleware('http')
+    async def record(request, call_next):
+        requested.append((
+            request.method, request.url.path,
+            request.headers.get(protocol.PROTOCOL_HEADER),
+        ))
+        return await call_next(request)
+
+    if worker_protocol != 1:
+        @app.get('/version')
+        def version():
+            return {
+                'protocol_version': worker_protocol or protocol.PROTOCOL_VERSION,
+                'cellacdc_version': 'test-version',
+            }
+
+    @app.post('/init')
+    async def init(request: Request):
+        parts = {}
+        for key, value in (await request.form()).multi_items():
+            if isinstance(value, str):
+                parts[key] = ('field', value)
+            else:
+                parts[key] = ('file', payload.decode(await value.read()))
+        app.state.init_parts = parts
+        return {'status': 'initialized'}
+
+    @app.get('/info')
+    def info():
+        return {'name': 'fake'}
+
+    return app
+
+
+@pytest.mark.parametrize('worker_protocol', [None, 1, 3])
+def test_model_client_checks_worker_version_before_use(worker_protocol):
+    from cellacdc.service import protocol
+    from cellacdc.service.client import WorkerVersionError
+
+    assert worker_protocol != protocol.PROTOCOL_VERSION
+    version = str(protocol.PROTOCOL_VERSION)
+    requested = []
+    url, stop = _serve_app(_recording_worker_app(requested, worker_protocol))
+    try:
+        if worker_protocol is None:
+            client = ModelClient(url)
+            assert client.worker_version.protocol_version == int(version)
+            assert client.worker_version.cellacdc_version == 'test-version'
+            assert client.model_name == 'fake'
+            # Version first; every request with the client's version
+            assert requested == [
+                ('GET', '/version', version), ('GET', '/info', version),
+            ]
+            client.close()
+        else:
+            with pytest.raises(WorkerVersionError) as raised:
+                ModelClient(url)
+            assert raised.value.worker_protocol == worker_protocol
+            # The worker is not used
+            assert requested == [('GET', '/version', version)]
+    finally:
+        stop()
+
+
+def test_post_init_sends_arguments_as_one_attachment(tmp_path):
+    """`post_init` sends one attachment with the protocol version, and does
+    not read the model's argument specs (`/spec`) first."""
+    from cellacdc.service import payload, protocol
+    from cellacdc.service.client import post_init
+
+    weights = tmp_path / 'weights.pt'
+    weights.write_bytes(b'weights')
+    requested = []
+    app = _recording_worker_app(requested)
+    url, stop = _serve_app(app)
+    try:
+        post_init(url, {
+            'diameter': 30, 'model_path': str(weights),
+            'segm_data': np.ones((2, 2), dtype=np.uint8),
+        }, timeout=30)
+    finally:
+        stop()
+    assert requested == [('POST', '/init', str(protocol.PROTOCOL_VERSION))]
+    assert set(app.state.init_parts) == {'kwargs'}
+    kind, kwargs = app.state.init_parts['kwargs']
+    assert kind == 'file'
+    assert set(kwargs) == {'diameter', 'model_path', 'segm_data'}
+    assert kwargs['diameter'] == 30
+    assert kwargs['model_path'] == payload.ModelFile('weights.pt', b'weights')
+    np.testing.assert_array_equal(kwargs['segm_data'], np.ones((2, 2)))
+
+
+@pytest.mark.parametrize('worker_protocol', [None, 1, 3])
+def test_remote_backend_checks_worker_version_before_init(worker_protocol):
+    from cellacdc.service import protocol
+    from cellacdc.service.client import WorkerVersionError
+
+    version = str(protocol.PROTOCOL_VERSION)
+    requested = []
+    app = _recording_worker_app(requested, worker_protocol)
+    url, stop = _serve_app(app)
+    try:
+        backend = RemoteBackend(url)
+        if worker_protocol is None:
+            client = backend.get_client(init_model_kwargs={'diameter': 30})
+            assert backend.client is client
+            assert app.state.init_parts['kwargs'] == ('file', {'diameter': 30})
+            assert requested == [
+                ('GET', '/version', None), ('POST', '/init', version),
+                ('GET', '/version', version), ('GET', '/info', version),
+            ]
+            backend.stop()
+        else:
+            with pytest.raises(
+                    RuntimeError,
+                    match='Install the same Cell-ACDC version on the server',
+                ) as raised:
+                backend.get_client(init_model_kwargs={'diameter': 30})
+            assert isinstance(raised.value.__cause__, WorkerVersionError)
+            assert raised.value.__cause__.worker_protocol == worker_protocol
+            # The model is not initialized on the incompatible worker
+            assert app.state.init_parts is None
+            assert requested == [('GET', '/version', None)]
+            assert backend.client is None
     finally:
         stop()
 
@@ -1748,6 +2211,315 @@ def test_unreproducible_development_build_fails(monkeypatch):
         environment._installed_cellacdc_spec()
 
 
+def test_runtime_mismatch_detects_other_cellacdc(monkeypatch, tmp_path):
+    from unittest.mock import Mock
+    from cellacdc.service import environment, protocol
+
+    version = protocol.PROTOCOL_VERSION
+    checkout = tmp_path / 'Cell_ACDC'
+    other = str(tmp_path / 'env' / 'Lib' / 'site-packages' / 'cellacdc' / '__init__.py')
+
+    def identity(**changes):
+        return dict({
+            'protocol': version, 'version': '1.7.0',
+            'file': str(checkout / 'cellacdc' / '__init__.py'),
+            'prefix': str(tmp_path / 'env'),
+        }, **changes)
+
+    assert 'cannot be imported' in environment._runtime_mismatch(None)
+
+    # Source checkout: the environment must import this checkout
+    monkeypatch.setattr(
+        environment, '_get_cellacdc_source_root', lambda: str(checkout)
+    )
+    monkeypatch.setattr(
+        environment, '_installed_cellacdc_version',
+        Mock(side_effect=AssertionError('No version check for checkouts')),
+    )
+    assert environment._runtime_mismatch(identity()) is None
+    assert environment._runtime_mismatch(identity(version='0.1')) is None
+    reason = environment._runtime_mismatch(identity(file=other))
+    assert 'not from this source checkout' in reason
+    assert other in reason and str(checkout) in reason
+    # Cell-ACDC versions without `service.protocol` use protocol 1
+    reason = environment._runtime_mismatch(identity(protocol=1))
+    assert f'protocol 1, but this Cell-ACDC uses protocol {version}' in reason
+
+    # Installed package: the environment must have the same version
+    monkeypatch.setattr(environment, '_get_cellacdc_source_root', lambda: None)
+    monkeypatch.setattr(environment, '_installed_cellacdc_version', lambda: '1.7.0')
+    assert environment._runtime_mismatch(identity(file=other)) is None
+    reason = environment._runtime_mismatch(identity(file=other, version='1.6.5'))
+    assert 'Cell-ACDC 1.6.5' in reason and 'Cell-ACDC 1.7.0' in reason
+    reason = environment._runtime_mismatch(identity(file=other, version=None))
+    assert 'Cell-ACDC None' in reason
+    reason = environment._runtime_mismatch(identity(file=other, protocol=1))
+    assert 'protocol 1' in reason
+
+
+def test_parse_runtime_identity():
+    from cellacdc.service import environment
+
+    marker = environment._RUNTIME_MARKER
+    identity = {'protocol': 2, 'version': '1.7.0', 'file': 'f', 'prefix': 'p'}
+    output = f'[model startup] x\n{marker}{json.dumps(identity)}\n__ACDC_ENV_OK__\n'
+    assert environment._parse_runtime_identity(output) == identity
+    assert environment._parse_runtime_identity('__ACDC_ENV_OK__\n') is None
+    assert environment._parse_runtime_identity(f'{marker}{{broken\n') is None
+
+
+def test_runtime_identity_of_old_cellacdc_is_protocol_1(tmp_path):
+    """A Cell-ACDC without `cellacdc.service.protocol` (protocol 1) is
+    identified as such by the code run in model environments."""
+    import subprocess
+    from cellacdc.service import environment
+
+    package = tmp_path / 'cellacdc'
+    (package / 'service').mkdir(parents=True)
+    (package / '__init__.py').write_text('')
+    (package / 'service' / '__init__.py').write_text('')
+    result = subprocess.run(
+        [sys.executable, '-c', environment._RUNTIME_IDENTITY_CODE],
+        cwd=str(tmp_path), capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    identity = environment._parse_runtime_identity(result.stdout)
+    assert identity['protocol'] == 1
+    assert os.path.normcase(identity['file']) == os.path.normcase(
+        str(package / '__init__.py')
+    )
+    assert 'protocol 1' in environment._runtime_mismatch(identity)
+
+
+def test_runtime_of_this_source_checkout_matches():
+    """Real subprocess: this interpreter imports this Cell-ACDC."""
+    import cellacdc
+    from cellacdc.service import environment, protocol
+
+    identity, imports_ok, output = environment._read_cellacdc_runtime(
+        sys.executable
+    )
+    assert imports_ok, output
+    assert identity['protocol'] == protocol.PROTOCOL_VERSION
+    assert os.path.normcase(identity['file']) == os.path.normcase(
+        os.path.abspath(cellacdc.__file__)
+    )
+    assert os.path.normcase(identity['prefix']) == os.path.normcase(sys.prefix)
+    assert environment.cellacdc_runtime_mismatch(sys.executable) is None
+
+
+@pytest.mark.parametrize('layout', [
+    ('venvs', 'Scripts', 'python.exe'),  # venv, Windows
+    ('venvs', 'bin', 'python'),  # venv, Linux/macOS
+    ('envs', 'python.exe'),  # conda, Windows
+    ('envs', 'bin', 'python'),  # conda, Linux/macOS
+])
+def test_is_managed_model_env(tmp_path, layout):
+    from cellacdc.service import environment
+
+    root, *relative = layout
+    managed = tmp_path / root / '_acdc_cellpose_v3'
+    assert environment.is_managed_model_env(str(managed.joinpath(*relative)))
+    user_env = tmp_path / root / 'my_env'
+    assert not environment.is_managed_model_env(str(user_env.joinpath(*relative)))
+    assert not environment.is_managed_model_env(
+        str((tmp_path / root / 'acdc_env').joinpath(*relative))
+    )
+    if len(relative) > 1:
+        # Only the environment's folder counts, not the folders above it
+        nested = tmp_path / '_acdc_envs' / 'my_env'
+        assert not environment.is_managed_model_env(str(nested.joinpath(*relative)))
+
+
+@pytest.mark.parametrize('mismatch, repaired', [
+    (None, None),
+    ('it has Cell-ACDC 1.6.5, but this is Cell-ACDC 1.7.0', True),
+    ('Cell-ACDC cannot be imported', False),
+])
+def test_ensure_cellacdc_cli_repairs_only_other_runtime(
+        monkeypatch, mismatch, repaired,
+    ):
+    from unittest.mock import Mock
+    from cellacdc.service import environment
+
+    check = Mock(return_value=mismatch)
+    repair = Mock(return_value=repaired)
+    monkeypatch.setattr(environment, 'cellacdc_runtime_mismatch', check)
+    monkeypatch.setattr(environment, 'repair_cellacdc_runtime', repair)
+    monkeypatch.setattr(
+        environment, 'install_cellacdc_cli',
+        Mock(side_effect=AssertionError('Only via repair_cellacdc_runtime')),
+    )
+    logger = Mock()
+
+    result = environment.ensure_cellacdc_cli('model-python', logger_func=logger)
+
+    check.assert_called_once_with('model-python')
+    if mismatch is None:
+        assert result is True
+        repair.assert_not_called()
+    else:
+        assert result is repaired
+        repair.assert_called_once_with('model-python', logger_func=logger)
+        output = '\n'.join(str(call.args[0]) for call in logger.call_args_list)
+        assert mismatch in output
+
+
+@pytest.mark.parametrize('installed, after, expected', [
+    (False, None, False), (True, None, True), (True, 'still different', False),
+])
+def test_repair_cellacdc_runtime_reinstalls_and_verifies(
+        monkeypatch, installed, after, expected,
+    ):
+    from unittest.mock import Mock
+    from cellacdc.service import environment
+
+    install = Mock(return_value=installed)
+    check = Mock(return_value=after)
+    monkeypatch.setattr(environment, 'install_cellacdc_cli', install)
+    monkeypatch.setattr(environment, 'cellacdc_runtime_mismatch', check)
+    logger = Mock()
+
+    assert environment.repair_cellacdc_runtime(
+        'model-python', logger_func=logger
+    ) is expected
+    install.assert_called_once_with(
+        'model-python', logger_func=logger, reinstall=True
+    )
+    assert check.call_count == int(installed)
+    if after is not None:
+        output = '\n'.join(str(call.args[0]) for call in logger.call_args_list)
+        assert 'still differs' in output and after in output
+
+
+@pytest.mark.parametrize('reinstall', [False, True])
+def test_install_cellacdc_cli_reinstalls_released_package(monkeypatch, reinstall):
+    from unittest.mock import Mock
+    from cellacdc.service import environment
+
+    run = Mock(return_value=0)
+    monkeypatch.setattr(environment, 'run_streaming', run)
+    monkeypatch.setattr(environment, '_get_cellacdc_source_root', lambda: None)
+    monkeypatch.setattr(
+        environment, '_installed_cellacdc_spec', lambda: 'cellacdc==1.7.0'
+    )
+    for name in ('link_cellacdc_to_env', '_uninstall_shadowing_cellacdc'):
+        monkeypatch.setattr(
+            environment, name, Mock(side_effect=AssertionError(name))
+        )
+
+    assert environment.install_cellacdc_cli(
+        'model-python', logger_func=Mock(), reinstall=reinstall
+    )
+
+    pip = ['model-python', '-m', 'pip', 'install', '--disable-pip-version-check']
+    assert run.call_count == 2
+    install = run.call_args_list[0].args[0]
+    assert install[:len(pip)] == pip and install[-1] == 'cellacdc==1.7.0'
+    expected = {'--no-deps', '--force-reinstall'} if reinstall else {'--no-deps'}
+    assert set(install[len(pip):-1]) == expected
+    # Only Cell-ACDC is reinstalled, not its runtime dependencies
+    assert run.call_args_list[1].args[0] == (
+        pip + environment.WORKER_RUNTIME_DEPENDENCIES
+    )
+
+
+def test_install_cellacdc_cli_reports_failed_package_install(monkeypatch):
+    from unittest.mock import Mock
+    from cellacdc.service import environment
+
+    run = Mock(return_value=1)
+    monkeypatch.setattr(environment, 'run_streaming', run)
+    monkeypatch.setattr(environment, '_get_cellacdc_source_root', lambda: None)
+    monkeypatch.setattr(
+        environment, '_installed_cellacdc_spec', lambda: 'cellacdc==1.7.0'
+    )
+    assert not environment.install_cellacdc_cli(
+        'model-python', logger_func=Mock(), reinstall=True
+    )
+    run.assert_called_once()
+
+
+@pytest.mark.parametrize('reinstall', [False, True])
+def test_install_cellacdc_cli_relinks_source_checkout(
+        monkeypatch, tmp_path, reinstall,
+    ):
+    from unittest.mock import Mock
+    from cellacdc.service import environment
+
+    calls = []
+    monkeypatch.setattr(
+        environment, '_get_cellacdc_source_root', lambda: str(tmp_path)
+    )
+    monkeypatch.setattr(
+        environment, '_uninstall_shadowing_cellacdc',
+        lambda python, logger: calls.append(('uninstall', python)),
+    )
+    monkeypatch.setattr(
+        environment, 'link_cellacdc_to_env',
+        lambda python, logger_func: calls.append(('link', python)) or True,
+    )
+    monkeypatch.setattr(
+        environment, 'run_streaming',
+        lambda cmd, logger: calls.append(('pip', cmd[5:])) or 0,
+    )
+    monkeypatch.setattr(
+        environment, '_installed_cellacdc_spec',
+        Mock(side_effect=AssertionError('A checkout is linked, not installed')),
+    )
+
+    assert environment.install_cellacdc_cli(
+        'model-python', logger_func=Mock(), reinstall=reinstall
+    )
+    # A copy installed in the environment would hide the linked checkout
+    assert calls == (
+        [('uninstall', 'model-python')] if reinstall else []
+    ) + [
+        ('link', 'model-python'),
+        ('pip', environment.WORKER_RUNTIME_DEPENDENCIES),
+    ]
+
+
+@pytest.mark.parametrize('imported', ['env_copy', 'other_checkout', 'this_checkout', 'none'])
+def test_uninstall_shadowing_cellacdc_removes_only_copies_in_env(
+        monkeypatch, tmp_path, imported,
+    ):
+    from unittest.mock import Mock
+    from cellacdc.service import environment, protocol
+
+    prefix = tmp_path / 'env'
+    checkout = tmp_path / 'checkout'
+    files = {
+        'env_copy': prefix / 'Lib' / 'site-packages' / 'cellacdc' / '__init__.py',
+        'other_checkout': tmp_path / 'other' / 'cellacdc' / '__init__.py',
+        'this_checkout': checkout / 'cellacdc' / '__init__.py',
+    }
+    identity = None if imported == 'none' else {
+        'protocol': protocol.PROTOCOL_VERSION, 'version': '1.7.0',
+        'file': str(files[imported]), 'prefix': str(prefix),
+    }
+    monkeypatch.setattr(
+        environment, '_get_cellacdc_source_root', lambda: str(checkout)
+    )
+    monkeypatch.setattr(
+        environment, '_read_cellacdc_runtime',
+        lambda python: (identity, True, ''),
+    )
+    run = Mock(return_value=0)
+    monkeypatch.setattr(environment, 'run_streaming', run)
+
+    environment._uninstall_shadowing_cellacdc('model-python', Mock())
+
+    if imported == 'env_copy':
+        run.assert_called_once()
+        assert run.call_args.args[0] == [
+            'model-python', '-m', 'pip', 'uninstall', '-y',
+            '--disable-pip-version-check', 'cellacdc',
+        ]
+    else:
+        run.assert_not_called()
+
+
 @pytest.mark.parametrize('automatic_save', [False, True])
 def test_model_client_preserves_null_frame_and_sam_embeddings(automatic_save):
     from unittest.mock import Mock
@@ -1774,12 +2546,17 @@ def test_model_client_preserves_null_frame_and_sam_embeddings(automatic_save):
         url = 'http://worker/segment'
 
     class Session:
-        def post(self, url, files, data, timeout):
-            posted.update(data)
+        def post(self, url, files, timeout):
+            assert url == 'http://worker/segment'
+            posted['parts'] = sorted(files)
+            posted['params'] = payload.decode(files['params'][1])
+            posted['embeddings'] = payload.decode_value_body(
+                files['embeddings'][1]
+            )
             return Response()
 
     class PosData:
-        sam_embeddings = {None: returned_embeddings}
+        sam_embeddings = {None: dict(returned_embeddings)}
         loadSamEmbeddings = Mock()
         saveSamEmbeddings = Mock()
 
@@ -1796,8 +2573,16 @@ def test_model_client_preserves_null_frame_and_sam_embeddings(automatic_save):
         save_embeddings=not automatic_save, use_loaded_embeddings=True,
     )
 
-    assert json.loads(posted['params'])['frame_i'] is None
-    assert json.loads(posted['params'])['save_embeddings'] is True
+    # Every argument is an attachment (no form fields)
+    assert posted['parts'] == ['embeddings', 'image', 'params']
+    assert posted['params']['frame_i'] is None
+    assert posted['params']['save_embeddings'] is True
+    assert posted['params']['use_loaded_embeddings'] is True
+    # The loaded embeddings of the frame are sent to the worker
+    assert set(posted['embeddings']) == {0}
+    np.testing.assert_array_equal(
+        posted['embeddings'][0]['features'], returned_embeddings[0]['features']
+    )
     pos_data.loadSamEmbeddings.assert_called_once()
     assert pos_data.saveSamEmbeddings.call_count == int(automatic_save)
     np.testing.assert_array_equal(result, labels)
@@ -1841,37 +2626,6 @@ def test_ensure_torch_build_choice_and_qt_command(monkeypatch):
         assert command == ['model python', '-m', 'pip', 'install', 'torch']
 
 
-def test_init_payload_uploads_selected_files(tmp_path):
-    from cellacdc.service import payload
-
-    path = tmp_path / 'FUCCI (1).txt'
-    path.write_bytes(b'\x00custom model\xff')
-    kwargs = {
-        'model_path': str(path), 'denoise_model_path': 'None',
-        'empty_path': '', 'unset_path': None, 'label': str(path),
-    }
-    kwargs_json, data = payload.encode(
-        kwargs,
-        file_params={'model_path', 'denoise_model_path', 'empty_path', 'unset_path'},
-    )
-    assert json.loads(kwargs_json)['model_path'] == {
-        '__acdc_file__': 'model_path', 'name': path.name,
-    }
-    decoded = payload.decode(kwargs_json, data)
-    assert decoded['model_path'] == payload.ModelFile(path.name, path.read_bytes())
-    assert decoded['denoise_model_path'] == 'None'
-    assert decoded['empty_path'] == ''
-    assert decoded['unset_path'] is None
-    assert decoded['label'] == str(path)
-    assert kwargs['model_path'] == str(path)
-
-    with pytest.raises(FileNotFoundError):
-        payload.encode(
-            {'model_path': str(tmp_path / 'missing.pt')},
-            file_params={'model_path'},
-        )
-
-
 def test_uploaded_model_files_live_until_model_is_released(monkeypatch):
     import gc
     import types
@@ -1883,9 +2637,11 @@ def test_uploaded_model_files_live_until_model_is_released(monkeypatch):
         def __init__(
                 self, model_path: os.PathLike = '',
                 denoise_model_path: os.PathLike = '',
+                config: str = '',
             ):
             self.model_path = model_path
             self.denoise_model_path = denoise_model_path
+            self.config = config
             assert Path(model_path).read_bytes() == b'model'
             assert Path(denoise_model_path).read_bytes() == b'denoiser'
 
@@ -1899,15 +2655,25 @@ def test_uploaded_model_files_live_until_model_is_released(monkeypatch):
     model = worker.instantiate_model(module, {
         'model_path': payload.ModelFile('weights.pt', b'model'),
         'denoise_model_path': payload.ModelFile('weights.pt', b'denoiser'),
+        # Not path-typed: uploaded files are accepted for every argument
+        'config': payload.ModelFile('config (1).yaml', b'cfg'),
     })
     model_path = Path(model.model_path)
     denoise_path = Path(model.denoise_model_path)
+    config_path = Path(model.config)
     assert model_path != denoise_path
+    assert config_path.name == 'config (1).yaml'
+    assert config_path.read_bytes() == b'cfg'
+    assert model.segment(None) == b'model'
+    gc.collect()
+    # The files live as long as the model
+    assert model_path.exists() and denoise_path.exists() and config_path.exists()
     assert model.segment(None) == b'model'
     del model
     gc.collect()
     assert not model_path.exists()
     assert not denoise_path.exists()
+    assert not config_path.exists()
 
 
 @pytest.mark.parametrize('name', ['../weights.pt', r'..\weights.pt', 'C:weights.pt', ''])
@@ -1922,11 +2688,12 @@ def test_model_file_rejects_invalid_names(name):
 def test_remote_backend_uploads_and_reinitializes_model_files(
         monkeypatch, tmp_path, file_param,
     ):
-    import asyncio
+    """Over real HTTP: files selected on the client are uploaded at init and
+    re-init, and the worker's temporary copies live as long as the model."""
     import gc
     import types
     from pathlib import Path
-    from fastapi import BackgroundTasks, HTTPException
+    from fastapi import BackgroundTasks
     from cellacdc import _types, myutils_models
     from cellacdc.service import client as client_module, worker
 
@@ -1953,76 +2720,135 @@ def test_remote_backend_uploads_and_reinitializes_model_files(
         myutils_models, 'model_init_requires_segm_data', lambda _: False
     )
     app = worker.create_app('fake', defer_init=True)
-    endpoints = {
-        route.path: route.endpoint for route in app.routes
-        if hasattr(route, 'methods')
-    }
+    shutdown = next(
+        route.endpoint for route in app.routes
+        if getattr(route, 'path', None) == '/shutdown'
+    )
+    # Record what the client sends to /init (and send it over real HTTP)
+    sent = []
+    real_post = client_module.requests.post
 
-    def response(url, data, status=200):
-        res = requests.Response()
-        res.url, res.status_code = url, status
-        res._content = json.dumps(data).encode()
-        return res
+    def post(url, files=None, **kwargs):
+        sent.append((url, sorted(files), files['kwargs'][1]))
+        return real_post(url, files=files, **kwargs)
 
-    def get(url, **kwargs):
-        assert url == 'http://worker/spec'
-        return response(url, endpoints['/spec']())
-
-    def post(url, files, **kwargs):
-        assert url == 'http://worker/init'
-        kwargs_json = files['kwargs'][1]
-        assert str(tmp_path) not in kwargs_json
-        upload = types.SimpleNamespace()
-
-        async def read():
-            return files['data'][1]
-
-        upload.read = read
-        try:
-            result = asyncio.run(endpoints['/init'](
-                kwargs=kwargs_json, data=upload,
-            ))
-        except HTTPException as err:
-            return response(url, {'detail': err.detail}, err.status_code)
-        return response(url, result)
-
-    monkeypatch.setattr(client_module.requests, 'get', get)
     monkeypatch.setattr(client_module.requests, 'post', post)
-    monkeypatch.setattr(
-        client_module.ModelClient, '_fetch_info', lambda _: endpoints['/info']()
-    )
-    backend = client_module.RemoteBackend('http://worker')
-    path = tmp_path / (
-        'points.csv' if file_param == 'input_points_path' else 'FUCCI (1).txt'
-    )
-    path.write_bytes(b'\x01model')
-    client = backend.get_client(init_model_kwargs={file_param: path})
-    path.unlink()
-    assert worker_paths[0].name == path.name
+    url, stop = _serve_app(app)
+    try:
+        backend = client_module.RemoteBackend(url)
+        path = tmp_path / (
+            'points.csv' if file_param == 'input_points_path'
+            else 'FUCCI (1).txt'
+        )
+        path.write_bytes(b'\x01model')
+        client = backend.get_client(init_model_kwargs={file_param: path})
+        path.unlink()
+        assert [(u, parts) for u, parts, _ in sent] == [(f'{url}/init', ['kwargs'])]
+        # The worker receives the file's data, never the client's path
+        for text in (str(tmp_path), json.dumps(str(tmp_path))[1:-1]):
+            assert text.encode('utf-8') not in sent[0][2]
+        assert worker_paths[0].name == path.name
+        assert worker_paths[0].parent != path.parent
 
-    def segment():
-        result = asyncio.run(endpoints['/segment'](
-            image=_FakeUpload(np.zeros((2, 2))), params='{}',
-        ))
-        return np.load(io.BytesIO(result.body))
-
-    np.testing.assert_array_equal(segment(), np.ones((2, 2)))
-    path.write_bytes(b'\x02model')
-    client_module.post_init(backend.url, {file_param: str(path)})
-    gc.collect()
-    assert not worker_paths[0].exists()
-    np.testing.assert_array_equal(segment(), np.full((2, 2), 2))
-    path.write_bytes(b'bad')
-    with pytest.raises(RuntimeError, match='Invalid model weights'):
+        image = np.zeros((2, 2))
+        np.testing.assert_array_equal(client.segment(image), np.ones((2, 2)))
+        path.write_bytes(b'\x02model')
         client_module.post_init(backend.url, {file_param: str(path)})
-    assert not worker_paths[-1].exists()
-    assert worker_paths[1].exists()
-    np.testing.assert_array_equal(segment(), np.full((2, 2), 2))
-    result = endpoints['/shutdown'](BackgroundTasks())
-    assert result == {'status': 'shutting down'}
-    assert not worker_paths[1].exists()
-    client.close()
-    backend.stop()
+        gc.collect()
+        assert not worker_paths[0].exists()
+        np.testing.assert_array_equal(client.segment(image), np.full((2, 2), 2))
+        path.write_bytes(b'bad')
+        with pytest.raises(RuntimeError, match='Invalid model weights'):
+            client_module.post_init(backend.url, {file_param: str(path)})
+        assert not worker_paths[-1].exists()
+        assert worker_paths[1].exists()
+        np.testing.assert_array_equal(client.segment(image), np.full((2, 2), 2))
+        # Called directly: over HTTP, /shutdown would stop the test process
+        result = shutdown(BackgroundTasks())
+        assert result == {'status': 'shutting down'}
+        assert not worker_paths[1].exists()
+        client.close()
+        backend.stop()
+    finally:
+        stop()
+
+
+def test_worker_passes_uploaded_files_to_model_calls(monkeypatch, tmp_path):
+    """Over real HTTP: files on the client's disk in the kwargs of /segment,
+    /segment3DT, /add_prompt and background jobs reach the model as
+    temporary copies (same name and bytes), deleted after the call. Folders
+    are not uploaded."""
+    import time
+    import types
+    from pathlib import Path
+    from cellacdc import myutils_models
+    from cellacdc.service import worker
+
+    calls = []
+
+    def record(method, weights, folder=None):
+        path = Path(weights)
+        calls.append({
+            'method': method, 'path': path, 'is_file': path.is_file(),
+            'data': path.read_bytes(), 'folder': folder,
+        })
+
+    class Model:
+        def __init__(self):
+            pass
+
+        def segment(self, image, weights=None, folder=None):
+            record('segment', weights, folder)
+            return np.ones(image.shape, np.uint32)
+
+        def segment3DT(self, video, weights=None):
+            record('segment3DT', weights)
+            return np.ones(video.shape, np.uint32)
+
+        def add_prompt(self, prompt, prompt_id, weights=None):
+            record('add_prompt', weights)
+
+    monkeypatch.setattr(
+        myutils_models, 'import_segment_module',
+        lambda name: types.SimpleNamespace(Model=Model),
+    )
+    monkeypatch.setattr(worker, '_jobs', {})
+    weights = tmp_path / 'my weights (1).pt'
+    weights.write_bytes(b'\x00weights\xff')
+    image = np.zeros((2, 2), np.uint8)
+    url, stop = _serve_app(worker.create_app('fake'))
+    try:
+        client = ModelClient(url, timeout=60)
+        assert client.is_segment3DT_available
+        client.segment(image, weights=str(weights), folder=str(tmp_path))
+        client.segment3DT(image[None], weights=weights)
+        client.add_prompt(prompt=(0, 1, 1), prompt_id=1, weights=weights)
+        job_id = client.submit_job(image, weights=str(weights))
+        for _ in range(100):
+            status = client.get_job_status(job_id)
+            if status['status'] in ('completed', 'failed'):
+                break
+            time.sleep(0.05)
+        assert status['status'] == 'completed', status
+        np.testing.assert_array_equal(client.get_job_result(job_id), np.ones((2, 2)))
+        client.close()
+    finally:
+        stop()
+
+    assert [call['method'] for call in calls] == [
+        'segment', 'segment3DT', 'add_prompt', 'segment',
+    ]
+    for call in calls:
+        assert call['is_file']
+        assert call['data'] == weights.read_bytes()
+        assert call['path'].name == weights.name
+        # A copy on the worker, not the client's file
+        assert call['path'].parent != weights.parent
+        # Deleted after the call
+        assert not call['path'].exists()
+        assert not call['path'].parent.exists()
+    # Folders are sent as their path
+    assert calls[0]['folder'] == str(tmp_path)
 
 
 def test_instantiate_model_rejects_raw_points_csv_path():
@@ -2037,7 +2863,7 @@ def test_instantiate_model_rejects_raw_points_csv_path():
         def segment(self, image):
             return image
 
-    with pytest.raises(ValueError, match='client files'):
+    with pytest.raises(ValueError, match=r"\['input_points_path'\].*not uploaded"):
         instantiate_model(
             types.SimpleNamespace(Model=Model),
             {'input_points_path': 'points.csv'},
@@ -2119,6 +2945,25 @@ class _FakeUploadBytes:
         return self._content
 
 
+def _kwargs_upload(kwargs=None):
+    """Model kwargs as the attachment sent by the client (`payload.encode`)."""
+    from cellacdc.service import payload
+
+    return _FakeUploadBytes(payload.encode(kwargs or {}))
+
+
+def _segment_request(arr, kwargs=None, path='/segment'):
+    """Arguments of a direct call of the `/segment`-like endpoint `path`.
+
+    `embeddings` is passed explicitly for `/segment`: called directly, the
+    endpoint would receive FastAPI's `File(None)` default instead of None.
+    """
+    request = {'image': _FakeUpload(arr), 'params': _kwargs_upload(kwargs)}
+    if path == '/segment':
+        request['embeddings'] = None
+    return request
+
+
 def _jobs_app(monkeypatch, segment, **extra_methods):
     import types
     from cellacdc import myutils_models
@@ -2149,14 +2994,19 @@ def _jobs_app(monkeypatch, segment, **extra_methods):
     return endpoints, executor
 
 
-def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch):
+def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch, tmp_path):
     import types
-    from cellacdc import myutils_models
-    from cellacdc.service import worker
+    from pathlib import Path
+    from cellacdc import _types, myutils_models
+    from cellacdc.service import payload, worker
 
     class Model:
-        def __init__(self, model_path: os.PathLike = ''):
+        def __init__(
+                self, model_path: os.PathLike = '',
+                model_folder: _types.FolderPath = '',
+            ):
             self.model_path = model_path
+            self.model_folder = model_folder
 
         def segment(self, image):
             return image
@@ -2168,13 +3018,31 @@ def test_worker_rejects_all_nonempty_path_typed_init_kwargs(monkeypatch):
 
     with pytest.raises(ValueError, match='model_path'):
         worker.instantiate_model(module, {'model_path': '/client/model.pth'})
+    # Folders are never uploaded, so the worker cannot use them
+    with pytest.raises(ValueError, match="model_folder.*not uploaded"):
+        worker.instantiate_model(module, {'model_folder': str(tmp_path)})
+    with pytest.raises(ValueError, match=r"\['model_folder', 'model_path'\]"):
+        worker.instantiate_model(module, {
+            'model_path': '/client/model.pth', 'model_folder': str(tmp_path),
+        })
     assert worker.instantiate_model(module, {}).model_path == ''
+    for empty in ('', 'None', None):
+        assert worker.instantiate_model(
+            module, {'model_path': empty}
+        ).model_path == empty
+    # Uploaded files are accepted
+    model = worker.instantiate_model(module, {
+        'model_path': payload.ModelFile('model.pth', b'weights'),
+    })
+    assert Path(model.model_path).read_bytes() == b'weights'
 
 
 def _submit_job(endpoints, arr):
     import asyncio
     submit = endpoints[('/jobs/segment', ('POST',))]
-    return asyncio.run(submit(image=_FakeUpload(arr), params='{}'))['job_id']
+    return asyncio.run(submit(
+        **_segment_request(arr, path='/jobs/segment')
+    ))['job_id']
 
 
 def test_job_cancelled_while_pending_is_never_started(monkeypatch):
@@ -2354,28 +3222,21 @@ def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
     }
 
     class Session:
-        def post(self, url, files, data, timeout):
-            assert len(data['params']) < 1024 * 1024
-            assert len(files['params_data'][1]) > 1024 * 1024
+        def post(self, url, files, timeout):
+            # Only attachments, and no embeddings (not an embedding operation)
+            assert sorted(files) == ['image', 'params']
+            params = files['params'][1]
+            # The array is in the `.npz` part, not in the (small) JSON part
+            assert int.from_bytes(params[:8], 'big') < 1024
+            assert len(params) > 1024 * 1024
             path = url.removeprefix('http://testserver')
-            image_upload = _FakeUploadBytes(files['image'][1])
-            params_upload = _FakeUploadBytes(files['params_data'][1])
+            request = {
+                'image': _FakeUploadBytes(files['image'][1]),
+                'params': _FakeUploadBytes(params),
+            }
             if path == '/segment':
-                response = asyncio.run(endpoints[path](
-                    image=image_upload, params=data['params'],
-                    embedding_meta='', embeddings=None,
-                    params_data=params_upload,
-                ))
-            elif path == '/segment3DT':
-                response = asyncio.run(endpoints[path](
-                    image=image_upload, params=data['params'],
-                    params_data=params_upload,
-                ))
-            else:
-                response = asyncio.run(endpoints[path](
-                    image=image_upload, params=data['params'],
-                    params_data=params_upload,
-                ))
+                request['embeddings'] = None
+            response = asyncio.run(endpoints[path](**request))
             return self._response(url, response)
 
         def get(self, url, timeout):
@@ -2421,9 +3282,12 @@ def test_worker_runs_promptable_model_protocol(monkeypatch):
     from cellacdc import myutils_models
     from cellacdc.service import payload, worker
 
+    models = []
+
     class Model:
         def __init__(self):
             self.prompts = []
+            models.append(self)
 
         def add_prompt(self, prompt, prompt_id, image, **kwargs):
             self.prompts.append((prompt, prompt_id, image.copy()))
@@ -2441,22 +3305,27 @@ def test_worker_runs_promptable_model_protocol(monkeypatch):
         route.path: route.endpoint
         for route in app.routes if hasattr(route, 'methods')
     }
-    image = np.zeros((2, 2), dtype=np.uint8)
-    kwargs, data = payload.encode({
+    image = np.arange(4, dtype=np.uint8).reshape(2, 2)
+    body = payload.encode({
         'prompt': (0, 1, 1), 'prompt_id': 7, 'image': image,
     })
 
     result = asyncio.run(endpoints['/add_prompt'](
-        kwargs=kwargs, data=_FakeUploadBytes(data)
+        kwargs=_FakeUploadBytes(body)
     ))
     assert result == {'status': 'ok'}
     response = asyncio.run(endpoints['/segment'](
-        image=_FakeUpload(image), params=json.dumps({'lab': None}),
-        embedding_meta='', embeddings=None,
+        **_segment_request(image, {'lab': None})
     ))
     np.testing.assert_array_equal(
         np.load(io.BytesIO(response.body)), np.full((2, 2), 7)
     )
+    # The model got the prompt, with its image array
+    assert len(models) == 1 and len(models[0].prompts) == 1
+    prompt, prompt_id, prompt_image = models[0].prompts[0]
+    assert prompt == [0, 1, 1] and prompt_id == 7
+    np.testing.assert_array_equal(prompt_image, image)
+    assert prompt_image.dtype == np.uint8
 
 
 @pytest.mark.parametrize('num_slices,single_slice_payload', [
@@ -2533,16 +3402,14 @@ def test_worker_roundtrips_sam_embeddings(
         frame_embeddings = frame_embeddings[start_z_slice]
 
     class Session:
-        def post(self, url, files, data, timeout):
+        def post(self, url, files, timeout):
+            # Embedding operations always send the (possibly empty)
+            # embeddings, as an attachment like every other argument
+            assert sorted(files) == ['embeddings', 'image', 'params']
             response = asyncio.run(endpoint(
                 image=_FakeUploadBytes(files['image'][1]),
-                params=data['params'],
-                embedding_meta=data['embedding_meta'],
-                embeddings=(
-                    _FakeUploadBytes(files['embeddings'][1])
-                    if 'embeddings' in files else None
-                ),
-                params_data=None,
+                params=_FakeUploadBytes(files['params'][1]),
+                embeddings=_FakeUploadBytes(files['embeddings'][1]),
             ))
             assert 'x-cell-acdc-payload' not in response.headers
             header_bytes = b''.join(
@@ -2632,7 +3499,7 @@ def test_worker_model_operations_leave_event_loop_responsive(monkeypatch, path):
     monkeypatch.setattr(worker, 'instantiate_model', initialize)
     arr = np.ones((2, 2))
     if path == '/init':
-        kwargs = {'kwargs': '{}', 'data': None}
+        kwargs = {'kwargs': _kwargs_upload()}
     elif path == '/second_ch_img_to_stack':
         kwargs = {'first': _FakeUpload(arr), 'second': _FakeUpload(arr)}
     elif path == '/predictCcaState':
@@ -2640,7 +3507,7 @@ def test_worker_model_operations_leave_event_loop_responsive(monkeypatch, path):
             'image': _FakeUpload(arr), 'precomputed_lab': _FakeUpload(arr)
         }
     else:
-        kwargs = {'image': _FakeUpload(arr), 'params': '{}'}
+        kwargs = _segment_request(arr, path=path)
 
     async def exercise():
         loop_thread = threading.get_ident()
@@ -2703,8 +3570,8 @@ def test_worker_lock_wait_leaves_event_loop_responsive(monkeypatch, path):
 
         async def exercise():
             kwargs = (
-                {'kwargs': '{}', 'data': None} if path == '/init'
-                else {'image': _FakeUpload(arr), 'params': '{}'}
+                {'kwargs': _kwargs_upload()} if path == '/init'
+                else _segment_request(arr, path=path)
             )
             task = asyncio.create_task(endpoints[(path, ('POST',))](**kwargs))
             try:
@@ -2753,7 +3620,7 @@ def test_worker_serializes_inference_calls(monkeypatch):
     def run_direct():
         barrier.wait()
         asyncio.run(endpoints[('/segment', ('POST',))](
-            image=_FakeUpload(np.zeros((2, 2))), params='{}'
+            **_segment_request(np.zeros((2, 2)))
         ))
 
     def run_background():
@@ -2803,13 +3670,20 @@ def test_worker_exposes_argument_specs_to_client(monkeypatch):
         def json(self):
             return spec_data
 
-    monkeypatch.setattr(
-        client_module.requests, 'get', lambda *args, **kwargs: Response()
-    )
+    requested = []
+
+    def get(url, headers=None, timeout=None):
+        requested.append((url, headers))
+        return Response()
+
+    monkeypatch.setattr(client_module.requests, 'get', get)
     init_params, segment_params = client_module.get_model_arg_spec(
         'http://worker'
     )
 
+    # Sent with the protocol version (the worker answers 426 otherwise)
+    from cellacdc.service import protocol
+    assert requested == [('http://worker/spec', protocol.headers())]
     assert next(p for p in init_params if p.name == 'diameter').type is int
     assert next(p for p in segment_params if p.name == 'gauss_sigma').type is float
 
@@ -3014,6 +3888,150 @@ def test_local_backend_reinitialize_keeps_process():
     finally:
         backend.stop()
     assert not backend.is_running()
+
+
+def _version_checked_backend(
+        monkeypatch, versions, port=None, env_python='model-python',
+        managed=True, repaired=True,
+    ):
+    """A `LocalBackend` whose worker launches, version checks and
+    environment repairs are simulated and recorded in `events`.
+
+    `versions` are the results of the successive `/version` checks: None
+    (same protocol) or an exception to raise. Free ports are 50001, 50002...
+    """
+    import collections
+    from unittest.mock import Mock
+    from cellacdc.service import client as client_module, environment
+
+    events = []
+    free_ports = iter(range(50001, 50010))
+    find_port = Mock(side_effect=lambda host='127.0.0.1': next(free_ports))
+    monkeypatch.setattr(client_module, '_find_free_port', find_port)
+    backend = LocalBackend('test_model', env_python=env_python, port=port)
+    results = iter(versions)
+
+    def launch(timeout):
+        events.append(('launch', backend.port, backend.base_url))
+        backend._output = collections.deque(['worker output line'])
+        return [backend.env_python, '-m', 'cellacdc.service.worker']
+
+    def check_version(base_url, timeout=10.0, session=None):
+        events.append(('version', base_url))
+        result = next(results)
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    def repair(python, logger_func=print):
+        events.append(('repair', python))
+        return repaired
+
+    monkeypatch.setattr(backend, '_launch', launch)
+    monkeypatch.setattr(backend, 'stop', lambda: events.append(('stop',)))
+    monkeypatch.setattr(client_module, 'check_worker_version', check_version)
+    monkeypatch.setattr(environment, 'is_managed_model_env', lambda python: managed)
+    monkeypatch.setattr(environment, 'repair_cellacdc_runtime', repair)
+    return backend, events, find_port
+
+
+def test_local_backend_starts_worker_of_same_protocol(monkeypatch):
+    backend, events, _ = _version_checked_backend(monkeypatch, [None])
+    backend._start_process(5)
+    url = 'http://127.0.0.1:50001'
+    assert events == [('launch', 50001, url), ('version', url)]
+    assert backend.url == url
+
+
+@pytest.mark.parametrize('explicit_port', [False, True])
+def test_local_backend_repairs_environment_of_other_protocol(
+        monkeypatch, capsys, explicit_port,
+    ):
+    """A worker with another protocol is stopped, Cell-ACDC is reinstalled
+    in its (Cell-ACDC managed) environment, and the worker is started again
+    (on a new port if the port was chosen automatically)."""
+    from unittest.mock import Mock
+    from cellacdc.service import client as client_module
+    from cellacdc.service.client import WorkerVersionError
+
+    backend, events, find_port = _version_checked_backend(
+        monkeypatch, [WorkerVersionError('http://worker', 1), None],
+        port=8600 if explicit_port else None,
+    )
+    first, second = (8600, 8600) if explicit_port else (50001, 50002)
+    spec = ([], [], 'help')
+    get_spec = Mock(return_value=spec)
+    monkeypatch.setattr(client_module, 'get_model_spec', get_spec)
+
+    assert backend.prepare(timeout=5) == spec
+
+    first_url = f'http://127.0.0.1:{first}'
+    second_url = f'http://127.0.0.1:{second}'
+    assert events == [
+        ('launch', first, first_url), ('version', first_url),
+        ('stop',), ('repair', 'model-python'),
+        ('launch', second, second_url), ('version', second_url),
+    ]
+    assert backend.port == second and backend.url == second_url
+    get_spec.assert_called_once_with(second_url, timeout=5)
+    assert find_port.call_count == (0 if explicit_port else 2)
+    assert 'Reinstalling Cell-ACDC in model-python' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize('scenario', [
+    'unmanaged_env', 'gui_python', 'repair_failed', 'still_mismatched',
+    'version_error',
+])
+def test_local_backend_version_mismatch_failures(monkeypatch, scenario):
+    from cellacdc.service.client import WorkerVersionError
+
+    mismatch = WorkerVersionError('http://worker', 1)
+    versions = {
+        'still_mismatched': [mismatch, WorkerVersionError('http://worker', 3, '9.0')],
+        'version_error': [RuntimeError('Model server error 500: broken')],
+    }.get(scenario, [mismatch])
+    backend, events, _ = _version_checked_backend(
+        monkeypatch, versions,
+        env_python=sys.executable if scenario == 'gui_python' else 'model-python',
+        managed=scenario != 'unmanaged_env',
+        repaired=scenario != 'repair_failed',
+    )
+
+    with pytest.raises(RuntimeError) as raised:
+        backend._start_process(5)
+
+    error = raised.value
+    message = str(error)
+    url = 'http://127.0.0.1:50001'
+    started = [('launch', 50001, url), ('version', url), ('stop',)]
+    if scenario in ('unmanaged_env', 'gui_python'):
+        # Environments that Cell-ACDC did not create are never modified
+        assert events == started
+        assert 'repairs only the model environments that it created' in message
+        assert str(mismatch) in message
+        assert error.__cause__ is mismatch
+    elif scenario == 'repair_failed':
+        assert events == started + [('repair', 'model-python')]
+        assert 'Reinstalling Cell-ACDC in model-python failed' in message
+        assert error.__cause__ is mismatch
+    elif scenario == 'still_mismatched':
+        second_url = 'http://127.0.0.1:50002'
+        assert events == started + [
+            ('repair', 'model-python'),
+            ('launch', 50002, second_url), ('version', second_url),
+            ('stop',),
+        ]
+        assert 'did not fix it' in message
+        assert 'Cell-ACDC 9.0 (protocol 3)' in message
+        assert 'worker output line' in message
+        assert isinstance(error.__cause__, WorkerVersionError)
+    else:
+        # Not a version mismatch: no repair
+        assert events == started
+        assert 'Reading the version of the test_model worker failed' in message
+        assert 'Model server error 500: broken' in message
+        assert 'worker output line' in message
+        assert not isinstance(error, WorkerVersionError)
 
 
 def test_find_python_interpreter_checks_all_python_aliases(monkeypatch, tmp_path):
