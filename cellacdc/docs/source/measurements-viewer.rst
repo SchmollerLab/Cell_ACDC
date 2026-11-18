@@ -866,6 +866,10 @@ shortcuts of the viewer tools.
     * - :kbd:`Esc`
       - Cancel the active tool
 
+The arrow keys navigate whichever button or checkbox has the keyboard focus.
+In text fields, number fields, drop-down menus and lists they keep their
+usual function: click the image or the plot to navigate again.
+
 Because :kbd:`Shift` + a time point or annotation shortcut re-evaluates the
 predictor, a key cannot be used as such a shortcut when :kbd:`Shift` + the key
 is already taken (e.g., :kbd:`S`, because :kbd:`Shift+S` shuffles the

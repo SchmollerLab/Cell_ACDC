@@ -7,8 +7,10 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 import pytest
+from qtpy.QtCore import Qt
 from qtpy.QtWidgets import (
-    QAction, QApplication, QGridLayout, QGroupBox, QMainWindow, QWidget
+    QAbstractSlider, QAction, QApplication, QGridLayout, QGroupBox,
+    QMainWindow, QScrollBar, QWidget
 )
 
 from cellacdc import apps, gui, widgets
@@ -109,6 +111,36 @@ def test_overlay_z_label_matches_z_slice_spinbox(app, tmp_path, z, checked):
     # ... and kept when the overlay is redrawn
     OverlayChannelsGuiElements.getOlImg(host, 'GFP')
     assert host.overlay_z_label.setText.call_args.args[0] == expected
+
+
+class _ZSliceScrollBarHost:
+    isZsliceScrollBarActive = gui.guiWin.isZsliceScrollBarActive
+    zSliceScrollBarActionTriggered = gui.guiWin.zSliceScrollBarActionTriggered
+    zSliceScrollBarReleased = gui.guiWin.zSliceScrollBarReleased
+
+    def __init__(self, SizeZ):
+        self.data = [SimpleNamespace(SizeZ=SizeZ, segmInfo_df=None)]
+        self.pos_i = 0
+        self.zSliceScrollBar = QScrollBar(Qt.Orientation.Horizontal)
+        self.zSliceScrollBar.setMaximum(max(SizeZ - 1, 0))
+        self.update_z_slice = MagicMock()
+        self.clearTempBrushImage = MagicMock()
+
+
+@pytest.mark.parametrize('SizeZ', [1, 3])
+def test_z_slice_scrollbar_keys_with_2d_data(app, SizeZ):
+    # A z-stack loaded before in the same GUI leaves the z-slice scrollbar
+    # connected (`connectScrollbars`): Up/Down on 2D data then reached
+    # `update_z_slice`, which crashed on `segmInfo_df` (None)
+    host = _ZSliceScrollBarHost(SizeZ)
+    host.zSliceScrollBar.actionTriggered.connect(
+        host.zSliceScrollBarActionTriggered
+    )
+    host.zSliceScrollBar.triggerAction(
+        QAbstractSlider.SliderAction.SliderSingleStepAdd
+    )
+    host.zSliceScrollBarReleased()
+    assert host.update_z_slice.call_count == (0 if SizeZ == 1 else 2)
 
 
 def test_view_cca_table_without_annotations_warns(app, monkeypatch):

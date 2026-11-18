@@ -15249,8 +15249,13 @@ When working with 3D segmentation masks:
             ):
             self.navigateScrollBar.handleMousePressEventFromAppFilter(ev)
 
-        # handle presistant shortcuts (for multiple shportcuts)
-        if ev.type() == QEvent.Type.KeyPress: 
+        # handle presistant shortcuts (for multiple shportcuts). The filter
+        # is installed on the app: leave the key presses of windows not owned
+        # by the GUI (e.g., the arrow keys of the measurements viewer) alone
+        if (
+            ev.type() == QEvent.Type.KeyPress
+            and qutils.is_key_event_for_window(self, obj)
+        ):
             for name, key in self.widgetsPersistentShortcut.items():
                 if not key == ev.key():
                     continue
@@ -20213,7 +20218,16 @@ When working with 3D segmentation masks:
                 self.rightImageFramesScrollbarValueChanged
             )
 
+    def isZsliceScrollBarActive(self):
+        """False with 2D images: z-stack data loaded before in the same GUI
+        leaves the z-slice scrollbar connected (`connectScrollbars`), and the
+        keys stepping it (Up/Down, Home/End, ...) would reach `update_z_slice`,
+        which needs `segmInfo_df` (None without z-stacks)."""
+        return self.data[self.pos_i].SizeZ > 1
+
     def zSliceScrollBarActionTriggered(self, action):
+        if not self.isZsliceScrollBarActive():
+            return
         singleMove = (
             action == SliderSingleStepAdd
             or action == SliderSingleStepSub
@@ -20254,6 +20268,8 @@ When working with 3D segmentation masks:
             self.highlightSearchedID(self.highlightedID, force=True)
             
     def zSliceScrollBarReleased(self):
+        if not self.isZsliceScrollBarActive():
+            return
         self.clearTempBrushImage()
         self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
