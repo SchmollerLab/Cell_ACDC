@@ -1475,6 +1475,31 @@ def test_restore_default_settings_un_inverts_black_white(
     assert not real_viewer.slotErrors
 
 
+def test_line_weight_actions_after_restore_default_settings(
+        real_viewer, tmp_path
+    ):
+    # The line weight helpers no longer read `self.sender()` (PyQt5 returned
+    # a deleted sender outside slots: segfault in `restoreDefaultSettings`);
+    # choosing a weight from the LUT menu must still apply and check it
+    path = make_timelapse_position(tmp_path, SizeT=2)
+    load_real(real_viewer, [path])
+    real_viewer.restoreDefaultSettings()
+    lut = real_viewer.imgGrad
+    groups = {
+        'contLineWeight': lut.contLineWightActionGroup,
+        'mothBudLineSize': lut.mothBudLineWightActionGroup,
+    }
+    for key, group in groups.items():
+        action = next(a for a in group.actions() if a.lineWeight == 3)
+        action.trigger()
+        assert int(real_viewer.df_settings.at[key, 'value']) == 3
+        checked = [a.lineWeight for a in group.actions() if a.isChecked()]
+        assert checked == [3]
+    assert real_viewer.contLineWeight == 3
+    assert real_viewer.mothBudLineWeight == 3
+    assert not real_viewer.slotErrors
+
+
 def test_inverted_text_colors_survive_position_switch(real_viewer, tmp_path):
     # The viewer recreates the text items on every position switch
     # (`gui_setTextAnnotColors`): the S-phase/G1 cell cycle texts must keep

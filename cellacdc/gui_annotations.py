@@ -615,11 +615,11 @@ class AnnotationsGuiElements:
         self.updateAllImages()
 
     def _updateContLineThickness(self):
+        # `gui_createContourPens` checks the action of the saved weight and
+        # reconnects `toggled`. Never use `self.sender()` here: this also
+        # runs outside slots (`restoreDefaultSettings`), where PyQt5 returns
+        # the last (possibly deleted) sender and segfaults
         self.gui_createContourPens()
-        for act in self.imgGrad.contLineWightActionGroup.actions():
-            if act == self.sender():
-                act.setChecked(True)
-            act.toggled.connect(self.contLineWeightToggled)
 
     def mothBudLineWeightToggled(self, checked=True):
         if not checked:
@@ -632,13 +632,10 @@ class AnnotationsGuiElements:
         self.updateAllImages()
 
     def _updateMothBudLineSize(self, size):
+        # Checks the action of the saved size and reconnects `toggled` (no
+        # `self.sender()`: see `_updateContLineThickness`)
         self.gui_createMothBudLinePens()
-        
-        for act in self.imgGrad.mothBudLineWightActionGroup.actions():
-            if act == self.sender():
-                act.setChecked(True)
-            act.toggled.connect(self.mothBudLineWeightToggled)
-        
+
         for ax in self.annotatedAxesIndices():
             self.getMothBudLineScatterItem(ax, False).setSize(size)
             self.getMothBudLineScatterItem(ax, True).setSize(size)
