@@ -161,14 +161,19 @@ def nearest_nonzero_z_idx_from_z_centroid(obj, current_z=-1):
 def compute_twoframes_velocity(prev_lab, lab, spacing=None):
     prev_rp = skimage.measure.regionprops(prev_lab)
     rp = skimage.measure.regionprops(lab)
-    prev_IDs = [obj.label for obj in prev_rp]
+    # Map ID --> first prev_rp index (same as `prev_IDs.index(ID)`) to
+    # avoid quadratic list lookups
+    prev_ID_to_idx = {}
+    for idx, prev_obj in enumerate(prev_rp):
+        prev_ID_to_idx.setdefault(prev_obj.label, idx)
     velocities_pxl = [0]*len(rp)
     velocities_um = [0]*len(rp)
     for i, obj in enumerate(rp):
-        if obj.label not in prev_IDs:
+        prev_idx = prev_ID_to_idx.get(obj.label)
+        if prev_idx is None:
             continue
 
-        prev_obj = prev_rp[prev_IDs.index(obj.label)]
+        prev_obj = prev_rp[prev_idx]
         diff = np.subtract(obj.centroid, prev_obj.centroid)
         v_pixel = np.linalg.norm(diff)
         velocities_pxl[i] = v_pixel

@@ -906,12 +906,16 @@ class TextAnnotations:
         self.item.initSizes()
   
     def changeResolution(self, mode, allIDs, ax, img_shape, scalingMode=False):
+        # The new item keeps the stacking order of the replaced one (text
+        # IDs above the other annotation layers, see `setZValue`)
+        zValue = self.item.zValue()
         self.removeFromPlotItem(ax)
-        highRes = True if mode == 'high' else False        
+        highRes = True if mode == 'high' else False
         self.createItems(highRes, allIDs, pxMode=self._pxMode, scalingMode=scalingMode)
         self.initItem(img_shape)
         self.item.setColors(self.colors())
         self.item.clearData()
+        self.item.setZValue(zValue)
         self.addToPlotItem(ax)
     
     def addToPlotItem(self, ax):
