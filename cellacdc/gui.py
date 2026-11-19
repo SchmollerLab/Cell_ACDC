@@ -17622,7 +17622,42 @@ When working with 3D segmentation masks:
     
     def editingSpinboxValueTimerCallback(self):
         self.typingEditID = False
-        
+
+    def getFocusedInputWidget(self):
+        """Return the widget with keyboard focus if it is a text or number
+        input box (e.g., line edit or spin box), None otherwise.
+
+        The key presses that these widgets do not handle (e.g., Enter) are
+        passed on to the main window, but they are not meant as shortcuts.
+        """
+        widgetWithFocus = QApplication.focusWidget()
+        if widgetWithFocus is None:
+            return
+
+        widgetClassesFilteringEvent = (
+            'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox'
+        )
+        for cls in widgetClassesFilteringEvent:
+            if widgetWithFocus.inherits(cls):
+                return widgetWithFocus
+
+    def isEnterConfirmingTypedValue(self):
+        """Return True if Enter (passed on by Qt to the main window)
+        confirms the value typed in the input box with the focus, instead
+        of applying the active tool
+        """
+        inputWidget = self.getFocusedInputWidget()
+        if inputWidget is None:
+            return False
+
+        isValueTyped = getattr(inputWidget, 'isValueTyped', None)
+        if isValueTyped is None:
+            # E.g., line edits (they get the focus to type in them)
+            return True
+
+        # Spin boxes: not if the value was changed only with the arrows
+        return isValueTyped()
+
     def eventFilter(self, obj, ev):
         if not getattr(self, 'isDataLoaded', False):
             return super().eventFilter(obj, ev)
@@ -17636,18 +17671,9 @@ When working with 3D segmentation masks:
             # --> return early for the events that are not handled below
             return super().eventFilter(obj, ev)
 
-        widgetWithFocus = QApplication.focusWidget()
-        if widgetWithFocus is not None:
-            widgetClassesFilteringEvent = (
-                'QLineEdit', 'QTextEdit', 'QPlainTextEdit', 'QAbstractSpinBox'
-            )
-            isFocusFilteringEvent = any([
-                widgetWithFocus.inherits(cls) 
-                for cls in widgetClassesFilteringEvent
-            ])
-            if isFocusFilteringEvent:
-                return super().eventFilter(obj, ev)
-        
+        if self.getFocusedInputWidget() is not None:
+            return super().eventFilter(obj, ev)
+
         if (
                 ev.type() == QEvent.MouseButtonPress
                 and obj == self.navigateScrollBar 
@@ -17925,7 +17951,15 @@ When working with 3D segmentation masks:
                 isLabelRoiCircActive
             )
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
-            if self.interpZButton.isChecked():
+            if ev.isAutoRepeat() or self.isEnterConfirmingTypedValue():
+                # Enter confirming the value typed in a spin box or line
+                # edit, or held down (e.g., the repeats after confirming the
+                # frame number, since the spin boxes with `disableKeyPress`
+                # clear their focus and do not pass the first Enter on)
+                # --> do not apply the active tool (e.g., "Keep IDs" with
+                # the IDs selected so far)
+                pass
+            elif self.interpZButton.isChecked():
                 self.interpZConfirmAction.trigger()
             elif isTypingIDFunctionChecked:
                 self.typingEditID = False
@@ -17936,10 +17970,8 @@ When working with 3D segmentation masks:
                 if self.keepIDsConfirmAction.isEnabled():
                     self.keepIDsConfirmAction.trigger()
             elif self.isBrushStrokesSelectCellsActive():
-                controls = self.brushStrokesSelectCellsToolbar
                 # Enter in the IDs line edit is handled by the line edit
-                if not controls.selectedIDsLineEdit.hasFocus():
-                    controls.emitSigAddToTrainingData()
+                self.brushStrokesSelectCellsToolbar.emitSigAddToTrainingData()
         elif ev.key() == Qt.Key_Escape:
             isEscapeHandled = self.brushStrokesSelectCellsEscape()
             if not isEscapeHandled:

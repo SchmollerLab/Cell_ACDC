@@ -4875,6 +4875,16 @@ class readOnlySpinbox(QSpinBox):
         self.setMaximum(2**31-1)
         # self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
+def _isTemporaryFocusChange(event):
+    """Return True if the focus event is due to switching to another window
+    (and back), or to opening (and closing) a popup like a context menu: the
+    focus then returns to the same widget (it is not a new edit)
+    """
+    return event.reason() in (
+        Qt.FocusReason.ActiveWindowFocusReason,
+        Qt.FocusReason.PopupFocusReason
+    )
+
 class DoubleSpinBox(QDoubleSpinBox):
     sigValueChanged = Signal(int)
 
@@ -4885,17 +4895,41 @@ class DoubleSpinBox(QDoubleSpinBox):
         self.setMinimum(-2**31)
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
-    
+        self._isValueTyped = False
+        self.lineEdit().textEdited.connect(self._setValueTyped)
+
+    def _setValueTyped(self, text):
+        self._isValueTyped = True
+
+    def isValueTyped(self):
+        """See `SpinBox.isValueTyped`"""
+        return self._isValueTyped
+
+    def focusInEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusOutEvent(event)
+
     def keyPressEvent(self, event) -> None:
         isBackSpaceKey = event.key() == Qt.Key_Backspace
         isDeleteKey = event.key() == Qt.Key_Delete
+        isEnterKey = event.key() in (Qt.Key_Enter, Qt.Key_Return)
         try:
             int(event.text())
             isIntegerKey = True
         except:
             isIntegerKey = False
         acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
-        if self.disableKeyPress and not acceptEvent:
+        if self.disableKeyPress and isEnterKey and self._isValueTyped:
+            # See `SpinBox.keyPressEvent`
+            event.accept()
+            self.clearFocus()
+        elif self.disableKeyPress and not acceptEvent:
             event.ignore()
             self.clearFocus()
         else:
@@ -4933,6 +4967,32 @@ class SpinBox(QSpinBox):
         self._start_value = None
         self._display_correction = 0
         self.valueChanged.connect(self.sigValueChanged.emit)
+        self._isValueTyped = False
+        # Emitted only when the user edits the text (not with the arrows)
+        self.lineEdit().textEdited.connect(self._setValueTyped)
+
+    def _setValueTyped(self, text):
+        self._isValueTyped = True
+
+    def isValueTyped(self):
+        """Return True if the user typed in the spin box since it got the
+        focus (Enter then confirms the typed value), False if the value was
+        changed only with the arrows (or not changed).
+
+        Switching to another window and back, or opening and closing a popup
+        (e.g., the context menu) does not reset it.
+        """
+        return self._isValueTyped
+
+    def focusInEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusOutEvent(event)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -5011,6 +5071,7 @@ class SpinBox(QSpinBox):
         isBackSpaceKey = event.key() == Qt.Key.Key_Backspace
         isDeleteKey = event.key() == Qt.Key.Key_Delete
         isTabKeyPress = event.key() == Qt.Key.Key_Tab
+        isEnterKey = event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return)
 
         if isTabKeyPress:
             self.sigTabEvent.emit(event, self)
@@ -5023,7 +5084,15 @@ class SpinBox(QSpinBox):
 
         acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
 
-        if self.disableKeyPress and not acceptEvent:
+        if self.disableKeyPress and isEnterKey and self._isValueTyped:
+            # Enter only confirms the typed value (leaving the spin box):
+            # do not pass it on to the parent window like the other keys,
+            # since in the main window Enter applies the active tool (e.g.,
+            # "Keep IDs" with the IDs selected so far). Without typing
+            # (e.g., after clicking the arrows) Enter is passed on
+            event.accept()
+            self.clearFocus()
+        elif self.disableKeyPress and not acceptEvent:
             event.ignore()
             self.clearFocus()
         else:

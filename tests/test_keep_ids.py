@@ -21,7 +21,10 @@ pytest.importorskip('qtpy')
 from qtpy.QtCore import QEvent, Qt
 from qtpy.QtGui import QKeyEvent
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication, QLabel, QMainWindow
+from qtpy.QtWidgets import (
+    QApplication, QLabel, QLineEdit, QMainWindow, QMenu, QStyle,
+    QStyleOptionSpinBox, QWidget
+)
 
 from cellacdc import gui, widgets
 from cellacdc.regionprops import acdcRegionprops
@@ -658,7 +661,10 @@ def _make_apply_window(segm_data=None, isSnapshot=True, qt5Action=False):
         isOverlaySegmMaskChecked=Mock(return_value=False),
         isBrushStrokesSelectCellsActive=Mock(return_value=False),
     )
-    _bind(window, 'keyPressEvent')
+    _bind(
+        window, 'keyPressEvent', 'getFocusedInputWidget',
+        'isEnterConfirmingTypedValue'
+    )
     # As in `guiWin.gui_createActions`
     window.keptIDsLineEdit.sigEnterPressed.connect(
         lambda: window.applyKeepObjects()
@@ -673,6 +679,10 @@ def _make_apply_window(segm_data=None, isSnapshot=True, qt5Action=False):
     toolbar.addAction(window.keepIDsConfirmAction)
     toolbar.addWidget(window.keptIDsLineEdit)
     host.addToolBar(toolbar)
+    # Image (it takes the focus when clicked, and it does not handle Enter)
+    window._view = QWidget()
+    window._view.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+    host.setCentralWidget(window._view)
     host.show()
     window.keptIDsLineEdit.setFocus()
     QApplication.processEvents()
@@ -688,6 +698,10 @@ def _press_enter_in_line_edit(window, text=None):
 
 
 def _press_enter_in_main_window(window):
+    # E.g., after clicking on the image (no input box has the focus)
+    window._view.setFocus()
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is window._view
     event = QKeyEvent(
         QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier
     )
@@ -940,4 +954,371 @@ def test_ids_line_edit_accepts_enter(app, cls):
     assert enterPressed.call_count == 2
     # Other keys are still propagated
     assert pressed == [Qt.Key.Key_PageDown]
+    host.close()
+
+
+# Enter in the input boxes of the main window (e.g., frame number) only
+# confirms the typed value: it must not apply the active tool (e.g., "Keep
+# IDs" with the IDs selected so far)
+INPUT_BOXES = ['frame number spin box', 'spin box', 'line edit']
+
+
+def _add_input_box(window, kind):
+    if kind == 'frame number spin box':
+        # As the frame and z-slice numbers (and the toolbar spin boxes)
+        box = widgets.SpinBox(disableKeyPress=True)
+    elif kind == 'spin box':
+        # E.g., the "Zoom to ID" spin box
+        box = widgets.SpinBox()
+    else:
+        box = QLineEdit()
+    toolbar = widgets.ToolBar('Input', window._host)
+    toolbar.addWidget(box)
+    window._host.addToolBar(toolbar)
+    box.setFocus()
+    QApplication.processEvents()
+    assert QApplication.focusWidget() is box
+    return box
+
+
+def _type_and_press_enter(box, text):
+    box.selectAll()
+    QTest.keyClicks(box, text)
+    QTest.keyClick(box, Qt.Key.Key_Return)
+    QApplication.processEvents()
+
+
+@pytest.mark.parametrize('kind', INPUT_BOXES)
+def test_enter_in_input_box_does_not_apply_keep_ids(app, slot_errors, kind):
+    window, posData = _make_apply_window()
+    triggered = Mock()
+    window.keepIDsConfirmAction.triggered.connect(
+        lambda checked=False: triggered()
+    )
+    _click_keep_IDs(window, 1)
+    box = _add_input_box(window, kind)
+
+    _type_and_press_enter(box, '12')
+
+    assert triggered.call_count == 0
+    assert (posData.lab == _lab()).all()
+    assert _num_undo_states(posData) == 0
+    assert list(window.keptObjectsIDs) == [1]
+    if kind == 'line edit':
+        assert box.text() == '12'
+    else:
+        # The typed value is confirmed
+        assert box.value() == 12
+    # The spin boxes with `disableKeyPress` leave the focus (as with the
+    # other keys that they do not handle), the others keep it
+    assert box.hasFocus() == (kind != 'frame number spin box')
+
+    # Enter in the main window (e.g., on the image) applies the selection
+    _press_enter_in_main_window(window)
+    assert triggered.call_count == 1
+    assert set(np.unique(posData.lab)) == {0, 1}
+    assert slot_errors == []
+
+
+@pytest.mark.parametrize('tool', ['interpolate Z', 'select cells'])
+@pytest.mark.parametrize('kind', INPUT_BOXES)
+def test_enter_in_input_box_does_not_apply_other_tools(
+        app, slot_errors, kind, tool
+    ):
+    window, posData = _make_apply_window()
+    window.keepIDsButton = _unchecked()
+    if tool == 'interpolate Z':
+        window.interpZButton = Mock(isChecked=Mock(return_value=True))
+        window.interpZConfirmAction = Mock()
+        applyTool = window.interpZConfirmAction.trigger
+    else:
+        window.isBrushStrokesSelectCellsActive = Mock(return_value=True)
+        toolbar = window.brushStrokesSelectCellsToolbar = Mock()
+        # Its IDs line edit does not have the focus
+        toolbar.selectedIDsLineEdit.hasFocus.return_value = False
+        applyTool = toolbar.emitSigAddToTrainingData
+    box = _add_input_box(window, kind)
+
+    _type_and_press_enter(box, '3')
+    assert applyTool.call_count == 0
+
+    _press_enter_in_main_window(window)
+    assert applyTool.call_count == 1
+    assert slot_errors == []
+
+
+def _click_spin_box_up_arrow(spinBox):
+    opt = QStyleOptionSpinBox()
+    spinBox.initStyleOption(opt)
+    rect = spinBox.style().subControlRect(
+        QStyle.ComplexControl.CC_SpinBox, opt, QStyle.SubControl.SC_SpinBoxUp,
+        spinBox
+    )
+    QTest.mouseClick(
+        spinBox, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier,
+        rect.center()
+    )
+    QApplication.processEvents()
+    # Clicking the arrows gives the focus to the spin box
+    assert QApplication.focusWidget() is spinBox
+
+
+def _send_enter_to_window(window, autoRepeat=False):
+    # As the platform: to the widget with the focus (or to the main window)
+    event = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Return,
+        Qt.KeyboardModifier.NoModifier, '\r', autoRepeat
+    )
+    QApplication.sendEvent(window._host.windowHandle(), event)
+    QApplication.processEvents()
+
+
+@pytest.mark.parametrize('kind', ['frame number spin box', 'spin box'])
+def test_enter_after_clicking_spin_box_arrows_applies_keep_ids(
+        app, slot_errors, kind
+    ):
+    # E.g., the user selects the IDs, checks the next frame or z-slice with
+    # the arrows, and applies "Keep IDs" with Enter (nothing typed to confirm)
+    window, posData = _make_apply_window()
+    triggered = Mock()
+    window.keepIDsConfirmAction.triggered.connect(
+        lambda checked=False: triggered()
+    )
+    _click_keep_IDs(window, 1)
+    box = _add_input_box(window, kind)
+    window._view.setFocus()
+    _click_spin_box_up_arrow(box)
+    assert box.value() == 1
+
+    _send_enter_to_window(window)
+
+    assert triggered.call_count == 1
+    assert set(np.unique(posData.lab)) == {0, 1}
+    assert slot_errors == []
+
+
+def test_held_enter_after_typing_frame_number_does_not_apply_keep_ids(
+        app, slot_errors
+    ):
+    window, posData = _make_apply_window()
+    triggered = Mock()
+    window.keepIDsConfirmAction.triggered.connect(
+        lambda checked=False: triggered()
+    )
+    _click_keep_IDs(window, 1)
+    box = _add_input_box(window, 'frame number spin box')
+    box.selectAll()
+    QTest.keyClicks(box, '12')
+
+    _send_enter_to_window(window)
+    assert box.value() == 12
+    assert QApplication.focusWidget() is None
+    # Enter held down: the repeats go to the main window (no focus widget)
+    _send_enter_to_window(window, autoRepeat=True)
+    _send_enter_to_window(window, autoRepeat=True)
+
+    assert triggered.call_count == 0
+    assert (posData.lab == _lab()).all()
+    assert list(window.keptObjectsIDs) == [1]
+
+    # Pressing Enter again applies the selection
+    _send_enter_to_window(window)
+    assert triggered.call_count == 1
+    assert set(np.unique(posData.lab)) == {0, 1}
+    assert slot_errors == []
+
+
+class _KeyHost(QMainWindow):
+    """Main window recording the key presses passed on to it"""
+    def __init__(self):
+        super().__init__()
+        self.pressed = []
+
+    def keyPressEvent(self, event):
+        self.pressed.append(event.key())
+
+
+def _show_spin_boxes(host, *spinBoxes):
+    toolbar = widgets.ToolBar('Spin boxes', host)
+    for spinBox in spinBoxes:
+        toolbar.addWidget(spinBox)
+    host.addToolBar(toolbar)
+    host.show()
+    spinBoxes[0].setFocus()
+    QApplication.processEvents()
+    assert spinBoxes[0].hasFocus()
+
+
+@pytest.mark.parametrize('typed', [True, False])
+@pytest.mark.parametrize('key', [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+@pytest.mark.parametrize('keyboardTracking', [True, False])
+@pytest.mark.parametrize('cls', ['SpinBox', 'DoubleSpinBox'])
+def test_spin_box_with_disable_key_press_enter(
+        app, slot_errors, cls, keyboardTracking, key, typed
+    ):
+    host = _KeyHost()
+    spinBox = getattr(widgets, cls)(disableKeyPress=True)
+    spinBox.setKeyboardTracking(keyboardTracking)
+    spinBox.setValue(3)
+    editingFinished = Mock()
+    spinBox.editingFinished.connect(lambda: editingFinished())
+    _show_spin_boxes(host, spinBox)
+
+    if typed:
+        spinBox.selectAll()
+        QTest.keyClicks(spinBox, '7')
+    else:
+        _click_spin_box_up_arrow(spinBox)
+    assert spinBox.isValueTyped() == typed
+
+    QTest.keyClick(spinBox, key)
+    QApplication.processEvents()
+
+    # The value is confirmed and the spin box leaves the focus
+    assert spinBox.value() == (7 if typed else 4)
+    assert not spinBox.hasFocus()
+    assert editingFinished.call_count == 1
+    if typed:
+        # Enter only confirms the typed value: not passed on to the main
+        # window (it would apply the active tool, e.g., "Keep IDs")
+        assert host.pressed == []
+    else:
+        # Nothing typed to confirm (e.g., only the arrows clicked): passed
+        # on to the main window (it applies the active tool)
+        assert host.pressed == [key]
+
+    # Getting the focus again resets the typed value: clicking the arrows
+    # and pressing Enter passes Enter on
+    host.pressed.clear()
+    _click_spin_box_up_arrow(spinBox)
+    assert not spinBox.isValueTyped()
+    QTest.keyClick(spinBox, key)
+    assert host.pressed == [key]
+    assert slot_errors == []
+    host.close()
+
+
+@pytest.mark.parametrize('cls', ['SpinBox', 'DoubleSpinBox'])
+def test_spin_box_keys_passed_on(app, slot_errors, cls):
+    host = _KeyHost()
+    spinBox = getattr(widgets, cls)(disableKeyPress=True)
+    # Spin box without `disableKeyPress` (e.g., in a dialog)
+    otherSpinBox = getattr(widgets, cls)()
+    _show_spin_boxes(host, spinBox, otherSpinBox)
+
+    # The keys that the spin boxes with `disableKeyPress` do not handle are
+    # passed on (shortcuts)
+    spinBox.selectAll()
+    QTest.keyClicks(spinBox, '7')
+    QTest.keyClick(spinBox, Qt.Key.Key_PageDown)
+    assert host.pressed == [Qt.Key.Key_PageDown]
+    assert not spinBox.hasFocus()
+
+    # Without `disableKeyPress` Enter is passed on as usual also after
+    # typing (e.g., to the default button of a dialog)
+    otherSpinBox.setFocus()
+    QApplication.processEvents()
+    otherSpinBox.selectAll()
+    QTest.keyClicks(otherSpinBox, '5')
+    assert otherSpinBox.isValueTyped()
+    QTest.keyClick(otherSpinBox, Qt.Key.Key_Return)
+    assert otherSpinBox.value() == 5
+    assert host.pressed == [Qt.Key.Key_PageDown, Qt.Key.Key_Return]
+    assert slot_errors == []
+    host.close()
+
+
+def _focus_elsewhere_and_back(box, how):
+    """Take the focus away from the input box and give it back"""
+    host = box.window()
+    if how == 'switch window':
+        # E.g., Alt+Tab, or the mouse leaving the main window while the
+        # secondary viewer is open (see `guiWin.leaveEvent`)
+        other = QMainWindow()
+        other.show()
+        other.activateWindow()
+        QApplication.processEvents()
+        assert QApplication.activeWindow() is other
+        other.close()
+        host.activateWindow()
+    elif how == 'popup':
+        # E.g., the context menu of the spin box
+        menu = QMenu(box)
+        menu.addAction('Copy')
+        menu.popup(box.mapToGlobal(box.rect().center()))
+        QApplication.processEvents()
+        assert QApplication.activePopupWidget() is menu
+        menu.close()
+    else:
+        # The user clicks another widget, and then the box again (or Qt
+        # gives it the focus when activating the window)
+        other = QLineEdit()
+        toolbar = widgets.ToolBar('Other', host)
+        toolbar.addWidget(other)
+        host.addToolBar(toolbar)
+        other.setFocus(Qt.FocusReason.MouseFocusReason)
+        QApplication.processEvents()
+        assert QApplication.focusWidget() is other
+        if how == 'other widget':
+            box.setFocus(Qt.FocusReason.MouseFocusReason)
+        else:
+            box.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+    QApplication.processEvents()
+    assert QApplication.activeWindow() is host
+    assert QApplication.focusWidget() is box
+
+
+@pytest.mark.parametrize('how', ['switch window', 'popup'])
+@pytest.mark.parametrize('kind', ['frame number spin box', 'spin box'])
+def test_enter_after_typing_and_focus_return_does_not_apply_keep_ids(
+        app, slot_errors, kind, how
+    ):
+    window, posData = _make_apply_window()
+    triggered = Mock()
+    window.keepIDsConfirmAction.triggered.connect(
+        lambda checked=False: triggered()
+    )
+    _click_keep_IDs(window, 1)
+    box = _add_input_box(window, kind)
+    box.selectAll()
+    QTest.keyClicks(box, '12')
+
+    _focus_elsewhere_and_back(box, how)
+    _send_enter_to_window(window)
+
+    # Enter confirms the typed value
+    assert box.value() == 12
+    assert triggered.call_count == 0
+    assert (posData.lab == _lab()).all()
+    assert list(window.keptObjectsIDs) == [1]
+    assert slot_errors == []
+
+
+@pytest.mark.parametrize(
+    'how, isStillTyped',
+    [
+        ('switch window', True), ('popup', True), ('other widget', False),
+        ('other widget, back by window activation', False)
+    ]
+)
+@pytest.mark.parametrize('cls', ['SpinBox', 'DoubleSpinBox'])
+def test_spin_box_typed_value_when_focus_returns(
+        app, slot_errors, cls, how, isStillTyped
+    ):
+    host = _KeyHost()
+    spinBox = getattr(widgets, cls)(disableKeyPress=True)
+    _show_spin_boxes(host, spinBox)
+    spinBox.selectAll()
+    QTest.keyClicks(spinBox, '7')
+    assert spinBox.isValueTyped()
+
+    _focus_elsewhere_and_back(spinBox, how)
+
+    # Switching window or opening a popup does not start a new edit
+    assert spinBox.isValueTyped() == isStillTyped
+    QTest.keyClick(spinBox, Qt.Key.Key_Return)
+    assert spinBox.value() == 7
+    assert not spinBox.hasFocus()
+    assert host.pressed == ([] if isStillTyped else [Qt.Key.Key_Return])
+    assert slot_errors == []
     host.close()
