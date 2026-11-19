@@ -1,7 +1,8 @@
-"""Tests of the left image layers that are mirrored on the right image when
-"Show duplicated left image" is on (`widgets.ParentImageItem` with a linked
-right item): the "Keep IDs" layer (activation and rendering) and the
-brush/eraser temp layer (activation only).
+"""Tests of the left image layers that are mirrored on the right image
+(`widgets.ParentImageItem` with a linked right item): the "Keep IDs" layer
+(when "Show duplicated left image" is on) and the brush/wand temp layer
+(always drawn on the right too, because painting on the right image is
+forwarded to the left image), activation and rendering.
 
 The `guiWin` methods are tested on fake `self` objects (no main window).
 """
@@ -20,6 +21,7 @@ pytest.importorskip('qtpy')
 
 import pandas as pd
 import pyqtgraph as pg
+from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QAction, QApplication
 
 from cellacdc import gui, widgets
@@ -207,3 +209,169 @@ def test_init_keep_obj_layers_other_item_does_not_touch_right_layer(app):
     assert item.lut is not None
     assert fake.keepIDsTempLayerRight.lut is None
     assert fake.keepIDsTempLayerLeft.lut is None
+
+
+# Brush/wand temp layer (`tempLayerImg1` --> `tempLayerRightImage`)
+BRUSH_LUT = np.array(
+    [[0, 0, 0], [255, 0, 0], [0, 255, 0], [0, 0, 255], [0, 255, 255],
+     [200, 100, 50]], dtype=np.uint8
+)
+BRUSH_ID = 5
+BRUSH_RGBA = (200, 100, 50, 255)
+CONTOURS_RGBA = (255, 255, 0, 255)
+TRANSPARENT = (0, 0, 0, 0)
+
+
+def _brushGui(rightImage='duplicated', contours=False, shape=(20, 30)):
+    fake = _guiWithPlotItems()
+    if rightImage == 'duplicated':
+        fake.labelsGrad.showRightImgAction.setChecked(True)
+    elif rightImage == 'next_frame':
+        fake.labelsGrad.showNextFrameAction.setChecked(True)
+    # rightImage == 'other' --> e.g., labels image or right image hidden
+    lab = np.zeros(shape, dtype=np.uint32)
+    lab[2:6, 20:26] = 2
+    fake.data = [SimpleNamespace(brushID=BRUSH_ID, lab=lab)]
+    fake.pos_i = 0
+    fake.currentLab2D = lab
+    fake.lut = BRUSH_LUT
+    fake.img1.image = np.zeros(shape, dtype=np.uint16)
+    fake.hideItemsHoverBrush = Mock()
+    fake.contours = contours
+    fake.isContoursChecked = lambda ax: fake.contours
+    fake.get2DRP = lambda: SimpleNamespace(
+        get_obj_from_ID=lambda ID, warn=False: None
+    )
+    fake.imgGrad = SimpleNamespace(
+        labelsAlphaSlider=SimpleNamespace(value=lambda: 0.3),
+        contoursColorButton=SimpleNamespace(
+            color=lambda: QColor(*CONTOURS_RGBA)
+        ),
+    )
+    for name in (
+            'initTempLayerBrush', 'setTempImg1Brush', 'getTempLayerBrushLevels',
+            'setTempBrushMaskFromWand', 'clearTempBrushImage'
+        ):
+        setattr(fake, name, MethodType(getattr(gui.guiWin, name), fake))
+    return fake
+
+
+def _brushMask(shape=(20, 30)):
+    mask = np.zeros(shape, dtype=bool)
+    mask[8:13, 8:13] = True
+    return mask
+
+
+def test_brush_drawn_on_right_image_with_brush_color(app):
+    fake = _brushGui('duplicated')
+    fake.setTempImg1Brush(True, _brushMask(), BRUSH_ID)
+    fake.setTempImg1Brush(False, np.roll(_brushMask(), 3, axis=1), BRUSH_ID)
+
+    left, right = fake.tempLayerImg1, fake.tempLayerRightImage
+    assert np.array_equal(right.image, left.image)
+    assert np.array_equal(right.lut, left.lut)
+    assert np.allclose(right.levels, left.levels)
+    assert right.opacity() == pytest.approx(left.opacity())
+    # Brush color on the stroke, transparent background (not white on an
+    # opaque black layer)
+    assert _rgba(right, 10, 10) == _rgba(left, 10, 10) == BRUSH_RGBA
+    assert _rgba(right, 14, 10) == _rgba(left, 14, 10) == BRUSH_RGBA
+    assert _rgba(right, 1, 15) == _rgba(left, 1, 15) == TRANSPARENT
+
+
+@pytest.mark.parametrize('rightImage', ['next_frame', 'other'])
+def test_brush_drawn_on_right_image_not_duplicated(app, rightImage):
+    # Painting on the right image is forwarded to the left image
+    # (`gui_mousePressRightImage`) --> the preview is drawn on the right too
+    fake = _brushGui(rightImage)
+    fake.setTempImg1Brush(True, _brushMask(), BRUSH_ID)
+
+    right = fake.tempLayerRightImage
+    assert _rgba(right, 10, 10) == BRUSH_RGBA
+    assert _rgba(right, 1, 15) == TRANSPARENT
+
+
+def test_wand_drawn_on_right_image_with_brush_color(app):
+    fake = _brushGui('duplicated')
+    flood = np.zeros((20, 30), dtype=bool)
+    flood[10:15, 2:7] = True
+    fake.setTempBrushMaskFromWand(flood, init=True)
+
+    right = fake.tempLayerRightImage
+    assert _rgba(right, 4, 12) == BRUSH_RGBA
+    assert _rgba(right, 1, 15) == TRANSPARENT
+
+
+def test_brush_color_on_right_image_follows_brush_id(app):
+    # E.g., `changeBrushID` re-initialises the layer with a new ID
+    fake = _brushGui('duplicated')
+    fake.setTempImg1Brush(True, _brushMask(), BRUSH_ID)
+    fake.data[0].brushID = 3
+    fake.setTempImg1Brush(True, _brushMask(), 3)
+
+    left, right = fake.tempLayerImg1, fake.tempLayerRightImage
+    assert _rgba(right, 10, 10) == _rgba(left, 10, 10) == (0, 0, 255, 255)
+
+
+def test_brush_contours_drawn_on_right_image(app):
+    # Contours mode after an overlay masks stroke: RGBA image (lut ignored)
+    fake = _brushGui('duplicated')
+    fake.setTempImg1Brush(True, _brushMask(), BRUSH_ID)
+    fake.contours = True
+    fake.setTempImg1Brush(True, _brushMask(), BRUSH_ID)
+
+    left, right = fake.tempLayerImg1, fake.tempLayerRightImage
+    assert right.image.shape == (20, 30, 4)
+    assert _rgba(right, 8, 10) == _rgba(left, 8, 10) == CONTOURS_RGBA
+    assert _rgba(right, 10, 10) == _rgba(left, 10, 10) == TRANSPARENT
+    assert _rgba(right, 1, 15) == TRANSPARENT
+
+
+def test_small_brush_stroke_visible_on_large_image(app):
+    # Auto-levels are computed on a subsample of the pixels and can miss a
+    # small stroke (it would be mapped to the transparent color)
+    shape = (2048, 2048)
+    fake = _brushGui('duplicated', shape=shape)
+    mask = np.zeros(shape, dtype=bool)
+    mask[1002:1007, 1002:1007] = True
+    fake.setTempImg1Brush(True, mask, BRUSH_ID)
+
+    left, right = fake.tempLayerImg1, fake.tempLayerRightImage
+    assert np.allclose(left.levels, [0, BRUSH_ID])
+    assert np.allclose(right.levels, [0, BRUSH_ID])
+    assert _rgba(left, 1004, 1004) == _rgba(right, 1004, 1004) == BRUSH_RGBA
+
+
+@pytest.mark.parametrize('contours', [False, True])
+def test_cleared_brush_is_transparent(app, contours):
+    fake = _brushGui('duplicated', contours=contours)
+    fake.setTempImg1Brush(True, _brushMask(), BRUSH_ID)
+    fake.clearTempBrushImage()
+
+    left, right = fake.tempLayerImg1, fake.tempLayerRightImage
+    assert right.image.shape == (2, 2)
+    for x, y in ((0, 0), (1, 1)):
+        assert _rgba(left, x, y) == _rgba(right, x, y) == TRANSPARENT
+
+
+def test_cleared_before_any_brush_stroke_is_transparent(app):
+    # E.g., `onEscape` calls `clearTempBrushImage`
+    fake = _brushGui('duplicated')
+    fake.clearTempBrushImage()
+
+    left, right = fake.tempLayerImg1, fake.tempLayerRightImage
+    assert _rgba(left, 0, 0) == _rgba(right, 0, 0) == TRANSPARENT
+
+
+def test_right_brush_cleared_after_switching_right_image(app):
+    # Stroke mirrored, then the right image switched to the next frame:
+    # clearing still reaches the right layer (no stale strokes)
+    fake = _brushGui('duplicated')
+    fake.setTempImg1Brush(True, _brushMask(), BRUSH_ID)
+    fake.labelsGrad.showRightImgAction.setChecked(False)
+    fake.labelsGrad.showNextFrameAction.setChecked(True)
+    fake.clearTempBrushImage()
+
+    right = fake.tempLayerRightImage
+    assert right.image.shape == (2, 2)
+    assert _rgba(right, 0, 0) == TRANSPARENT

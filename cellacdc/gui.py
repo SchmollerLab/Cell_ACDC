@@ -5433,11 +5433,19 @@ When working with 3D segmentation masks:
         self.topLayerItems.append(self.ax2BorderLine)
 
         # Brush/Eraser/Wand.. layer item
-        self.tempLayerRightImage = pg.ImageItem()
+        # Labels image item --> `setImage` does not auto-level (the levels
+        # are set by the left item, see `ParentImageItem.setLevels`)
+        self.tempLayerRightImage = widgets.BaseLabelsImageItem()
         self.tempLayerImg1 = widgets.ParentImageItem(
             linkedImageItem=self.tempLayerRightImage,
             activatingActions=(self.labelsGrad.showRightImgAction, )
         )
+        # Transparent until `initTempLayerBrush` sets the brush color (e.g.,
+        # `clearTempBrushImage` in contours mode). Note that the linked right
+        # image item does not inherit the lut
+        transparentLut = np.zeros((2, 4), dtype=np.uint8)
+        self.tempLayerImg1.setLookupTable(transparentLut)
+        self.tempLayerRightImage.setLookupTable(transparentLut)
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
 
@@ -32312,6 +32320,7 @@ When working with 3D segmentation masks:
         self.hideItemsHoverBrush(ID=ID, force=True)
         Y, X = self.img1.image.shape[:2]
         tempImage = np.zeros((Y, X), dtype=np.uint32)
+        kwargs = {}
         if self.isContoursChecked(ax):
             # Keep the currently edited object visible while painting.
             rp_2D = self.get2DRP()
@@ -32338,8 +32347,19 @@ When working with 3D segmentation masks:
             lut[1,-1] = 255
             lut[1,:-1] = color
             self.tempLayerImg1.setLookupTable(lut)
+            # The linked right image layer (painting on the right image is
+            # forwarded to the left image) does not inherit the lut
+            self.tempLayerRightImage.setLookupTable(lut)
+            kwargs['levels'] = self.getTempLayerBrushLevels(ID)
         self.tempLayerImg1.setOpacity(opacity)
-        self.tempLayerImg1.setImage(tempImage, force_set_linked=True)
+        self.tempLayerImg1.setImage(tempImage, force_set_linked=True, **kwargs)
+
+    def getTempLayerBrushLevels(self, ID):
+        """Levels of the brush temp layer in overlay masks mode (values 0 and
+        `ID`, 2-entry lut). Explicit levels because auto-levels are computed
+        on a subsample of the pixels and can miss a small brush stroke on
+        large images (the stroke would be mapped to the transparent color)."""
+        return (0, max(int(ID), 1))
     
     def _setTempImageBrushContour(self):
         pass
@@ -32387,7 +32407,10 @@ When working with 3D segmentation masks:
             cv2.drawContours(img, objContour, -1, color, 1)
             self.tempLayerImg1.setImage(img, force_set_linked=True)
         else:
-            self.tempLayerImg1.setImage(brushImage, force_set_linked=True)
+            self.tempLayerImg1.setImage(
+                brushImage, force_set_linked=True,
+                levels=self.getTempLayerBrushLevels(ID)
+            )
     
     def getLabelsLayerImage(self, ax=0):
         if ax == 0:
