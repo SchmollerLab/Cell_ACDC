@@ -650,6 +650,59 @@ class MeasurementsViewerUtils:
     module docstring)."""
 
     @staticmethod
+    def validateTimeCourseYAxes(yAxes):
+        """Validate the configuration's ``time_course_y_axes``
+        ``{column: axis number}`` (optional: configurations saved before
+        multiple y axes have none)."""
+        if not isinstance(yAxes, dict) or any(
+                not isinstance(col, str) or not col
+                or type(number) is not int or number < 1
+                for col, number in yAxes.items()):
+            raise ValueError(
+                'time_course_y_axes must map column names to y axis numbers '
+                '(1, 2, ...).'
+            )
+
+    def yAxisNumber(self, col):
+        """Time course y axis number of column `col` (1: default axis)."""
+        return self.timeCourseYAxes.get(col, 1)
+
+    def setYAxisNumber(self, col, number):
+        if number == 1:
+            self.timeCourseYAxes.pop(col, None)
+        else:
+            self.timeCourseYAxes[col] = number
+
+    def mergeYAxisIntoDefault(self, number):
+        """Put every column of the y axis `number` (also those that are not
+        plotted) on the default axis 1."""
+        for col, other in list(self.timeCourseYAxes.items()):
+            if other == number:
+                del self.timeCourseYAxes[col]
+
+    def newYAxisNumber(self):
+        """Number of a new y axis: after every number used by a column,
+        also by columns that are not plotted (plotting them again must not
+        put them on the new axis), so the new axis is the rightmost one."""
+        return max([1, *self.timeCourseYAxes.values()]) + 1
+
+    def timeCourseYAxesConfiguration(self, columns):
+        """The configuration's ``time_course_y_axes``: the y axis number of
+        every plotted time course column in `columns` (also 1), then of the
+        other columns not on axis 1."""
+        yAxes = {col: self.yAxisNumber(col) for col in columns}
+        for col, number in sorted(self.timeCourseYAxes.items()):
+            yAxes.setdefault(col, number)
+        return yAxes
+
+    def loadTimeCourseYAxes(self, yAxes):
+        """Set `timeCourseYAxes` from a configuration's validated
+        ``time_course_y_axes`` (axis 1 is the default, not stored)."""
+        self.timeCourseYAxes = {
+            col: number for col, number in yAxes.items() if number != 1
+        }
+
+    @staticmethod
     def validateConfiguration(configuration):
         if (not isinstance(configuration, dict)
                 or configuration.get('version') not in (1, 2)):
@@ -685,6 +738,9 @@ class MeasurementsViewerUtils:
                 'measurements_colors must map column names to colors like '
                 '"#00ff00".'
             )
+        MeasurementsViewerUtils.validateTimeCourseYAxes(
+            configuration.get('time_course_y_axes', {})
+        )
         MeasurementsViewerUtils.validateConditionalFormatting(
             configuration.get('conditional_formatting', {})
         )

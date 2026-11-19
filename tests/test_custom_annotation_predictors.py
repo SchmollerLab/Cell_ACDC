@@ -1010,6 +1010,7 @@ def test_removing_annotation_column_warns_about_dependents(viewer, monkeypatch):
         'Big': [{'condition': 'Big > 0', 'color': '#00ff00'}],
     }
     viewer.measurementsColors['Big'] = '#0000ff'
+    viewer.timeCourseYAxes['Big'] = 2
     texts = []
 
     class FakeMessageBox:
@@ -1035,6 +1036,7 @@ def test_removing_annotation_column_warns_about_dependents(viewer, monkeypatch):
     assert 'Big' not in viewer.acdc_df.columns
     assert 'Big' not in viewer.conditionalFormatting
     assert 'Big' not in viewer.measurementsColors
+    assert 'Big' not in viewer.timeCourseYAxes
     assert 'area' in viewer.conditionalFormatting
 
 
@@ -1176,11 +1178,13 @@ def test_rename_moves_selection_and_formatting(viewer, monkeypatch):
     viewer.conditionalFormatting['Big'] = rules
     color = measurements_viewer.QColor(0, 255, 0)
     viewer.measurementsColors['Big'] = color
+    viewer.plotOnNewYAxis('Big')
     modify_annotation(viewer, monkeypatch, button, annot_state(name='Large'))
     assert 'Large' in viewer.checkedColumns()
     assert 'Big' not in viewer.checkedColumns()
     assert viewer.conditionalFormatting == {'Large': rules}
     assert viewer.measurementsColors == {'Large': color}
+    assert viewer.timeCourseYAxes == {'Large': 2}
 
 
 def test_reload_keeps_annotations(viewer, monkeypatch):

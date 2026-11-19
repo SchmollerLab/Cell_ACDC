@@ -7,6 +7,8 @@ from unittest.mock import Mock
 import numpy as np
 import pandas as pd
 import pytest
+import pyqtgraph as pg
+import pyqtgraph.exporters
 
 from qtpy.QtCore import QEvent, QPointF, Qt
 from qtpy.QtGui import QMouseEvent
@@ -1960,3 +1962,415 @@ def test_formatting_dialog_is_disabled_while_condition_editor_runs(app):
         assert dialog.rows[0]['edit'].text() == 'a > 1'
     finally:
         dialog.deleteLater()
+
+
+# --- Time course y axes ------------------------------------------------------
+
+def open_column_menu(viewer, app, name):
+    viewer.show()
+    app.processEvents()
+    pos = viewer.columnsListWidget.visualRect(proxy_index(viewer, name)).center()
+    viewer.showColumnsContextMenu(pos)
+    menu = QApplication.activePopupWidget()
+    assert menu is not None
+    return menu
+
+
+def menu_action(menu, text):
+    action, = [action for action in menu.actions() if action.text() == text]
+    return action
+
+
+def add_to_axis_actions(menu):
+    return menu_action(menu, 'Add to y-axis of...').menu().actions()
+
+
+def axes_columns(viewer):
+    """Curves of the time course on each displayed y axis (left first)."""
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    return [
+        [item.name() for item in plotItem.listDataItems()],
+        *[
+            [item.name() for item in items]
+            for items in plotItem.extraYAxesDataItems()
+        ]
+    ]
+
+
+def test_y_axis_menu_creates_and_joins_axes(viewer, app):
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    menu = open_column_menu(viewer, app, 'intensity')
+    assert [action.text() for action in menu.actions()][:4] == [
+        'Plot', '', 'Create new y axis for this', 'Add to y-axis of...'
+    ]
+    newAxis = menu_action(menu, 'Create new y axis for this')
+    assert newAxis.isEnabled()
+    # The column's own axis is not listed: empty with a single axis
+    assert not add_to_axis_actions(menu)
+    assert not menu_action(menu, 'Add to y-axis of...').isEnabled()
+    newAxis.trigger()
+    menu.hide()
+    assert viewer.timeCourseYAxes == {'intensity': 2}
+    assert axes_columns(viewer) == [['area'], ['intensity']]
+    extraAxis, = plotItem.shownExtraAxes()
+    assert extraAxis.isVisible()
+    assert extraAxis.labelText == 'intensity'
+    assert viewer.measurementsPlot.getAxis('left').labelText == 'area'
+    assert [label.text for _, label in viewer.measurementsLegend.items] == [
+        'area', 'intensity'
+    ]
+
+    menu = open_column_menu(viewer, app, 'intensity')
+    # Alone on its axis: it already has its own axis
+    assert not menu_action(menu, 'Create new y axis for this').isEnabled()
+    assert [action.text() for action in add_to_axis_actions(menu)] == ['area']
+    menu.hide()
+    menu = open_column_menu(viewer, app, 'area')
+    addTo, = add_to_axis_actions(menu)
+    assert addTo.text() == 'intensity'
+    addTo.trigger()
+    menu.hide()
+    # area was the last column of axis 1: intensity's axis becomes axis 1
+    assert viewer.timeCourseYAxes == {}
+    # One axis left: shown on the left as before
+    assert axes_columns(viewer) == [['area', 'intensity']]
+    assert not plotItem.shownExtraAxes()
+    assert not extraAxis.isVisible()
+    assert viewer.measurementsPlot.getAxis('left').labelText == 'Value'
+    menu = open_column_menu(viewer, app, 'area')
+    assert not add_to_axis_actions(menu)
+    menu.hide()
+
+
+def test_new_y_axis_plots_unplotted_column_and_is_kept(viewer, app):
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    assert viewer.checkedColumns() == ['area']
+    menu = open_column_menu(viewer, app, 'intensity')
+    assert not add_to_axis_actions(menu)
+    menu_action(menu, 'Create new y axis for this').trigger()
+    menu.hide()
+    assert viewer.checkedColumns() == ['area', 'intensity']
+    assert axes_columns(viewer) == [['area'], ['intensity']]
+    # Unplotting hides the axis but keeps the column's axis number
+    column(viewer, 'intensity').setCheckState(Qt.Unchecked)
+    assert viewer.timeCourseYAxes == {'intensity': 2}
+    assert plotItem.extraYAxesCount == 0
+    assert axes_columns(viewer) == [['area']]
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
+    assert axes_columns(viewer) == [['area'], ['intensity']]
+    # A new axis comes after all used numbers (the rightmost axis); the
+    # lowest displayed axis is the left one
+    viewer.plotOnNewYAxis('area')
+    assert viewer.timeCourseYAxes == {'intensity': 2, 'area': 3}
+    assert axes_columns(viewer) == [['intensity'], ['area']]
+    # Comparison mode has no extra axes; they come back in the time course
+    viewer.measurementsModeCombobox.setCurrentIndex(1)
+    assert plotItem.extraYAxesCount == 0
+    viewer.measurementsModeCombobox.setCurrentIndex(0)
+    assert axes_columns(viewer) == [['intensity'], ['area']]
+    # Renaming the column keeps its axis
+    viewer.acdc_df = viewer.acdc_df.rename(columns={'area': 'size'})
+    viewer.renameMeasurementColumnReferences('area', 'size')
+    viewer.plotMeasurements()
+    assert viewer.timeCourseYAxes == {'intensity': 2, 'size': 3}
+    assert axes_columns(viewer) == [['intensity'], ['size']]
+
+
+class _WheelEvent:
+    """Wheel event as `ViewBox.wheelEvent` reads it."""
+    def __init__(self, pos, delta=120):
+        self._pos, self._delta = pos, delta
+
+    def pos(self):
+        return self._pos
+
+    def delta(self):
+        return self._delta
+
+    def accept(self):
+        pass
+
+    def ignore(self):
+        pass
+
+
+def relative_change(before, after):
+    span = before[1] - before[0]
+    return [(after[0] - before[0]) / span, (after[1] - before[0]) / span]
+
+
+def test_y_axes_autoscale_separately_and_zoom_together(viewer, app):
+    viewer.plotOnNewYAxis('intensity')
+    viewer.show()
+    app.processEvents()
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    mainVb = plotItem.vb
+    extraVb, = plotItem.shownExtraViewBoxes()
+    # Same geometry, x-linked, under the main view box
+    assert extraVb.sceneBoundingRect() == mainVb.sceneBoundingRect()
+    assert extraVb.zValue() < mainVb.zValue()
+    mainVb.updateAutoRange()
+    extraVb.updateAutoRange()
+    # Cell 1: area 10, 20 (left), intensity 100, 250 (right)
+    (xMin, xMax), (yMin, yMax) = mainVb.viewRange()
+    assert xMin <= 1 and xMax >= 2
+    assert yMin <= 10 and 20 <= yMax < 100
+    (exMin, exMax), (eyMin, eyMax) = extraVb.viewRange()
+    assert (exMin, exMax) == pytest.approx((xMin, xMax))
+    assert 20 < eyMin <= 100 and eyMax >= 250
+
+    # Zooming in the plot area zooms every axis in the same way
+    mainBefore, extraBefore = mainVb.viewRange()[1], extraVb.viewRange()[1]
+    mainVb.wheelEvent(_WheelEvent(mainVb.rect().center()))
+    mainAfter, extraAfter = mainVb.viewRange()[1], extraVb.viewRange()[1]
+    assert mainAfter != mainBefore
+    assert relative_change(extraBefore, extraAfter) == pytest.approx(
+        relative_change(mainBefore, mainAfter)
+    )
+    assert not extraVb.autoRangeEnabled()[1]
+
+    # "A" autoscales every axis
+    plotItem.autoBtnClicked()
+    assert all(mainVb.autoRangeEnabled())
+    assert extraVb.autoRangeEnabled()[1]
+    # Zooming on the right axis changes only that axis and shows "A"
+    mainBefore = mainVb.viewRange()[1]
+    extraVb.wheelEvent(_WheelEvent(extraVb.rect().center()), axis=1)
+    assert mainVb.viewRange()[1] == mainBefore
+    assert not extraVb.autoRangeEnabled()[1]
+    plotItem.mouseHovering = True
+    plotItem.updateButtons()
+    assert plotItem.autoBtn.isVisible()
+    # Every automatic rescale includes the extra axes
+    viewer.autoscaleMeasurementsPlot()
+    assert extraVb.autoRangeEnabled()[1]
+
+
+def show_two_axes(viewer, app):
+    """Show area (left) and intensity (right axis), both autoscaled; return
+    the plot item, the main and the extra view box."""
+    viewer.plotOnNewYAxis('intensity')
+    viewer.show()
+    app.processEvents()
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    extraVb, = plotItem.shownExtraViewBoxes()
+    plotItem.vb.updateAutoRange()
+    extraVb.updateAutoRange()
+    app.processEvents()
+    return plotItem, plotItem.vb, extraVb
+
+
+def send_mouse(viewer, eventType, scenePos, button=Qt.NoButton,
+               buttons=Qt.NoButton):
+    viewportPos = viewer.measurementsPlot.mapFromScene(scenePos)
+    QApplication.sendEvent(
+        viewer.measurementsPlot.viewport(),
+        QMouseEvent(
+            eventType, QPointF(viewportPos), button, buttons, Qt.NoModifier
+        )
+    )
+    return viewportPos
+
+
+def hover_point(viewer, vb, point):
+    # pyqtgraph applies a new view range to the hit tests (transform of
+    # the curves) at the next paint, which may not have happened offscreen
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    for viewBox in (plotItem.vb, *plotItem.shownExtraViewBoxes()):
+        viewBox.updateMatrix()
+    scenePos = vb.mapViewToScene(QPointF(point.pos()))
+    viewportPos = send_mouse(viewer, QEvent.MouseMove, scenePos)
+    QTest.qWait(50)
+    return viewportPos
+
+
+def test_points_of_extra_y_axis_show_tip_and_navigate(viewer, app, monkeypatch):
+    errors = []
+    monkeypatch.setattr(
+        sys, 'excepthook', lambda *exc_info: errors.append(exc_info)
+    )
+    # Cell 1: the right-axis point of frame 2 (intensity 100, bottom) does
+    # not lie on the left-axis point of frame 2 (area 20, top)
+    viewer.acdc_df.loc[(0, 1), 'intensity'] = 250.0
+    viewer.acdc_df.loc[(1, 1), 'intensity'] = 100.0
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    (item,), = plotItem.extraYAxesDataItems()
+    point = item.scatter.points()[-1]
+    assert point.data()['frame_i'] == 1
+    viewportPos = hover_point(viewer, extraVb, point)
+    # The tip of every axis is on the main view box, above the others
+    assert 'intensity: 100' in mainVb.toolTip()
+    assert 'area' not in mainVb.toolTip()
+    assert not extraVb.toolTip()
+    # A replot (e.g. another cell) drops the tip of the removed points
+    viewer.plotMeasurements()
+    assert not mainVb.toolTip()
+    del item, point
+    assert viewer.frame_i == 0
+    QTest.mouseClick(
+        viewer.measurementsPlot.viewport(), Qt.LeftButton, pos=viewportPos
+    )
+    wait_navigation()
+    assert not errors, errors
+    assert viewer.frame_i == 1
+
+
+def test_coinciding_points_of_all_axes_share_the_tip(viewer, app):
+    # Cell 1 over frames 1-3, middle values in the middle of both axes
+    # (each axis fits its data), so the frame-2 points coincide
+    viewer.acdc_df.loc[(1, 1), ['area', 'intensity']] = [15.0, 175.0]
+    viewer.acdc_df.loc[(2, 1), ['area', 'intensity']] = [20.0, 250.0]
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    (extraItem,), = plotItem.extraYAxesDataItems()
+    point = extraItem.scatter.points()[1]
+    assert point.data()['frame_i'] == 1
+    hover_point(viewer, extraVb, point)
+    tip = mainVb.toolTip()
+    assert 'area: 15' in tip and 'intensity: 175' in tip
+    # Leaving the points clears it
+    send_mouse(viewer, QEvent.MouseMove, mainVb.mapViewToScene(QPointF(
+        1.5, sum(mainVb.viewRange()[1]) / 2
+    )))
+    QTest.qWait(50)
+    assert not mainVb.toolTip()
+
+
+def test_horizontal_drag_freezes_every_y_axis(viewer, app):
+    viewer.rescalePlotCheckbox.setChecked(False)
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    extraRange = extraVb.viewRange()[1]
+    rect = mainVb.mapRectToScene(mainVb.rect())
+    start = QPointF(rect.center().x(), rect.center().y())
+    send_mouse(viewer, QEvent.MouseButtonPress, start, Qt.LeftButton,
+               Qt.LeftButton)
+    for dx in (10, 20, 30):
+        QTest.qWait(30)
+        send_mouse(viewer, QEvent.MouseMove, start + QPointF(dx, 0),
+                   Qt.NoButton, Qt.LeftButton)
+    send_mouse(viewer, QEvent.MouseButtonRelease, start + QPointF(30, 0),
+               Qt.LeftButton, Qt.NoButton)
+    app.processEvents()
+    assert not any(mainVb.autoRangeEnabled())
+    # The right axis keeps its range, as the left one (zoom kept)
+    assert not extraVb.autoRangeEnabled()[1]
+    extraVb.updateAutoRange()
+    assert extraVb.viewRange()[1] == pytest.approx(extraRange)
+
+
+def test_view_all_and_right_click_on_extra_axis(viewer, app):
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    extraAxis, = plotItem.shownExtraAxes()
+    assert extraAxis.linkedView() is extraVb
+    mainVb.setYRange(15, 16)
+    extraVb.setYRange(500, 600)
+    mainVb.menu.viewAll.trigger()
+    # Every axis fits its data once (intensity 100, 250)
+    low, high = extraVb.viewRange()[1]
+    assert low <= 100 and 250 <= high < 500
+    assert not extraVb.autoRangeEnabled()[1]
+    # A right-click on the right axis opens the plot menu
+    scenePos = extraAxis.mapToScene(extraAxis.rect().center())
+    viewportPos = viewer.measurementsPlot.mapFromScene(scenePos)
+    QTest.mouseClick(
+        viewer.measurementsPlot.viewport(), Qt.RightButton, pos=viewportPos
+    )
+    app.processEvents()
+    menu = QApplication.activePopupWidget()
+    assert menu is mainVb.menu
+    menu.hide()
+
+
+def test_extra_y_axes_follow_moves_of_main_view_box(viewer, app):
+    # Opposite magnitudes: switching cell swaps the tick label widths of
+    # the left and right axis, which moves the main view box without
+    # resizing it
+    viewer.acdc_df['area'] = [10.0, 20.0, 100000.0, 200000.0]
+    viewer.acdc_df['intensity'] = [100000.0, 200000.0, 10.0, 20.0]
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    x = mainVb.geometry().x()
+    viewer.idScrollBar.setValue(1)
+    for _ in range(3):
+        mainVb.updateAutoRange()
+        extraVb.updateAutoRange()
+        app.processEvents()
+        QTest.qWait(10)
+    assert viewer.selectedID == 2
+    assert mainVb.geometry().x() != x
+    assert extraVb.geometry() == mainVb.geometry()
+    frame = QPointF(2, 0)
+    assert extraVb.mapViewToScene(frame).x() == pytest.approx(
+        mainVb.mapViewToScene(frame).x(), abs=0.5
+    )
+
+
+def test_moving_last_left_column_merges_into_axis_1(viewer, app):
+    viewer.acdc_df['volume'] = [1.0, 2.0, 3.0, 4.0]
+    viewer.updateColumnsList()
+    viewer.plotOnNewYAxis('intensity')
+    viewer.addToYAxisOf('area', 2)
+    # Axis 2 became the default axis 1
+    assert viewer.timeCourseYAxes == {}
+    assert [sorted(cols) for cols in axes_columns(viewer)] == [
+        ['area', 'intensity']
+    ]
+    column(viewer, 'volume').setCheckState(Qt.Checked)
+    assert [sorted(cols) for cols in axes_columns(viewer)] == [
+        ['area', 'intensity', 'volume']
+    ]
+    # Moving a column that is not the last one of axis 1 creates no merge
+    viewer.plotOnNewYAxis('volume')
+    viewer.addToYAxisOf('area', 2)
+    assert viewer.timeCourseYAxes == {'volume': 2, 'area': 2}
+
+
+def test_extra_y_axes_curves_are_exported_and_shaded_under(
+        viewer, app, tmp_path):
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    path = tmp_path / 'plot.csv'
+    pg.exporters.CSVExporter(plotItem).export(fileName=str(path))
+    header = path.read_text().splitlines()[0]
+    assert 'area_x' in header and 'intensity_x' in header
+    # The shading of unanalyzed frames is under the curves of every axis
+    assert viewer.unanalyzedRegion.getViewBox() is extraVb
+    assert extraVb.zValue() < mainVb.zValue()
+    viewer.addToYAxisOf('intensity', 1)
+    assert viewer.unanalyzedRegion.getViewBox() is mainVb
+    # Removed curves are no longer exported
+    assert len(plotItem.curves) == len(plotItem.listDataItems())
+
+
+def test_log_mode_applies_to_extra_y_axes(viewer):
+    viewer.plotOnNewYAxis('intensity')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    plotItem.ctrl.logYCheck.setChecked(True)
+    try:
+        extraAxis, = plotItem.shownExtraAxes()
+        (item,), = plotItem.extraYAxesDataItems()
+        assert extraAxis.logMode
+        assert item.opts['logMode'][1]
+        # Replotted curves keep it
+        viewer.plotMeasurements()
+        (item,), = plotItem.extraYAxesDataItems()
+        assert item.opts['logMode'][1]
+    finally:
+        plotItem.ctrl.logYCheck.setChecked(False)
+    assert not extraAxis.logMode
+
+
+def test_phase_band_matches_extra_y_axes_width(viewer, app):
+    viewer.show()
+    app.processEvents()
+    phaseRight = viewer.phaseBandPlot.getAxis('right')
+    assert not phaseRight.isVisible()
+    viewer.plotOnNewYAxis('intensity')
+    app.processEvents()
+    extraAxis, = viewer.measurementsPlot.getPlotItem().shownExtraAxes()
+    assert extraAxis.width() > 0
+    assert phaseRight.isVisible()
+    # Fixed width (the band itself is hidden without phases)
+    assert phaseRight.maximumWidth() == pytest.approx(extraAxis.width(), abs=1)
+    assert phaseRight.minimumWidth() == phaseRight.maximumWidth()
+    viewer.addToYAxisOf('intensity', 1)
+    app.processEvents()
+    assert not phaseRight.isVisible()

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import tifffile
-from qtpy.QtCore import QTimer
+from qtpy.QtCore import Qt, QTimer
 from qtpy.QtGui import QKeySequence
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import QApplication
@@ -2097,6 +2097,64 @@ def test_custom_signal_colors_are_saved_and_loaded(
     assert not viewer.hasUnsavedConfiguration()
 
 
+def test_time_course_y_axes_are_saved_and_loaded(
+        viewer, tmp_path, monkeypatch):
+    _, path = load_clean_workflow(viewer, tmp_path)
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    # Every plotted column is numbered, also on the default axis 1
+    assert viewer.configuration()['time_course_y_axes'] == {'final': 1}
+    viewer.plotOnNewYAxis('area')
+    assert viewer.timeCourseYAxes == {'area': 2}
+    assert viewer.configuration()['time_course_y_axes'] == {
+        'final': 1, 'area': 2
+    }
+    assert viewer.hasUnsavedConfiguration()
+    assert viewer.saveConfiguration()
+    assert json.loads(path.read_text())['time_course_y_axes'] == {
+        'final': 1, 'area': 2
+    }
+    viewer.addToYAxisOf('area', 1)
+    assert viewer.timeCourseYAxes == {}
+    assert plotItem.extraYAxesCount == 0
+    monkeypatch.setattr(viewer, 'askSaveBeforeLoading', Mock(return_value=True))
+    assert viewer.loadConfiguration(filepath=str(path))
+    assert viewer.timeCourseYAxes == {'area': 2}
+    assert plotItem.extraYAxesCount == 1
+    assert not viewer.hasUnsavedConfiguration()
+    # Measurement vs Measurement saves the axes of the time course columns
+    viewer.measurementsModeCombobox.setCurrentIndex(1)
+    assert viewer.configuration()['time_course_y_axes'] == {
+        'final': 1, 'area': 2
+    }
+    viewer.measurementsModeCombobox.setCurrentIndex(0)
+    # A column that is not plotted keeps its axis
+    viewer.columnItem('area').setCheckState(Qt.Unchecked)
+    assert plotItem.extraYAxesCount == 0
+    assert viewer.configuration()['time_course_y_axes'] == {
+        'final': 1, 'area': 2
+    }
+    # A configuration saved before multiple y axes resets them
+    configuration = json.loads(path.read_text())
+    del configuration['time_course_y_axes']
+    old = tmp_path / 'old.json'
+    old.write_text(json.dumps(configuration))
+    assert viewer.loadConfiguration(filepath=str(old))
+    assert viewer.timeCourseYAxes == {}
+    assert plotItem.extraYAxesCount == 0
+    assert not viewer.hasUnsavedConfiguration()
+
+
+@pytest.mark.parametrize('bad', [
+    [], {'': 2}, {'a': 0}, {'a': -1}, {'a': '2'}, {'a': True}, {'a': 1.5},
+])
+def test_invalid_time_course_y_axes_are_rejected(viewer, tmp_path, bad):
+    load_clean_workflow(viewer, tmp_path)
+    configuration = viewer.configuration()
+    configuration['time_course_y_axes'] = bad
+    with pytest.raises(ValueError):
+        MeasurementsViewerWin.validateConfiguration(configuration)
+
+
 @pytest.mark.parametrize('bad', [
     [], {'': '#00ff00'}, {'a': 'green'}, {'a': '#00ff0'}, {'a': [0, 255, 0]},
 ])
@@ -2157,6 +2215,11 @@ def test_fucci_template_formats_reporters_by_ramp():
     assert result['measurements_colors'] == {
         'GFP_fucci': '#2ecc40', 'mCherry_fucci': '#e8384f'
     }
+    # The cell area has its own y axis next to the 0-1 reporters
+    assert result['time_course_y_axes'] == {
+        'GFP_fucci': 1, 'mCherry_fucci': 1, 'area': 2
+    }
+    MeasurementsViewerWin.validateTimeCourseYAxes(result['time_course_y_axes'])
 
 
 def test_formatting_condition_editor(app):
