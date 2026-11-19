@@ -18,7 +18,10 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 pytest.importorskip('qtpy')
 
-from qtpy.QtWidgets import QApplication, QLabel
+from qtpy.QtCore import QEvent, Qt
+from qtpy.QtGui import QKeyEvent
+from qtpy.QtTest import QTest
+from qtpy.QtWidgets import QApplication, QLabel, QMainWindow
 
 from cellacdc import gui, widgets
 from cellacdc.regionprops import acdcRegionprops
@@ -117,6 +120,7 @@ def _make_window(segm_data=None):
         highlightHoverIDsKeptObj=Mock(),
         tracking=Mock(),
         fixCcaDfAfterEdit=Mock(),
+        logger=Mock(),
     )
     # As in `guiWin.__init__` and `guiWin.gui_createActions`
     window.keptObjectsIDs = widgets.KeptObjectIDsList(
@@ -125,7 +129,7 @@ def _make_window(segm_data=None):
     _bind(
         window, 'addCurrentState', 'getCurrentState', 'undo', 'redo',
         'updateKeepIDs', 'setAllIDs', '_keepObjects', 'storeUndoRedoStates',
-        'applyKeepObjects',
+        'applyKeepObjects', 'askKeepIDsDeleteAllObjectsCurrentFrame',
     )
     lineEdit.sigIDsChanged.connect(window.updateKeepIDs)
     # As at the end of loading the data
@@ -595,3 +599,345 @@ def test_IDs_of_frames_past_segm_data_can_be_kept(app, slot_errors, how):
     assert window.keepIDsConfirmAction.isEnabled()
     assert _IDs_left_by_keep(window, posData) == {8}
     assert slot_errors == []
+
+
+# Applying "Keep IDs" (`guiWin.applyKeepObjects`) must never delete all the
+# objects because nothing is selected, and Enter must apply it only once
+NO_IDS_WARNING = '  No existing IDs selected --> nothing to apply'
+
+
+class _Qt5LikeAction(gui.QAction):
+    """QAction emitting `triggered` also when disabled (as in Qt5)"""
+    def trigger(self):
+        self.triggered.emit(False)
+
+
+class _Host(QMainWindow):
+    """Main window delegating the key presses to the fake `guiWin`"""
+    def __init__(self, window):
+        super().__init__()
+        self._window = window
+
+    def keyPressEvent(self, event):
+        self._window.keyPressEvent(event)
+
+
+def _unchecked():
+    return Mock(isChecked=Mock(return_value=False))
+
+
+def _make_apply_window(segm_data=None, isSnapshot=True, qt5Action=False):
+    window, posData = _make_window(segm_data)
+    window.isSnapshot = isSnapshot
+    posData.SizeT = len(posData.segm_data)
+    if qt5Action:
+        window.keepIDsConfirmAction = _Qt5LikeAction()
+        window.keptObjectsIDs = widgets.KeptObjectIDsList(
+            window.keptIDsLineEdit, window.keepIDsConfirmAction
+        )
+    # Time-lapse path of `applyKeepObjects`
+    posData.UndoFutFrames_keepID = False
+    posData.applyFutFrames_keepID = False
+    posData.doNotShowAgain_keepID = False
+    posData.includeUnvisitedInfo = {'Keep ID': False}
+    window.warnEditingWithCca_df = Mock(return_value=True)
+    window.askHowFutureFramesActions = {'Keep ID': _unchecked()}
+    window.propagateChange = Mock(return_value=(False, False, None, False))
+    # Attributes read by `guiWin.keyPressEvent` before the Enter branch
+    window.__dict__.update(
+        isDataLoaded=True, debug=False, isSegm3D=False,
+        applyEditIDKeyModifiers=Mock(return_value=False),
+        applySplitIDsKeyModifiers=Mock(return_value=False),
+        widgetsPersistentShortcut={}, checkSetDelObjActionActive=Mock(),
+        overlayButton=_unchecked(), brushButton=_unchecked(),
+        eraserButton=_unchecked(), manualTrackingButton=_unchecked(),
+        manualBackgroundButton=_unchecked(), interpZButton=_unchecked(),
+        expandLabelToolButton=_unchecked(), wandToolButton=_unchecked(),
+        labelRoiButton=_unchecked(),
+        checkTriggerKeyPressShortcuts=Mock(return_value=(False, False)),
+        isOverlaySegmMaskChecked=Mock(return_value=False),
+        isBrushStrokesSelectCellsActive=Mock(return_value=False),
+    )
+    _bind(window, 'keyPressEvent')
+    # As in `guiWin.gui_createActions`
+    window.keptIDsLineEdit.sigEnterPressed.connect(
+        lambda: window.applyKeepObjects()
+    )
+    window.keepIDsConfirmAction.triggered.connect(
+        lambda checked=False: window.applyKeepObjects()
+    )
+    # Line edit in the "Keep IDs" toolbar of the main window (the key
+    # presses not accepted by the line edit go to `guiWin.keyPressEvent`)
+    host = _Host(window)
+    toolbar = widgets.ToolBar('Keep IDs controls', host)
+    toolbar.addAction(window.keepIDsConfirmAction)
+    toolbar.addWidget(window.keptIDsLineEdit)
+    host.addToolBar(toolbar)
+    host.show()
+    window.keptIDsLineEdit.setFocus()
+    QApplication.processEvents()
+    window._host = host
+    return window, posData
+
+
+def _press_enter_in_line_edit(window, text=None):
+    if text is not None:
+        window.keptIDsLineEdit.setText(text)
+    QTest.keyClick(window.keptIDsLineEdit, Qt.Key.Key_Return)
+    QApplication.processEvents()
+
+
+def _press_enter_in_main_window(window):
+    event = QKeyEvent(
+        QEvent.Type.KeyPress, Qt.Key.Key_Return, Qt.KeyboardModifier.NoModifier
+    )
+    window.keyPressEvent(event)
+
+
+def _num_undo_states(posData):
+    return len(posData.UndoRedoStates[posData.frame_i])
+
+
+@pytest.mark.parametrize('text', ['', '99', ', -', '0'])
+@pytest.mark.parametrize('qt5Action', [False, True])
+def test_apply_keep_ids_without_selection_is_refused(
+        app, slot_errors, text, qt5Action
+    ):
+    window, posData = _make_apply_window(qt5Action=qt5Action)
+
+    _press_enter_in_line_edit(window, text)
+    _press_enter_in_main_window(window)
+    window.applyKeepObjects()  # E.g., the toolbar button
+
+    assert (posData.lab == _lab()).all()
+    assert _num_undo_states(posData) == 0
+    assert list(window.keptObjectsIDs) == []
+    assert window.keptIDsInstructionsLabel.text() == NO_IDS_WARNING
+    assert window.keptIDsInstructionsLabel.styleSheet() == 'color: red'
+    # Main window Enter: disabled action not triggered (also on Qt5)
+    assert window.logger.warning.call_count == 2
+    assert slot_errors == []
+
+    # The warning is reset by editing the IDs
+    window.keptIDsLineEdit.setText('1')
+    assert list(window.keptObjectsIDs) == [1]
+    assert window.keptIDsInstructionsLabel.text() == INSTRUCTIONS
+    assert window.keptIDsInstructionsLabel.styleSheet() == ''
+    assert window.keepIDsConfirmAction.isEnabled()
+
+
+def test_no_ids_warning_reset_when_reactivating_keep_ids(app, slot_errors):
+    window, posData = _make_apply_window()
+    _press_enter_in_line_edit(window)
+    assert window.keptIDsInstructionsLabel.text() == NO_IDS_WARNING
+
+    window.__dict__.update(
+        currentLab2D=posData.lab,
+        isCellCycleInfoChecked=Mock(return_value=False),
+        uncheckLeftClickButtons=Mock(), initKeepObjLabelsLayers=Mock(),
+        clearTempBrushImage=Mock(), imgGrad=Mock(), keepIDsToolbar=Mock(),
+        labelsLayerImg1=Mock(), labelsLayerRightImg=Mock(),
+        ax1_contoursImageItem=Mock(), ax2_contoursImageItem=Mock(),
+        ax1_lostObjImageItem=Mock(), ax2_lostObjImageItem=Mock(),
+        ax1_lostTrackedObjImageItem=Mock(),
+        ax2_lostTrackedObjImageItem=Mock(),
+    )
+    _bind(window, 'keepIDs_cb')
+    window.keepIDs_cb(False)
+    window.keepIDs_cb(True)
+
+    assert window.keptIDsInstructionsLabel.text() == INSTRUCTIONS
+    assert window.keptIDsInstructionsLabel.styleSheet() == ''
+    assert slot_errors == []
+
+
+@pytest.mark.parametrize('qt5Action', [False, True])
+def test_enter_in_main_window_applies_only_enabled_action(
+        app, slot_errors, qt5Action
+    ):
+    window, posData = _make_apply_window(qt5Action=qt5Action)
+    triggered = Mock()
+    window.keepIDsConfirmAction.triggered.connect(
+        lambda checked=False: triggered()
+    )
+
+    _press_enter_in_main_window(window)
+    assert triggered.call_count == 0
+
+    _click_keep_IDs(window, 1)
+    _press_enter_in_main_window(window)
+    assert triggered.call_count == 1
+    assert set(np.unique(posData.lab)) == {0, 1}
+    assert slot_errors == []
+
+
+@pytest.mark.parametrize('qt5Action', [False, True])
+def test_enter_in_line_edit_applies_keep_ids_once(
+        app, slot_errors, qt5Action
+    ):
+    window, posData = _make_apply_window(qt5Action=qt5Action)
+
+    QTest.keyClicks(window.keptIDsLineEdit, '1,2')
+    _press_enter_in_line_edit(window)
+
+    # On Qt5, Enter was also propagated to `guiWin.keyPressEvent` that
+    # applied again the (reset) empty selection --> all objects deleted
+    assert set(np.unique(posData.lab)) == {0, 1, 2}
+    assert _num_undo_states(posData) == 1
+    window.fixCcaDfAfterEdit.assert_called_once()
+    assert list(window.keptObjectsIDs) == []
+    assert not window.keepIDsConfirmAction.isEnabled()
+    assert slot_errors == []
+
+
+@pytest.mark.parametrize('qt5Action', [False, True])
+def test_enter_in_line_edit_cancelled_apply_not_repeated(
+        app, slot_errors, qt5Action
+    ):
+    # Time-lapse: the user cancels the dialog about the annotations, which
+    # took the focus from the line edit (the selection is not reset)
+    window, posData = _make_apply_window(
+        np.array([_lab(), _lab(), _lab()]), isSnapshot=False,
+        qt5Action=qt5Action
+    )
+    window.warnEditingWithCca_df = Mock(
+        side_effect=lambda *args, **kwargs: (
+            window.keptIDsLineEdit.clearFocus(), False
+        )[1]
+    )
+
+    QTest.keyClicks(window.keptIDsLineEdit, '1,2')
+    _press_enter_in_line_edit(window)
+
+    window.warnEditingWithCca_df.assert_called_once()
+    assert _num_undo_states(posData) == 1
+    assert sorted(window.keptObjectsIDs) == [1, 2]
+    assert slot_errors == []
+
+
+def test_apply_keep_ids_timelapse_propagates_selection(app, slot_errors):
+    window, posData = _make_apply_window(
+        np.array([_lab(), _lab(), _lab()]), isSnapshot=False
+    )
+    propagated = []
+
+    def propagateChange(IDs, key, *args, **kwargs):
+        # Copy because the selection is reset (emptied) afterwards
+        propagated.append((list(IDs), key))
+        return False, False, None, False
+
+    window.propagateChange = Mock(side_effect=propagateChange)
+
+    _press_enter_in_line_edit(window, '2')
+
+    assert set(np.unique(posData.lab)) == {0, 2}
+    window.warnEditingWithCca_df.assert_called_once()
+    assert propagated == [([2], 'Keep ID')]
+    assert list(window.keptObjectsIDs) == []
+    assert slot_errors == []
+
+
+class _FakeMessageBox:
+    """Fake `widgets.myMessageBox` answering `answer` (the dialog takes the
+    focus)"""
+    asked = []
+    answer = 'cancel'
+
+    def __init__(self, *args, **kwargs):
+        self.cancel = False
+
+    def warning(self, parent, title, txt, buttonsTexts=None, **kwargs):
+        _FakeMessageBox.asked.append((title, buttonsTexts))
+        QApplication.focusWidget() and QApplication.focusWidget().clearFocus()
+        self.cancel = _FakeMessageBox.answer == 'cancel'
+
+
+def _frames_with_ID_7_in_frame_1():
+    frame1 = _lab()
+    frame1[2:4, 2:4] = 7
+    return np.array([_lab(), frame1, _lab()])
+
+
+@pytest.mark.parametrize('answer', ['cancel', 'yes'])
+def test_apply_keep_ids_none_in_frame_asks_confirmation(
+        app, slot_errors, monkeypatch, answer
+    ):
+    monkeypatch.setattr(_FakeMessageBox, 'asked', [])
+    monkeypatch.setattr(_FakeMessageBox, 'answer', answer)
+    monkeypatch.setattr(widgets, 'myMessageBox', _FakeMessageBox)
+    window, posData = _make_apply_window(
+        _frames_with_ID_7_in_frame_1(), isSnapshot=False
+    )
+
+    # ID 7 exists only in frame 1 --> all the objects of frame 0 deleted
+    _press_enter_in_line_edit(window, '7')
+
+    assert _FakeMessageBox.asked == [(
+        'Delete all objects of the current frame?',
+        ('Cancel', 'Yes, delete all objects')
+    )]
+    if answer == 'cancel':
+        assert (posData.lab == _lab()).all()
+        assert _num_undo_states(posData) == 0
+        assert list(window.keptObjectsIDs) == [7]
+        assert window.keepIDsConfirmAction.isEnabled()
+    else:
+        assert not posData.lab.any()
+        assert _num_undo_states(posData) == 1
+        assert list(window.keptObjectsIDs) == []
+    assert slot_errors == []
+
+
+@pytest.mark.parametrize('emptyFrame', [False, True])
+def test_apply_keep_ids_does_not_ask_if_not_deleting_all(
+        app, slot_errors, monkeypatch, emptyFrame
+    ):
+    monkeypatch.setattr(_FakeMessageBox, 'asked', [])
+    monkeypatch.setattr(widgets, 'myMessageBox', _FakeMessageBox)
+    window, posData = _make_apply_window(
+        _frames_with_ID_7_in_frame_1(), isSnapshot=False
+    )
+    if emptyFrame:
+        # Nothing to delete in the current frame
+        posData.lab[:] = 0
+        window.update_rp()
+        text = '7'
+    else:
+        text = '1, 7'
+
+    _press_enter_in_line_edit(window, text)
+
+    assert _FakeMessageBox.asked == []
+    assert _num_undo_states(posData) == 1
+    expected = {0} if emptyFrame else {0, 1}
+    assert set(np.unique(posData.lab)) == expected
+    assert slot_errors == []
+
+
+@pytest.mark.parametrize('cls', ['KeepIDsLineEdit', 'IDsLineEdit'])
+def test_ids_line_edit_accepts_enter(app, cls):
+    # The line edits of the "Keep IDs", whitelist, merge and select cells
+    # toolbars handle Enter (it must not reach `guiWin.keyPressEvent`)
+    pressed = []
+
+    class Host(QMainWindow):
+        def keyPressEvent(self, event):
+            pressed.append(event.key())
+
+    host = Host()
+    lineEdit = getattr(widgets, cls)(QLabel(INSTRUCTIONS))
+    enterPressed = Mock()
+    lineEdit.sigEnterPressed.connect(lambda: enterPressed())
+    toolbar = widgets.ToolBar('IDs', host)
+    toolbar.addWidget(lineEdit)
+    host.addToolBar(toolbar)
+    host.show()
+
+    QTest.keyClick(lineEdit, Qt.Key.Key_Return)
+    QTest.keyClick(lineEdit, Qt.Key.Key_Enter)
+    QTest.keyClick(lineEdit, Qt.Key.Key_PageDown)
+
+    assert enterPressed.call_count == 2
+    # Other keys are still propagated
+    assert pressed == [Qt.Key.Key_PageDown]
+    host.close()

@@ -16688,6 +16688,9 @@ When working with 3D segmentation masks:
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
+        # Reset a previous warning (`setText('')` of `KeptObjectIDsList`
+        # does not emit `textChanged` if the line edit is already empty)
+        self.keptIDsLineEdit.setInstructionsText()
         self.updateAllImages()
 
         # QTimer.singleShot(300, self.autoRange)
@@ -17927,7 +17930,11 @@ When working with 3D segmentation masks:
             elif isTypingIDFunctionChecked:
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
-                self.keepIDsConfirmAction.trigger()
+                # Enter in the IDs line edit is handled (and accepted) by the
+                # line edit. Check that the action is enabled because Qt5
+                # triggers disabled actions too
+                if self.keepIDsConfirmAction.isEnabled():
+                    self.keepIDsConfirmAction.trigger()
             elif self.isBrushStrokesSelectCellsActive():
                 controls = self.brushStrokesSelectCellsToolbar
                 # Enter in the IDs line edit is handled by the line edit
@@ -29084,8 +29091,48 @@ When working with 3D segmentation masks:
         else:
             self.keptIDsLineEdit.setInstructionsText()
     
+    def askKeepIDsDeleteAllObjectsCurrentFrame(self):
+        """Ask confirmation before applying "Keep IDs" when none of the IDs
+        to keep is in the current frame (e.g., IDs existing only in other
+        frames), since all its objects would be deleted.
+
+        Returns True if the user wants to proceed."""
+        posData = self.data[self.pos_i]
+        currentIDs = set(posData.IDs)
+        if not currentIDs or currentIDs.intersection(self.keptObjectsIDs):
+            return True
+
+        keptIDsText = myutils.format_IDs(self.keptObjectsIDs)
+        txt = html_utils.paragraph(f"""
+            None of the IDs to keep (<code>{keptIDsText}</code>) is present
+            in the current frame.<br><br>
+            Applying "Keep IDs" will <b>delete ALL the objects of the current
+            frame</b>.<br><br>
+            Do you want to continue?
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Delete all objects of the current frame?', txt,
+            buttonsTexts=('Cancel', 'Yes, delete all objects')
+        )
+        return not msg.cancel
+
     @exception_handler
     def applyKeepObjects(self):
+        if not self.keptObjectsIDs:
+            # E.g., Enter pressed in the IDs line edit without (existing)
+            # IDs --> applying would delete all the objects
+            self.keptIDsLineEdit.warnNoIDsSelected()
+            self.logger.warning(
+                '[WARNING]: "Keep IDs" not applied because no existing ID is '
+                'selected (it would delete all the objects).'
+            )
+            return
+
+        proceed = self.askKeepIDsDeleteAllObjectsCurrentFrame()
+        if not proceed:
+            return
+
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
@@ -29164,7 +29211,7 @@ When working with 3D segmentation masks:
         )
 
         if UndoFutFrames is None:
-            # Empty keep object list
+            # Future frames dialog cancelled (see `propagateChange`)
             self.keptObjectsIDs = widgets.KeptObjectIDsList(
                 self.keptIDsLineEdit, self.keepIDsConfirmAction
             )

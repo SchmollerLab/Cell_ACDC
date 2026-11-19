@@ -1180,6 +1180,12 @@ class KeepIDsLineEdit(ValidLineEdit):
         if event.text() == ',':
             self.sigSort.emit()
         elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            # QLineEdit ignores Enter --> the event would be propagated to
+            # the parent widgets (e.g., `guiWin.keyPressEvent`) and Enter
+            # would be handled twice. Note that checking the focus in the
+            # parent is not enough because the slots connected to
+            # `sigEnterPressed` can open dialogs that take the focus.
+            event.accept()
             self.sigEnterPressed.emit()
     
     def values(self) -> set:
@@ -1210,6 +1216,13 @@ class KeepIDsLineEdit(ValidLineEdit):
         self.setInvalidStyleSheet()
         self._label.setText(
             '  Some of the IDs are not existing --> they will be IGNORED'
+        )
+        self._label.setStyleSheet('color: red')
+
+    def warnNoIDsSelected(self):
+        self.setInvalidStyleSheet()
+        self._label.setText(
+            '  No existing IDs selected --> nothing to apply'
         )
         self._label.setStyleSheet('color: red')
 
