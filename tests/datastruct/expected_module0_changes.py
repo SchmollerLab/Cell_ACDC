@@ -11,6 +11,8 @@ together with the change that causes them.
 """
 from __future__ import annotations
 
+import math
+
 from . import manifest
 from .scenarios import ExpectedChange, assert_golden
 
@@ -19,6 +21,13 @@ __all__ = ['CHANGES', 'ExpectedChange', 'assert_golden']
 
 def _none_text_became_metadata(diff: manifest.Diff) -> bool:
     return diff.old is True and diff.new is False
+
+
+def _nm_value_now_in_um(diff: manifest.Diff) -> bool:
+    try:
+        return math.isclose(float(diff.new), float(diff.old) / 1000)
+    except (TypeError, ValueError):
+        return False
 
 
 CHANGES: list[ExpectedChange] = [
@@ -36,6 +45,18 @@ CHANGES: list[ExpectedChange] = [
         description=(
             '*_metadataXML.txt for non-.ome.tif input holds the reader '
             'metadata (str(bioimage.metadata)) instead of the text None.'
+        ),
+    ),
+    # Metadata dialog (`convertUnits`); S17 shows nm pixel sizes.
+    ExpectedChange(
+        gv='GV-03',
+        scenarios=('S17',),
+        key_glob='dst/*_metadata.csv/rows/*/1',
+        predicate=_nm_value_now_in_um,
+        description=(
+            'Pixel sizes shown/entered in nm, mm or cm are converted to um '
+            'before metadata.csv and TIFF spacing (previously written '
+            'unconverted).'
         ),
     ),
 ]

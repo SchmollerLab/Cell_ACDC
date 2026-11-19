@@ -533,3 +533,42 @@ def test_sources_never_change_the_tree(tmp_path, supported):
     )
     sources.list_source_files(src)
     assert conditions.tree_snapshot(src) == before
+
+
+# ------------------------------- io.rename_files_replace_invalid_chars
+def _contents(folder):
+    """{file name: content} (`_touch` writes the original name)."""
+    contents = {}
+    for name in os.listdir(folder):
+        with open(os.path.join(folder, name), 'rb') as file:
+            contents[name] = file.read()
+    return contents
+
+
+@pytest.mark.parametrize('replacement', ['_', '-'])
+def test_io_rename_files_replace_invalid_chars_plans_first(
+        tmp_path, replacement):
+    """Main's public helper (what the setup dialog's rename buttons called)
+    gives main's new names, but plans with plan_invalid_name_renames: when
+    a new name is taken nothing is renamed (main: FileExistsError on
+    Windows, the file silently replaced on Linux/macOS)."""
+    names = list(INVALID_NAMES)
+    oracle = _touch(tmp_path / 'oracle', *names)
+    expected = legacy_rename_files_replace_invalid_chars(
+        names, oracle, replacement_char=replacement
+    )
+    folder = _touch(tmp_path / 'copy', *names)
+    renamed = io.rename_files_replace_invalid_chars(
+        names, folder, replacement_char=replacement
+    )
+    assert renamed == expected
+    assert _contents(folder) == _contents(oracle)
+
+    taken = f'a{replacement}b.tif'
+    src = _touch(tmp_path / 'src', 'a b.tif', taken, 'x+y.tif')
+    before = conditions.tree_snapshot(src)
+    with pytest.raises(errors.SourceError, match=f'{taken} already exists'):
+        io.rename_files_replace_invalid_chars(
+            ['a b.tif', taken, 'x+y.tif'], src, replacement_char=replacement
+        )
+    assert conditions.tree_snapshot(src) == before

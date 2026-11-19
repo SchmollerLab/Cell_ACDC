@@ -3270,6 +3270,9 @@ class QDialogMetadataXML(QDialog):
         self.sampleImgData = sampleImgData
         self.ImageName = ImageName
         self.rawDataStruct = rawDataStruct
+        # One file per channel: SizeC is the number of channels found in
+        # the file names, the maximum the user can choose
+        self._numChannelTokens = SizeC if rawDataStruct == 2 else None
         self.readSampleImgDataAgain = False
         self.requestedReadingSampleImageDataAgain = False
         self.imageViewer = None
@@ -3699,15 +3702,8 @@ class QDialogMetadataXML(QDialog):
         )
 
     def removeInvalidCharacters(self, chName):
-        # Remove invalid charachters
-        chName = "".join(
-            c if c.isalnum() or c=='_' or c=='' else '_' for c in chName
-        )
-        trim_ = chName.endswith('_')
-        while trim_:
-            chName = chName[:-1]
-            trim_ = chName.endswith('_')
-        return chName
+        from .acdc_datastruct import naming
+        return naming.sanitize_name(chName)
 
     def updateFileFormat(self, is_h5):
         for idx in range(len(self.chNames_QLEs)):
@@ -3759,6 +3755,11 @@ class QDialogMetadataXML(QDialog):
         filenameLabel.setText(filename)
 
     def checkChNames(self, text=''):
+        # Names are compared as they will be saved (invalid characters
+        # replaced) and ignoring case (files differing only by case
+        # overwrite each other on Windows and macOS)
+        from .acdc_datastruct import naming
+
         if self.sender() in self.chNames_QLEs:
             idx = self.chNames_QLEs.index(self.sender())
             self.updateFilename(idx)
@@ -3775,7 +3776,7 @@ class QDialogMetadataXML(QDialog):
                 LE1.setStyleSheet('')
                 return areChNamesValid
 
-            s1 = LE1.text()
+            s1 = naming.sanitize_name(LE1.text())
             if not s1:
                 self.setInvalidChName_StyleSheet(LE1)
                 areChNamesValid = False
@@ -3784,8 +3785,8 @@ class QDialogMetadataXML(QDialog):
             return areChNamesValid
 
         for LE1, LE2 in combinations(self.chNames_QLEs, 2):
-            s1 = LE1.text()
-            s2 = LE2.text()
+            s1 = naming.sanitize_name(LE1.text()).casefold()
+            s2 = naming.sanitize_name(LE2.text()).casefold()
             LE1_idx = self.chNames_QLEs.index(LE1)
             LE2_idx = self.chNames_QLEs.index(LE2)
             saveCh1 = self.saveChannels_QCBs[LE1_idx].isChecked()
@@ -4026,6 +4027,13 @@ class QDialogMetadataXML(QDialog):
             )
             return
         
+        invalidValues = self.checkInvalidValues()
+        if invalidValues is not None:
+            title, text = invalidValues
+            msg = widgets.myMessageBox()
+            msg.critical(self, title, html_utils.paragraph(text))
+            return
+
         self.getValues()
         self.convertUnits()
 
@@ -4036,6 +4044,46 @@ class QDialogMetadataXML(QDialog):
 
         self.cancel = False
         self.close()
+
+    def checkInvalidValues(self):
+        """Return (title, text) of the first entry that cannot be used for
+        the conversion, or None if all entries are valid."""
+        from .acdc_datastruct import errors, metadata
+
+        saveChannels = [QCB.isChecked() for QCB in self.saveChannels_QCBs]
+        if not any(saveChannels):
+            return (
+                'No channel selected', 'Select at least one channel to save.'
+            )
+
+        SizeC = self.SizeC_SB.value()
+        if self.rawDataStruct == 2 and SizeC > self._numChannelTokens:
+            return 'Invalid number of channels', (
+                'One file per channel: SizeC cannot exceed the '
+                f'{self._numChannelTokens} channels found in the file names.'
+            )
+
+        # The time range is used only when its widget is shown (SizeT > 1)
+        if self.timeRangeToSaveWidget.isVisibleTo(self):
+            try:
+                metadata.validate_time_range(
+                    *self.timeRangeToSaveWidget.range(),
+                    self.SizeT_SB.value()
+                )
+            except errors.SettingsError as err:
+                return 'Invalid time range', err.message
+
+        if hasattr(self, 'posSelector'):
+            selectedPos = metadata.positions_from_gui_labels(
+                self.posSelector.selectedItemsText()
+            )
+            if selectedPos is not None and not selectedPos:
+                return (
+                    'No position selected',
+                    'Select at least one position to save.'
+                )
+
+        return None
 
     def getValues(self):
         self.LensNA = self.LensNA_DSB.value()
@@ -4060,38 +4108,29 @@ class QDialogMetadataXML(QDialog):
             self.addImageName = False
         self.saveChannels = []
         for LE, QCB in zip(self.chNames_QLEs, self.saveChannels_QCBs):
-            s = LE.text()
-            s = "".join(c if c.isalnum() or c=='_' or c=='' else '_' for c in s)
-            trim_ = s.endswith('_')
-            while trim_:
-                s = s[:-1]
-                trim_ = s.endswith('_')
+            s = self.removeInvalidCharacters(LE.text())
             self.chNames.append(s)
             self.saveChannels.append(QCB.isChecked())
         self.emWavelens = [DSB.value() for DSB in self.emWavelens_DSBs]
 
     def convertUnits(self):
+        from .acdc_datastruct import units
+
         timeUnit = self.TimeIncrementUnit_CB.currentText()
-        if timeUnit == 'ms':
-            self.TimeIncrement /= 1000
-        elif timeUnit == 'minutes':
-            self.TimeIncrement *= 60
-        elif timeUnit == 'hours':
-            self.TimeIncrement *= 3600
+        self.TimeIncrement = units.time_increment_to_seconds(
+            self.TimeIncrement, timeUnit
+        )
 
         PhysicalSizeUnit = self.PhysicalSizeUnit_CB.currentText()
-        if timeUnit == 'nm':
-            self.PhysicalSizeX /= 1000
-            self.PhysicalSizeY /= 1000
-            self.PhysicalSizeZ /= 1000
-        elif timeUnit == 'mm':
-            self.PhysicalSizeX *= 1000
-            self.PhysicalSizeY *= 1000
-            self.PhysicalSizeZ *= 1000
-        elif timeUnit == 'cm':
-            self.PhysicalSizeX *= 1e4
-            self.PhysicalSizeY *= 1e4
-            self.PhysicalSizeZ *= 1e4
+        self.PhysicalSizeX = units.physical_size_to_um(
+            self.PhysicalSizeX, PhysicalSizeUnit
+        )
+        self.PhysicalSizeY = units.physical_size_to_um(
+            self.PhysicalSizeY, PhysicalSizeUnit
+        )
+        self.PhysicalSizeZ = units.physical_size_to_um(
+            self.PhysicalSizeZ, PhysicalSizeUnit
+        )
 
     def cancel_cb(self, event):
         self.cancel = True
@@ -21929,6 +21968,8 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
 
     @exception_handler
     def srcFolderPathSelected(self, srcFolderPath):
+        from .acdc_datastruct import sources
+
         self.actionsFilesSourceFolder = {
             'files': [],
             'moveOtherFiles': False,
@@ -21939,11 +21980,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
             self.warnSourceFolderNotSetupCorrectly()
             return
         
-        ls = natsorted(myutils.listdir(srcFolderPath))
-        files = [
-            filename for filename in ls
-            if os.path.isfile(os.path.join(srcFolderPath, filename))
-        ]
+        files = sources.list_source_files(srcFolderPath)
         if not files:
             self.sourceFolderPathControl.setInvalid(True)
             self.warnSelectedPathEmpty(srcFolderPath)
@@ -21952,11 +21989,7 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         self.sourceFolderPathControl.setInvalid(False)
         myutils.addToRecentPaths(srcFolderPath)
 
-        all_ext = [
-            os.path.splitext(filename)[1] for filename in ls
-            if os.path.isfile(os.path.join(srcFolderPath, filename))
-        ]
-        counter = Counter(all_ext)
+        counter = sources.extension_counts(files)
         unique_ext = list(counter.keys())
         is_ext_unique = len(unique_ext) == 1
         most_common_ext, _ = counter.most_common(1)[0]
@@ -22003,13 +22036,10 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         self.actionsFilesSourceFolder['files'] = files
 
     def checkFileNames(self, raw_filenames, raw_src_path):
-        allowed = (
-            '.ome.tif',
-        )
-        for file in raw_filenames:
-            if is_alphanumeric_filename(file, allowed=allowed):
-                continue
+        from .acdc_datastruct import sources
 
+        # Ask what to do about the first invalid filename (if any)
+        for file in sources.find_invalid_filenames(raw_filenames):
             msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph(
                 f"""
@@ -22041,40 +22071,77 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
                 return []
             
             if msg.clickedButton == renameWithUnderscoresButton:
-                self.logger_func(
-                    'Renaming files to replace invalid characters with "_"...'
-                )
-                renamed_filenames = io.rename_files_replace_invalid_chars(
-                    raw_filenames, raw_src_path, replacement_char='_'
-                )
-                return renamed_filenames
+                replacement = '_'
             elif msg.clickedButton == renameWithDashesButton:
-                self.logger_func(
-                    'Renaming files to replace invalid characters with "-"...'
-                )
-                renamed_filenames = io.rename_files_replace_invalid_chars(
-                    raw_filenames, raw_src_path, replacement_char='-'
-                )
-                return renamed_filenames
+                replacement = '-'
             else:
                 return []
             
+            return self.renameInvalidFilenames(
+                raw_filenames, raw_src_path, replacement
+            )
+
         return raw_filenames
 
-    def checkFilesExtensions(self, raw_filenames):
-        from cellacdc.acdc_bioio_bioformats._utils import (
-            get_supported_image_extensions
-        )
-        extensions = get_supported_image_extensions()
-        not_supported_files = []
-        for filename in raw_filenames:
-            _, ext = os.path.splitext(filename)
+    def renameInvalidFilenames(self, raw_filenames, raw_src_path, replacement):
+        """Rename the files like `acdc-data convert --rename-invalid`: plan
+        with `sources.plan_invalid_name_renames`, rename with
+        `writers.execute_source_mutations`. When a new name would overwrite
+        a file nothing is renamed and [] is returned (as Cancel)."""
+        from .acdc_datastruct import errors, planning, sources, writers
 
-            if ext not in extensions:
-                not_supported_files.append(filename)
-        
+        try:
+            renames = sources.plan_invalid_name_renames(
+                raw_src_path, raw_filenames, replacement
+            )
+        except errors.SourceError as err:
+            self.warnRenameCollisions(err, raw_src_path)
+            return []
+
+        self.logger_func(
+            'Renaming files to replace invalid characters with '
+            f'"{replacement}"...'
+        )
+        src_dir = os.path.abspath(raw_src_path)
+        renamed_filenames = [renames.get(f, f) for f in raw_filenames]
+        mutations = planning.SourceMutations(
+            renames=tuple(
+                (os.path.join(src_dir, old), os.path.join(src_dir, new))
+                for old, new in renames.items()
+            ),
+            moves=(),
+            final_paths={
+                f: os.path.join(src_dir, new)
+                for f, new in zip(raw_filenames, renamed_filenames)
+            },
+        )
+        # Main logs only the line above, not one line per file
+        writers.execute_source_mutations(mutations, log=lambda *args: None)
+        return renamed_filenames
+
+    def warnRenameCollisions(self, error, raw_src_path):
+        # The collisions go to the details (a text box that wraps and
+        # scrolls), so that long file names do not widen the box
+        txt = html_utils.paragraph("""
+            Replacing the invalid characters would <b>overwrite files</b>
+            or give<br>two files the same name (see below).<br><br>
+            <b>No file was renamed</b>. Please, rename the files yourself
+            and try again.<br><br>
+            Thank you for your patience!
+        """)
+        detailsText = html.escape(error.message).replace('\n', '<br>')
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Files not renamed', txt, path_to_browse=raw_src_path,
+            detailsText=detailsText
+        )
+
+    def checkFilesExtensions(self, raw_filenames):
+        from .acdc_datastruct import sources
+
+        not_supported_files = sources.find_unsupported_files(raw_filenames)
         if not_supported_files:
-            self.warnExtensionNotSupported(filename)
+            self.warnExtensionNotSupported(not_supported_files)
             return False
         
         return True
@@ -22217,8 +22284,9 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         pass
 
     def dstFolderPathSelected(self, dstFolderPath):
-        pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
-        if not pos_foldernames:
+        from .acdc_datastruct import planning
+
+        if not planning.existing_position_numbers(dstFolderPath):
             self.actionsPosFoldersExisting = {
                 'overwrite': False,
                 'add_files': False,
@@ -22238,8 +22306,12 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
 
 
     def setupActionPosFoldersExisting(self, *args):
+        from .acdc_datastruct import planning
+
         dstFolderPath = self.dstFolderPathControl.path()
-        pos_foldernames = myutils.get_pos_foldernames(dstFolderPath)
+        existing_pos_numbers = planning.existing_position_numbers(
+            dstFolderPath
+        )
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(
             'The selected destination folder <b>already contains Position folders</b>.<br><br>'
@@ -22270,10 +22342,12 @@ into a folder called <code>raw_microscopy_files</code> inside the destination fo
         add_files = addFilesButton == msg.clickedButton
         create_new = createNewButton == msg.clickedButton
         
-        start_pos_n = 1
-        if create_new:
-            pos_ns = [int(pos.split('_')[-1]) for pos in pos_foldernames]
-            start_pos_n = max(pos_ns) + 1
+        on_existing = planning.OnExisting.from_gui_flags(
+            overwrite=overwrite, add_files=add_files, create_new=create_new
+        )
+        start_pos_n = planning.start_position_number(
+            on_existing, existing_pos_numbers
+        )
         
         self.actionsPosFoldersExisting['overwrite'] = overwrite
         self.actionsPosFoldersExisting['add_files'] = add_files
