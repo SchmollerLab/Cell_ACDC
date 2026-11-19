@@ -2109,23 +2109,27 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         for newColName, equation in mixedChannelsEquations.items():
             if newColName in self.mixedChCombineMetricsToSkip:
                 continue
-            cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
+            cols = [
+                name for name, _, _ in measurements.equation_variable_spans(equation)
+            ]
             if all([col in df.columns for col in cols]):
                 self._df_eval_equation(
                     df, newColName, equation, saveDataWorker=saveDataWorker
                 )
     
     def _df_eval_equation(self, df, newColName, expr, saveDataWorker=None):
+        # Yes/no columns as bool, as in the dialog's test (`~` = logical not)
+        evalDf = load.bool_cols_as_plain_bool(df)
         try:
-            df[newColName] = df.eval(expr)
+            df[newColName] = evalDf.eval(expr)
         except pd.errors.UndefinedVariableError as error:
             if saveDataWorker is not None:
                 saveDataWorker.sigCombinedMetricsMissingColumn.emit(
                     str(error), newColName
                 )
-        
+
         try:
-            df[newColName] = df.eval(expr)
+            df[newColName] = evalDf.eval(expr)
         except Exception as error:
             if saveDataWorker is not None:
                 saveDataWorker.customMetricsCritical.emit(
