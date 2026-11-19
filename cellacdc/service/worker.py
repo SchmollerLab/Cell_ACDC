@@ -37,7 +37,8 @@ FastAPI in a nutshell
 
   - a `dict` or a pydantic model (from `schema.py`) is sent as JSON.
     `response_model=...` in the decorator validates/documents its structure.
-  - `Response(content=bytes, ...)` sends raw bytes (here: the labels as `.npy`).
+  - `Response(content=bytes, ...)` sends raw bytes (here: the labels as `.npy`,
+    with `_ChunkedResponse`, which writes large bodies in chunks).
 * `raise HTTPException(status_code, detail)` sends an error response. The
   client (`ModelClient._raise_for_status`) turns it into a `RuntimeError`
   that includes `detail` (we put the full traceback there). Status codes used:
@@ -109,6 +110,57 @@ _FINISHED_STATUSES = ("completed", "failed", "cancelled")
 # through this lock, so that a cancellation cannot be overwritten by a
 # concurrent "running"/"completed"/"failed" transition.
 _jobs_lock = threading.Lock()
+
+# Maximum size of one write of a binary response body to the socket (see
+# `_ChunkedResponse`). Must be smaller than 4 GiB and much larger than
+# asyncio's write buffer limit (64 KiB)
+RESPONSE_CHUNK_SIZE = 64 * 1024 * 1024
+
+
+class _ChunkedResponse(Response):
+    """Binary response whose body is written to the socket in chunks of at
+    most `RESPONSE_CHUNK_SIZE` bytes.
+
+    The response is the same as with `Response` (including `body` and the
+    `Content-Length` header), only the way the body is sent changes. On
+    Windows, uvicorn's asyncio event loop (`ProactorEventLoop`) sends each
+    body message with one `WSASend` call, which fails for more than
+    4 GiB - 1 bytes ("ValueError: buffer too large" in the worker,
+    "IncompleteRead" in the client). This happened, for example, with the
+    (1153, 358, 1822, 3) uint16 stack (4.2 GiB) returned by cellpose's
+    `second_ch_img_to_stack`.
+    """
+    media_type = 'application/octet-stream'
+
+    async def __call__(self, scope, receive, send):
+        await send({
+            'type': 'http.response.start',
+            'status': self.status_code,
+            'headers': self.raw_headers,
+        })
+        body = memoryview(self.body)
+        chunk_size = RESPONSE_CHUNK_SIZE
+        # Each chunk is much larger than asyncio's write buffer limit (64 KiB),
+        # so the transport pauses uvicorn after every chunk and uvicorn waits
+        # until it has been sent before writing the next one: chunks are never
+        # merged into one larger write. An empty body is sent as one empty
+        # message
+        for start in range(0, len(body), chunk_size) or [0]:
+            end = start + chunk_size
+            await send({
+                'type': 'http.response.body',
+                'body': bytes(body[start:end]),
+                'more_body': end < len(body),
+            })
+        if self.background is not None:
+            await self.background()
+
+
+def _npy_response(arr) -> _ChunkedResponse:
+    """Send `arr` to the client as `.npy` bytes (read with `np.load`)."""
+    buf = io.BytesIO()
+    np.save(buf, arr)
+    return _ChunkedResponse(content=buf.getvalue())
 
 
 def _prune_finished_jobs():
@@ -578,17 +630,9 @@ def create_app(
                     'labels': out,
                     'embeddings': embedding_pos_data.frame_embeddings,
                 })
-                return Response(
-                    content=result_data,
-                    media_type='application/octet-stream',
-                )
+                return _ChunkedResponse(content=result_data)
             # Send the result back the same way: as `.npy` bytes
-            buf = io.BytesIO()
-            np.save(buf, out)
-            return Response(
-                content=buf.getvalue(), 
-                media_type="application/octet-stream"
-            )
+            return _npy_response(out)
         except Exception as e:
             import traceback
             raise HTTPException(status_code=500, detail=traceback.format_exc())
@@ -632,12 +676,7 @@ def create_app(
             out = await run_in_threadpool(
                 call_model_method_with_files, "segment3DT", arr, **p
             )
-            buf = io.BytesIO()
-            np.save(buf, out)
-            return Response(
-                content=buf.getvalue(), 
-                media_type="application/octet-stream"
-            )
+            return _npy_response(out)
         except Exception as e:
             import traceback
             raise HTTPException(status_code=500, detail=traceback.format_exc())
@@ -671,12 +710,7 @@ def create_app(
             out = await run_in_threadpool(
                 call_model_method, "second_ch_img_to_stack", first_arr, second_arr
             )
-            buf = io.BytesIO()
-            np.save(buf, out)
-            return Response(
-                content=buf.getvalue(),
-                media_type="application/octet-stream"
-            )
+            return _npy_response(out)
         except Exception:
             import traceback
             raise HTTPException(status_code=500, detail=traceback.format_exc())
@@ -793,12 +827,7 @@ def create_app(
                     detail=f"Job status is {job['status']}, result not ready"
                 )
             out = _jobs.pop(job_id)["result"]
-        buf = io.BytesIO()
-        np.save(buf, out)
-        return Response(
-            content=buf.getvalue(), 
-            media_type="application/octet-stream"
-        )
+        return _npy_response(out)
 
     @app.delete("/jobs/{job_id}")
     def cancel_job(job_id: str):
