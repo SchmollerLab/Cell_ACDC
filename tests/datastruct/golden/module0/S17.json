@@ -1,0 +1,248 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "channel_order": null,
+  "description": "layout 1, .ome.tif with physical sizes in nm",
+  "dialog_values": [
+   {
+    "LensNA": 1.4,
+    "PhysicalSizeX": 100.0,
+    "PhysicalSizeY": 100.0,
+    "PhysicalSizeZ": 500.0,
+    "SizeC": 2,
+    "SizeS": 1,
+    "SizeT": 3,
+    "SizeZ": 2,
+    "TimeIncrement": 7.5,
+    "addImageName": false,
+    "cancel": false,
+    "chNames": ["GFP", "mCherry"],
+    "emWavelens": [510.0, 610.0],
+    "overWrite": false,
+    "requestedReadingSampleImageDataAgain": false,
+    "saveChannels": [true, true],
+    "selectedPos": ["All Positions"],
+    "timeRangeToSave": [1, 3],
+    "to_h5": false,
+    "trust": false
+   }
+  ],
+  "tracebacks": []
+ },
+ "confirm": [
+  {
+   "ImageName": "Scene #1",
+   "LensNA": 1.4,
+   "PhysicalSizeUnit": "nm",
+   "PhysicalSizeX": 100.0,
+   "PhysicalSizeY": 100.0,
+   "PhysicalSizeZ": 500.0,
+   "SizeC": 2,
+   "SizeS": 1,
+   "SizeT": 3,
+   "SizeZ": 2,
+   "TimeIncrement": 7.5,
+   "TimeIncrementUnit": "s",
+   "chNames": ["GFP", "mCherry"],
+   "emWavelens": [510.0, 610.0],
+   "filename": "pos1.ome.tif",
+   "rawFilePath": "<SRC>/pos1.ome.tif",
+   "sampleImgData": {
+    "channels": [
+     {
+      "dtype": "uint16",
+      "sha256": "615f4f5547059a6d531bf53ae9188afc941b5e92777d4a4c86f1df4735a14dee",
+      "shape": [3, 2, 16, 20]
+     },
+     {
+      "dtype": "uint16",
+      "sha256": "0b81b7921058a7fa304e96029be93b87b954be5abba0616a435eae0fdef5bd3b",
+      "shape": [3, 2, 16, 20]
+     }
+    ],
+    "keys": ["ctz", "czt", "tcz", "tzc", "zct", "ztc"]
+   }
+  }
+ ],
+ "dialogs": [
+  {
+   "accepted": true,
+   "button": "ok",
+   "title": "Metadata for pos1.ome.tif"
+  }
+ ],
+ "dst": {
+  "Position_1/Images/pos1_ome_s1_GFP.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 0],
+    [0, 1, 0, 0],
+    [0, 2, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "615f4f5547059a6d531bf53ae9188afc941b5e92777d4a4c86f1df4735a14dee",
+   "shape": [3, 2, 16, 20]
+  },
+  "Position_1/Images/pos1_ome_s1_mCherry.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 1, 0],
+    [0, 1, 1, 0],
+    [0, 2, 1, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "0b81b7921058a7fa304e96029be93b87b954be5abba0616a435eae0fdef5bd3b",
+   "shape": [3, 2, 16, 20]
+  },
+  "Position_1/Images/pos1_ome_s1_metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["LensNA", "1.4"],
+    ["SizeT", "3"],
+    ["SizeZ", "2"],
+    ["TimeIncrement", "7.5"],
+    ["PhysicalSizeZ", "500.0"],
+    ["PhysicalSizeY", "100.0"],
+    ["PhysicalSizeX", "100.0"],
+    ["basename", "pos1_ome_s1_"],
+    ["channel_0_name", "GFP"],
+    ["channel_1_name", "mCherry"],
+    ["channel_0_emWavelen", "510.0"],
+    ["channel_1_emWavelen", "610.0"]
+   ]
+  },
+  "Position_1/Images/pos1_ome_s1_metadataXML.txt": {
+   "_info": {
+    "length": 960,
+    "sha256": "90ee0c0f3456215b7ffaa4a2ae2bf8f91f1954618e7dae473f4b6a747c72e3be"
+   },
+   "is_literal_None": false,
+   "kind": "metadataXML",
+   "nonempty": true
+  }
+ },
+ "exceptions": [],
+ "files": ["pos1.ome.tif"],
+ "message_boxes": [],
+ "pbar": {
+  "init": [2],
+  "step_sum": 2
+ },
+ "scenario": "S17",
+ "signals": [
+  ["progress", "Reading OME metadata..."],
+  ["progress", "Reading sample image data..."],
+  ["confirmMetadata", 0],
+  ["progress", "Position 1/1: saving data to <DST>/Position_1/Images..."],
+  ["finished"]
+ ],
+ "src": {
+  "pos1.ome.tif": {
+   "axes": "TCZYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": {
+    "LensNA": [],
+    "images": [
+     {
+      "Channels": [
+       {
+        "EmissionWavelength": "510.0",
+        "Name": "GFP"
+       },
+       {
+        "EmissionWavelength": "610.0",
+        "Name": "mCherry"
+       }
+      ],
+      "Name": "Scene #1",
+      "Pixels": {
+       "DimensionOrder": "XYZCT",
+       "PhysicalSizeX": "100.0",
+       "PhysicalSizeXUnit": "nm",
+       "PhysicalSizeY": "100.0",
+       "PhysicalSizeYUnit": "nm",
+       "PhysicalSizeZ": "500.0",
+       "PhysicalSizeZUnit": "nm",
+       "SizeC": "2",
+       "SizeT": "3",
+       "SizeX": "20",
+       "SizeY": "16",
+       "SizeZ": "2",
+       "TimeIncrement": "7.5",
+       "TimeIncrementUnit": "s",
+       "Type": "uint16"
+      }
+     }
+    ]
+   },
+   "origins": [
+    [0, 0, 0, 0],
+    [0, 1, 0, 0],
+    [0, 2, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "4f085d48e5af3d331c5a08471d86e16c13e72c0b4c5c4bb5aa93037f3b055f9e",
+   "shape": [3, 2, 2, 16, 20]
+  }
+ },
+ "task_ended": ["ended"]
+}

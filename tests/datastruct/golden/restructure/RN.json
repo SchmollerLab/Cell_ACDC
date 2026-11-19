@@ -1,0 +1,488 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "description": "T, Z, C per file; position b lacks mCh (fails mid-run)"
+ },
+ "case": "RN",
+ "dst": {
+  "Position_1/Images/GFP.tif": {
+   "axes": "ZCYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": {
+    "LensNA": [],
+    "images": [
+     {
+      "Channels": [
+       {},
+       {},
+       {}
+      ],
+      "Name": "GFP",
+      "Pixels": {
+       "DimensionOrder": "XYCZT",
+       "SizeC": "3",
+       "SizeT": "1",
+       "SizeX": "5",
+       "SizeY": "4",
+       "SizeZ": "2",
+       "Type": "uint16"
+      }
+     }
+    ]
+   },
+   "origins": [
+    [0, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "607267fdb6ce12f46b442f17761fb8e5f2768cb4a05da8e126c6a54745e71f5b",
+   "shape": [2, 3, 4, 5]
+  },
+  "Position_1/Images/mCh.tif": {
+   "axes": "ZCYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": {
+    "LensNA": [],
+    "images": [
+     {
+      "Channels": [
+       {},
+       {},
+       {}
+      ],
+      "Name": "mCh",
+      "Pixels": {
+       "DimensionOrder": "XYCZT",
+       "SizeC": "3",
+       "SizeT": "1",
+       "SizeX": "5",
+       "SizeY": "4",
+       "SizeZ": "2",
+       "Type": "uint16"
+      }
+     }
+    ]
+   },
+   "origins": [
+    [0, 0, 1, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "86d0553285ed94d586744408dba994998a069d20fdd198362e6885d5ffbcfd75",
+   "shape": [2, 3, 4, 5]
+  },
+  "Position_1/Images/metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["basename", ""],
+    ["SizeT", "2"],
+    ["SizeZ", "3"],
+    ["channel_0_name", "GFP"],
+    ["channel_1_name", "mCh"]
+   ]
+  },
+  "Position_2/Images/GFP.tif": {
+   "axes": "ZCYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": {
+    "LensNA": [],
+    "images": [
+     {
+      "Channels": [
+       {},
+       {},
+       {}
+      ],
+      "Name": "GFP",
+      "Pixels": {
+       "DimensionOrder": "XYCZT",
+       "SizeC": "3",
+       "SizeT": "1",
+       "SizeX": "5",
+       "SizeY": "4",
+       "SizeZ": "2",
+       "Type": "uint16"
+      }
+     }
+    ]
+   },
+   "origins": [
+    [1, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "335aa4965e2b0fb81e15b9ce80bef2f4f73fe38d39afdb66fe37e7521e14dd25",
+   "shape": [2, 3, 4, 5]
+  }
+ },
+ "exception": ["ValueError", "No input TIFFs matched channel 'mCh' for position 'b'."],
+ "result": null,
+ "signals": [
+  ["initProgressBar", 0],
+  ["progress", "Processing TIFF files...", "INFO"],
+  ["initProgressBar", 2],
+  ["progress", "Creating Position folder Position_1...", "INFO"],
+  ["progressBar", 1],
+  ["progress", "Creating Position folder Position_2...", "INFO"]
+ ],
+ "src": {
+  "a_t0_z0_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+   "shape": [4, 5]
+  },
+  "a_t0_z0_mCh.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 1, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "bddf9ac5c3713c29812688049683eece6ed040d6c30b62f7359c87cf02b1a145",
+   "shape": [4, 5]
+  },
+  "a_t0_z1_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 1]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "7bbd88bafadedcd7a1914e66bc9a23dd7cc7bc29cfd51ac5c987d70a058d7602",
+   "shape": [4, 5]
+  },
+  "a_t0_z1_mCh.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 1, 1]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "c4ffe2bc3810ebdc91e7813255c068f9efc36c270472b8e18b113d14367ee891",
+   "shape": [4, 5]
+  },
+  "a_t0_z2_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 2]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "c3639445da48b911027ee34c89eeea7ecd3974efc248df57dc265edf39038c7a",
+   "shape": [4, 5]
+  },
+  "a_t0_z2_mCh.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 1, 2]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "fc18c6e21caebc2b9fdf6e6fda56963fc13ba50e8b75f4a37ee56f1b58b08f3a",
+   "shape": [4, 5]
+  },
+  "a_t1_z0_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 1, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "990b86617abc347b76e0240830129b7a6328c5f97f31c2c1d7720a8f53b58544",
+   "shape": [4, 5]
+  },
+  "a_t1_z0_mCh.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 1, 1, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "3f55dbb2a83f98fe6bed930d66f2b9802d688a1962bf20dd1933169a1b4bfe30",
+   "shape": [4, 5]
+  },
+  "a_t1_z1_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 1, 0, 1]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "3b0e248b71cd06d193c97422b695e5c419b45dc6b520bf414ead2c0336a7b7fd",
+   "shape": [4, 5]
+  },
+  "a_t1_z1_mCh.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 1, 1, 1]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "4f03084e31b96c3302fdc9806a4b83c682a71a3bca30cbff5daf795cff0f6b32",
+   "shape": [4, 5]
+  },
+  "a_t1_z2_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 1, 0, 2]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "9fc92c0440a59e533732317ede02634bef516733bf6dd4a098ca771ea0fcf265",
+   "shape": [4, 5]
+  },
+  "a_t1_z2_mCh.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 1, 1, 2]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "979f9555baa690094337f52d8c669e6211c9798e489712198cdc9245910ef65e",
+   "shape": [4, 5]
+  },
+  "b_t0_z0_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "03fe0be7c34be96e95d024dfebdf1cceeb45ac9aefb9b91dfb8cdd44b80c7ae8",
+   "shape": [4, 5]
+  },
+  "b_t0_z1_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 0, 1]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "b3a9f89a3b3f2270493d37eaefde3c22b167493bb350c543eb2d9cce9fd5b4a6",
+   "shape": [4, 5]
+  },
+  "b_t0_z2_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 0, 2]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "f0eaa6a29511dff0f7564dae419a2904ab0ad98dcecc00f450eb12370750ac5d",
+   "shape": [4, 5]
+  },
+  "b_t1_z0_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 1, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "5d5c67757989a3cf052e97444cbd3d9bc28dbaa71c02949bc08fd0c2b1fc6764",
+   "shape": [4, 5]
+  },
+  "b_t1_z1_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 1, 0, 1]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "1649a8a1858d9b63a84b034764e7d67dd26353e089e907521e4749302dc29584",
+   "shape": [4, 5]
+  },
+  "b_t1_z2_GFP.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 1, 0, 2]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "7a7a3d4bf3569d615ae2e439821974363b3339fa05996ec0a7554f500619ef55",
+   "shape": [4, 5]
+  }
+ }
+}
