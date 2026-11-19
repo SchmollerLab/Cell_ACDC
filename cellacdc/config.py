@@ -3,13 +3,13 @@ import configparser
 import pprint
 import os
 import json
-import sys
 
 from typing import get_type_hints 
 
 import re
 
 from . import printl, debug_true_filepath
+from ._entry_points import parses_own_args
 
 class ConfigParser(configparser.ConfigParser):
     def __init__(self, *args, **kwargs):
@@ -50,14 +50,15 @@ help_text = (
     'If you do not have one, use the GUI to set up the parameters.\n\n'
     'Enjoy!'
 )
+
+# Entry points with their own parser (e.g. `acdc-data`, `acdc-setup-models`)
+# skip the `acdc` argv parse entirely (see `_entry_points.parses_own_args`)
+_OWN_PARSER = parses_own_args()
 try:
     ap = argparse.ArgumentParser(
         prog='acdc', description=help_text, 
         formatter_class=argparse.RawTextHelpFormatter,
-        add_help=not (
-            'acdc-setup-models' in os.path.basename(sys.argv[0])
-            or 'cellacdc.service.setup_models' in getattr(sys, 'orig_argv', [])
-        ),
+        add_help=not _OWN_PARSER,
     )
     
     ap.add_argument(
@@ -160,7 +161,7 @@ try:
     # Add dummy argument for stupid Jupyter
     # ap.add_argument('-f')
 
-    parser_args, unknown = ap.parse_known_args()
+    parser_args, unknown = ap.parse_known_args([] if _OWN_PARSER else None)
     parser_args = vars(parser_args)
     if os.path.exists(debug_true_filepath):
         parser_args['debug'] = True
