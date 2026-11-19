@@ -13367,8 +13367,10 @@ class MagicPromptsToolbar(ToolBar):
 
             You need both foreground and background strokes. You can paint
             on multiple frames and positions.<br>
-            With z-stacks, paint in "single z-slice" mode (projections are
-            display-only).<br><br>
+            With 3D segmentation masks, paint in "single z-slice" mode
+            (projections are display-only).<br>
+            With 2D masks of z-stacks, the brush strokes of a frame belong to
+            the z-slice (or z-projection) they are painted on.<br><br>
 
             Note that the brush strokes are <b>not meant to cover all the
             cells</b>. They simply provide some <b>example pixels</b> of

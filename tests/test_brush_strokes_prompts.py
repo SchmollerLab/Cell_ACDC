@@ -355,3 +355,75 @@ def test_add_objects_to_brush_strokes_trainable_annotation():
         model, [(0, 0, annot, np.ones(lab.shape))], logger_func=lambda x: x
     )
     assert model.calls[0][1]['prompt'] is annot
+
+
+# ---------------------------------------------------------------------------
+# Image source of 2D brush strokes of z-stack data
+# ---------------------------------------------------------------------------
+
+def test_get_brush_strokes_image_source():
+    posData = _fake_posData_zstack(
+        rows=[(0, 3, 'single z-slice'), (1, 0, 'max z-projection')]
+    )
+    source = utils.get_brush_strokes_image_source(posData, 0, 2)
+    assert source == 3 and type(source) is int
+    assert (
+        utils.get_brush_strokes_image_source(posData, 1, 2)
+        == 'max z-projection'
+    )
+
+    # 3D annotations and 2D data do not depend on the GUI z-slice
+    assert utils.get_brush_strokes_image_source(posData, 0, 3) is None
+    posData2D = SimpleNamespace(img_data=np.zeros((2, 4, 5)), SizeZ=1)
+    assert utils.get_brush_strokes_image_source(posData2D, 0, 2) is None
+
+    # Same fallbacks as `get_brush_strokes_image` (middle z-slice, clipped)
+    posData = _fake_posData_zstack(
+        rows=[(0, np.nan, 'single z-slice'), (1, 99, 'single z-slice')]
+    )
+    assert utils.get_brush_strokes_image_source(posData, 0, 2) == 5//2
+    assert utils.get_brush_strokes_image_source(posData, 1, 2) == 4
+
+
+def test_get_brush_strokes_image_default_source_is_gui_source():
+    rows_list = [
+        [(0, 3, 'single z-slice'), (1, 0, 'max z-projection')],
+        [(0, 0, 'mean z-projection'), (1, 4, 'median z-proj.')],
+        [(0, np.nan, 'single z-slice')],
+    ]
+    for rows in rows_list:
+        posData = _fake_posData_zstack(rows=rows)
+        for frame_i in range(posData.SizeT):
+            source = utils.get_brush_strokes_image_source(posData, frame_i, 2)
+            assert np.array_equal(
+                utils.get_brush_strokes_image(posData, frame_i, 2),
+                utils.get_brush_strokes_image(
+                    posData, frame_i, 2, source=source
+                )
+            )
+
+
+def test_get_brush_strokes_image_source_override():
+    # GUI now on z-slice 3, brush strokes painted on another source
+    posData = _fake_posData_zstack(
+        rows=[(0, 3, 'single z-slice'), (1, 3, 'single z-slice')]
+    )
+    image = utils.get_brush_strokes_image(posData, 0, 2, source=1)
+    assert np.array_equal(image, posData.img_data[0, 1])
+
+    # z-slice 0 is a valid source (not "no source")
+    image = utils.get_brush_strokes_image(posData, 0, 2, source=0)
+    assert np.array_equal(image, posData.img_data[0, 0])
+
+    image = utils.get_brush_strokes_image(
+        posData, 0, 2, source='max z-projection'
+    )
+    assert np.array_equal(image, posData.img_data[0].max(axis=0))
+
+    # Ignored with 3D annotations and 2D data
+    image = utils.get_brush_strokes_image(posData, 0, 3, source=1)
+    assert np.array_equal(image, posData.img_data[0])
+    img_data = np.arange(2*4*5).reshape(2, 4, 5)
+    posData2D = SimpleNamespace(img_data=img_data, SizeZ=1)
+    image = utils.get_brush_strokes_image(posData2D, 1, 2, source=3)
+    assert np.array_equal(image, img_data[1])

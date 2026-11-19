@@ -648,12 +648,18 @@ class guiWin(QMainWindow, whitelist.WhitelistGUIElements,
         # Brush strokes prompts (e.g., ConvPaint)
         # {pos_i: {frame_i: uint8 array with shape segm_data.shape[1:]}}
         self.brushStrokesAnnotData = {}
-        # {(pos_i, frame_i): deque of (z or None, array copy)}
+        # {(pos_i, frame_i): deque of (z or None, array copy, image source)}
         self.brushStrokesUndo = {}
+        # {(pos_i, frame_i): z-slice index or z-projection name} displayed
+        # when the 2D brush strokes of z-stack data were painted, i.e., the
+        # image they are paired with for training (see
+        # `prompt_utils.get_brush_strokes_image_source`)
+        self.brushStrokesImageSources = {}
         self.isBrushStrokeDragImg1 = False
         self.brushStrokePaintValue = 0
         self.brushStrokeLastYX = None
-        # (pos_i, frame_i, z) being painted by the current stroke
+        # (pos_i, frame_i, z, image source) being painted by the current
+        # stroke
         self.brushStrokeDragTarget = None
         self.brushStrokesChangedSinceTraining = True
         self.brushStrokesDiskMasks = {}
@@ -19630,6 +19636,55 @@ When working with 3D segmentation masks:
 
         return view
 
+    def getBrushStrokesImageSource(self):
+        """Source of the displayed image of the current frame that 2D brush
+        strokes of z-stack data are paired with (z-slice index or
+        z-projection name). None with 3D brush strokes or 2D data."""
+        posData = self.data[self.pos_i]
+        annot_ndim = len(self.getBrushStrokesAnnotShape(posData))
+        return prompt_utils.get_brush_strokes_image_source(
+            posData, posData.frame_i, annot_ndim
+        )
+
+    def getBrushStrokesImageSourceMismatch(self, annot):
+        """Source of the image that the brush strokes `annot` of the current
+        frame were painted on if it is not the displayed one (2D brush
+        strokes of z-stack data painted on another z-slice or z-projection),
+        otherwise None."""
+        posData = self.data[self.pos_i]
+        key = (self.pos_i, posData.frame_i)
+        source = self.brushStrokesImageSources.get(key)
+        if source is None or annot is None or not annot.any():
+            return
+
+        if source == self.getBrushStrokesImageSource():
+            return
+
+        return source
+
+    def recordBrushStrokesImageSource(self):
+        """Pair the brush strokes of the current frame with the displayed
+        image (2D brush strokes of z-stack data)"""
+        posData = self.data[self.pos_i]
+        key = (self.pos_i, posData.frame_i)
+        source = self.getBrushStrokesImageSource()
+        if source is None:
+            self.brushStrokesImageSources.pop(key, None)
+        else:
+            self.brushStrokesImageSources[key] = source
+
+    def warnBrushStrokesImageSourceMismatch(self, source):
+        if isinstance(source, str):
+            where = f'the {source}'
+        else:
+            where = f'z-slice n. {source+1}'
+        self.titleLabel.setText(
+            f'The brush strokes of this frame were painted on {where}. '
+            'Go back to it to edit them, or clear them to paint on the '
+            'displayed image (with 2D masks, the brush strokes of a frame '
+            'belong to one z-slice or z-projection).', color='r'
+        )
+
     def getBrushStrokesAnnotDisplay(self):
         """Get the 2D image of the brush strokes of the current frame as
         displayed (current z-slice, plane, or max projection)"""
@@ -19639,7 +19694,12 @@ When working with 3D segmentation masks:
 
         depthAxes = self.getBrushStrokesDepthAxes()
         if annot.ndim == 2:
-            return annot if depthAxes == 'z' else None
+            if depthAxes != 'z':
+                return
+            if self.getBrushStrokesImageSourceMismatch(annot) is not None:
+                # Painted on another z-slice or z-projection
+                return
+            return annot
 
         idx = max(self.zSliceScrollBar.sliderPosition(), 0)
         if depthAxes == 'y':
@@ -19709,7 +19769,13 @@ When working with 3D segmentation masks:
         if not myutils.is_in_bounds(int(x), int(y), X, Y):
             return
 
+        otherSource = self.getBrushStrokesImageSourceMismatch(annot2D)
+        if otherSource is not None:
+            self.warnBrushStrokesImageSourceMismatch(otherSource)
+            return
+
         self.storeBrushStrokesUndo(annot2D, z)
+        self.recordBrushStrokesImageSource()
 
         if modifiers == Qt.ShiftModifier:
             # Erase
@@ -19729,7 +19795,10 @@ When working with 3D segmentation masks:
 
     def getBrushStrokesPaintTarget(self, z):
         posData = self.data[self.pos_i]
-        return (self.pos_i, posData.frame_i, z)
+        # The image source of 2D brush strokes of z-stack data changes with
+        # the z-slice or z-projection
+        source = self.getBrushStrokesImageSource()
+        return (self.pos_i, posData.frame_i, z, source)
 
     def brushStrokesPaintAt(self, x, y):
         annot2D, z = self.getBrushStrokesAnnot2D(create=True, return_z=True)
@@ -19769,7 +19838,10 @@ When working with 3D segmentation masks:
         if undoQueue is None:
             undoQueue = deque(maxlen=20)
             self.brushStrokesUndo[key] = undoQueue
-        undoQueue.append((z, annot.copy()))
+        # The image source is restored too (e.g., brush strokes cleared and
+        # painted again on another z-slice)
+        source = self.brushStrokesImageSources.get(key)
+        undoQueue.append((z, annot.copy(), source))
         self.undoAction.setEnabled(True)
 
     def undoBrushStrokes(self):
@@ -19779,13 +19851,17 @@ When working with 3D segmentation masks:
         if not undoQueue:
             return False
 
-        z, prevAnnot = undoQueue.pop()
+        z, prevAnnot, prevSource = undoQueue.pop()
         annot = self.getBrushStrokesAnnot(create=True)
         target = annot if z is None else annot[z]
         if target.shape != prevAnnot.shape:
             return False
 
         target[...] = prevAnnot
+        if prevSource is None:
+            self.brushStrokesImageSources.pop(key, None)
+        else:
+            self.brushStrokesImageSources[key] = prevSource
         self.brushStrokesChangedSinceTraining = True
         self.setBrushStrokesLayerImage()
         return True
@@ -20013,6 +20089,11 @@ When working with 3D segmentation masks:
             self.warnBrushStrokesNotPaintable()
             return
 
+        otherSource = self.getBrushStrokesImageSourceMismatch(annot2D)
+        if otherSource is not None:
+            self.warnBrushStrokesImageSourceMismatch(otherSource)
+            return
+
         lab2D = posData.lab if z is None else posData.lab[z]
         if lab2D.shape != annot2D.shape:
             self.logger.warning(
@@ -20064,6 +20145,7 @@ When working with 3D segmentation masks:
         # Undo state stored only if something changed (the undo queue has a
         # maximum length)
         self.storeBrushStrokesUndo(prevAnnot2D, z)
+        self.recordBrushStrokesImageSource()
         self.brushStrokesChangedSinceTraining = True
         controls.resetSelection()
         self.setBrushStrokesLayerImage()
@@ -20124,8 +20206,12 @@ When working with 3D segmentation masks:
 
         prompts_data = []
         for pos_i, frame_i, annot in items:
+            # Image displayed when the brush strokes were painted (the
+            # z-slice or z-projection of 2D brush strokes of z-stack data
+            # can be changed afterwards)
+            source = self.brushStrokesImageSources.get((pos_i, frame_i))
             image = prompt_utils.get_brush_strokes_image(
-                self.data[pos_i], frame_i, annot.ndim
+                self.data[pos_i], frame_i, annot.ndim, source=source
             )
             prompts_data.append((pos_i, frame_i, annot.copy(), image))
 

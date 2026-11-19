@@ -36,7 +36,51 @@ def _get_segm_info_value(segmInfo_df, idx, col):
 
     return value
 
-def get_brush_strokes_image(posData, frame_i, annot_ndim):
+def get_brush_strokes_image_source(posData, frame_i, annot_ndim):
+    """Get the source of the image corresponding to 2D brush strokes of
+    z-stack data at frame `frame_i`, i.e., the z-projection or the z-slice
+    used in the GUI (columns 'which_z_proj_gui' and 'z_slice_used_gui' of
+    `posData.segmInfo_df`).
+
+    Parameters
+    ----------
+    posData : cellacdc.load.loadData
+        Position data (see `get_brush_strokes_image`).
+    frame_i : int
+        Frame index.
+    annot_ndim : int
+        Number of dimensions of the annotation array (2 for (Y, X) and 3 for
+        (Z, Y, X)).
+
+    Returns
+    -------
+    str, int, or None
+        Name of the z-projection (key of `BRUSH_STROKES_ZPROJ_FUNCS`) or
+        index of the z-slice. None if the image does not depend on the
+        z-slice or z-projection used in the GUI (3D annotations or 2D data).
+    """
+    SizeZ = getattr(posData, 'SizeZ', 1)
+    if annot_ndim == 3 or SizeZ == 1:
+        return
+
+    img = posData.img_data[frame_i]
+    if img.ndim != 3:
+        return
+
+    segmInfo_df = getattr(posData, 'segmInfo_df', None)
+    idx = (getattr(posData, 'filename', None), frame_i)
+    zProjHow = _get_segm_info_value(segmInfo_df, idx, 'which_z_proj_gui')
+    if zProjHow in BRUSH_STROKES_ZPROJ_FUNCS:
+        return zProjHow
+
+    z = _get_segm_info_value(segmInfo_df, idx, 'z_slice_used_gui')
+    try:
+        z = int(z)
+    except Exception as err:
+        z = len(img)//2
+    return min(max(z, 0), len(img)-1)
+
+def get_brush_strokes_image(posData, frame_i, annot_ndim, source=None):
     """Get the image corresponding to the brush strokes annotation of
     frame `frame_i`, i.e., the image the promptable model sees.
 
@@ -50,14 +94,21 @@ def get_brush_strokes_image(posData, frame_i, annot_ndim):
     annot_ndim : int
         Number of dimensions of the annotation array (2 for (Y, X) and 3 for
         (Z, Y, X)).
+    source : str or int, optional
+        Source of the image of 2D annotations of z-stack data (name of the
+        z-projection or index of the z-slice, see
+        `get_brush_strokes_image_source`), e.g., the one displayed when the
+        brush strokes were painted. If None, the source used in the GUI at
+        frame `frame_i` is used. Ignored with 3D annotations or 2D data.
+        Default is None
 
     Returns
     -------
     np.ndarray
         Image with `annot_ndim` dimensions. With 2D annotations of z-stack
-        data, this is the z-slice or the z-projection used in the GUI at
-        frame `frame_i` (columns 'z_slice_used_gui' and 'which_z_proj_gui'
-        of `posData.segmInfo_df`).
+        data, this is the z-slice or the z-projection `source` (default is
+        the one used in the GUI at frame `frame_i`, i.e., columns
+        'z_slice_used_gui' and 'which_z_proj_gui' of `posData.segmInfo_df`).
 
     Raises
     ------
@@ -71,20 +122,16 @@ def get_brush_strokes_image(posData, frame_i, annot_ndim):
         image = img
     else:
         # 2D annotations of z-stack data --> use the z-slice or projection
-        # used in the GUI
-        segmInfo_df = getattr(posData, 'segmInfo_df', None)
-        idx = (getattr(posData, 'filename', None), frame_i)
-        zProjHow = _get_segm_info_value(segmInfo_df, idx, 'which_z_proj_gui')
-        z = _get_segm_info_value(segmInfo_df, idx, 'z_slice_used_gui')
-        zproj_func = BRUSH_STROKES_ZPROJ_FUNCS.get(zProjHow)
+        # `source` (default is the one used in the GUI)
+        if source is None:
+            source = get_brush_strokes_image_source(
+                posData, frame_i, annot_ndim
+            )
+        zproj_func = BRUSH_STROKES_ZPROJ_FUNCS.get(source)
         if zproj_func is not None:
             image = zproj_func(img)
         else:
-            try:
-                z = int(z)
-            except Exception as err:
-                z = len(img)//2
-            z = min(max(z, 0), len(img)-1)
+            z = min(max(int(source), 0), len(img)-1)
             image = img[z]
 
     if image.ndim != annot_ndim:

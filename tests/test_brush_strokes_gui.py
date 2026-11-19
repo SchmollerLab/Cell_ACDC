@@ -11,6 +11,7 @@ from types import MethodType, SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
+import pandas as pd
 import pytest
 
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -251,6 +252,7 @@ def _make_window(
         pos_i=0,
         brushStrokesAnnotData={},
         brushStrokesUndo={},
+        brushStrokesImageSources={},
         brushStrokesChangedSinceTraining=False,
         logger=Mock(),
         undoAction=Mock(),
@@ -272,6 +274,9 @@ def _make_window(
         'isBrushStrokesViewPaintable', 'getBrushStrokesAnnot2D',
         'getBrushStrokesZoomRegion', 'storeBrushStrokesUndo',
         'undoBrushStrokes', 'magicPromptsAddSelectedCellsToBrushStrokes',
+        'getBrushStrokesImageSource', 'getBrushStrokesImageSourceMismatch',
+        'recordBrushStrokesImageSource',
+        'warnBrushStrokesImageSourceMismatch',
     )
     return window, posData, controls
 
@@ -536,7 +541,7 @@ def test_add_selected_cells_no_op_keeps_full_undo_queue():
     annot[:] = 1
     states = [np.full(lab.shape, i, dtype=np.uint8) for i in range(20)]
     window.brushStrokesUndo[(0, 0)] = deque(
-        [(None, state) for state in states], maxlen=20
+        [(None, state, None) for state in states], maxlen=20
     )
 
     window.magicPromptsAddSelectedCellsToBrushStrokes(controls)
@@ -635,3 +640,264 @@ def test_shortcut_right_click_menu_only_on_action_button(app):
         call.args[0] for call in window._installRightClickFilter.call_args_list
     ]
     assert installed == [button]
+
+
+# ---------------------------------------------------------------------------
+# 2D brush strokes of z-stack data are paired with the z-slice (or
+# z-projection) displayed when they were painted
+# ---------------------------------------------------------------------------
+
+def _make_zstack_window(numPos=1, SizeT=3, SizeZ=4, selectedIDs=()):
+    """Fake window with z-stack data and 2D segmentation masks. The
+    displayed z-slice or z-projection of each frame is stored in
+    `segmInfo_df` (like `update_z_slice` and `updateZproj` do)."""
+    lab = _lab()
+    window, _, controls = _make_window(lab, selectedIDs=selectedIDs)
+    rng = np.random.default_rng(0)
+    window.data = []
+    for pos_i in range(numPos):
+        filename = f'pos{pos_i}'
+        index = pd.MultiIndex.from_product(
+            [[filename], range(SizeT)], names=['filename', 'frame_i']
+        )
+        segmInfo_df = pd.DataFrame(
+            {'z_slice_used_gui': 1, 'which_z_proj_gui': 'single z-slice'},
+            index=index
+        )
+        window.data.append(SimpleNamespace(
+            img_data=rng.random((SizeT, SizeZ, *lab.shape)),
+            SizeZ=SizeZ, SizeT=SizeT, filename=filename,
+            segmInfo_df=segmInfo_df, lab=lab, segm_data=None, frame_i=0,
+            IDs=[1, 2, 3],
+        ))
+    window.brushStrokesDiskMasks = {}
+    window.brushStrokesLayerImg1 = Mock()
+    window.magicPromptsToolbar = SimpleNamespace(
+        brushSizeSpinbox=Mock(value=Mock(return_value=1))
+    )
+    window.magicPromptsRunModelTask = Mock(return_value={})
+    _bind(
+        window,
+        'brushStrokesMousePress', 'getBrushStrokesPaintTarget',
+        'brushStrokesPaintAt', 'brushStrokesEndDrag',
+        'getBrushStrokesDiskMask', 'getBrushStrokesAnnotDisplay',
+        'getBrushStrokesTrainingItems', 'magicPromptsTrainBrushStrokes',
+        'magicPromptsClearBrushStrokes',
+    )
+    return window, controls
+
+
+def _display(window, source):
+    """Display the z-slice index or z-projection name `source` from the
+    current frame on (like `update_z_slice` and `updateZproj`)"""
+    posData = window.data[window.pos_i]
+    idx = [
+        (posData.filename, frame_i)
+        for frame_i in range(posData.frame_i, posData.SizeT)
+    ]
+    if isinstance(source, str):
+        posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = source
+    else:
+        posData.segmInfo_df.loc[idx, 'which_z_proj_gui'] = 'single z-slice'
+        posData.segmInfo_df.loc[idx, 'z_slice_used_gui'] = source
+
+
+def _paint(window, x, y, left_click=True, modifiers=Qt.NoModifier):
+    window.brushStrokesMousePress(_click_event(x, y), left_click, modifiers)
+    window.brushStrokesEndDrag()
+
+
+def _train(window):
+    """Train and return {(pos_i, frame_i): image paired with the strokes}"""
+    toolbar = SimpleNamespace(
+        viewModelParamsAction=Mock(isEnabled=Mock(return_value=True)),
+        model=Mock(), model_name='ConvPaint'
+    )
+    window.magicPromptsRunModelTask.reset_mock()
+    assert window.magicPromptsTrainBrushStrokes(toolbar) is True
+    prompts_data = window.magicPromptsRunModelTask.call_args.args[3]
+    return {
+        (pos_i, frame_i): image
+        for pos_i, frame_i, annot, image in prompts_data
+    }
+
+
+def test_brush_strokes_2D_zstack_trained_with_painted_zslice():
+    window, _ = _make_zstack_window()
+    posData = window.data[0]
+    _paint(window, 1, 1)
+    _paint(window, 3, 3, left_click=False)
+    assert window.brushStrokesImageSources == {(0, 0): 1}
+
+    # Scrolling to another z-slice does not change the training image
+    _display(window, 3)
+    images = _train(window)
+    assert np.array_equal(images[(0, 0)], posData.img_data[0, 1])
+
+    # The displayed z-slice is the one segmented
+    window.setBrushID = Mock(return_value=1)
+    window.startMagicPromptsWorkerAndWait = Mock()
+    toolbar = SimpleNamespace(
+        model=Mock(), model_name='ConvPaint', model_segment_kwargs={}
+    )
+    _bind(window, 'magicPromptsSegmentCurrentFrame')
+    window.magicPromptsSegmentCurrentFrame(toolbar)
+    image = window.startMagicPromptsWorkerAndWait.call_args.args[0]
+    assert np.array_equal(image, posData.img_data[0, 3])
+
+
+def test_brush_strokes_2D_zstack_other_frames_and_positions_keep_image():
+    window, _ = _make_zstack_window(numPos=2)
+    # Position n. 2, frame n. 3 painted on z-slice index 0 (valid source)
+    window.pos_i = 1
+    window.data[1].frame_i = 2
+    _display(window, 0)
+    _paint(window, 1, 1)
+    _paint(window, 3, 3, left_click=False)
+    # Position n. 1, frame n. 1 painted on the max z-projection
+    window.pos_i = 0
+    _display(window, 'max z-projection')
+    _paint(window, 1, 1)
+    _paint(window, 3, 3, left_click=False)
+    assert window.brushStrokesImageSources == {
+        (1, 2): 0, (0, 0): 'max z-projection'
+    }
+
+    # Changed from other frames or positions (e.g., z-slice scrolled with
+    # "lock z-slice" on, or `updateZproj` changing the next positions)
+    for posData in window.data:
+        posData.segmInfo_df['which_z_proj_gui'] = 'single z-slice'
+        posData.segmInfo_df['z_slice_used_gui'] = 3
+
+    images = _train(window)
+    assert np.array_equal(images[(1, 2)], window.data[1].img_data[2, 0])
+    assert np.array_equal(
+        images[(0, 0)], window.data[0].img_data[0].max(axis=0)
+    )
+
+    # Painted on the max z-projection, z-slice displayed --> refused
+    window.titleLabel.reset_mock()
+    _paint(window, 4, 4)
+    txt = window.titleLabel.setText.call_args.args[0]
+    assert 'painted on the max z-projection' in txt
+    assert window.brushStrokesAnnotData[0][0][4, 4] == 0
+
+
+def test_brush_strokes_2D_zstack_painting_other_source_refused():
+    window, _ = _make_zstack_window()
+    _paint(window, 1, 1)
+    annot = window.brushStrokesAnnotData[0][0]
+    before = annot.copy()
+    assert window.getBrushStrokesAnnotDisplay() is annot
+
+    for source in (2, 'max z-projection'):
+        _display(window, source)
+        # Brush strokes of another z-slice are hidden
+        assert window.getBrushStrokesAnnotDisplay() is None
+        window.titleLabel.reset_mock()
+        _paint(window, 4, 4)
+        _paint(window, 1, 1, modifiers=Qt.ShiftModifier)
+
+        assert np.array_equal(annot, before)
+        assert len(window.brushStrokesUndo[(0, 0)]) == 1
+        txt = window.titleLabel.setText.call_args.args[0]
+        assert 'painted on z-slice n. 2' in txt
+        assert window.titleLabel.setText.call_args.kwargs['color'] == 'r'
+        assert window.brushStrokesImageSources == {(0, 0): 1}
+
+    # Back to the painted z-slice --> shown and paintable again
+    _display(window, 1)
+    assert window.getBrushStrokesAnnotDisplay() is annot
+    _paint(window, 4, 4)
+    assert annot[4, 4] == 2
+
+
+def test_brush_strokes_2D_zstack_clear_then_paint_other_source_and_undo():
+    window, _ = _make_zstack_window()
+    posData = window.data[0]
+    _paint(window, 1, 1)
+    _paint(window, 3, 3, left_click=False)
+    painted_z1 = window.brushStrokesAnnotData[0][0].copy()
+
+    # Cleared --> the frame can be painted on another z-slice
+    window.magicPromptsClearBrushStrokes(None)
+    _display(window, 2)
+    _paint(window, 4, 4)
+    _paint(window, 5, 0, left_click=False)
+    assert window.brushStrokesImageSources == {(0, 0): 2}
+    assert np.array_equal(_train(window)[(0, 0)], posData.img_data[0, 2])
+
+    # Undo the strokes painted on z-slice 2 and the clear --> the strokes
+    # painted on z-slice 1 are paired with z-slice 1 again
+    for _ in range(3):
+        assert window.undoBrushStrokes() is True
+    assert np.array_equal(window.brushStrokesAnnotData[0][0], painted_z1)
+    assert window.brushStrokesImageSources == {(0, 0): 1}
+    assert window.getBrushStrokesAnnotDisplay() is None
+    assert np.array_equal(_train(window)[(0, 0)], posData.img_data[0, 1])
+
+    # Undo everything --> no image source left
+    while window.undoBrushStrokes():
+        pass
+    assert not window.brushStrokesAnnotData[0][0].any()
+    assert window.brushStrokesImageSources == {}
+
+
+def test_add_selected_cells_2D_zstack_other_source_refused():
+    window, controls = _make_zstack_window(selectedIDs=[1])
+    window.magicPromptsAddSelectedCellsToBrushStrokes(controls)
+    annot = window.brushStrokesAnnotData[0][0]
+    assert annot.any()
+    assert window.brushStrokesImageSources == {(0, 0): 1}
+    before = annot.copy()
+    controls.resetSelection.reset_mock()
+
+    _display(window, 'mean z-projection')
+    controls.selectedIDs = [2]
+    window.magicPromptsAddSelectedCellsToBrushStrokes(controls)
+
+    assert np.array_equal(annot, before)
+    assert len(window.brushStrokesUndo[(0, 0)]) == 1
+    controls.resetSelection.assert_not_called()
+    assert 'z-slice n. 2' in window.titleLabel.setText.call_args.args[0]
+    assert window.brushStrokesImageSources == {(0, 0): 1}
+
+
+def test_brush_stroke_ends_when_zslice_changes_during_drag():
+    window, _ = _make_zstack_window()
+    window.brushStrokesMousePress(_click_event(1, 1), True, Qt.NoModifier)
+    assert window.isBrushStrokeDragImg1
+
+    # z-slice changed with the keyboard while dragging
+    _display(window, 2)
+    window.brushStrokesPaintAt(5, 4)
+
+    assert not window.isBrushStrokeDragImg1
+    assert window.brushStrokesAnnotData[0][0][4, 5] == 0
+
+
+def test_no_image_source_with_3D_masks_or_2D_data():
+    # 3D masks: the brush strokes of each z-slice are painted on it
+    lab = np.zeros((4, 6, 8), dtype=np.uint32)
+    lab[:] = _lab()
+    window, posData, controls = _make_window(lab, selectedIDs=[1], z=2)
+    posData.SizeZ = 4
+    posData.img_data = np.zeros((1, *lab.shape))
+    window.magicPromptsAddSelectedCellsToBrushStrokes(controls)
+    assert window.brushStrokesAnnotData[0][0][2].any()
+    assert window.brushStrokesImageSources == {}
+
+    # 2D data
+    window, posData, controls = _make_window(_lab(), selectedIDs=[1])
+    posData.SizeZ = 1
+    posData.img_data = np.zeros((1, *_lab().shape))
+    window.magicPromptsAddSelectedCellsToBrushStrokes(controls)
+    assert window.brushStrokesAnnotData[0][0].any()
+    assert window.brushStrokesImageSources == {}
+
+
+def test_init_global_attr_resets_image_sources():
+    window = Mock()
+    window.brushStrokesImageSources = {(0, 0): 3}
+    gui.guiWin.initGlobalAttr(window)
+    assert window.brushStrokesImageSources == {}
