@@ -22,8 +22,8 @@ Position.
       always shows the selected cell.
     * **Plot** a column by clicking it in **Columns to plot**:
       **Time course** for the selected cell, **Measurement vs Measurement**
-      for all cells of the Position. Right-click a column to change its color
-      or add conditional formatting.
+      for all cells of the Position. Right-click a column to change its color,
+      show it on its own y axis or add conditional formatting.
     * **Add columns** with **Process measurements...** (smoothing,
       normalization, ramp detection) and **Combine measurements...**
       (equations). The original columns are never changed.
@@ -218,7 +218,8 @@ the overlay transparency sliders):
   after you zoomed by hand.
 * **Normalize measurements (0-1)**: display every plotted measurement scaled
   to the range 0-1, to compare measurements with different units. This only
-  changes the display, not the table.
+  changes the display, not the table. To keep the real values, show the
+  measurements on separate y axes instead (see `Time course`_).
 * **Show phases**: show the phase band below the plot (see
   `Time point to phase translator`_).
 
@@ -251,10 +252,30 @@ plotted.
   Custom colors are saved with the configuration (the premade FUCCI
   configuration plots the Geminin reporter in green and the Cdt1 reporter
   in red).
-* **Zoom**: when you add or remove a column, toggle normalization or load a
-  position, the plot is fitted to the plotted data on both axes, as when you
-  click the **A** button in the bottom-left corner of the plot. Scroll or
-  drag in the plot to zoom and pan. With the mouse over the plot, press
+* **Y axes**: all plotted columns share the left y axis. To compare
+  measurements with different scales (e.g., a reporter normalized to 0-1
+  and the cell area in pixels), **right-click** a column and select
+  **Create new y axis for this**: the column gets its own y axis, shown on
+  the right of the plot next to the axes of the other plotted columns (it
+  is also plotted if it was not). **Add to y-axis of...** lists the other
+  y axes by the columns plotted on them; select one to move the column
+  there. The axis of the column you clicked is not listed, so this list
+  stays empty until you create a new y axis. When you move the last column
+  of the left axis to another axis, the two axes become one, and columns
+  you plot later join it. Each y axis is labeled with its columns and
+  fitted to their data; hover over a point to see the values of all the
+  points under the mouse, whatever their axis. A column keeps its y axis
+  when you remove it from the plot and plot it again. The y axes are saved
+  in the configuration, numbered 1 (the default axis), 2, and so on (the
+  premade FUCCI configuration shows the cell area on axis 2, next to the
+  two reporters).
+* **Zoom**: when you add or remove a column, move it to another y axis,
+  toggle normalization or load a position, the plot is fitted to the plotted
+  data on all axes, as when you click the **A** button in the bottom-left
+  corner of the plot. Scroll or drag in the plot to zoom and pan (all
+  y axes move together);
+  scroll or drag on a y axis to zoom or pan only that axis. With the mouse
+  over the plot, press
   :kbd:`H` to fit the plot to the data and press :kbd:`H` twice quickly to
   show all frames. After a fit, the plot keeps following the data (e.g. when
   you change cell or edit time points) until you zoom or pan by hand; then
@@ -722,8 +743,9 @@ A configuration stores your setup, so you can reuse it on other experiments:
 
 * the inputs (Images folders, displayed and overlay channels, segmentation
   file);
-* the plotted columns of both plot modes, **Normalize measurements (0-1)**,
-  conditional formatting and custom column colors;
+* the plotted columns of both plot modes, the y axis of each column,
+  **Normalize measurements (0-1)**, conditional formatting and custom
+  column colors;
 * measurement processing recipes and combine equations;
 * time point identifiers, custom annotations (including their
   **Overrides phases** option) and their predictors;
@@ -772,7 +794,8 @@ example:
 * ``fucci_cell_cycle.json``: cell cycle phases (G1, S Early, S, S Late, G2,
   M) from the two FUCCI reporters (Cdt1 and Geminin), with background
   correction, min-max normalization, smoothing, ramp detection, time point
-  predictors and phase rules. Its "Excluded" and "Arrested" annotations
+  predictors and phase rules. It plots the two reporters on the left y axis
+  and the cell area on its own y axis. Its "Excluded" and "Arrested" annotations
   override phases: annotated cells get the phase "Excluded" or "Arrested" on
   every frame ("Excluded" wins if a cell has both).
 * ``example_two_channel_ratio.json``: a simple example that plots two
