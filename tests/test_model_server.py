@@ -2267,16 +2267,34 @@ def test_runtime_mismatch_detects_other_cellacdc(monkeypatch, tmp_path):
     reason = environment._runtime_mismatch(identity(protocol=1))
     assert f'protocol 1, but this Cell-ACDC uses protocol {version}' in reason
 
-    # Installed package: the environment must have the same version
+    # Installed package: the environment must import its installed package,
+    # with the same version
     monkeypatch.setattr(environment, '_get_cellacdc_source_root', lambda: None)
     monkeypatch.setattr(environment, '_installed_cellacdc_version', lambda: '1.7.0')
-    assert environment._runtime_mismatch(identity(file=other)) is None
-    reason = environment._runtime_mismatch(identity(file=other, version='1.6.5'))
+    monkeypatch.setattr(environment, '_installed_cellacdc_direct_url', lambda: None)
+    installed = identity(file=other, dist_file=other)
+    assert environment._runtime_mismatch(installed) is None
+    reason = environment._runtime_mismatch(dict(installed, version='1.6.5'))
     assert 'Cell-ACDC 1.6.5' in reason and 'Cell-ACDC 1.7.0' in reason
-    reason = environment._runtime_mismatch(identity(file=other, version=None))
-    assert 'Cell-ACDC None' in reason
-    reason = environment._runtime_mismatch(identity(file=other, protocol=1))
+    reason = environment._runtime_mismatch(dict(installed, protocol=1))
     assert 'protocol 1' in reason
+    # Python imports a Cell-ACDC that is not an installed package (here a
+    # checkout in the working directory): no installed distribution owns it
+    checkout.joinpath('cellacdc').mkdir(parents=True)
+    monkeypatch.chdir(checkout)
+    shadowed = identity(version=None, dist_file=None)
+    reason = environment._runtime_mismatch(shadowed)
+    assert 'which is not an installed Cell-ACDC package' in reason
+    assert str(checkout / 'cellacdc' / '__init__.py') in reason
+    assert 'current working directory' in reason
+    # The installed package must be the imported file
+    reason = environment._runtime_mismatch(
+        identity(file=other, dist_file=str(checkout / 'cellacdc' / '__init__.py'))
+    )
+    assert 'which is not an installed Cell-ACDC package' in reason
+    # This Cell-ACDC has no distribution metadata: nothing to compare
+    monkeypatch.setattr(environment, '_installed_cellacdc_version', lambda: None)
+    assert environment._runtime_mismatch(shadowed) is None
 
 
 def test_parse_runtime_identity():
@@ -2311,6 +2329,66 @@ def test_runtime_identity_of_old_cellacdc_is_protocol_1(tmp_path):
         str(package / '__init__.py')
     )
     assert 'protocol 1' in environment._runtime_mismatch(identity)
+
+
+@pytest.mark.parametrize('cwd, imports_installed', [
+    ('elsewhere', True),
+    # A checkout hides the installed package (`python -c` imports the
+    # working directory first), also with metadata of its own, e.g. after a
+    # `pip install .` from the checkout
+    ('checkout', False),
+    ('checkout_with_egg_info', False),
+    # Metadata without a package does not hide the installed package
+    ('egg_info_only', True),
+])
+def test_runtime_identity_uses_metadata_of_imported_package(
+        monkeypatch, tmp_path, cwd, imports_installed,
+    ):
+    """Real subprocess, like the check in a model environment that has a
+    Cell-ACDC package installed (with the client's version) and is started
+    from `cwd`. The version is read from the installed distribution that the
+    imported Cell-ACDC belongs to, never from other metadata on `sys.path`:
+    a Cell-ACDC that is not an installed package is a mismatch."""
+    import subprocess
+    from cellacdc.service import environment
+
+    metadata = 'Metadata-Version: 2.1\nName: cellacdc\nVersion: 1.7.0\n'
+    site = tmp_path / 'site'
+    (site / 'cellacdc').mkdir(parents=True)
+    (site / 'cellacdc' / '__init__.py').write_text('')
+    dist_info = site / 'cellacdc-1.7.0.dist-info'
+    dist_info.mkdir()
+    (dist_info / 'METADATA').write_text(metadata)
+    (dist_info / 'RECORD').write_text('cellacdc/__init__.py,,\n')
+    folder = tmp_path / cwd
+    folder.mkdir()
+    if cwd.startswith('checkout'):
+        (folder / 'cellacdc').mkdir()
+        (folder / 'cellacdc' / '__init__.py').write_text('')
+    if cwd in ('checkout_with_egg_info', 'egg_info_only'):
+        (folder / 'cellacdc.egg-info').mkdir()
+        (folder / 'cellacdc.egg-info' / 'PKG-INFO').write_text(metadata)
+
+    result = subprocess.run(
+        [sys.executable, '-c', environment._RUNTIME_IDENTITY_CODE],
+        cwd=str(folder), capture_output=True, text=True, timeout=60,
+        env=dict(os.environ, PYTHONPATH=str(site)),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    identity = environment._parse_runtime_identity(result.stdout)
+    monkeypatch.setattr(environment, '_installed_cellacdc_version', lambda: '1.7.0')
+    monkeypatch.setattr(environment, '_installed_cellacdc_direct_url', lambda: None)
+    reason = environment._build_mismatch(identity)
+
+    if imports_installed:
+        assert environment._same_path(identity['file'], site / 'cellacdc' / '__init__.py')
+        assert environment._same_path(identity['dist_file'], identity['file'])
+        assert identity['version'] == '1.7.0'
+        assert reason is None
+    else:
+        assert environment._same_path(identity['file'], folder / 'cellacdc' / '__init__.py')
+        assert identity['dist_file'] is None and identity['version'] is None
+        assert 'which is not an installed Cell-ACDC package' in reason
 
 
 def test_runtime_of_this_source_checkout_matches():
@@ -2391,11 +2469,14 @@ def test_ensure_cellacdc_cli_repairs_only_other_runtime(
     (False, None, False), (True, None, True), (True, 'still different', False),
 ])
 def test_repair_cellacdc_runtime_reinstalls_and_verifies(
-        monkeypatch, installed, after, expected,
+        monkeypatch, tmp_path, installed, after, expected,
     ):
     from unittest.mock import Mock
     from cellacdc.service import environment
 
+    # The repair lock file of the fake 'model-python' is created in the
+    # working directory (it is never deleted, see `_repair_lock`)
+    monkeypatch.chdir(tmp_path)
     install = Mock(return_value=installed)
     check = Mock(return_value=after)
     monkeypatch.setattr(environment, 'install_cellacdc_cli', install)
@@ -2412,6 +2493,154 @@ def test_repair_cellacdc_runtime_reinstalls_and_verifies(
     if after is not None:
         output = '\n'.join(str(call.args[0]) for call in logger.call_args_list)
         assert 'still differs' in output and after in output
+
+
+def test_repair_lock_admits_one_holder_at_a_time(tmp_path):
+    """While one holder repairs an environment, another one waits (and times
+    out); it gets the lock when the first releases it and knows that it
+    waited. The lock file is never deleted, so no holder can delete a lock
+    that another one holds."""
+    import threading
+    from cellacdc.service import environment
+
+    env_dir = tmp_path / '_acdc_model'
+    env_dir.mkdir()
+    python = str(env_dir / 'python.exe')
+    events = []
+    entered, release = threading.Event(), threading.Event()
+
+    def first_holder():
+        with environment._repair_lock(python, lambda *args: None) as waited:
+            events.append(('first in', waited))
+            entered.set()
+            release.wait(30)
+            events.append(('first out', None))
+
+    thread = threading.Thread(target=first_holder)
+    thread.start()
+    try:
+        assert entered.wait(30)
+        logs = []
+        with pytest.raises(TimeoutError, match='for too long'):
+            with environment._repair_lock(python, logs.append, timeout=0.3, poll=0.05):
+                events.append(('timed out holder in', None))
+        assert any('Waiting for another process' in log for log in logs)
+
+        threading.Timer(0.3, release.set).start()
+        with environment._repair_lock(python, logs.append, timeout=30, poll=0.05) as waited:
+            events.append(('second in', waited))
+    finally:
+        release.set()
+        thread.join(30)
+
+    assert events == [
+        ('first in', False), ('first out', None), ('second in', True),
+    ]
+    assert (env_dir / environment._REPAIR_LOCK_NAME).exists()
+
+
+def test_repair_lock_of_killed_process_is_released(tmp_path):
+    """A process killed while it repairs an environment leaves no lock
+    behind: the operating system releases it, so the next process repairs
+    right away instead of waiting for the lock to become stale."""
+    import signal
+    import subprocess
+    import cellacdc
+    from cellacdc.service import environment
+
+    env_dir = tmp_path / '_acdc_model'
+    env_dir.mkdir()
+    python = str(env_dir / 'python.exe')
+    code = (
+        'import os, sys, time\n'
+        'from cellacdc.service import environment\n'
+        'with environment._repair_lock(sys.argv[1]):\n'
+        '    print("locked", os.getpid(), flush=True)\n'
+        '    time.sleep(120)\n'
+    )
+    # From the folder of this Cell-ACDC, so that the subprocess imports it
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(cellacdc.__file__)))
+    holder = subprocess.Popen(
+        [sys.executable, '-c', code, python], cwd=repo_root,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    try:
+        output = []
+        for line in holder.stdout:
+            output.append(line)
+            if line.startswith('locked'):
+                break
+        assert output and output[-1].startswith('locked'), ''.join(output)
+        with pytest.raises(TimeoutError):
+            with environment._repair_lock(python, lambda *a: None, timeout=0.3, poll=0.05):
+                pass
+        # Kill the process that holds the lock: in a venv on Windows,
+        # `holder` is a launcher that runs the interpreter as a child process
+        lock_holder_pid = int(output[-1].split()[1])
+        os.kill(lock_holder_pid, getattr(signal, 'SIGKILL', signal.SIGTERM))
+        holder.wait(30)
+        # The lock is free right away (the old lock file waited 30 minutes
+        # to become stale), possibly after a short delay of the system
+        with environment._repair_lock(python, lambda *a: None, timeout=10, poll=0.05):
+            pass
+    finally:
+        holder.kill()
+        holder.wait(30)
+        holder.stdout.close()
+
+
+def test_repair_lock_without_file_locks(monkeypatch, tmp_path):
+    """On a file system without locks, or in a folder that is not writable,
+    the environment is repaired without a lock."""
+    import errno
+    from cellacdc.service import environment
+
+    def unsupported(fd):
+        raise OSError(errno.ENOSYS, 'Function not implemented')
+
+    env_dir = tmp_path / '_acdc_model'
+    env_dir.mkdir()
+    logs = []
+    monkeypatch.setattr(environment, '_try_lock_file', unsupported)
+    with environment._repair_lock(str(env_dir / 'python.exe'), logs.append) as waited:
+        assert waited is False
+    assert len(logs) == 1 and 'without a lock' in logs[0]
+
+    missing = tmp_path / 'missing' / '_acdc_model' / 'python.exe'
+    with environment._repair_lock(str(missing), logs.append) as waited:
+        assert waited is False
+    assert not missing.parent.exists()
+    assert len(logs) == 2 and 'cannot open' in logs[1]
+    assert 'without a lock' in logs[1]
+
+
+@pytest.mark.parametrize('error, held', [
+    ('EWOULDBLOCK', True),
+    # How some network file systems (e.g. CIFS) report a held lock
+    ('EACCES', True),
+    # No locks on this file system: the caller repairs without a lock
+    ('ENOSYS', None),
+])
+def test_posix_lock_errors(monkeypatch, tmp_path, error, held):
+    import errno
+    fcntl = pytest.importorskip('fcntl')
+    from cellacdc.service import environment
+
+    code = getattr(errno, error)
+
+    def flock(fd, operation):
+        raise OSError(code, os.strerror(code))
+
+    monkeypatch.setattr(fcntl, 'flock', flock)
+    fd = os.open(str(tmp_path / 'lock'), os.O_RDWR | os.O_CREAT)
+    try:
+        if held is None:
+            with pytest.raises(OSError):
+                environment._try_lock_file(fd)
+        else:
+            assert environment._try_lock_file(fd) is False
+    finally:
+        os.close(fd)
 
 
 @pytest.mark.parametrize('reinstall', [False, True])

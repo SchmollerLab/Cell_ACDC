@@ -226,22 +226,32 @@ def _acdc_runtime_identity():
         from cellacdc.service.protocol import PROTOCOL_VERSION as protocol
     except ImportError:
         protocol = 1
+    # Version and direct_url of the installed distribution whose package is
+    # the imported one (dist_file: its __init__.py), all None if the imported
+    # Cell-ACDC is not an installed package (e.g. a checkout in the working
+    # directory). Metadata without a RECORD (e.g. the cellacdc.egg-info of a
+    # checkout) was not written by an installer and does not count
+    file = os.path.abspath(cellacdc.__file__)
+    package_dir = os.path.normcase(os.path.realpath(os.path.dirname(file)))
+    dist_version = direct_url = dist_file = None
     try:
-        from importlib.metadata import version
-        dist_version = version("cellacdc")
+        from importlib.metadata import distributions
+        for dist in distributions(name="cellacdc"):
+            if dist.read_text("RECORD") is None:
+                continue
+            located = str(dist.locate_file("cellacdc"))
+            if os.path.normcase(os.path.realpath(located)) != package_dir:
+                continue
+            dist_version = dist.version
+            direct_url = json.loads(dist.read_text("direct_url.json") or "null")
+            dist_file = os.path.join(os.path.abspath(located), "__init__.py")
+            break
     except Exception:
-        dist_version = None
-    try:
-        from importlib.metadata import distribution
-        direct_url = json.loads(
-            distribution("cellacdc").read_text("direct_url.json") or "null"
-        )
-    except Exception:
-        direct_url = None
+        pass
     print({_RUNTIME_MARKER!r} + json.dumps({{
         "protocol": protocol, "version": dist_version,
-        "direct_url": direct_url,
-        "file": os.path.abspath(cellacdc.__file__), "prefix": sys.prefix,
+        "direct_url": direct_url, "file": file, "dist_file": dist_file,
+        "prefix": sys.prefix,
     }}), flush=True)
 _acdc_runtime_identity()
 '''
@@ -306,8 +316,25 @@ def _build_mismatch(identity: dict) -> Optional[str]:
     install, the URL of an archive install, otherwise the version (a VCS
     build's version string can change for the same commit, e.g. when the
     commit is tagged later).
+
+    The environment's version and direct_url are those of the installed
+    distribution that the imported Cell-ACDC (`identity['file']`) belongs
+    to (`identity['dist_file']`, see `_RUNTIME_IDENTITY_CODE`). If it
+    belongs to none, e.g. Python imports a checkout in the working
+    directory before the installed package, the environment does not run
+    this build even if an installed package matches.
     """
     expected_url = _installed_cellacdc_direct_url() or {}
+    expected_version = _installed_cellacdc_version()
+    if not expected_url and expected_version is None:
+        # This Cell-ACDC has no distribution metadata to compare with
+        return None
+    imported, dist_file = identity.get("file"), identity.get("dist_file")
+    if not dist_file or not imported or not _same_path(imported, dist_file):
+        return (
+            f"it imports Cell-ACDC from {imported}, which is not an "
+            f"installed Cell-ACDC package"
+        )
     actual_url = identity.get("direct_url") or {}
     commit = (expected_url.get("vcs_info") or {}).get("commit_id")
     if commit:
@@ -328,11 +355,10 @@ def _build_mismatch(identity: dict) -> Optional[str]:
                 f"Cell-ACDC was installed from {expected_url['url']}"
             )
         return None
-    expected = _installed_cellacdc_version()
-    if expected is not None and identity.get("version") != expected:
+    if expected_version is not None and identity.get("version") != expected_version:
         return (
             f"it has Cell-ACDC {identity.get('version')}, but this is "
-            f"Cell-ACDC {expected}"
+            f"Cell-ACDC {expected_version}"
         )
     return None
 
@@ -585,19 +611,76 @@ def repair_cellacdc_runtime(
 
 
 _REPAIR_LOCK_NAME = ".cellacdc-repair.lock"
-# A lock older than this is left over by a process that was killed
-_REPAIR_LOCK_STALE_SECONDS = 30 * 60
+# How long to wait for another process that repairs the same environment
+_REPAIR_LOCK_TIMEOUT_SECONDS = 30 * 60
+
+
+def _try_lock_file(fd: int) -> bool:
+    """Take the exclusive lock of the operating system on the open file `fd`
+    without waiting.
+
+    Returns False if another process (or another open file in this process)
+    holds it. Raises OSError if the file system does not support locks. The
+    lock is released by `_unlock_file`, or by the operating system when the
+    process exits, also when it is killed.
+    """
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except PermissionError:  # EACCES: locked by another file handle
+            return False
+        return True
+    import errno
+    import fcntl
+
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as err:
+        # EACCES: how some network file systems (e.g. CIFS) report a lock
+        # held by another process
+        if err.errno in (errno.EAGAIN, errno.EWOULDBLOCK, errno.EACCES):
+            return False
+        raise
+    return True
+
+
+def _unlock_file(fd: int):
+    """Release the lock taken by `_try_lock_file`."""
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
 
 
 @contextlib.contextmanager
 def _repair_lock(
     python_exec: str, logger_func: Callable = print,
-    timeout: float = _REPAIR_LOCK_STALE_SECONDS, poll: float = 1.0,
+    timeout: float = _REPAIR_LOCK_TIMEOUT_SECONDS, poll: float = 1.0,
 ):
     """Hold the repair lock of the environment of `python_exec`.
 
+    The lock is a lock of the operating system on the lock file (see
+    `_try_lock_file`): only one process holds it, and the operating system
+    releases it when that process exits, also when it is killed. The lock
+    file itself is never deleted: deleting it would let a process lock a new
+    file while another one still holds the old one.
+
+    On shared file systems whose locks apply only within one computer (e.g.
+    NFS mounted with `nolock` or `local_lock`, Lustre with `localflock`),
+    processes on different computers do not exclude each other.
+
     Yields whether another process held it first (then the environment may
-    already be repaired). Raises TimeoutError after `timeout` seconds.
+    already be repaired). Raises TimeoutError after `timeout` seconds. If the
+    lock file cannot be opened or locked (e.g. a read-only folder or a file
+    system without locks), logs a warning and yields without holding a lock.
     """
     import time
 
@@ -605,54 +688,51 @@ def _repair_lock(
         os.path.abspath(python_exec)
     )
     path = os.path.join(env_dir, _REPAIR_LOCK_NAME)
-    t0 = time.monotonic()
-    waited = False
-    fd = None
-    while fd is None:
-        try:
-            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            pass
-        except OSError:
-            # The directory is not writable: repair without a lock
-            break
-        else:
-            break
-        try:
-            age = time.time() - os.path.getmtime(path)
-        except OSError:
-            continue  # Released meanwhile
-        if age > _REPAIR_LOCK_STALE_SECONDS:
-            logger_func(f"Removing the stale lock {path}")
-            try:
-                os.remove(path)
-            except OSError:
-                pass
-            continue
-        if time.monotonic() - t0 > timeout:
-            raise TimeoutError(
-                f"Another process has been repairing Cell-ACDC in "
-                f"{env_dir} for too long (lock file {path})."
-            )
-        if not waited:
-            logger_func(
-                f"Waiting for another process that repairs Cell-ACDC in "
-                f"{env_dir}..."
-            )
-        waited = True
-        time.sleep(poll)
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o666)
+    except OSError as err:
+        fd = None
+        logger_func(
+            f"Warning: cannot open {path} ({err}); repairing Cell-ACDC in "
+            f"{env_dir} without a lock."
+        )
     if fd is None:
-        yield waited
+        yield False
         return
     try:
-        os.write(fd, str(os.getpid()).encode())
-        os.close(fd)
-        yield waited
-    finally:
+        t0 = time.monotonic()
+        waited = False
+        while True:
+            try:
+                locked = _try_lock_file(fd)
+            except OSError as err:
+                locked = False
+                logger_func(
+                    f"Warning: cannot lock {path} ({err}); repairing "
+                    f"Cell-ACDC in {env_dir} without a lock."
+                )
+                break
+            if locked:
+                break
+            if time.monotonic() - t0 > timeout:
+                raise TimeoutError(
+                    f"Another process has been repairing Cell-ACDC in "
+                    f"{env_dir} for too long (lock file {path})."
+                )
+            if not waited:
+                logger_func(
+                    f"Waiting for another process that repairs Cell-ACDC in "
+                    f"{env_dir}..."
+                )
+            waited = True
+            time.sleep(poll)
         try:
-            os.remove(path)
-        except OSError:
-            pass
+            yield waited
+        finally:
+            if locked:
+                _unlock_file(fd)
+    finally:
+        os.close(fd)
 
 
 def ensure_cellacdc_cli(

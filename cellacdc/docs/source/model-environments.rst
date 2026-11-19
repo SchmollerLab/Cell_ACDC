@@ -346,6 +346,15 @@ protocol versions must always be equal; in addition:
    * - Index (PyPI) install
      - The same version.
 
+For the installed builds, the version and PEP 610 ``direct_url.json`` are
+read from the installed distribution that the imported ``cellacdc`` package
+belongs to (metadata of a checkout, such as its ``cellacdc.egg-info``, does
+not count). If the environment imports a Cell-ACDC that is not an installed
+package, for example a checkout in the working directory (``python -c`` and
+``python -m`` put it first on ``sys.path``), that is a mismatch even if an
+installed package matches. Reinstalling cannot fix it: start Cell-ACDC from
+another directory.
+
 On a mismatch, ``environment.repair_cellacdc_runtime`` repairs the
 environment:
 
@@ -356,8 +365,17 @@ environment:
   linked again.
 
 Then the runtime dependencies are installed and the result is checked again.
-A lock file in the environment prevents several processes (for example
-cluster jobs) from repairing the same environment at the same time.
+An operating-system lock on the file ``.cellacdc-repair.lock`` in the
+environment prevents several processes (for example cluster jobs) from
+repairing the same environment at the same time. The operating system
+releases the lock when the process holding it exits, also when it is
+killed, so there is no leftover lock to clean up. Processes that find the
+lock held wait up to 30 minutes, then fail. On a file system without locks,
+the environment is repaired without one. On shared file systems whose locks
+apply only within one computer (for example NFS mounted with ``nolock`` or
+``local_lock``, Lustre with ``localflock``, or BeeGFS without global file
+locks), jobs on different computers are not kept apart: repair the
+environment once, for example by running one job, before submitting many.
 
 ``LocalBackend`` additionally restarts a worker whose ``/version`` reports
 another protocol, after repairing its environment. It does so only for
