@@ -370,3 +370,27 @@ def test_read_real_imagej_tif(tmp_path):
     assert len(raw['channel_names']) == 2
     assert 'ImageJ' in raw['metadata_xml']
     _assert_json_safe(raw)
+
+
+# ------------------------------------------ contract with the core model
+def test_dicts_load_into_raw_file_metadata(tmp_path):
+    """Every dict `raw_metadata` produces (grid, FakeBioImage, '.ome.tif')
+    loads into the parent-side `RawFileMetadata` after a JSON round trip, and
+    `to_dict()` gives it back unchanged."""
+    from cellacdc.acdc_datastruct import metadata
+
+    dicts = [
+        _extract(fake_omexml.FakeOMEXML(spec))
+        for spec in fake_omexml.cascade_grid().values()
+    ]
+    dicts.append(raw_metadata.read_raw_metadata(
+        _fake_raw(tmp_path, np_str_channel_names=True),
+        reader_factory=FakeBioImage
+    ))
+    dicts.append(raw_metadata.read_raw_metadata(
+        synthetic.make_ome_tif(str(tmp_path / 'multi.ome.tif'))
+    ))
+    for raw in dicts:
+        text = json.dumps(raw, allow_nan=True)
+        loaded = metadata.RawFileMetadata.from_dict(json.loads(text))
+        assert json.dumps(loaded.to_dict(), allow_nan=True) == text
