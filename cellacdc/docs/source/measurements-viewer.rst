@@ -299,6 +299,10 @@ plotted.
   to go to that frame.
 * **Plot options**: right-click the plot and open **Plot Options** for the
   plot settings, e.g. a log scale (**Transforms**), applied to every y axis.
+  The transforms **Power Spectrum (FFT)**, **dy/dx** and **Y vs. Y'** are
+  grayed out, as are **Downsample** and **Clip to View** (menu
+  **Downsample**): each point of the plot is a cell at one frame, and these
+  options change the number of points or the x axis.
 
 Measurement vs Measurement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~

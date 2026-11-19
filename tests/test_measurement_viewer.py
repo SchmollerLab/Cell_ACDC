@@ -15,8 +15,8 @@ from qtpy.QtCore import QEvent, QPointF, Qt, QTimer
 from qtpy.QtGui import QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
-    QApplication, QAbstractItemView, QStyle, QStyleOptionViewItem, QLineEdit,
-    QWidget,
+    QApplication, QAbstractItemView, QCheckBox, QStyle, QStyleOptionViewItem,
+    QLineEdit, QWidget,
 )
 
 from cellacdc.measurements_viewer import MeasurementsViewerWin
@@ -2758,9 +2758,8 @@ def test_log_mode_applies_to_extra_y_axes(viewer):
 
 
 def test_other_transforms_autoscale_extra_y_axes(app):
-    # Plot item alone, with plain curves: FFT, dy/dx and Y vs Y' change the
-    # number of points and raise on the viewer's per-point brushes (also
-    # with a single y axis)
+    # Plot item alone, with plain curves: the viewer disables the transforms
+    # that change the number of points (`disableUnsupportedPlotTransforms`)
     widget = pg.PlotWidget(plotItem=measurements_viewer._TimeCoursePlotItem())
     try:
         plotItem = widget.getPlotItem()
@@ -2795,38 +2794,96 @@ def test_other_transforms_autoscale_extra_y_axes(app):
         widget.deleteLater()
 
 
+@pytest.mark.parametrize('mode', [0, 1])
 # pyqtgraph 0.13.7 computes 10**range of the linear range when log turns on
 @pytest.mark.filterwarnings('ignore:overflow encountered in power')
-def test_log_and_subtract_mean_refit_extra_y_axes_of_viewer(
-        viewer, monkeypatch):
-    # These transforms keep one point per frame, so they also work on the
-    # viewer's curves (per-point brushes and hover data)
+def test_available_plot_transforms_work_on_viewer_curves(
+        viewer, monkeypatch, mode):
+    # FFT, dy/dx and Y vs Y' have fewer points than the data: pyqtgraph
+    # applied the per-point brushes and hover data of the viewer's curves
+    # to the transformed points and raised (with FFT on, on every replot)
     errors = []
     monkeypatch.setattr(
         sys, 'excepthook', lambda *excInfo: errors.append(excInfo[1])
     )
-    viewer.plotOnNewYAxis('intensity')
     plotItem = viewer.measurementsPlot.getPlotItem()
     ctrl = plotItem.ctrl
-    extraVb, = plotItem.shownExtraViewBoxes()
-    names = ['logXCheck', 'logYCheck']
-    # "Subtract Mean" exists from pyqtgraph 0.14 (0.13.7 is supported)
-    if hasattr(ctrl, 'subtractMeanCheck'):
-        names.append('subtractMeanCheck')
-    for name in names:
-        # Range set by hand, as after a pan or zoom in the plot area
-        # (small: the axis computes 10**range in log mode)
-        extraVb.setYRange(50, 60)
-        assert not extraVb.autoRangeEnabled()[1]
+    for name in viewer.UNSUPPORTED_PLOT_TRANSFORMS:
         check = getattr(ctrl, name)
+        assert not check.isEnabled() and not check.isChecked()
+        assert 'Not available' in check.toolTip()
+    if mode == 0:
+        viewer.plotOnNewYAxis('intensity')
+    else:
+        comparison(viewer)
+    extraViewBoxes = plotItem.shownExtraViewBoxes()
+    assert len(extraViewBoxes) == (1 if mode == 0 else 0)
+    checks = [
+        check for check in ctrl.transformGroup.findChildren(QCheckBox)
+        if check.isEnabled()
+    ]
+    assert ctrl.logYCheck in checks
+    for check in checks:
+        for vb in extraViewBoxes:
+            # Range set by hand, as after a pan or zoom in the plot area
+            # (small: the axis computes 10**range in log mode)
+            vb.setYRange(50, 60)
         check.setChecked(True)
         try:
             viewer.plotMeasurements()
-            assert not errors, (name, errors)
-            assert extraVb.autoRangeEnabled()[1], name
+            assert not errors, (check.text(), errors)
+            for vb in extraViewBoxes:
+                assert vb.autoRangeEnabled()[1], check.text()
         finally:
             check.setChecked(False)
     assert not errors, errors
+
+
+@pytest.mark.parametrize('mode', [0, 1])
+def test_plot_downsampling_options_are_disabled(viewer, monkeypatch, mode):
+    # "Downsample" (factor 2: one point every 2 frames, or the mean of 2
+    # points) and "Clip to View" (zoomed-in x range) plot fewer points than
+    # the data: pyqtgraph applied the per-point brushes and hover data of the
+    # viewer's curves to them and raised on every replot (and pan/zoom)
+    errors = []
+    monkeypatch.setattr(
+        sys, 'excepthook', lambda *excInfo: errors.append(excInfo[1])
+    )
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    ctrl = plotItem.ctrl
+    for name in viewer.UNSUPPORTED_PLOT_DOWNSAMPLING:
+        widget = getattr(ctrl, name)
+        assert not widget.isEnabled(), name
+        assert 'Not available' in widget.toolTip(), name
+    assert not ctrl.downsampleCheck.isChecked()
+    assert not ctrl.clipToViewCheck.isChecked()
+    # Keeps every point
+    assert ctrl.maxTracesCheck.isEnabled()
+    if mode == 0:
+        viewer.plotOnNewYAxis('intensity')
+    else:
+        comparison(viewer)
+    # What the options could still change: subsample by 2, clip to the view
+    if ctrl.downsampleSpin.isEnabled():
+        ctrl.downsampleSpin.setValue(2)
+    for name in ('subsampleRadio', 'downsampleCheck', 'clipToViewCheck'):
+        check = getattr(ctrl, name)
+        if check.isEnabled():
+            check.setChecked(True)
+    assert plotItem.downsampleMode()[:2] == (1, False)
+    assert not plotItem.clipToViewMode()
+    plotItem.setXRange(1.5, 2.5, padding=0)
+    app = QApplication.instance()
+    app.processEvents()
+    viewer.plotMeasurements()
+    app.processEvents()
+    assert not errors, errors
+    items = viewer.timeCourseDataItems() if mode == 0 else (
+        viewer.measurementsPlot.listDataItems()
+    )
+    assert len(items) == (2 if mode == 0 else 1)
+    for item in items:
+        assert len(item.scatter.points()) == len(item.xData) > 1
 
 
 def test_extra_y_axes_work_without_subtract_mean_option(viewer, monkeypatch):
