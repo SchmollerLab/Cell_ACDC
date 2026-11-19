@@ -5430,7 +5430,7 @@ When working with 3D segmentation masks:
         self.tempLayerRightImage = pg.ImageItem()
         self.tempLayerImg1 = widgets.ParentImageItem(
             linkedImageItem=self.tempLayerRightImage,
-            activatingAction=(self.labelsGrad.showRightImgAction, )
+            activatingActions=(self.labelsGrad.showRightImgAction, )
         )
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
@@ -5462,10 +5462,12 @@ When working with 3D segmentation masks:
         self.topLayerItemsRight.append(self.highLightIDLayerRightImage)
 
         # Keep IDs temp layers
-        self.keepIDsTempLayerRight = pg.ImageItem()
+        # Labels image item --> `setImage` does not auto-level (colors of
+        # the IDs must not depend on the max kept ID)
+        self.keepIDsTempLayerRight = widgets.BaseLabelsImageItem()
         self.keepIDsTempLayerLeft = widgets.ParentImageItem(
             linkedImageItem=self.keepIDsTempLayerRight,
-            activatingAction=self.labelsGrad.showRightImgAction
+            activatingActions=(self.labelsGrad.showRightImgAction, )
         )
         self.topLayerItems.append(self.keepIDsTempLayerLeft)
         self.topLayerItemsRight.append(self.keepIDsTempLayerRight)
@@ -28832,6 +28834,9 @@ When working with 3D segmentation masks:
         lut[0] = [0,0,0,0]
         imageItem.setLevels([0, len(lut)])
         imageItem.setLookupTable(lut)
+        if imageItem is self.keepIDsTempLayerLeft:
+            # The linked right image layer does not inherit the lut
+            self.keepIDsTempLayerRight.setLookupTable(lut)
 
     def getObjectsLab2D(self, IDs):
         """Get the displayed 2D labels (current z-slice or projection) with
