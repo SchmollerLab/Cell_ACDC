@@ -166,6 +166,7 @@ def test_config_parser_args_in_child():
     assert without_debug(out[3]) == parsed(version=True)
     assert out[4]['exit'] == 0
     assert out[4]['stdout'].startswith('usage: acdc')
+    assert 'acdc-data -h' in out[4]['stdout']
     for entry in out[5:]:
         assert 'exit' not in entry, entry
         assert without_debug(entry) == parsed()
