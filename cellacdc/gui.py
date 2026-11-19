@@ -16495,26 +16495,57 @@ When working with 3D segmentation masks:
             self.highLightIDLayerRightImage.clear()
             self.setHighlightID(False)
     
-    def setAllIDs(self, onlyVisited=False):
-        for posData in self.data:
-            posData.allIDs = set()
-            for frame_i in range(len(posData.segm_data)):
-                if frame_i >= len(posData.allData_li):
-                    break
-                
-                lab = posData.allData_li[frame_i]['labels']
-                if lab is None and onlyVisited:
-                    break
-                
-                rp = posData.allData_li[frame_i]['regionprops']
+    def setAllIDs(self, onlyVisited=False, pos_i=None):
+        """Set `posData.allIDs` to the IDs existing in any frame (only up to
+        the first unvisited frame if `onlyVisited`) of every position, or
+        only of the position `pos_i` if not None.
+
+        For the displayed frame the live `posData.rp` is used, because
+        `posData.allData_li` is synced only by `store_data`.
+        """
+        if pos_i is None:
+            posDataList = self.data
+        else:
+            posDataList = (self.data[pos_i],)
+
+        currentPosData = self.data[self.pos_i]
+        for posData in posDataList:
+            # Build the set locally and assign it at the end so that readers
+            # in other threads (e.g., `trackingWorker`) never get a partial set
+            allIDs = set()
+            # Note that the segmentation file can have less frames than the
+            # visited ones (frames past its end are visited with empty masks)
+            for frame_i in range(len(posData.allData_li)):
+                rp = None
+                isCurrentFrame = (
+                    posData is currentPosData and frame_i == posData.frame_i
+                )
+                if isCurrentFrame:
+                    rp = getattr(posData, 'rp', None)
+
                 if rp is None:
-                    lab = posData.segm_data[frame_i]
+                    lab = posData.allData_li[frame_i]['labels']
+                    if lab is None and onlyVisited:
+                        break
+
+                    rp = posData.allData_li[frame_i]['regionprops']
+
+                if rp is None:
+                    if lab is None and frame_i < len(posData.segm_data):
+                        lab = posData.segm_data[frame_i]
+
+                    if lab is None:
+                        # Not segmented and not visited yet
+                        continue
+
                     rp = self._acdcRegionProps(
                         lab, precache_centroids=False
                     )
                     posData.allData_li[frame_i]['regionprops'] = rp
-                    
-                posData.allIDs.update(rp.IDs)
+
+                allIDs.update(rp.IDs)
+
+            posData.allIDs = allIDs
     
     def countObjectsTimelapse(self):
         if self.countObjsWindow is None:
@@ -29022,23 +29053,29 @@ When working with 3D segmentation masks:
 
         self.clearHighlightedText()
 
+        # The labels can change while "Keep IDs" is active (undo/redo,
+        # applying the selection, visiting new frames) --> refresh the IDs
+        # existing in any frame of the current position (cheap, it reads
+        # the cached regionprops of each frame)
+        self.setAllIDs(pos_i=self.pos_i)
+        existingIDs = posData.allIDs
+
         isAnyIDnotExisting = False
-        # Check if IDs from line edit are present in current keptObjectIDs list
+        # Add the existing IDs from the line edit to the kept IDs
         for ID in IDs:
-            if ID not in posData.allIDs:
+            if ID not in existingIDs:
                 isAnyIDnotExisting = True
                 continue
             if ID not in self.keptObjectsIDs:
                 self.keptObjectsIDs.append(ID, editText=False)
                 self.highlightLabelID(ID)
-        
-        # Check if IDs in current keptObjectsIDs are present in IDs from line edit
+
+        # Remove the kept IDs that are not in the line edit anymore or that
+        # do not exist (reported as IGNORED by the line edit)
         # (iterate over a copy because IDs are removed from the list)
+        typedIDs = set(IDs)
         for ID in list(self.keptObjectsIDs):
-            if ID not in posData.allIDs:
-                isAnyIDnotExisting = True
-                continue
-            if ID not in IDs:
+            if ID not in typedIDs or ID not in existingIDs:
                 self.keptObjectsIDs.remove(ID, editText=False)
         
         self.updateTempLayerKeepIDs()

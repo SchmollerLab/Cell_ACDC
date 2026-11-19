@@ -2751,15 +2751,15 @@ class KeptObjectIDsList(list):
         super().append(element)
         if editText:
             self.setText()
-        if not self.confirmSelectionAction.isEnabled():
-            self.confirmSelectionAction.setEnabled(True)
+        # `setText` triggers the slots connected to the line edit (e.g.,
+        # `guiWin.updateKeepIDs`) that can remove the element again
+        self.confirmSelectionAction.setEnabled(len(self) > 0)
 
     def remove(self, element, editText=True):
         super().remove(element)
         if editText:
             self.setText()
-        if not self:
-            self.confirmSelectionAction.setEnabled(False)
+        self.confirmSelectionAction.setEnabled(len(self) > 0)
 
 class ScatterPlotItem(pg.ScatterPlotItem):
     def __init__(self, *args, **kwargs):
