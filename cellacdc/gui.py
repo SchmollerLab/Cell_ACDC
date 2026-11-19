@@ -15216,7 +15216,19 @@ When working with 3D segmentation masks:
     
     def editingSpinboxValueTimerCallback(self):
         self.typingEditID = False
-        
+
+    def ownedWindowsOutsideParentChain(self):
+        """Windows of this GUI whose parent chain does not reach it, so that
+        `eventFilter` still treats their key presses as the GUI's own (e.g.,
+        Left/Right stepping the frames). The 3D viewer is a child of the
+        launcher (`mainWin`, for its lifetime), but its frames follow the
+        GUI ("Sync frames with parent GUI"). None items are ignored.
+
+        Progress windows parented to the launcher are not included: the GUI
+        is disabled while they run.
+        """
+        return (getattr(self, '_volume_renderer', None),)
+
     def eventFilter(self, obj, ev):
         if not getattr(self, 'isDataLoaded', False):
             return super().eventFilter(obj, ev)
@@ -15253,7 +15265,9 @@ When working with 3D segmentation masks:
         # by the GUI (e.g., the arrow keys of the measurements viewer) alone
         if (
             ev.type() == QEvent.Type.KeyPress
-            and qutils.is_key_event_for_window(self, obj)
+            and qutils.is_key_event_for_window(
+                self, obj, owned_windows=self.ownedWindowsOutsideParentChain()
+            )
         ):
             for name, key in self.widgetsPersistentShortcut.items():
                 if not key == ev.key():

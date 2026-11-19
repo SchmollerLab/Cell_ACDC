@@ -36,7 +36,10 @@ column (its remembered axis if it is not plotted), so it stays empty and
 disabled until a column is put on another axis; a plotted column alone on
 its axis cannot get a new one). Moving the last plotted column of axis 1
 to another axis merges that axis into axis 1 (`addToYAxisOf`), so that
-columns plotted later, on axis 1 by default, join it. The axis numbers of
+columns plotted later, on axis 1 by default, join it. Nothing merges when
+axis 1 has no plotted column (its columns were unplotted): another axis is
+then the left one, and a column plotted later on axis 1 gets a new left
+axis again. The axis numbers of
 the columns not on axis 1 are kept in ``timeCourseYAxes``
 ``{column: number}``, also while a column is not plotted (plotting it
 again puts it back on its axis); a new axis takes the number after every
@@ -47,9 +50,10 @@ the first one is the left axis of the main view box (labeled "Value", or
 the others are extra axes on the right labeled with their columns, each
 with its own view box (`_TimeCoursePlotItem`, which also documents mouse
 handling: pan/zoom in the plot area moves every axis, on an axis only that
-axis; "A", "View All" and every automatic rescale fit each axis to its own
-data; plot options and the plot exporters include every axis). The hover
-tip of the points of every axis is shown on the main view box
+axis; "A", "View All", every automatic rescale and every change of the log
+or Subtract Mean transform of the plot options fit each axis to its own
+data; plot options and the plot exporters include every axis). The
+hover tip of the points of every axis is shown on the main view box
 (`measurementPointsHovered`). The unanalyzed frames are shaded under the
 curves of every axis. The phase band gets an empty right axis as wide as
 the extra axes so that frames stay aligned. Comparison mode has no extra
@@ -60,7 +64,9 @@ configuration's ``time_course_y_axes`` ``{column: number}``: every plotted
 time course column (also those on axis 1), then the other columns not on
 axis 1 (the FUCCI template puts ``area`` on axis 2, next to the 0-1
 reporters). ``Normalize measurements (0-1)`` is independent of the axes:
-it rescales every curve, whatever its axis.
+it rescales every curve, whatever its axis (with several axes, each axis
+label gets " (normalized)"). Conditional formatting segments of a column
+are drawn on the axis of the column.
 Measurement selectors use the equation editor's tree organization: numerical
 and categorical inputs, channel-specific cell/background/custom measurements,
 size measurements, region properties, and other numerical inputs. Plotting
@@ -77,7 +83,9 @@ the main GUI (`gui.guiWin`) through the mixins in:
   IDs) are handled by an application event filter (`eventFilter`) whatever
   widget of the window has the focus (buttons and check boxes would move
   the focus with them), except text inputs, spin boxes, drop-down menus and
-  lists (`qutils.ARROW_KEYS_WIDGET_CLASSES`).
+  lists (`qutils.ARROW_KEYS_WIDGET_CLASSES`), the menu bar and open menus
+  (keyboard navigation of the menus), and while the window is disabled
+  (loading data, `runInThread`).
 - `gui_annotations`: display of contours, segm. masks, IDs, cell cycle and 
   lineage info, mother-daughter lines and object tracks. As in the main
   GUI's 'Viewer' mode, mother-daughter lines come from the cell cycle
@@ -104,9 +112,23 @@ or run it with `python -m cellacdc.measurements_viewer [folder_path]`.
 After data is loaded (on the first event loop pass after `setData`, i.e.
 after the rest of the load such as the overlay channels), the Cell ID
 controls (label, spinbox and scrollbar at the bottom) blink and the status bar 
-explains how to select the plotted cell. Ctrl+F focuses the search bar and 
+explains how to select the plotted cell. Ctrl+F focuses the search bar and
 blinks it, like the toolbar search
 button.
+As in the main GUI (`gui.guiWin.setStatusBarLabel`), the left label of the
+status bar shows what is displayed (`setStatusBarLabel`, text from
+`measurements_viewer_utils.loaded_data_status`): experiment folder, Position
+folder (with its index when several are loaded), basename, displayed and
+overlay channels, segmentation file and configuration file name; its tool tip
+has the full Images folder and configuration file paths (paths too long for a
+tool tip line broken after separators on indented lines below their label,
+`measurements_viewer_utils.path_tooltip_lines`). It is updated when
+data, a position or a configuration is loaded, the overlay channels change
+and a configuration is saved (logged once per load and position change),
+and cleared without data. It is plain text and clipped (never widens the
+window). Other messages are temporary (`QStatusBar.showMessage`, e.g.
+"Measurements exported to ...", the color scheme restart notice of
+`onToggleColorScheme`): they hide the label only while they are shown.
 The Help menu opens the online user guide (`urls.measurements_viewer_docs_url`,
 source ``docs/source/measurements-viewer.rst``) and the Cell-ACDC
 documentation, shows a quick start (``MEASUREMENTS_VIEWER_QUICK_START``, also
@@ -660,7 +682,7 @@ from qtpy.QtWidgets import (
     QCheckBox, QComboBox, QAbstractItemView, QFileDialog, QAction,
     QApplication, QToolButton, QPushButton, QActionGroup, QAbstractSlider,
     QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem, QTreeView,
-    QAbstractButton
+    QAbstractButton, QSizePolicy
 )
 
 import pyqtgraph as pg
@@ -711,7 +733,7 @@ from .measurements_viewer_utils import (
     evaluate_masked_cell_equation, update_last_analyzed_frame,
     acdc_df_file_stamp, acdc_df_snapshot, position_name, load_positions,
     precompute_position_regionprops, preload_overlay_channels,
-    load_display_positions,
+    load_display_positions, loaded_data_status,
 )
 
 
@@ -1030,9 +1052,16 @@ class _TimeCoursePlotItem(pg.PlotItem):
     are registered in `items`/`curves` (not `dataItems`, so
     `listDataItems` has only the left axis), so that the plot options
     (log mode, alpha, FFT, downsampling, ...) and the exporters of the
-    context menu (CSV, SVG, ...) include them. Background items
-    (`addBackgroundItem`, e.g. shaded frames) stay in the bottom view box,
-    under the curves of every axis. Extra view boxes are created on demand
+    context menu (CSV, SVG, ...) include them; a changed transform
+    autoscales the y range of every axis, as pyqtgraph does for the main
+    view box. The options that change the number of points (FFT, dy/dx,
+    Y vs Y', downsampling, clip to view) raise on the viewer's curves,
+    whatever their axis (also without extra axes): pyqtgraph applies
+    their per-point symbol brushes and hover data to the changed points.
+    "Subtract Mean" exists only from pyqtgraph 0.14 (0.13.7 is
+    still supported: check the API before using newer options). Background
+    items (`addBackgroundItem`, e.g. shaded frames) stay in the bottom view
+    box, under the curves of every axis. Extra view boxes are created on demand
     and kept (hidden, axis out of the layout) when not needed.
     """
     sigExtraYAxesChanged = Signal()
@@ -1138,19 +1167,23 @@ class _TimeCoursePlotItem(pg.PlotItem):
         """Add the data `item` to the view box of the shown extra y axis
         `index`, with the plot options that `addItem` applies to the curves
         of the main view box, and register it for the exporters and later
-        plot option changes (`items` and `curves`)."""
+        plot option changes (`items` and `curves`) once it was added."""
         vb = self.shownExtraViewBoxes()[index]
-        self.items.append(item)
-        self.curves.append(item)
-        self.itemMeta[item] = {}
         item.setLogMode(*self.logModes())
         alpha, auto = self.alphaState()
         item.setAlpha(alpha, auto)
-        item.setSubtractMeanMode(self.ctrl.subtractMeanCheck.isChecked())
+        # "Subtract Mean" exists from pyqtgraph 0.14 (0.13.7 is supported)
+        subtractMeanCheck = getattr(self.ctrl, 'subtractMeanCheck', None)
+        if (subtractMeanCheck is not None
+                and hasattr(item, 'setSubtractMeanMode')):
+            item.setSubtractMeanMode(subtractMeanCheck.isChecked())
         item.setFftMode(self.ctrl.fftCheck.isChecked())
         item.setDownsampling(*self.downsampleMode())
         item.setClipToView(self.clipToViewMode())
         vb.addItem(item)
+        self.items.append(item)
+        self.curves.append(item)
+        self.itemMeta[item] = {}
         self._extraItems.append((vb, item))
         self.updateDecimation()
 
@@ -1187,6 +1220,36 @@ class _TimeCoursePlotItem(pg.PlotItem):
         x, y = self.logModes()
         for vb, axis in self.extraYAxes:
             axis.setLogMode(x, y)
+        self._autoRangeExtraYAxesAfterTransform()
+
+    # The other transforms of the plot options apply to the curves of the
+    # extra y axes (in `items`/`curves`), but pyqtgraph then autoscales only
+    # the main view box (`enableAutoRange`): refit the extra y axes too,
+    # else they keep the range of the untransformed data after a pan/zoom
+    # (FFT, dy/dx and Y vs Y' raise on the viewer's own curves: see the
+    # class docstring)
+
+    def updateSpectrumMode(self, b=None):
+        super().updateSpectrumMode(b)
+        self._autoRangeExtraYAxesAfterTransform()
+
+    def updateSubtractMeanMode(self, *args):
+        # pyqtgraph >= 0.14 only (connected to `ctrl.subtractMeanCheck`)
+        update = getattr(super(), 'updateSubtractMeanMode', None)
+        if update is not None:
+            update()
+        self._autoRangeExtraYAxesAfterTransform()
+
+    def updateDerivativeMode(self, *args):
+        super().updateDerivativeMode()
+        self._autoRangeExtraYAxesAfterTransform()
+
+    def updatePhasemapMode(self, *args):
+        super().updatePhasemapMode()
+        self._autoRangeExtraYAxesAfterTransform()
+
+    def _autoRangeExtraYAxesAfterTransform(self):
+        for vb, _ in self.extraYAxes:
             vb.enableAutoRange(axis=pg.ViewBox.YAxis)
 
     def updateExtraViewsGeometry(self, *args):
@@ -1557,8 +1620,11 @@ class MeasurementsViewerWin(
     def isArrowNavigationKeyPress(self, obj, event):
         """Whether the key press `event` of `obj` (seen by `eventFilter`) is
         an arrow key navigating frames/z-slices or cells: no modifiers, sent
-        to a widget of this window, and not to a widget that uses the arrow
-        keys itself (text, spin boxes, drop-down menus, lists)."""
+        to an enabled widget of this window (disabled during loads, see
+        `runInThread`) while no popup (e.g., a menu) is open, and neither to
+        the menu bar (keyboard navigation of the menus) nor to a widget that
+        uses the arrow keys itself (text, spin boxes, drop-down menus,
+        lists)."""
         if event.key() not in ARROW_KEYS:
             return False
         # Arrow keys always have the keypad modifier on macOS
@@ -1569,6 +1635,17 @@ class MeasurementsViewerWin(
         if not self.data:
             return False
         if not obj.isWidgetType() or obj.window() is not self:
+            return False
+        # Application event filters see the key presses that Qt then drops
+        # for disabled widgets (`QWidget::event`)
+        if not self.isEnabled() or not obj.isEnabled():
+            return False
+        # Menus: after Alt (Windows/Linux) the menu bar has the focus, and an
+        # open menu passes Left/Right on to its menu bar to switch menus while
+        # the focus widget is still the one focused before
+        if obj.inherits('QMenuBar') or obj.inherits('QMenu'):
+            return False
+        if QApplication.activePopupWidget() is not None:
             return False
         return not qutils.focus_widget_uses_arrow_keys()
 
@@ -1659,12 +1736,7 @@ class MeasurementsViewerWin(
         segm_endname = segm_filename[len(posData.basename):].lstrip('_')
         # The overlay is turned off only while a zy/zx plane is viewed
         # (`setOverlayEnabledForPlane`)
-        isOverlayOn = (
-            self.overlayButton.isChecked() or bool(self.overlayButtonPrevState)
-        )
-        overlay_channels = (
-            sorted(self.checkedOverlayChannels) if isOverlayOn else []
-        )
+        overlay_channels = self.activeOverlayChannels()
         visible_channels = [
             channel for channel, button in self.allOverlayToolbuttons.items()
             if button.isChecked()
@@ -1797,6 +1869,8 @@ class MeasurementsViewerWin(
         self.loadedInputKey = self.inputOptionKey(configuration)
         self.savedConfiguration = configuration
         self.logger.info(f'Configuration saved to "{filepath}"')
+        # Possibly a new file name
+        self.setStatusBarLabel(log=False)
         self.statusBar().showMessage(f'Configuration saved to "{filepath}".', 5000)
         return True
 
@@ -2801,6 +2875,8 @@ class MeasurementsViewerWin(
             )
             self.seedVisitedTimepointPredictions(data=data)
         self.configurationFilepath = None
+        # `setData` showed the previous configuration file
+        self.setStatusBarLabel(log=False)
         overlays = configuration['overlay_channels']
         if overlays:
             loaded = self.loadOverlayData(overlays)
@@ -2808,6 +2884,8 @@ class MeasurementsViewerWin(
             for posData in data:
                 posData.__dict__.pop('_viewerPreloadedFluo', None)
             if not loaded:
+                # The data stay loaded, without configuration file
+                self.setStatusBarLabel()
                 self.configurationError('load', 'Could not load overlay channels.')
                 return False
             self.setCheckedOverlayContextMenusActions(overlays)
@@ -2852,6 +2930,7 @@ class MeasurementsViewerWin(
                 fileStepsLastFrames
             )
         self.logger.info(f'Configuration loaded: "{filepath}"')
+        self.setStatusBarLabel()
         if missing:
             self.configurationError(
                 'restore all plot selections',
@@ -4103,6 +4182,7 @@ class MeasurementsViewerWin(
                 savedStepsLastFrames
             )
         self.logger.info(f'Loaded {len(data)} position(s)')
+        self.setStatusBarLabel()
 
     def runInThread(
             self, func, *args, text='Working...', reportProgress=False,
@@ -4218,6 +4298,7 @@ class MeasurementsViewerWin(
             isMultiPos = False
             self.posLabel.setVisible(isMultiPos)
             self.posCombobox.setVisible(isMultiPos)
+            self.setStatusBarLabel(log=False)
             return
         
         relPath = getattr(self.data[0], 'relPath', '')
@@ -5273,14 +5354,78 @@ class MeasurementsViewerWin(
     
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
+        # What is loaded (`setStatusBarLabel`). Plain text (folder and file
+        # names are not HTML), clipped instead of widening the window (its
+        # tool tip lists everything); temporary messages (`showMessage`)
+        # hide it while they are shown
         self.statusBarLabel = QLabel('')
-        self.statusbar.addWidget(self.statusBarLabel)
+        self.statusBarLabel.setTextFormat(Qt.TextFormat.PlainText)
+        self.statusBarLabel.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.statusbar.addWidget(self.statusBarLabel, 1)
         # Permanent widget with mouse hover info (as in guiWin). Its text is
         # updated at every mouse move --> fixed size (growing only) to avoid
         # re-layouting the main window
         self.wcLabel = widgets.AutoGrowFixedSizeLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
-    
+
+    def setStatusBarLabel(self, log=True):
+        """Show what is displayed in the status bar label, as the main GUI's
+        `gui.guiWin.setStatusBarLabel`: experiment and Position folder,
+        basename, displayed and overlay channels, segmentation file and
+        configuration file name, with the full Images folder and
+        configuration paths in its tool tip (`loaded_data_status`; long
+        paths broken after separators, other lines by
+        `qutils.wrap_tooltip`). Empty
+        without data. Called whenever one of them changes; `log` also logs
+        the text (once per load or position change)."""
+        if not self.data:
+            self.statusBarLabel.setText('')
+            self.statusBarLabel.setToolTip('')
+            return
+        text, tooltip = loaded_data_status(
+            self.posData(), pos_i=self.pos_i, num_positions=len(self.data),
+            channel=self.user_ch_name,
+            overlay_channels=self.activeOverlayChannels(),
+            configuration_filepath=self.configurationFilepath
+        )
+        self.statusBarLabel.setText(text)
+        self.statusBarLabel.setToolTip(qutils.wrap_tooltip(tooltip))
+        if log:
+            self.logger.info(text)
+
+    def activeOverlayChannels(self):
+        """Overlaid channels (sorted), also while the overlay is turned off
+        on a zy/zx plane (`setOverlayEnabledForPlane` restores it on xy)."""
+        isOverlayOn = (
+            self.overlayButton.isChecked() or bool(self.overlayButtonPrevState)
+        )
+        if not isOverlayOn:
+            return []
+        return sorted(self.checkedOverlayChannels)
+
+    def overlay_cb(self, checked):
+        result = super().overlay_cb(checked)
+        self.setStatusBarLabel(log=False)
+        return result
+
+    def overlayChannelToggled(self, checked):
+        # Slot of the overlay context menu actions: `sender()` (read by the
+        # mixin) is still the toggled action here
+        super().overlayChannelToggled(checked)
+        self.setStatusBarLabel(log=False)
+
+    def onToggleColorScheme(self):
+        # The mixin writes the restart notice into `statusBarLabel` (kept
+        # until data is loaded again in the main GUI): show it as a
+        # temporary message instead (the warning dialog also says it)
+        super().onToggleColorScheme()
+        self.setStatusBarLabel(log=False)
+        self.statusBar().showMessage(
+            f'Restart {self._appName} for the change to take effect.', 15000
+        )
+
     def gui_connectViewerToolsSignals(self):
         self.launch3dViewerButton.toggled.connect(self.launch3dViewerToggled)
         
@@ -5408,7 +5553,10 @@ class MeasurementsViewerWin(
 
         if self.rescalePlotCheckbox.isChecked():
             self.autoscaleMeasurementsPlot()
-                
+        # Logged at the end of a load (Open folder, configuration), which
+        # can still change it (e.g., the configuration file)
+        self.setStatusBarLabel(log=not self._isLoadingData)
+
     def updateCcaTableWin(self):
         """Show the cell cycle annotations of the current frame in the open
         `ccaTableWin`. Frames without annotations show an empty table and
@@ -6368,7 +6516,10 @@ class MeasurementsViewerWin(
             self.measurementProcessingWarning('Export failed', str(error))
             return
         self.logger.info(f'Measurements exported to "{filepath}"')
-        self.statusBarLabel.setText(f'Measurements exported to {filepath}')
+        # Temporary: `statusBarLabel` shows what is loaded
+        self.statusBar().showMessage(
+            f'Measurements exported to "{filepath}".', 8000
+        )
     
     def refreshAcdcDf(self, plot=True):
         self.acdc_df = self.getAcdcDf()
@@ -9120,7 +9271,9 @@ class MeasurementsViewerWin(
 
     def setTimeCourseYAxesLabels(self, yAxes, isNormalized):
         """Label the left axis 'Value' with a single y axis, otherwise every
-        displayed axis with its plotted columns (`plottedYAxes`)."""
+        displayed axis with its plotted columns (`plottedYAxes`), escaped
+        because pyqtgraph renders axis labels as HTML (a CSV column such as
+        `size<5um` would be cut at the `<`)."""
         leftAxis = self.measurementsPlot.getAxis('left')
         if len(yAxes) <= 1:
             leftAxis.setLabel('Normalized value' if isNormalized else 'Value')
@@ -9129,7 +9282,8 @@ class MeasurementsViewerWin(
         plotItem = self.measurementsPlot.getPlotItem()
         axisItems = [leftAxis, *plotItem.shownExtraAxes()]
         for axisItem, columns in zip(axisItems, yAxes.values()):
-            axisItem.setLabel(', '.join(columns) + suffix)
+            label = html.escape(', '.join(columns), quote=False)
+            axisItem.setLabel(label + suffix)
 
     def plotOnTimeCourseAxis(self, index, *args, name=None, **kwargs):
         """Plot a `pg.PlotDataItem(*args, **kwargs)` on the displayed y axis
@@ -9173,7 +9327,8 @@ class MeasurementsViewerWin(
         Moving the last plotted column of the default axis 1 merges the
         axis `number` into axis 1 instead: columns plotted later (on axis 1
         by default) then join the merged axis rather than getting a new
-        left axis of their own."""
+        left axis of their own. Nothing merges when no column of axis 1 is
+        plotted (the left axis is then another one)."""
         yAxes = self.plottedYAxes()
         self.logger.info(
             f'Plotting "{col}" on the y axis of '

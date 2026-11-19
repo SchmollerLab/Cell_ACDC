@@ -113,7 +113,8 @@ changes, you are first asked whether to save them (see `Configurations`_).
 
 Loading large experiments can take a while. The window stays visible but does
 not accept input until loading is complete; progress is shown in the status
-bar and in the terminal.
+bar and in the terminal. Once loaded, the status bar shows which data are
+displayed (see `The window`_).
 
 Partially analyzed videos
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -178,6 +179,14 @@ The window
 * **Cell-ACDC objects** dock: click the small arrow button at the left edge
   of the window (**Show object properties**) to show the properties of the
   selected cell (ID, area, intensities, etc.).
+* **Status bar** (bottom): what is displayed, i.e. the experiment folder,
+  the Position folder (with its number, e.g. ``Position_2 (2/3)``, when
+  several Positions are loaded), the basename, the displayed and overlaid
+  channels, the segmentation file and the name of the loaded or saved
+  configuration file. Hover over it to see the full paths of the ``Images``
+  folder and of the configuration file. Other messages (e.g., the hint
+  shown after loading or the message after exporting measurements) hide it
+  for a few seconds.
 
 
 Selecting cells and navigating
@@ -252,23 +261,29 @@ plotted.
   Custom colors are saved with the configuration (the premade FUCCI
   configuration plots the Geminin reporter in green and the Cdt1 reporter
   in red).
-* **Y axes**: all plotted columns share the left y axis. To compare
-  measurements with different scales (e.g., a reporter normalized to 0-1
-  and the cell area in pixels), **right-click** a column and select
-  **Create new y axis for this**: the column gets its own y axis, shown on
-  the right of the plot next to the axes of the other plotted columns (it
-  is also plotted if it was not). **Add to y-axis of...** lists the other
+* **Y axes**: plotted columns share the default y axis, on the left of the
+  plot. To compare measurements with different scales (e.g., a reporter
+  normalized to 0-1 and the cell area in pixels), **right-click** a column
+  and select **Create new y axis for this**: the column gets its own y
+  axis, shown on the right of the plot next to the axes of the other
+  plotted columns (it is also plotted if it was not). **Add to y-axis of...** lists the other
   y axes by the columns plotted on them; select one to move the column
   there. The axis of the column you clicked is not listed, so this list
-  stays empty until you create a new y axis. When you move the last column
-  of the left axis to another axis, the two axes become one, and columns
-  you plot later join it. Each y axis is labeled with its columns and
-  fitted to their data; hover over a point to see the values of all the
-  points under the mouse, whatever their axis. A column keeps its y axis
-  when you remove it from the plot and plot it again. The y axes are saved
-  in the configuration, numbered 1 (the default axis), 2, and so on (the
-  premade FUCCI configuration shows the cell area on axis 2, next to the
-  two reporters).
+  stays empty until you create a new y axis. A column keeps its y axis
+  when you remove it from the plot and plot it again; any other column you
+  plot goes on the default axis.
+
+  When you move the last plotted column of the default axis to another
+  axis, that axis becomes the default axis, so columns you plot later join
+  it. Removing the columns of the default axis from the plot does not
+  merge any axes: the next axis moves to the left, and the next column you
+  plot on the default axis gets a new left axis again.
+
+  Each y axis is labeled with its columns and fitted to their data; hover
+  over a point to see the values of all the points under the mouse,
+  whatever their axis. The y axes are saved in the configuration, numbered
+  1 (the default axis), 2, and so on (the premade FUCCI configuration shows
+  the cell area on axis 2, next to the two reporters).
 * **Zoom**: when you add or remove a column, move it to another y axis,
   toggle normalization or load a position, the plot is fitted to the plotted
   data on all axes, as when you click the **A** button in the bottom-left
@@ -282,6 +297,8 @@ plotted.
   your zoom is kept unless **Rescale plot** is checked.
 * **Hover** over a point to see its frame, value and phase; **click** a point
   to go to that frame.
+* **Plot options**: right-click the plot and open **Plot Options** for the
+  plot settings, e.g. a log scale (**Transforms**), applied to every y axis.
 
 Measurement vs Measurement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -889,9 +906,13 @@ shortcuts of the viewer tools.
     * - :kbd:`Esc`
       - Cancel the active tool
 
-The arrow keys navigate whichever button or checkbox has the keyboard focus.
-In text fields, number fields, drop-down menus and lists they keep their
-usual function: click the image or the plot to navigate again.
+The arrow keys change the frame or the z-slice (:kbd:`Left` / :kbd:`Right`,
+see the table above) and the Cell ID (:kbd:`Up` / :kbd:`Down`) also when a
+button or a checkbox has the keyboard focus. In text fields, number fields,
+drop-down menus and lists they keep their usual function: click the image or
+the plot to navigate again. In an open menu they move through the menus, and
+so they do in the menu bar after pressing :kbd:`Alt` (Windows and Linux; on
+macOS the menu bar is outside the window).
 
 Because :kbd:`Shift` + a time point or annotation shortcut re-evaluates the
 predictor, a key cannot be used as such a shortcut when :kbd:`Shift` + the key

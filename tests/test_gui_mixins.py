@@ -7,10 +7,12 @@ import numpy as np
 import pandas as pd
 import pyqtgraph as pg
 import pytest
-from qtpy.QtCore import Qt
+from qtpy.QtCore import QEvent, Qt
+from qtpy.QtGui import QKeyEvent
+from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QAbstractSlider, QAction, QApplication, QGridLayout, QGroupBox,
-    QMainWindow, QScrollBar, QWidget
+    QMainWindow, QPushButton, QScrollBar, QWidget
 )
 
 from cellacdc import apps, gui, widgets
@@ -141,6 +143,78 @@ def test_z_slice_scrollbar_keys_with_2d_data(app, SizeZ):
     )
     host.zSliceScrollBarReleased()
     assert host.update_z_slice.call_count == (0 if SizeZ == 1 else 2)
+
+
+class _PersistentShortcutsHost(gui.guiWin):
+    # The real `guiWin.eventFilter` without building the GUI: its fall-through
+    # calls the zero-argument `super().eventFilter`, so the host must be a
+    # `guiWin`. Never shown (`guiWin.showEvent` needs the launcher).
+    def __init__(self):
+        QMainWindow.__init__(self)
+        self.isDataLoaded = True
+        self.triggered = []
+        self.widgetsWithShortcut = {}
+        self.widgetsPersistentShortcut = {}
+        keys = {'Next': Qt.Key.Key_Right, 'Previous': Qt.Key.Key_Left}
+        for name, key in keys.items():
+            action = QAction(name, self)
+            action.triggered.connect(
+                lambda checked=False, name=name: self.triggered.append(name)
+            )
+            self.widgetsWithShortcut[name] = action
+            self.widgetsPersistentShortcut[name] = key
+
+
+def test_gui_persistent_shortcuts_only_for_own_windows(app):
+    # The main GUI's filter is installed on the app: Left/Right step its
+    # frames only for key presses of its own windows (not, e.g., of the
+    # measurements viewer), including its 3D viewer, a child of the launcher
+    host = _PersistentShortcutsHost()
+    ownButton = QPushButton('own', host)
+    launcher = QMainWindow()
+    renderer = QMainWindow(launcher)
+    rendererButton = QPushButton('3D', renderer)
+    renderer.setCentralWidget(rendererButton)
+    other = QWidget()
+    otherButton = QPushButton('other', other)
+
+    def press(receiver, key=Qt.Key.Key_Right):
+        host.triggered.clear()
+        event = QKeyEvent(
+            QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier
+        )
+        handled = host.eventFilter(receiver, event)
+        return bool(handled), list(host.triggered)
+
+    try:
+        assert press(otherButton) == (False, [])
+        assert press(ownButton) == (True, ['Next'])
+        assert press(ownButton, Qt.Key.Key_Left) == (True, ['Previous'])
+        # 3D viewer never opened (no attribute) or closed (`_launch3dViewer`
+        # resets it to None)
+        assert press(rendererButton) == (False, [])
+        host._volume_renderer = None
+        assert press(rendererButton) == (False, [])
+        host._volume_renderer = renderer
+        assert press(rendererButton) == (True, ['Next'])
+        assert press(otherButton) == (False, [])
+        # Seen on the QWindow first: the focus widget tells the target
+        for window, button, expected in (
+                (renderer, rendererButton, ['Next']), (other, otherButton, [])
+            ):
+            window.show()
+            window.activateWindow()
+            QTest.qWaitForWindowActive(window, 1000)
+            button.setFocus()
+            app.processEvents()
+            assert QApplication.focusWidget() is button
+            handle = window.windowHandle()
+            assert press(handle) == (bool(expected), expected)
+    finally:
+        for widget in (host, launcher, other):
+            widget.hide()
+            widget.deleteLater()
+        app.processEvents()
 
 
 def test_view_cca_table_without_annotations_warns(app, monkeypatch):
