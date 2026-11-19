@@ -1,4 +1,4 @@
-from  typing import Literal
+from  typing import Literal, Iterable
 import re
 import textwrap
 import functools
@@ -43,7 +43,10 @@ def focus_widget_uses_arrow_keys() -> bool:
     return any(widget.inherits(cls) for cls in ARROW_KEYS_WIDGET_CLASSES)
 
 
-def is_key_event_for_window(window: QWidget, receiver: QObject) -> bool:
+def is_key_event_for_window(
+        window: QWidget, receiver: QObject,
+        owned_windows: Iterable[QWidget | None] = ()
+    ) -> bool:
     """Return True if a key event seen by an application event filter on
     `receiver` is for `window` or for a window owned by it (its parent chain
     reaches `window`).
@@ -54,7 +57,15 @@ def is_key_event_for_window(window: QWidget, receiver: QObject) -> bool:
     target. Return True if the target is unknown (no focus or active window),
     so that the filter keeps working, e.g., for key events sent directly to
     a window that is not active.
+
+    `owned_windows` are windows that belong to `window` although their
+    parent chain does not reach it (e.g., the main GUI's 3D viewer, a child
+    of the launcher): key events for them (or for windows they own) count as
+    for `window`. None items are ignored. Compared by identity only, so a
+    window already deleted on the C++ side does no harm.
     """
+    windows = [window]
+    windows.extend(w for w in owned_windows if w is not None)
     if receiver is not None and receiver.isWidgetType():
         widget = receiver
     else:
@@ -62,7 +73,7 @@ def is_key_event_for_window(window: QWidget, receiver: QObject) -> bool:
         if widget is None:
             return True
     while widget is not None:
-        if widget is window:
+        if any(widget is w for w in windows):
             return True
         widget = widget.parentWidget()
     return False
@@ -399,6 +410,60 @@ def balanced_wrap(line, width=TOOLTIP_MAX_LINE_LENGTH, indent=''):
         if len(candidate) == len(lines):
             return candidate
     return lines
+
+
+# A path part: a name followed by its separator(s), or the last name
+_PATH_PART = re.compile(r'[^\\/]*[\\/]+|[^\\/]+')
+
+
+def wrap_path(path, width=TOOLTIP_MAX_LINE_LENGTH, indent=''):
+    """Break a file or folder path into lines of at most `width` characters
+    after its separators (``\\`` or ``/``, kept at the end of the line), with
+    lengths as even as possible (as `balanced_wrap`).
+
+    `wrap_tooltip` breaks lines only at spaces and never splits words, so a
+    path (rarely with spaces) would stay on one line as wide as the path:
+    put long paths of plain-text tool tips on lines from this function
+    (lines that fit are then kept by `wrap_tooltip`).
+
+    Parameters
+    ----------
+    path : str or path-like
+        The path.
+    width : int, optional
+        Maximum line length, including `indent`. Default is
+        `TOOLTIP_MAX_LINE_LENGTH`.
+    indent : str, optional
+        Prefix of every line (e.g., to indent the path below its label).
+
+    Returns
+    -------
+    list of str
+        The lines; joined without separator (after removing `indent`) they
+        give the path. A file or folder name longer than the available width
+        is not split (its line is longer than `width`).
+    """
+    path = str(path)
+    parts = _PATH_PART.findall(path)
+    available = max(1, width - len(indent))
+    def wrap(w):
+        lines = ['']
+        for part in parts:
+            if lines[-1] and len(lines[-1]) + len(part) > w:
+                lines.append(part)
+            else:
+                lines[-1] += part
+        return lines
+    lines = wrap(available)
+    if len(lines) > 1:
+        # Narrowest width with the same number of lines (greedy packing
+        # gives the fewest lines at any width)
+        for narrower in range(-(-len(path) // len(lines)), available):
+            candidate = wrap(narrower)
+            if len(candidate) == len(lines):
+                lines = candidate
+                break
+    return [f'{indent}{line}' for line in lines]
 
 
 def wrap_tooltip(text, width=TOOLTIP_MAX_LINE_LENGTH):

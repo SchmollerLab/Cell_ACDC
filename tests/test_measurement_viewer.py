@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -10,7 +11,7 @@ import pytest
 import pyqtgraph as pg
 import pyqtgraph.exporters
 
-from qtpy.QtCore import QEvent, QPointF, Qt
+from qtpy.QtCore import QEvent, QPointF, Qt, QTimer
 from qtpy.QtGui import QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
@@ -1206,6 +1207,125 @@ def test_arrow_keys_stay_with_text_inputs(real_viewer, app, tmp_path):
     assert not real_viewer.slotErrors
 
 
+def test_arrow_keys_do_nothing_while_the_window_is_disabled(
+        real_viewer, app, tmp_path
+    ):
+    # `runInThread` disables the window during loads: application event
+    # filters see its key presses before Qt drops them (disabled widgets)
+    images = make_timelapse_position(
+        tmp_path, SizeT=4, extra_cells=[(frame_i, 2) for frame_i in range(4)]
+    )
+    load_real(real_viewer, [images])
+    focus_in_active_window(app, real_viewer, real_viewer.zoomRectButton)
+    handle = real_viewer.windowHandle()
+    recorded = {}
+
+    def pressArrowKeys():
+        recorded['enabled'] = real_viewer.isEnabled()
+        for key in (Qt.Key_Right, Qt.Key_Up):
+            QTest.keyClick(handle, key)
+        recorded['frame_i'] = real_viewer.frame_i
+        recorded['ID'] = real_viewer.currID()
+
+    QTimer.singleShot(0, pressArrowKeys)
+    real_viewer.runInThread(time.sleep, 0.2, text='Waiting...')
+    assert recorded == {'enabled': False, 'frame_i': 0, 'ID': 1}
+    # Enabled again (the focus was cleared): the keys navigate
+    assert real_viewer.isEnabled()
+    QTest.keyClick(handle, Qt.Key_Right)
+    QTest.keyClick(handle, Qt.Key_Up)
+    assert (real_viewer.frame_i, real_viewer.currID()) == (1, 2)
+    assert not real_viewer.slotErrors
+
+
+def close_popups(app):
+    for _ in range(5):
+        popup = QApplication.activePopupWidget()
+        if popup is None:
+            break
+        popup.close()
+        app.processEvents()
+
+
+def test_arrow_keys_switch_the_menus_of_an_open_menu(
+        real_viewer, app, tmp_path
+    ):
+    # An open menu passes Left/Right on to its menu bar (switch menus),
+    # while the focus widget is still the one focused before
+    images = make_timelapse_position(tmp_path, SizeT=4)
+    load_real(real_viewer, [images])
+    menuBar = real_viewer.menuBar()
+    # Windows/Linux menu bar (macOS: native, outside the window)
+    menuBar.setNativeMenuBar(False)
+    focus_in_active_window(app, real_viewer, real_viewer.zoomRectButton)
+    fileAction, editAction = menuBar.actions()[:2]
+    try:
+        QTest.mouseClick(
+            menuBar, Qt.LeftButton,
+            pos=menuBar.actionGeometry(fileAction).center()
+        )
+        popup = QApplication.activePopupWidget()
+        assert popup is fileAction.menu()
+        assert QApplication.focusWidget() is real_viewer.zoomRectButton
+        QTest.keyClick(popup, Qt.Key_Right)
+        assert menuBar.activeAction() is editAction
+        assert QApplication.activePopupWidget() is editAction.menu()
+        assert real_viewer.frame_i == 0
+        QTest.keyClick(editAction.menu(), Qt.Key_Left)
+        assert menuBar.activeAction() is fileAction
+        assert real_viewer.frame_i == 0
+    finally:
+        close_popups(app)
+    assert not real_viewer.slotErrors
+
+
+def test_arrow_keys_navigate_the_menu_bar_after_alt(
+        real_viewer, app, tmp_path
+    ):
+    images = make_timelapse_position(
+        tmp_path, SizeT=4, extra_cells=[(frame_i, 2) for frame_i in range(4)]
+    )
+    load_real(real_viewer, [images])
+    menuBar = real_viewer.menuBar()
+    menuBar.setNativeMenuBar(False)
+    altNavigation = menuBar.style().styleHint(
+        QStyle.StyleHint.SH_MenuBar_AltKeyNavigation, None, menuBar
+    )
+    if not altNavigation:
+        pytest.skip('The style has no keyboard navigation of the menu bar')
+    focus_in_active_window(app, real_viewer, real_viewer.zoomRectButton)
+    fileAction, editAction = menuBar.actions()[:2]
+    handle = real_viewer.windowHandle()
+    try:
+        QTest.keyClick(handle, Qt.Key_Alt)
+        assert QApplication.focusWidget() is menuBar
+        assert menuBar.activeAction() is fileAction
+        QTest.keyClick(handle, Qt.Key_Right)
+        assert menuBar.activeAction() is editAction
+        # Down opens the menu
+        QTest.keyClick(handle, Qt.Key_Down)
+        assert QApplication.activePopupWidget() is editAction.menu()
+        assert (real_viewer.frame_i, real_viewer.currID()) == (0, 1)
+    finally:
+        close_popups(app)
+    assert not real_viewer.slotErrors
+
+
+def test_user_guide_limits_alt_menu_navigation_to_windows_and_linux():
+    # macOS: the menu bar is native (outside the window) and its style has
+    # no Alt navigation, so the arrow keys keep navigating frames/cells
+    rst_path = os.path.join(
+        os.path.dirname(measurements_viewer.__file__),
+        'docs', 'source', 'measurements-viewer.rst'
+    )
+    with open(rst_path, encoding='utf-8') as file:
+        paragraphs = file.read().split('\n\n')
+    arrows, = [p for p in paragraphs if p.startswith('The arrow keys change')]
+    arrows = ' '.join(arrows.split())
+    assert 'menu bar after pressing :kbd:`Alt` (Windows and Linux;' in arrows
+    assert 'on macOS the menu bar is outside the window' in arrows
+
+
 def test_key_events_of_other_windows_are_not_for_the_window(app):
     # The main GUI's app event filter handles the arrow keys only for its
     # own windows (and the windows they own), not, e.g., for the viewer
@@ -1361,6 +1481,254 @@ def test_loading_fewer_positions_resets_position(real_viewer, tmp_path):
     assert not real_viewer.slotErrors
     assert real_viewer.pos_i == 0
     assert real_viewer.posData().images_path == single
+
+
+# --- Status bar: what is loaded (as `gui.guiWin.setStatusBarLabel`) ---------
+def make_overlay_position(root, pos=1, SizeT=3):
+    """2D time-lapse position (`make_timelapse_position`) with a GFP
+    channel"""
+    import tifffile
+
+    images = make_timelapse_position(root, pos=pos, SizeT=SizeT)
+    tifffile.imwrite(
+        os.path.join(images, 'test_GFP.tif'),
+        np.ones((SizeT, 30, 30), dtype=np.uint16)
+    )
+    return images
+
+
+def unwrap_tooltip(tooltip):
+    """`tooltip` with the line breaks of `qutils.wrap_tooltip` (at spaces)
+    and of `qutils.wrap_path` (after path separators, on indented lines)
+    undone"""
+    text = ''
+    for line in tooltip.split('\n'):
+        if text.endswith(('\\', '/')):
+            text += line.strip()
+        else:
+            text = f'{text} {line.strip()}' if text else line.strip()
+    return text
+
+
+def unwrapped_tooltip(widget):
+    """Tool tip of `widget` with its line breaks undone (`unwrap_tooltip`)"""
+    return unwrap_tooltip(widget.toolTip())
+
+
+def assert_tooltip_lines_fit(tooltip):
+    lines = tooltip.split('\n')
+    assert max(map(len, lines)) <= qutils.TOOLTIP_MAX_LINE_LENGTH, lines
+
+
+def test_loaded_data_status_lists_what_is_displayed():
+    images = os.path.join('data', 'exp', 'Position_2', 'Images')
+    posData = SimpleNamespace(
+        images_path=images, pos_foldername='Position_2',
+        exp_path=os.path.join('data', 'exp'), basename='test_',
+        user_ch_name='phase',
+        segm_npz_path=os.path.join(images, 'test_segm_custom.npz')
+    )
+    status = measurements_viewer_utils.loaded_data_status
+    text, tooltip = status(posData)
+    assert text == (
+        'Experiment: exp || Position_2 || Basename: test_ || '
+        'Channel: phase || Segmentation file name: segm_custom.npz'
+    )
+    assert tooltip.split('\n') == [
+        f'Images folder: {images}', 'Position_2', 'Basename: test_',
+        'Channel: phase', 'Segmentation file name: segm_custom.npz'
+    ]
+    config = os.path.join('settings', 'fucci.json')
+    text, tooltip = status(
+        posData, pos_i=1, num_positions=3, channel='GFP',
+        overlay_channels=['mCherry', 'DAPI'], configuration_filepath=config
+    )
+    assert text == (
+        'Experiment: exp || Position_2 (2/3) || Basename: test_ || '
+        'Channel: GFP || Overlay channels: mCherry, DAPI || '
+        'Segmentation file name: segm_custom.npz || Configuration: fucci.json'
+    )
+    assert tooltip.split('\n')[0] == f'Images folder: {images}'
+    assert tooltip.split('\n')[-1] == f'Configuration file: {config}'
+    # Synthetic data without paths and names, no data
+    assert status(SimpleNamespace()) == ('', '')
+    assert status(None) == ('', '')
+
+
+def test_loaded_data_status_breaks_long_paths_after_separators():
+    # Review: `qutils.wrap_tooltip` never splits a path (no spaces), so the
+    # tool tip had lines as wide as the Images folder and configuration
+    # paths (a saved configuration's path alone is often > 80 characters)
+    images = os.path.join(
+        os.sep, 'data', *['long_experiment_folder_name']*4, 'exp',
+        'Position_2', 'Images'
+    )
+    config = os.path.join(
+        os.sep, 'Users', 'someone', 'acdc-appdata', '.acdc-settings',
+        'measurements_viewer_configurations', 'fucci_cell_cycle.json'
+    )
+    posData = SimpleNamespace(
+        images_path=images, pos_foldername='Position_2', basename='test_',
+        user_ch_name='phase'
+    )
+    _, tooltip = measurements_viewer_utils.loaded_data_status(
+        posData, configuration_filepath=config
+    )
+    assert_tooltip_lines_fit(tooltip)
+    # Kept by the wrapping of the other lines
+    assert qutils.wrap_tooltip(tooltip) == tooltip
+    lines = tooltip.split('\n')
+    assert lines[0] == 'Images folder:'
+    position = lines.index('Position_2')
+    config_label = lines.index('Configuration file:')
+    imagesLines, configLines = lines[1:position], lines[config_label+1:]
+    assert len(imagesLines) > 1 and len(configLines) > 1
+    assert ''.join(line[4:] for line in imagesLines) == images
+    assert ''.join(line[4:] for line in configLines) == config
+    for line in imagesLines + configLines:
+        assert line.startswith('    ') and line[4] != ' '
+    for line in imagesLines[:-1] + configLines[:-1]:
+        assert line.endswith(os.sep)
+    assert f'Images folder: {images}' in unwrap_tooltip(tooltip)
+    assert f'Configuration file: {config}' in unwrap_tooltip(tooltip)
+    # Items that fit stay on one line
+    path_lines = measurements_viewer_utils.path_tooltip_lines
+    assert path_lines('Images folder', os.path.join('exp', 'Images')) == [
+        f'Images folder: {os.path.join("exp", "Images")}'
+    ]
+
+
+def test_status_bar_shows_the_loaded_data(real_viewer, tmp_path, capsys):
+    # Reviewer request: as in the main GUI, the status bar tells what is
+    # loaded, also after switching position; logged once per load/switch
+    paths = [
+        make_timelapse_position(tmp_path / 'exp', pos=pos) for pos in (1, 2)
+    ]
+    label = real_viewer.statusBarLabel
+    assert label.text() == label.toolTip() == ''
+    capsys.readouterr()
+    load_real(real_viewer, paths)
+    expected = (
+        'Experiment: exp || Position_1 (1/2) || Basename: test_ || '
+        'Channel: phase || Segmentation file name: segm.npz'
+    )
+    assert label.text() == expected
+    assert f'Images folder: {paths[0]}' in unwrapped_tooltip(label)
+    # The pytest tmp folder alone gives a path line longer than 80
+    # characters: broken after separators
+    assert_tooltip_lines_fit(label.toolTip())
+    assert capsys.readouterr().out.count('Experiment: exp') == 1
+    real_viewer.posCombobox.setCurrentIndex(1)
+    expected = expected.replace('Position_1 (1/2)', 'Position_2 (2/2)')
+    assert label.text() == expected
+    assert f'Images folder: {paths[1]}' in unwrapped_tooltip(label)
+    assert capsys.readouterr().out.count('Experiment: exp') == 1
+    # Not logged per frame
+    real_viewer.setFrame(1)
+    assert 'Experiment: exp' not in capsys.readouterr().out
+    assert label.text() == expected
+    real_viewer.setData([])
+    assert label.text() == label.toolTip() == ''
+    assert not real_viewer.slotErrors
+
+
+def test_status_bar_lists_overlay_channels_and_keeps_the_loaded_data(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    load_real(real_viewer, [make_overlay_position(tmp_path / 'exp')])
+    label = real_viewer.statusBarLabel
+    loaded = label.text()
+    assert loaded.startswith('Experiment: exp || Position_1 || ')
+    assert 'Overlay' not in loaded
+    monkeypatch.setattr(
+        real_viewer, 'askSelectOverlayChannel', lambda: ['GFP']
+    )
+    real_viewer.overlayButton.setChecked(True)
+    withOverlay = loaded.replace(
+        'Channel: phase', 'Channel: phase || Overlay channels: GFP'
+    )
+    assert label.text() == withOverlay
+    assert 'Overlay channels: GFP' in label.toolTip()
+    # Channel toggled from the overlay button context menu
+    # (`overlayChannelToggled` reads `sender()`)
+    action, = [
+        action for action in real_viewer.overlayContextMenu.actions()
+        if action.text() == 'GFP'
+    ]
+    action.setChecked(False)
+    assert label.text() == loaded
+    action.setChecked(True)
+    assert label.text() == withOverlay
+    real_viewer.overlayButton.setChecked(False)
+    assert label.text() == loaded
+    # Exporting reports the file in a temporary message
+    export = tmp_path / 'export.csv'
+    monkeypatch.setattr(
+        measurements_viewer.QFileDialog, 'getSaveFileName',
+        Mock(return_value=(str(export), 'CSV (*.csv)'))
+    )
+    real_viewer.exportMeasurements()
+    assert export.exists()
+    assert label.text() == loaded
+    assert str(export) in real_viewer.statusBar().currentMessage()
+    # The mixin writes the color scheme restart notice into the label
+    gui_viewer_tools = measurements_viewer.gui_viewer_tools
+    monkeypatch.setattr(
+        gui_viewer_tools._warnings, 'warnRestartCellACDCcolorModeToggled',
+        Mock()
+    )
+    monkeypatch.setattr(
+        gui_viewer_tools.load, 'rename_qrc_resources_file', Mock()
+    )
+    real_viewer.onToggleColorScheme()
+    assert label.text() == loaded
+    assert 'Restart' in real_viewer.statusBar().currentMessage()
+    assert not real_viewer.slotErrors
+
+
+def test_status_bar_shows_the_configuration_file(
+        real_viewer, tmp_path, monkeypatch, capsys
+    ):
+    images = make_overlay_position(tmp_path / 'exp')
+    errors = []
+    monkeypatch.setattr(
+        real_viewer, 'configurationError', lambda *args: errors.append(args)
+    )
+    monkeypatch.setattr(
+        real_viewer, 'selectConfigurationInput',
+        lambda config: real_viewer.configurationInputOptions(config)[0]
+    )
+    configuration = {
+        'version': 1, 'images_paths': [images], 'channel': 'phase',
+        'segm_endname': 'segm', 'overlay_channels': ['GFP'],
+        'visible_channels': ['GFP'], 'measurements_mode': 1,
+        'time_course_columns': ['area'],
+        'measurements_axes': {'X': '', 'Y': ''},
+        'normalize_measurements': False
+    }
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(configuration))
+    capsys.readouterr()
+    assert real_viewer.loadConfiguration(filepath=str(path)), errors
+    assert not errors
+    expected = (
+        'Experiment: exp || Position_1 || Basename: test_ || '
+        'Channel: phase || Overlay channels: GFP || '
+        'Segmentation file name: segm.npz || Configuration: workflow.json'
+    )
+    label = real_viewer.statusBarLabel
+    assert label.text() == expected
+    assert f'Configuration file: {path}' in unwrapped_tooltip(label)
+    assert_tooltip_lines_fit(label.toolTip())
+    # Logged once, with the configuration file
+    out = capsys.readouterr().out
+    assert out.count('Experiment: exp') == 1
+    assert expected in out
+    # Saved under another name
+    mock_filename_dialog(monkeypatch, tmp_path, 'copy')
+    assert real_viewer.saveConfigurationAs()
+    assert label.text() == expected.replace('workflow.json', 'copy.json')
+    assert not real_viewer.slotErrors
 
 
 def test_cca_table_on_frames_without_annotations(
@@ -2077,6 +2445,37 @@ def test_new_y_axis_plots_unplotted_column_and_is_kept(viewer, app):
     assert axes_columns(viewer) == [['intensity'], ['size']]
 
 
+def test_new_y_axis_skips_numbers_of_unplotted_columns(viewer):
+    viewer.acdc_df['volume'] = [1.0, 2.0, 3.0, 4.0]
+    viewer.updateColumnsList()
+    column(viewer, 'volume').setCheckState(Qt.Checked)
+    assert viewer.checkedColumns() == ['area', 'volume']
+    viewer.plotOnNewYAxis('intensity')
+    assert viewer.timeCourseYAxes == {'intensity': 2}
+    column(viewer, 'intensity').setCheckState(Qt.Unchecked)
+    # intensity keeps axis 2 while unplotted: the new axis is not axis 2,
+    # else plotting intensity again would put it on volume's axis
+    viewer.plotOnNewYAxis('volume')
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
+    assert viewer.timeCourseYAxes == {'intensity': 2, 'volume': 3}
+    assert axes_columns(viewer) == [['area'], ['intensity'], ['volume']]
+
+
+def test_y_axis_labels_show_column_names_verbatim(viewer):
+    # Axis labels are HTML: names from the CSV file are shown as text
+    viewer.acdc_df['size<5um'] = viewer.acdc_df['area']
+    viewer.acdc_df['a&lt;b'] = viewer.acdc_df['intensity']
+    viewer.updateColumnsList()
+    viewer.plotOnNewYAxis('size<5um')
+    viewer.plotOnNewYAxis('a&lt;b')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    assert [
+        axis.label.toPlainText().strip()
+        for axis in [viewer.measurementsPlot.getAxis('left'),
+                     *plotItem.shownExtraAxes()]
+    ] == ['area', 'size<5um', 'a&lt;b']
+
+
 class _WheelEvent:
     """Wheel event as `ViewBox.wheelEvent` reads it."""
     def __init__(self, pos, delta=120):
@@ -2356,6 +2755,135 @@ def test_log_mode_applies_to_extra_y_axes(viewer):
     finally:
         plotItem.ctrl.logYCheck.setChecked(False)
     assert not extraAxis.logMode
+
+
+def test_other_transforms_autoscale_extra_y_axes(app):
+    # Plot item alone, with plain curves: FFT, dy/dx and Y vs Y' change the
+    # number of points and raise on the viewer's per-point brushes (also
+    # with a single y axis)
+    widget = pg.PlotWidget(plotItem=measurements_viewer._TimeCoursePlotItem())
+    try:
+        plotItem = widget.getPlotItem()
+        frames = [1, 2, 3, 4]
+        plotItem.plot(frames, [1.0, 2.0, 3.0, 4.0])
+        plotItem.setExtraYAxesCount(1)
+        plotItem.addExtraYAxisItem(
+            0, pg.PlotDataItem(frames, [100.0, 400.0, 900.0, 1600.0])
+        )
+        extraVb, = plotItem.shownExtraViewBoxes()
+        names = ['fftCheck', 'derivativeCheck', 'phasemapCheck']
+        # "Subtract Mean" exists from pyqtgraph 0.14 (0.13.7 is supported)
+        if hasattr(plotItem.ctrl, 'subtractMeanCheck'):
+            names.append('subtractMeanCheck')
+        for name in names:
+            check = getattr(plotItem.ctrl, name)
+            # Range set by hand, as after a pan or zoom in the plot area
+            extraVb.setYRange(5000, 6000)
+            assert not extraVb.autoRangeEnabled()[1]
+            check.setChecked(True)
+            try:
+                assert extraVb.autoRangeEnabled()[1], name
+                if name == 'phasemapCheck':
+                    # x = y: the extra curve is outside the main x range
+                    continue
+                plotItem.vb.updateAutoRange()
+                extraVb.updateAutoRange()
+                assert extraVb.viewRange()[1][1] < 5000, name
+            finally:
+                check.setChecked(False)
+    finally:
+        widget.deleteLater()
+
+
+# pyqtgraph 0.13.7 computes 10**range of the linear range when log turns on
+@pytest.mark.filterwarnings('ignore:overflow encountered in power')
+def test_log_and_subtract_mean_refit_extra_y_axes_of_viewer(
+        viewer, monkeypatch):
+    # These transforms keep one point per frame, so they also work on the
+    # viewer's curves (per-point brushes and hover data)
+    errors = []
+    monkeypatch.setattr(
+        sys, 'excepthook', lambda *excInfo: errors.append(excInfo[1])
+    )
+    viewer.plotOnNewYAxis('intensity')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    ctrl = plotItem.ctrl
+    extraVb, = plotItem.shownExtraViewBoxes()
+    names = ['logXCheck', 'logYCheck']
+    # "Subtract Mean" exists from pyqtgraph 0.14 (0.13.7 is supported)
+    if hasattr(ctrl, 'subtractMeanCheck'):
+        names.append('subtractMeanCheck')
+    for name in names:
+        # Range set by hand, as after a pan or zoom in the plot area
+        # (small: the axis computes 10**range in log mode)
+        extraVb.setYRange(50, 60)
+        assert not extraVb.autoRangeEnabled()[1]
+        check = getattr(ctrl, name)
+        check.setChecked(True)
+        try:
+            viewer.plotMeasurements()
+            assert not errors, (name, errors)
+            assert extraVb.autoRangeEnabled()[1], name
+        finally:
+            check.setChecked(False)
+    assert not errors, errors
+
+
+def test_extra_y_axes_work_without_subtract_mean_option(viewer, monkeypatch):
+    # pyqtgraph 0.13.7 (still supported) has no "Subtract Mean" option
+    viewer.plotOnNewYAxis('intensity')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    extraVb, = plotItem.shownExtraViewBoxes()
+    monkeypatch.delattr(plotItem.ctrl, 'subtractMeanCheck', raising=False)
+    monkeypatch.delattr(pg.PlotDataItem, 'setSubtractMeanMode', raising=False)
+    monkeypatch.delattr(pg.PlotItem, 'updateSubtractMeanMode', raising=False)
+    item = pg.PlotDataItem([1, 2], [5.0, 6.0])
+    plotItem.addExtraYAxisItem(0, item)
+    assert item.getViewBox() is extraVb
+    assert item in plotItem.items and item in plotItem.curves
+    assert plotItem.extraYAxesDataItems()[0][-1] is item
+    extraVb.setYRange(1000, 2000)
+    plotItem.updateSubtractMeanMode()
+    assert extraVb.autoRangeEnabled()[1]
+    # An item that cannot be added is not registered
+    failing = pg.PlotDataItem([1, 2], [5.0, 6.0])
+    monkeypatch.setattr(
+        failing, 'setFftMode', Mock(side_effect=RuntimeError('failed'))
+    )
+    with pytest.raises(RuntimeError, match='failed'):
+        plotItem.addExtraYAxisItem(0, failing)
+    assert failing not in plotItem.items
+    assert failing not in plotItem.curves
+    assert failing not in plotItem.itemMeta
+    assert failing not in plotItem.extraYAxesDataItems()[0]
+
+
+def test_formatting_and_normalization_on_extra_y_axis(viewer):
+    # Both points of cell 1 (intensity 100, 250) match: the segment between
+    # them is drawn by the rule, the main curve draws only the points
+    viewer.conditionalFormatting['intensity'] = [
+        {'condition': 'intensity > 50', 'color': '#0000ff'}
+    ]
+    viewer.plotOnNewYAxis('intensity')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    extraVb, = plotItem.shownExtraViewBoxes()
+    extraAxis, = plotItem.shownExtraAxes()
+    leftAxis = viewer.measurementsPlot.getAxis('left')
+    for isNormalized in (False, True):
+        viewer.normalizeCheckbox.setChecked(isNormalized)
+        assert [item.name() for item in plotItem.listDataItems()] == ['area']
+        (segments, curve), = plotItem.extraYAxesDataItems()
+        assert isinstance(segments.opts['connect'], str)
+        assert segments.opts['connect'] == 'pairs'
+        assert curve.name() == 'intensity'
+        assert not np.any(curve.opts['connect'])
+        assert segments.getViewBox() is extraVb
+        assert curve.getViewBox() is extraVb
+        expected = [0.0, 1.0] if isNormalized else [100.0, 250.0]
+        np.testing.assert_allclose(segments.yData, expected)
+        suffix = ' (normalized)' if isNormalized else ''
+        assert leftAxis.labelText == 'area' + suffix
+        assert extraAxis.labelText == 'intensity' + suffix
 
 
 def test_phase_band_matches_extra_y_axes_width(viewer, app):
