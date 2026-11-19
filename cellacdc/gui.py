@@ -18385,7 +18385,19 @@ When working with 3D segmentation masks:
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
         posData.ripIDs = state['ripIDs'].copy()
-        self.keptObjectsIDs = state['keptObejctsIDs'].copy()
+        # The state stores a plain list --> rebuild the "Keep IDs" selection
+        # bound to its line edit and confirm action
+        self.keptIDsLineEdit.blockSignals(True)
+        try:
+            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+                self.keptIDsLineEdit, self.keepIDsConfirmAction
+            )
+            for ID in state['keptObejctsIDs']:
+                self.keptObjectsIDs.append(ID, editText=False)
+            self.keptObjectsIDs.setText()
+        finally:
+            self.keptIDsLineEdit.blockSignals(False)
+        self.keptIDsLineEdit.setInstructionsText()
         cca_df = state['cca_df']
         if cca_df is not None:
             posData.cca_df = state['cca_df'].copy()
@@ -28927,7 +28939,8 @@ When working with 3D segmentation masks:
                 self.highlightLabelID(ID)
         
         # Check if IDs in current keptObjectsIDs are present in IDs from line edit
-        for ID in self.keptObjectsIDs:
+        # (iterate over a copy because IDs are removed from the list)
+        for ID in list(self.keptObjectsIDs):
             if ID not in posData.allIDs:
                 isAnyIDnotExisting = True
                 continue
