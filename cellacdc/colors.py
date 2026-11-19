@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from typing import Literal
 import numpy as np
 
-from . import GUI_INSTALLED, printl, debugutils
+from . import GUI_INSTALLED, printl
 
 try:
     from cellacdc.precompiled.precompiled_functions import (
