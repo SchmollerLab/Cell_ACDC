@@ -19,17 +19,37 @@ to the same object and z-slice, their bounding box is used).
 `segment` then segments each object (2D) or, with z-stacks, each z-slice
 with prompts of each object. With 3D segmentation masks the masks are then
 propagated to the other z-slices like in the micro-sam "Annotator 3D"
-(`micro_sam.multi_dimensional_segmentation.segment_mask_in_volume`).
+(`multi_dimensional_segmentation.segment_mask_in_volume`).
 
 The image embeddings are cached, so that segmenting the same image again
 (e.g., after adding more prompts) only runs the (fast) prompt decoder.
+
+The Segment Anything (SAM1) API of micro-sam is imported with
+`_micro_sam_module`: micro-sam 2.0 moved it from the top-level modules
+(`micro_sam.util.get_sam_model`, `micro_sam.prompt_based_segmentation`,
+...) to `micro_sam.v1` (same functions and models), while micro-sam 1.x
+only has the top-level modules.
 """
 import hashlib
+import importlib
 import os
 import threading
 from collections import defaultdict
 
 import numpy as np
+
+def _micro_sam_module(name):
+    """Return the module `name` (e.g., 'util') of the Segment Anything
+    (SAM1) API of micro-sam: `micro_sam.v1.<name>` (micro-sam >= 2.0) or
+    `micro_sam.<name>` (micro-sam 1.x)."""
+    try:
+        return importlib.import_module(f'micro_sam.v1.{name}')
+    except ModuleNotFoundError as err:
+        # Fall back only if `micro_sam.v1` does not exist (micro-sam 1.x),
+        # not if a dependency of micro-sam is missing
+        if err.name not in ('micro_sam.v1', f'micro_sam.v1.{name}'):
+            raise
+    return importlib.import_module(f'micro_sam.{name}')
 
 # Models of the official micro-sam model zoo. The `vit_t` models require
 # MobileSAM (installed in the isolated environment of micro-sam).
@@ -65,7 +85,7 @@ def _normalize_z(z):
     return 0 if _is_missing(z) else int(round(float(z)))
 
 def _get_torch_device(device):
-    from micro_sam import util
+    util = _micro_sam_module('util')
 
     if device in (None, '', 'None', 'auto'):
         return util.get_device(None)
@@ -165,7 +185,7 @@ class Model:
             Device used to run the model. 'auto' uses the GPU if available
             (CUDA or Apple MPS) and the CPU otherwise. Default is 'auto'
         """
-        from micro_sam import util
+        util = _micro_sam_module('util')
 
         if _is_missing(checkpoint_path) or checkpoint_path in ('', 'None'):
             checkpoint_path = None
@@ -315,7 +335,7 @@ class Model:
         (required for 3D propagation), otherwise only the ones of z-slice
         `z`. Only the embeddings of the last image are kept.
         """
-        from micro_sam import util
+        util = _micro_sam_module('util')
 
         if image_key != self._embeddings_image_key:
             self._embeddings = {}
@@ -359,7 +379,7 @@ class Model:
         ):
         """Segment one object on a 2D image or z-slice. Returns a boolean
         mask with `shape` or None if there are no positive prompts."""
-        from micro_sam import prompt_based_segmentation as pbs
+        pbs = _micro_sam_module('prompt_based_segmentation')
 
         has_positive = box is not None or any(label == 1 for label in labels)
         if not has_positive:
@@ -428,9 +448,9 @@ class Model:
         ):
         """Boolean mask of one object with the spatial shape of
         `prompt_image` (None if there are no positive prompts)."""
-        from micro_sam.multi_dimensional_segmentation import (
-            segment_mask_in_volume
-        )
+        segment_mask_in_volume = _micro_sam_module(
+            'multi_dimensional_segmentation'
+        ).segment_mask_in_volume
 
         if not is_zstack:
             shape = prompt_image.shape[:2]
