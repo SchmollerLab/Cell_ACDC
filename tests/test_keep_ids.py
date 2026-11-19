@@ -972,13 +972,30 @@ def _add_input_box(window, kind):
         box = widgets.SpinBox()
     else:
         box = QLineEdit()
-    toolbar = widgets.ToolBar('Input', window._host)
-    toolbar.addWidget(box)
-    window._host.addToolBar(toolbar)
+    _add_toolbar(window._host, box)
     box.setFocus()
     QApplication.processEvents()
     assert QApplication.focusWidget() is box
     return box
+
+
+def _add_toolbar(host, widget):
+    """Add a toolbar with `widget` to the shown `host` and wait until Qt shows
+    it, so that `widget` can take the focus.
+
+    The toolbar hides `widget` until its (queued) layout shows it, and Qt
+    only remembers the focus given to a hidden widget (it gives it when the
+    widget is shown). Qt forgets it if the focus moves meanwhile, e.g., when
+    the new toolbar does not fit next to the "Keep IDs" toolbar (larger
+    fonts, as on most CI machines): that toolbar then hides its line edit,
+    which has the focus, in its extension menu, and Qt moves the focus to
+    the next widget
+    """
+    toolbar = widgets.ToolBar('Input', host)
+    toolbar.addWidget(widget)
+    host.addToolBar(toolbar)
+    QApplication.processEvents()
+    assert widget.isVisible()
 
 
 def _type_and_press_enter(box, text):
@@ -1249,13 +1266,21 @@ def _focus_elsewhere_and_back(box, how):
         QApplication.processEvents()
         assert QApplication.activePopupWidget() is menu
         menu.close()
+        QApplication.processEvents()
+        if QApplication.activeWindow() is None:
+            # The offscreen platform activates the menu too, and Qt 6 for
+            # macOS follows it (`QApplicationPrivate::
+            # notifyActiveWindowChange`; Qt 5 ignores activations while a
+            # popup is open), so closing it leaves no active window there.
+            # A desktop does not activate context menus: activate the
+            # window again (the focus returns to the box with
+            # `ActiveWindowFocusReason`)
+            host.activateWindow()
     else:
         # The user clicks another widget, and then the box again (or Qt
         # gives it the focus when activating the window)
         other = QLineEdit()
-        toolbar = widgets.ToolBar('Other', host)
-        toolbar.addWidget(other)
-        host.addToolBar(toolbar)
+        _add_toolbar(host, other)
         other.setFocus(Qt.FocusReason.MouseFocusReason)
         QApplication.processEvents()
         assert QApplication.focusWidget() is other
