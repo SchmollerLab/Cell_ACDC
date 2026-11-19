@@ -3,6 +3,12 @@ data while plotting the time-course of `acdc_output` table columns (measurements
 of the selected cell, or two measurements against each other for all cells and
 frames of the current position. Hover over a point for measurement details;
 click a point to navigate to its frame and zoom to its cell.
+The plot options of the context menu disable the transforms FFT, dy/dx and
+Y vs Y' in both plot modes (`disableUnsupportedPlotTransforms`), and
+"Downsample" and "Clip to View" (`disableUnsupportedPlotDownsampling`):
+every point is a cell at one frame with its own symbol brush and hover
+data, while these options change the number of points or the x axis
+(pyqtgraph raised).
 The widget-free code (data loading and the window's data/logic methods,
 `measurements_viewer_utils.MeasurementsViewerUtils`, inherited by
 `MeasurementsViewerWin`) lives in `measurements_viewer_utils`; this
@@ -1054,11 +1060,11 @@ class _TimeCoursePlotItem(pg.PlotItem):
     (log mode, alpha, FFT, downsampling, ...) and the exporters of the
     context menu (CSV, SVG, ...) include them; a changed transform
     autoscales the y range of every axis, as pyqtgraph does for the main
-    view box. The options that change the number of points (FFT, dy/dx,
-    Y vs Y', downsampling, clip to view) raise on the viewer's curves,
-    whatever their axis (also without extra axes): pyqtgraph applies
-    their per-point symbol brushes and hover data to the changed points.
-    "Subtract Mean" exists only from pyqtgraph 0.14 (0.13.7 is
+    view box. The viewer disables the options that change the number of
+    points (FFT, dy/dx, Y vs Y', downsampling, clip to view:
+    `MeasurementsViewerWin.disableUnsupportedPlotTransforms` and
+    `disableUnsupportedPlotDownsampling`), which fail on its per-point
+    brushes. "Subtract Mean" exists only from pyqtgraph 0.14 (0.13.7 is
     still supported: check the API before using newer options). Background
     items (`addBackgroundItem`, e.g. shaded frames) stay in the bottom view
     box, under the curves of every axis. Extra view boxes are created on demand
@@ -1226,8 +1232,8 @@ class _TimeCoursePlotItem(pg.PlotItem):
     # extra y axes (in `items`/`curves`), but pyqtgraph then autoscales only
     # the main view box (`enableAutoRange`): refit the extra y axes too,
     # else they keep the range of the untransformed data after a pan/zoom
-    # (FFT, dy/dx and Y vs Y' raise on the viewer's own curves: see the
-    # class docstring)
+    # (the viewer disables FFT, dy/dx and Y vs Y' for its own curves:
+    # `MeasurementsViewerWin.disableUnsupportedPlotTransforms`)
 
     def updateSpectrumMode(self, b=None):
         super().updateSpectrumMode(b)
@@ -5097,6 +5103,8 @@ class MeasurementsViewerWin(
     def gui_createMeasurementsPanel(self):
         # Extra y axes of the time course on the right (`timeCourseYAxes`)
         self.measurementsPlot = pg.PlotWidget(plotItem=_TimeCoursePlotItem())
+        self.disableUnsupportedPlotTransforms()
+        self.disableUnsupportedPlotDownsampling()
         if self.invertBwAction.isChecked():
             self.measurementsPlot.setBackground(graphLayoutBkgrColor)
         else:
@@ -9262,6 +9270,77 @@ class MeasurementsViewerWin(
         viewBox.setAutoVisible(y=True)
         self.measurementsPlot.enableAutoRange()
         self.measurementsPlot.getPlotItem().enableExtraYAxesAutoRange()
+
+    # Transforms of the plot options that change the number of points or
+    # the meaning of the x axis (`disableUnsupportedPlotTransforms`)
+    UNSUPPORTED_PLOT_TRANSFORMS = (
+        'fftCheck', 'derivativeCheck', 'phasemapCheck'
+    )
+
+    def disableUnsupportedPlotTransforms(self):
+        """Disable the "Power Spectrum (FFT)", "dy/dx" and "Y vs. Y'"
+        transforms of the measurements plot's options (context menu "Plot
+        Options" > "Transforms"; log and "Subtract Mean" stay available).
+
+        Their curves have fewer points than the data, but the time course
+        curves and the comparison scatter pass one symbol brush and one
+        hover data entry per point (the time course also one ``connect``
+        flag), which pyqtgraph applies to the transformed points too: it
+        raised "Number of brushes does not match number of points" (with
+        FFT on, on every replot), on every y axis. Their x axis (frequency,
+        value) would also not match the frame overlays (current frame line,
+        time point lines, phase band, shaded unanalyzed frames) nor the
+        clicked point's frame.
+        """
+        ctrl = self.measurementsPlot.getPlotItem().ctrl
+        for name in self.UNSUPPORTED_PLOT_TRANSFORMS:
+            check = getattr(ctrl, name, None)
+            if check is None:
+                continue
+            check.setChecked(False)
+            check.setEnabled(False)
+            check.setToolTip(
+                'Not available in the measurements viewer: each plotted '
+                'point is a cell at\n'
+                'one frame, and this transform changes the number of '
+                'points or the x axis.'
+            )
+
+    # Options of the plot options' "Downsample" menu that plot fewer points
+    # than the data (`disableUnsupportedPlotDownsampling`); the first two
+    # turn them on, the others only matter while "Downsample" is checked
+    UNSUPPORTED_PLOT_DOWNSAMPLING = (
+        'downsampleCheck', 'clipToViewCheck', 'downsampleSpin',
+        'autoDownsampleCheck', 'peakRadio', 'meanRadio', 'subsampleRadio'
+    )
+
+    def disableUnsupportedPlotDownsampling(self):
+        """Uncheck and disable "Downsample" and "Clip to View" (with their
+        factor, "Auto" and method options) in the "Downsample" menu of the
+        measurements plot's options ("Max Traces" stays available).
+
+        For the same reason as `disableUnsupportedPlotTransforms`: they
+        plot fewer points than the data (one point every N frames, the mean
+        or min/max of N points, only the points in the visible x range), and
+        pyqtgraph applied the per-point symbol brushes and hover data of the
+        time course and the comparison scatter to them: it raised "Number of
+        brushes (or Length of meta data) does not match number of points" on
+        every replot, and with "Clip to View" on every pan or zoom.
+        """
+        ctrl = self.measurementsPlot.getPlotItem().ctrl
+        for name in self.UNSUPPORTED_PLOT_DOWNSAMPLING:
+            widget = getattr(ctrl, name, None)
+            if widget is None:
+                continue
+            if name.endswith('Check'):
+                widget.setChecked(False)
+            widget.setEnabled(False)
+            widget.setToolTip(
+                'Not available in the measurements viewer: each plotted '
+                'point is a\n'
+                'cell at one frame, and this option plots fewer points '
+                'than the data.'
+            )
 
     def plottedYAxes(self):
         """Plotted time course columns of each displayed y axis,
