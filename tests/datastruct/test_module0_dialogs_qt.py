@@ -4,7 +4,8 @@
 (GV-03), channel-name validation after sanitizing and ignoring case (GV-04),
 checks of the time range, the position selection, the saved channels and the
 one-file-per-channel SizeC in `ok_cb` (GV-05, GV-05b, GV-05c; a hidden time
-range is never checked) and `metadata.settings_from_dialog_values`.
+range is never checked) and `metadata.settings_from_dialog_values`; the
+"Include image name" checkbox works for any number of channels (GV-14).
 `apps.DataStructureSetupDialogue` lists and checks the source files with
 `sources` (GV-15: upper-case extensions, the "not supported" details list
 the file names), numbers Positions with `planning` and renames invalid
@@ -308,6 +309,37 @@ def test_size_c_is_not_limited_for_other_layouts(make_dialog):
     dlg.SizeC_SB.setValue(3)
     assert press_ok(dlg)
     assert dlg.SizeC == 3
+
+
+# ------------------------------------------------------------------ GV-14
+@pytest.mark.parametrize('size_c', [1, 2, 3])
+def test_include_image_name_checkbox(make_dialog, size_c):
+    """The visible "Include image name" checkbox decides, whatever the
+    number of channels (main read the hidden dummy checkbox of the last
+    channel row when SizeC > 1)."""
+    dlg = make_dialog(
+        ImageName='Scene #1', SizeC=size_c,
+        chNames=['GFP', 'mCherry', 'Cy5'][:size_c],
+        emWavelens=[510.0, 610.0, 670.0][:size_c],
+    )
+    checkbox = dlg.addImageName_QCB
+    assert checkbox.text() == 'Include image name'
+    assert checkbox.isVisible()
+    checkbox.setChecked(True)
+    # every file-name preview shows the sanitized image name
+    assert [label.toolTip() for label in dlg.filename_QLabels] == [
+        f'pos1_Scene__1_{name}.tif'
+        for name in ['GFP', 'mCherry', 'Cy5'][:size_c]
+    ]
+    assert press_ok(dlg)
+    assert dlg.addImageName is True
+
+
+def test_no_image_name_no_checkbox(make_dialog):
+    dlg = make_dialog(ImageName='')
+    assert not dlg.addImageName_QCB.isVisible()
+    assert press_ok(dlg)
+    assert dlg.addImageName is False
 
 
 # ------------------------------------------- settings_from_dialog_values

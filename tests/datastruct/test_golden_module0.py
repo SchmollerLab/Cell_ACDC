@@ -3,15 +3,20 @@
 Each scenario of `scenarios.MODULE0` runs through `harness_module0` (real
 `bioFormatsWorker`, real offscreen `QDialogMetadataXML`, real bioio) and is
 compared with `golden/module0/<id>.json` (captured on main) under the
-registry `expected_module0_changes.CHANGES`:
+registry `expected_module0_changes.CHANGES`. The worker converts with the
+shared core (`acdc_datastruct.convert`) on one of two backends:
 
-- in process (`InProcessBackend`): when the worker accepts `backend=`, i.e.
-  after the refactor; skipped on main;
-- through real child processes: only with ACDC_SLOW_TESTS=1 (main: the
-  legacy children; after the refactor: the default subprocess backend).
+- in process (`backends.InProcessBackend`); skipped when the worker has no
+  `backend=` parameter (main, where the goldens are captured);
+- through real child processes (the worker's default
+  `backends.SubprocessBackend`): only with ACDC_SLOW_TESTS=1.
 
-`test_cascade_golden_reproduces` re-captures the legacy metadata cascade
-(`readMetadata`, kept verbatim for the python-bioformats path) in process.
+`test_cascade_golden_reproduces` captures the metadata cascade of
+`bioFormatsWorker.readMetadata` again in process and compares it with
+`golden/cascade.json`. The python-bioformats conversion still uses this
+cascade unchanged; the BioIO conversion resolves metadata in
+`acdc_datastruct.metadata`, which `test_cascade_parity.py` compares with the
+same golden.
 """
 from __future__ import annotations
 

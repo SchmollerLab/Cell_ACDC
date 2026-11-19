@@ -3564,8 +3564,11 @@ class QDialogMetadataXML(QDialog):
                 self.addImageName_QCB = addImageName_QCB
                 self.channelNameLayouts[2].addWidget(addImageName_QCB)
             else:
-                self.addImageName_QCB = QCheckBox('dummy')
-                self.addImageName_QCB.hide()
+                if c == 0:
+                    # Hidden dummy only for the first row: later rows
+                    # must not replace the checkbox of the first row
+                    self.addImageName_QCB = QCheckBox('dummy')
+                    self.addImageName_QCB.hide()
                 self.channelNameLayouts[2].addWidget(QLabel())
 
             showChannelDataButton = QPushButton()
