@@ -5,10 +5,16 @@ import types
 
 import pytest
 
+import cellacdc
 from cellacdc.promptable_models import saved_models
 
 MODEL_NAME = 'ConvPaint'
 EXT = '.pkl'
+
+# Captured at import (collection) time, before the conftest redirects them
+# to a temporary settings folder for each test (`_isolate_user_settings`)
+REAL_SETTINGS_FOLDERPATH = cellacdc.settings_folderpath
+REAL_SAVED_MODELS_PATH = cellacdc.saved_promptable_models_path
 
 
 @pytest.fixture
@@ -34,11 +40,13 @@ def _external_model(tmp_path, filename='napari model.pkl'):
     return filepath
 
 
-def test_settings_folder_path():
-    import cellacdc
-
-    assert cellacdc.saved_promptable_models_path == os.path.join(
-        cellacdc.settings_folderpath, 'saved_promptable_models'
+def test_settings_folder_path(_isolate_user_settings):
+    assert REAL_SAVED_MODELS_PATH == os.path.join(
+        REAL_SETTINGS_FOLDERPATH, 'saved_promptable_models'
+    )
+    # Tests never touch the user's saved models
+    assert saved_models.get_folderpath(MODEL_NAME) == os.path.join(
+        _isolate_user_settings, 'saved_promptable_models', MODEL_NAME
     )
 
 

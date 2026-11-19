@@ -36,7 +36,51 @@ def _get_segm_info_value(segmInfo_df, idx, col):
 
     return value
 
-def get_brush_strokes_image(posData, frame_i, annot_ndim):
+def get_brush_strokes_image_source(posData, frame_i, annot_ndim):
+    """Get the source of the image corresponding to 2D brush strokes of
+    z-stack data at frame `frame_i`, i.e., the z-projection or the z-slice
+    used in the GUI (columns 'which_z_proj_gui' and 'z_slice_used_gui' of
+    `posData.segmInfo_df`).
+
+    Parameters
+    ----------
+    posData : cellacdc.load.loadData
+        Position data (see `get_brush_strokes_image`).
+    frame_i : int
+        Frame index.
+    annot_ndim : int
+        Number of dimensions of the annotation array (2 for (Y, X) and 3 for
+        (Z, Y, X)).
+
+    Returns
+    -------
+    str, int, or None
+        Name of the z-projection (key of `BRUSH_STROKES_ZPROJ_FUNCS`) or
+        index of the z-slice. None if the image does not depend on the
+        z-slice or z-projection used in the GUI (3D annotations or 2D data).
+    """
+    SizeZ = getattr(posData, 'SizeZ', 1)
+    if annot_ndim == 3 or SizeZ == 1:
+        return
+
+    img = posData.img_data[frame_i]
+    if img.ndim != 3:
+        return
+
+    segmInfo_df = getattr(posData, 'segmInfo_df', None)
+    idx = (getattr(posData, 'filename', None), frame_i)
+    zProjHow = _get_segm_info_value(segmInfo_df, idx, 'which_z_proj_gui')
+    if zProjHow in BRUSH_STROKES_ZPROJ_FUNCS:
+        return zProjHow
+
+    z = _get_segm_info_value(segmInfo_df, idx, 'z_slice_used_gui')
+    try:
+        z = int(z)
+    except Exception as err:
+        z = len(img)//2
+    return min(max(z, 0), len(img)-1)
+
+def get_brush_strokes_image(posData, frame_i, annot_ndim, source=None):
     """Get the image corresponding to the brush strokes annotation of
     frame `frame_i`, i.e., the image the promptable model sees.
 
@@ -50,14 +94,21 @@ def get_brush_strokes_image(posData, frame_i, annot_ndim):
     annot_ndim : int
         Number of dimensions of the annotation array (2 for (Y, X) and 3 for
         (Z, Y, X)).
+    source : str or int, optional
+        Source of the image of 2D annotations of z-stack data (name of the
+        z-projection or index of the z-slice, see
+        `get_brush_strokes_image_source`), e.g., the one displayed when the
+        brush strokes were painted. If None, the source used in the GUI at
+        frame `frame_i` is used. Ignored with 3D annotations or 2D data.
+        Default is None
 
     Returns
     -------
     np.ndarray
         Image with `annot_ndim` dimensions. With 2D annotations of z-stack
-        data, this is the z-slice or the z-projection used in the GUI at
-        frame `frame_i` (columns 'z_slice_used_gui' and 'which_z_proj_gui'
-        of `posData.segmInfo_df`).
+        data, this is the z-slice or the z-projection `source` (default is
+        the one used in the GUI at frame `frame_i`, i.e., columns
+        'z_slice_used_gui' and 'which_z_proj_gui' of `posData.segmInfo_df`).
 
     Raises
     ------
@@ -71,20 +122,16 @@ def get_brush_strokes_image(posData, frame_i, annot_ndim):
         image = img
     else:
         # 2D annotations of z-stack data --> use the z-slice or projection
-        # used in the GUI
-        segmInfo_df = getattr(posData, 'segmInfo_df', None)
-        idx = (getattr(posData, 'filename', None), frame_i)
-        zProjHow = _get_segm_info_value(segmInfo_df, idx, 'which_z_proj_gui')
-        z = _get_segm_info_value(segmInfo_df, idx, 'z_slice_used_gui')
-        zproj_func = BRUSH_STROKES_ZPROJ_FUNCS.get(zProjHow)
+        # `source` (default is the one used in the GUI)
+        if source is None:
+            source = get_brush_strokes_image_source(
+                posData, frame_i, annot_ndim
+            )
+        zproj_func = BRUSH_STROKES_ZPROJ_FUNCS.get(source)
         if zproj_func is not None:
             image = zproj_func(img)
         else:
-            try:
-                z = int(z)
-            except Exception as err:
-                z = len(img)//2
-            z = min(max(z, 0), len(img)-1)
+            z = min(max(int(source), 0), len(img)-1)
             image = img[z]
 
     if image.ndim != annot_ndim:
@@ -216,6 +263,55 @@ def paint_brush_stroke(
         yc = y0 + t*(y - y0)
         xc = x0 + t*(x - x0)
         stamp_brush_disk(annot2D, yc, xc, disk_mask, value)
+
+def add_objects_to_brush_strokes(annot, lab, foreground_ids):
+    """Add segmentation masks to the brush strokes annotation (in-place):
+    the objects of `lab` with IDs in `foreground_ids` become foreground
+    (value 2) and the background of `lab` (value 0) becomes background
+    (value 1). The other objects are left not annotated.
+
+    Only the pixels that are not annotated yet (value 0 in `annot`) are
+    modified, i.e., the existing brush strokes are kept.
+
+    Parameters
+    ----------
+    annot : np.ndarray
+        Brush strokes annotation (0 = not annotated, 1 = background,
+        2 = foreground) modified in-place. It can be a view (e.g., a
+        z-slice or a cutout) of a larger annotation array.
+    lab : np.ndarray
+        Segmentation masks (labels) with the same shape as `annot`.
+    foreground_ids : iterable of int
+        IDs of the objects of `lab` used as foreground. IDs that are not
+        in `lab` are ignored.
+
+    Returns
+    -------
+    tuple of ints
+        Number of foreground and background pixels added.
+
+    Raises
+    ------
+    ValueError
+        If `annot` and `lab` do not have the same shape.
+    """
+    if annot.shape != lab.shape:
+        raise ValueError(
+            f'The brush strokes shape {annot.shape} is different from the '
+            f'segmentation masks shape {lab.shape}.'
+        )
+
+    foreground_ids = np.asarray(list(foreground_ids), dtype=np.int64)
+    not_annotated_mask = annot == 0
+    foreground_mask = (
+        np.isin(lab, foreground_ids) & (lab > 0) & not_annotated_mask
+    )
+    background_mask = (lab == 0) & not_annotated_mask
+    annot[foreground_mask] = 2
+    annot[background_mask] = 1
+    num_foreground = int(np.count_nonzero(foreground_mask))
+    num_background = int(np.count_nonzero(background_mask))
+    return num_foreground, num_background
 
 
 def log_mask_selection(prompt_id, masks, scores, mask_idx, z_slice=None):

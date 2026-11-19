@@ -280,7 +280,10 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             )
         selectWindow.exec_()
         self.worker.abort = selectWindow.cancel
-        self.selectedAcdcOutputEndnames = selectWindow.selectedItemsText
+        # Closing the window with the "X" button never sets selectedItemsText
+        self.selectedAcdcOutputEndnames = (
+            getattr(selectWindow, 'selectedItemsText', None) or []
+        )
         self.worker.waitCond.wakeAll()
 
     def selectSpotmaxRun(

@@ -38,7 +38,7 @@ from qtpy.QtCore import (
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
     QIODevice, QItemSelection, PYQT6, QRectF, QLineF, QSortFilterProxyModel,
-    QAbstractAnimation
+    QAbstractAnimation, Slot
 )
 from qtpy.QtGui import (
     QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
@@ -48,7 +48,7 @@ from qtpy.QtGui import (
     QValidator, QIntValidator, QMouseEvent, QPainterPath, QTransform
 )
 from qtpy.QtWidgets import (
-    QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
+    QColorDialog, QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
     QApplication, QWidget, QVBoxLayout, QMainWindow, QTreeWidgetItemIterator,
     QLineEdit, QSlider, QSpinBox, QGridLayout, QRadioButton,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
@@ -60,7 +60,7 @@ from qtpy.QtWidgets import (
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
     QGraphicsPathItem,
     QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
-    QStyleOptionViewItem, QAbstractButton
+    QStyleOptionViewItem, QAbstractButton, QTreeView
 )
 import qtpy.compat
 
@@ -976,14 +976,18 @@ def getPushButton(buttonText, qparent=None):
     isSettingsButton = buttonText.lower().find('set') != -1
     isNoButton = (
         buttonText.replace(' ', '').lower() == 'no'
-        or buttonText.lower().find('Do not ') != -1
+        or buttonText.lower().find('do not ') != -1
+        or buttonText.lower().find("don't ") != -1
         or buttonText.lower().find('no, ') != -1
     )
     isDelButton = buttonText.lower().find('delete') != -1
     isAddButton = buttonText.lower().find('add ') != -1
     is3Dbutton = buttonText.find(' 3D ') != -1
     is2Dbutton = buttonText.find(' 2D ') != -1
-    isSaveButton = buttonText.lower().find('overwrite') != -1
+    isSaveButton = (
+        buttonText.lower().find('overwrite') != -1
+        or buttonText.lower().lstrip().startswith('save')
+    )
     isNewFileButton = buttonText.lower().find('rename') != -1
     isTryAgainButton = buttonText.lower().find('try again') != -1
 
@@ -1180,6 +1184,12 @@ class KeepIDsLineEdit(ValidLineEdit):
         if event.text() == ',':
             self.sigSort.emit()
         elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            # QLineEdit ignores Enter --> the event would be propagated to
+            # the parent widgets (e.g., `guiWin.keyPressEvent`) and Enter
+            # would be handled twice. Note that checking the focus in the
+            # parent is not enough because the slots connected to
+            # `sigEnterPressed` can open dialogs that take the focus.
+            event.accept()
             self.sigEnterPressed.emit()
     
     def values(self) -> set:
@@ -1210,6 +1220,13 @@ class KeepIDsLineEdit(ValidLineEdit):
         self.setInvalidStyleSheet()
         self._label.setText(
             '  Some of the IDs are not existing --> they will be IGNORED'
+        )
+        self._label.setStyleSheet('color: red')
+
+    def warnNoIDsSelected(self):
+        self.setInvalidStyleSheet()
+        self._label.setText(
+            '  No existing IDs selected --> nothing to apply'
         )
         self._label.setStyleSheet('color: red')
 
@@ -2631,6 +2648,10 @@ class readOnlyQList(QTextEdit):
         items = [str(item) for item in self.items]
         columnList = html_utils.paragraph('<br>'.join(items))
         self.setText(columnList)
+        
+    def clear(self):
+        self.items = []
+        self.setText('')
 
 class pgScatterSymbolsCombobox(QComboBox):
     def __init__(self, parent=None):
@@ -2673,6 +2694,10 @@ class alphaNumericLineEdit(QLineEdit):
         super().__init__(parent)
         self.validPattern = fr'^[a-zA-Z0-9{additionalChars}_\-]+$'
         self.invalidPattern = fr'[^a-zA-Z0-9{additionalChars}_\-]'
+        # Typed spaces become underscores only when spaces are not allowed
+        self._replaceTypedSpace = (
+            re.search(self.invalidPattern, ' ') is not None
+        )
         self.formatter = formatter
         self.ignore_file_ext = ignore_file_ext
 
@@ -2699,7 +2724,9 @@ class alphaNumericLineEdit(QLineEdit):
         return re.findall(fr'{self.invalidPattern}', text)
     
     def keyPressEvent(self, event: QKeyEvent):
-        if not event.text():
+        text = event.text()
+
+        if not text:
             return super().keyPressEvent(event)
 
         if event.modifiers() & (
@@ -2709,14 +2736,24 @@ class alphaNumericLineEdit(QLineEdit):
         ):
             return super().keyPressEvent(event)
 
-        if not event.text().isprintable():
+        if not text.isprintable():
             return super().keyPressEvent(event)
-        
+
+        if text == ' ' and self._replaceTypedSpace:
+            # replace the invalid space with an underscore before QLineEdit
+            # processes it (spaces allowed by `additionalChars` are kept)
+            event = QKeyEvent(
+                event.type(),
+                Qt.Key.Key_Underscore,
+                event.modifiers(),
+                '_',
+            )
+
         super().keyPressEvent(event)
-        
+
         if event.text() in self.text():
             return
-        
+
         self.sigInvalidCharacterPressed.emit(event.text())
 
 class NumericCommaLineEdit(QLineEdit):
@@ -2751,15 +2788,15 @@ class KeptObjectIDsList(list):
         super().append(element)
         if editText:
             self.setText()
-        if not self.confirmSelectionAction.isEnabled():
-            self.confirmSelectionAction.setEnabled(True)
+        # `setText` triggers the slots connected to the line edit (e.g.,
+        # `guiWin.updateKeepIDs`) that can remove the element again
+        self.confirmSelectionAction.setEnabled(len(self) > 0)
 
     def remove(self, element, editText=True):
         super().remove(element)
         if editText:
             self.setText()
-        if not self:
-            self.confirmSelectionAction.setEnabled(False)
+        self.confirmSelectionAction.setEnabled(len(self) > 0)
 
 class ScatterPlotItem(pg.ScatterPlotItem):
     def __init__(self, *args, **kwargs):
@@ -4053,7 +4090,7 @@ class PointsLayerToolButton(ToolButtonCustomColor):
     def editAppearance(self):
         self.sigEditAppearance.emit(self)
 
-class customAnnotToolButton(ToolButtonCustomColor):
+class CustomAnnotToolButton(ToolButtonCustomColor):
     sigRemoveAction = Signal(object)
     sigKeepActiveAction = Signal(object)
     sigModifyAction = Signal(object)
@@ -4067,10 +4104,18 @@ class customAnnotToolButton(ToolButtonCustomColor):
         self.symbol = symbol
         self.keepToolActive = keepToolActive
         self.isHideChecked = isHideChecked
+        # List of (text, callback) added on top of the context menu
+        self.extraContextMenuActions = []
         self.sigRightClick.connect(self.showContextMenu)
 
     def showContextMenu(self, event):
         contextMenu = QMenu(self)
+        for text, callback in self.extraContextMenuActions:
+            extraAction = QAction(text, contextMenu)
+            extraAction.triggered.connect(
+                lambda checked=False, callback=callback: callback(self)
+            )
+            contextMenu.addAction(extraAction)
         contextMenu.addSeparator()
 
         removeAction = QAction('Remove annotation')
@@ -4106,6 +4151,8 @@ class customAnnotToolButton(ToolButtonCustomColor):
         self.sigRemoveAction.emit(self)
 
     def hideAction(self, checked):
+        # The host window stores the option as a user setting
+        # (`CustomAnnotationsGuiElements.customAnnotHide`)
         self.isHideChecked = checked
         self.sigHideAction.emit(self)
 
@@ -4862,6 +4909,16 @@ class readOnlySpinbox(QSpinBox):
         self.setMaximum(2**31-1)
         # self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
+def _isTemporaryFocusChange(event):
+    """Return True if the focus event is due to switching to another window
+    (and back), or to opening (and closing) a popup like a context menu: the
+    focus then returns to the same widget (it is not a new edit)
+    """
+    return event.reason() in (
+        Qt.FocusReason.ActiveWindowFocusReason,
+        Qt.FocusReason.PopupFocusReason
+    )
+
 class DoubleSpinBox(QDoubleSpinBox):
     sigValueChanged = Signal(int)
 
@@ -4872,17 +4929,41 @@ class DoubleSpinBox(QDoubleSpinBox):
         self.setMinimum(-2**31)
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
-    
+        self._isValueTyped = False
+        self.lineEdit().textEdited.connect(self._setValueTyped)
+
+    def _setValueTyped(self, text):
+        self._isValueTyped = True
+
+    def isValueTyped(self):
+        """See `SpinBox.isValueTyped`"""
+        return self._isValueTyped
+
+    def focusInEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusOutEvent(event)
+
     def keyPressEvent(self, event) -> None:
         isBackSpaceKey = event.key() == Qt.Key_Backspace
         isDeleteKey = event.key() == Qt.Key_Delete
+        isEnterKey = event.key() in (Qt.Key_Enter, Qt.Key_Return)
         try:
             int(event.text())
             isIntegerKey = True
         except:
             isIntegerKey = False
         acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
-        if self.disableKeyPress and not acceptEvent:
+        if self.disableKeyPress and isEnterKey and self._isValueTyped:
+            # See `SpinBox.keyPressEvent`
+            event.accept()
+            self.clearFocus()
+        elif self.disableKeyPress and not acceptEvent:
             event.ignore()
             self.clearFocus()
         else:
@@ -4920,6 +5001,32 @@ class SpinBox(QSpinBox):
         self._start_value = None
         self._display_correction = 0
         self.valueChanged.connect(self.sigValueChanged.emit)
+        self._isValueTyped = False
+        # Emitted only when the user edits the text (not with the arrows)
+        self.lineEdit().textEdited.connect(self._setValueTyped)
+
+    def _setValueTyped(self, text):
+        self._isValueTyped = True
+
+    def isValueTyped(self):
+        """Return True if the user typed in the spin box since it got the
+        focus (Enter then confirms the typed value), False if the value was
+        changed only with the arrows (or not changed).
+
+        Switching to another window and back, or opening and closing a popup
+        (e.g., the context menu) does not reset it.
+        """
+        return self._isValueTyped
+
+    def focusInEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusOutEvent(event)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -4998,6 +5105,7 @@ class SpinBox(QSpinBox):
         isBackSpaceKey = event.key() == Qt.Key.Key_Backspace
         isDeleteKey = event.key() == Qt.Key.Key_Delete
         isTabKeyPress = event.key() == Qt.Key.Key_Tab
+        isEnterKey = event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return)
 
         if isTabKeyPress:
             self.sigTabEvent.emit(event, self)
@@ -5010,7 +5118,15 @@ class SpinBox(QSpinBox):
 
         acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
 
-        if self.disableKeyPress and not acceptEvent:
+        if self.disableKeyPress and isEnterKey and self._isValueTyped:
+            # Enter only confirms the typed value (leaving the spin box):
+            # do not pass it on to the parent window like the other keys,
+            # since in the main window Enter applies the active tool (e.g.,
+            # "Keep IDs" with the IDs selected so far). Without typing
+            # (e.g., after clicking the arrows) Enter is passed on
+            event.accept()
+            self.clearFocus()
+        elif self.disableKeyPress and not acceptEvent:
             event.ignore()
             self.clearFocus()
         else:
@@ -7403,7 +7519,39 @@ class myColorButton(pg.ColorButton):
         c = self._c
         self._bkgrColor = QColor(c, c, c, self._alpha) 
         self.update()
+        
+    def _make_dialog(self):
+        # Replaces pyqtgraph's parentless dialog so that it opens window-modal
+        # on top of the enclosing window (e.g. a modal dialog). It must keep
+        # the same connections as pg.ColorButton.__init__: live preview
+        # (sigColorChanging), restore on reject and commit on accept
+        # (colorSelected -> sigColorChanged).
+        dlg = QColorDialog(self.window())  # parent = enclosing dialog
+        dlg.setOption(QColorDialog.ColorDialogOption.ShowAlphaChannel, True)
+        dlg.setOption(QColorDialog.ColorDialogOption.DontUseNativeDialog, True)
+        dlg.setWindowModality(Qt.WindowModality.WindowModal)
+        dlg.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+        dlg.currentColorChanged.connect(self.dialogColorChanged)
+        dlg.rejected.connect(self.colorRejected)
+        dlg.colorSelected.connect(self.colorSelected)
+        return dlg
+        
+    # edit show color dialog on click
+    @Slot()
+    def selectColor(self):
+        # Re-parent every time, in case the button moved to another window
+        if self.colorDialog is None or self.colorDialog.parent() is not self.window():
+            if self.colorDialog is not None:
+                self.colorDialog.deleteLater()
+            self.colorDialog = self._make_dialog()
 
+        self.origColor = self.color()
+        self.colorDialog.setCurrentColor(self.color())
+        self.colorDialog.open()
+        self.colorDialog.raise_()
+        self.colorDialog.activateWindow()
+        
+        
 class highlightableQWidgetAction(QWidgetAction):
     def __init__(self, parent) -> None:
         super().__init__(parent)
@@ -10879,9 +11027,11 @@ class ScaleBar(QGraphicsObject):
         self.update()
     
     def addToAxis(self, ax):
-        ax.addItem(self.plotItem)
-        ax.addItem(self.labelItem)
-    
+        # The bar is positioned relative to the view range: it must not
+        # extend the bounds used by auto range
+        ax.addItem(self.plotItem, ignoreBounds=True)
+        ax.addItem(self.labelItem, ignoreBounds=True)
+
     def setText(self):
         if self._is_text_visible:
             number = round(self._length_unit, self._num_decimals)
@@ -12539,19 +12689,20 @@ class LineEdit(QLineEdit):
 
 class PreProcessingSelector(QComboBox):
     sigValuesChanged = Signal(dict, int)
+    preprocessMapper = PREPROCESS_MAPPER
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self._parent = parent
         
-        self.addItems(PREPROCESS_MAPPER.keys())
+        self.addItems(self.preprocessMapper.keys())
         self.methodToDefaultValuesMapper = {}
         self.step_n = -1
         self.setParamsWindow = None
 
     def htmlInfo(self):
         href = html_utils.href_tag('GitHub page', urls.issues_url)
-        docstring = PREPROCESS_MAPPER[self.currentText()]['docstring']
+        docstring = self.preprocessMapper[self.currentText()]['docstring']
         if docstring is None:
             text = 'This function is not documented, yet. Sorry :('
         else:
@@ -12568,7 +12719,7 @@ class PreProcessingSelector(QComboBox):
     
     def askSetParams(self, df_metadata=None, addApplyButton=False):
         method = self.currentText()
-        function = PREPROCESS_MAPPER[method]['function']
+        function = self.preprocessMapper[method]['function']
         params_argspecs = myutils.get_function_argspec(
             function, 
             args_to_skip={
@@ -12610,6 +12761,13 @@ class PreProcessingSelector(QComboBox):
         self.setParamsWindow.emitValuesChanged()
         self.setParamsWindow.exec_()
         if self.setParamsWindow.cancel:
+            # Every edit was already emitted live (step kwargs and preview):
+            # Cancel (or closing the window) restores the opening values.
+            if self.currentText() == method:
+                self.emitValuesChanged(
+                    self.setParamsWindow.original_function_kwargs
+                )
+            self.setParamsWindow = None
             return
         
         self.setParams(method, self.setParamsWindow.function_kwargs)
@@ -12622,6 +12780,10 @@ class PreProcessingSelector(QComboBox):
     def emitValuesChanged(self, functionKwargs: dict):
         self.sigValuesChanged.emit(functionKwargs, self.step_n)
     
+class SignalProcessingSelector(PreProcessingSelector):
+    from .measurement_processing import MEASUREMENT_PROCESSING_MAPPER as preprocessMapper
+
+
 class RescaleImageJroisGroupbox(QGroupBox):
     def __init__(self, TZYX_out_shape, parent=None):
         super().__init__(parent)
@@ -12918,6 +13080,135 @@ class MergeIDsToolbar(ToolBar):
         """)
         msg.information(self, 'Merge multiple IDs', txt)
 
+class BrushStrokesSelectCellsToolbar(ToolBar):
+    """Controls to select cells of the segmentation masks and add them to
+    the brush strokes (i.e., the training data) of the promptable models
+    trained from brush strokes (e.g., ConvPaint).
+
+    The selection works like the "Keep IDs" controls (same IDs list and
+    line edit).
+    """
+    sigAddToTrainingData = Signal(object)
+    sigSelectedIDsEdited = Signal(object, list)
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        self.addToTrainingDataAction = self.addButton(':greenTick.svg')
+        self.addToTrainingDataAction.setToolTip(
+            'Add the selected cells to the brush strokes (training data) of '
+            'the current frame\n\n'
+            'The selected cells are added as foreground and the pixels '
+            'without segmentation masks as background (pixels that already '
+            'have brush strokes are not modified).\n\n'
+            'Shortcut: Enter'
+        )
+
+        self.addLabel('  Selected IDs: ')
+        instructionsText = (
+            '  (Click on the cells to select them or press Ctrl+A to select '
+            'all. Separate IDs by comma. Use a dash to denote a range of IDs)'
+        )
+        instructionsLabel = QLabel(instructionsText)
+        self.selectedIDsLineEdit = KeepIDsLineEdit(
+            instructionsLabel, parent=self
+        )
+        self.selectedIDsLineEdit.setToolTip(
+            'IDs of the selected cells (you can also type them)'
+        )
+        self.addWidget(self.selectedIDsLineEdit)
+
+        self.addSeparator()
+
+        self.onlyZoomCheckbox = self.addCheckBox(
+            'Only in zoomed area', checked=False
+        )
+        self.onlyZoomCheckbox.setToolTip(
+            'If checked, only the cutout of the image that is currently '
+            'displayed (zoomed area) is added to the brush strokes.\n\n'
+            'This is useful to add only a region where all the cells are '
+            'correctly segmented, and to keep the training fast with large '
+            'images.'
+        )
+
+        self.addWidget(instructionsLabel)
+        spacer = QWidget()
+        spacer.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.addWidget(spacer)
+
+        self.selectedIDs = KeptObjectIDsList(
+            self.selectedIDsLineEdit, self.addToTrainingDataAction
+        )
+
+        self.addToTrainingDataAction.triggered.connect(
+            self.emitSigAddToTrainingData
+        )
+        self.selectedIDsLineEdit.sigEnterPressed.connect(
+            self.emitSigAddToTrainingData
+        )
+        self.selectedIDsLineEdit.sigIDsChanged.connect(
+            self.emitSigSelectedIDsEdited
+        )
+
+    def emitSigAddToTrainingData(self):
+        if not self.addToTrainingDataAction.isEnabled():
+            # No cells selected
+            return
+        self.sigAddToTrainingData.emit(self)
+
+    def emitSigSelectedIDsEdited(self, IDs):
+        self.sigSelectedIDsEdited.emit(self, IDs)
+
+    def setSelectedIDs(self, IDs=None):
+        """Replace the selection with `IDs` (empty selection if None)
+        without emitting `sigSelectedIDsEdited`."""
+        self.selectedIDsLineEdit.blockSignals(True)
+        try:
+            self.selectedIDs = KeptObjectIDsList(
+                self.selectedIDsLineEdit, self.addToTrainingDataAction
+            )
+            if IDs is not None:
+                for ID in IDs:
+                    if ID in self.selectedIDs:
+                        continue
+                    self.selectedIDs.append(int(ID), editText=False)
+                self.selectedIDs.setText()
+        finally:
+            self.selectedIDsLineEdit.blockSignals(False)
+        self.selectedIDsLineEdit.setInstructionsText()
+
+    def resetSelection(self):
+        self.setSelectedIDs(None)
+
+    def toggleSelectedID(self, ID):
+        """Select `ID` or unselect it if it is already selected. Returns
+        True if `ID` is selected."""
+        ID = int(ID)
+        self.selectedIDsLineEdit.blockSignals(True)
+        try:
+            if ID in self.selectedIDs:
+                self.selectedIDs.remove(ID)
+                isSelected = False
+            else:
+                self.selectedIDs.append(ID)
+                isSelected = True
+        finally:
+            self.selectedIDsLineEdit.blockSignals(False)
+        self.selectedIDsLineEdit.setInstructionsText()
+        return isSelected
+
+    def syncSelectedIDs(self, IDs):
+        """Update the selection to `IDs` (e.g., typed in the line edit)
+        without modifying the text of the line edit."""
+        for ID in list(self.selectedIDs):
+            if ID not in IDs:
+                self.selectedIDs.remove(ID, editText=False)
+        for ID in IDs:
+            if ID not in self.selectedIDs:
+                self.selectedIDs.append(ID, editText=False)
+
 class MagicPromptsToolbar(ToolBar):
     sigPromptTypeChanged = Signal(object, str)
     sigComputeOnZoom = Signal(object)
@@ -12939,6 +13230,8 @@ class MagicPromptsToolbar(ToolBar):
     sigLoadModel = Signal(object)
     sigClearBoxes = Signal(object)
     sigClearBoxesOnZoom = Signal(object)
+    sigSelectCellsToggled = Signal(object, bool)
+    sigSelectAllCells = Signal(object)
 
     promptTypeTextToKey = {
         'Points': 'point',
@@ -13064,15 +13357,42 @@ class MagicPromptsToolbar(ToolBar):
 
         brushSizeSeparator = self.addSeparator()
 
-        self.trainAction = self.addButton(':train.svg')
-        self.trainAction.setToolTip(
-            'Train the model on the brush strokes painted on all the '
-            'frames and positions\n\n'
-            'Left-click and drag to paint foreground, right-click and drag '
-            'to paint background.'
+        self.selectCellsAction = self.addButton(
+            ':keep_objects.svg', checkable=True
+        )
+        self.selectCellsAction.setToolTip(
+            'Select cells of the segmentation masks to add them to the '
+            'training data\n\n'
+            'Click on the cells to select (or unselect) them, then press '
+            '"Enter" (or the green tick) to add them to the brush strokes of '
+            'the current frame: the selected cells as foreground and the '
+            'background of the segmentation masks as background.\n\n'
+            'NOTE: Make sure that all the cells in the area are segmented, '
+            'because the pixels without masks are used as background (use '
+            'the "Only in zoomed area" option to add only a cutout).'
         )
 
-        self.segmentImageAction = self.addButton(':segment.svg')
+        self.selectAllCellsAction, selectAllCellsButton = self.addButton(
+            ':select_all.svg', ret_widget=True
+        )
+        self.selectAllCellsAction.setShortcut('Ctrl+A')
+        self.selectAllCellsAction.setToolTip(
+            'Select all the cells of the current frame to add them to the '
+            'training data\n\n'
+            'Shortcut: "Ctrl+A"'
+        )
+        self.widgetsWithShortcut['Select all cells (magic prompts)'] = (
+            self.selectAllCellsAction
+        )
+        self.widgetsForActions['Select all cells (magic prompts)'] = (
+            selectAllCellsButton
+        )
+
+        selectCellsSeparator = self.addSeparator()
+
+        self.segmentImageAction, self.segmentImageButton = self.addButton(
+            ':segment.svg', ret_widget=True
+        )
         self.segmentImageAction.setToolTip(
             'Segment the current image with the trained model\n\n'
             'With 3D segmentation masks (z-stacks), only the displayed '
@@ -13080,7 +13400,27 @@ class MagicPromptsToolbar(ToolBar):
             'z-slices).\n\n'
             'NOTE: The model is automatically (re-)trained if it is not '
             'trained yet or if the brush strokes changed since the last '
-            'training.'
+            'training.\n\n'
+            'Right-click for more options (e.g., "Train only, do not '
+            'segment").'
+        )
+        # Right-click menu of the "Segment image" button
+        self.trainAction = QAction(
+            QIcon(':train.svg'), 'Train only, do not segment', self
+        )
+        self.trainAction.setToolTip(
+            'Train the model on the brush strokes painted on all the '
+            'frames and positions without segmenting (the model is '
+            're-trained even if the brush strokes did not change)'
+        )
+        self.segmentImageContextMenu = QMenu(self)
+        self.segmentImageContextMenu.setToolTipsVisible(True)
+        self.segmentImageContextMenu.addAction(self.trainAction)
+        self.segmentImageButton.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.segmentImageButton.customContextMenuRequested.connect(
+            self.showSegmentImageContextMenu
         )
 
         self.segmentZstackAction = self.addButton(':3d.svg')
@@ -13146,7 +13486,9 @@ class MagicPromptsToolbar(ToolBar):
             self.brushSizeSpinbox.labelAction,
             self.brushSizeSpinbox.action,
             *brushSizeSeparator._actions,
-            self.trainAction,
+            self.selectCellsAction,
+            self.selectAllCellsAction,
+            *selectCellsSeparator._actions,
             self.segmentImageAction,
             self.segmentZstackAction,
             self.segmentStackAction,
@@ -13177,6 +13519,8 @@ class MagicPromptsToolbar(ToolBar):
             self.sigInterpolateZslice.emit
         )
         self.trainAction.triggered.connect(self.emitSigTrain)
+        self.selectCellsAction.toggled.connect(self.emitSigSelectCellsToggled)
+        self.selectAllCellsAction.triggered.connect(self.emitSigSelectAllCells)
         self.segmentImageAction.triggered.connect(self.emitSigSegmentImage)
         self.segmentZstackAction.triggered.connect(self.emitSigSegmentZstack)
         self.segmentStackAction.triggered.connect(self.emitSigSegmentStack)
@@ -13263,6 +13607,9 @@ class MagicPromptsToolbar(ToolBar):
         isBrushStrokes = prompt_type == 'brush_stroke'
         isBoxes = prompt_type == 'box'
         isPoints = not isBrushStrokes and not isBoxes
+        if not isBrushStrokes:
+            # Selecting cells is only for brush strokes
+            self.selectCellsAction.setChecked(False)
         self._setActionsVisible(self._pointsOnlyActions, isPoints)
         self._setActionsVisible(
             self._pointsOrBoxesActions, not isBrushStrokes
@@ -13287,6 +13634,19 @@ class MagicPromptsToolbar(ToolBar):
 
     def emitSigTrain(self):
         self.sigTrain.emit(self)
+
+    def showSegmentImageContextMenu(self, pos):
+        if not self.segmentImageAction.isEnabled():
+            return
+        self.segmentImageContextMenu.exec(
+            self.segmentImageButton.mapToGlobal(pos)
+        )
+
+    def emitSigSelectCellsToggled(self, checked):
+        self.sigSelectCellsToggled.emit(self, checked)
+
+    def emitSigSelectAllCells(self):
+        self.sigSelectAllCells.emit(self)
 
     def emitSigSegmentImage(self):
         self.sigSegmentImage.emit(self)
@@ -13394,13 +13754,45 @@ class MagicPromptsToolbar(ToolBar):
 
             You need both foreground and background strokes. You can paint
             on multiple frames and positions.<br>
-            With z-stacks, paint in "single z-slice" mode (projections are
-            display-only).<br><br>
+            With 3D segmentation masks, paint in "single z-slice" mode
+            (projections are display-only).<br>
+            With 2D masks of z-stacks, the brush strokes of a frame belong to
+            the z-slice (or z-projection) they are painted on.<br><br>
+
+            Note that the brush strokes are <b>not meant to cover all the
+            cells</b>. They simply provide some <b>example pixels</b> of
+            foreground and background<br>
+            that the model learns from. A few strokes on some cells and on
+            the background are usually enough<br>
+            (add strokes where the model makes mistakes, e.g., at the cell
+            borders or between touching cells).<br><br>
+
+            <b>Use existing segmentation masks as training data</b><br><br>
+
+            You can also add cells of the current segmentation masks to the
+            training data:<br><br>
+
+            - Click on the "<b>Select cells</b>" button and then click on
+            the cells to select (or unselect) them<br>
+            - Press <b>Ctrl+A</b> (or the "<b>Select all cells</b>" button)
+            to select all the cells of the current frame<br>
+            - Press <b>Enter</b> (or the green tick) to add them to the
+            brush strokes of the current frame:<br>
+            &nbsp;&nbsp;the selected cells are added as <b>foreground</b>
+            and the pixels without masks as <b>background</b><br>
+            - Check "<b>Only in zoomed area</b>" to add only the cutout
+            that is currently displayed<br><br>
+
+            Make sure that all the cells in the area are segmented, because
+            the pixels without masks are used as background.<br>
+            Existing brush strokes are not modified, and you can undo with
+            <b>Ctrl+Z</b>. With 3D segmentation masks, only the displayed
+            z-slice is added.<br>
+            NOTE: The more pixels you add, the slower the training (e.g.,
+            use "Only in zoomed area" with large images).<br><br>
 
             Then use the following buttons:<br><br>
 
-            - "<b>Train</b>": train the model on the brush strokes
-            painted on all frames and positions<br>
             - "<b>Segment image</b>": segment the current image and choose
             how to combine the result with the existing masks (with 3D
             masks, only the displayed z-slice)<br>
@@ -13411,7 +13803,11 @@ class MagicPromptsToolbar(ToolBar):
 
             The model is automatically (re-)trained before segmenting if
             it was not trained yet or if the brush strokes changed since
-            the last training.<br><br>
+            the last training.<br>
+            To train the model without segmenting (e.g., to re-train a
+            loaded model on the current brush strokes),<br>
+            <b>right-click</b> on the "Segment image" button and select
+            "<b>Train only, do not segment</b>".<br><br>
 
             You can <b>clear the brush strokes</b> of the current
             frame (or only in the zoomed area) with the corresponding
@@ -13825,22 +14221,20 @@ class OverlayToolbar(ToolBar):
         )
         
         self.transparencyCheckbox.setToolTip(
-            'Activate to hierarchically blend channels using relative weights '
-            'derived from the scrollbars.\n\n'
-            'Each scrollbar controls the balance between adjacent channels, ' 
-            'allowing you to fine-tune their contributions to the '
-            'final blended image.'
+            'Activate to hierarchically blend channels using\n'
+            'relative weights derived from the scrollbars.\n\n'
+            'Each scrollbar controls the balance between adjacent channels, allowing\n'
+            'you to fine-tune their contributions to the final blended image.'
         )
-        
+
         self.alphaEncodedIntensityCheckbox = self.addCheckBox(
             text='Alpha-encoded intensity (RGBA composite)'
         )
         self.alphaEncodedIntensityCheckbox.setToolTip(
-            'Activate to encode pixel intensity as alpha transparency: '
-            'pixels with zero intensity are fully transparent,\n'
-            '50% intensity corresponds to 50% opacity, '
-            'and maximum intensity is fully opaque.\n\n'
-            'This allows low-intensity regions to appear transparent and '
+            'Activate to encode pixel intensity as alpha transparency: pixels\n'
+            'with zero intensity are fully transparent, 50% intensity\n'
+            'corresponds to 50% opacity, and maximum intensity is fully opaque.\n\n'
+            'This allows low-intensity regions to appear transparent and\n'
             'creates the perception of seeing through these regions.'
         )
         
@@ -13851,8 +14245,8 @@ class OverlayToolbar(ToolBar):
         )
         
         self.singleChannelCheckbox.setToolTip(
-            'When single channel mode is activated, selecting a channel '
-            'will display only that channel in the overlay.'
+            'When single channel mode is activated, selecting a\n'
+            'channel will display only that channel in the overlay.'
         )
         
         self.transparencyCheckbox.toggled.connect(self.transparencyToggled)
@@ -14718,6 +15112,68 @@ class ButtonSearchCompleter(QSortFilterProxyModel):
             )
             self._similarityCache[cache_key] = similarity
         return similarity
+
+
+class MeasurementTreeModel(QStandardItemModel):
+    """Shared measurement hierarchy with selectable/checkable leaves only."""
+
+    def populate(self, dataframe, channels=(), checkable=False):
+        self.clear()
+        nodes = {(): self.invisibleRootItem()}
+        for path, columns in measurements.measurement_column_groups(dataframe, channels):
+            for depth in range(1, len(path)+1):
+                prefix = path[:depth]
+                if prefix not in nodes:
+                    group = QStandardItem(prefix[-1])
+                    group.setFlags(Qt.ItemIsEnabled)
+                    nodes[prefix[:-1]].appendRow(group)
+                    nodes[prefix] = group
+            for column in columns:
+                item = QStandardItem(column)
+                item.setEditable(False)
+                item.setCheckable(checkable)
+                item.setData(column, ButtonSearchCompleter.SEARCH_NAME_ROLE)
+                nodes[path].appendRow(item)
+
+    def measurementItems(self, parent=None):
+        if parent is None:
+            parent = self.invisibleRootItem()
+        for row in range(parent.rowCount()):
+            item = parent.child(row)
+            if item.hasChildren():
+                yield from self.measurementItems(item)
+            else:
+                yield item
+
+
+class MeasurementTreeSearchProxy(ButtonSearchCompleter):
+    """Keep ancestors of fuzzy-matched measurement leaves visible."""
+
+    def __init__(self, parent=None):
+        super().__init__(
+            parent, searchRoles=(self.SEARCH_NAME_ROLE,), tooltipRole=None
+        )
+        self.setRecursiveFilteringEnabled(True)
+        self.setDynamicSortFilter(True)
+        self.sort(0, Qt.AscendingOrder)
+
+    def _getScore(self, index):
+        # Sibling row numbers repeat across tree branches.
+        key = (index, self._filterText)
+        if key not in self._scoreCache:
+            self._scoreCache[key] = self._matchScore(index)
+        return self._scoreCache[key]
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        index = self.sourceModel().index(source_row, 0, source_parent)
+        if self._filterText and self.sourceModel().hasChildren(index):
+            return False
+        return super().filterAcceptsRow(source_row, source_parent)
+
+    def lessThan(self, left, right):
+        if self.sourceModel().hasChildren(left) or self.sourceModel().hasChildren(right):
+            return left.row() < right.row()
+        return super().lessThan(left, right)
 
 
 def _fuzzySearchSimilarity(query, text, minimum_similarity=0.0):

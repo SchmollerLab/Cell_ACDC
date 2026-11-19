@@ -22,7 +22,10 @@ def import_promptable_segment_module(model_name):
         # Do not mask missing dependencies imported by the module itself
         # (or a cancelled installation, e.g., in its `__init__.py`)
         expected_missing_module = f'cellacdc.promptable_models.{model_name}'
-        if e.name != expected_missing_module:
+        if (
+            e.name != expected_missing_module
+            and not expected_missing_module.startswith(f'{e.name}.')
+        ):
             raise
 
         # Check if custom model
