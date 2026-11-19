@@ -23527,26 +23527,19 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         'values', like the `metadata.csv` files saved by Cell-ACDC.
         `TimeIncrement` is converted to seconds (Cell-ACDC convention).
         """
+        from .acdc_datastruct import restructure
+
         metadata = self.metadata()
-        TimeIncrementUnit = metadata['TimeIncrementUnit']
-        toSecondsFactor = {
-            'ms': 1e-3, 'seconds': 1.0, 'minutes': 60.0, 'hours': 3600.0
-        }[TimeIncrementUnit]
-        TimeIncrement = metadata['TimeIncrement']*toSecondsFactor
-
-        values = {
-            'TimeIncrement': TimeIncrement,
-            'PhysicalSizeZ': metadata['PhysicalSizeZ'],
-            'PhysicalSizeY': metadata['PhysicalSizeY'],
-            'PhysicalSizeX': metadata['PhysicalSizeX'],
-        }
-        for c, (nameLE, _) in enumerate(self.channelEntries):
-            values[f'channel_{c}_name'] = nameLE.text().strip()
-
-        df = pd.DataFrame({
-            'Description': list(values.keys()),
-            'values': list(values.values())
-        }).set_index('Description')
+        df = restructure.build_metadata_df(
+            physical_size_x=metadata['PhysicalSizeX'],
+            physical_size_y=metadata['PhysicalSizeY'],
+            physical_size_z=metadata['PhysicalSizeZ'],
+            time_increment=metadata['TimeIncrement'],
+            time_increment_unit=metadata['TimeIncrementUnit'],
+            channel_names=[
+                nameLE.text().strip() for nameLE, _ in self.channelEntries
+            ],
+        )
 
         return df
 
@@ -23936,6 +23929,8 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         self.numberChannelsSpinBox.setValue(num_channels)
     
     def saveRecipe(self):
+        from .acdc_datastruct import restructure
+
         os.makedirs(restruct_files_recipes_path, exist_ok=True)
         folder_content = myutils.listdir(restruct_files_recipes_path)
         num_recipes = len(folder_content)
@@ -23959,9 +23954,9 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         if dimensionOptions is None:
             return
 
-        recipe = {**dimensionOptions, 'metadata': self.metadata()}
-        with open(json_filepath, 'w') as f:
-            json.dump(recipe, f, indent=2)
+        restructure.save_recipe(
+            json_filepath, dimensionOptions, self.metadata()
+        )
         
         self.saveRecipeButton.confirmAction()
     
@@ -24026,18 +24021,21 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         return os.path.join(restruct_files_recipes_path, filename)
 
     def loadRecipe(self):
+        from .acdc_datastruct import restructure
+
         filepath = self.selectRecipeFilepath()
         if filepath is None:
             return
 
-        with open(filepath, 'r') as f:
-            savedOptions  = json.load(f)
+        savedOptions = restructure.load_recipe(filepath)
         
         self.setDimensionOptions(savedOptions)
 
         self.loadRecipeButton.confirmAction()
     
     def loadLastParameters(self):
+        from .acdc_datastruct import restructure
+
         if not os.path.exists(restruct_files_recipes_path):
             self.warnNoRecipesAvailable()
             return
@@ -24054,19 +24052,20 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
             return
         
         filepath = os.path.join(restruct_files_recipes_path, file)
-        with open(filepath, 'r') as f:
-            savedOptions  = json.load(f)
+        savedOptions = restructure.load_recipe(filepath)
         
         self.setDimensionOptions(savedOptions)
 
         self.loadLastParametersButton.confirmAction()
     
     def saveLastParameters(self, dimensionOptions):
+        from .acdc_datastruct import restructure
+
         os.makedirs(restruct_files_recipes_path, exist_ok=True)
-        filepath = os.path.join(restruct_files_recipes_path, '_last_setup.json')
-        recipe = {**dimensionOptions, 'metadata': self.metadata()}
-        with open(filepath, 'w') as f:
-            json.dump(recipe, f, indent=2)
+        filepath = os.path.join(
+            restruct_files_recipes_path, restructure.LAST_SETUP_FILENAME
+        )
+        restructure.save_recipe(filepath, dimensionOptions, self.metadata())
 
     def dimensionOptions(self):
         dimensionOptions = {}
