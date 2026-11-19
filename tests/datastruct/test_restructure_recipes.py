@@ -490,6 +490,86 @@ def test_dialog_loads_int_axis_index(dialog_factory, tmp_path, monkeypatch):
     assert [c['name'] for c in options['channels']['names']] == ['a', 'b']
 
 
+class _FakeTreeDialog:
+    """Stand-in for `QTreeDialog`: records the listed items, selects
+    `select` (None = Cancel)."""
+    select = None
+    items = None
+
+    def __init__(self, items, **kwargs):
+        type(self).items = list(items)
+        self.cancel = self.select is None
+        self.selectedText = self.select
+
+    def exec_(self):
+        pass
+
+
+@conditions.requires_qt
+def test_dialog_recipe_files_use_the_core(dialog_factory, monkeypatch):
+    """GV-R6: "Load last parameters" loads `_last_setup.json`, the file of
+    `acdc-data restructure --recipe last` (`restructure.last_setup_path`;
+    main loaded the first natsorted file starting with '_last_setup', e.g.
+    '_last_setup - Copy.json'); "Load recipe" lists
+    `restructure.recipe_filenames` exactly as main listed the recipes."""
+    import datetime
+
+    apps = dialog_factory.apps
+    folder = dialog_factory.folder
+    monkeypatch.setattr(apps, 'QTreeDialog', _FakeTreeDialog)
+    monkeypatch.setattr(_FakeTreeDialog, 'items', None)
+    dlg = dialog_factory()
+    warnings = []
+    monkeypatch.setattr(dlg, 'warnNoRecipesAvailable',
+                        lambda: warnings.append('no recipes'))
+    initial = dlg.dimensionOptions()
+
+    # No recipes folder
+    dlg.loadLastParameters()
+    assert dlg.selectRecipeFilepath() is None
+    assert warnings == ['no recipes'] * 2
+
+    # Only a copy of the last setup: no last setup (main loaded the copy)
+    folder.mkdir()
+    copied = {**RECIPE_PER_FILE, 'z_slices': {'mode': 'not_present'}}
+    restructure.save_recipe(
+        str(folder / '_last_setup - Copy.json'), copied, METADATA
+    )
+    dlg.loadLastParameters()
+    assert warnings == ['no recipes'] * 3
+    assert dlg.dimensionOptions() == initial
+    assert dlg.selectRecipeFilepath() is None
+    assert warnings == ['no recipes'] * 4
+
+    restructure.save_recipe(
+        str(folder / restructure.LAST_SETUP_FILENAME), RECIPE_PER_FILE,
+        METADATA
+    )
+    dlg.loadLastParameters()
+    assert warnings == ['no recipes'] * 4
+    assert dlg.dimensionOptions() == RECIPE_PER_FILE
+    assert dlg.metadata() == METADATA
+
+    for name in RECIPE_FOLDER_FILES:
+        if not (folder / name).exists():
+            (folder / name).write_text('{}', encoding='utf-8')
+    legacy = legacy_recipe_files(str(folder))
+    monkeypatch.setattr(_FakeTreeDialog, 'select', 'Mine.json')
+    path = dlg.selectRecipeFilepath()
+    assert path == str(folder / 'datastruct_restructure_recipe_Mine.json')
+    assert _FakeTreeDialog.items == [
+        (display, datetime.datetime.fromtimestamp(
+            os.path.getmtime(folder / file)).strftime(r'%Y/%m/%d %H:%M'))
+        for display, file in legacy
+    ]
+    assert [display for display, _ in legacy][:4] == [
+        '2.json', '10.json', 'Mine.json', 'abc.json'
+    ]
+    monkeypatch.setattr(_FakeTreeDialog, 'select', None)
+    assert dlg.selectRecipeFilepath() is None
+    assert warnings == ['no recipes'] * 4
+
+
 @conditions.requires_qt
 @pytest.mark.parametrize('unit', ['ms', 'seconds', 'minutes', 'hours'])
 def test_dialog_metadata_df(dialog_factory, unit):

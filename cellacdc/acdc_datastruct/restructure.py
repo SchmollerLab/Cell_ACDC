@@ -15,10 +15,12 @@ from __future__ import annotations
 import copy
 import csv
 import json
+import logging
 import os
 import re
 import shutil
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Mapping, Sequence
 
@@ -26,10 +28,15 @@ import numpy as np
 import pandas as pd
 import tifffile
 
-from .. import myutils
-from . import errors
+from . import errors, planning
+
+logger = logging.getLogger(__name__)
 
 DIMENSION_KEYS = ('channels', 'timepoints', 'z_slices')
+MODES = ('not_present', 'per_file', 'in_file')
+NAME_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
+"""Allowed channel names and basename (the dialog's alphaNumericLineEdit)."""
+NAME_RULE = 'use only letters, digits, underscores (_) and dashes (-)'
 RECIPE_PREFIX = 'datastruct_restructure_recipe_'
 LAST_SETUP_FILENAME = '_last_setup.json'
 TIME_UNIT_FACTORS = {
@@ -50,10 +57,15 @@ DEFAULT_METADATA = {
 }
 """Metadata defaults of the dialog (um, um, um, value, unit label)."""
 ON_EXISTING_CHOICES = ('error', 'overwrite', 'create-new')
+_OME_PIXEL_TYPES = (
+    'uint8', 'uint16', 'uint32', 'int8', 'int16', 'int32', 'float32',
+    'float64', 'complex64', 'complex128', 'bool',
+)
+"""Numpy dtype names that ``tifffile.imwrite(..., ome=True)`` can store."""
 
 
 def fail(message):
-    raise ValueError(message)
+    raise errors.RestructureOptionsError(message)
 
 def mode_for(key, dimensions):
     mode = dimensions[key].get('mode')
@@ -209,46 +221,215 @@ def normalize_array(array, axes):
 
     return array
 
-def create_datastruct_from_restruct_tiff_dialogue_options(
-        selectedOptions, *, signals=None
-    ):
-    sourceFolder = Path(selectedOptions['source_folder'])
-    destinationFolder = Path(selectedOptions['destination_folder'])
-    dimensions = selectedOptions['dimensions']
-    overwrite = selectedOptions['overwrite_destination']
-    create_new_positions = selectedOptions['create_new_position_destination']
 
-    if not sourceFolder.is_dir():
-        raise ValueError(f'Source folder does not exist: {sourceFolder}')
+# ------------------------------------------------------------------ options
+def _check_name(name, what):
+    if not NAME_RE.fullmatch(name):
+        fail(f'Invalid {what} {name!r}: {NAME_RULE}.')
 
-    modes = {
-        key: dimensions[key]['mode']
-        for key in ('channels', 'timepoints', 'z_slices')
-    }
 
-    channelConfig = dimensions['channels']
-    rawChannels = channelConfig.get('names') or [
+def normalize_restructure_options(opts: Mapping) -> dict:
+    """Validated copy of the dialog's ``selectedOptions`` (a NEW dict; the
+    'dimensions' entry is deep-copied, other values are shared).
+
+    - 'source_folder' and 'destination_folder' are required;
+      'overwrite_destination' / 'create_new_position_destination' default
+      to False and cannot both be True.
+    - Every dimension ('channels', 'timepoints', 'z_slices'; missing ->
+      'not_present') has a mode of ``MODES``; per-file timepoints/z-slices
+      need a 'filename_marker'; in-file dimensions an integer axis
+      ('axis_index' or 'axis', kept as given).
+    - Channel 'names' become ``[{'name': <stripped name>, ...}]`` (strings
+      are accepted, default ``[{'name': 'Channel_1'}]``): non-empty, matching
+      ``NAME_RE``, unique ignoring case, exactly one when channels are not
+      present, and each with a 'filename_identifier' when per file.
+    - A non-empty basename matches ``NAME_RE``.
+
+    Raises ``RestructureOptionsError`` (the core's messages where the check
+    already existed).
+    """
+    if not isinstance(opts, Mapping):
+        fail('The re-structure options must be a mapping.')
+    options = dict(opts)
+    for key in ('source_folder', 'destination_folder'):
+        if not options.get(key):
+            fail(f'The {key.replace("_", " ")} is required.')
+
+    overwrite = bool(options.get('overwrite_destination', False))
+    createNew = bool(options.get('create_new_position_destination', False))
+    if overwrite and createNew:
+        fail(
+            'Choose either to overwrite the existing Position folders or to '
+            'create new ones, not both.'
+        )
+    options['overwrite_destination'] = overwrite
+    options['create_new_position_destination'] = createNew
+
+    rawDimensions = options.get('dimensions')
+    if not isinstance(rawDimensions, Mapping):
+        fail('The dimension options are required.')
+    dimensions = {}
+    for key in DIMENSION_KEYS:
+        config = rawDimensions.get(key, {'mode': 'not_present'})
+        if not isinstance(config, Mapping):
+            fail(f'The options of {key} must be a mapping; got {config!r}.')
+        dimensions[key] = copy.deepcopy(dict(config))
+    modes = {key: mode_for(key, dimensions) for key in DIMENSION_KEYS}
+
+    rawChannels = dimensions['channels'].get('names') or [
         {'name': 'Channel_1'}
     ]
-    channelSpecs = [
-        item if isinstance(item, dict) else {'name': str(item)}
-        for item in rawChannels
-    ]
-    channelNames = [item.get('name', '').strip() for item in channelSpecs]
+    channelSpecs = []
+    for item in rawChannels:
+        spec = dict(item) if isinstance(item, Mapping) else {'name': item}
+        name = spec.get('name')
+        spec['name'] = '' if name is None else str(name).strip()
+        channelSpecs.append(spec)
+    channelNames = [spec['name'] for spec in channelSpecs]
 
-    if not channelNames or any(not name for name in channelNames):
-        raise ValueError('Provide a name for every channel.')
-
+    if any(not name for name in channelNames):
+        fail('Provide a name for every channel.')
+    for name in channelNames:
+        _check_name(name, 'channel name')
     if len({name.casefold() for name in channelNames}) != len(channelNames):
-        raise ValueError('Channel names must be unique.')
-
+        fail('Channel names must be unique.')
     if modes['channels'] == 'not_present' and len(channelNames) != 1:
-        raise ValueError(
+        fail(
             'When channels are marked "Not present", provide exactly '
             'one channel name.'
         )
+    if modes['channels'] == 'per_file':
+        for spec in channelSpecs:
+            if not spec.get('filename_identifier'):
+                fail(
+                    f'No filename identifier was provided for channel '
+                    f'{spec["name"]!r}.'
+                )
+    dimensions['channels']['names'] = channelSpecs
 
-    selectedFilenames = selectedOptions.get('files')
+    for key, dimension_name in (('timepoints', 'timepoint'),
+                                ('z_slices', 'z-slice')):
+        if modes[key] == 'per_file':
+            if not dimensions[key].get('filename_marker'):
+                fail(
+                    f'No filename marker was provided for {dimension_name}.'
+                )
+    for key in DIMENSION_KEYS:
+        if modes[key] != 'in_file':
+            continue
+        config = dimensions[key]
+        value = config.get('axis_index', config.get('axis'))
+        if value is None or str(value).strip() == '':
+            fail(f'Enter an axis index for {key}.')
+        try:
+            int(value)
+        except (TypeError, ValueError):
+            fail(
+                f'The axis index for {key} must be an integer; '
+                f'got {value!r}.'
+            )
+    options['dimensions'] = dimensions
+
+    basename = options.get('basename')
+    if basename is not None:
+        if not isinstance(basename, str):
+            fail(f'The basename must be text; got {basename!r}.')
+        if basename.strip():
+            _check_name(basename.strip(), 'basename')
+    return options
+
+
+# --------------------------------------------------------------------- plan
+@dataclass(frozen=True)
+class PlannedChannel:
+    """One output channel of a Position and the phase-1 header records
+    (dicts: path, shape, dtype, axes, layout, channel/time/z index) of the
+    input files it is assembled from."""
+    name: str
+    records: tuple[dict, ...]
+
+
+@dataclass(frozen=True)
+class PlannedPosition:
+    """One output ``Position_<number>`` (``folder``) for the files whose
+    stem reduces to ``identifier``; output shape (size_t, size_z, *yx);
+    min_time/min_z = smallest per-file index (the Position's origin)."""
+    identifier: str
+    number: int
+    folder: str
+    size_t: int
+    size_z: int
+    yx: tuple[int, int]
+    min_time: int
+    min_z: int
+    channels: tuple[PlannedChannel, ...]
+
+
+@dataclass(frozen=True)
+class RestructurePlan:
+    """Everything ``execute_restructure_plan`` writes, validated.
+
+    options       normalized options (``normalize_restructure_options``)
+    prefix        output file prefix ('' or '<basename>_')
+    overwrite     whether existing ``Images`` folders are replaced
+    positions     planned Positions, in output order
+    to_delete     existing ``Images`` folders that overwrite removes
+    metadata_rows extra metadata.csv rows (description, text) from
+                  'metadata_df'
+    """
+    options: dict
+    prefix: str
+    overwrite: bool
+    positions: tuple[PlannedPosition, ...]
+    to_delete: tuple[str, ...]
+    metadata_rows: tuple[tuple[str, str], ...]
+
+    def to_dict(self) -> dict:
+        """JSON-serializable summary (``--dry-run``, ``--format json``)."""
+        return {
+            'source_folder': str(self.options['source_folder']),
+            'destination_folder': str(self.options['destination_folder']),
+            'dimensions': copy.deepcopy(self.options['dimensions']),
+            'prefix': self.prefix,
+            'overwrite': self.overwrite,
+            'create_new': self.options['create_new_position_destination'],
+            'positions': [
+                {
+                    'identifier': position.identifier,
+                    'number': position.number,
+                    'folder': position.folder,
+                    'size_t': position.size_t,
+                    'size_z': position.size_z,
+                    'yx': list(position.yx),
+                    'min_time': position.min_time,
+                    'min_z': position.min_z,
+                    'channels': [
+                        {
+                            'name': channel.name,
+                            'files': [
+                                record['path'].name
+                                for record in channel.records
+                            ],
+                            'image_file': _image_filepath(
+                                position, self.prefix, channel.name
+                            ),
+                        }
+                        for channel in position.channels
+                    ],
+                }
+                for position in self.positions
+            ],
+            'to_delete': list(self.to_delete),
+            'metadata_rows': [list(row) for row in self.metadata_rows],
+        }
+
+
+def _image_filepath(position: PlannedPosition, prefix: str,
+                    channelName: str) -> str:
+    return str(Path(position.folder) / 'Images' / f'{prefix}{channelName}.tif')
+
+
+def _list_tiff_files(sourceFolder, selectedFilenames):
     if selectedFilenames is not None:
         selectedFilenames = set(selectedFilenames)
 
@@ -266,12 +447,13 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
     )
 
     if not tiffFiles:
-        raise ValueError(f'No TIFF files found in {sourceFolder}.')
+        raise errors.SourceError(f'No TIFF files found in {sourceFolder}.')
+    return tiffFiles
 
-    if signals is not None:
-        signals.initProgressBar.emit(0)
-        signals.progress.emit('Processing TIFF files...', 'INFO')
 
+def _scan_headers(tiffFiles, dimensions, modes, channelSpecs):
+    """Phase 1 (headers only): records grouped by position identifier."""
+    channelNames = [item['name'] for item in channelSpecs]
     recordsByPosition = defaultdict(list)
     for path in tiffFiles:
         stem = tiff_stem(path)
@@ -311,7 +493,9 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
 
         with tifffile.TiffFile(path) as tif:
             if not tif.series:
-                raise ValueError(f'No image series found in {path.name}.')
+                raise errors.SourceError(
+                    f'No image series found in {path.name}.'
+                )
             series = tif.series[0]
             shape = tuple(series.shape)
             dtype = np.dtype(series.dtype)
@@ -322,7 +506,7 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
         if modes['channels'] == 'in_file':
             channelAxis = axes['channels']
             if shape[channelAxis] != len(channelNames):
-                raise ValueError(
+                fail(
                     f'{path.name} has {shape[channelAxis]} channels on '
                     f'axis {channelAxis}, but {len(channelNames)} channel '
                     f'names were provided.'
@@ -338,43 +522,279 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
             'time_index': timeIndex,
             'z_index': zIndex,
         })
+    return recordsByPosition
 
+
+def _describe_pixel_types(records) -> str:
+    """'uint32: a.tif; int16: b.tif and 2 more' (error messages)."""
+    filesByType = defaultdict(list)
+    for record in records:
+        filesByType[record['dtype'].name].append(record['path'].name)
+    return '; '.join(
+        f'{name}: {files[0]}'
+        + (f' and {len(files) - 1} more' if len(files) > 1 else '')
+        for name, files in filesByType.items()
+    )
+
+
+def _plan_position(positionIdentifier, records, number, folder, modes,
+                   channelNames):
+    """Phase-2 checks of one Position from the headers (Y/X, missing
+    channel, out of bounds, overlaps, in the order of the legacy writer;
+    then the output pixel type, which the legacy writer only rejected when
+    writing)."""
+    yxShapes = {
+        record['layout']['yx_shape']
+        for record in records
+    }
+    if len(yxShapes) != 1:
+        raise errors.SourceError(
+            f'Files grouped as position {positionIdentifier!r} have '
+            f'different Y/X shapes: {sorted(yxShapes)}.'
+        )
+    yxShape = next(iter(yxShapes))
+
+    if modes['timepoints'] == 'per_file':
+        timeLabels = [record['time_index'] for record in records]
+        minTime = min(timeLabels)
+        outputT = max(timeLabels) - minTime + 1
+    elif modes['timepoints'] == 'in_file':
+        minTime = 0
+        outputT = max(
+            record['layout']['t_size'] for record in records
+        )
+    else:
+        minTime = 0
+        outputT = 1
+
+    if modes['z_slices'] == 'per_file':
+        zLabels = [record['z_index'] for record in records]
+        minZ = min(zLabels)
+        outputZ = max(zLabels) - minZ + 1
+    elif modes['z_slices'] == 'in_file':
+        minZ = 0
+        outputZ = max(
+            record['layout']['z_size'] for record in records
+        )
+    else:
+        minZ = 0
+        outputZ = 1
+
+    channels = []
+    for channelOutputIndex, channelName in enumerate(channelNames):
+        channelRecords = [
+            record for record in records
+            if record['channel_index'] is None
+            or record['channel_index'] == channelOutputIndex
+        ]
+        if not channelRecords:
+            raise errors.SourceError(
+                f'No input TIFFs matched channel {channelName!r} '
+                f'for position {positionIdentifier!r}.'
+            )
+
+        occupied = np.zeros((outputT, outputZ), dtype=bool)
+        for record in channelRecords:
+            t0, z0 = _record_origin(record, modes, minTime, minZ)
+            t1 = t0 + record['layout']['t_size']
+            z1 = z0 + record['layout']['z_size']
+
+            if t1 > outputT or z1 > outputZ:
+                raise errors.SourceError(
+                    f'Data from {record["path"].name} exceeds the '
+                    f'assembled T/Z shape.'
+                )
+
+            if occupied[t0:t1, z0:z1].any():
+                raise errors.SourceError(
+                    f'Overlapping input files detected for position '
+                    f'{positionIdentifier!r}, channel {channelName!r}: '
+                    f'{record["path"].name}.'
+                )
+            occupied[t0:t1, z0:z1] = True
+        channels.append(PlannedChannel(channelName, tuple(channelRecords)))
+
+    # The writer stores every channel of the Position with this pixel type.
+    pixelType = np.result_type(*[record['dtype'] for record in records])
+    if pixelType.name not in _OME_PIXEL_TYPES:
+        raise errors.SourceError(
+            f'OME-TIFF cannot store the pixel type {pixelType.name!r} of '
+            f'the files grouped as position {positionIdentifier!r} '
+            f'({_describe_pixel_types(records)}). Supported pixel types: '
+            f'{", ".join(_OME_PIXEL_TYPES)}.'
+        )
+
+    return PlannedPosition(
+        identifier=positionIdentifier, number=number, folder=str(folder),
+        size_t=outputT, size_z=outputZ, yx=yxShape, min_time=minTime,
+        min_z=minZ, channels=tuple(channels),
+    )
+
+
+def _record_origin(record, modes, minTime, minZ):
+    t0 = (
+        record['time_index'] - minTime
+        if modes['timepoints'] == 'per_file'
+        else 0
+    )
+    z0 = (
+        record['z_index'] - minZ
+        if modes['z_slices'] == 'per_file'
+        else 0
+    )
+    return t0, z0
+
+
+def _metadata_rows(metadataDf):
+    """Extra metadata.csv rows of the dialog's metadata DataFrame (every
+    row except basename, SizeT, SizeZ and channel_*)."""
+    if metadataDf is None:
+        return ()
+    alreadyWrittenMetadata = {'basename', 'SizeT', 'SizeZ'}
+    rows = []
+    for description, value in metadataDf['values'].items():
+        if description in alreadyWrittenMetadata:
+            continue
+        if description.startswith('channel_'):
+            continue
+        rows.append((description, str(value)))
+    return tuple(rows)
+
+
+def plan_restructure(
+        opts: Mapping, *, signals: object | None = None
+    ) -> RestructurePlan:
+    """Validate everything and plan the output, without writing anything.
+
+    ``normalize_restructure_options``, source folder and TIFF listing, then
+    ``signals.initProgressBar.emit(0)`` and
+    ``signals.progress.emit('Processing TIFF files...', 'INFO')`` (where the
+    legacy core emitted them; errors raised before emit nothing), then the
+    header scan, the Position numbering (create new: after the highest
+    valid existing Position, 1 on a destination without Positions) and
+    every check the legacy core made while writing: existing Position
+    folder without overwrite (``ExistingPositionsError``), Y/X mismatch,
+    missing channel, out of bounds and overlaps (``SourceError``), with the
+    legacy messages; also a pixel type that OME-TIFF cannot store
+    (``SourceError``; the legacy writer failed on it while writing).
+    """
+    options = normalize_restructure_options(opts)
+    sourceFolder = Path(options['source_folder'])
+    destinationFolder = Path(options['destination_folder'])
+    dimensions = options['dimensions']
+    overwrite = options['overwrite_destination']
+    create_new_positions = options['create_new_position_destination']
+
+    if not sourceFolder.is_dir():
+        raise errors.SourceError(
+            f'Source folder does not exist: {sourceFolder}'
+        )
+
+    modes = {key: dimensions[key]['mode'] for key in DIMENSION_KEYS}
+    channelSpecs = dimensions['channels']['names']
+    channelNames = [item['name'] for item in channelSpecs]
+
+    tiffFiles = _list_tiff_files(sourceFolder, options.get('files'))
+
+    if signals is not None:
+        signals.initProgressBar.emit(0)
+        signals.progress.emit('Processing TIFF files...', 'INFO')
+
+    recordsByPosition = _scan_headers(
+        tiffFiles, dimensions, modes, channelSpecs
+    )
     positionKeys = sorted(recordsByPosition, key=natural_key)
-    destinationFolder.mkdir(parents=True, exist_ok=True)
 
-    basename = (selectedOptions.get('basename') or '').strip().rstrip('_')
+    basename = (options.get('basename') or '').strip().rstrip('_')
     filenamePrefix = f'{basename}_' if basename else ''
 
-    # User-provided metadata (PhysicalSizeX/Y/Z in μm, TimeIncrement in
-    # seconds) from the setup dialogue as a Cell-ACDC metadata DataFrame
-    metadataDf = selectedOptions.get('metadata_df')
-    alreadyWrittenMetadata = {'basename', 'SizeT', 'SizeZ'}
+    posNumberShift = 0
+    if create_new_positions:
+        posNumberShift = max(
+            planning.existing_position_numbers(str(destinationFolder)),
+            default=0
+        )
+
+    numbers = [
+        positionNumber + posNumberShift
+        for positionNumber in range(1, len(positionKeys) + 1)
+    ]
+    existing = [
+        number for number in numbers
+        if (destinationFolder / f'Position_{number}').exists()
+    ]
+    positions = []
+    for number, positionIdentifier in zip(numbers, positionKeys):
+        positionFolder = destinationFolder / f'Position_{number}'
+        if positionFolder.exists() and not overwrite:
+            raise errors.ExistingPositionsError(
+                f'Output Position folder already exist: {positionFolder}. ',
+                existing=existing, choices=('overwrite', 'create-new'),
+                hint=(
+                    'Overwrite them (their Images folders are deleted) or '
+                    'create new Position folders.'
+                ),
+            )
+        positions.append(_plan_position(
+            positionIdentifier, recordsByPosition[positionIdentifier],
+            number, positionFolder, modes, channelNames,
+        ))
+
+    toDelete = tuple(
+        str(Path(position.folder) / 'Images') for position in positions
+        if overwrite and (Path(position.folder) / 'Images').exists()
+    )
+    return RestructurePlan(
+        options=options, prefix=filenamePrefix, overwrite=overwrite,
+        positions=tuple(positions), to_delete=toDelete,
+        metadata_rows=_metadata_rows(options.get('metadata_df')),
+    )
+
+
+# ------------------------------------------------------------------ execute
+def _squeeze_time_and_z(array):
+    """Drop the T and Z axes of a (T, Z, Y, X) array when their size is 1
+    (Y and X are always kept)."""
+    singletons = tuple(axis for axis in (0, 1) if array.shape[axis] == 1)
+    return np.squeeze(array, axis=singletons)
+
+
+def execute_restructure_plan(
+        plan: RestructurePlan, *, signals: object | None = None
+    ) -> dict:
+    """Write the planned Positions: per Position, remove ``Images`` when
+    overwriting, create the folders, assemble and write one OME-TIFF per
+    channel (``<prefix><channel>.tif``, singleton T/Z squeezed) and
+    ``<prefix>metadata.csv``. Same signals, in the same order, as the legacy
+    core (``initProgressBar.emit(<number of Positions>)``, per Position
+    ``progress.emit('Creating Position folder ...', 'INFO')`` and
+    ``progressBar.emit(1)``).
+
+    Returns ``{'position_folders': {identifier: folder},
+    'image_files': [paths]}``.
+    """
+    destinationFolder = Path(plan.options['destination_folder'])
+    dimensions = plan.options['dimensions']
+    modes = {key: dimensions[key]['mode'] for key in DIMENSION_KEYS}
+    channelNames = [channel['name'] for channel in dimensions['channels'][
+        'names'
+    ]]
+    overwrite = plan.overwrite
+    filenamePrefix = plan.prefix
+    destinationFolder.mkdir(parents=True, exist_ok=True)
 
     createdFiles = []
     positionFolders = {}
-    posNumberShift = 0
-    if create_new_positions:
-        pos_foldernames = myutils.get_pos_foldernames(destinationFolder)
-        last_pos_n = int(pos_foldernames[-1].split('_')[-1])
-        posNumberShift = last_pos_n
 
     if signals is not None:
-        signals.initProgressBar.emit(len(positionKeys))
+        signals.initProgressBar.emit(len(plan.positions))
 
-    for positionNumber, positionIdentifier in enumerate(positionKeys, start=1):
-        records = recordsByPosition[positionIdentifier]
-
-        posFoldername = f'Position_{positionNumber+posNumberShift}'
-        positionFolder = destinationFolder / posFoldername
-
-        if positionFolder.exists() and not overwrite:
-            raise FileExistsError(
-                f'Output Position folder already exist: {positionFolder}. '
-            )
+    for position in plan.positions:
+        positionFolder = Path(position.folder)
 
         if signals is not None:
             signals.progress.emit(
-                f'Creating Position folder {posFoldername}...', 'INFO'
+                f'Creating Position folder {positionFolder.name}...', 'INFO'
             )
 
         imagesFolder = positionFolder / 'Images'
@@ -386,68 +806,22 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
 
         positionFolder.mkdir(parents=True, exist_ok=overwrite)
         imagesFolder.mkdir(parents=True, exist_ok=overwrite)
-        positionFolders[positionIdentifier] = str(positionFolder)
+        positionFolders[position.identifier] = str(positionFolder)
 
-        yxShapes = {
-            record['layout']['yx_shape']
-            for record in records
-        }
-        if len(yxShapes) != 1:
-            raise ValueError(
-                f'Files grouped as position {positionIdentifier!r} have '
-                f'different Y/X shapes: {sorted(yxShapes)}.'
-            )
-        yxShape = next(iter(yxShapes))
+        yxShape = position.yx
+        outputT, outputZ = position.size_t, position.size_z
+        outputDtype = np.result_type(*[
+            record['dtype']
+            for channel in position.channels for record in channel.records
+        ])
 
-        if modes['timepoints'] == 'per_file':
-            timeLabels = [record['time_index'] for record in records]
-            minTime = min(timeLabels)
-            outputT = max(timeLabels) - minTime + 1
-        elif modes['timepoints'] == 'in_file':
-            minTime = 0
-            outputT = max(
-                record['layout']['t_size'] for record in records
-            )
-        else:
-            minTime = 0
-            outputT = 1
-
-        if modes['z_slices'] == 'per_file':
-            zLabels = [record['z_index'] for record in records]
-            minZ = min(zLabels)
-            outputZ = max(zLabels) - minZ + 1
-        elif modes['z_slices'] == 'in_file':
-            minZ = 0
-            outputZ = max(
-                record['layout']['z_size'] for record in records
-            )
-        else:
-            minZ = 0
-            outputZ = 1
-
-        outputDtype = np.result_type(
-            *[record['dtype'] for record in records]
-        )
-
-        for channelOutputIndex, channelName in enumerate(channelNames):
-            channelRecords = [
-                record for record in records
-                if record['channel_index'] is None
-                or record['channel_index'] == channelOutputIndex
-            ]
-            if not channelRecords:
-                raise ValueError(
-                    f'No input TIFFs matched channel {channelName!r} '
-                    f'for position {positionIdentifier!r}.'
-                )
-
+        for channelOutputIndex, channel in enumerate(position.channels):
             output = np.zeros(
                 (outputT, outputZ, yxShape[0], yxShape[1]),
                 dtype=outputDtype,
             )
-            occupied = np.zeros((outputT, outputZ), dtype=bool)
 
-            for record in channelRecords:
+            for record in channel.records:
                 with tifffile.TiffFile(record['path']) as tif:
                     array = tif.series[0].asarray()
 
@@ -483,44 +857,22 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
                         f'{tuple(array.shape[2:])}.'
                     )
 
-                t0 = (
-                    record['time_index'] - minTime
-                    if modes['timepoints'] == 'per_file'
-                    else 0
-                )
-                z0 = (
-                    record['z_index'] - minZ
-                    if modes['z_slices'] == 'per_file'
-                    else 0
+                t0, z0 = _record_origin(
+                    record, modes, position.min_time, position.min_z
                 )
                 t1 = t0 + array.shape[0]
                 z1 = z0 + array.shape[1]
-
-                if t1 > outputT or z1 > outputZ:
-                    raise ValueError(
-                        f'Data from {record["path"].name} exceeds the '
-                        f'assembled T/Z shape.'
-                    )
-
-                if occupied[t0:t1, z0:z1].any():
-                    raise ValueError(
-                        f'Overlapping input files detected for position '
-                        f'{positionIdentifier!r}, channel {channelName!r}: '
-                        f'{record["path"].name}.'
-                    )
-
                 output[t0:t1, z0:z1, :, :] = array
-                occupied[t0:t1, z0:z1] = True
 
             outputPath = (
-                imagesFolder / f'{filenamePrefix}{channelName}.tif'
+                imagesFolder / f'{filenamePrefix}{channel.name}.tif'
             )
 
             tifffile.imwrite(
                 outputPath,
-                np.squeeze(output),
+                _squeeze_time_and_z(output),
                 ome=True,
-                metadata={'Name': channelName},
+                metadata={'Name': channel.name},
             )
             createdFiles.append(str(outputPath))
 
@@ -532,15 +884,10 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
             writer.writerow(('basename', filenamePrefix))
             writer.writerow(('SizeT', str(SizeT)))
             writer.writerow(('SizeZ', str(SizeZ)))
-            for c, channel in enumerate(channelNames):
-                writer.writerow((f'channel_{c}_name', channel))
-            if metadataDf is not None:
-                for description, value in metadataDf['values'].items():
-                    if description in alreadyWrittenMetadata:
-                        continue
-                    if description.startswith('channel_'):
-                        continue
-                    writer.writerow((description, str(value)))
+            for c, channelName in enumerate(channelNames):
+                writer.writerow((f'channel_{c}_name', channelName))
+            for description, value in plan.metadata_rows:
+                writer.writerow((description, value))
 
         if signals is not None:
             signals.progressBar.emit(1)
@@ -551,6 +898,29 @@ def create_datastruct_from_restruct_tiff_dialogue_options(
     }
 
     return out
+
+
+def create_datastruct_from_restruct_tiff_dialogue_options(
+        selectedOptions, *, signals=None
+    ):
+    """Re-structure loose TIFF files as the dialog's options say:
+    ``execute_restructure_plan(plan_restructure(...))``, so every validation
+    error is raised before anything is written. A selected
+    'segmentation_mask_folder' is not used: a WARNING says so (through
+    ``signals`` when given)."""
+    plan = plan_restructure(selectedOptions, signals=signals)
+    segmFolder = selectedOptions.get('segmentation_mask_folder')
+    if segmFolder:
+        text = (
+            f'The segmentation mask folder "{segmFolder}" is ignored: '
+            '"Re-structure image files" only re-structures the TIFF files '
+            'of the source folder.'
+        )
+        if signals is not None:
+            signals.progress.emit(text, 'WARNING')
+        else:
+            logger.warning(text)
+    return execute_restructure_plan(plan, signals=signals)
 
 
 # ----------------------------------------------------------------- metadata

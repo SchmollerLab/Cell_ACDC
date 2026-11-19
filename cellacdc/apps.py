@@ -23746,6 +23746,8 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         msg.warning(self, 'Invalid source folder', txt)
 
     def ok_cb(self):
+        from .acdc_datastruct import errors, restructure
+
         sourceFolder = self.sourceFolderPathControl.path()
         destinationFolder = self.dstFolderPathControl.path()
 
@@ -23776,6 +23778,12 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         self.selectedOptions['dimensions'] = dimensionOptions
         self.selectedOptions['metadata'] = self.metadata()
         self.selectedOptions['metadata_df'] = self.metadataDataFrame()
+
+        try:
+            restructure.normalize_restructure_options(self.selectedOptions)
+        except errors.RestructureOptionsError as err:
+            self._warn(html.escape(err.message))
+            return
 
         self.cancel = False
         self.close()
@@ -23938,7 +23946,8 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
 
         win = filenameDialog(
             title='Save recipe',
-            basename='datastruct_restructure_recipe',
+            # filenameDialog joins basename and entry with '_'
+            basename=restructure.RECIPE_PREFIX.rstrip('_'),
             ext='.json',
             allowEmpty=False,
             defaultEntry=default_text,
@@ -23974,24 +23983,12 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         )
 
     def selectRecipeFilepath(self):
-        if not os.path.exists(restruct_files_recipes_path):
-            self.warnNoRecipesAvailable()
-            return
+        from .acdc_datastruct import restructure
 
         availableRecipes = []
         displayNameToFilenameMapper = {}
-        for file in myutils.listdir(restruct_files_recipes_path):
-            if not file.startswith('datastruct_restructure_recipe'):
-                continue
-
-            if not file.lower().endswith('.json'):
-                continue
-
-            parts = file.split(f'datastruct_restructure_recipe_', 1)
-            if len(parts) != 2:
-                continue
-
-            endname = parts[1]
+        for file in restructure.recipe_filenames(restruct_files_recipes_path):
+            endname = file[len(restructure.RECIPE_PREFIX):]
             filepath = os.path.join(restruct_files_recipes_path, file)
             modified_on = datetime.datetime.fromtimestamp(
                 os.path.getmtime(filepath)
@@ -24034,24 +24031,16 @@ class ReStructTiffDataStructureSetupDialogue(QBaseDialog):
         self.loadRecipeButton.confirmAction()
     
     def loadLastParameters(self):
-        from .acdc_datastruct import restructure
+        from .acdc_datastruct import errors, restructure
 
-        if not os.path.exists(restruct_files_recipes_path):
+        try:
+            filepath = restructure.last_setup_path(
+                restruct_files_recipes_path
+            )
+        except errors.RestructureOptionsError:
             self.warnNoRecipesAvailable()
             return
 
-        if not myutils.listdir(restruct_files_recipes_path):
-            self.warnNoRecipesAvailable()
-            return
-        
-        for file in myutils.listdir(restruct_files_recipes_path):
-            if file.startswith('_last_setup'):
-                break
-        else:
-            self.warnNoRecipesAvailable()
-            return
-        
-        filepath = os.path.join(restruct_files_recipes_path, file)
         savedOptions = restructure.load_recipe(filepath)
         
         self.setDimensionOptions(savedOptions)

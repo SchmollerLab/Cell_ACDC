@@ -48,6 +48,9 @@ def run(mainWin: '_main.mainWin'):
     mainWin._restructure_worker.signals.critical.connect(
         mainWin.workerCritical
     )
+    mainWin._restructure_worker.signals.critical.connect(
+        mainWin._restructure_thread.quit
+    )
     mainWin._restructure_worker.signals.initProgressBar.connect(
         mainWin.workerInitProgressbar
     )
