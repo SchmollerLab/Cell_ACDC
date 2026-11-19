@@ -114,6 +114,53 @@ class _WorkflowKernel:
             self.backend_type in ('remote', 'local')
         )
 
+    def verify_worker_environment(self, logger_func=None):
+        """Check the worker's Cell-ACDC before using it (see
+        `cellacdc/service/protocol.py`).
+
+        Remote worker: raises if it uses another protocol version. Local
+        worker: a model environment created by Cell-ACDC is repaired if it
+        has another Cell-ACDC build; for an environment of the user, a
+        different build is only reported (the worker's own protocol check
+        still applies when it starts).
+        """
+        if logger_func is None:
+            logger_func = getattr(self, 'logger_func', self.logger.info)
+        if self.backend_url is not None or self.backend_type == 'remote':
+            from cellacdc.service.client import (
+                WorkerVersionError, check_worker_version,
+            )
+            try:
+                check_worker_version(self.backend_url, timeout=30.0)
+            except WorkerVersionError as err:
+                raise RuntimeError(
+                    f'{err}\nInstall the same Cell-ACDC version on the server.'
+                ) from err
+            return
+        env_python = self.env_python
+        if env_python is None or (
+            os.path.normcase(os.path.abspath(env_python))
+            == os.path.normcase(os.path.abspath(sys.executable))
+        ):
+            return
+        from cellacdc.service import environment
+        if environment.is_managed_model_env(env_python):
+            if not environment.ensure_cellacdc_cli(
+                env_python, logger_func=logger_func
+            ):
+                raise RuntimeError(
+                    f'Cell-ACDC could not be installed in {env_python} '
+                    '(see the log above).'
+                )
+            return
+        mismatch = environment.cellacdc_runtime_mismatch(env_python)
+        if mismatch is not None:
+            logger_func(
+                f'WARNING: The Cell-ACDC in {env_python} differs from this '
+                f'Cell-ACDC: {mismatch}. Install the same Cell-ACDC version '
+                'in that environment.'
+            )
+
     def init_backend(
             self, 
             module_name, 
@@ -426,9 +473,15 @@ class SegmKernel(_WorkflowKernel):
             self.init_model_kwargs['is_rgb'] = True
 
         if self.uses_worker_backend():
+            if (
+                (self.backend_url is not None or self.backend_type == 'remote')
+                and self.backend_url is None
+            ):
+                raise RuntimeError('A remote backend URL is required.')
+            # Before reading the model's arguments from the worker or its
+            # environment, which must run this Cell-ACDC build
+            self.verify_worker_environment()
             if self.backend_url is not None or self.backend_type == 'remote':
-                if self.backend_url is None:
-                    raise RuntimeError('A remote backend URL is required.')
                 from cellacdc.service.client import get_model_arg_spec
                 init_argspecs, segment_argspecs = get_model_arg_spec(
                     self.backend_url

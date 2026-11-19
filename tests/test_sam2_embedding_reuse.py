@@ -271,12 +271,14 @@ def test_sam2_worker_client_roundtrip(sam2_wrapper, monkeypatch, tmp_path, singl
             return self.data
 
     class Session:
-        def post(self, url, files, data, timeout):
+        def post(self, url, files, timeout):
+            # Every argument is an attachment; SAM embedding operations
+            # always send the (possibly empty) embeddings
+            assert sorted(files) == ['embeddings', 'image', 'params']
             response = asyncio.run(endpoint(
                 image=Upload(files['image'][1]),
-                params=data['params'], params_data=None,
-                embedding_meta=data['embedding_meta'],
-                embeddings=Upload(files['embeddings'][1]) if 'embeddings' in files else None,
+                params=Upload(files['params'][1]),
+                embeddings=Upload(files['embeddings'][1]),
             ))
             return SimpleNamespace(
                 ok=True, content=response.body, status_code=response.status_code,
