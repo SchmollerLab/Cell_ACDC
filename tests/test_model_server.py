@@ -1509,6 +1509,32 @@ def test_payload_sends_other_path_like_values_as_strings(tmp_path, name):
     assert decoded == {'path': str(value)}
 
 
+def test_segment_kwargs_upload_relative_path_like_files(monkeypatch, tmp_path):
+    """The segment kwargs (/segment, /segment3DT, /jobs/segment) upload
+    files like `payload.encode` (/init, /add_prompt) does: a relative path-like
+    value without folder (`Path('weights.pt')`) is a file, while the bare
+    string 'weights.pt' is not (see `payload.is_file_path`)."""
+    from pathlib import Path
+    from cellacdc.service import client as client_module, payload
+
+    monkeypatch.chdir(tmp_path)
+    Path('weights.pt').write_bytes(b'weights')
+    kwargs = {
+        'path_like': Path('weights.pt'), 'text': 'weights.pt',
+        'folder': Path('.'), 'missing': Path('missing.pt'),
+        'signals': object(),
+    }
+
+    decoded = payload.decode(client_module._encode_segment_kwargs(kwargs))
+
+    assert decoded == {
+        'path_like': payload.ModelFile('weights.pt', b'weights'),
+        'text': 'weights.pt', 'folder': '.', 'missing': 'missing.pt',
+    }
+    del kwargs['signals']
+    assert decoded == payload.decode(payload.encode(kwargs))
+
+
 def test_payload_kwarg_names_never_collide(tmp_path):
     """The `.npz` keys are generated, never kwarg names: kwargs named like
     internal keys do not overwrite each other."""

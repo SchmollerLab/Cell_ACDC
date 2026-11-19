@@ -62,13 +62,18 @@ def _attachment(name: str, content: bytes):
 def _encode_segment_kwargs(kwargs: Dict[str, Any]) -> bytes:
     """Encode segment kwargs as one attachment (see `payload.encode`),
     preserving arrays, DataFrames and files on disk.
+
+    Path-like values are passed to `payload.encode` unchanged: as strings
+    (`_sanitize_kwargs`), relative paths without a folder such as
+    `Path('weights.pt')` would not be uploaded (see `payload.is_file_path`).
     """
     from cellacdc.service import payload
 
     data_kwargs = {
         key: value for key, value in kwargs.items()
         if key not in _LOCAL_ONLY_KWARGS and (
-            isinstance(value, np.ndarray) or payload._is_dataframe(value)
+            isinstance(value, (np.ndarray, os.PathLike))
+            or payload._is_dataframe(value)
         )
     }
     plain = _sanitize_kwargs({
