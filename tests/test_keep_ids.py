@@ -110,6 +110,7 @@ def _make_window(segm_data=None):
         keepIDsButton=Mock(isChecked=Mock(return_value=True)),
         whitelistIDsButton=Mock(isChecked=Mock(return_value=False)),
         isBrushStrokesPromptActive=Mock(return_value=False),
+        isBoxPromptActive=Mock(return_value=False),
         buttonAddPointsByClickingActive=Mock(return_value=None),
         undoAction=Mock(),
         redoAction=Mock(),

@@ -668,12 +668,7 @@ class guiWin(
         # {(pos_i, frame_i): deque of copies of the frame boxes}
         self.magicPromptsBoxesUndo = {}
         # `widgets.PromptBoxROI` items of the displayed boxes
-        for item in getattr(self, 'magicPromptsBoxItems', []):
-            try:
-                self.ax1.removeItem(item)
-            except Exception as err:
-                pass
-        self.magicPromptsBoxItems = []
+        self.removeMagicPromptsBoxItems()
         # ROI and start point of the box being drawn
         self.magicPromptsDrawingBox = None
         self.isBoxPromptDragImg1 = False
@@ -18037,6 +18032,16 @@ When working with 3D segmentation masks:
             f'{"" if z is None else f", z-slice={z+1}"})'
         )
         self.drawMagicPromptsBoxes()
+
+    def removeMagicPromptsBoxItems(self):
+        """Remove the displayed box prompts (`magicPromptsBoxItems`, also
+        before they exist, e.g., in `initGlobalAttr`)"""
+        for item in getattr(self, 'magicPromptsBoxItems', []):
+            try:
+                self.ax1.removeItem(item)
+            except Exception as err:
+                pass
+        self.magicPromptsBoxItems = []
 
     def drawMagicPromptsBoxes(self):
         """Display the box prompts of the current frame (and z-slice)"""
