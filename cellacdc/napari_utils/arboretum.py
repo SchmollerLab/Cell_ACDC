@@ -38,7 +38,8 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         selectImageFile = widgets.QDialogListbox(
             'Select image file',
             'Select which image file to load\n',
-            image_files, multiSelection=False, parent=self
+            image_files, multiSelection=False, parent=self,
+            allowEmptySelection=False
         )
         selectImageFile.exec_()
         if selectImageFile.cancel:

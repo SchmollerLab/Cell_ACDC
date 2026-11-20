@@ -1,16 +1,19 @@
 """The launcher (`_main.mainWin`) groups the module buttons into vertically
 stacked group boxes (preprocessing, segmentation and tracking, measurements
-visualisation) above the "Controls" box, numbered across the groups in the
-order of a typical analysis."""
+visualisation) above the "Controls" box, in the order of a typical analysis.
+The buttons show no numbers, and docs and messages name the modules (e.g.
+"the GUI"), never by number: getting-started.rst lists the buttons in launcher
+order."""
 import logging
 import os
+import re
 
 import pytest
 from qtpy.QtCore import QObject, QSize, Signal
 from qtpy.QtGui import QIcon
-from qtpy.QtWidgets import QApplication, QGroupBox, QPushButton
+from qtpy.QtWidgets import QApplication, QGroupBox, QPushButton, QWidget
 
-from cellacdc import _main, measurements_viewer, myutils
+from cellacdc import _main, dataStruct, measurements_viewer, myutils
 
 
 @pytest.fixture(scope='module')
@@ -201,3 +204,84 @@ def test_measurements_viewer_button_opens_and_tracks_window(
     viewer.close()
     assert win.measurementsViewerWins == []
     assert win.getOpenModules() == []
+
+
+def test_data_structure_button_texts_have_no_module_number(
+        buildLauncher, monkeypatch
+    ):
+    # The other module buttons show no numbers either
+    monkeypatch.setattr(
+        _main.mainWin, '_showDataStructWin', lambda self: None
+    )
+    win = buildLauncher()
+    win.setColorsAndText()
+    initial = win.dataStructButton.text()
+
+    win.launchDataStruct()
+    assert win.dataStructButton.text() == 'Creating data structure running...'
+
+    # Restored exactly (the initial label has trailing spaces)
+    win.restoreDefaultButtons()
+    assert win.dataStructButton.text() == initial
+
+
+def test_python_bioformats_data_structure_button_has_no_module_number(
+        buildLauncher, monkeypatch
+    ):
+    def question(self, parent, title, text, buttonsTexts=(), **kwargs):
+        # buttonsTexts = ('Cancel', "Use BioIO" button, ...)
+        self.clickedButton = buttonsTexts[1]
+        self.cancel = False
+
+    class FakeDataStructWin(QWidget):
+        bioformats_backend = 'python-bioformats'
+
+        def __init__(self, *args, **kwargs):
+            super().__init__()
+
+        def show(self):
+            pass
+
+        def main(self):
+            pass
+
+    monkeypatch.setattr(_main.widgets.myMessageBox, 'question', question)
+    monkeypatch.setattr(dataStruct, 'createDataStructWin', FakeDataStructWin)
+    win = buildLauncher()
+    win.setColorsAndText()
+
+    win._showDataStructWin()
+
+    button = win.dataStructButton
+    assert not button.isEnabled()
+    assert button.text() == (
+        'Restart Cell-ACDC to create a data structure again'
+    )
+    toolTip = button.toolTip()
+    assert 'the data structure module can be launched only once' in (
+        ' '.join(toolTip.split())
+    )
+    assert 'module 0' not in toolTip
+    assert 'moduel' not in toolTip and 'interal' not in toolTip
+    assert all(len(line) <= 80 for line in toolTip.splitlines())
+
+
+def test_getting_started_lists_the_module_buttons_in_launcher_order(
+        buildLauncher
+    ):
+    # The docs list the buttons by their texts, in launcher order (no
+    # numbers: docs and messages name the modules)
+    win = buildLauncher(spotmaxInstalled=True)
+    rst_path = os.path.join(
+        os.path.dirname(_main.__file__),
+        'docs', 'source', 'getting-started.rst'
+    )
+    with open(rst_path, encoding='utf-8') as file:
+        text = file.read()
+    start = text.index('\nThe Main Menu\n')
+    end = text.index('\nTop ribbon options include:', start)
+    items = re.findall(r'^\* (.+)$', text[start:end], flags=re.MULTILINE)
+
+    buttonTexts = [button.text().strip() for button in win.moduleButtons]
+    assert buttonTexts[-1] == 'Launch SpotMAX...'
+    assert [itemText.strip() for itemText in items] == buttonTexts

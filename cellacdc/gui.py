@@ -14608,7 +14608,8 @@ When working with 3D segmentation masks:
         selectSegmWin = widgets.QDialogListbox(
             'Select segmentation file',
             'Select segmentation file to use as ROI:\n',
-            existingSegmEndnames, multiSelection=False, parent=self
+            existingSegmEndnames, multiSelection=False, parent=self,
+            allowEmptySelection=False
         )
         selectSegmWin.exec_()
         if selectSegmWin.cancel:
@@ -17044,7 +17045,8 @@ When working with 3D segmentation masks:
                 'Select model to use for segmentation: ',
                 models,
                 multiSelection=False,
-                parent=self
+                parent=self,
+                allowEmptySelection=False
             )
             win.exec_()
             if win.cancel:

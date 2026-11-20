@@ -23,31 +23,31 @@ The Main Menu
 The main menu is a **hub** through which you can access Module buttons
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Through the main menu, all modules of Cell-ACDC can be accessed. The module
-buttons are grouped by analysis step into three boxes and numbered in the
-order of a typical analysis:
+buttons are grouped by analysis step into three boxes, from top to bottom in
+the order of a typical analysis:
 
 **Image preprocessing**
 
-0. Create data structure from microscopy/image file(s)...
+* Create data structure from microscopy/image file(s)...
     This module will allow you to **create a suitable data structure** from raw microscopy files.
-1. Launch data prep module...
+* Launch data prep module...
     With this module you can **align** time-lapse microscopy data and select a **sharp image from a z-stack**, as well as **crop** images.
 
 **Segmentation and tracking**
 
-2. Automatic: launch segmentation and tracking module...
+* Automatic: launch segmentation and tracking module...
     Using this module, you can perform **segmentation** and **tracking** tasks using common methods.
-3. Correction: launch GUI...
+* Correction: launch GUI...
     Using the GUI the resulting data can be **inspected** and **corrected** for mistakes. Also, **cell cycle annotation** can be carried out.
 
 **Measurements visualisation**
 
-4. Launch measurements viewer...
+* Launch measurements viewer...
     Lastly, the :doc:`measurements-viewer` **plots** the measurements of
     the ``acdc_output`` table over time for each cell, next to the images,
     and lets you mark **time points** and translate them into cell cycle
     **phases**.
-5. Launch SpotMAX...
+* Launch SpotMAX...
     Shown only if SpotMAX is installed: **detection** and
     **quantification** of **spots** and subcellular structures.
 
@@ -96,8 +96,8 @@ Creating Data Structure
 **Create data structure from microscopy/image file(s)...**
 
 The first step in analysing data with Cell-ACDC is creating a
-**suitable data structure** from raw microscopy files. Module 0 can convert
-supported microscopy files into this structure.
+**suitable data structure** from raw microscopy files. This module can
+convert supported microscopy files into this structure.
 
 .. warning:: 
 
@@ -269,7 +269,7 @@ to show an interaction menu through which you can **remove** it.
 
     The background ROIs are used to compute background values from those areas. 
     These values will be saved in the ``acdc_output`` CSV table that you can 
-    create with the module 3 ``Correction: launch GUI...``. The background values specific 
+    create with the GUI (``Correction: launch GUI...``). The background values specific 
     to these ROIs will be called ``<ChannelName>_dataPrepBkgr_bkgrVal_<metric_name>``, where 
     ``<metric_name>`` will be the ``median``, ``mean``, etc. 
 

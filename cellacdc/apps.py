@@ -3062,9 +3062,10 @@ class SetMeasurementsDialog(QBaseDialog):
         selectNameWin = widgets.QDialogListbox(
             'Choose selection to load',
             'Choose selection to load:\n',
-            saved_selections, 
-            multiSelection=False, 
-            parent=self
+            saved_selections,
+            multiSelection=False,
+            parent=self,
+            allowEmptySelection=False
         )
         selectNameWin.exec_()
         if selectNameWin.cancel:
@@ -5332,9 +5333,10 @@ class GenerateMotherBudTotalTableSelectColumnsDialog(QBaseDialog):
         selectNameWin = widgets.QDialogListbox(
             'Choose selection to load',
             'Choose selection to load:\n',
-            existing_names, 
-            multiSelection=False, 
-            parent=self
+            existing_names,
+            multiSelection=False,
+            parent=self,
+            allowEmptySelection=False
         )
         selectNameWin.exec_()
         if selectNameWin.cancel:
@@ -7611,7 +7613,8 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
                 The following Positions were <b>SKIPPED</b> because they did 
                 <b>not have cell cycle annotations</b>.<br><br>
                 To add lineage tree information you first need to <b>do the 
-                cell cycle analysis</b> in module 3 "Main GUI".<br><br>
+                cell cycle analysis</b> in the GUI (launcher button
+                "Correction: launch GUI...").<br><br>
             """)
         else:
             infoText = ("""

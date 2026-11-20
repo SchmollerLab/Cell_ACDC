@@ -899,8 +899,8 @@ class welcomeWin(QWidget):
     def openGUIsingleImage(self):
         msg = widgets.myMessageBox(wrapText=False)
         txt = html_utils.paragraph(f"""
-            After clicking "Ok" on this dialogue, the Cell-ACDC GUI from 
-            module 3 will open.<br><br>
+            After clicking "Ok" on this dialogue, the Cell-ACDC GUI
+            (launcher button "Correction: launch GUI...") will open.<br><br>
             You will then be asked to select an image file (e.g., .tif or .png), 
             or a video file (e.g., .avi). 
         """)

@@ -154,8 +154,10 @@ class mainWin(QMainWindow):
         font.setPixelSize(13)
 
         # Module buttons in vertically stacked group boxes, one per analysis
-        # step. The numbers follow the order of a typical analysis across the
-        # groups (docs and messages refer to e.g. "module 3")
+        # step, in the order of a typical analysis. Buttons, docs and messages
+        # name the modules (e.g. "the GUI"), never by number (list in
+        # docs/source/getting-started.rst, checked by
+        # tests/test_launcher_layout.py)
         self.moduleButtons = []
 
         self.preprocessingGroupBox, layout = self.addModulesGroupBox(
@@ -1852,9 +1854,7 @@ class mainWin(QMainWindow):
 
     def launchDataStruct(self, checked=False):
         self.dataStructButton.setPalette(self.moduleLaunchedPalette)
-        self.dataStructButton.setText(
-            '0. Creating data structure running...'
-        )
+        self.dataStructButton.setText('Creating data structure running...')
 
         QTimer.singleShot(100, self._showDataStructWin)
 
@@ -1963,11 +1963,13 @@ class mainWin(QMainWindow):
                 if self.dataStructWin.bioformats_backend == 'python-bioformats':
                     self.dataStructButton.setPalette(self.defaultButtonPalette)
                     self.dataStructButton.setText(
-                        '0. Restart Cell-ACDC to enable module 0 again.')
+                        'Restart Cell-ACDC to create a data structure again'
+                    )
                     self.dataStructButton.setToolTip(
-                        'Due to an interal limitation of the Java Virtual Machine\n'
-                        'moduel 0 can be launched only once.\n'
-                        'To use it again close and reopen Cell-ACDC'
+                        'Due to an internal limitation of the Java Virtual '
+                        'Machine, the data structure\n'
+                        'module can be launched only once. To use it again, '
+                        'close and reopen Cell-ACDC.'
                     )
                     self.dataStructButton.setDisabled(True)
                 
@@ -2073,9 +2075,8 @@ class mainWin(QMainWindow):
         self.logger.log(getattr(logging, loggerLevel), text)
 
     def restoreDefaultButtons(self):
-        self.dataStructButton.setText(
-            'Create data structure from microscopy/image file(s)...'
-        )
+        # The initial label (stored by `setColorsAndText`, run by `show`)
+        self.dataStructButton.setText(self.defaultTextDataStructButton)
         self.dataStructButton.setPalette(self.defaultButtonPalette)
 
     def launchDataPrep(self, checked=False):
