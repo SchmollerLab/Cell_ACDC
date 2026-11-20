@@ -160,6 +160,10 @@ include = ["cellacdc*"]
 exclude = ["cellacdc.docs*"]
 namespaces = false
 
+[tool.setuptools.package-data]
+# Read at runtime by rst_utils.get_tooltips_from_docs (GUI tooltips)
+cellacdc = ["docs/source/tooltips.rst"]
+
 [tool.setuptools_scm]
 version_file = "cellacdc/_version.py"
 

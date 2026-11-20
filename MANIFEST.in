@@ -20,6 +20,8 @@ prune cellacdc/cellacdc.egg-info
 prune cellacdc/utils/deprecated
 prune cellacdc/docs/source/images
 prune cellacdc/docs
+# Read at runtime by rst_utils.get_tooltips_from_docs (GUI tooltips)
+include cellacdc/docs/source/tooltips.rst
 
 prune cellacdc/models/YeastMate/detectron2
 prune cellacdc/models/YeastMate/pycocotools
