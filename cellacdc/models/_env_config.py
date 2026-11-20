@@ -177,6 +177,53 @@ MODEL_ENVS = {
         'torch': True,
         'packages': ['nnInteractive', 'huggingface_hub'],
     },
+    # Promptable model. `napari_convpaint/__init__.py` imports napari and Qt,
+    # which the model does not need: napari-convpaint is installed without
+    # dependencies (setup step) and its model is imported without running
+    # `__init__.py` (see promptable_models/ConvPaint/acdcPromptSegment.py).
+    # `packages` are the dependencies of the model (keep in sync with
+    # `myutils._CONVPAINT_PACKAGES`).
+    'ConvPaint': {
+        'python': '3.12',
+        'torch': True,
+        'packages': [
+            {'pkg_name': 'catboost', 'min_version': '1.2.8',
+             'include_lower_version': True},
+            {'pkg_name': 'timm', 'min_version': '1.0.20',
+             'include_lower_version': True},
+            'einops',
+            'joblib',
+            'pandas',
+            {'pkg_name': 'pyyaml', 'import_pkg_name': 'yaml'},
+            'requests',
+            {'pkg_name': 'scikit-image', 'import_pkg_name': 'skimage'},
+            {'pkg_name': 'scikit-learn', 'import_pkg_name': 'sklearn'},
+            'scipy',
+        ],
+        'main_env_packages': [
+            {'pkg_name': 'napari-convpaint', 'min_version': '1.2',
+             'include_lower_version': True},
+        ],
+        'setup_steps': [
+            {
+                'name': 'napari-convpaint',
+                'description': 'Install napari-convpaint without its '
+                               'napari and Qt dependencies (only the '
+                               'ConvPaint model is used).',
+                'check': 'import importlib.util\n'
+                         'import importlib.metadata as m\n'
+                         'from packaging.version import Version\n'
+                         "assert importlib.util.find_spec('napari_convpaint') "
+                         'is not None\n'
+                         "assert Version(m.version('napari-convpaint')) "
+                         ">= Version('1.2')",
+                'commands': [
+                    ['-m', 'pip', 'install', '--no-deps',
+                     'napari-convpaint>=1.2'],
+                ],
+            },
+        ],
+    },
     'cellsam': {
         'torch': True,
         'main_env_packages': [{'pkg_name': 'cellSAM'}],

@@ -1,5 +1,6 @@
 import re
 import os
+import inspect
 import shutil
 import time
 import json
@@ -6665,10 +6666,11 @@ class relabelSequentialWorker(QObject):
 class MagicPromptsWorker(QObject):
     def __init__(
             self, posData, image, df_points, model, model_segment_kwargs,
-            image_origin=(0, 0, 0), global_image=None
+            image_origin=(0, 0, 0), global_image=None, id_offset=0,
+            z_slice=None
         ):
         QObject.__init__(self)
-        
+
         self.signals = signals()
         self.posData = posData
         self.image = image
@@ -6676,45 +6678,153 @@ class MagicPromptsWorker(QObject):
             self.global_image = global_image
         else:
             self.global_image = image
+        # `df_points` is None for prompts that are not points
+        # (e.g., brush strokes already used to train the model)
         self.df_points = df_points
         self.image_origin = image_origin
         self.model = model
         self.model_segment_kwargs = model_segment_kwargs
-    
+        # Added to the IDs of model output (e.g., to avoid collisions of
+        # new objects with existing IDs)
+        self.id_offset = id_offset
+        # If not None, only this z-slice of the z-stack `global_image` is
+        # segmented (passed to the model as `z_slice`) and combined with the
+        # same z-slice of the 3D labels
+        self.z_slice = z_slice
+
+    @staticmethod
+    def _accepts_kwarg(func, name):
+        try:
+            params = inspect.signature(func).parameters
+        except (TypeError, ValueError):
+            return True
+        if name in params:
+            return True
+        return any(
+            p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
+        )
+
     @worker_exception_handler
     def run(self):
         from cellacdc.promptable_models import utils
-        
-        for row in self.df_points.itertuples():
-            prompt_id = row.id
-            point = (row.z, row.y, row.x)
-            print(f'Adding point prompt {point} with id = {prompt_id}...')
-            parent_obj_id = row.Cell_ID if row.Cell_ID == prompt_id else 0
-            self.model.add_prompt(
-                prompt=point, 
-                prompt_id=prompt_id, 
-                parent_obj_id=parent_obj_id,
-                image=self.image, 
-                image_origin=self.image_origin, 
-                prompt_type='point'
-            )
-        
+
+        edited_IDs = []
+        if self.df_points is not None:
+            for row in self.df_points.itertuples():
+                prompt_id = row.id
+                point = (row.z, row.y, row.x)
+                print(f'Adding point prompt {point} with id = {prompt_id}...')
+                parent_obj_id = row.Cell_ID if row.Cell_ID == prompt_id else 0
+                self.model.add_prompt(
+                    prompt=point,
+                    prompt_id=prompt_id,
+                    parent_obj_id=parent_obj_id,
+                    image=self.image,
+                    image_origin=self.image_origin,
+                    prompt_type='point'
+                )
+            edited_IDs = self.df_points['Cell_ID'].unique()
+
+        lab = self.posData.lab
+        image = self.global_image
+        segment_kwargs = dict(self.model_segment_kwargs)
+        if self.z_slice is not None:
+            lab = lab[self.z_slice]
+            if self._accepts_kwarg(self.model.segment, 'z_slice'):
+                segment_kwargs['z_slice'] = self.z_slice
+            else:
+                # The model cannot segment one z-slice of a z-stack (e.g.,
+                # a custom model) --> give it only the z-slice
+                image = image[self.z_slice]
+
         lab_out = self.model.segment(
-            self.global_image, 
-            lab=self.posData.lab,
-            **self.model_segment_kwargs
+            image,
+            lab=lab,
+            **segment_kwargs
         )
-        edited_IDs = self.df_points['Cell_ID'].unique()
+
+        lab_out = np.asarray(lab_out)
+        is_whole_zstack = (
+            self.z_slice is not None
+            and lab_out.ndim == lab.ndim + 1
+            and lab_out.shape[1:] == lab.shape
+        )
+        if is_whole_zstack:
+            # The model ignored `z_slice` (e.g., dropped by the model server
+            # because the model does not accept it) and segmented the
+            # entire z-stack
+            lab_out = lab_out[self.z_slice]
+        if lab_out.shape != lab.shape:
+            raise ValueError(
+                f'The model output has shape {lab_out.shape} which is '
+                f'different from the segmentation masks shape {lab.shape}.'
+            )
+
+        if self.id_offset:
+            max_output_id = int(lab_out.max()) if lab_out.size else 0
+            if int(self.id_offset) + max_output_id > np.iinfo(np.uint32).max:
+                raise ValueError(
+                    'Cannot add new objects: their IDs would exceed the uint32 '
+                    'range. Relabel the existing objects before segmenting.'
+                )
+            lab_out = lab_out.astype(np.uint32)
+            lab_out[lab_out > 0] += np.uint32(self.id_offset)
 
         lab_new, lab_union, lab_interesection = (
             utils.insert_model_output_into_labels(
-                self.posData.lab, 
-                lab_out, 
+                lab,
+                lab_out,
                 edited_IDs=edited_IDs
             )
         )
-        
+
         self.signals.finished.emit((lab_new, lab_union, lab_interesection))
+
+class MagicPromptsSegmStackWorker(segmVideoWorker):
+    """Segment a range of frames with a trained promptable model (e.g.,
+    ConvPaint trained on brush strokes). Reuses the signals of
+    `segmVideoWorker` so that `guiWin.segmVideoWorkerFinished` can be used.
+    """
+    def __init__(
+            self, posData, model, model_segment_kwargs, startFrameNum,
+            stopFrameNum, annot_ndim
+        ):
+        QObject.__init__(self)
+        self.posData = posData
+        self.model = model
+        self.model_kwargs = model_segment_kwargs
+        self.startFrameNum = startFrameNum
+        self.stopFrameNum = stopFrameNum
+        self.annot_ndim = annot_ndim
+        self.logger = workerLogger(self.progress)
+
+    @worker_exception_handler
+    def run(self):
+        from cellacdc.promptable_models import utils
+
+        t0 = time.perf_counter()
+        self.posData.segm_data = self._check_extend_segm_data(
+            self.posData.segm_data, self.stopFrameNum
+        )
+        lab_shape = self.posData.segm_data.shape[1:]
+        for frame_i in range(self.startFrameNum-1, self.stopFrameNum):
+            img = utils.get_brush_strokes_image(
+                self.posData, frame_i, self.annot_ndim
+            )
+            segment_kwargs = {**self.model_kwargs, 'frame_i': frame_i}
+            lab = self.model.segment(img, **segment_kwargs)
+            lab = np.asarray(lab)
+            if lab.shape != lab_shape:
+                raise ValueError(
+                    f'The model output of frame n. {frame_i+1} has shape '
+                    f'{lab.shape} which is different from the segmentation '
+                    f'masks shape {lab_shape}.'
+                )
+            self.posData.segm_data[frame_i] = lab
+            self.progressBar.emit(1)
+        t1 = time.perf_counter()
+        exec_time = t1-t0
+        self.finished.emit(exec_time, self.startFrameNum, self.stopFrameNum)
 
 class FillHolesInSegWorker(BaseWorkerUtil):
     sigAskAppendName = Signal(str)

@@ -1184,6 +1184,12 @@ class KeepIDsLineEdit(ValidLineEdit):
         if event.text() == ',':
             self.sigSort.emit()
         elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter:
+            # QLineEdit ignores Enter --> the event would be propagated to
+            # the parent widgets (e.g., `guiWin.keyPressEvent`) and Enter
+            # would be handled twice. Note that checking the focus in the
+            # parent is not enough because the slots connected to
+            # `sigEnterPressed` can open dialogs that take the focus.
+            event.accept()
             self.sigEnterPressed.emit()
     
     def values(self) -> set:
@@ -1214,6 +1220,13 @@ class KeepIDsLineEdit(ValidLineEdit):
         self.setInvalidStyleSheet()
         self._label.setText(
             '  Some of the IDs are not existing --> they will be IGNORED'
+        )
+        self._label.setStyleSheet('color: red')
+
+    def warnNoIDsSelected(self):
+        self.setInvalidStyleSheet()
+        self._label.setText(
+            '  No existing IDs selected --> nothing to apply'
         )
         self._label.setStyleSheet('color: red')
 
@@ -2775,15 +2788,15 @@ class KeptObjectIDsList(list):
         super().append(element)
         if editText:
             self.setText()
-        if not self.confirmSelectionAction.isEnabled():
-            self.confirmSelectionAction.setEnabled(True)
+        # `setText` triggers the slots connected to the line edit (e.g.,
+        # `guiWin.updateKeepIDs`) that can remove the element again
+        self.confirmSelectionAction.setEnabled(len(self) > 0)
 
     def remove(self, element, editText=True):
         super().remove(element)
         if editText:
             self.setText()
-        if not self:
-            self.confirmSelectionAction.setEnabled(False)
+        self.confirmSelectionAction.setEnabled(len(self) > 0)
 
 class ScatterPlotItem(pg.ScatterPlotItem):
     def __init__(self, *args, **kwargs):
@@ -4896,6 +4909,16 @@ class readOnlySpinbox(QSpinBox):
         self.setMaximum(2**31-1)
         # self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
+def _isTemporaryFocusChange(event):
+    """Return True if the focus event is due to switching to another window
+    (and back), or to opening (and closing) a popup like a context menu: the
+    focus then returns to the same widget (it is not a new edit)
+    """
+    return event.reason() in (
+        Qt.FocusReason.ActiveWindowFocusReason,
+        Qt.FocusReason.PopupFocusReason
+    )
+
 class DoubleSpinBox(QDoubleSpinBox):
     sigValueChanged = Signal(int)
 
@@ -4906,17 +4929,41 @@ class DoubleSpinBox(QDoubleSpinBox):
         self.setMinimum(-2**31)
         self._valueChangedFunction = None
         self.disableKeyPress = disableKeyPress
-    
+        self._isValueTyped = False
+        self.lineEdit().textEdited.connect(self._setValueTyped)
+
+    def _setValueTyped(self, text):
+        self._isValueTyped = True
+
+    def isValueTyped(self):
+        """See `SpinBox.isValueTyped`"""
+        return self._isValueTyped
+
+    def focusInEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusOutEvent(event)
+
     def keyPressEvent(self, event) -> None:
         isBackSpaceKey = event.key() == Qt.Key_Backspace
         isDeleteKey = event.key() == Qt.Key_Delete
+        isEnterKey = event.key() in (Qt.Key_Enter, Qt.Key_Return)
         try:
             int(event.text())
             isIntegerKey = True
         except:
             isIntegerKey = False
         acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
-        if self.disableKeyPress and not acceptEvent:
+        if self.disableKeyPress and isEnterKey and self._isValueTyped:
+            # See `SpinBox.keyPressEvent`
+            event.accept()
+            self.clearFocus()
+        elif self.disableKeyPress and not acceptEvent:
             event.ignore()
             self.clearFocus()
         else:
@@ -4954,6 +5001,32 @@ class SpinBox(QSpinBox):
         self._start_value = None
         self._display_correction = 0
         self.valueChanged.connect(self.sigValueChanged.emit)
+        self._isValueTyped = False
+        # Emitted only when the user edits the text (not with the arrows)
+        self.lineEdit().textEdited.connect(self._setValueTyped)
+
+    def _setValueTyped(self, text):
+        self._isValueTyped = True
+
+    def isValueTyped(self):
+        """Return True if the user typed in the spin box since it got the
+        focus (Enter then confirms the typed value), False if the value was
+        changed only with the arrows (or not changed).
+
+        Switching to another window and back, or opening and closing a popup
+        (e.g., the context menu) does not reset it.
+        """
+        return self._isValueTyped
+
+    def focusInEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusInEvent(event)
+
+    def focusOutEvent(self, event):
+        if not _isTemporaryFocusChange(event):
+            self._isValueTyped = False
+        super().focusOutEvent(event)
 
     def mousePressEvent(self, event):
         super().mousePressEvent(event)
@@ -5032,6 +5105,7 @@ class SpinBox(QSpinBox):
         isBackSpaceKey = event.key() == Qt.Key.Key_Backspace
         isDeleteKey = event.key() == Qt.Key.Key_Delete
         isTabKeyPress = event.key() == Qt.Key.Key_Tab
+        isEnterKey = event.key() in (Qt.Key.Key_Enter, Qt.Key.Key_Return)
 
         if isTabKeyPress:
             self.sigTabEvent.emit(event, self)
@@ -5044,7 +5118,15 @@ class SpinBox(QSpinBox):
 
         acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
 
-        if self.disableKeyPress and not acceptEvent:
+        if self.disableKeyPress and isEnterKey and self._isValueTyped:
+            # Enter only confirms the typed value (leaving the spin box):
+            # do not pass it on to the parent window like the other keys,
+            # since in the main window Enter applies the active tool (e.g.,
+            # "Keep IDs" with the IDs selected so far). Without typing
+            # (e.g., after clicking the arrows) Enter is passed on
+            event.accept()
+            self.clearFocus()
+        elif self.disableKeyPress and not acceptEvent:
             event.ignore()
             self.clearFocus()
         else:
@@ -12842,6 +12924,135 @@ class MergeIDsToolbar(ToolBar):
         """)
         msg.information(self, 'Merge multiple IDs', txt)
 
+class BrushStrokesSelectCellsToolbar(ToolBar):
+    """Controls to select cells of the segmentation masks and add them to
+    the brush strokes (i.e., the training data) of the promptable models
+    trained from brush strokes (e.g., ConvPaint).
+
+    The selection works like the "Keep IDs" controls (same IDs list and
+    line edit).
+    """
+    sigAddToTrainingData = Signal(object)
+    sigSelectedIDsEdited = Signal(object, list)
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+
+        self.addToTrainingDataAction = self.addButton(':greenTick.svg')
+        self.addToTrainingDataAction.setToolTip(
+            'Add the selected cells to the brush strokes (training data) of '
+            'the current frame\n\n'
+            'The selected cells are added as foreground and the pixels '
+            'without segmentation masks as background (pixels that already '
+            'have brush strokes are not modified).\n\n'
+            'Shortcut: Enter'
+        )
+
+        self.addLabel('  Selected IDs: ')
+        instructionsText = (
+            '  (Click on the cells to select them or press Ctrl+A to select '
+            'all. Separate IDs by comma. Use a dash to denote a range of IDs)'
+        )
+        instructionsLabel = QLabel(instructionsText)
+        self.selectedIDsLineEdit = KeepIDsLineEdit(
+            instructionsLabel, parent=self
+        )
+        self.selectedIDsLineEdit.setToolTip(
+            'IDs of the selected cells (you can also type them)'
+        )
+        self.addWidget(self.selectedIDsLineEdit)
+
+        self.addSeparator()
+
+        self.onlyZoomCheckbox = self.addCheckBox(
+            'Only in zoomed area', checked=False
+        )
+        self.onlyZoomCheckbox.setToolTip(
+            'If checked, only the cutout of the image that is currently '
+            'displayed (zoomed area) is added to the brush strokes.\n\n'
+            'This is useful to add only a region where all the cells are '
+            'correctly segmented, and to keep the training fast with large '
+            'images.'
+        )
+
+        self.addWidget(instructionsLabel)
+        spacer = QWidget()
+        spacer.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+        self.addWidget(spacer)
+
+        self.selectedIDs = KeptObjectIDsList(
+            self.selectedIDsLineEdit, self.addToTrainingDataAction
+        )
+
+        self.addToTrainingDataAction.triggered.connect(
+            self.emitSigAddToTrainingData
+        )
+        self.selectedIDsLineEdit.sigEnterPressed.connect(
+            self.emitSigAddToTrainingData
+        )
+        self.selectedIDsLineEdit.sigIDsChanged.connect(
+            self.emitSigSelectedIDsEdited
+        )
+
+    def emitSigAddToTrainingData(self):
+        if not self.addToTrainingDataAction.isEnabled():
+            # No cells selected
+            return
+        self.sigAddToTrainingData.emit(self)
+
+    def emitSigSelectedIDsEdited(self, IDs):
+        self.sigSelectedIDsEdited.emit(self, IDs)
+
+    def setSelectedIDs(self, IDs=None):
+        """Replace the selection with `IDs` (empty selection if None)
+        without emitting `sigSelectedIDsEdited`."""
+        self.selectedIDsLineEdit.blockSignals(True)
+        try:
+            self.selectedIDs = KeptObjectIDsList(
+                self.selectedIDsLineEdit, self.addToTrainingDataAction
+            )
+            if IDs is not None:
+                for ID in IDs:
+                    if ID in self.selectedIDs:
+                        continue
+                    self.selectedIDs.append(int(ID), editText=False)
+                self.selectedIDs.setText()
+        finally:
+            self.selectedIDsLineEdit.blockSignals(False)
+        self.selectedIDsLineEdit.setInstructionsText()
+
+    def resetSelection(self):
+        self.setSelectedIDs(None)
+
+    def toggleSelectedID(self, ID):
+        """Select `ID` or unselect it if it is already selected. Returns
+        True if `ID` is selected."""
+        ID = int(ID)
+        self.selectedIDsLineEdit.blockSignals(True)
+        try:
+            if ID in self.selectedIDs:
+                self.selectedIDs.remove(ID)
+                isSelected = False
+            else:
+                self.selectedIDs.append(ID)
+                isSelected = True
+        finally:
+            self.selectedIDsLineEdit.blockSignals(False)
+        self.selectedIDsLineEdit.setInstructionsText()
+        return isSelected
+
+    def syncSelectedIDs(self, IDs):
+        """Update the selection to `IDs` (e.g., typed in the line edit)
+        without modifying the text of the line edit."""
+        for ID in list(self.selectedIDs):
+            if ID not in IDs:
+                self.selectedIDs.remove(ID, editText=False)
+        for ID in IDs:
+            if ID not in self.selectedIDs:
+                self.selectedIDs.append(ID, editText=False)
+
 class MagicPromptsToolbar(ToolBar):
     sigPromptTypeChanged = Signal(object, str)
     sigComputeOnZoom = Signal(object)
@@ -12853,16 +13064,33 @@ class MagicPromptsToolbar(ToolBar):
         str, object, list, list, str, object, object, object
     )
     sigInterpolateZslice = Signal(bool)
-    
+    sigTrain = Signal(object)
+    sigSegmentImage = Signal(object)
+    sigSegmentZstack = Signal(object)
+    sigSegmentStack = Signal(object)
+    sigClearStrokes = Signal(object)
+    sigClearStrokesOnZoom = Signal(object)
+    sigSaveModel = Signal(object)
+    sigLoadModel = Signal(object)
+    sigSelectCellsToggled = Signal(object, bool)
+    sigSelectAllCells = Signal(object)
+
+    promptTypeTextToKey = {
+        'Points': 'point',
+        'Brush strokes': 'brush_stroke',
+    }
+    promptTypeKeyToText = {
+        key: text for text, key in promptTypeTextToKey.items()
+    }
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        
+
         self._parent = parent
-        
-        prompt_types = (
-            'Points',
-        )
-        
+        self.isModelTrained = False
+
+        prompt_types = tuple(self.promptTypeTextToKey.keys())
+
         self.selectModelAction = self.addButton(':select-list.svg')
         self.selectModelAction.setToolTip(
             'Select the promptable model to use'
@@ -12873,15 +13101,38 @@ class MagicPromptsToolbar(ToolBar):
             'View the currently selected model parameters'
         )
         self.viewModelParamsAction.setDisabled(True)
-        
+
+        # Only for models that can save and load trained models (ConvPaint)
+        self.saveModelAction = self.addButton(':file-save.svg')
+        self.saveModelAction.setToolTip(
+            'Save the trained model...\n\n'
+            'The model is saved in the Cell-ACDC settings folder with the '
+            'name you choose, and you can load it later with the "Load '
+            'trained model" button.\n\n'
+            'NOTE: The model is automatically (re-)trained before saving if '
+            'the brush strokes changed since the last training.'
+        )
+        self.loadModelAction = self.addButton(':folder-open.svg')
+        self.loadModelAction.setToolTip(
+            'Load a trained model...\n\n'
+            'Select one of the saved models or browse for a model file '
+            'saved somewhere else (e.g., trained in napari).'
+        )
+        self.setSaveLoadModelSupported(False)
+
         self.addSeparator()
-        
+
         self.promptTypeCombobox = self.addComboBox(
             prompt_types, label='Prompt type: ',
         )
-        
+        self.promptTypeCombobox.setToolTip(
+            'Type of prompts used by the promptable model.\n\n'
+            'The available types depend on the selected model (e.g., '
+            'ConvPaint uses brush strokes).'
+        )
+
         self.addSeparator()
-        
+
         self.interpolateZslicesCheckbox = self.addCheckBox(
             'Interpolate points on missing z-slices', checked=False
         )
@@ -12894,9 +13145,9 @@ class MagicPromptsToolbar(ToolBar):
             'NOTE: The points will be added only when running the model and '
             'removed afterwards.'
         )
-        
-        self.addSeparator()
-        
+
+        interpolateSeparator = self.addSeparator()
+
         self.computeOnZoomAction = self.addButton(':compute-zoom.svg')
         self.computeOnZoomAction.setToolTip(
             'Compute the segmentation on the zoomed area of the image '
@@ -12919,16 +13170,153 @@ class MagicPromptsToolbar(ToolBar):
             'Clear all points on the zoomed area of the image'
         )
         self.clearPointsActionOnZoom.setDisabled(True)
-        
-        self.addSeparator()
-        
+
+        pointsActionsSeparator = self.addSeparator()
+
+        # Brush strokes widgets (e.g., ConvPaint)
+        self.brushSizeSpinbox = self.addSpinBox(label='Brush size: ')
+        self.brushSizeSpinbox.setMinimum(1)
+        self.brushSizeSpinbox.setMaximum(200)
+        self.brushSizeSpinbox.setValue(4)
+        self.brushSizeSpinbox.setToolTip(
+            'Radius in pixels of the brush used to paint the brush strokes'
+        )
+
+        brushSizeSeparator = self.addSeparator()
+
+        self.selectCellsAction = self.addButton(
+            ':keep_objects.svg', checkable=True
+        )
+        self.selectCellsAction.setToolTip(
+            'Select cells of the segmentation masks to add them to the '
+            'training data\n\n'
+            'Click on the cells to select (or unselect) them, then press '
+            '"Enter" (or the green tick) to add them to the brush strokes of '
+            'the current frame: the selected cells as foreground and the '
+            'background of the segmentation masks as background.\n\n'
+            'NOTE: Make sure that all the cells in the area are segmented, '
+            'because the pixels without masks are used as background (use '
+            'the "Only in zoomed area" option to add only a cutout).'
+        )
+
+        self.selectAllCellsAction, selectAllCellsButton = self.addButton(
+            ':select_all.svg', ret_widget=True
+        )
+        self.selectAllCellsAction.setShortcut('Ctrl+A')
+        self.selectAllCellsAction.setToolTip(
+            'Select all the cells of the current frame to add them to the '
+            'training data\n\n'
+            'Shortcut: "Ctrl+A"'
+        )
+        self.widgetsWithShortcut['Select all cells (magic prompts)'] = (
+            self.selectAllCellsAction
+        )
+        self.widgetsForActions['Select all cells (magic prompts)'] = (
+            selectAllCellsButton
+        )
+
+        selectCellsSeparator = self.addSeparator()
+
+        self.segmentImageAction, self.segmentImageButton = self.addButton(
+            ':segment.svg', ret_widget=True
+        )
+        self.segmentImageAction.setToolTip(
+            'Segment the current image with the trained model\n\n'
+            'With 3D segmentation masks (z-stacks), only the displayed '
+            'z-slice is segmented (use "Segment z-stack" to segment all the '
+            'z-slices).\n\n'
+            'NOTE: The model is automatically (re-)trained if it is not '
+            'trained yet or if the brush strokes changed since the last '
+            'training.\n\n'
+            'Right-click for more options (e.g., "Train only, do not '
+            'segment").'
+        )
+        # Right-click menu of the "Segment image" button
+        self.trainAction = QAction(
+            QIcon(':train.svg'), 'Train only, do not segment', self
+        )
+        self.trainAction.setToolTip(
+            'Train the model on the brush strokes painted on all the '
+            'frames and positions without segmenting (the model is '
+            're-trained even if the brush strokes did not change)'
+        )
+        self.segmentImageContextMenu = QMenu(self)
+        self.segmentImageContextMenu.setToolTipsVisible(True)
+        self.segmentImageContextMenu.addAction(self.trainAction)
+        self.segmentImageButton.setContextMenuPolicy(
+            Qt.ContextMenuPolicy.CustomContextMenu
+        )
+        self.segmentImageButton.customContextMenuRequested.connect(
+            self.showSegmentImageContextMenu
+        )
+
+        self.segmentZstackAction = self.addButton(':3d.svg')
+        self.segmentZstackAction.setToolTip(
+            'Segment the entire z-stack of the current frame with the '
+            'trained model\n\n'
+            'Each z-slice is segmented and the objects are then labelled in '
+            '3D. Requires 3D segmentation masks.\n\n'
+            'NOTE: The model is automatically (re-)trained if it is not '
+            'trained yet or if the brush strokes changed since the last '
+            'training.'
+        )
+
+        self.segmentStackAction = self.addButton(':frames_end.svg')
+        self.segmentStackAction.setToolTip(
+            'Segment a range of frames with the trained model '
+            '(existing masks will be replaced)\n\n'
+            'With 3D segmentation masks, the entire z-stack of each frame '
+            'is segmented.\n\n'
+            'NOTE: The model is automatically (re-)trained if it is not '
+            'trained yet or if the brush strokes changed since the last '
+            'training.'
+        )
+
+        self.clearStrokesAction = self.addButton(':clear-points.svg')
+        self.clearStrokesAction.setToolTip(
+            'Clear brush strokes on current frame'
+        )
+
+        self.clearStrokesOnZoomAction = self.addButton(
+            ':clear-points-zoom.svg'
+        )
+        self.clearStrokesOnZoomAction.setToolTip(
+            'Clear brush strokes in the zoomed area of the current frame'
+        )
+
+        brushActionsSeparator = self.addSeparator()
+
         self.infoAction = self.addButton(':info.svg')
         self.infoAction.setToolTip(
             'Show instructions how to use promptable models'
         )
-        
+
         self.addSeparator()
-        
+
+        self._pointsOnlyActions = [
+            self.interpolateZslicesCheckbox.action,
+            *interpolateSeparator._actions,
+            self.computeOnZoomAction,
+            self.computeAction,
+            self.clearPointsAction,
+            self.clearPointsActionOnZoom,
+            *pointsActionsSeparator._actions,
+        ]
+        self._brushStrokesOnlyActions = [
+            self.brushSizeSpinbox.labelAction,
+            self.brushSizeSpinbox.action,
+            *brushSizeSeparator._actions,
+            self.selectCellsAction,
+            self.selectAllCellsAction,
+            *selectCellsSeparator._actions,
+            self.segmentImageAction,
+            self.segmentZstackAction,
+            self.segmentStackAction,
+            self.clearStrokesAction,
+            self.clearStrokesOnZoomAction,
+            *brushActionsSeparator._actions,
+        ]
+
         self.infoAction.triggered.connect(self.showHelp)
         self.selectModelAction.triggered.connect(self.selectModel)
         self.viewModelParamsAction.triggered.connect(self.viewModelParams)
@@ -12950,7 +13338,133 @@ class MagicPromptsToolbar(ToolBar):
         self.interpolateZslicesCheckbox.toggled.connect(
             self.sigInterpolateZslice.emit
         )
-    
+        self.trainAction.triggered.connect(self.emitSigTrain)
+        self.selectCellsAction.toggled.connect(self.emitSigSelectCellsToggled)
+        self.selectAllCellsAction.triggered.connect(self.emitSigSelectAllCells)
+        self.segmentImageAction.triggered.connect(self.emitSigSegmentImage)
+        self.segmentZstackAction.triggered.connect(self.emitSigSegmentZstack)
+        self.segmentStackAction.triggered.connect(self.emitSigSegmentStack)
+        self.clearStrokesAction.triggered.connect(self.emitSigClearStrokes)
+        self.clearStrokesOnZoomAction.triggered.connect(
+            self.emitSigClearStrokesOnZoom
+        )
+        self.saveModelAction.triggered.connect(self.emitSigSaveModel)
+        self.loadModelAction.triggered.connect(self.emitSigLoadModel)
+
+        self._updatePromptTypeActions('point')
+
+    def setSaveLoadModelSupported(self, supported):
+        """Show the "Save trained model" and "Load trained model" buttons
+        only if the initialized model can save and load trained models."""
+        self.saveModelAction.setVisible(supported)
+        self.loadModelAction.setVisible(supported)
+
+    def emitSigSaveModel(self):
+        self.sigSaveModel.emit(self)
+
+    def emitSigLoadModel(self):
+        self.sigLoadModel.emit(self)
+
+    def promptType(self):
+        text = self.promptTypeCombobox.currentText()
+        return self.promptTypeTextToKey.get(text, 'point')
+
+    def setPromptType(self, prompt_type):
+        text = self.promptTypeKeyToText.get(prompt_type)
+        if text is None:
+            raise ValueError(
+                f'Prompt type "{prompt_type}" is not valid. Valid prompt '
+                f'types are {list(self.promptTypeKeyToText.keys())}'
+            )
+        self.promptTypeCombobox.setCurrentText(text)
+        # Combobox does not emit if text did not change --> update anyway
+        self._updatePromptTypeActions(prompt_type)
+
+    def setSupportedPromptTypes(self, prompt_types=None):
+        """Enable only the prompt types in `prompt_types` and select the
+        first supported one. If `prompt_types` is None, enable all the
+        prompt types.
+        """
+        if prompt_types is None:
+            supported = list(self.promptTypeKeyToText.keys())
+        else:
+            if isinstance(prompt_types, str):
+                prompt_types = (prompt_types,)
+            supported = [
+                prompt_type for prompt_type in prompt_types
+                if prompt_type in self.promptTypeKeyToText
+            ]
+            if not supported:
+                supported = ['point']
+
+        model = self.promptTypeCombobox.model()
+        for i in range(self.promptTypeCombobox.count()):
+            text = self.promptTypeCombobox.itemText(i)
+            key = self.promptTypeTextToKey.get(text)
+            item = model.item(i) if hasattr(model, 'item') else None
+            if item is not None:
+                item.setEnabled(key in supported)
+
+        if prompt_types is None:
+            self.promptTypeCombobox.setDisabled(False)
+            self._updatePromptTypeActions(self.promptType())
+            return
+
+        self.setPromptType(supported[0])
+        self.promptTypeCombobox.setDisabled(len(supported) == 1)
+
+    def _setActionsVisible(self, actions, visible):
+        for action in actions:
+            action.setVisible(visible)
+
+    def _updatePromptTypeActions(self, prompt_type):
+        isBrushStrokes = prompt_type == 'brush_stroke'
+        if not isBrushStrokes:
+            # Selecting cells is only for brush strokes
+            self.selectCellsAction.setChecked(False)
+        self._setActionsVisible(self._pointsOnlyActions, not isBrushStrokes)
+        self._setActionsVisible(self._brushStrokesOnlyActions, isBrushStrokes)
+        self.segmentZstackAction.setVisible(
+            isBrushStrokes and getattr(self, '_isZstackData', True)
+        )
+
+    def setZstackData(self, isZstack):
+        """Show the "Segment z-stack" button (brush strokes) only if the
+        loaded data are z-stacks."""
+        self._isZstackData = bool(isZstack)
+        self._updatePromptTypeActions(self.promptType())
+
+    def emitSigTrain(self):
+        self.sigTrain.emit(self)
+
+    def showSegmentImageContextMenu(self, pos):
+        if not self.segmentImageAction.isEnabled():
+            return
+        self.segmentImageContextMenu.exec(
+            self.segmentImageButton.mapToGlobal(pos)
+        )
+
+    def emitSigSelectCellsToggled(self, checked):
+        self.sigSelectCellsToggled.emit(self, checked)
+
+    def emitSigSelectAllCells(self):
+        self.sigSelectAllCells.emit(self)
+
+    def emitSigSegmentImage(self):
+        self.sigSegmentImage.emit(self)
+
+    def emitSigSegmentZstack(self):
+        self.sigSegmentZstack.emit(self)
+
+    def emitSigSegmentStack(self):
+        self.sigSegmentStack.emit(self)
+
+    def emitSigClearStrokes(self):
+        self.sigClearStrokes.emit(self)
+
+    def emitSigClearStrokesOnZoom(self):
+        self.sigClearStrokesOnZoom.emit(self)
+
     def showHelp(self):
         msg = myMessageBox(wrapText=False)
         txt = html_utils.paragraph("""
@@ -12992,13 +13506,98 @@ class MagicPromptsToolbar(ToolBar):
             Finally, you can <b>clear all points</b> by clicking on the 
             "Clear points" button.<br><br>
             
-            Note that you can also save the points by clicking on the 
-            "<b>Save points</b>" button to load them later and start from 
+            Note that you can also save the points by clicking on the
+            "<b>Save points</b>" button to load them later and start from
             where you left.<br><br>
-        """)  
+
+            <b>Brush strokes (e.g., ConvPaint)</b><br><br>
+
+            Some models (e.g., ConvPaint) are trained from <b>brush
+            strokes</b> instead of points.<br>
+            When such a model is selected, the prompt type is set to
+            "Brush strokes" and you can paint directly on the image:<br><br>
+
+            - <b>Left-click and drag</b> to paint <b>foreground</b>
+            (value 2, shown in red)<br>
+            - <b>Right-click and drag</b> to paint <b>background</b>
+            (value 1, shown in blue)<br>
+            - <b>Shift+drag</b> (left or right) to <b>erase</b> brush
+            strokes<br>
+            - Set the radius of the brush with the "<b>Brush size</b>"
+            control<br>
+            - Press <b>Ctrl+Z</b> to undo the last brush stroke<br><br>
+
+            You need both foreground and background strokes. You can paint
+            on multiple frames and positions.<br>
+            With 3D segmentation masks, paint in "single z-slice" mode
+            (projections are display-only).<br>
+            With 2D masks of z-stacks, the brush strokes of a frame belong to
+            the z-slice (or z-projection) they are painted on.<br><br>
+
+            Note that the brush strokes are <b>not meant to cover all the
+            cells</b>. They simply provide some <b>example pixels</b> of
+            foreground and background<br>
+            that the model learns from. A few strokes on some cells and on
+            the background are usually enough<br>
+            (add strokes where the model makes mistakes, e.g., at the cell
+            borders or between touching cells).<br><br>
+
+            <b>Use existing segmentation masks as training data</b><br><br>
+
+            You can also add cells of the current segmentation masks to the
+            training data:<br><br>
+
+            - Click on the "<b>Select cells</b>" button and then click on
+            the cells to select (or unselect) them<br>
+            - Press <b>Ctrl+A</b> (or the "<b>Select all cells</b>" button)
+            to select all the cells of the current frame<br>
+            - Press <b>Enter</b> (or the green tick) to add them to the
+            brush strokes of the current frame:<br>
+            &nbsp;&nbsp;the selected cells are added as <b>foreground</b>
+            and the pixels without masks as <b>background</b><br>
+            - Check "<b>Only in zoomed area</b>" to add only the cutout
+            that is currently displayed<br><br>
+
+            Make sure that all the cells in the area are segmented, because
+            the pixels without masks are used as background.<br>
+            Existing brush strokes are not modified, and you can undo with
+            <b>Ctrl+Z</b>. With 3D segmentation masks, only the displayed
+            z-slice is added.<br>
+            NOTE: The more pixels you add, the slower the training (e.g.,
+            use "Only in zoomed area" with large images).<br><br>
+
+            Then use the following buttons:<br><br>
+
+            - "<b>Segment image</b>": segment the current image and choose
+            how to combine the result with the existing masks (with 3D
+            masks, only the displayed z-slice)<br>
+            - "<b>Segment z-stack</b>": segment all the z-slices of the
+            current frame (3D masks)<br>
+            - "<b>Segment stack</b>": segment a range of frames
+            (existing masks of those frames are replaced)<br><br>
+
+            The model is automatically (re-)trained before segmenting if
+            it was not trained yet or if the brush strokes changed since
+            the last training.<br>
+            To train the model without segmenting (e.g., to re-train a
+            loaded model on the current brush strokes),<br>
+            <b>right-click</b> on the "Segment image" button and select
+            "<b>Train only, do not segment</b>".<br><br>
+
+            You can <b>clear the brush strokes</b> of the current
+            frame (or only in the zoomed area) with the corresponding
+            buttons.<br><br>
+
+            Finally, you can <b>save the trained model</b> with the
+            "<b>Save trained model</b>" button and <b>load it</b> later
+            (e.g., on other data) with the "<b>Load trained model</b>"
+            button.<br>
+            When loading, you can also browse for a model saved somewhere
+            else (e.g., a ConvPaint model trained in napari).
+        """)
         msg.information(
             self, 'Promptable models help', txt
-        )  
+        )
         
     def emitSigClearPoints(self):
         self.sigClearPoints.emit(self)
@@ -13013,17 +13612,28 @@ class MagicPromptsToolbar(ToolBar):
         self.sigComputeOnImage.emit(self)
     
     def selectModel(self):
+        if getattr(self, '_isSelectingModel', False):
+            # Model selection (or initialization) already in progress
+            return
+
+        self._isSelectingModel = True
+        try:
+            self._selectModel()
+        finally:
+            self._isSelectingModel = False
+
+    def _selectModel(self):
         win = apps.SelectPromptableModelDialog(parent=self._parent)
         win.exec_()
         if win.cancel:
             print('Promptable model selection cancelled')
             return
-        
+
         model_name = win.model_name
         print(f'Preparing promptable model {model_name}...')
 
-        self._model_name = model_name
-
+        # `_model_name` (used by "View model parameters") is set by the
+        # receiver once the model is initialized
         self.sigInitSelectedModel.emit(model_name)
     
     def setInitializedModel(self, init_kwargs, segment_kwargs):
@@ -13043,7 +13653,9 @@ class MagicPromptsToolbar(ToolBar):
         )
     
     def emitPromptTypeChanged(self, text):
-        self.sigPromptTypeChanged.emit(self, text)
+        prompt_type = self.promptTypeTextToKey.get(text, 'point')
+        self._updatePromptTypeActions(prompt_type)
+        self.sigPromptTypeChanged.emit(self, prompt_type)
 
 class KeySequenceFromText(QKeySequence):
     def __init__(self, text: str):

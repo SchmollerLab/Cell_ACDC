@@ -41,9 +41,11 @@
   ``shortcut_filepath``, ``custom_annot_path``,
   ``MEASUREMENTS_CONFIGURATIONS_PATH``, ``last_entries_metadata_path``,
   ``additional_metadata_path``, ``last_selected_measurements_ini_path``,
-  ``recentPaths_path`` and the log folder ``logs_path`` (written and pruned
-  by ``myutils.setupLogger``, e.g. when a utility window is created)
-  (``USER_SETTINGS_PATHS``) of ``cellacdc`` and its
+  ``recentPaths_path``, the saved and custom promptable models
+  ``saved_promptable_models_path`` and ``promptable_models_list_file_path``
+  and the log folder ``logs_path`` (written
+  and pruned by ``myutils.setupLogger``, e.g. when a utility window is
+  created) (``USER_SETTINGS_PATHS``) of ``cellacdc`` and its
   already imported submodules point into a fresh temporary settings folder
   (``settings.csv`` holds only the current ``colorScheme``), and
   ``QSettings(organization, application)`` in those modules writes an INI
@@ -430,6 +432,11 @@ USER_SETTINGS_PATHS = {
     'recentPaths_path': 'recentPaths.csv',
     # myutils.setupLogger writes there and deletes logs older than 7 days
     'logs_path': 'logs',
+    # Trained promptable models saved from the GUI (`cellacdc.
+    # promptable_models.saved_models` imports the name)
+    'saved_promptable_models_path': 'saved_promptable_models',
+    # Custom promptable models (read by myutils.get_list_of_promptable_models)
+    'promptable_models_list_file_path': 'custom_promptable_models_paths.ini',
 }
 # Module-level name of the settings folder itself, redirected to the
 # isolated folder (e.g. load.loadLastEntriesMetadata joins file names to it)

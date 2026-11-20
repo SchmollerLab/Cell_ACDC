@@ -271,6 +271,47 @@ def warnPromptSegmentModelNotInit(qparent=None):
     )
     return msg.cancel
 
+def warnBrushStrokesMissing(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        There are <b>no brush strokes</b> to train the model on!<br><br>
+        Please, paint <b>foreground</b> strokes (left-click and drag) and
+        <b>background</b> strokes (right-click and drag) on the image
+        first.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Brush strokes missing', txt,
+    )
+    return msg.cancel
+
+def warnBrushStrokesMissingClass(
+        hasForeground, hasBackground, qparent=None
+    ):
+    from cellacdc import widgets
+    missing = []
+    if not hasForeground:
+        missing.append(
+            '<b>foreground</b> strokes (left-click and drag)'
+        )
+    if not hasBackground:
+        missing.append(
+            '<b>background</b> strokes (right-click and drag)'
+        )
+    missing_txt = ' and '.join(missing)
+    txt = html_utils.paragraph(f"""
+        To train the model you need <b>both foreground and background</b>
+        brush strokes.<br><br>
+        Please, paint {missing_txt} on at least one image.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Foreground or background brush strokes missing', txt,
+    )
+    return msg.cancel
+
 def warnNotEnoughG1Cells(numCellsG1, frame_i, numNewCells, qparent=None):
     from cellacdc import widgets
     if numCellsG1 == 0:
@@ -516,3 +557,36 @@ def warnExportCurrentViewDstFolderPathInvalid(
     msg.warning(
         qparent, 'Destination folder path not valid', txt, 
     )
+def warnSegmentImageRequiresZslice(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        With 3D segmentation masks, "<b>Segment image</b>" segments only the
+        <b>displayed z-slice</b>, but the current view is not a single
+        z-slice (e.g., a z-projection or another plane).<br><br>
+        Please, select "<code>single z-slice</code>" in the z-slice
+        controls, or click on "<b>Segment z-stack</b>" to segment all the
+        z-slices of the current frame.
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Select a z-slice', txt,
+    )
+    return msg.cancel
+
+def warnSegmentZstackRequires3DMasks(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Segmenting the <b>entire z-stack</b> requires <b>3D segmentation
+        masks</b>, but the loaded segmentation masks are 2D (one mask per
+        frame).<br><br>
+        With 2D masks, "<b>Segment image</b>" segments the image used for
+        the 2D masks (z-slice or projection) of the current frame.<br><br>
+        To work with 3D masks, load the data again and activate
+        "<code>Work with 3D segmentation masks (z-stack)</code>" (e.g.,
+        with "Create a new segmentation file").
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, '3D segmentation masks required', txt,
+    )
+    return msg.cancel

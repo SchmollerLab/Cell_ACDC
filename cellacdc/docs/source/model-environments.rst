@@ -294,6 +294,13 @@ Notes:
 * Use ``setup_steps`` for anything that ``packages`` cannot express: installs
   from Git, ``--no-build-isolation`` builds, replacing ``opencv-python`` with
   ``opencv-python-headless``, version fixes, downloads, and so on.
+* Packages that pull in a GUI they do not need can be installed without
+  dependencies. For example, the promptable model ``ConvPaint`` lists the
+  model's runtime dependencies in ``packages`` and installs
+  ``napari-convpaint`` with ``pip install --no-deps`` in a setup step, so the
+  environment has neither napari nor Qt. Because
+  ``napari_convpaint/__init__.py`` imports napari, ``acdcPromptSegment.py``
+  imports the model module without running the package ``__init__.py``.
 * Never install packages from the model code itself in server mode. Everything
   must be declared here so that the client can prepare and confirm it.
 

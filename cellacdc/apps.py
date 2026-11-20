@@ -1810,12 +1810,16 @@ class filenameDialog(QDialog):
             self, ext='.npz', basename='', title='Insert file name',
             hintText='', existingNames='', parent=None, allowEmpty=True,
             helpText='', defaultEntry='', resizeOnShow=True,
-            additionalButtons=None, addDoNotSaveButton=False
+            additionalButtons=None, addDoNotSaveButton=False,
+            caseInsensitiveNames=False
         ):
         self.cancel = True
         super().__init__(parent)
 
         self.resizeOnShow = resizeOnShow
+        # If True, `existingNames` are matched ignoring the case (e.g., names
+        # of files on case-insensitive file systems)
+        self.caseInsensitiveNames = caseInsensitiveNames
 
         if hintText.find('segmentation') != -1:
             if helpText:
@@ -1961,10 +1965,12 @@ class filenameDialog(QDialog):
         self.warningInvalidCharLabel.setText(warning_text)
 
     def checkExistingNames(self):
-        is_existing = (
-            self._text() in self.existingNames
-            or self.filenameLabel.text() in self.existingNames
-        )
+        candidates = (self._text(), self.filenameLabel.text())
+        existingNames = self.existingNames
+        if self.caseInsensitiveNames:
+            candidates = [name.casefold() for name in candidates]
+            existingNames = [name.casefold() for name in existingNames]
+        is_existing = any(name in existingNames for name in candidates)
         if not is_existing:
             return True
 
@@ -5740,6 +5746,272 @@ class SelectPromptableModelDialog(QBaseDialog):
     def ok_cb(self):
         self.cancel = False
         self.model_name = self.listBox.currentItem().text()
+        self.close()
+
+class LoadSavedPromptableModelDialog(QBaseDialog):
+    """Select a trained promptable model (e.g., ConvPaint) to load.
+
+    Lists the models saved in the Cell-ACDC settings folder (see
+    `promptable_models.saved_models`). "Browse..." selects a model file in
+    a custom location to be loaded.
+
+    After `exec_`, `cancel` is False if a model was selected and
+    `selectedModel` is the selected `saved_models.SavedModel`. If
+    `isNewLink` is True, the model file was selected with "Browse..." and
+    it is not in the list yet: the caller adds it as a link (the file is not
+    copied) with `saved_models.add_link` once the model loaded successfully.
+    """
+    # Folder of the last model file selected with "Browse..."
+    _lastBrowseFolderpath = ''
+
+    def __init__(self, model_name, ext, start_dir='', parent=None):
+        from .promptable_models import saved_models
+
+        self.cancel = True
+        self.selectedModel = None
+        self.isNewLink = False
+        super().__init__(parent)
+
+        self._saved_models = saved_models
+        self.model_name = model_name
+        self.ext = ext
+        self.start_dir = start_dir
+        self._models = {}
+
+        self.setWindowTitle(f'Load trained {model_name} model')
+
+        mainLayout = QVBoxLayout()
+
+        label = QLabel(html_utils.paragraph(
+            f'Select the trained <b>{model_name} model</b> to load:'
+        ))
+        mainLayout.addWidget(label)
+
+        self.listBox = widgets.listWidget()
+        self.listBox.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.listBox.itemDoubleClicked.connect(self.ok_cb)
+        self.listBox.currentItemChanged.connect(self.updateSelection)
+        mainLayout.addWidget(self.listBox)
+
+        self.pathLabel = QLabel()
+        self.pathLabel.setWordWrap(True)
+        self.pathLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        mainLayout.addWidget(self.pathLabel)
+
+        folderpath = saved_models.get_folderpath(model_name)
+        noteLabel = QLabel(html_utils.paragraph(
+            'Models saved from Cell-ACDC are stored in the folder '
+            f'<code>{html.escape(folderpath)}</code><br><br>'
+            'Click on "<b>Browse...</b>" to load a model file saved somewhere '
+            f'else (e.g., trained in napari).<br>'
+            'The file is <b>not copied</b>: it is added to the list as a '
+            'link to its location.',
+            font_size='11px'
+        ))
+        noteLabel.setWordWrap(True)
+        noteLabel.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        mainLayout.addSpacing(5)
+        mainLayout.addWidget(noteLabel)
+
+        buttonsLayout = QHBoxLayout()
+        browseButton = widgets.OpenFilePushButton('Browse...')
+        self.removeButton = widgets.delPushButton('Remove from list')
+        cancelButton = widgets.cancelPushButton('Cancel')
+        self.okButton = widgets.okPushButton(' Load ')
+
+        buttonsLayout.addWidget(browseButton)
+        buttonsLayout.addWidget(self.removeButton)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(self.okButton)
+
+        browseButton.clicked.connect(self.browse_cb)
+        self.removeButton.clicked.connect(self.remove_cb)
+        cancelButton.clicked.connect(self.close)
+        self.okButton.clicked.connect(self.ok_cb)
+
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+        self.setFont(fonts.font)
+
+        self.populate()
+
+    def populate(self, selectName=None):
+        self._models = {
+            model.name: model
+            for model in self._saved_models.list_saved_models(
+                self.model_name, self.ext
+            )
+        }
+        self.listBox.clear()
+        if not self._models:
+            item = QListWidgetItem(
+                'No saved models yet. Click on "Browse..." to load a model '
+                'file.'
+            )
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.listBox.addItem(item)
+            self.updateSelection()
+            return
+
+        selectRow = 0
+        for row, (name, model) in enumerate(self._models.items()):
+            text = name
+            if model.is_link:
+                text = f'{text}  (linked)'
+            if not model.exists:
+                text = f'{text}  (file not found)'
+            item = QListWidgetItem(text)
+            item.setData(Qt.ItemDataRole.UserRole, name)
+            item.setToolTip(model.filepath)
+            if not model.exists:
+                item.setForeground(QColor(128, 128, 128))
+            self.listBox.addItem(item)
+            if selectName is not None and name.casefold() == (
+                    selectName.casefold()
+                ):
+                selectRow = row
+        self.listBox.setCurrentRow(selectRow)
+        self.updateSelection()
+
+    def currentModel(self):
+        item = self.listBox.currentItem()
+        if item is None:
+            return None
+        name = item.data(Qt.ItemDataRole.UserRole)
+        return self._models.get(name)
+
+    def updateSelection(self, *args):
+        model = self.currentModel()
+        self.okButton.setDisabled(model is None)
+        self.removeButton.setDisabled(model is None)
+        if model is None:
+            self.pathLabel.setText('')
+            return
+
+        kind = 'Linked file' if model.is_link else 'File'
+        self.pathLabel.setText(html_utils.paragraph(
+            f'{kind}: <code>{html.escape(model.filepath)}</code>',
+            font_size='11px'
+        ))
+
+    def browse_cb(self):
+        start_dir = (
+            LoadSavedPromptableModelDialog._lastBrowseFolderpath
+            or self.start_dir
+        )
+        filepath = QFileDialog.getOpenFileName(
+            self, f'Select {self.model_name} model file', start_dir,
+            f'{self.model_name} model (*{self.ext});;All Files (*)'
+        )[0]
+        if not filepath:
+            return
+
+        LoadSavedPromptableModelDialog._lastBrowseFolderpath = (
+            os.path.dirname(filepath)
+        )
+        if not filepath.lower().endswith(self.ext.lower()):
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                f'{self.model_name} models are loaded from '
+                f'<code>{self.ext}</code> files, while the selected file '
+                f'is<br><br><code>{html.escape(filepath)}</code>'
+            )
+            msg.critical(self, 'Invalid model file', txt)
+            return
+
+        # Already in the list (saved or linked) --> load that entry
+        existing = self._saved_models.find_by_filepath(
+            self.model_name, filepath, self.ext
+        )
+        if existing is not None:
+            self.populate(selectName=existing.name)
+            if self.currentModel() == existing:
+                self.ok_cb()
+                return
+
+        # The link is added by the caller only if loading the model
+        # succeeds (see `isNewLink`), so that files that cannot be loaded
+        # are not added to the list
+        self.selectedModel = self._saved_models.SavedModel(
+            self._saved_models.get_unique_name(
+                self.model_name,
+                self._saved_models.get_link_name(filepath, self.ext),
+                self.ext
+            ),
+            os.path.abspath(filepath),
+            True
+        )
+        self.isNewLink = True
+        self.cancel = False
+        self.close()
+
+    def remove_cb(self):
+        model = self.currentModel()
+        if model is None:
+            return
+
+        msg = widgets.myMessageBox(wrapText=False)
+        name = html.escape(model.name)
+        path = html.escape(model.filepath)
+        if model.is_link:
+            txt = html_utils.paragraph(
+                f'Do you want to remove the model <b>{name}</b> from the '
+                'list?<br><br>'
+                f'The linked model file<br><br><code>{path}</code><br><br>'
+                'will <b>not</b> be deleted.'
+            )
+            buttonsTexts = ('Cancel', 'Remove from list')
+        else:
+            txt = html_utils.paragraph(
+                f'Do you want to <b>delete</b> the saved model '
+                f'<b>{name}</b>?<br><br>'
+                f'The model file<br><br><code>{path}</code><br><br>'
+                '(and the other files of this model in the same folder) '
+                'will be <b>permanently deleted</b>.'
+            )
+            buttonsTexts = ('Cancel', 'Delete model')
+        _, removeButton = msg.warning(
+            self, 'Remove saved model?', txt, buttonsTexts=buttonsTexts
+        )
+        if msg.clickedButton != removeButton:
+            return
+
+        try:
+            self._saved_models.remove_saved_model(self.model_name, model.name)
+        except Exception as err:
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                f'The model <b>{name}</b> could not be removed.<br><br>'
+                f'Error: <code>{html.escape(str(err))}</code>'
+            )
+            msg.critical(self, 'Error removing model', txt)
+        self.populate()
+
+    def ok_cb(self, *args):
+        model = self.currentModel()
+        if model is None:
+            return
+
+        if not model.exists:
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = html_utils.paragraph(
+                f'The file of the model <b>{html.escape(model.name)}</b> '
+                'does not exist anymore:<br><br>'
+                f'<code>{html.escape(model.filepath)}</code><br><br>'
+                'If the file was moved, remove the model from the list and '
+                'add it again with "Browse...".'
+            )
+            msg.critical(self, 'Model file not found', txt)
+            return
+
+        self.selectedModel = model
+        self.cancel = False
         self.close()
 
 class QDialogSelectModel(QDialog):
