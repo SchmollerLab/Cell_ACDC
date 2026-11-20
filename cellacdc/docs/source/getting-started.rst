@@ -22,16 +22,34 @@ The Main Menu
 -------------
 The main menu is a **hub** through which you can access Module buttons
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Through the main menu, all modules of Cell-ACDC can be accessed:
+Through the main menu, all modules of Cell-ACDC can be accessed. The module
+buttons are grouped by analysis step into three boxes, from top to bottom in
+the order of a typical analysis:
 
-1. Create data structure from microscopy/image file(s)...
+**Image preprocessing**
+
+* Create data structure from microscopy/image file(s)...
     This module will allow you to **create a suitable data structure** from raw microscopy files.
-2. Launch data prep module...
+* Launch data prep module...
     With this module you can **align** time-lapse microscopy data and select a **sharp image from a z-stack**, as well as **crop** images.
-3. Launch segmentation module...
+
+**Segmentation and tracking**
+
+* Automatic: launch segmentation and tracking module...
     Using this module, you can perform **segmentation** and **tracking** tasks using common methods.
-4. Launch GUI...
-    Lastly, using the GUI the resulting data can be **inspected** and **corrected** for mistakes. Also, **cell cycle annotation** can be carried out.
+* Correction: launch GUI...
+    Using the GUI the resulting data can be **inspected** and **corrected** for mistakes. Also, **cell cycle annotation** can be carried out.
+
+**Measurements visualisation**
+
+* Launch measurements viewer...
+    Lastly, the :doc:`measurements-viewer` **plots** the measurements of
+    the ``acdc_output`` table over time for each cell, next to the images,
+    and lets you mark **time points** and translate them into cell cycle
+    **phases**.
+* Launch SpotMAX...
+    Shown only if SpotMAX is installed: **detection** and
+    **quantification** of **spots** and subcellular structures.
 
 Top ribbon options include:
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -75,11 +93,11 @@ Additional options include:
 
 Creating Data Structure
 -----------------------
-**0. Create data structure from microscopy/image file(s)...**
+**Create data structure from microscopy/image file(s)...**
 
 The first step in analysing data with Cell-ACDC is creating a
-**suitable data structure** from raw microscopy files. Module 0 can convert
-supported microscopy files into this structure.
+**suitable data structure** from raw microscopy files. This module can
+convert supported microscopy files into this structure.
 
 .. warning:: 
 
@@ -91,7 +109,7 @@ supported microscopy files into this structure.
     We are working on alternatives, but in the meantime the Fiji macros will 
     work just fine. Thank you for you patience.
 
-Click **0. Create data structure from microscopy/image file(s)…** in the
+Click **Create data structure from microscopy/image file(s)…** in the
 main menu. The **Data conversion setup** form configures the BioIO-based
 conversion for supported microscopy files and presents the options together.
 
@@ -127,7 +145,7 @@ Click **OK** to start the conversion. Cell-ACDC creates a folder for each
 position and stores the channel images in its ``Images`` subfolder.
 
 If your images are already TIFF files that need to be reorganized, open
-**0. Create data structure from microscopy/image file(s)…**, choose
+**Create data structure from microscopy/image file(s)…**, choose
 **Re-structure image files**, and follow the separate
 :doc:`restructure-loose-tiff-files` guide.
 
@@ -157,7 +175,7 @@ Data-structure created by Cell-ACDC
 Preparing data for further analysis (Data-prep)
 -----------------------------------------------
 
-**1. Launch data prep module…**
+**Launch data prep module…**
 
 .. |starticon| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/start.svg
     :target: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/icons/start.svg
@@ -251,7 +269,7 @@ to show an interaction menu through which you can **remove** it.
 
     The background ROIs are used to compute background values from those areas. 
     These values will be saved in the ``acdc_output`` CSV table that you can 
-    create with the module 3 ``Launch GUI...``. The background values specific 
+    create with the GUI (``Correction: launch GUI...``). The background values specific 
     to these ROIs will be called ``<ChannelName>_dataPrepBkgr_bkgrVal_<metric_name>``, where 
     ``<metric_name>`` will be the ``median``, ``mean``, etc. 
 
@@ -276,7 +294,7 @@ Data such as the selected frame is stored in segmInfo.csv, while aligned.npz sto
 
 Segmentation and tracking
 -------------------------
-**2. Launch segmentation module…**
+**Automatic: launch segmentation and tracking module…**
 
 This module can be used to **segment and track objects** in your data. A plethora of options are available already, and new ones are added constantly. You can also add **your own models**, for this please see `this guide <https://cell-acdc.readthedocs.io/en/latest/models.html#adding-a-new-model>`__.
 
@@ -288,7 +306,7 @@ Next, you can **select a stop frame** if you don't want to segment and track the
 
 Correcting Tracking and Segmentation Mistakes, Cell Cycle Annotation
 --------------------------------------------------------------------
-**3. Launching GUI…**
+**Correction: launch GUI…**
 
 .. |loadfolder| image:: https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/3dcf5611281c35e3cf8b7676ca7c00c9b17ee8e7/cellacdc/resources/icons/folder-open.svg
     :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/folder-open.svg

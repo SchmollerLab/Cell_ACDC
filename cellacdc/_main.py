@@ -150,63 +150,65 @@ class mainWin(QMainWindow):
         mainLayout.addStretch()
 
         iconSize = 26
-        
-        modulesButtonsGroupBox = QGroupBox()
-        modulesButtonsGroupBox.setTitle('Modules')
-        modulesButtonsGroupBoxLayout = QVBoxLayout()
-        modulesButtonsGroupBox.setLayout(modulesButtonsGroupBoxLayout)
-        
-        dataStructButton = widgets.setPushButton(
-            '  0. Create data structure from microscopy/image file(s)...  '
+        font = QFont()
+        font.setPixelSize(13)
+
+        # Module buttons in vertically stacked group boxes, one per analysis
+        # step, in the order of a typical analysis. Buttons, docs and messages
+        # name the modules (e.g. "the GUI"), never by number (list in
+        # docs/source/getting-started.rst, checked by
+        # tests/test_launcher_layout.py)
+        self.moduleButtons = []
+
+        self.preprocessingGroupBox, layout = self.addModulesGroupBox(
+            mainLayout, 'Image preprocessing'
         )
-        dataStructButton.setIconSize(QSize(iconSize,iconSize))
-        font = QFont()
-        font.setPixelSize(13)
-        dataStructButton.setFont(font)
-        dataStructButton.clicked.connect(self.launchDataStruct)
-        self.dataStructButton = dataStructButton
-        modulesButtonsGroupBoxLayout.addWidget(dataStructButton)
+        self.dataStructButton = self.addModuleButton(
+            layout, widgets.setPushButton(
+                'Create data structure from microscopy/image file(s)...  '
+            ),
+            self.launchDataStruct, font, iconSize
+        )
+        self.dataPrepButton = self.addModuleButton(
+            layout, QPushButton('Launch data prep module...'),
+            self.launchDataPrep, font, iconSize, icon=QIcon(':prep.svg')
+        )
 
-        dataPrepButton = QPushButton('  1. Launch data prep module...')
-        dataPrepButton.setIcon(QIcon(':prep.svg'))
-        dataPrepButton.setIconSize(QSize(iconSize,iconSize))
-        font = QFont()
-        font.setPixelSize(13)
-        dataPrepButton.setFont(font)
-        dataPrepButton.clicked.connect(self.launchDataPrep)
-        self.dataPrepButton = dataPrepButton
-        modulesButtonsGroupBoxLayout.addWidget(dataPrepButton)
+        self.segmTrackingGroupBox, layout = self.addModulesGroupBox(
+            mainLayout, 'Segmentation and tracking'
+        )
+        self.segmButton = self.addModuleButton(
+            layout,
+            QPushButton(
+                'Automatic: launch segmentation and tracking module...'
+            ),
+            self.launchSegm, font, iconSize, icon=QIcon(':segment.svg')
+        )
+        self.guiButton = self.addModuleButton(
+            layout, QPushButton('Correction: launch GUI...'),
+            self.launchGui, font, iconSize, icon=QIcon(':logo.svg')
+        )
 
-        segmButton = QPushButton('  2. Launch segmentation module...')
-        segmButton.setIcon(QIcon(':segment.svg'))
-        segmButton.setIconSize(QSize(iconSize,iconSize))
-        segmButton.setFont(font)
-        segmButton.clicked.connect(self.launchSegm)
-        self.segmButton = segmButton
-        modulesButtonsGroupBoxLayout.addWidget(segmButton)
-
-        guiButton = QPushButton('  3. Launch GUI...')
-        guiButton.setIcon(QIcon(':logo.svg'))
-        guiButton.setIconSize(QSize(iconSize, iconSize))
-        guiButton.setFont(font)
-        guiButton.clicked.connect(self.launchGui)
-        self.guiButton = guiButton
-        modulesButtonsGroupBoxLayout.addWidget(guiButton)
-
+        self.measurementsGroupBox, layout = self.addModulesGroupBox(
+            mainLayout, 'Measurements visualisation'
+        )
+        self.measurementsViewerButton = self.addModuleButton(
+            layout, QPushButton('Launch measurements viewer...'),
+            self.launchMeasurementsViewer, font, iconSize,
+            icon=QIcon(':graphs.svg')
+        )
         if SPOTMAX_INSTALLED:
-            spotmaxButton = QPushButton('  4. Launch SpotMAX...')
-            spotmaxButton.setIcon(QIcon(spotmax_logo_path))
-            spotmaxButton.setIconSize(QSize(iconSize,iconSize))
-            spotmaxButton.setFont(font)
-            self.spotmaxButton = spotmaxButton
-            spotmaxButton.clicked.connect(self.launchSpotmaxGui)
-            modulesButtonsGroupBoxLayout.addWidget(spotmaxButton)
-        
-        mainLayout.addWidget(modulesButtonsGroupBox)
+            self.spotmaxButton = self.addModuleButton(
+                layout, QPushButton('Launch SpotMAX...'),
+                self.launchSpotmaxGui, font, iconSize,
+                icon=QIcon(spotmax_logo_path)
+            )
+
         mainLayout.addSpacing(10)
         
         controlsButtonsGroupBox = QGroupBox()
         controlsButtonsGroupBox.setTitle('Controls')
+        self.controlsGroupBox = controlsButtonsGroupBox
         controlsButtonsGroupBoxLayout = QVBoxLayout()
         controlsButtonsGroupBox.setLayout(controlsButtonsGroupBoxLayout)
         
@@ -256,7 +258,30 @@ class mainWin(QMainWindow):
         self._version = None
         self.progressWin = None
         self.forceClose = False
-    
+
+    def addModulesGroupBox(self, mainLayout, title):
+        """Add a group box of module buttons below the previous ones and
+        return it with its (vertical) layout."""
+        groupBox = QGroupBox(title)
+        layout = QVBoxLayout()
+        groupBox.setLayout(layout)
+        mainLayout.addWidget(groupBox)
+        return groupBox, layout
+
+    def addModuleButton(
+            self, layout, button, slot, font, iconSize, icon=None
+        ):
+        """Set up a button that launches a module and add it to `layout` and
+        `self.moduleButtons` (heights are set in `show`)."""
+        if icon is not None:
+            button.setIcon(icon)
+        button.setIconSize(QSize(iconSize, iconSize))
+        button.setFont(font)
+        button.clicked.connect(slot)
+        layout.addWidget(button)
+        self.moduleButtons.append(button)
+        return button
+
     def addStatusBar(self, scheme):
         self.statusbar = self.statusBar()
         widget = QtWidgets.QWidget()
@@ -1829,9 +1854,7 @@ class mainWin(QMainWindow):
 
     def launchDataStruct(self, checked=False):
         self.dataStructButton.setPalette(self.moduleLaunchedPalette)
-        self.dataStructButton.setText(
-            '0. Creating data structure running...'
-        )
+        self.dataStructButton.setText('Creating data structure running...')
 
         QTimer.singleShot(100, self._showDataStructWin)
 
@@ -1940,11 +1963,13 @@ class mainWin(QMainWindow):
                 if self.dataStructWin.bioformats_backend == 'python-bioformats':
                     self.dataStructButton.setPalette(self.defaultButtonPalette)
                     self.dataStructButton.setText(
-                        '0. Restart Cell-ACDC to enable module 0 again.')
+                        'Restart Cell-ACDC to create a data structure again'
+                    )
                     self.dataStructButton.setToolTip(
-                        'Due to an interal limitation of the Java Virtual Machine\n'
-                        'moduel 0 can be launched only once.\n'
-                        'To use it again close and reopen Cell-ACDC'
+                        'Due to an internal limitation of the Java Virtual '
+                        'Machine, the data structure\n'
+                        'module can be launched only once. To use it again, '
+                        'close and reopen Cell-ACDC.'
                     )
                     self.dataStructButton.setDisabled(True)
                 
@@ -2050,9 +2075,8 @@ class mainWin(QMainWindow):
         self.logger.log(getattr(logging, loggerLevel), text)
 
     def restoreDefaultButtons(self):
-        self.dataStructButton.setText(
-            '0. Create data structure from microscopy/image file(s)...'
-        )
+        # The initial label (stored by `setColorsAndText`, run by `show`)
+        self.dataStructButton.setText(self.defaultTextDataStructButton)
         self.dataStructButton.setPalette(self.defaultButtonPalette)
 
     def launchDataPrep(self, checked=False):
@@ -2284,12 +2308,8 @@ class mainWin(QMainWindow):
         super().show()
         h = self.dataPrepButton.geometry().height()
         f = 1.5
-        self.dataStructButton.setMinimumHeight(int(h*f))
-        self.dataPrepButton.setMinimumHeight(int(h*f))
-        self.segmButton.setMinimumHeight(int(h*f))
-        self.guiButton.setMinimumHeight(int(h*f))
-        if hasattr(self, 'spotmaxButton'):
-            self.spotmaxButton.setMinimumHeight(int(h*f))
+        for moduleButton in self.moduleButtons:
+            moduleButton.setMinimumHeight(int(h*f))
         self.showAllWindowsButton.setMinimumHeight(int(h*f))
         self.restartButton.setMinimumHeight(int(int(h*f)))
         self.closeButton.setMinimumHeight(int(int(h*f)))

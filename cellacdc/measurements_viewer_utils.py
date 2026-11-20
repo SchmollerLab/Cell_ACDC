@@ -36,7 +36,7 @@ from qtpy.QtGui import QColor
 from . import (
     myutils, load, phase_translator, cca_df_colnames, apps, core,
     timepoint_predictors, measurement_processing, background_values,
-    settings_csv_path,
+    settings_csv_path, qutils,
 )
 from .timepoint_predictors import TIMEPOINT_PREFIX, parse_flags
 from .apps_measurements_viewer import (
@@ -541,6 +541,108 @@ def position_name(images_path):
     return os.path.basename(images_path) or str(images_path)
 
 
+def loaded_data_status(
+        posData, pos_i=0, num_positions=1, channel=None, overlay_channels=(),
+        configuration_filepath=None
+    ):
+    """Describe the displayed data for the viewer's status bar label (as the
+    main GUI's `gui.guiWin.setStatusBarLabel`).
+
+    Parameters
+    ----------
+    posData : `load.loadData` or None
+        Displayed position. Missing attributes (e.g., of synthetic data)
+        leave out their item; None (no data) gives empty texts.
+    pos_i : int, optional
+        Index of the displayed position. Default is 0.
+    num_positions : int, optional
+        Number of loaded positions: with more than one, the position item
+        ends with ``(pos_i+1/num_positions)``. Default is 1.
+    channel : str, optional
+        Displayed channel. Default is ``posData.user_ch_name``.
+    overlay_channels : iterable of str, optional
+        Overlaid channels, in the given order (item left out if empty).
+    configuration_filepath : str, optional
+        File of the loaded or saved configuration (item left out if None).
+
+    Returns
+    -------
+    text : str
+        Single line with the items joined by `` || ``: ``Experiment: <exp
+        folder>``, ``<Position folder> (i/N)``, ``Basename: ...``,
+        ``Channel: ...``, ``Overlay channels: ...``, ``Segmentation file
+        name: <segm file name without basename>`` and ``Configuration:
+        <file name>``.
+    tooltip : str
+        The same items one per line, with the full Images folder (instead
+        of the experiment folder) and configuration file paths. Plain text.
+        A path item longer than a tool tip line (`path_tooltip_lines`) has
+        its label alone on the first line and the path broken after
+        separators on indented lines below; other lines are not wrapped yet
+        (`qutils.wrap_tooltip`, which keeps the path lines).
+    """
+    if posData is None:
+        return '', ''
+    images_path = getattr(posData, 'images_path', None)
+    pos_foldername = getattr(posData, 'pos_foldername', None)
+    if not pos_foldername and images_path:
+        pos_foldername = position_name(images_path)
+    exp_path = getattr(posData, 'exp_path', None)
+    exp_foldername = (
+        os.path.basename(os.path.normpath(str(exp_path))) if exp_path else ''
+    )
+    basename = getattr(posData, 'basename', None) or ''
+    if channel is None:
+        channel = getattr(posData, 'user_ch_name', None)
+    segm_npz_path = getattr(posData, 'segm_npz_path', None)
+    segm_filename = os.path.basename(segm_npz_path) if segm_npz_path else ''
+    segm_endname = segm_filename
+    if basename and segm_filename.startswith(basename):
+        segm_endname = segm_filename[len(basename):]
+    overlay_channels = [str(ch) for ch in overlay_channels]
+
+    items = []
+    if pos_foldername:
+        position = str(pos_foldername)
+        if num_positions > 1:
+            position = f'{position} ({pos_i+1}/{num_positions})'
+        items.append(position)
+    if basename:
+        items.append(f'Basename: {basename}')
+    if channel:
+        items.append(f'Channel: {channel}')
+    if overlay_channels:
+        items.append(f'Overlay channels: {", ".join(overlay_channels)}')
+    if segm_endname:
+        items.append(f'Segmentation file name: {segm_endname}')
+
+    text_items = list(items)
+    tooltip_lines = list(items)
+    if exp_foldername:
+        text_items.insert(0, f'Experiment: {exp_foldername}')
+    if images_path:
+        tooltip_lines[:0] = path_tooltip_lines('Images folder', images_path)
+    if configuration_filepath:
+        text_items.append(
+            f'Configuration: {os.path.basename(configuration_filepath)}'
+        )
+        tooltip_lines.extend(
+            path_tooltip_lines('Configuration file', configuration_filepath)
+        )
+    return ' || '.join(text_items), '\n'.join(tooltip_lines)
+
+
+def path_tooltip_lines(label, path, width=qutils.TOOLTIP_MAX_LINE_LENGTH):
+    """Tool tip lines of the item ``<label>: <path>``: one line if it fits
+    in `width` characters, else ``<label>:`` and the path broken after its
+    separators on lines indented by four spaces (`qutils.wrap_path`), because
+    `qutils.wrap_tooltip` never splits a path."""
+    line = f'{label}: {path}'
+    if len(line) <= width:
+        return [line]
+    return [f'{label}:', *qutils.wrap_path(path, width, indent=' '*4)]
+
+
 def load_positions(
         images_paths, channel, segm_endname='segm', logger=print,
         progress=None, skip_errors=True
@@ -650,6 +752,59 @@ class MeasurementsViewerUtils:
     module docstring)."""
 
     @staticmethod
+    def validateTimeCourseYAxes(yAxes):
+        """Validate the configuration's ``time_course_y_axes``
+        ``{column: axis number}`` (optional: configurations saved before
+        multiple y axes have none)."""
+        if not isinstance(yAxes, dict) or any(
+                not isinstance(col, str) or not col
+                or type(number) is not int or number < 1
+                for col, number in yAxes.items()):
+            raise ValueError(
+                'time_course_y_axes must map column names to y axis numbers '
+                '(1, 2, ...).'
+            )
+
+    def yAxisNumber(self, col):
+        """Time course y axis number of column `col` (1: default axis)."""
+        return self.timeCourseYAxes.get(col, 1)
+
+    def setYAxisNumber(self, col, number):
+        if number == 1:
+            self.timeCourseYAxes.pop(col, None)
+        else:
+            self.timeCourseYAxes[col] = number
+
+    def mergeYAxisIntoDefault(self, number):
+        """Put every column of the y axis `number` (also those that are not
+        plotted) on the default axis 1."""
+        for col, other in list(self.timeCourseYAxes.items()):
+            if other == number:
+                del self.timeCourseYAxes[col]
+
+    def newYAxisNumber(self):
+        """Number of a new y axis: after every number used by a column,
+        also by columns that are not plotted (plotting them again must not
+        put them on the new axis), so the new axis is the rightmost one."""
+        return max([1, *self.timeCourseYAxes.values()]) + 1
+
+    def timeCourseYAxesConfiguration(self, columns):
+        """The configuration's ``time_course_y_axes``: the y axis number of
+        every plotted time course column in `columns` (also 1), then of the
+        other columns not on axis 1."""
+        yAxes = {col: self.yAxisNumber(col) for col in columns}
+        for col, number in sorted(self.timeCourseYAxes.items()):
+            yAxes.setdefault(col, number)
+        return yAxes
+
+    def loadTimeCourseYAxes(self, yAxes):
+        """Set `timeCourseYAxes` from a configuration's validated
+        ``time_course_y_axes`` (axis 1 is the default, not stored)."""
+        self.timeCourseYAxes = {
+            col: number for col, number in yAxes.items() if number != 1
+        }
+
+    @staticmethod
     def validateConfiguration(configuration):
         if (not isinstance(configuration, dict)
                 or configuration.get('version') not in (1, 2)):
@@ -685,6 +840,9 @@ class MeasurementsViewerUtils:
                 'measurements_colors must map column names to colors like '
                 '"#00ff00".'
             )
+        MeasurementsViewerUtils.validateTimeCourseYAxes(
+            configuration.get('time_course_y_axes', {})
+        )
         MeasurementsViewerUtils.validateConditionalFormatting(
             configuration.get('conditional_formatting', {})
         )

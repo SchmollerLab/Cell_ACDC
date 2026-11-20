@@ -53,6 +53,14 @@
   ``USER_SETTINGS_PATHS`` when tests use them. Modules first imported inside
   a test body are not redirected, so import GUI modules at the top of the
   test file.
+- Icons (``QIcon(':<name>.svg')``) come from the committed
+  ``cellacdc/qrc_resources_<scheme>.py``: ``cellacdc`` registers its runtime
+  copy (``cellacdc/qrc_resources.py`` or ``~/acdc-appdata/qrc_resources.py``),
+  which is created only when missing and refreshed only at app start
+  (``_run._setup_app``), so in an existing checkout it can lack icons added
+  since. When it differs from the committed module, its resources are
+  replaced by those of the committed module for the session (in memory, no
+  file is changed).
 - The ``dummy_processor`` fixture registers the test-only identity
   measurement processor ``'Dummy'`` (``tests/utils/measurement_processing.py``),
   which is not shipped with Cell-ACDC.
@@ -508,6 +516,37 @@ def _isolate_user_settings(tmp_path_factory, monkeypatch):
                     module, 'QSettings', IsolatedQSettings, raising=False
                 )
     yield folderpath
+
+
+@pytest.fixture(scope='session', autouse=True)
+def _register_committed_qrc_resources():
+    """Use the icons of the committed ``qrc_resources_<scheme>.py``.
+
+    See the module docstring: the runtime copy that ``cellacdc`` registers
+    on import is refreshed only when the app starts.
+    """
+    if 'cellacdc' not in sys.modules:
+        return
+    import filecmp
+    import importlib
+    import cellacdc
+    runtime = getattr(cellacdc, 'acdc_qrc_resources', None)
+    runtimePath = getattr(runtime, '__file__', None)
+    if not runtimePath or not os.path.exists(runtimePath):
+        return
+    scheme = 'dark' if getattr(cellacdc, 'scheme', 'light') == 'dark' else (
+        'light'
+    )
+    committedPath = getattr(cellacdc, f'qrc_resources_{scheme}_path')
+    if filecmp.cmp(runtimePath, committedPath, shallow=False):
+        return
+    runtime.qCleanupResources()
+    moduleName = f'cellacdc.qrc_resources_{scheme}'
+    wasImported = moduleName in sys.modules
+    # Importing it registers its resources
+    committed = importlib.import_module(moduleName)
+    if wasImported:
+        committed.qInitResources()
 
 
 @pytest.fixture

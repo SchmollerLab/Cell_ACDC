@@ -696,7 +696,7 @@ def standard_metrics_desc(
                     used to correct the intensities is computed as the <b>median</b>
                     of the pixels from the pixels inside the rectangular
                     <b>background ROIs</b> that you selected in the
-                    data prep module (module 1.).<br><br>
+                    data prep module.<br><br>
                     Note that this metric is <b>grayed out</b> and it cannot be selected 
                     if the <b>selection of the background ROIs was not performed</b>.
                 """)
@@ -706,7 +706,7 @@ def standard_metrics_desc(
                     used to correct the intensities is computed as the <b>mean</b>
                     of the pixels from the pixels inside each 
                     <b>background objects</b> that you selected in the
-                    GUI module (module 3).<br><br>
+                    GUI.<br><br>
                 """)
             else:
                 bkgr_desc = ''
@@ -749,7 +749,7 @@ def standard_metrics_desc(
                     <code>dataPrepBkgr</code> means that the background value
                     is computed from the pixels inside the rectangular
                     <b>background ROIs</b> that you selected in the
-                    data prep module (module 1.).<br><br>
+                    data prep module.<br><br>
                     Note that this metric is <b>grayed out</b> and it cannot be selected 
                     if the <b>selection of the background ROIs was not performed</b>.
                     <br><br>

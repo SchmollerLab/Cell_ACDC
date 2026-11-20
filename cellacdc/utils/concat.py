@@ -1,3 +1,5 @@
+from functools import partial
+
 from qtpy.QtWidgets import QFileDialog
 
 from cellacdc import measurements
@@ -56,15 +58,18 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
             'If yes, please select from which table you want to copy from:'
         )
         noButton = widgets.noPushButton('No, do not copy')
+        # The empty-selection check applies only to OK: "No" needs no table
         selectTableNameWin = widgets.QDialogListbox(
             'Copy cell cycle annotations?', txt,
-            acdc_output_tables, multiSelection=False, parent=self, 
-            additionalButtons=(noButton,)
+            acdc_output_tables, multiSelection=False, parent=self,
+            additionalButtons=(noButton,), allowEmptySelection=False
         )
-        noButton.clicked.connect(selectTableNameWin.ok_cb)
+        # ok_cb reports the button passed to it, never `sender()`
+        noButton.clicked.connect(
+            partial(selectTableNameWin.ok_cb, button=noButton)
+        )
         selectTableNameWin.exec_()
-        selectedTableNames = selectTableNameWin.selectedItemsText
-        if selectTableNameWin.cancel or not selectedTableNames:
+        if selectTableNameWin.cancel:
             self.worker.abort = True
             self.worker.waitCond.wakeAll()
             return
@@ -72,8 +77,9 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         if selectTableNameWin.clickedButton == noButton:
             self.worker.waitCond.wakeAll()
             return
-        
-        self.worker.setAcdcOutputEndname(selectedTableNames[0])        
+
+        selectedTableNames = selectTableNameWin.selectedItemsText
+        self.worker.setAcdcOutputEndname(selectedTableNames[0])
         self.worker.waitCond.wakeAll()
     
     def askSetMeasurements(self, kwargs):
@@ -181,7 +187,8 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         selectFormatWin = widgets.QDialogListbox(
             'Select output file format',
             'Select format of the output file\n',
-            formats, multiSelection=False, parent=self
+            formats, multiSelection=False, parent=self,
+            allowEmptySelection=False
         )
         selectFormatWin.exec_()
         if selectFormatWin.cancel:

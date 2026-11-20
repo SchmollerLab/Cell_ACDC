@@ -12,8 +12,10 @@ Position.
 
 .. admonition:: TL;DR
 
-    * **Open** the viewer from the launcher (**Utilities > Measurements >
-      Measurements viewer...**), pick a saved or premade configuration (or
+    * **Open** the viewer from the launcher (**Launch measurements
+      viewer...** in the **Measurements visualisation** box, or **Utilities >
+      Measurements > Measurements viewer...**), pick a saved or premade
+      configuration (or
       start a new one) and load an experiment with **File > Load Folder...**
       (:kbd:`Ctrl+O`). Premade configurations (e.g., FUCCI cell cycle) only
       ask for your channels and input values.
@@ -22,8 +24,8 @@ Position.
       always shows the selected cell.
     * **Plot** a column by clicking it in **Columns to plot**:
       **Time course** for the selected cell, **Measurement vs Measurement**
-      for all cells of the Position. Right-click a column to change its color
-      or add conditional formatting.
+      for all cells of the Position. Right-click a column to change its color,
+      show it on its own y axis or add conditional formatting.
     * **Add columns** with **Process measurements...** (smoothing,
       normalization, ramp detection) and **Combine measurements...**
       (equations). The original columns are never changed.
@@ -84,7 +86,9 @@ are needed for lineage-based inputs (mother, daughter, sister cell).
 Starting the viewer
 ~~~~~~~~~~~~~~~~~~~
 
-* From the launcher: **Utilities > Measurements > Measurements viewer...**
+* From the launcher: **Launch measurements viewer...** (in the
+  **Measurements visualisation** box) or **Utilities > Measurements >
+  Measurements viewer...**
 * From a terminal, in the environment where Cell-ACDC is installed::
 
       python -m cellacdc.measurements_viewer
@@ -113,7 +117,8 @@ changes, you are first asked whether to save them (see `Configurations`_).
 
 Loading large experiments can take a while. The window stays visible but does
 not accept input until loading is complete; progress is shown in the status
-bar and in the terminal.
+bar and in the terminal. Once loaded, the status bar shows which data are
+displayed (see `The window`_).
 
 Partially analyzed videos
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -168,7 +173,19 @@ The window
   `Time point to phase translator`_ (icon of a colored band split by two
   time point markers; hover over it for a description).
 * **Image** (center): the current frame with the segmentation contours and
-  cell IDs. The selected cell is highlighted.
+  cell IDs. The selected cell is highlighted. The colormap (LUT) of each
+  channel, chosen by right-clicking its color bar left of the image, is
+  remembered by channel name and restored whenever a channel with that name
+  is loaded again, also in the main GUI and in other Cell-ACDC windows that
+  are already open. A channel without a remembered
+  colormap is grey when displayed and has its overlay color when overlaid;
+  choosing an overlay color (same menu) makes the overlay colormap follow
+  the color again. The overlay color and the **Alpha** slider of each
+  overlaid channel are remembered by channel name the same way.
+  **Restore default settings** (same menu) resets the colormaps and the
+  **Alpha** sliders and keeps the overlay colors. The
+  **True transparency** and **Alpha-encoded intensity** options of the
+  overlay toolbar are remembered too, also when you load other data.
 * **Navigate** box: Position, frame, z-slice and Cell ID controls (labels,
   value boxes and sliders in aligned columns).
 * **Annotations** box: what to display on the image (contours, IDs, cell
@@ -178,6 +195,14 @@ The window
 * **Cell-ACDC objects** dock: click the small arrow button at the left edge
   of the window (**Show object properties**) to show the properties of the
   selected cell (ID, area, intensities, etc.).
+* **Status bar** (bottom): what is displayed, i.e. the experiment folder,
+  the Position folder (with its number, e.g. ``Position_2 (2/3)``, when
+  several Positions are loaded), the basename, the displayed and overlaid
+  channels, the segmentation file and the name of the loaded or saved
+  configuration file. Hover over it to see the full paths of the ``Images``
+  folder and of the configuration file. Other messages (e.g., the hint
+  shown after loading or the message after exporting measurements) hide it
+  for a few seconds.
 
 
 Selecting cells and navigating
@@ -218,7 +243,8 @@ the overlay transparency sliders):
   after you zoomed by hand.
 * **Normalize measurements (0-1)**: display every plotted measurement scaled
   to the range 0-1, to compare measurements with different units. This only
-  changes the display, not the table.
+  changes the display, not the table. To keep the real values, show the
+  measurements on separate y axes instead (see `Time course`_).
 * **Show phases**: show the phase band below the plot (see
   `Time point to phase translator`_).
 
@@ -251,16 +277,48 @@ plotted.
   Custom colors are saved with the configuration (the premade FUCCI
   configuration plots the Geminin reporter in green and the Cdt1 reporter
   in red).
-* **Zoom**: when you add or remove a column, toggle normalization or load a
-  position, the plot is fitted to the plotted data on both axes, as when you
-  click the **A** button in the bottom-left corner of the plot. Scroll or
-  drag in the plot to zoom and pan. With the mouse over the plot, press
+* **Y axes**: plotted columns share the default y axis, on the left of the
+  plot. To compare measurements with different scales (e.g., a reporter
+  normalized to 0-1 and the cell area in pixels), **right-click** a column
+  and select **Create new y axis for this**: the column gets its own y
+  axis, shown on the right of the plot next to the axes of the other
+  plotted columns (it is also plotted if it was not). **Add to y-axis of...** lists the other
+  y axes by the columns plotted on them; select one to move the column
+  there. The axis of the column you clicked is not listed, so this list
+  stays empty until you create a new y axis. A column keeps its y axis
+  when you remove it from the plot and plot it again; any other column you
+  plot goes on the default axis.
+
+  When you move the last plotted column of the default axis to another
+  axis, that axis becomes the default axis, so columns you plot later join
+  it. Removing the columns of the default axis from the plot does not
+  merge any axes: the next axis moves to the left, and the next column you
+  plot on the default axis gets a new left axis again.
+
+  Each y axis is labeled with its columns and fitted to their data; hover
+  over a point to see the values of all the points under the mouse,
+  whatever their axis. The y axes are saved in the configuration, numbered
+  1 (the default axis), 2, and so on (the premade FUCCI configuration shows
+  the cell area on axis 2, next to the two reporters).
+* **Zoom**: when you add or remove a column, move it to another y axis,
+  toggle normalization or load a position, the plot is fitted to the plotted
+  data on all axes, as when you click the **A** button in the bottom-left
+  corner of the plot. Scroll or drag in the plot to zoom and pan (all
+  y axes move together);
+  scroll or drag on a y axis to zoom or pan only that axis. With the mouse
+  over the plot, press
   :kbd:`H` to fit the plot to the data and press :kbd:`H` twice quickly to
   show all frames. After a fit, the plot keeps following the data (e.g. when
   you change cell or edit time points) until you zoom or pan by hand; then
   your zoom is kept unless **Rescale plot** is checked.
 * **Hover** over a point to see its frame, value and phase; **click** a point
   to go to that frame.
+* **Plot options**: right-click the plot and open **Plot Options** for the
+  plot settings, e.g. a log scale (**Transforms**), applied to every y axis.
+  The transforms **Power Spectrum (FFT)**, **dy/dx** and **Y vs. Y'** are
+  grayed out, as are **Downsample** and **Clip to View** (menu
+  **Downsample**): each point of the plot is a cell at one frame, and these
+  options change the number of points or the x axis.
 
 Measurement vs Measurement
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -722,8 +780,9 @@ A configuration stores your setup, so you can reuse it on other experiments:
 
 * the inputs (Images folders, displayed and overlay channels, segmentation
   file);
-* the plotted columns of both plot modes, **Normalize measurements (0-1)**,
-  conditional formatting and custom column colors;
+* the plotted columns of both plot modes, the y axis of each column,
+  **Normalize measurements (0-1)**, conditional formatting and custom
+  column colors;
 * measurement processing recipes and combine equations;
 * time point identifiers, custom annotations (including their
   **Overrides phases** option) and their predictors;
@@ -772,7 +831,8 @@ example:
 * ``fucci_cell_cycle.json``: cell cycle phases (G1, S Early, S, S Late, G2,
   M) from the two FUCCI reporters (Cdt1 and Geminin), with background
   correction, min-max normalization, smoothing, ramp detection, time point
-  predictors and phase rules. Its "Excluded" and "Arrested" annotations
+  predictors and phase rules. It plots the two reporters on the left y axis
+  and the cell area on its own y axis. Its "Excluded" and "Arrested" annotations
   override phases: annotated cells get the phase "Excluded" or "Arrested" on
   every frame ("Excluded" wins if a cell has both).
 * ``example_two_channel_ratio.json``: a simple example that plots two
@@ -865,6 +925,14 @@ shortcuts of the viewer tools.
       - Shuffle the colormap of the segmentation masks
     * - :kbd:`Esc`
       - Cancel the active tool
+
+The arrow keys change the frame or the z-slice (:kbd:`Left` / :kbd:`Right`,
+see the table above) and the Cell ID (:kbd:`Up` / :kbd:`Down`) also when a
+button or a checkbox has the keyboard focus. In text fields, number fields,
+drop-down menus and lists they keep their usual function: click the image or
+the plot to navigate again. In an open menu they move through the menus, and
+so they do in the menu bar after pressing :kbd:`Alt` (Windows and Linux; on
+macOS the menu bar is outside the window).
 
 Because :kbd:`Shift` + a time point or annotation shortcut re-evaluates the
 predictor, a key cannot be used as such a shortcut when :kbd:`Shift` + the key

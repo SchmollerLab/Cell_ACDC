@@ -8,7 +8,7 @@ each position folder.
 Open the module
 ---------------
 
-1. Click **0. Create data structure from microscopy/image file(s)…**.
+1. Click **Create data structure from microscopy/image file(s)…**.
 2. Choose **Re-structure image files**.
 3. In the setup dialog, select the source folder and destination folder,
    configure the image dimensions, and click **OK** to start the conversion.

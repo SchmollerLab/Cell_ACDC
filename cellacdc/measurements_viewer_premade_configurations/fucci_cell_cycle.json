@@ -131,6 +131,9 @@
   "time_course_columns": [
     "{GEMININ}_fucci", "{CDT1}_fucci", "area"
   ],
+  "time_course_y_axes": {
+    "{GEMININ}_fucci": 1, "{CDT1}_fucci": 1, "area": 2
+  },
   "measurements_axes": {"X": "{GEMININ}_fucci", "Y": "{CDT1}_fucci"},
   "normalize_measurements": false,
   "measurements_colors": {

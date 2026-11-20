@@ -1,22 +1,26 @@
 import json
 import os
 import sys
+import time
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
 import pandas as pd
 import pytest
+import pyqtgraph as pg
+import pyqtgraph.exporters
 
-from qtpy.QtCore import QEvent, QPointF, Qt
-from qtpy.QtGui import QMouseEvent
+from qtpy.QtCore import QEvent, QPointF, Qt, QTimer
+from qtpy.QtGui import QColor, QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
-    QApplication, QAbstractItemView, QStyle, QStyleOptionViewItem, QLineEdit,
+    QApplication, QAbstractItemView, QCheckBox, QStyle, QStyleOptionViewItem,
+    QLineEdit, QWidget,
 )
 
 from cellacdc.measurements_viewer import MeasurementsViewerWin
-from cellacdc import annotate, measurements_viewer, widgets
+from cellacdc import annotate, measurements_viewer, qutils, widgets
 from cellacdc import measurements_viewer_utils
 
 
@@ -1153,6 +1157,201 @@ def load_real(window, paths, **kwargs):
     )
 
 
+def focus_in_active_window(app, window, widget):
+    window.show()
+    window.activateWindow()
+    QTest.qWaitForWindowActive(window, 1000)
+    widget.setFocus()
+    app.processEvents()
+    assert QApplication.focusWidget() is widget
+
+
+def test_arrow_keys_navigate_whatever_widget_has_the_focus(
+        real_viewer, app, tmp_path
+    ):
+    # Buttons and check boxes use the arrow keys to move the focus (e.g.,
+    # the first toolbar button, focused when the window is activated again
+    # after a dialog): the viewer's event filter navigates instead
+    images = make_timelapse_position(
+        tmp_path, SizeT=4, extra_cells=[(frame_i, 2) for frame_i in range(4)]
+    )
+    load_real(real_viewer, [images])
+    for widget in (real_viewer.zoomRectButton, real_viewer.followIDcheckbox):
+        focus_in_active_window(app, real_viewer, widget)
+        frame_i = real_viewer.frame_i
+        QTest.keyClick(widget, Qt.Key_Right)
+        assert real_viewer.frame_i == frame_i + 1
+        QTest.keyClick(widget, Qt.Key_Left)
+        assert real_viewer.frame_i == frame_i
+        assert real_viewer.currID() == 1
+        QTest.keyClick(widget, Qt.Key_Up)
+        assert real_viewer.currID() == 2
+        QTest.keyClick(widget, Qt.Key_Down)
+        assert real_viewer.currID() == 1
+        # The focus stays where it was
+        assert QApplication.focusWidget() is widget
+    assert not real_viewer.slotErrors
+
+
+def test_arrow_keys_stay_with_text_inputs(real_viewer, app, tmp_path):
+    images = make_timelapse_position(tmp_path, SizeT=4)
+    load_real(real_viewer, [images])
+    lineEdit = QLineEdit(real_viewer.measurementsPlot.parentWidget())
+    lineEdit.setText('abc')
+    lineEdit.show()
+    focus_in_active_window(app, real_viewer, lineEdit)
+    lineEdit.setCursorPosition(0)
+    QTest.keyClick(lineEdit, Qt.Key_Right)
+    assert lineEdit.cursorPosition() == 1
+    assert real_viewer.frame_i == 0
+    assert not real_viewer.slotErrors
+
+
+def test_arrow_keys_do_nothing_while_the_window_is_disabled(
+        real_viewer, app, tmp_path
+    ):
+    # `runInThread` disables the window during loads: application event
+    # filters see its key presses before Qt drops them (disabled widgets)
+    images = make_timelapse_position(
+        tmp_path, SizeT=4, extra_cells=[(frame_i, 2) for frame_i in range(4)]
+    )
+    load_real(real_viewer, [images])
+    focus_in_active_window(app, real_viewer, real_viewer.zoomRectButton)
+    handle = real_viewer.windowHandle()
+    recorded = {}
+
+    def pressArrowKeys():
+        recorded['enabled'] = real_viewer.isEnabled()
+        for key in (Qt.Key_Right, Qt.Key_Up):
+            QTest.keyClick(handle, key)
+        recorded['frame_i'] = real_viewer.frame_i
+        recorded['ID'] = real_viewer.currID()
+
+    QTimer.singleShot(0, pressArrowKeys)
+    real_viewer.runInThread(time.sleep, 0.2, text='Waiting...')
+    assert recorded == {'enabled': False, 'frame_i': 0, 'ID': 1}
+    # Enabled again (the focus was cleared): the keys navigate
+    assert real_viewer.isEnabled()
+    QTest.keyClick(handle, Qt.Key_Right)
+    QTest.keyClick(handle, Qt.Key_Up)
+    assert (real_viewer.frame_i, real_viewer.currID()) == (1, 2)
+    assert not real_viewer.slotErrors
+
+
+def close_popups(app):
+    for _ in range(5):
+        popup = QApplication.activePopupWidget()
+        if popup is None:
+            break
+        popup.close()
+        app.processEvents()
+
+
+def test_arrow_keys_switch_the_menus_of_an_open_menu(
+        real_viewer, app, tmp_path
+    ):
+    # An open menu passes Left/Right on to its menu bar (switch menus),
+    # while the focus widget is still the one focused before
+    images = make_timelapse_position(tmp_path, SizeT=4)
+    load_real(real_viewer, [images])
+    menuBar = real_viewer.menuBar()
+    # Windows/Linux menu bar (macOS: native, outside the window)
+    menuBar.setNativeMenuBar(False)
+    focus_in_active_window(app, real_viewer, real_viewer.zoomRectButton)
+    fileAction, editAction = menuBar.actions()[:2]
+    try:
+        QTest.mouseClick(
+            menuBar, Qt.LeftButton,
+            pos=menuBar.actionGeometry(fileAction).center()
+        )
+        popup = QApplication.activePopupWidget()
+        assert popup is fileAction.menu()
+        assert QApplication.focusWidget() is real_viewer.zoomRectButton
+        QTest.keyClick(popup, Qt.Key_Right)
+        assert menuBar.activeAction() is editAction
+        assert QApplication.activePopupWidget() is editAction.menu()
+        assert real_viewer.frame_i == 0
+        QTest.keyClick(editAction.menu(), Qt.Key_Left)
+        assert menuBar.activeAction() is fileAction
+        assert real_viewer.frame_i == 0
+    finally:
+        close_popups(app)
+    assert not real_viewer.slotErrors
+
+
+def test_arrow_keys_navigate_the_menu_bar_after_alt(
+        real_viewer, app, tmp_path
+    ):
+    images = make_timelapse_position(
+        tmp_path, SizeT=4, extra_cells=[(frame_i, 2) for frame_i in range(4)]
+    )
+    load_real(real_viewer, [images])
+    menuBar = real_viewer.menuBar()
+    menuBar.setNativeMenuBar(False)
+    altNavigation = menuBar.style().styleHint(
+        QStyle.StyleHint.SH_MenuBar_AltKeyNavigation, None, menuBar
+    )
+    if not altNavigation:
+        pytest.skip('The style has no keyboard navigation of the menu bar')
+    focus_in_active_window(app, real_viewer, real_viewer.zoomRectButton)
+    fileAction, editAction = menuBar.actions()[:2]
+    handle = real_viewer.windowHandle()
+    try:
+        QTest.keyClick(handle, Qt.Key_Alt)
+        assert QApplication.focusWidget() is menuBar
+        assert menuBar.activeAction() is fileAction
+        QTest.keyClick(handle, Qt.Key_Right)
+        assert menuBar.activeAction() is editAction
+        # Down opens the menu
+        QTest.keyClick(handle, Qt.Key_Down)
+        assert QApplication.activePopupWidget() is editAction.menu()
+        assert (real_viewer.frame_i, real_viewer.currID()) == (0, 1)
+    finally:
+        close_popups(app)
+    assert not real_viewer.slotErrors
+
+
+def test_user_guide_limits_alt_menu_navigation_to_windows_and_linux():
+    # macOS: the menu bar is native (outside the window) and its style has
+    # no Alt navigation, so the arrow keys keep navigating frames/cells
+    rst_path = os.path.join(
+        os.path.dirname(measurements_viewer.__file__),
+        'docs', 'source', 'measurements-viewer.rst'
+    )
+    with open(rst_path, encoding='utf-8') as file:
+        paragraphs = file.read().split('\n\n')
+    arrows, = [p for p in paragraphs if p.startswith('The arrow keys change')]
+    arrows = ' '.join(arrows.split())
+    assert 'menu bar after pressing :kbd:`Alt` (Windows and Linux;' in arrows
+    assert 'on macOS the menu bar is outside the window' in arrows
+
+
+def test_key_events_of_other_windows_are_not_for_the_window(app):
+    # The main GUI's app event filter handles the arrow keys only for its
+    # own windows (and the windows they own), not, e.g., for the viewer
+    window = QWidget()
+    child = QLineEdit(window)
+    owned = QWidget(window, Qt.WindowType.Window)
+    other = QWidget()
+    otherChild = QLineEdit(other)
+    try:
+        assert qutils.is_key_event_for_window(window, window)
+        assert qutils.is_key_event_for_window(window, child)
+        assert qutils.is_key_event_for_window(window, owned)
+        assert not qutils.is_key_event_for_window(window, other)
+        assert not qutils.is_key_event_for_window(window, otherChild)
+        # Seen on the QWindow first: the focus widget tells the target
+        focus_in_active_window(app, other, otherChild)
+        handle = other.windowHandle()
+        assert not qutils.is_key_event_for_window(window, handle)
+        assert qutils.is_key_event_for_window(other, handle)
+    finally:
+        for widget in (window, owned, other):
+            widget.hide()
+            widget.deleteLater()
+        app.processEvents()
+
+
 def test_loading_shorter_timelapse_resets_navigation(real_viewer, tmp_path):
     longer = make_timelapse_position(tmp_path / 'A', SizeT=10)
     shorter = make_timelapse_position(tmp_path / 'B', SizeT=3)
@@ -1282,6 +1481,254 @@ def test_loading_fewer_positions_resets_position(real_viewer, tmp_path):
     assert not real_viewer.slotErrors
     assert real_viewer.pos_i == 0
     assert real_viewer.posData().images_path == single
+
+
+# --- Status bar: what is loaded (as `gui.guiWin.setStatusBarLabel`) ---------
+def make_overlay_position(root, pos=1, SizeT=3):
+    """2D time-lapse position (`make_timelapse_position`) with a GFP
+    channel"""
+    import tifffile
+
+    images = make_timelapse_position(root, pos=pos, SizeT=SizeT)
+    tifffile.imwrite(
+        os.path.join(images, 'test_GFP.tif'),
+        np.ones((SizeT, 30, 30), dtype=np.uint16)
+    )
+    return images
+
+
+def unwrap_tooltip(tooltip):
+    """`tooltip` with the line breaks of `qutils.wrap_tooltip` (at spaces)
+    and of `qutils.wrap_path` (after path separators, on indented lines)
+    undone"""
+    text = ''
+    for line in tooltip.split('\n'):
+        if text.endswith(('\\', '/')):
+            text += line.strip()
+        else:
+            text = f'{text} {line.strip()}' if text else line.strip()
+    return text
+
+
+def unwrapped_tooltip(widget):
+    """Tool tip of `widget` with its line breaks undone (`unwrap_tooltip`)"""
+    return unwrap_tooltip(widget.toolTip())
+
+
+def assert_tooltip_lines_fit(tooltip):
+    lines = tooltip.split('\n')
+    assert max(map(len, lines)) <= qutils.TOOLTIP_MAX_LINE_LENGTH, lines
+
+
+def test_loaded_data_status_lists_what_is_displayed():
+    images = os.path.join('data', 'exp', 'Position_2', 'Images')
+    posData = SimpleNamespace(
+        images_path=images, pos_foldername='Position_2',
+        exp_path=os.path.join('data', 'exp'), basename='test_',
+        user_ch_name='phase',
+        segm_npz_path=os.path.join(images, 'test_segm_custom.npz')
+    )
+    status = measurements_viewer_utils.loaded_data_status
+    text, tooltip = status(posData)
+    assert text == (
+        'Experiment: exp || Position_2 || Basename: test_ || '
+        'Channel: phase || Segmentation file name: segm_custom.npz'
+    )
+    assert tooltip.split('\n') == [
+        f'Images folder: {images}', 'Position_2', 'Basename: test_',
+        'Channel: phase', 'Segmentation file name: segm_custom.npz'
+    ]
+    config = os.path.join('settings', 'fucci.json')
+    text, tooltip = status(
+        posData, pos_i=1, num_positions=3, channel='GFP',
+        overlay_channels=['mCherry', 'DAPI'], configuration_filepath=config
+    )
+    assert text == (
+        'Experiment: exp || Position_2 (2/3) || Basename: test_ || '
+        'Channel: GFP || Overlay channels: mCherry, DAPI || '
+        'Segmentation file name: segm_custom.npz || Configuration: fucci.json'
+    )
+    assert tooltip.split('\n')[0] == f'Images folder: {images}'
+    assert tooltip.split('\n')[-1] == f'Configuration file: {config}'
+    # Synthetic data without paths and names, no data
+    assert status(SimpleNamespace()) == ('', '')
+    assert status(None) == ('', '')
+
+
+def test_loaded_data_status_breaks_long_paths_after_separators():
+    # Review: `qutils.wrap_tooltip` never splits a path (no spaces), so the
+    # tool tip had lines as wide as the Images folder and configuration
+    # paths (a saved configuration's path alone is often > 80 characters)
+    images = os.path.join(
+        os.sep, 'data', *['long_experiment_folder_name']*4, 'exp',
+        'Position_2', 'Images'
+    )
+    config = os.path.join(
+        os.sep, 'Users', 'someone', 'acdc-appdata', '.acdc-settings',
+        'measurements_viewer_configurations', 'fucci_cell_cycle.json'
+    )
+    posData = SimpleNamespace(
+        images_path=images, pos_foldername='Position_2', basename='test_',
+        user_ch_name='phase'
+    )
+    _, tooltip = measurements_viewer_utils.loaded_data_status(
+        posData, configuration_filepath=config
+    )
+    assert_tooltip_lines_fit(tooltip)
+    # Kept by the wrapping of the other lines
+    assert qutils.wrap_tooltip(tooltip) == tooltip
+    lines = tooltip.split('\n')
+    assert lines[0] == 'Images folder:'
+    position = lines.index('Position_2')
+    config_label = lines.index('Configuration file:')
+    imagesLines, configLines = lines[1:position], lines[config_label+1:]
+    assert len(imagesLines) > 1 and len(configLines) > 1
+    assert ''.join(line[4:] for line in imagesLines) == images
+    assert ''.join(line[4:] for line in configLines) == config
+    for line in imagesLines + configLines:
+        assert line.startswith('    ') and line[4] != ' '
+    for line in imagesLines[:-1] + configLines[:-1]:
+        assert line.endswith(os.sep)
+    assert f'Images folder: {images}' in unwrap_tooltip(tooltip)
+    assert f'Configuration file: {config}' in unwrap_tooltip(tooltip)
+    # Items that fit stay on one line
+    path_lines = measurements_viewer_utils.path_tooltip_lines
+    assert path_lines('Images folder', os.path.join('exp', 'Images')) == [
+        f'Images folder: {os.path.join("exp", "Images")}'
+    ]
+
+
+def test_status_bar_shows_the_loaded_data(real_viewer, tmp_path, capsys):
+    # Reviewer request: as in the main GUI, the status bar tells what is
+    # loaded, also after switching position; logged once per load/switch
+    paths = [
+        make_timelapse_position(tmp_path / 'exp', pos=pos) for pos in (1, 2)
+    ]
+    label = real_viewer.statusBarLabel
+    assert label.text() == label.toolTip() == ''
+    capsys.readouterr()
+    load_real(real_viewer, paths)
+    expected = (
+        'Experiment: exp || Position_1 (1/2) || Basename: test_ || '
+        'Channel: phase || Segmentation file name: segm.npz'
+    )
+    assert label.text() == expected
+    assert f'Images folder: {paths[0]}' in unwrapped_tooltip(label)
+    # The pytest tmp folder alone gives a path line longer than 80
+    # characters: broken after separators
+    assert_tooltip_lines_fit(label.toolTip())
+    assert capsys.readouterr().out.count('Experiment: exp') == 1
+    real_viewer.posCombobox.setCurrentIndex(1)
+    expected = expected.replace('Position_1 (1/2)', 'Position_2 (2/2)')
+    assert label.text() == expected
+    assert f'Images folder: {paths[1]}' in unwrapped_tooltip(label)
+    assert capsys.readouterr().out.count('Experiment: exp') == 1
+    # Not logged per frame
+    real_viewer.setFrame(1)
+    assert 'Experiment: exp' not in capsys.readouterr().out
+    assert label.text() == expected
+    real_viewer.setData([])
+    assert label.text() == label.toolTip() == ''
+    assert not real_viewer.slotErrors
+
+
+def test_status_bar_lists_overlay_channels_and_keeps_the_loaded_data(
+        real_viewer, tmp_path, monkeypatch
+    ):
+    load_real(real_viewer, [make_overlay_position(tmp_path / 'exp')])
+    label = real_viewer.statusBarLabel
+    loaded = label.text()
+    assert loaded.startswith('Experiment: exp || Position_1 || ')
+    assert 'Overlay' not in loaded
+    monkeypatch.setattr(
+        real_viewer, 'askSelectOverlayChannel', lambda: ['GFP']
+    )
+    real_viewer.overlayButton.setChecked(True)
+    withOverlay = loaded.replace(
+        'Channel: phase', 'Channel: phase || Overlay channels: GFP'
+    )
+    assert label.text() == withOverlay
+    assert 'Overlay channels: GFP' in label.toolTip()
+    # Channel toggled from the overlay button context menu
+    # (`overlayChannelToggled` reads `sender()`)
+    action, = [
+        action for action in real_viewer.overlayContextMenu.actions()
+        if action.text() == 'GFP'
+    ]
+    action.setChecked(False)
+    assert label.text() == loaded
+    action.setChecked(True)
+    assert label.text() == withOverlay
+    real_viewer.overlayButton.setChecked(False)
+    assert label.text() == loaded
+    # Exporting reports the file in a temporary message
+    export = tmp_path / 'export.csv'
+    monkeypatch.setattr(
+        measurements_viewer.QFileDialog, 'getSaveFileName',
+        Mock(return_value=(str(export), 'CSV (*.csv)'))
+    )
+    real_viewer.exportMeasurements()
+    assert export.exists()
+    assert label.text() == loaded
+    assert str(export) in real_viewer.statusBar().currentMessage()
+    # The mixin writes the color scheme restart notice into the label
+    gui_viewer_tools = measurements_viewer.gui_viewer_tools
+    monkeypatch.setattr(
+        gui_viewer_tools._warnings, 'warnRestartCellACDCcolorModeToggled',
+        Mock()
+    )
+    monkeypatch.setattr(
+        gui_viewer_tools.load, 'rename_qrc_resources_file', Mock()
+    )
+    real_viewer.onToggleColorScheme()
+    assert label.text() == loaded
+    assert 'Restart' in real_viewer.statusBar().currentMessage()
+    assert not real_viewer.slotErrors
+
+
+def test_status_bar_shows_the_configuration_file(
+        real_viewer, tmp_path, monkeypatch, capsys
+    ):
+    images = make_overlay_position(tmp_path / 'exp')
+    errors = []
+    monkeypatch.setattr(
+        real_viewer, 'configurationError', lambda *args: errors.append(args)
+    )
+    monkeypatch.setattr(
+        real_viewer, 'selectConfigurationInput',
+        lambda config: real_viewer.configurationInputOptions(config)[0]
+    )
+    configuration = {
+        'version': 1, 'images_paths': [images], 'channel': 'phase',
+        'segm_endname': 'segm', 'overlay_channels': ['GFP'],
+        'visible_channels': ['GFP'], 'measurements_mode': 1,
+        'time_course_columns': ['area'],
+        'measurements_axes': {'X': '', 'Y': ''},
+        'normalize_measurements': False
+    }
+    path = tmp_path / 'workflow.json'
+    path.write_text(json.dumps(configuration))
+    capsys.readouterr()
+    assert real_viewer.loadConfiguration(filepath=str(path)), errors
+    assert not errors
+    expected = (
+        'Experiment: exp || Position_1 || Basename: test_ || '
+        'Channel: phase || Overlay channels: GFP || '
+        'Segmentation file name: segm.npz || Configuration: workflow.json'
+    )
+    label = real_viewer.statusBarLabel
+    assert label.text() == expected
+    assert f'Configuration file: {path}' in unwrapped_tooltip(label)
+    assert_tooltip_lines_fit(label.toolTip())
+    # Logged once, with the configuration file
+    out = capsys.readouterr().out
+    assert out.count('Experiment: exp') == 1
+    assert expected in out
+    # Saved under another name
+    mock_filename_dialog(monkeypatch, tmp_path, 'copy')
+    assert real_viewer.saveConfigurationAs()
+    assert label.text() == expected.replace('workflow.json', 'copy.json')
+    assert not real_viewer.slotErrors
 
 
 def test_cca_table_on_frames_without_annotations(
@@ -1883,3 +2330,673 @@ def test_formatting_dialog_is_disabled_while_condition_editor_runs(app):
         assert dialog.rows[0]['edit'].text() == 'a > 1'
     finally:
         dialog.deleteLater()
+
+
+# --- Time course y axes ------------------------------------------------------
+
+def open_column_menu(viewer, app, name):
+    viewer.show()
+    app.processEvents()
+    pos = viewer.columnsListWidget.visualRect(proxy_index(viewer, name)).center()
+    viewer.showColumnsContextMenu(pos)
+    menu = QApplication.activePopupWidget()
+    assert menu is not None
+    return menu
+
+
+def menu_action(menu, text):
+    action, = [action for action in menu.actions() if action.text() == text]
+    return action
+
+
+def add_to_axis_actions(menu):
+    return menu_action(menu, 'Add to y-axis of...').menu().actions()
+
+
+def axes_columns(viewer):
+    """Curves of the time course on each displayed y axis (left first)."""
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    return [
+        [item.name() for item in plotItem.listDataItems()],
+        *[
+            [item.name() for item in items]
+            for items in plotItem.extraYAxesDataItems()
+        ]
+    ]
+
+
+def test_y_axis_menu_creates_and_joins_axes(viewer, app):
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    menu = open_column_menu(viewer, app, 'intensity')
+    assert [action.text() for action in menu.actions()][:4] == [
+        'Plot', '', 'Create new y axis for this', 'Add to y-axis of...'
+    ]
+    newAxis = menu_action(menu, 'Create new y axis for this')
+    assert newAxis.isEnabled()
+    # The column's own axis is not listed: empty with a single axis
+    assert not add_to_axis_actions(menu)
+    assert not menu_action(menu, 'Add to y-axis of...').isEnabled()
+    newAxis.trigger()
+    menu.hide()
+    assert viewer.timeCourseYAxes == {'intensity': 2}
+    assert axes_columns(viewer) == [['area'], ['intensity']]
+    extraAxis, = plotItem.shownExtraAxes()
+    assert extraAxis.isVisible()
+    assert extraAxis.labelText == 'intensity'
+    assert viewer.measurementsPlot.getAxis('left').labelText == 'area'
+    assert [label.text for _, label in viewer.measurementsLegend.items] == [
+        'area', 'intensity'
+    ]
+
+    menu = open_column_menu(viewer, app, 'intensity')
+    # Alone on its axis: it already has its own axis
+    assert not menu_action(menu, 'Create new y axis for this').isEnabled()
+    assert [action.text() for action in add_to_axis_actions(menu)] == ['area']
+    menu.hide()
+    menu = open_column_menu(viewer, app, 'area')
+    addTo, = add_to_axis_actions(menu)
+    assert addTo.text() == 'intensity'
+    addTo.trigger()
+    menu.hide()
+    # area was the last column of axis 1: intensity's axis becomes axis 1
+    assert viewer.timeCourseYAxes == {}
+    # One axis left: shown on the left as before
+    assert axes_columns(viewer) == [['area', 'intensity']]
+    assert not plotItem.shownExtraAxes()
+    assert not extraAxis.isVisible()
+    assert viewer.measurementsPlot.getAxis('left').labelText == 'Value'
+    menu = open_column_menu(viewer, app, 'area')
+    assert not add_to_axis_actions(menu)
+    menu.hide()
+
+
+def test_new_y_axis_plots_unplotted_column_and_is_kept(viewer, app):
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    assert viewer.checkedColumns() == ['area']
+    menu = open_column_menu(viewer, app, 'intensity')
+    assert not add_to_axis_actions(menu)
+    menu_action(menu, 'Create new y axis for this').trigger()
+    menu.hide()
+    assert viewer.checkedColumns() == ['area', 'intensity']
+    assert axes_columns(viewer) == [['area'], ['intensity']]
+    # Unplotting hides the axis but keeps the column's axis number
+    column(viewer, 'intensity').setCheckState(Qt.Unchecked)
+    assert viewer.timeCourseYAxes == {'intensity': 2}
+    assert plotItem.extraYAxesCount == 0
+    assert axes_columns(viewer) == [['area']]
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
+    assert axes_columns(viewer) == [['area'], ['intensity']]
+    # A new axis comes after all used numbers (the rightmost axis); the
+    # lowest displayed axis is the left one
+    viewer.plotOnNewYAxis('area')
+    assert viewer.timeCourseYAxes == {'intensity': 2, 'area': 3}
+    assert axes_columns(viewer) == [['intensity'], ['area']]
+    # Comparison mode has no extra axes; they come back in the time course
+    viewer.measurementsModeCombobox.setCurrentIndex(1)
+    assert plotItem.extraYAxesCount == 0
+    viewer.measurementsModeCombobox.setCurrentIndex(0)
+    assert axes_columns(viewer) == [['intensity'], ['area']]
+    # Renaming the column keeps its axis
+    viewer.acdc_df = viewer.acdc_df.rename(columns={'area': 'size'})
+    viewer.renameMeasurementColumnReferences('area', 'size')
+    viewer.plotMeasurements()
+    assert viewer.timeCourseYAxes == {'intensity': 2, 'size': 3}
+    assert axes_columns(viewer) == [['intensity'], ['size']]
+
+
+def test_new_y_axis_skips_numbers_of_unplotted_columns(viewer):
+    viewer.acdc_df['volume'] = [1.0, 2.0, 3.0, 4.0]
+    viewer.updateColumnsList()
+    column(viewer, 'volume').setCheckState(Qt.Checked)
+    assert viewer.checkedColumns() == ['area', 'volume']
+    viewer.plotOnNewYAxis('intensity')
+    assert viewer.timeCourseYAxes == {'intensity': 2}
+    column(viewer, 'intensity').setCheckState(Qt.Unchecked)
+    # intensity keeps axis 2 while unplotted: the new axis is not axis 2,
+    # else plotting intensity again would put it on volume's axis
+    viewer.plotOnNewYAxis('volume')
+    column(viewer, 'intensity').setCheckState(Qt.Checked)
+    assert viewer.timeCourseYAxes == {'intensity': 2, 'volume': 3}
+    assert axes_columns(viewer) == [['area'], ['intensity'], ['volume']]
+
+
+def legend_texts(viewer):
+    """Legend entries of the measurements plot as displayed."""
+    return [
+        label.item.toPlainText() for _, label in viewer.measurementsLegend.items
+    ]
+
+
+def test_y_axis_labels_show_column_names_verbatim(viewer, tmp_path):
+    # Axis labels and legend entries are HTML: names from the CSV file are
+    # shown as text, while the curves keep the raw names (CSV export)
+    viewer.acdc_df['size<5um'] = viewer.acdc_df['area']
+    viewer.acdc_df['a&lt;b'] = viewer.acdc_df['intensity']
+    viewer.updateColumnsList()
+    column(viewer, 'size<5um').setCheckState(Qt.Checked)
+    assert sorted(legend_texts(viewer)) == ['area', 'size<5um']
+    assert sorted(
+        item.name() for item in viewer.timeCourseDataItems()
+    ) == ['area', 'size<5um']
+    column(viewer, 'size<5um').setCheckState(Qt.Unchecked)
+    viewer.plotOnNewYAxis('size<5um')
+    viewer.plotOnNewYAxis('a&lt;b')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    assert [
+        axis.label.toPlainText().strip()
+        for axis in [viewer.measurementsPlot.getAxis('left'),
+                     *plotItem.shownExtraAxes()]
+    ] == ['area', 'size<5um', 'a&lt;b']
+    expected = sorted(['area', 'size<5um', 'a&lt;b'])
+    assert sorted(legend_texts(viewer)) == expected
+    assert sorted(
+        item.name() for item in viewer.timeCourseDataItems()
+    ) == expected
+    path = tmp_path / 'plot.csv'
+    pg.exporters.CSVExporter(plotItem).export(fileName=str(path))
+    header = path.read_text().splitlines()[0]
+    assert 'size<5um_x' in header and 'a&lt;b_x' in header
+
+    viewer.measurementsModeCombobox.setCurrentIndex(1)
+    column(viewer, 'size<5um').setCheckState(Qt.Checked)
+    column(viewer, 'a&lt;b').setCheckState(Qt.Checked)
+    assert viewer.measurementsAxes == {'X': 'size<5um', 'Y': 'a&lt;b'}
+    assert [
+        viewer.measurementsPlot.getAxis(side).label.toPlainText().strip()
+        for side in ('bottom', 'left')
+    ] == ['size<5um', 'a&lt;b']
+
+
+def test_phase_legend_shows_phase_names_verbatim(viewer, monkeypatch):
+    monkeypatch.setattr(viewer, 'phaseColorMap', lambda: {
+        'G1<S': QColor('#56b4e9'), 'a&lt;b': QColor('#009e73')
+    })
+    viewer.measurementsLegend.clear()
+    viewer.comparisonPhaseBrushes(['G1<S', 'a&lt;b', ''])
+    assert legend_texts(viewer) == ['G1<S', 'a&lt;b', 'No phase']
+
+
+class _WheelEvent:
+    """Wheel event as `ViewBox.wheelEvent` reads it."""
+    def __init__(self, pos, delta=120):
+        self._pos, self._delta = pos, delta
+
+    def pos(self):
+        return self._pos
+
+    def delta(self):
+        return self._delta
+
+    def accept(self):
+        pass
+
+    def ignore(self):
+        pass
+
+
+def relative_change(before, after):
+    span = before[1] - before[0]
+    return [(after[0] - before[0]) / span, (after[1] - before[0]) / span]
+
+
+def test_y_axes_autoscale_separately_and_zoom_together(viewer, app):
+    viewer.plotOnNewYAxis('intensity')
+    viewer.show()
+    app.processEvents()
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    mainVb = plotItem.vb
+    extraVb, = plotItem.shownExtraViewBoxes()
+    # Same geometry, x-linked, under the main view box
+    assert extraVb.sceneBoundingRect() == mainVb.sceneBoundingRect()
+    assert extraVb.zValue() < mainVb.zValue()
+    mainVb.updateAutoRange()
+    extraVb.updateAutoRange()
+    # Cell 1: area 10, 20 (left), intensity 100, 250 (right)
+    (xMin, xMax), (yMin, yMax) = mainVb.viewRange()
+    assert xMin <= 1 and xMax >= 2
+    assert yMin <= 10 and 20 <= yMax < 100
+    (exMin, exMax), (eyMin, eyMax) = extraVb.viewRange()
+    assert (exMin, exMax) == pytest.approx((xMin, xMax))
+    assert 20 < eyMin <= 100 and eyMax >= 250
+
+    # Zooming in the plot area zooms every axis in the same way
+    mainBefore, extraBefore = mainVb.viewRange()[1], extraVb.viewRange()[1]
+    mainVb.wheelEvent(_WheelEvent(mainVb.rect().center()))
+    mainAfter, extraAfter = mainVb.viewRange()[1], extraVb.viewRange()[1]
+    assert mainAfter != mainBefore
+    assert relative_change(extraBefore, extraAfter) == pytest.approx(
+        relative_change(mainBefore, mainAfter)
+    )
+    assert not extraVb.autoRangeEnabled()[1]
+
+    # "A" autoscales every axis
+    plotItem.autoBtnClicked()
+    assert all(mainVb.autoRangeEnabled())
+    assert extraVb.autoRangeEnabled()[1]
+    # Zooming on the right axis changes only that axis and shows "A"
+    mainBefore = mainVb.viewRange()[1]
+    extraVb.wheelEvent(_WheelEvent(extraVb.rect().center()), axis=1)
+    assert mainVb.viewRange()[1] == mainBefore
+    assert not extraVb.autoRangeEnabled()[1]
+    plotItem.mouseHovering = True
+    plotItem.updateButtons()
+    assert plotItem.autoBtn.isVisible()
+    # Every automatic rescale includes the extra axes
+    viewer.autoscaleMeasurementsPlot()
+    assert extraVb.autoRangeEnabled()[1]
+
+
+def show_two_axes(viewer, app):
+    """Show area (left) and intensity (right axis), both autoscaled; return
+    the plot item, the main and the extra view box."""
+    viewer.plotOnNewYAxis('intensity')
+    viewer.show()
+    app.processEvents()
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    extraVb, = plotItem.shownExtraViewBoxes()
+    plotItem.vb.updateAutoRange()
+    extraVb.updateAutoRange()
+    app.processEvents()
+    return plotItem, plotItem.vb, extraVb
+
+
+def send_mouse(viewer, eventType, scenePos, button=Qt.NoButton,
+               buttons=Qt.NoButton):
+    viewportPos = viewer.measurementsPlot.mapFromScene(scenePos)
+    QApplication.sendEvent(
+        viewer.measurementsPlot.viewport(),
+        QMouseEvent(
+            eventType, QPointF(viewportPos), button, buttons, Qt.NoModifier
+        )
+    )
+    return viewportPos
+
+
+def hover_point(viewer, vb, point):
+    # pyqtgraph applies a new view range to the hit tests (transform of
+    # the curves) at the next paint, which may not have happened offscreen
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    for viewBox in (plotItem.vb, *plotItem.shownExtraViewBoxes()):
+        viewBox.updateMatrix()
+    scenePos = vb.mapViewToScene(QPointF(point.pos()))
+    viewportPos = send_mouse(viewer, QEvent.MouseMove, scenePos)
+    QTest.qWait(50)
+    return viewportPos
+
+
+def test_points_of_extra_y_axis_show_tip_and_navigate(viewer, app, monkeypatch):
+    errors = []
+    monkeypatch.setattr(
+        sys, 'excepthook', lambda *exc_info: errors.append(exc_info)
+    )
+    # Cell 1: the right-axis point of frame 2 (intensity 100, bottom) does
+    # not lie on the left-axis point of frame 2 (area 20, top)
+    viewer.acdc_df.loc[(0, 1), 'intensity'] = 250.0
+    viewer.acdc_df.loc[(1, 1), 'intensity'] = 100.0
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    (item,), = plotItem.extraYAxesDataItems()
+    point = item.scatter.points()[-1]
+    assert point.data()['frame_i'] == 1
+    viewportPos = hover_point(viewer, extraVb, point)
+    # The tip of every axis is on the main view box, above the others
+    assert 'intensity: 100' in mainVb.toolTip()
+    assert 'area' not in mainVb.toolTip()
+    assert not extraVb.toolTip()
+    # A replot (e.g. another cell) drops the tip of the removed points
+    viewer.plotMeasurements()
+    assert not mainVb.toolTip()
+    del item, point
+    assert viewer.frame_i == 0
+    QTest.mouseClick(
+        viewer.measurementsPlot.viewport(), Qt.LeftButton, pos=viewportPos
+    )
+    wait_navigation()
+    assert not errors, errors
+    assert viewer.frame_i == 1
+
+
+def test_coinciding_points_of_all_axes_share_the_tip(viewer, app):
+    # Cell 1 over frames 1-3, middle values in the middle of both axes
+    # (each axis fits its data), so the frame-2 points coincide
+    viewer.acdc_df.loc[(1, 1), ['area', 'intensity']] = [15.0, 175.0]
+    viewer.acdc_df.loc[(2, 1), ['area', 'intensity']] = [20.0, 250.0]
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    (extraItem,), = plotItem.extraYAxesDataItems()
+    point = extraItem.scatter.points()[1]
+    assert point.data()['frame_i'] == 1
+    hover_point(viewer, extraVb, point)
+    tip = mainVb.toolTip()
+    assert 'area: 15' in tip and 'intensity: 175' in tip
+    # Leaving the points clears it
+    send_mouse(viewer, QEvent.MouseMove, mainVb.mapViewToScene(QPointF(
+        1.5, sum(mainVb.viewRange()[1]) / 2
+    )))
+    QTest.qWait(50)
+    assert not mainVb.toolTip()
+
+
+def test_horizontal_drag_freezes_every_y_axis(viewer, app):
+    viewer.rescalePlotCheckbox.setChecked(False)
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    extraRange = extraVb.viewRange()[1]
+    rect = mainVb.mapRectToScene(mainVb.rect())
+    start = QPointF(rect.center().x(), rect.center().y())
+    send_mouse(viewer, QEvent.MouseButtonPress, start, Qt.LeftButton,
+               Qt.LeftButton)
+    for dx in (10, 20, 30):
+        QTest.qWait(30)
+        send_mouse(viewer, QEvent.MouseMove, start + QPointF(dx, 0),
+                   Qt.NoButton, Qt.LeftButton)
+    send_mouse(viewer, QEvent.MouseButtonRelease, start + QPointF(30, 0),
+               Qt.LeftButton, Qt.NoButton)
+    app.processEvents()
+    assert not any(mainVb.autoRangeEnabled())
+    # The right axis keeps its range, as the left one (zoom kept)
+    assert not extraVb.autoRangeEnabled()[1]
+    extraVb.updateAutoRange()
+    assert extraVb.viewRange()[1] == pytest.approx(extraRange)
+
+
+def test_view_all_and_right_click_on_extra_axis(viewer, app):
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    extraAxis, = plotItem.shownExtraAxes()
+    assert extraAxis.linkedView() is extraVb
+    mainVb.setYRange(15, 16)
+    extraVb.setYRange(500, 600)
+    mainVb.menu.viewAll.trigger()
+    # Every axis fits its data once (intensity 100, 250)
+    low, high = extraVb.viewRange()[1]
+    assert low <= 100 and 250 <= high < 500
+    assert not extraVb.autoRangeEnabled()[1]
+    # A right-click on the right axis opens the plot menu
+    scenePos = extraAxis.mapToScene(extraAxis.rect().center())
+    viewportPos = viewer.measurementsPlot.mapFromScene(scenePos)
+    QTest.mouseClick(
+        viewer.measurementsPlot.viewport(), Qt.RightButton, pos=viewportPos
+    )
+    app.processEvents()
+    menu = QApplication.activePopupWidget()
+    assert menu is mainVb.menu
+    menu.hide()
+
+
+def test_extra_y_axes_follow_moves_of_main_view_box(viewer, app):
+    # Opposite magnitudes: switching cell swaps the tick label widths of
+    # the left and right axis, which moves the main view box without
+    # resizing it
+    viewer.acdc_df['area'] = [10.0, 20.0, 100000.0, 200000.0]
+    viewer.acdc_df['intensity'] = [100000.0, 200000.0, 10.0, 20.0]
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    x = mainVb.geometry().x()
+    viewer.idScrollBar.setValue(1)
+    for _ in range(3):
+        mainVb.updateAutoRange()
+        extraVb.updateAutoRange()
+        app.processEvents()
+        QTest.qWait(10)
+    assert viewer.selectedID == 2
+    assert mainVb.geometry().x() != x
+    assert extraVb.geometry() == mainVb.geometry()
+    frame = QPointF(2, 0)
+    assert extraVb.mapViewToScene(frame).x() == pytest.approx(
+        mainVb.mapViewToScene(frame).x(), abs=0.5
+    )
+
+
+def test_moving_last_left_column_merges_into_axis_1(viewer, app):
+    viewer.acdc_df['volume'] = [1.0, 2.0, 3.0, 4.0]
+    viewer.updateColumnsList()
+    viewer.plotOnNewYAxis('intensity')
+    viewer.addToYAxisOf('area', 2)
+    # Axis 2 became the default axis 1
+    assert viewer.timeCourseYAxes == {}
+    assert [sorted(cols) for cols in axes_columns(viewer)] == [
+        ['area', 'intensity']
+    ]
+    column(viewer, 'volume').setCheckState(Qt.Checked)
+    assert [sorted(cols) for cols in axes_columns(viewer)] == [
+        ['area', 'intensity', 'volume']
+    ]
+    # Moving a column that is not the last one of axis 1 creates no merge
+    viewer.plotOnNewYAxis('volume')
+    viewer.addToYAxisOf('area', 2)
+    assert viewer.timeCourseYAxes == {'volume': 2, 'area': 2}
+
+
+def test_extra_y_axes_curves_are_exported_and_shaded_under(
+        viewer, app, tmp_path):
+    plotItem, mainVb, extraVb = show_two_axes(viewer, app)
+    path = tmp_path / 'plot.csv'
+    pg.exporters.CSVExporter(plotItem).export(fileName=str(path))
+    header = path.read_text().splitlines()[0]
+    assert 'area_x' in header and 'intensity_x' in header
+    # The shading of unanalyzed frames is under the curves of every axis
+    assert viewer.unanalyzedRegion.getViewBox() is extraVb
+    assert extraVb.zValue() < mainVb.zValue()
+    viewer.addToYAxisOf('intensity', 1)
+    assert viewer.unanalyzedRegion.getViewBox() is mainVb
+    # Removed curves are no longer exported
+    assert len(plotItem.curves) == len(plotItem.listDataItems())
+
+
+def test_log_mode_applies_to_extra_y_axes(viewer):
+    viewer.plotOnNewYAxis('intensity')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    plotItem.ctrl.logYCheck.setChecked(True)
+    try:
+        extraAxis, = plotItem.shownExtraAxes()
+        (item,), = plotItem.extraYAxesDataItems()
+        assert extraAxis.logMode
+        assert item.opts['logMode'][1]
+        # Replotted curves keep it
+        viewer.plotMeasurements()
+        (item,), = plotItem.extraYAxesDataItems()
+        assert item.opts['logMode'][1]
+    finally:
+        plotItem.ctrl.logYCheck.setChecked(False)
+    assert not extraAxis.logMode
+
+
+def test_other_transforms_autoscale_extra_y_axes(app):
+    # Plot item alone, with plain curves: the viewer disables the transforms
+    # that change the number of points (`disableUnsupportedPlotTransforms`)
+    widget = pg.PlotWidget(plotItem=measurements_viewer._TimeCoursePlotItem())
+    try:
+        plotItem = widget.getPlotItem()
+        frames = [1, 2, 3, 4]
+        plotItem.plot(frames, [1.0, 2.0, 3.0, 4.0])
+        plotItem.setExtraYAxesCount(1)
+        plotItem.addExtraYAxisItem(
+            0, pg.PlotDataItem(frames, [100.0, 400.0, 900.0, 1600.0])
+        )
+        extraVb, = plotItem.shownExtraViewBoxes()
+        names = ['fftCheck', 'derivativeCheck', 'phasemapCheck']
+        # "Subtract Mean" exists from pyqtgraph 0.14 (0.13.7 is supported)
+        if hasattr(plotItem.ctrl, 'subtractMeanCheck'):
+            names.append('subtractMeanCheck')
+        for name in names:
+            check = getattr(plotItem.ctrl, name)
+            # Range set by hand, as after a pan or zoom in the plot area
+            extraVb.setYRange(5000, 6000)
+            assert not extraVb.autoRangeEnabled()[1]
+            check.setChecked(True)
+            try:
+                assert extraVb.autoRangeEnabled()[1], name
+                if name == 'phasemapCheck':
+                    # x = y: the extra curve is outside the main x range
+                    continue
+                plotItem.vb.updateAutoRange()
+                extraVb.updateAutoRange()
+                assert extraVb.viewRange()[1][1] < 5000, name
+            finally:
+                check.setChecked(False)
+    finally:
+        widget.deleteLater()
+
+
+@pytest.mark.parametrize('mode', [0, 1])
+# pyqtgraph 0.13.7 computes 10**range of the linear range when log turns on
+@pytest.mark.filterwarnings('ignore:overflow encountered in power')
+def test_available_plot_transforms_work_on_viewer_curves(
+        viewer, monkeypatch, mode):
+    # FFT, dy/dx and Y vs Y' have fewer points than the data: pyqtgraph
+    # applied the per-point brushes and hover data of the viewer's curves
+    # to the transformed points and raised (with FFT on, on every replot)
+    errors = []
+    monkeypatch.setattr(
+        sys, 'excepthook', lambda *excInfo: errors.append(excInfo[1])
+    )
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    ctrl = plotItem.ctrl
+    for name in viewer.UNSUPPORTED_PLOT_TRANSFORMS:
+        check = getattr(ctrl, name)
+        assert not check.isEnabled() and not check.isChecked()
+        assert 'Not available' in check.toolTip()
+    if mode == 0:
+        viewer.plotOnNewYAxis('intensity')
+    else:
+        comparison(viewer)
+    extraViewBoxes = plotItem.shownExtraViewBoxes()
+    assert len(extraViewBoxes) == (1 if mode == 0 else 0)
+    checks = [
+        check for check in ctrl.transformGroup.findChildren(QCheckBox)
+        if check.isEnabled()
+    ]
+    assert ctrl.logYCheck in checks
+    for check in checks:
+        for vb in extraViewBoxes:
+            # Range set by hand, as after a pan or zoom in the plot area
+            # (small: the axis computes 10**range in log mode)
+            vb.setYRange(50, 60)
+        check.setChecked(True)
+        try:
+            viewer.plotMeasurements()
+            assert not errors, (check.text(), errors)
+            for vb in extraViewBoxes:
+                assert vb.autoRangeEnabled()[1], check.text()
+        finally:
+            check.setChecked(False)
+    assert not errors, errors
+
+
+@pytest.mark.parametrize('mode', [0, 1])
+def test_plot_downsampling_options_are_disabled(viewer, monkeypatch, mode):
+    # "Downsample" (factor 2: one point every 2 frames, or the mean of 2
+    # points) and "Clip to View" (zoomed-in x range) plot fewer points than
+    # the data: pyqtgraph applied the per-point brushes and hover data of the
+    # viewer's curves to them and raised on every replot (and pan/zoom)
+    errors = []
+    monkeypatch.setattr(
+        sys, 'excepthook', lambda *excInfo: errors.append(excInfo[1])
+    )
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    ctrl = plotItem.ctrl
+    for name in viewer.UNSUPPORTED_PLOT_DOWNSAMPLING:
+        widget = getattr(ctrl, name)
+        assert not widget.isEnabled(), name
+        assert 'Not available' in widget.toolTip(), name
+    assert not ctrl.downsampleCheck.isChecked()
+    assert not ctrl.clipToViewCheck.isChecked()
+    # Keeps every point
+    assert ctrl.maxTracesCheck.isEnabled()
+    if mode == 0:
+        viewer.plotOnNewYAxis('intensity')
+    else:
+        comparison(viewer)
+    # What the options could still change: subsample by 2, clip to the view
+    if ctrl.downsampleSpin.isEnabled():
+        ctrl.downsampleSpin.setValue(2)
+    for name in ('subsampleRadio', 'downsampleCheck', 'clipToViewCheck'):
+        check = getattr(ctrl, name)
+        if check.isEnabled():
+            check.setChecked(True)
+    assert plotItem.downsampleMode()[:2] == (1, False)
+    assert not plotItem.clipToViewMode()
+    plotItem.setXRange(1.5, 2.5, padding=0)
+    app = QApplication.instance()
+    app.processEvents()
+    viewer.plotMeasurements()
+    app.processEvents()
+    assert not errors, errors
+    items = viewer.timeCourseDataItems() if mode == 0 else (
+        viewer.measurementsPlot.listDataItems()
+    )
+    assert len(items) == (2 if mode == 0 else 1)
+    for item in items:
+        assert len(item.scatter.points()) == len(item.xData) > 1
+
+
+def test_extra_y_axes_work_without_subtract_mean_option(viewer, monkeypatch):
+    # pyqtgraph 0.13.7 (still supported) has no "Subtract Mean" option
+    viewer.plotOnNewYAxis('intensity')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    extraVb, = plotItem.shownExtraViewBoxes()
+    monkeypatch.delattr(plotItem.ctrl, 'subtractMeanCheck', raising=False)
+    monkeypatch.delattr(pg.PlotDataItem, 'setSubtractMeanMode', raising=False)
+    monkeypatch.delattr(pg.PlotItem, 'updateSubtractMeanMode', raising=False)
+    item = pg.PlotDataItem([1, 2], [5.0, 6.0])
+    plotItem.addExtraYAxisItem(0, item)
+    assert item.getViewBox() is extraVb
+    assert item in plotItem.items and item in plotItem.curves
+    assert plotItem.extraYAxesDataItems()[0][-1] is item
+    extraVb.setYRange(1000, 2000)
+    plotItem.updateSubtractMeanMode()
+    assert extraVb.autoRangeEnabled()[1]
+    # An item that cannot be added is not registered
+    failing = pg.PlotDataItem([1, 2], [5.0, 6.0])
+    monkeypatch.setattr(
+        failing, 'setFftMode', Mock(side_effect=RuntimeError('failed'))
+    )
+    with pytest.raises(RuntimeError, match='failed'):
+        plotItem.addExtraYAxisItem(0, failing)
+    assert failing not in plotItem.items
+    assert failing not in plotItem.curves
+    assert failing not in plotItem.itemMeta
+    assert failing not in plotItem.extraYAxesDataItems()[0]
+
+
+def test_formatting_and_normalization_on_extra_y_axis(viewer):
+    # Both points of cell 1 (intensity 100, 250) match: the segment between
+    # them is drawn by the rule, the main curve draws only the points
+    viewer.conditionalFormatting['intensity'] = [
+        {'condition': 'intensity > 50', 'color': '#0000ff'}
+    ]
+    viewer.plotOnNewYAxis('intensity')
+    plotItem = viewer.measurementsPlot.getPlotItem()
+    extraVb, = plotItem.shownExtraViewBoxes()
+    extraAxis, = plotItem.shownExtraAxes()
+    leftAxis = viewer.measurementsPlot.getAxis('left')
+    for isNormalized in (False, True):
+        viewer.normalizeCheckbox.setChecked(isNormalized)
+        assert [item.name() for item in plotItem.listDataItems()] == ['area']
+        (segments, curve), = plotItem.extraYAxesDataItems()
+        assert isinstance(segments.opts['connect'], str)
+        assert segments.opts['connect'] == 'pairs'
+        assert curve.name() == 'intensity'
+        assert not np.any(curve.opts['connect'])
+        assert segments.getViewBox() is extraVb
+        assert curve.getViewBox() is extraVb
+        expected = [0.0, 1.0] if isNormalized else [100.0, 250.0]
+        np.testing.assert_allclose(segments.yData, expected)
+        suffix = ' (normalized)' if isNormalized else ''
+        assert leftAxis.labelText == 'area' + suffix
+        assert extraAxis.labelText == 'intensity' + suffix
+
+
+def test_phase_band_matches_extra_y_axes_width(viewer, app):
+    viewer.show()
+    app.processEvents()
+    phaseRight = viewer.phaseBandPlot.getAxis('right')
+    assert not phaseRight.isVisible()
+    viewer.plotOnNewYAxis('intensity')
+    app.processEvents()
+    extraAxis, = viewer.measurementsPlot.getPlotItem().shownExtraAxes()
+    assert extraAxis.width() > 0
+    assert phaseRight.isVisible()
+    # Fixed width (the band itself is hidden without phases)
+    assert phaseRight.maximumWidth() == pytest.approx(extraAxis.width(), abs=1)
+    assert phaseRight.minimumWidth() == phaseRight.maximumWidth()
+    viewer.addToYAxisOf('intensity', 1)
+    app.processEvents()
+    assert not phaseRight.isVisible()

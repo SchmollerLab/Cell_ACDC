@@ -358,7 +358,7 @@ def exportToVideoFinished(
 def askSamSaveEmbeddings(qparent=None):
     txt = html_utils.paragraph("""
     Segment Anything Model generates image embeddings that you 
-    can use later in module 3<br>
+    can use later in the GUI<br>
     for <b>much faster interactive segmentation</b> (with points or bounding boxes 
     prompts).<br><br>
     Do you want to <b>save the image embeddings</b>?

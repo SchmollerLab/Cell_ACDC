@@ -778,11 +778,13 @@ class segmWin(QMainWindow):
                 Do you want to track the objects?<br><br>
                 If yes, <b>select the tracker</b> to use<br><br>
             ''')
+            # "Do not track" answers without a selection (only OK needs one)
             win = widgets.QDialogListbox(
                 'Track objects?', txt,
                 trackers, additionalButtons=['Do not track'],
                 multiSelection=False,
-                parent=self
+                parent=self,
+                allowEmptySelection=False
             )
             win.exec_()
             if win.cancel:
@@ -1214,7 +1216,8 @@ class segmWin(QMainWindow):
         selectSegmFileWin = widgets.QDialogListbox(
             'Select segmentation file',
             f'Select segmentation file to {action}:\n',
-            segm_files, multiSelection=False, parent=msg
+            segm_files, multiSelection=False, parent=msg,
+            allowEmptySelection=False
         )
         selectSegmFileWin.exec_()
         if selectSegmFileWin.cancel:

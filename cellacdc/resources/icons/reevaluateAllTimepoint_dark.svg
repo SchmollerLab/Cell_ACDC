@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="32"
+   height="32"
+   viewBox="0 0 32 32"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="reevaluateAllTimepoint_dark.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="10.25"
+     inkscape:cx="13.707317"
+     inkscape:cy="17.560976"
+     inkscape:window-width="1440"
+     inkscape:window-height="878"
+     inkscape:window-x="-6"
+     inkscape:window-y="-6"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g1" />
+  <!-- Default time point identifier icon of the measurements viewer
+       (MeasurementsViewerWin.updateTimepointAction), first default color
+       timepoint_predictors.DEFAULT_COLORS[0] = (255, 165, 0) -->
+  <g
+     stroke-width="4"
+     stroke-linecap="square"
+     id="g1"
+     style="stroke:#f0f0f0;stroke-opacity:1">
+    <line
+       x1="16"
+       y1="2"
+       x2="16"
+       y2="30"
+       id="line1"
+       style="stroke:#f0f0f0;stroke-opacity:1" />
+    <circle
+       cx="16"
+       cy="16"
+       r="7"
+       id="circle1"
+       style="stroke:#f0f0f0;stroke-opacity:1;fill:#f0f0f0;fill-opacity:1" />
+    <path
+       d="m 19.015272,17.962675 -2.153978,-2.153979 h -1.076989 v 1.076987 l 2.153978,2.153979 z m 1.076988,-3.230967 h 1.076989 v 2.153979 H 20.09226 Z m 4.307955,5.384942 h 2.153978 v 1.076992 h -2.153978 z m 1.076989,-3.230967 v -1.076987 h -1.076989 l -2.153977,2.153979 1.076989,1.076987 z M 14.707316,20.11665 h 2.153978 v 1.076992 h -2.153978 z m 5.384944,4.307955 h 1.076989 v 2.153979 H 20.09226 Z m -4.307955,0 v 1.076992 h 1.076989 l 2.153978,-2.15398 -1.076989,-1.076987 z m 15.91951,5.149626 -10.70473,-10.704734 c -0.313942,-0.313942 -0.828204,-0.313942 -1.142147,0 l -1.011831,1.011833 c -0.313941,0.313942 -0.313941,0.828204 0,1.142147 l 10.70473,10.70473 c 0.313942,0.313942 0.828206,0.313942 1.142148,0 l 1.01183,-1.011833 c 0.313941,-0.313939 0.313941,-0.828204 0,-1.142143 z m -8.919083,-5.68812 -3.230966,-3.230963 1.076989,-1.076992 3.230966,3.230968 z"
+       id="path1"
+       style="fill:#808080;fill-opacity:1;stroke:none;stroke-width:1" />
+  </g>
+</svg>

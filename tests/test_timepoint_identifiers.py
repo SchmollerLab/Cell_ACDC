@@ -315,17 +315,20 @@ def test_timepoint_column_list_and_axes_follow_add_rename_remove(viewer, monkeyp
     viewer.conditionalFormatting['timepoint_Bud'] = [
         {'condition': 'area > 1', 'color': '#ff0000'}
     ]
+    viewer.timeCourseYAxes['timepoint_Bud'] = 2
     dialog.return_value = dict(values, name='Bud2')
     viewer.editTimepointIdentifier(identifier.uid)
     names = column_names(viewer)
     assert 'timepoint_Bud2' in names and 'timepoint_Bud' not in names
     assert viewer.measurementsAxes == {'X': 'area', 'Y': 'timepoint_Bud2'}
     assert list(viewer.conditionalFormatting) == ['timepoint_Bud2']
+    assert viewer.timeCourseYAxes == {'timepoint_Bud2': 2}
     viewer.plotMeasurements()
 
     viewer.removeTimepointIdentifier(identifier.uid, ask=False)
     assert 'timepoint_Bud2' not in column_names(viewer)
     assert viewer.measurementsAxes['Y'] == ''
+    assert viewer.timeCourseYAxes == {}
     viewer.plotMeasurements()
 
 

@@ -1428,7 +1428,7 @@ class createDataStructWin(QMainWindow):
         msg.addButton('    Ok     ')
         err_msg = (f"""
         <p style="font-size:12px">
-        Unfortunately, the module "0. Create data structure from microscopy file(s)"
+        Unfortunately, the module "Create data structure from microscopy file(s)"
         is functional <b>only on Windows 10/11 and macOS</b>.<br><br>
         We are working on extending support to other Operating Systems.<br><br>
         Please open an issue on our

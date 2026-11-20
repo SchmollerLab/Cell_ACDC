@@ -1479,6 +1479,8 @@ class QDialogListbox(QDialog):
             allowEmptySelection=True
         ):
         self.cancel = True
+        # Also when closed with the title bar button (no ok_cb/cancel_cb)
+        self.selectedItemsText = None
         items = list(items)
         
         super().__init__(parent)
@@ -1492,6 +1494,7 @@ class QDialogListbox(QDialog):
 
         self.allowSingleSelection = allowSingleSelection
         self.allowEmptySelection = allowEmptySelection
+        self.multiSelection = multiSelection
 
         mainLayout = QVBoxLayout()
         topLayout = QVBoxLayout()
@@ -1540,6 +1543,7 @@ class QDialogListbox(QDialog):
         else:
             cancelButton = QPushButton(cancelText)
         okButton = okPushButton(' Ok ')
+        self.okButton = okButton
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
@@ -1552,7 +1556,11 @@ class QDialogListbox(QDialog):
                     _button, isCancelButton = getPushButton(button)
                     self._additionalButtons.append(_button)
                     bottomLayout.addWidget(_button)
-                    _button.clicked.connect(self.ok_cb)
+                    # The button is passed explicitly: ok_cb never reads
+                    # `sender()` (see `ok_cb`)
+                    _button.clicked.connect(
+                        partial(self.ok_cb, button=_button)
+                    )
                 else:
                     bottomLayout.addWidget(button)
 
@@ -1579,9 +1587,16 @@ class QDialogListbox(QDialog):
     
     def keyPressEvent(self, event) -> None:
         mod = event.modifiers()
-        if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
+        isModifier = mod == Qt.ShiftModifier or mod == Qt.ControlModifier
+        if isModifier and self.multiSelection:
             self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         elif event.key() == Qt.Key_Escape:
+            if not self.multiSelection:
+                # Single choice: Escape cancels (as the Cancel button)
+                # instead of emptying the choice. Not `reject()`: only
+                # `closeEvent` exits the loop of `exec_`
+                self.cancel_cb(None)
+                return
             self.listBox.clearSelection()
             event.ignore()
             return
@@ -1628,15 +1643,38 @@ class QDialogListbox(QDialog):
 
     def warnSelectionEmpty(self):
         msg = myMessageBox(wrapText=False, showCentered=False)
-        txt = html_utils.paragraph(
-            'You need to <b>select at least one item!</b>.<br><br>'
-            'Use <code>Ctrl+Click</code> to select multiple items<br>'
-            'or <code>Shift+Click</code> to select a range of items'
-        )
+        if self.multiSelection:
+            txt = html_utils.paragraph(
+                'You need to <b>select at least one item!</b>.<br><br>'
+                'Use <code>Ctrl+Click</code> to select multiple items<br>'
+                'or <code>Shift+Click</code> to select a range of items'
+            )
+        else:
+            # E.g., after Ctrl+Click on the selected item
+            txt = html_utils.paragraph(
+                'You need to <b>select an item!</b><br><br>'
+                'Click an item of the list to select it.'
+            )
         msg.warning(self, 'Selection cannot be empty!', txt)
     
-    def ok_cb(self, checked=False):
-        self.clickedButton = self.sender()
+    def ok_cb(self, checked=False, button=None):
+        """Confirm the selection and close.
+
+        `button` is the clicked button: None means the OK button (also for a
+        double-click on an item and for direct calls by code or tests), else
+        an additional button (connected with `partial`; buttons passed as
+        widgets must be connected the same way to be reported). The clicked
+        button is stored as `clickedButton`. Never `self.sender()` here:
+        outside a slot of this dialog, PyQt returns its last proxy sender,
+        possibly a deleted object, and touching it segfaults.
+
+        `allowEmptySelection=False` refuses an empty selection only when
+        confirming with OK: additional buttons (e.g. "Do not track") answer
+        without needing a selection.
+        """
+        if button is None:
+            button = self.okButton
+        self.clickedButton = button
         selectedItems = self.listBox.selectedItems()
         selectedItemsText = [item.text() for item in selectedItems]
         if not self.allowSingleSelection and len(selectedItemsText) < 2:
@@ -1648,8 +1686,10 @@ class QDialogListbox(QDialog):
             )
             msg.warning(self, 'Select two or more items', txt)
             return
-        
-        if not self.allowEmptySelection and not selectedItemsText:
+
+        isOkButton = button is self.okButton
+        isEmpty = not selectedItemsText
+        if isOkButton and isEmpty and not self.allowEmptySelection:
             self.warnSelectionEmpty()
             return
 
@@ -5728,7 +5768,7 @@ class channelMetricsQGBox(QGroupBox):
         if self.doNotWarn:
             return
         txt = html_utils.paragraph("""
-            <b>Measurements requiring manual background cannot be saved</b> because you did not setup any manual background ROI in the module 3 GUI.<br><br>
+            <b>Measurements requiring manual background cannot be saved</b> because you did not setup any manual background ROI in the GUI.<br><br>
 
             You can read more details about manual background metrics by clicking 
             on the info button besides the measurement's name.<br><br>
@@ -6266,6 +6306,20 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         self.lastGradientName = 'grey'
         self.lastGradient = Gradients['grey']
 
+        # Colormaps picked in the LUT menu (pyqtgraph `ColorMapMenu`, also
+        # in pyqtgraph 0.13.7) go through `colorMapMenuClicked`
+        colorMapTriggered = getattr(
+            self.gradient.menu, 'sigColorMapTriggered', None
+        )
+        if colorMapTriggered is not None:
+            try:
+                colorMapTriggered.disconnect(self.gradient.colorMapMenuClicked)
+            except (TypeError, RuntimeError):
+                # Not connected: keep pyqtgraph's own handling
+                pass
+            else:
+                colorMapTriggered.connect(self.colorMapMenuClicked)
+
         for action in self.gradient.menu.actions():
             if action.text() == 'HSV':
                 HSV_action = action
@@ -6365,6 +6419,31 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         cmap = action.cmap
         self.gradient.colorMapMenuClicked(cmap)
         self.gradient.showTicks(True)
+        self.allowAddingShownTicks()
+
+    def colorMapMenuClicked(self, cmap):
+        """Colormap `cmap` picked in the LUT menu
+        (`ColorMapMenu.sigColorMapTriggered`, connected instead of the
+        gradient's own `colorMapMenuClicked`). For colormaps that are not
+        preset gradients pyqtgraph hides the ticks (one per colormap
+        position) only after `setColorMap` emitted
+        `sigGradientChangeFinished`: emit it again once they are hidden, so
+        that the slots saving the LUT save hidden ticks."""
+        self.gradient.colorMapMenuClicked(cmap)
+        if str(cmap.name).startswith('preset-gradient:'):
+            self.allowAddingShownTicks()
+            return
+        self.gradient.sigGradientChangeFinished.emit(self.gradient)
+
+    def allowAddingShownTicks(self):
+        """Allow adding ticks (clicking the gradient) when its ticks are
+        shown. pyqtgraph's `showTicks(False)` backs up `allowAdd` once per
+        tick (i.e. False from the second tick on), so its `showTicks(True)`
+        never allows adding ticks again after a colormap with hidden
+        ticks."""
+        ticks = list(self.gradient.ticks)
+        if ticks and ticks[0].isVisibleTo(self.gradient):
+            self.gradient.allowAdd = True
     
     def setAxisLabel(self, text):
         self.labelText = text
@@ -6379,6 +6458,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     def setGradient(self, gradient):
         self.gradient.restoreState(gradient)
         self.lastGradient = gradient
+        self.allowAddingShownTicks()
     
     def colormapClicked(self, checked=False, name=None):
         name = self.sender().name
@@ -6478,6 +6558,9 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         invertedGradient = {}
         invertedGradient['ticks'] = invertedColors
         invertedGradient['mode'] = gradient['mode']
+        if 'ticksVisible' in gradient:
+            # E.g., colormaps with hidden ticks (`colorMapMenuClicked`)
+            invertedGradient['ticksVisible'] = gradient['ticksVisible']
         return invertedGradient
     
     def invertCurrentColormap(self, inverted, debug=False):
@@ -7237,6 +7320,11 @@ class linkedQScrollbar(ScrollBar):
             self._linkedScrollBar.setMaximum(max)
 
 class myColorButton(pg.ColorButton):
+    # Cancel in the color dialog, after the preview (`sigColorChanging`) of
+    # the color it started from. Connect here, not to `colorDialog.rejected`:
+    # `selectColor` may replace the dialog (`_make_dialog`)
+    sigColorRejected = Signal(object)
+
     def __init__(self, parent=None, color=(128,128,128), padding=5):
         super().__init__(parent=parent, color=color)
         if isinstance(padding, (int, float)):
@@ -7298,6 +7386,12 @@ class myColorButton(pg.ColorButton):
         dlg.colorSelected.connect(self.colorSelected)
         return dlg
         
+    @Slot()
+    def colorRejected(self):
+        # After the preview of the color the dialog started from
+        super().colorRejected()
+        self.sigColorRejected.emit(self)
+
     # edit show color dialog on click
     @Slot()
     def selectColor(self):
@@ -11544,7 +11638,7 @@ class SamInputPointsWidget(QWidget):
             'object click the right button.'
         )
         txt = html_utils.paragraph(f"""
-            To add input points for Segment Anything open the GUI (module 3), 
+            To add input points for Segment Anything open the GUI, 
             load the data, and then click on the button<br>
             on the top toolbar called <code>Add points layer</code>.<br><br>
             Select the option "Add points by clicking" and click on the image 
@@ -12008,7 +12102,8 @@ class selectTrackerGUI(QDialogListbox):
         trackers = myutils.get_list_of_trackers()
         super().__init__(
             'Select tracker', 'Select one of the following trackers',
-            trackers, multiSelection=False, parent=parent
+            trackers, multiSelection=False, parent=parent,
+            allowEmptySelection=False
         )
         self.setWindowTitle('Select tracker')
 
@@ -12018,13 +12113,13 @@ class selectTrackerGUI(QDialogListbox):
 
         self.mainLayout.insertWidget(1, self.selectFramesGroupbox)
 
-    def ok_cb(self, event):
+    def ok_cb(self, checked=False, button=None):
         if self.selectFramesGroupbox.warningLabel.text():
             return
         else:
             self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
-            super().ok_cb(event)
+            super().ok_cb(checked, button=button)
 
 def addWidgetToScrollArea(
         widget, 
@@ -13368,7 +13463,11 @@ def get_min_width_for_no_scrollbar(list_widget: QListWidget) -> int:
 class OverlayToolbar(ToolBar):
     sigSetTranspacency = Signal(bool)
     sigSetSingleChannel = Signal(bool)
-    
+    # The user clicked an overlay mode (true transparency or alpha-encoded
+    # intensity), emitted after both check states were updated. Not emitted
+    # when code changes them (e.g., `setTransparent` to export images).
+    sigModesClicked = Signal()
+
     def __init__(self, name='Overlay tools', parent=None):
         
         super().__init__(name, parent)
@@ -13418,8 +13517,30 @@ class OverlayToolbar(ToolBar):
         )
         self.alphaEncodedIntensityCheckbox.toggled.connect(
             self.alphaEncodedIntensityToggled)
-        
-        
+        # `clicked` comes after `toggled` (partner checkbox already updated)
+        self.transparencyCheckbox.clicked.connect(self.emitModesClicked)
+        self.alphaEncodedIntensityCheckbox.clicked.connect(
+            self.emitModesClicked
+        )
+
+    def emitModesClicked(self, checked=False):
+        self.sigModesClicked.emit()
+
+    def setModesChecked(self, transparent=False, alphaEncoded=False):
+        """Check the overlay modes without emitting any signal, e.g., to
+        restore the check states saved by the user before the overlay is
+        on (the host applies them when the overlay is turned on).
+        Alpha-encoded intensity implies true transparency, as when clicked.
+        """
+        states = (
+            (self.transparencyCheckbox, transparent or alphaEncoded),
+            (self.alphaEncodedIntensityCheckbox, alphaEncoded),
+        )
+        for checkbox, checked in states:
+            wasBlocked = checkbox.blockSignals(True)
+            checkbox.setChecked(bool(checked))
+            checkbox.blockSignals(wasBlocked)
+
     def alphaEncodedIntensityToggled(self, checked):
         if checked:
             self.transparencyCheckbox.blockSignals(True)
