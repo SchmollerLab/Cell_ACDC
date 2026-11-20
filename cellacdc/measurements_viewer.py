@@ -110,11 +110,21 @@ the main GUI (`gui.guiWin`) through the mixins in:
   bar keeps the zoom (the bar is placed in the current view).
 - `gui_overlay`: overlay of other channels and of other segmentation files.
   As in the main GUI, the channels overlay is turned off and disabled on
-  zy/zx planes and restored back on xy (`setOverlayEnabledForPlane`).
+  zy/zx planes and restored back on xy (`setOverlayEnabledForPlane`). The
+  overlay modes (true transparency, alpha-encoded intensity) keep the check
+  states the user clicked (user settings, also after loading other data)
+  and apply when the overlay is turned on.
+- LUTs: as in the main GUI, the LUT (colormap) of the displayed channel and
+  of each overlay channel is saved per channel name in the user settings
+  and restored when a channel with that name is loaded
+  (`gui_navigation.LutGuiElements`; `restoreImageChannelLut` runs in
+  `initViewerToolsAfterLoading`, after the first-load `invertBw`).
 - `gui_custom_annotations`: custom annotations of the objects.
 
-Open it from the launcher (Utilities > Measurements > Measurements viewer...)
-or run it with `python -m cellacdc.measurements_viewer [folder_path]`.
+Open it from the launcher (button "Launch measurements viewer..." in the
+"Measurements visualisation" box, or Utilities > Measurements > Measurements
+viewer..., both `_main.mainWin.launchMeasurementsViewer`) or run it with
+`python -m cellacdc.measurements_viewer [folder_path]`.
 After data is loaded (on the first event loop pass after `setData`, i.e.
 after the rest of the load such as the overlay channels), the Cell ID
 controls (label, spinbox and scrollbar at the bottom) blink and the status bar 
@@ -2898,7 +2908,13 @@ class MeasurementsViewerWin(
             self.overlayButton.setChecked(True)
         for channel, button in self.allOverlayToolbuttons.items():
             button.setChecked(channel in configuration['visible_channels'])
-        self.setOverlayItemsOpacities()
+        if self.overlayButton.isChecked() and self.overlayToolbar.isTransparent():
+            # As `overlayChannelToolbuttonClicked`: the RGBA composite of
+            # the transparency modes follows the visible channels (the
+            # opacities of the normal mode would hide it)
+            self.setOverlayImages()
+        else:
+            self.setOverlayItemsOpacities()
 
         columns = {item.text() for item in self.columnsModel.measurementItems()}
         selected = set(configuration['time_course_columns'])
@@ -3641,7 +3657,9 @@ class MeasurementsViewerWin(
         self.overlayToolbar = widgets.OverlayToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
         self.overlayToolbar.setVisible(False)
-        
+        # Overlay modes as the user left them (applied by `overlay_cb`)
+        self.restoreOverlayModes()
+
         self.phaseTranslatorToolbar = widgets.ToolBar("Phases", self)
         self.phaseTranslatorToolbar.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonIconOnly
@@ -3755,13 +3773,18 @@ class MeasurementsViewerWin(
             self.changeOverlayColor
         )
         self.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
+        # Cancel: back to the saved color and LUT of the channel
+        self.overlayColorButton.colorDialog.rejected.connect(
+            partial(self.overlayColorDialogRejected, self.overlayColorButton)
+        )
         self.overlayToolbar.sigSetTranspacency.connect(
             self.setOverlayTransparency
         )
         self.overlayToolbar.sigSetSingleChannel.connect(
             self.setOverlaySingleChannel
         )
-    
+        self.overlayToolbar.sigModesClicked.connect(self.saveOverlayModes)
+
     def setEnabledFileToolbar(self, enabled):
         for action in getattr(self, 'annotationsActions', ()):
             action.setEnabled(enabled)
@@ -4079,6 +4102,11 @@ class MeasurementsViewerWin(
             return
         
         if channel is None:
+            if not chNames:
+                self.warnLoading(
+                    f'No channel images found in "{images_paths[0]}".'
+                )
+                return
             channel = self.selectItem(
                 'Select channel', 'Select channel to display:', chNames
             )
@@ -4263,11 +4291,20 @@ class MeasurementsViewerWin(
         self.statusBar().showMessage(text)
 
     def selectItem(self, title, text, items):
+        """Return the item chosen in a single-choice list (None if
+        cancelled or `items` is empty: callers with possibly empty `items`
+        report it themselves). OK with nothing selected (Ctrl+Click on the
+        selected item) warns and keeps the list open: an empty answer would
+        end the calling flow without any message (e.g., the base layer of a
+        premade configuration)."""
+        if not items:
+            return None
         if len(items) == 1:
             return items[0]
         
         win = widgets.QDialogListbox(
-            title, text, items, multiSelection=False, parent=self
+            title, text, items, multiSelection=False, parent=self,
+            allowEmptySelection=False
         )
         win.exec_()
         if win.cancel or not win.selectedItemsText:
@@ -4490,6 +4527,8 @@ class MeasurementsViewerWin(
         self.initPixelSizePropsDockWidget()
         if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
             self.invertBw(True)
+        # After the first-load `invertBw` (it would invert it again)
+        self.restoreImageChannelLut()
         self.gui_createZoomRectItem()
     
     def gui_createGraphicsPlots(self):
@@ -4832,13 +4871,20 @@ class MeasurementsViewerWin(
             annot.setScaling(self.scalingLabelsAction.isChecked())
     
     def imgGradLUTfinished_cb(self):
+        if self.isSettingChannelLutsFromCode():
+            return
         self.df_settings = self.imgGrad.saveState(self.df_settings)
+        # LUT of the displayed channel (`gui_navigation.LutGuiElements`)
+        self.saveImageChannelLut()
         self.df_settings.to_csv(self.settings_csv_path)
-    
+
     def initLut(self):
-        """Initialize LUT levels as in `gui.guiWin` after loading data."""
+        """Initialize LUT levels as in `gui.guiWin` after loading data. The
+        LUT (gradient) saved for the channel is restored at the end of the
+        load (`initViewerToolsAfterLoading`)."""
         self.isDataLoaded = True
         posData = self.posData()
+        self.resetImageChannelLut()
         self.user_ch_name = posData.user_ch_name
         self.rescaleIntensChannelHowMapper.setdefault(
             self.user_ch_name, 'Rescale each 2D image'

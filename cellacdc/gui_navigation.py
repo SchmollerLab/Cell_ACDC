@@ -12,6 +12,7 @@ They expect the host window to define:
     - `self.openRecentFile(path)`: method called to load a recent path
 """
 import os
+import contextlib
 from functools import partial
 
 import numpy as np
@@ -21,11 +22,63 @@ from qtpy.QtCore import Qt
 from qtpy.QtGui import QFont
 from qtpy.QtWidgets import QLabel, QCheckBox, QHBoxLayout, QAction
 
-from . import widgets, apps, myutils
+from . import widgets, apps, myutils, colors
 from . import path as acdc_path
 
 _font = QFont()
 _font.setPixelSize(11)
+
+# User settings (`settings.csv`) with the LUT of a channel, followed by the
+# channel name (see `LutGuiElements`). The names must not contain
+# 'img_cmap' or 'lab_cmap': `widgets.myHistogramLUTitem.saveState` and
+# `widgets.labelsGradientWidget.saveState` drop every setting containing
+# them and `restoreColormap` reads every setting containing 'img_cmap_'.
+IMAGE_LUT_SETTING_PREFIX = 'image_lut_'
+OVERLAY_LUT_SETTING_PREFIX = 'overlay_lut_'
+# Alpha (0-1) of the alpha scrollbar of an overlay channel, followed by the
+# channel name (see `gui_overlay.OverlayChannelsGuiElements`). Not
+# 'overlay_alpha_<channel>': it would be the overlay mode setting
+# 'overlay_alpha_encoded_intensity' for a channel 'encoded_intensity'.
+OVERLAY_ALPHA_SETTING_PREFIX = 'overlay_alpha_slider_'
+# Rows of the LUT of the displayed image saved by `myHistogramLUTitem` for
+# every channel before the LUTs were saved per channel
+_GLOBAL_IMAGE_LUT_SETTING_PREFIX = 'img_cmap_'
+
+def image_lut_setting_name(channel):
+    """Name of the user setting with the LUT of `channel` when it is the
+    displayed (base) image (`imgGrad`)."""
+    return f'{IMAGE_LUT_SETTING_PREFIX}{channel}'
+
+def overlay_lut_setting_name(channel):
+    """Name of the user setting with the LUT of `channel` when it is
+    overlaid on the displayed image (overlay LUT item)."""
+    return f'{OVERLAY_LUT_SETTING_PREFIX}{channel}'
+
+def overlay_alpha_setting_name(channel):
+    """Name of the user setting with the alpha of the alpha scrollbar of
+    `channel` when it is overlaid on the displayed image."""
+    return f'{OVERLAY_ALPHA_SETTING_PREFIX}{channel}'
+
+def default_image_lut():
+    """LUT of a displayed channel without a saved LUT (grey, as the
+    pyqtgraph preset 'grey'), with black and white not inverted."""
+    return {
+        'mode': 'rgb',
+        'ticks': [(0.0, (0, 0, 0, 255)), (1.0, (255, 255, 255, 255))],
+    }
+
+def drop_channel_lut_settings(df_settings):
+    """Return `df_settings` without the saved LUTs of the channels (per
+    channel and the older one of the displayed image, 'img_cmap_*') and
+    without the saved alphas of the overlay channels."""
+    prefixes = (
+        IMAGE_LUT_SETTING_PREFIX, OVERLAY_LUT_SETTING_PREFIX,
+        OVERLAY_ALPHA_SETTING_PREFIX, _GLOBAL_IMAGE_LUT_SETTING_PREFIX
+    )
+    keep = [
+        not str(setting).startswith(prefixes) for setting in df_settings.index
+    ]
+    return df_settings[keep].copy()
 
 Z_PROJECTION_METHODS = (
     'single z-slice',
@@ -276,10 +329,53 @@ class LutGuiElements:
     (`widgets.ParentImageItem`) with LUT item `self.imgGrad` 
     (`widgets.myHistogramLUTitem`).
     
-    The host window must define `self.isDataLoaded`, `self.logger`, 
-    `self.df_settings`, `self.settings_csv_path`, `self.user_ch_name`, 
-    `self.rescaleIntensChannelHowMapper`, `self.updateAllImages()` and 
+    The host window must define `self.isDataLoaded`, `self.logger`,
+    `self.df_settings`, `self.settings_csv_path`, `self.user_ch_name`,
+    `self.rescaleIntensChannelHowMapper`, `self.updateAllImages()` and
     `posData.lutLevels` (dict of {channel: {}}) for each loaded `posData`.
+
+    LUTs saved per channel name
+    ---------------------------
+    The LUT (gradient) of every channel is saved in the user settings
+    (`settings.csv`, shared by the main GUI and the measurements viewer)
+    and restored whenever a channel with the same name is loaded:
+
+    - Displayed (base) channel: setting `image_lut_<channel>`, saved on
+      every finished change of the `imgGrad` gradient (the host's
+      `imgGradLUTfinished_cb` calls `saveImageChannelLut`) and restored by
+      `restoreImageChannelLut`, which the host calls at the end of every
+      load, after the first-load `invertBw` (it would invert the restored
+      LUT again). Until then nothing is saved for the new channel (the
+      first-load inversion would overwrite its saved LUT). A channel without
+      a saved LUT gets the grey LUT (`default_image_lut`): it never inherits
+      the LUT of the channel loaded before. The LUTs are saved with the
+      black/white inversion of the window (`Invert black/white`) and
+      inverted as that menu does (`invertGradient`) when it differs.
+    - Overlay channels: setting `overlay_lut_<channel>`, saved on every
+      finished change of the gradient of the overlay LUT item
+      (`overlayLutChangeFinished`) and restored when the item is created
+      (`gui_overlay.getOverlayItems`). A LUT made from the overlay color
+      (`initColormapOverlayLayerItem`, setting `<channel>_rgb`) is not
+      saved: choosing a color (`saveOverlayColor`) removes the saved LUT,
+      so the LUT follows the color again. The preview while a color is
+      picked in the color dialog (`changeOverlayColor`) keeps it, and
+      Cancel shows it again (`overlayColorDialogRejected`). `Invert
+      black/white` does not change the overlay LUTs, so they are restored
+      as saved. The alpha scrollbar of each overlay channel is saved per
+      channel name too (setting `overlay_alpha_slider_<channel>`, see
+      `gui_overlay.OverlayChannelsGuiElements.saveOverlayAlpha`).
+
+    The two settings are separate because base images and overlays use
+    different LUTs (e.g., grey vs. black to the overlay color). Gradient
+    changes made by code that must not be saved (restoring saved LUTs,
+    Restore default settings, the overlay color preview) run inside
+    `settingChannelLutsFromCode`, so that the save slots skip them. A
+    chosen overlay color runs outside it on purpose: its gradient is
+    flagged (`isOverlayColorGradient`) and `overlayLutChangeFinished`
+    removes the saved overlay LUT. The settings hold JSON text
+    (`colors.gradient_state_to_setting`); `drop_channel_lut_settings`
+    removes them all, with the saved overlay alphas (Restore default
+    settings).
     """
     def customLevelsLutChanged(self, levels, imageItem: pg.ImageItem=None):
         imageItem.setLevels(levels)
@@ -427,3 +523,132 @@ class LutGuiElements:
             f'how_rescale_intensities_{channelName}', 'value'
         ]
         self.imgGrad.setRescaleIntensitiesHow(how)
+
+    @contextlib.contextmanager
+    def settingChannelLutsFromCode(self):
+        """Context for LUT gradient changes made by code that must not be
+        saved (restoring saved LUTs, Restore default settings, the overlay
+        color preview): the slots that save the LUTs
+        (`imgGradLUTfinished_cb`, `overlayLutChangeFinished`) ignore them.
+        Not for a chosen overlay color (see `overlayLutChangeFinished`)."""
+        wasSetting = self.isSettingChannelLutsFromCode()
+        self._isSettingChannelLutsFromCode = True
+        try:
+            yield
+        finally:
+            self._isSettingChannelLutsFromCode = wasSetting
+
+    def isSettingChannelLutsFromCode(self):
+        return getattr(self, '_isSettingChannelLutsFromCode', False)
+
+    def savedChannelLut(self, settingName):
+        """Return `(gradient state, bw_inverted)` saved in the user setting
+        `settingName` (`colors.gradient_state_from_setting`), or None when
+        it is missing or invalid (logged)."""
+        df = self.df_settings
+        if df is None or settingName not in df.index:
+            return None
+        saved = colors.gradient_state_from_setting(df.at[settingName, 'value'])
+        if saved is None:
+            self.logger.warning(
+                f'Ignoring the invalid LUT saved in the setting "{settingName}"'
+            )
+        return saved
+
+    def isImageLutBwInverted(self):
+        """Whether black and white are inverted in the LUT of `imgGrad`
+        (`invertBw` checks the LUT item's own action before inverting)."""
+        return self.imgGrad.invertBwAction.isChecked()
+
+    def resetImageChannelLut(self):
+        """Stop saving the LUT of `imgGrad` for the displayed channel until
+        `restoreImageChannelLut` restored the LUT of the channel being
+        loaded (call it when loading starts)."""
+        self._imageLutChannel = None
+
+    def restoreImageChannelLut(self):
+        """Show the LUT saved for the displayed channel (`user_ch_name`) in
+        `imgGrad`, or the grey LUT if none was saved, and save the next
+        changes of the LUT for this channel.
+
+        Call it at the end of a load, after the first-load `invertBw`:
+        a saved LUT keeps the black/white inversion it was saved with and
+        is inverted when the current one differs.
+        """
+        channel = self.user_ch_name
+        saved = self.savedChannelLut(image_lut_setting_name(channel))
+        if saved is None:
+            state, wasInverted = default_image_lut(), False
+        else:
+            state, wasInverted = saved
+        if wasInverted != self.isImageLutBwInverted():
+            state = self.imgGrad.invertGradient(state)
+        with self.settingChannelLutsFromCode():
+            # `setGradient` (not `gradient.restoreState`) also sets the
+            # `lastGradient` that `Invert black/white` inverts
+            self.imgGrad.setGradient(state)
+        self._imageLutChannel = channel
+
+    def saveImageChannelLut(self):
+        """Store the LUT of `imgGrad` in `df_settings` for the displayed
+        channel (the caller writes the file). Skipped while loading, before
+        `restoreImageChannelLut` (see `resetImageChannelLut`).
+
+        Returns
+        -------
+        bool
+            Whether the LUT was stored.
+        """
+        channel = getattr(self, '_imageLutChannel', None)
+        if channel is None or channel != self.user_ch_name:
+            return False
+        state = self.imgGrad.gradient.saveState()
+        # `Invert black/white` inverts `lastGradient`, which presets,
+        # custom colormaps and edited ticks do not update
+        self.imgGrad.lastGradient = state
+        self.df_settings.at[image_lut_setting_name(channel), 'value'] = (
+            colors.gradient_state_to_setting(
+                state, bw_inverted=self.isImageLutBwInverted()
+            )
+        )
+        return True
+
+    def restoreOverlayChannelLut(self, channel, lutItem):
+        """Show the LUT saved for the overlay `channel` in its LUT item
+        `lutItem`. Without a saved LUT the item keeps the LUT made from the
+        overlay color.
+
+        Returns
+        -------
+        bool
+            Whether a saved LUT was restored.
+        """
+        saved = self.savedChannelLut(overlay_lut_setting_name(channel))
+        if saved is None:
+            return False
+        # `Invert black/white` does not change overlay LUTs: restore as saved
+        state, _ = saved
+        with self.settingChannelLutsFromCode():
+            lutItem.setGradient(state)
+        return True
+
+    def overlayLutChangeFinished(self, channel, lutItem, *args):
+        """Save the LUT of the overlay `channel` (`sigGradientChangeFinished`
+        of the gradient of its LUT item `lutItem`). A LUT made from the
+        overlay color (`initColormapOverlayLayerItem`) removes the saved
+        LUT instead: the color (setting `<channel>_rgb`) defines it."""
+        if self.isSettingChannelLutsFromCode():
+            return
+        settingName = overlay_lut_setting_name(channel)
+        if getattr(lutItem, 'isOverlayColorGradient', False):
+            if settingName not in self.df_settings.index:
+                return
+            self.df_settings = self.df_settings.drop(index=settingName)
+        else:
+            state = lutItem.gradient.saveState()
+            self.df_settings.at[settingName, 'value'] = (
+                colors.gradient_state_to_setting(
+                    state, bw_inverted=self.invertBwAction.isChecked()
+                )
+            )
+        self.df_settings.to_csv(self.settings_csv_path)

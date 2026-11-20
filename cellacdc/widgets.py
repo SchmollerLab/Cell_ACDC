@@ -1479,6 +1479,8 @@ class QDialogListbox(QDialog):
             allowEmptySelection=True
         ):
         self.cancel = True
+        # Also when closed with the title bar button (no ok_cb/cancel_cb)
+        self.selectedItemsText = None
         items = list(items)
         
         super().__init__(parent)
@@ -1492,6 +1494,7 @@ class QDialogListbox(QDialog):
 
         self.allowSingleSelection = allowSingleSelection
         self.allowEmptySelection = allowEmptySelection
+        self.multiSelection = multiSelection
 
         mainLayout = QVBoxLayout()
         topLayout = QVBoxLayout()
@@ -1579,9 +1582,16 @@ class QDialogListbox(QDialog):
     
     def keyPressEvent(self, event) -> None:
         mod = event.modifiers()
-        if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
+        isModifier = mod == Qt.ShiftModifier or mod == Qt.ControlModifier
+        if isModifier and self.multiSelection:
             self.listBox.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         elif event.key() == Qt.Key_Escape:
+            if not self.multiSelection:
+                # Single choice: Escape cancels (as the Cancel button)
+                # instead of emptying the choice. Not `reject()`: only
+                # `closeEvent` exits the loop of `exec_`
+                self.cancel_cb(None)
+                return
             self.listBox.clearSelection()
             event.ignore()
             return
@@ -1628,11 +1638,18 @@ class QDialogListbox(QDialog):
 
     def warnSelectionEmpty(self):
         msg = myMessageBox(wrapText=False, showCentered=False)
-        txt = html_utils.paragraph(
-            'You need to <b>select at least one item!</b>.<br><br>'
-            'Use <code>Ctrl+Click</code> to select multiple items<br>'
-            'or <code>Shift+Click</code> to select a range of items'
-        )
+        if self.multiSelection:
+            txt = html_utils.paragraph(
+                'You need to <b>select at least one item!</b>.<br><br>'
+                'Use <code>Ctrl+Click</code> to select multiple items<br>'
+                'or <code>Shift+Click</code> to select a range of items'
+            )
+        else:
+            # E.g., after Ctrl+Click on the selected item
+            txt = html_utils.paragraph(
+                'You need to <b>select an item!</b><br><br>'
+                'Click an item of the list to select it.'
+            )
         msg.warning(self, 'Selection cannot be empty!', txt)
     
     def ok_cb(self, checked=False):
@@ -7403,6 +7420,11 @@ class linkedQScrollbar(ScrollBar):
             self._linkedScrollBar.setMaximum(max)
 
 class myColorButton(pg.ColorButton):
+    # Cancel in the color dialog, after the preview (`sigColorChanging`) of
+    # the color it started from. Connect here, not to `colorDialog.rejected`:
+    # `selectColor` may replace the dialog (`_make_dialog`)
+    sigColorRejected = Signal(object)
+
     def __init__(self, parent=None, color=(128,128,128), padding=5):
         super().__init__(parent=parent, color=color)
         if isinstance(padding, (int, float)):
@@ -7464,6 +7486,12 @@ class myColorButton(pg.ColorButton):
         dlg.colorSelected.connect(self.colorSelected)
         return dlg
         
+    @Slot()
+    def colorRejected(self):
+        # After the preview of the color the dialog started from
+        super().colorRejected()
+        self.sigColorRejected.emit(self)
+
     # edit show color dialog on click
     @Slot()
     def selectColor(self):
@@ -13534,7 +13562,11 @@ def get_min_width_for_no_scrollbar(list_widget: QListWidget) -> int:
 class OverlayToolbar(ToolBar):
     sigSetTranspacency = Signal(bool)
     sigSetSingleChannel = Signal(bool)
-    
+    # The user clicked an overlay mode (true transparency or alpha-encoded
+    # intensity), emitted after both check states were updated. Not emitted
+    # when code changes them (e.g., `setTransparent` to export images).
+    sigModesClicked = Signal()
+
     def __init__(self, name='Overlay tools', parent=None):
         
         super().__init__(name, parent)
@@ -13584,8 +13616,30 @@ class OverlayToolbar(ToolBar):
         )
         self.alphaEncodedIntensityCheckbox.toggled.connect(
             self.alphaEncodedIntensityToggled)
-        
-        
+        # `clicked` comes after `toggled` (partner checkbox already updated)
+        self.transparencyCheckbox.clicked.connect(self.emitModesClicked)
+        self.alphaEncodedIntensityCheckbox.clicked.connect(
+            self.emitModesClicked
+        )
+
+    def emitModesClicked(self, checked=False):
+        self.sigModesClicked.emit()
+
+    def setModesChecked(self, transparent=False, alphaEncoded=False):
+        """Check the overlay modes without emitting any signal, e.g., to
+        restore the check states saved by the user before the overlay is
+        on (the host applies them when the overlay is turned on).
+        Alpha-encoded intensity implies true transparency, as when clicked.
+        """
+        states = (
+            (self.transparencyCheckbox, transparent or alphaEncoded),
+            (self.alphaEncodedIntensityCheckbox, alphaEncoded),
+        )
+        for checkbox, checked in states:
+            wasBlocked = checkbox.blockSignals(True)
+            checkbox.setChecked(bool(checked))
+            checkbox.blockSignals(wasBlocked)
+
     def alphaEncodedIntensityToggled(self, checked):
         if checked:
             self.transparencyCheckbox.blockSignals(True)

@@ -365,7 +365,10 @@ class welcomeWin(QWidget):
         <body>
         <blockquote>
         <p style="font-size:{fs}px; font-family:ubuntu">
-            Cell-ACDC is made of three main modules:
+            Cell-ACDC is made of the following main modules, grouped in the
+            launcher into <b>Image preprocessing</b>,
+            <b>Segmentation and tracking</b> and
+            <b>Measurements visualisation</b>:
             <ul>
                 <li>
                     <b>Data Prep</b>: used for selection of z-slice of z-projection,
@@ -382,6 +385,12 @@ class welcomeWin(QWidget):
                     segmentation module<br> or segmenting one image/frame
                     at the time.
                     <a href=\"guiMore">More details...</a>
+                </li>
+                <li>
+                    <b>Measurements viewer</b>: used for plotting the
+                    measurements of each cell over time<br> and marking
+                    time points (e.g., division) and cell cycle phases.
+                    <a href=\"measurementsViewerMore">More details...</a>
                 </li>
             </ul>
             <br>
@@ -858,6 +867,8 @@ class welcomeWin(QWidget):
             pass
         elif link == 'guiMore':
             pass
+        elif link == 'measurementsViewerMore':
+            webbrowser.open(urls.measurements_viewer_docs_url)
         elif link == 'quickStart':
             self.showPage(self.quickStartItem)
         elif link == 'userManual':

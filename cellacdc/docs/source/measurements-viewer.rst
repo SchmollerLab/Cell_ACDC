@@ -12,8 +12,10 @@ Position.
 
 .. admonition:: TL;DR
 
-    * **Open** the viewer from the launcher (**Utilities > Measurements >
-      Measurements viewer...**), pick a saved or premade configuration (or
+    * **Open** the viewer from the launcher (**Launch measurements
+      viewer...** in the **Measurements visualisation** box, or **Utilities >
+      Measurements > Measurements viewer...**), pick a saved or premade
+      configuration (or
       start a new one) and load an experiment with **File > Load Folder...**
       (:kbd:`Ctrl+O`). Premade configurations (e.g., FUCCI cell cycle) only
       ask for your channels and input values.
@@ -84,7 +86,9 @@ are needed for lineage-based inputs (mother, daughter, sister cell).
 Starting the viewer
 ~~~~~~~~~~~~~~~~~~~
 
-* From the launcher: **Utilities > Measurements > Measurements viewer...**
+* From the launcher: **Launch measurements viewer...** (in the
+  **Measurements visualisation** box) or **Utilities > Measurements >
+  Measurements viewer...**
 * From a terminal, in the environment where Cell-ACDC is installed::
 
       python -m cellacdc.measurements_viewer
@@ -169,7 +173,17 @@ The window
   `Time point to phase translator`_ (icon of a colored band split by two
   time point markers; hover over it for a description).
 * **Image** (center): the current frame with the segmentation contours and
-  cell IDs. The selected cell is highlighted.
+  cell IDs. The selected cell is highlighted. The colormap (LUT) of each
+  channel, chosen by right-clicking its color bar left of the image, is
+  remembered by channel name (also by the main GUI) and restored whenever a
+  channel with that name is loaded again. A channel without a remembered
+  colormap is grey when displayed and has its overlay color when overlaid;
+  choosing an overlay color makes the overlay colormap follow the color
+  again. The **Alpha** slider of each overlaid channel is remembered by
+  channel name the same way. **Restore default settings** (same menu)
+  resets all of them. The
+  **True transparency** and **Alpha-encoded intensity** options of the
+  overlay toolbar are remembered too, also when you load other data.
 * **Navigate** box: Position, frame, z-slice and Cell ID controls (labels,
   value boxes and sliders in aligned columns).
 * **Annotations** box: what to display on the image (contours, IDs, cell

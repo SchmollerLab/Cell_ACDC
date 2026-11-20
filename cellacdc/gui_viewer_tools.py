@@ -27,6 +27,7 @@ from . import exception_handler, disableWindow
 from . import graphLayoutBkgrColor, darkBkgrColor
 from . import load, apps, workers, html_utils
 from . import myutils, widgets, colors
+from . import gui_navigation, gui_overlay
 from . import _warnings
 from . import settings_folderpath, settings_csv_path
 from . import qutils, QtScoped
@@ -2125,6 +2126,12 @@ class BottomLayoutGuiElements:
 
 class DefaultSettingsGuiElements:
     def restoreDefaultSettings(self):
+        # LUT changes made here are not saved as the channels' LUTs (the
+        # saved ones are removed below)
+        with self.settingChannelLutsFromCode():
+            self._restoreDefaultSettings()
+
+    def _restoreDefaultSettings(self):
         df = self.df_settings
         df.at['contLineWeight', 'value'] = 1
         df.at['mothBudLineSize', 'value'] = 1
@@ -2159,13 +2166,26 @@ class DefaultSettingsGuiElements:
         # `restoreState(df)` below restores the old state (e.g. re-inverts)
         df = self.df_settings
         df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
+        # Grey LUT for every channel: drop the saved LUTs (per channel and
+        # the older 'img_cmap_*' of the displayed image) and overlay alphas
+        self.df_settings = df = gui_navigation.drop_channel_lut_settings(df)
 
         df = df[~df.index.str.contains('lab_cmap')]
         df.to_csv(self.settings_csv_path)
         self.imgGrad.restoreState(df)
+        self.imgGrad.setGradient(gui_navigation.default_image_lut())
         for items in self.overlayLayersItems.values():
             lutItem = items[1]
             lutItem.restoreState(df)
+            # Back to the LUT of the overlay color (`restoreState` does not
+            # set the overlay LUTs)
+            rgb = lutItem.overlayColorButton.color().getRgb()[:3]
+            self.initColormapOverlayLayerItem(rgb, lutItem)
+            # Saved alphas were dropped with the LUTs. `setValue` by code
+            # updates the opacities and saves nothing
+            # (`overlayAlphaActionTriggered`)
+            alphaScrollBar = items[2]
+            alphaScrollBar.setValue(gui_overlay.ALPHA_SCROLLBAR_DEFAULT_VALUE)
 
         self.labelsGrad.saveState(df)
         self.labelsGrad.restoreState(df, loadCmap=False)
