@@ -1,4 +1,5 @@
 import collections
+import gc
 import io
 import json
 import os
@@ -578,6 +579,20 @@ class LocalBackend:
         return cmd
 
     def _wait_for_health(self, cmd, timeout):
+        try:
+            self._poll_health(cmd, timeout)
+        finally:
+            if getattr(self, '_health_poll_failed', False):
+                # The connection errors of urllib3 are reference cycles
+                # (exception -> traceback -> frame -> exception) and their
+                # frames keep the callers' frames alive. When the worker is
+                # started inside `SegmKernel.run` (CLI), the arrays of the
+                # position would stay in memory after `run` returns until
+                # the cyclic garbage collector runs
+                gc.collect()
+
+    def _poll_health(self, cmd, timeout):
+        self._health_poll_failed = False
         t0 = time.monotonic()
         last_error = None
         while time.monotonic() - t0 < timeout:
@@ -595,6 +610,7 @@ class LocalBackend:
                     last_error = f"/health returned HTTP {res.status_code}"
             except Exception as err:
                 healthy = False
+                self._health_poll_failed = True
                 last_error = f"{type(err).__name__}: {err}"
             if healthy:
                 return

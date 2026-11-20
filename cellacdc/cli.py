@@ -446,6 +446,9 @@ class SegmKernel(_WorkflowKernel):
             backend_url=backend_url,
             env_python=env_python
         )
+        # Read again by `init_segm_model` (CLI), which sets
+        # `is_segment3DT_available` from the model it creates
+        self.reduce_memory_usage = reduce_memory_usage
         self.is_segment3DT_available = (
             is_segment3DT_available and not reduce_memory_usage
         )
@@ -529,8 +532,9 @@ class SegmKernel(_WorkflowKernel):
         )
         if client is not None:
             self.model = client
-            self.is_segment3DT_available = getattr(
-                self.model, 'is_segment3DT_available', False
+            self.is_segment3DT_available = (
+                getattr(self.model, 'is_segment3DT_available', False)
+                and not getattr(self, 'reduce_memory_usage', False)
             )
             return
 
@@ -543,8 +547,9 @@ class SegmKernel(_WorkflowKernel):
         if self.model is None:
             # The model was not initialized correctly
             return
-        self.is_segment3DT_available = any(
-            [name=='segment3DT' for name in dir(self.model)]
+        self.is_segment3DT_available = (
+            any([name=='segment3DT' for name in dir(self.model)])
+            and not getattr(self, 'reduce_memory_usage', False)
         )
     
     @exception_handler_cli
