@@ -15262,32 +15262,67 @@ When working with 3D segmentation masks:
             if isFocusFilteringEvent:
                 return super().eventFilter(obj, ev)
         
+        # The filter also sees the clicks that Qt ignores for a disabled
+        # scroll bar (e.g., the GUI busy, or the lost cells prompt open)
         if (
                 ev.type() == QEvent.MouseButtonPress
-                and obj == self.navigateScrollBar 
+                and obj == self.navigateScrollBar
+                and self.navigateScrollBar.isEnabled()
             ):
             self.navigateScrollBar.handleMousePressEventFromAppFilter(ev)
 
         # handle presistant shortcuts (for multiple shportcuts). The filter
         # is installed on the app: leave the key presses of windows not owned
-        # by the GUI (e.g., the arrow keys of the measurements viewer) alone
+        # by the GUI (e.g., the arrow keys of the measurements viewer) alone.
+        # Not while the GUI (busy, or disabled by the measurements viewer's
+        # `runInThread`) or the key's target is disabled: the filter also
+        # sees the key presses that Qt ignores for disabled widgets, the
+        # actions do not follow the GUI's enabled state, and a dialog that
+        # they open would nest its event loop in the viewer's wait. Nor
+        # while the action itself is disabled (`triggerPersistentShortcut`)
         if (
             ev.type() == QEvent.Type.KeyPress
+            and self.isEnabled()
+            and qutils.is_key_event_target_enabled(obj)
             and qutils.is_key_event_for_window(
                 self, obj, owned_windows=self.ownedWindowsOutsideParentChain()
             )
+            and self.triggerPersistentShortcut(ev.key())
         ):
-            for name, key in self.widgetsPersistentShortcut.items():
-                if not key == ev.key():
-                    continue
-                action = self.widgetsWithShortcut[name]
-                if hasattr(action, 'click'):
-                    action.click()
-                elif hasattr(action, 'trigger'):
-                    action.trigger()
-                return True
+            return True
 
         return super().eventFilter(obj, ev)
+
+    def triggerPersistentShortcut(self, key):
+        """Trigger (or click) the action with the persistent shortcut `key`
+        (`widgetsPersistentShortcut`: Left/Right for the previous/next
+        frame), from `eventFilter` and `keyPressEvent`.
+
+        Not when it is disabled on purpose (e.g., `prevAction`/`nextAction`
+        while the lost cells prompt is open, `setFrameNavigationDisabled`):
+        Qt5's `QAction.trigger()` would still emit `triggered`, and the key
+        goes on to its target instead (e.g., to move the focus between the
+        prompt's buttons). So while frame navigation is disabled, Left/Right
+        do not step the z-slices either (z-slice checkbox or Z held, as
+        with Qt6 before); Up/Down still do.
+
+        Returns
+        -------
+        bool
+            Whether an action was triggered (or clicked).
+        """
+        for name, persistentKey in self.widgetsPersistentShortcut.items():
+            if persistentKey != key:
+                continue
+            action = self.widgetsWithShortcut[name]
+            if not action.isEnabled():
+                return False
+            if hasattr(action, 'click'):
+                action.click()
+            elif hasattr(action, 'trigger'):
+                action.trigger()
+            return True
+        return False
     
     def get3DActionKeyboardModifier(self, modifiers):
         if not self.isSegm3D:
@@ -15439,17 +15474,9 @@ When working with 3D segmentation masks:
         
         if ev.key() == Qt.Key_End:
             self.onKeyEnd()
-            
-        for name, key in self.widgetsPersistentShortcut.items():
-            if not key == ev.key():
-                continue
-            action = self.widgetsWithShortcut[name]
-            if hasattr(action, 'click'):
-                action.click()
-            elif hasattr(action, 'trigger'):
-                action.trigger()
-            break
-        
+
+        self.triggerPersistentShortcut(ev.key())
+
         self.checkSetDelObjActionActive(ev)
         
         self.isZmodifier = (
