@@ -156,9 +156,8 @@ acdc-setup-models = "cellacdc.service.setup_models:main"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-exclude = [
-    "cellacdc/docs/source/images",
-]
+include = ["cellacdc*"]
+exclude = ["cellacdc.docs*"]
 namespaces = false
 
 [tool.setuptools_scm]
