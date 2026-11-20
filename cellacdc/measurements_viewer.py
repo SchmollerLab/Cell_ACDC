@@ -545,8 +545,8 @@ skipped with 'missing inputs' afterwards); the column's own color and
 conditional formatting are removed with it.
 
 ``Time point to phase translator...`` (icon-only button of the ``Phases``
-toolbar, icon drawn in code by `phase_translator_icon`, tooltip explaining the
-steps; also in the Annotations menu) opens an ordered list of phase rules.
+toolbar, icon ``:phase_translator.svg``, tooltip explaining the steps; also in
+the Annotations menu) opens an ordered list of phase rules.
 Its ``Help...`` button explains the steps and links to the user guide section
 (`urls.measurements_viewer_phase_translator_docs_url`).
 Each rule reuses the custom annotation formula editor (including filters,
@@ -566,8 +566,9 @@ annotation overrides phases (evaluation needs a rule or an overriding
 annotation, `hasPhaseTranslation`).
 Apply phase evaluation updates either the displayed cell or all cells of the
 current position in memory. The ``Phases`` toolbar (and the Annotations menu)
-also has ``Evaluate phases on displayed cell`` (icon `phase_apply_icon`,
-shortcut ``Alt+P``, editable in the shortcuts editor) to apply the configured
+also has ``Evaluate phases on displayed cell`` (icon
+``:phase_translator_apply.svg``, shortcut ``Alt+P``, editable in the
+shortcuts editor) to apply the configured
 rules and overriding annotations to the displayed cell without opening the
 dialog (status bar hint when neither is defined). With ``Automatically
 evaluate phases when time points or annotations change or phases are
@@ -685,12 +686,11 @@ import skimage.measure
 
 from qtpy.QtCore import (
     Qt, Signal, QTimer, QPoint, QEvent, QRect, QSaveFile, QIODevice,
-    QThread, QMutex, QWaitCondition, QObject, QEventLoop, QCoreApplication,
-    QPointF, QRectF
+    QThread, QMutex, QWaitCondition, QObject, QEventLoop, QCoreApplication
 )
 from qtpy.QtGui import (
     QFont, QIcon, QGuiApplication, QPixmap, QPainter, QCursor, QKeySequence,
-    QColor, QMouseEvent, QPen, QPolygonF
+    QColor, QMouseEvent
 )
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QHBoxLayout,
@@ -776,75 +776,6 @@ TIME_COURSE_COLUMNS_TOOLTIP = (
     'Click a column to plot/unplot it. Right-click a column\n'
     'to change its color, y axis or conditional formatting.'
 )
-# Phase colors of the phase translator icon (Okabe-Ito sky blue, bluish
-# green and orange: no red, readable on light and dark toolbars)
-PHASE_TRANSLATOR_ICON_COLORS = ('#56B4E9', '#009E73', '#E69F00')
-
-
-def phase_translator_icon(size=64):
-    """Icon of the time point to phase translator drawn in code (no resource
-    file): a phase band of three colored segments split by two time point
-    ticks with a marker on top. The ticks are mid-gray, visible on both the
-    light and the dark color scheme."""
-    pixmap = QPixmap(size, size)
-    pixmap.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    margin = size / 16
-    width = size - 2*margin
-    bounds = (
-        margin, margin + width*0.36, margin + width*0.66, size - margin
-    )
-    bandTop, bandHeight = size*0.4, size*0.32
-    painter.setPen(QPen(Qt.PenStyle.NoPen))
-    for x0, x1, color in zip(
-            bounds[:-1], bounds[1:], PHASE_TRANSLATOR_ICON_COLORS
-        ):
-        painter.setBrush(QColor(color))
-        painter.drawRect(QRectF(x0, bandTop, x1 - x0, bandHeight))
-    tickColor = QColor(128, 128, 128)
-    tickPen = QPen(tickColor)
-    tickPen.setWidthF(size / 14)
-    tickPen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    markerY, radius = size*0.2, size/9
-    for x in bounds[1:-1]:
-        painter.setPen(tickPen)
-        painter.drawLine(QPointF(x, markerY), QPointF(x, size*0.86))
-        painter.setPen(QPen(Qt.PenStyle.NoPen))
-        painter.setBrush(tickColor)
-        painter.drawEllipse(QPointF(x, markerY), radius, radius)
-    painter.end()
-    return QIcon(pixmap)
-
-
-def phase_apply_icon(size=64):
-    """Icon of "Evaluate phases on displayed cell" drawn in code: the phase
-    band of `phase_translator_icon` below a play triangle (mid-gray, visible
-    on both color schemes)."""
-    pixmap = QPixmap(size, size)
-    pixmap.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    margin = size / 16
-    width = size - 2*margin
-    bounds = (
-        margin, margin + width*0.36, margin + width*0.66, size - margin
-    )
-    bandTop, bandHeight = size*0.62, size*0.28
-    painter.setPen(QPen(Qt.PenStyle.NoPen))
-    for x0, x1, color in zip(
-            bounds[:-1], bounds[1:], PHASE_TRANSLATOR_ICON_COLORS
-        ):
-        painter.setBrush(QColor(color))
-        painter.drawRect(QRectF(x0, bandTop, x1 - x0, bandHeight))
-    painter.setBrush(QColor(128, 128, 128))
-    painter.drawPolygon(QPolygonF([
-        QPointF(size*0.34, size*0.06), QPointF(size*0.34, size*0.52),
-        QPointF(size*0.70, size*0.29)
-    ]))
-    painter.end()
-    return QIcon(pixmap)
-
 
 APPLY_PHASES_CELL_SHORTCUT = 'Alt+P'
 # Left/Right: frames (or z-slices), Up/Down: Cell IDs (`navigateWithArrowKey`)
@@ -3150,7 +3081,7 @@ class MeasurementsViewerWin(
             'Save the current configuration to a new file'
         )
         self.addTimepointIdentifierAction = QAction(
-            QIcon(":add.svg"), 'Add time point identifier...', self
+            QIcon(":addTimepoint.svg"), 'Add time point identifier...', self
         )
         self.addTimepointIdentifierAction.setToolTip(
             'Add time point identifier\n\n'
@@ -3160,7 +3091,8 @@ class MeasurementsViewerWin(
             'plot and press the shortcut to add a time point at the hovered frame.'
         )
         self.reevaluateAllTimepointsAction = QAction(
-            QIcon(":reload.svg"), 'Re-evaluate predictors on all cells', self
+            QIcon(":reevaluateAllTimepoint.svg"),
+            'Re-evaluate predictors on all cells', self
         )
         self.reevaluateAllTimepointsAction.setToolTip(
             'Re-evaluate predictors on all cells\n\n'
@@ -3169,7 +3101,7 @@ class MeasurementsViewerWin(
             'You will be warned if manual edits would be overwritten.'
         )
         self.reevaluateCellTimepointsAction = QAction(
-            QIcon(":magic_wand.svg"), 
+            QIcon(":reevaluateTimepoint.svg"),
             'Re-evaluate predictors on displayed cell', self
         )
         self.reevaluateCellTimepointsAction.setToolTip(
@@ -3179,8 +3111,8 @@ class MeasurementsViewerWin(
             'will be warned if manual edits would be overwritten.'
         )
         self.phaseTranslatorAction = QAction(
-            phase_translator_icon(), 'Time point to phase translator...',
-            self
+            QIcon(":phase_translator.svg"),
+            'Time point to phase translator...', self
         )
         self.phaseTranslatorAction.setToolTip(PHASE_TRANSLATOR_TOOLTIP)
         self.phaseTranslatorAction.setStatusTip(
@@ -3188,7 +3120,8 @@ class MeasurementsViewerWin(
             'band below the plot, phase columns in the exported table)'
         )
         self.applyPhasesCellAction = QAction(
-            phase_apply_icon(), 'Evaluate phases on displayed cell', self
+            QIcon(":phase_translator_apply.svg"),
+            'Evaluate phases on displayed cell', self
         )
         self.applyPhasesCellAction.setShortcut(APPLY_PHASES_CELL_SHORTCUT)
         self.applyPhasesCellAction.setShortcutContext(
@@ -3251,8 +3184,12 @@ class MeasurementsViewerWin(
         # )
         
         self.gui_createCustomAnnotationsActions()
+        # The shared mixin uses the main GUI's eye icon
+        self.viewAllCustomAnnotAction.setIcon(
+            QIcon(":viewCustomAnnotation.svg")
+        )
         self.reevaluateAllCustomAnnotationsAction = QAction(
-            QIcon(":reload.svg"),
+            QIcon(":reevaluateAllCustomAnnotation.svg"),
             'Re-evaluate annotation predictors on all cells', self
         )
         self.reevaluateAllCustomAnnotationsAction.setToolTip(
@@ -3262,7 +3199,7 @@ class MeasurementsViewerWin(
             'will be warned if manual edits would be overwritten.'
         )
         self.reevaluateCellCustomAnnotationsAction = QAction(
-            QIcon(":magic_wand.svg"),
+            QIcon(":reevaluateCustomAnnotation.svg"),
             'Re-evaluate annotation predictors on displayed cell', self
         )
         self.reevaluateCellCustomAnnotationsAction.setToolTip(

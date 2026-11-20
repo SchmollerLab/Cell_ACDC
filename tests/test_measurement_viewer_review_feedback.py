@@ -13,8 +13,8 @@ import pandas as pd
 import pyqtgraph as pg
 import pytest
 
-from qtpy.QtCore import Qt, QTimer
-from qtpy.QtGui import QColor, QKeySequence
+from qtpy.QtCore import Qt, QTimer, QFile
+from qtpy.QtGui import QColor, QKeySequence, QIcon
 from qtpy.QtWidgets import QApplication, QWidget
 
 from cellacdc import measurements_viewer, qutils, widgets
@@ -1123,19 +1123,39 @@ def test_phase_translator_action_has_icon_and_long_tooltip(bare_viewer):
     ).casefold()
 
 
-def test_phase_translator_icon_is_colorful_but_not_red():
-    for color in measurements_viewer.PHASE_TRANSLATOR_ICON_COLORS:
-        hue = QColor(color).hue()
-        assert 30 <= hue <= 330
-    image = measurements_viewer.phase_translator_icon(32).pixmap(32, 32)
-    image = image.toImage()
-    colors = {
-        image.pixelColor(x, y).name()
-        for x in range(image.width()) for y in range(image.height())
-        if image.pixelColor(x, y).alpha() == 255
-    }
-    for color in measurements_viewer.PHASE_TRANSLATOR_ICON_COLORS:
-        assert color.lower() in colors
+# Viewer actions and the alias of their icon in the qrc resources
+# (cellacdc/resources_light.qrc and resources_dark.qrc)
+VIEWER_ACTION_ICONS = {
+    'reloadAction': 'reload',
+    'addTimepointIdentifierAction': 'addTimepoint',
+    'reevaluateAllTimepointsAction': 'reevaluateAllTimepoint',
+    'reevaluateCellTimepointsAction': 'reevaluateTimepoint',
+    'addCustomAnnotationAction': 'addCustomAnnotation',
+    'viewAllCustomAnnotAction': 'viewCustomAnnotation',
+    'reevaluateAllCustomAnnotationsAction': 'reevaluateAllCustomAnnotation',
+    'reevaluateCellCustomAnnotationsAction': 'reevaluateCustomAnnotation',
+    'phaseTranslatorAction': 'phase_translator',
+    'applyPhasesCellAction': 'phase_translator_apply',
+}
+
+
+def icon_image(icon, size=32):
+    return icon.pixmap(size, size).toImage()
+
+
+def test_viewer_actions_use_their_resource_icons(bare_viewer):
+    images = {}
+    for attr, alias in VIEWER_ACTION_ICONS.items():
+        assert QFile(f':{alias}.svg').exists(), alias
+        expected = icon_image(QIcon(f':{alias}.svg'))
+        assert not expected.isNull(), alias
+        assert icon_image(getattr(bare_viewer, attr).icon()) == expected, attr
+        images[alias] = expected
+    # Tells the actions apart (e.g., not a copy of another icon)
+    aliases = list(images)
+    for i, alias in enumerate(aliases):
+        for other in aliases[i+1:]:
+            assert images[alias] != images[other], (alias, other)
 
 
 def test_help_menu_opens_user_guide(bare_viewer, monkeypatch):
