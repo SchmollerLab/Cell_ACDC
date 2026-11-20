@@ -1,4 +1,5 @@
 import re
+import json
 import traceback
 
 import skimage.segmentation
@@ -163,6 +164,85 @@ def get_pg_gradient(colors):
     ticks = [(tick_pos, color) for tick_pos, color in zip(ticks_pos, colors)]
     gradient = {'ticks': ticks, 'mode': 'rgb'}
     return gradient
+
+def _gradient_ticks_rgba(ticks):
+    """Return the `ticks` of a pyqtgraph gradient state as a list of
+    `(position, (r, g, b, a))` with float positions and int RGBA colors
+    (alpha 255 when missing), sorted by position."""
+    rgba_ticks = []
+    for pos, color in ticks:
+        rgba = tuple(int(round(float(c))) for c in color)
+        if len(rgba) == 3:
+            rgba = (*rgba, 255)
+        rgba_ticks.append((float(pos), rgba))
+    return sorted(rgba_ticks, key=lambda tick: tick[0])
+
+def gradient_state_to_setting(state, bw_inverted=False):
+    """Return the text stored in the user settings (`settings.csv`) for the
+    pyqtgraph gradient `state` (`GradientEditorItem.saveState()`) of the LUT
+    of a channel (see `gui_navigation.LutGuiElements`).
+
+    The text is JSON with the color mode, the ticks (position and RGBA
+    color), whether the ticks are visible and whether black and white were
+    inverted (`bw_inverted`, menu `Invert black/white`) when the gradient
+    was saved. Read it back with `gradient_state_from_setting`.
+    """
+    setting = {
+        'mode': str(state.get('mode', 'rgb')),
+        'ticks': [
+            [pos, list(rgba)]
+            for pos, rgba in _gradient_ticks_rgba(state['ticks'])
+        ],
+        'ticksVisible': bool(state.get('ticksVisible', True)),
+        'bw_inverted': bool(bw_inverted),
+    }
+    return json.dumps(setting, separators=(',', ':'))
+
+def gradient_state_from_setting(text):
+    """Read the text written by `gradient_state_to_setting`.
+
+    Returns
+    -------
+    tuple of (dict, bool) or None
+        The gradient state (for `GradientEditorItem.restoreState`) and
+        whether black and white were inverted when it was saved, or None
+        if `text` is not a valid gradient (e.g., a corrupted setting).
+    """
+    try:
+        setting = json.loads(text)
+        mode = setting.get('mode', 'rgb')
+        if mode not in ('rgb', 'hsv'):
+            return None
+        ticks = _gradient_ticks_rgba(setting['ticks'])
+        for pos, rgba in ticks:
+            if not 0 <= pos <= 1 or len(rgba) != 4:
+                return None
+            if any(not 0 <= c <= 255 for c in rgba):
+                return None
+        if not ticks:
+            return None
+        state = {
+            'mode': mode,
+            'ticks': ticks,
+            'ticksVisible': setting.get('ticksVisible', True) is not False,
+        }
+        return state, setting.get('bw_inverted', False) is True
+    except Exception:
+        return None
+
+def are_gradients_equal(state, other_state, pos_tolerance=1e-6):
+    """Whether two pyqtgraph gradient states have the same ticks (positions
+    within `pos_tolerance`, same RGBA colors) and color mode."""
+    if state.get('mode', 'rgb') != other_state.get('mode', 'rgb'):
+        return False
+    ticks = _gradient_ticks_rgba(state['ticks'])
+    other_ticks = _gradient_ticks_rgba(other_state['ticks'])
+    if len(ticks) != len(other_ticks):
+        return False
+    for (pos, rgba), (other_pos, other_rgba) in zip(ticks, other_ticks):
+        if abs(pos - other_pos) > pos_tolerance or rgba != other_rgba:
+            return False
+    return True
 
 def lighten_color(color, amount=0.3, hex=True):
     """

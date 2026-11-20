@@ -3732,7 +3732,7 @@ class AlignWorker(BaseWorkerUtil):
                         raise FileNotFoundError(
                             'To align 4D data you need to select which z-slice '
                             'you want to use for alignment. Please run the module '
-                            '`1. Launch data prep module...` before aligning the '
+                            '`Launch data prep module...` before aligning the '
                             'frames. (z-slice info MISSING from position '
                             f'"{posData.relPath}")'
                         )

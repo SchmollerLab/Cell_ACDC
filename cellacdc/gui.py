@@ -423,7 +423,6 @@ class guiWin(
         self.newSegmEndName = ''
         self.closeGUI = False
         self.warnKeyPressedMsg = None
-        self.img1ChannelGradients = {}
         self.AutoPilotProfile = autopilot.AutoPilotProfile()
         self.storeStateWorker = None
         self.AutoPilot = None
@@ -2435,7 +2434,10 @@ class guiWin(
         self.overlayToolbar.sigSetSingleChannel.connect(
             self.setOverlaySingleChannel
         )
-        
+        # Overlay modes as the user left them (applied by `overlay_cb`)
+        self.restoreOverlayModes()
+        self.overlayToolbar.sigModesClicked.connect(self.saveOverlayModes)
+
         self.autoPilotZoomToObjToolbar = widgets.ToolBar(
             "Auto-zoom to objects", self
         )
@@ -3908,6 +3910,10 @@ When working with 3D segmentation masks:
         )
         self.overlayColorButton.sigColorChanging.connect(self.changeOverlayColor)
         self.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
+        # Cancel: back to the saved color and LUT of the channel
+        self.overlayColorButton.colorDialog.rejected.connect(
+            partial(self.overlayColorDialogRejected, self.overlayColorButton)
+        )
         self.textIDsColorButton.sigColorChanging.connect(
             self.updateTextAnnotColor
         )
@@ -19819,6 +19825,8 @@ When working with 3D segmentation masks:
         if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
             self.invertBw(True)
         self.restoreSavedSettings()
+        # After the first-load `invertBw` (it would invert it again)
+        self.restoreImageChannelLut()
 
         self.initContoursImage()
         self.initTextAnnot()
@@ -25527,15 +25535,12 @@ When working with 3D segmentation masks:
         blinker.start()
     
     def imgGradLUTfinished_cb(self):
-        posData = self.data[self.pos_i]
-        ticks = self.imgGrad.gradient.listTicks()
+        if self.isSettingChannelLutsFromCode():
+            return
 
-        self.img1ChannelGradients[self.user_ch_name] = {
-            'ticks': [(x, t.color.getRgb()) for t,x in ticks],
-            'mode': 'rgb'
-        }
-        
         self.df_settings = self.imgGrad.saveState(self.df_settings)
+        # LUT of the displayed channel (`gui_navigation.LutGuiElements`)
+        self.saveImageChannelLut()
         self.df_settings.to_csv(self.settings_csv_path)
 
     def setTextAnnotZsliceScrolling(self):
@@ -29499,9 +29504,12 @@ When working with 3D segmentation masks:
         if cancel:
             return False
         
-        if self.overlayToolbar.isTransparent():
-            self.overlayToolbar.setTransparent(False)
-        
+        # The overlay modes keep the user's check states (saved in the
+        # settings): `overlay_cb` applies them to the new data's items
+
+        # LUT of the channel to load: restored in `loadingDataCompleted`
+        self.resetImageChannelLut()
+
         self.secondLevelToolbar.setVisible(False)
         
         self.gui_createLazyLoader()
@@ -31170,7 +31178,9 @@ When working with 3D segmentation masks:
         
         if activateTransparencyMode:
             self.overlayToolbar.setTransparent(True)
-        
+            # The user chose it and it stays on after the export
+            self.saveOverlayModes()
+
         return True
     
     def exportToVideoTriggered(self):

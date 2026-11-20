@@ -21,6 +21,7 @@ from cellacdc.gui_overlay import OverlayChannelsGuiElements
 from cellacdc.gui_viewer_tools import (
     CcaTableGuiElements, DefaultSettingsGuiElements, SearchIDGuiElements
 )
+from cellacdc.gui_navigation import LutGuiElements
 
 
 @pytest.fixture(scope='module')
@@ -275,7 +276,7 @@ def test_restore_default_settings_with_inverted_bw(app, tmp_path):
     df_settings.index.name = 'setting'
     invertCalls = []
 
-    class Host(DefaultSettingsGuiElements):
+    class Host(DefaultSettingsGuiElements, LutGuiElements):
         def invertBw(self, checked, update=True):
             invertCalls.append((checked, update))
             self.df_settings.at['is_bw_inverted', 'value'] = (
