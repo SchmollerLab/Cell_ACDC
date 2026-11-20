@@ -6667,7 +6667,7 @@ class MagicPromptsWorker(QObject):
     def __init__(
             self, posData, image, df_points, model, model_segment_kwargs,
             image_origin=(0, 0, 0), global_image=None, id_offset=0,
-            z_slice=None
+            z_slice=None, df_boxes=None
         ):
         QObject.__init__(self)
 
@@ -6681,6 +6681,9 @@ class MagicPromptsWorker(QObject):
         # `df_points` is None for prompts that are not points
         # (e.g., brush strokes already used to train the model)
         self.df_points = df_points
+        # Box prompts (columns 'id', 'z', 'ymin', 'xmin', 'ymax', 'xmax'),
+        # None if there are no boxes
+        self.df_boxes = df_boxes
         self.image_origin = image_origin
         self.model = model
         self.model_segment_kwargs = model_segment_kwargs
@@ -6704,9 +6707,62 @@ class MagicPromptsWorker(QObject):
             p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()
         )
 
+    def _canOmitPromptImage(self):
+        """True if `add_prompt` can receive `image=None` instead of the
+        image (the prompts then refer to the image passed to `segment`).
+
+        Only for the built-in promptable models running in their isolated
+        environment (`ModelClient`), where it avoids sending the image to
+        the model worker with every prompt. In-process models (e.g., custom
+        models) receive the image as before (no copy is involved).
+        """
+        from cellacdc import promptable_models_path
+        from cellacdc.service.client import ModelClient
+
+        if not isinstance(self.model, ModelClient):
+            return False
+        model_name = getattr(self.model, 'model_name', None)
+        if not model_name:
+            return False
+        # Exact (case-sensitive) folder name, like the import of the model
+        # by the worker (e.g., a custom model "SAM2" is not "sam2")
+        try:
+            builtin_names = os.listdir(promptable_models_path)
+        except OSError:
+            return False
+        if model_name not in builtin_names:
+            return False
+        module_path = os.path.join(
+            promptable_models_path, model_name, 'acdcPromptSegment.py'
+        )
+        if not os.path.isfile(module_path):
+            return False
+        return self._isPromptImageSegmentedImage()
+
+    def _isPromptImageSegmentedImage(self):
+        """True if the prompts refer to the image passed to `segment` (i.e.,
+        not to a crop of it, see "Compute on zoomed area")."""
+        if tuple(self.image_origin) != (0, 0, 0):
+            return False
+        if self.image is self.global_image:
+            return True
+        image = np.asarray(self.image)
+        global_image = np.asarray(self.global_image)
+        return (
+            image.shape == global_image.shape
+            and np.may_share_memory(image, global_image)
+        )
+
     @worker_exception_handler
     def run(self):
         from cellacdc.promptable_models import utils
+
+        # With `image=None` the prompts refer to the image passed to
+        # `segment`. This avoids sending the image with every prompt to the
+        # model worker process (see `_canOmitPromptImage`)
+        prompt_image = self.image
+        if self._canOmitPromptImage():
+            prompt_image = None
 
         edited_IDs = []
         if self.df_points is not None:
@@ -6719,11 +6775,29 @@ class MagicPromptsWorker(QObject):
                     prompt=point,
                     prompt_id=prompt_id,
                     parent_obj_id=parent_obj_id,
-                    image=self.image,
+                    image=prompt_image,
                     image_origin=self.image_origin,
                     prompt_type='point'
                 )
-            edited_IDs = self.df_points['Cell_ID'].unique()
+            edited_IDs = list(self.df_points['Cell_ID'].unique())
+
+        if self.df_boxes is not None:
+            for row in self.df_boxes.itertuples():
+                z = None if pd.isna(row.z) else int(row.z)
+                box = (
+                    z, float(row.ymin), float(row.xmin), float(row.ymax),
+                    float(row.xmax)
+                )
+                prompt_id = int(row.id)
+                print(f'Adding box prompt {box} with id = {prompt_id}...')
+                self.model.add_prompt(
+                    prompt=box,
+                    prompt_id=prompt_id,
+                    image=prompt_image,
+                    image_origin=self.image_origin,
+                    prompt_type='box'
+                )
+            edited_IDs.extend(self.df_boxes['id'].unique())
 
         lab = self.posData.lab
         image = self.global_image

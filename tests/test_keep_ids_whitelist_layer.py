@@ -58,7 +58,7 @@ _UPDATE_ALL_IMAGES_MOCKS = (
     'setOverlayImages', 'setOverlayLabelsItems', 'setOverlaySegmMasks',
     'setAllTextAnnotations', 'setAllContoursImages', 'drawAllMothBudLines',
     'highlightLostNew', 'doCustomAnnotation', 'annotate_rip_and_bin_IDs',
-    'drawPointsLayers', 'setBrushStrokesLayerImage',
+    'drawPointsLayers', 'setBrushStrokesLayerImage', 'drawMagicPromptsBoxes',
     'setManualBackgroundImage', 'annotateAssignedObjsAcdcTrackerSecondStep',
     'highlightSearchedID', 'updateTimestampFrame', 'annotateAllObjectTracks',
 )
