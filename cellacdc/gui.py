@@ -15573,9 +15573,13 @@ When working with 3D segmentation masks:
             else:
                 self.Button = self.eraserButton
 
-            if not self.Button.isVisible():
+            isButtonAvailable = (
+                self.Button.isVisible()
+                or self.editToolBar.isWidgetHiddenByOverflow(self.Button)
+            )
+            if not isButtonAvailable:
                 return
-            
+
             if self.countKeyPress == 0:
                 # If first time clicking B activate brush and start timer
                 # to catch double press of B
