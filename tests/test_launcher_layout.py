@@ -6,7 +6,8 @@ import logging
 import os
 
 import pytest
-from qtpy.QtCore import QObject, Signal
+from qtpy.QtCore import QObject, QSize, Signal
+from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication, QGroupBox, QPushButton
 
 from cellacdc import _main, measurements_viewer, myutils
@@ -125,6 +126,12 @@ def test_module_buttons_are_grouped_in_stacked_group_boxes(buildLauncher):
     ]
     for button in win.moduleButtons:
         assert not button.icon().isNull()
+    size = QSize(32, 32)
+    expected = QIcon(':graphs.svg').pixmap(size).toImage()
+    assert not expected.isNull()
+    assert win.measurementsViewerButton.icon().pixmap(size).toImage() == (
+        expected
+    )
 
 
 def test_module_buttons_get_the_same_height_when_shown(

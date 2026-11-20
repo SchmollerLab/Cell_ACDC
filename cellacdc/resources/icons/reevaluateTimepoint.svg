@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="32"
+   height="32"
+   viewBox="0 0 32 32"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="reevaluateTimepoint.svg"
+   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="14.495689"
+     inkscape:cx="15.832293"
+     inkscape:cy="23.248291"
+     inkscape:window-width="1440"
+     inkscape:window-height="878"
+     inkscape:window-x="-6"
+     inkscape:window-y="-6"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g1" />
+  <!-- Default time point identifier icon of the measurements viewer
+       (MeasurementsViewerWin.updateTimepointAction), first default color
+       timepoint_predictors.DEFAULT_COLORS[0] = (255, 165, 0) -->
+  <g
+     stroke-width="4"
+     stroke-linecap="square"
+     id="g1"
+     style="stroke:#f0f0f0;stroke-opacity:1">
+    <line
+       x1="16"
+       y1="2"
+       x2="16"
+       y2="30"
+       id="line1"
+       style="stroke:#4d4d4d;stroke-opacity:1;fill:#4d4d4d;fill-opacity:1" />
+    <circle
+       cx="16"
+       cy="16"
+       r="7"
+       id="circle1"
+       style="stroke:#4d4d4d;stroke-opacity:1;fill:#4d4d4d;fill-opacity:1" />
+    <path
+       style="color:#4d4d4d;fill:#808080;fill-opacity:1;stroke:none;stroke-width:0.941175"
+       d="m 29.66685,17.574417 c -1.581995,-1.727484 -3.856281,-2.810812 -6.383686,-2.810812 -4.779518,0 -8.653647,3.874129 -8.653647,8.653646 h 1.622558 c 0,-3.883323 3.147765,-7.031088 7.031089,-7.031088 2.079038,0 3.947144,0.902684 5.234374,2.337566 l -2.53011,2.530111 h 5.949381 v -5.949383 l -2.2705,2.26996 z"
+       class="ColorScheme-Text"
+       id="path1" />
+    <path
+       style="color:#4d4d4d;fill:#808080;fill-opacity:1;stroke:none;stroke-width:0.941175"
+       d="m 30.314792,23.417251 c 0,3.883323 -3.147764,7.031089 -7.031088,7.031089 -2.079039,0 -3.947144,-0.902687 -5.234374,-2.33757 l 2.530109,-2.530107 h -5.949381 v 5.949381 l 2.269959,-2.269961 c 1.581995,1.727485 3.856282,2.810816 6.383687,2.810816 4.779517,0 8.653647,-3.874131 8.653647,-8.653648 z"
+       class="ColorScheme-Text"
+       id="path2" />
+  </g>
+</svg>

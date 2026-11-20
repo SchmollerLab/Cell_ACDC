@@ -193,7 +193,7 @@ class mainWin(QMainWindow):
         self.measurementsViewerButton = self.addModuleButton(
             layout, QPushButton('Launch measurements viewer...'),
             self.launchMeasurementsViewer, font, iconSize,
-            icon=QIcon(':ruler.svg')
+            icon=QIcon(':graphs.svg')
         )
         if SPOTMAX_INSTALLED:
             self.spotmaxButton = self.addModuleButton(
