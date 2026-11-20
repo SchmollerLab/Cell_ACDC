@@ -13,7 +13,8 @@ Here, instead we will focus on how the folder structure should look like.
     We do not recommend creating the folder structure manually. Here we only 
     want to provide more details about how the folder structure look like. 
     To create the folder structure automatically from a microscopy file use 
-    either module 0 of Cell-ACDC (explained here :ref:`creating-data-structure`) 
+    either the data structure module of Cell-ACDC (**Create data structure from
+    microscopy/image file(s)...**, explained here :ref:`creating-data-structure`)
     or Fiji macros that you can find `here <https://github.com/SchmollerLab/Cell_ACDC/tree/main/FijiMacros>_`.
 
 In Cell-ACDC we refer to the folders with two names:

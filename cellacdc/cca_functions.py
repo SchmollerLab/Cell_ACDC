@@ -127,7 +127,8 @@ def get_segm_endname(images_path, basename):
     selectSegmWin = widgets.QDialogListbox(
         'Select segmentation file',
         'Select segmentation file to use as ROI:\n',
-        segm_endnames, multiSelection=False, parent=None
+        segm_endnames, multiSelection=False, parent=None,
+        allowEmptySelection=False
     )
     selectSegmWin.exec_()
     if selectSegmWin.cancel:

@@ -1502,11 +1502,11 @@ class tracker:
 
     Methods:
     - __init__(): Initializes the tracker object.
-    - track(): Tracks cell division in the video sequence. (Used for module 2)
+    - track(): Tracks cell division in the video sequence. (Used by the segmentation and tracking module)
     - track_frame(): Tracks cell division in a single frame. (Used for GUI tracking)
     - updateGuiProgressBar(): Updates the GUI progress bar. (Used for GUI communication)
     - save_output(): Signals to the rest of the programme that the lineage 
-    tree should be saved. (Used for module 2)
+    tree should be saved. (Used by the segmentation and tracking module)
     """
     def __init__(self,
                 annotate_objects_tracked_second_step=True,
@@ -1548,7 +1548,7 @@ class tracker:
         ):
         """
         Tracks the segmented video frames and returns the tracked video. 
-        (Used for module 2)
+        (Used by the segmentation and tracking module)
 
         Parameters:
         - segm_video (list): List of segmented video frames.

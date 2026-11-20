@@ -25,7 +25,7 @@ def CV(
         this value is not needed.
     dataPrepBkgr : single numeric value
         Median of all the pixels inside the background ROIs added during the
-        data prep step (Cell-ACDC module 1).
+        Cell-ACDC data prep module.
         Pass None if background correction with this vaue is not needed.
     objectRp: skimage.measure.RegionProperties class
         Region properties for the single object. 

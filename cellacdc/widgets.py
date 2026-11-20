@@ -5934,7 +5934,7 @@ class channelMetricsQGBox(QGroupBox):
         if self.doNotWarn:
             return
         txt = html_utils.paragraph("""
-            <b>Measurements requiring manual background cannot be saved</b> because you did not setup any manual background ROI in the module 3 GUI.<br><br>
+            <b>Measurements requiring manual background cannot be saved</b> because you did not setup any manual background ROI in the GUI.<br><br>
 
             You can read more details about manual background metrics by clicking 
             on the info button besides the measurement's name.<br><br>
@@ -11761,7 +11761,7 @@ class SamInputPointsWidget(QWidget):
             'object click the right button.'
         )
         txt = html_utils.paragraph(f"""
-            To add input points for Segment Anything open the GUI (module 3), 
+            To add input points for Segment Anything open the GUI, 
             load the data, and then click on the button<br>
             on the top toolbar called <code>Add points layer</code>.<br><br>
             Select the option "Add points by clicking" and click on the image 
@@ -12225,7 +12225,8 @@ class selectTrackerGUI(QDialogListbox):
         trackers = myutils.get_list_of_trackers()
         super().__init__(
             'Select tracker', 'Select one of the following trackers',
-            trackers, multiSelection=False, parent=parent
+            trackers, multiSelection=False, parent=parent,
+            allowEmptySelection=False
         )
         self.setWindowTitle('Select tracker')
 

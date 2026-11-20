@@ -187,7 +187,8 @@ class ConcatWin(NewThreadMultipleExpBaseUtil):
         selectFormatWin = widgets.QDialogListbox(
             'Select output file format',
             'Select format of the output file\n',
-            formats, multiSelection=False, parent=self
+            formats, multiSelection=False, parent=self,
+            allowEmptySelection=False
         )
         selectFormatWin.exec_()
         if selectFormatWin.cancel:
