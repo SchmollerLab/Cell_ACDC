@@ -123,7 +123,7 @@ Every save also writes a snapshot to `Images/recovery/<basename>acdc_output.zip`
 
 ## GitHub
 
-- `gh pr edit` fails with "Projects (classic) is being deprecated" (GraphQL): update a PR description with `gh api -X PATCH repos/SchmollerLab/Cell_ACDC/pulls/<n> -F body=@<file>`.
+- `gh` older than ~2.82 (installed with winget) fails in `gh pr edit` with "Projects (classic) is being deprecated" (GraphQL): upgrade with `winget upgrade --id GitHub.cli` (2.105 works).
 
 ## Maintaining this file
 
