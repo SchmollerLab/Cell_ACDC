@@ -12,7 +12,7 @@ import pyqtgraph as pg
 import pyqtgraph.exporters
 
 from qtpy.QtCore import QEvent, QPointF, Qt, QTimer
-from qtpy.QtGui import QMouseEvent
+from qtpy.QtGui import QColor, QMouseEvent
 from qtpy.QtTest import QTest
 from qtpy.QtWidgets import (
     QApplication, QAbstractItemView, QCheckBox, QStyle, QStyleOptionViewItem,
@@ -2461,11 +2461,25 @@ def test_new_y_axis_skips_numbers_of_unplotted_columns(viewer):
     assert axes_columns(viewer) == [['area'], ['intensity'], ['volume']]
 
 
-def test_y_axis_labels_show_column_names_verbatim(viewer):
-    # Axis labels are HTML: names from the CSV file are shown as text
+def legend_texts(viewer):
+    """Legend entries of the measurements plot as displayed."""
+    return [
+        label.item.toPlainText() for _, label in viewer.measurementsLegend.items
+    ]
+
+
+def test_y_axis_labels_show_column_names_verbatim(viewer, tmp_path):
+    # Axis labels and legend entries are HTML: names from the CSV file are
+    # shown as text, while the curves keep the raw names (CSV export)
     viewer.acdc_df['size<5um'] = viewer.acdc_df['area']
     viewer.acdc_df['a&lt;b'] = viewer.acdc_df['intensity']
     viewer.updateColumnsList()
+    column(viewer, 'size<5um').setCheckState(Qt.Checked)
+    assert sorted(legend_texts(viewer)) == ['area', 'size<5um']
+    assert sorted(
+        item.name() for item in viewer.timeCourseDataItems()
+    ) == ['area', 'size<5um']
+    column(viewer, 'size<5um').setCheckState(Qt.Unchecked)
     viewer.plotOnNewYAxis('size<5um')
     viewer.plotOnNewYAxis('a&lt;b')
     plotItem = viewer.measurementsPlot.getPlotItem()
@@ -2474,6 +2488,33 @@ def test_y_axis_labels_show_column_names_verbatim(viewer):
         for axis in [viewer.measurementsPlot.getAxis('left'),
                      *plotItem.shownExtraAxes()]
     ] == ['area', 'size<5um', 'a&lt;b']
+    expected = sorted(['area', 'size<5um', 'a&lt;b'])
+    assert sorted(legend_texts(viewer)) == expected
+    assert sorted(
+        item.name() for item in viewer.timeCourseDataItems()
+    ) == expected
+    path = tmp_path / 'plot.csv'
+    pg.exporters.CSVExporter(plotItem).export(fileName=str(path))
+    header = path.read_text().splitlines()[0]
+    assert 'size<5um_x' in header and 'a&lt;b_x' in header
+
+    viewer.measurementsModeCombobox.setCurrentIndex(1)
+    column(viewer, 'size<5um').setCheckState(Qt.Checked)
+    column(viewer, 'a&lt;b').setCheckState(Qt.Checked)
+    assert viewer.measurementsAxes == {'X': 'size<5um', 'Y': 'a&lt;b'}
+    assert [
+        viewer.measurementsPlot.getAxis(side).label.toPlainText().strip()
+        for side in ('bottom', 'left')
+    ] == ['size<5um', 'a&lt;b']
+
+
+def test_phase_legend_shows_phase_names_verbatim(viewer, monkeypatch):
+    monkeypatch.setattr(viewer, 'phaseColorMap', lambda: {
+        'G1<S': QColor('#56b4e9'), 'a&lt;b': QColor('#009e73')
+    })
+    viewer.measurementsLegend.clear()
+    viewer.comparisonPhaseBrushes(['G1<S', 'a&lt;b', ''])
+    assert legend_texts(viewer) == ['G1<S', 'a&lt;b', 'No phase']
 
 
 class _WheelEvent:

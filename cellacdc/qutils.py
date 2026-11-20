@@ -43,6 +43,16 @@ def focus_widget_uses_arrow_keys() -> bool:
     return any(widget.inherits(cls) for cls in ARROW_KEYS_WIDGET_CLASSES)
 
 
+def _key_event_target(receiver: QObject | None) -> QWidget | None:
+    """Widget that a key event seen by an application event filter on
+    `receiver` is for: `receiver` itself if it is a widget, else (the
+    ``QWindow``, which sees the key press first) the focus widget, else the
+    active window. None if unknown."""
+    if receiver is not None and receiver.isWidgetType():
+        return receiver
+    return QApplication.focusWidget() or QApplication.activeWindow()
+
+
 def is_key_event_for_window(
         window: QWidget, receiver: QObject,
         owned_windows: Iterable[QWidget | None] = ()
@@ -63,20 +73,35 @@ def is_key_event_for_window(
     of the launcher): key events for them (or for windows they own) count as
     for `window`. None items are ignored. Compared by identity only, so a
     window already deleted on the C++ side does no harm.
+
+    Disabled targets count too: see `is_key_event_target_enabled`.
     """
     windows = [window]
     windows.extend(w for w in owned_windows if w is not None)
-    if receiver is not None and receiver.isWidgetType():
-        widget = receiver
-    else:
-        widget = QApplication.focusWidget() or QApplication.activeWindow()
-        if widget is None:
-            return True
+    widget = _key_event_target(receiver)
+    if widget is None:
+        return True
     while widget is not None:
         if any(widget is w for w in windows):
             return True
         widget = widget.parentWidget()
     return False
+
+
+def is_key_event_target_enabled(receiver: QObject | None) -> bool:
+    """Return False if the widget that a key event seen by an application
+    event filter on `receiver` is for (as in `is_key_event_for_window`) is
+    disabled, True otherwise (also if the target is unknown).
+
+    Application event filters see the key presses that Qt then ignores for
+    disabled widgets (`QWidget::event`), e.g., in a window disabled while
+    another one waits for a worker (measurements viewer's `runInThread`):
+    a disabled window can still be activated, and it then gets the key
+    presses (on its ``QWindow`` and on itself, since disabling it cleared
+    its focus widget).
+    """
+    target = _key_event_target(receiver)
+    return target is None or target.isEnabled()
 
 
 class QWhileLoop:

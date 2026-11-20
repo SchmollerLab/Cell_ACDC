@@ -9350,13 +9350,25 @@ class MeasurementsViewerWin(
         """Plot a `pg.PlotDataItem(*args, **kwargs)` on the displayed y axis
         `index` of the time course (0: left axis, else the extra axis
         `index - 1` on the right), with a legend entry if `name` is given.
+
+        The item keeps the raw `name` (`PlotDataItem.name()`, e.g., the
+        column headers of the CSV export), while the legend shows it
+        escaped: pyqtgraph renders legend labels as HTML (a CSV column such
+        as `size<5um` would be cut at the `<`).
         """
+        item = pg.PlotDataItem(*args, **kwargs)
         if index == 0:
-            return self.measurementsPlot.plot(*args, name=name, **kwargs)
-        item = pg.PlotDataItem(*args, name=name, **kwargs)
-        self.measurementsPlot.getPlotItem().addExtraYAxisItem(index - 1, item)
+            self.measurementsPlot.addItem(item)
+        else:
+            plotItem = self.measurementsPlot.getPlotItem()
+            plotItem.addExtraYAxisItem(index - 1, item)
         if name is not None:
-            self.measurementsLegend.addItem(item, name)
+            # Named once added: `PlotItem.addItem` would add a legend entry
+            # with the unescaped name
+            item.opts['name'] = name
+            self.measurementsLegend.addItem(
+                item, html.escape(name, quote=False)
+            )
         return item
 
     def timeCourseDataItems(self):
@@ -9475,8 +9487,13 @@ class MeasurementsViewerWin(
         yCol = self.measurementsAxes['Y']
         isNormalized = self.normalizeCheckbox.isChecked()
         suffix = ' (normalized)' if isNormalized else ''
-        self.measurementsPlot.setLabel('bottom', f'{xCol}{suffix}')
-        self.measurementsPlot.setLabel('left', f'{yCol}{suffix}')
+        # Axis labels are HTML (`setTimeCourseYAxesLabels`)
+        self.measurementsPlot.setLabel(
+            'bottom', html.escape(xCol, quote=False) + suffix
+        )
+        self.measurementsPlot.setLabel(
+            'left', html.escape(yCol, quote=False) + suffix
+        )
         self.measurementsPlot.setTitle('All cells, all frames (current position)')
         # Autoscale only when the scatter's axes change (or a position is
         # loaded, or after the time course): redraws for other reasons (e.g.
@@ -9548,7 +9565,8 @@ class MeasurementsViewerWin(
         self.plotMeasurements()
 
     def comparisonPhaseBrushes(self, phases):
-        """Per-point brushes by phase; adds a legend entry per shown phase."""
+        """Per-point brushes by phase; adds a legend entry per shown phase
+        (names escaped: legend labels are HTML)."""
         colors = self.phaseColorMap()
         unassigned = pg.mkBrush(150, 150, 150, 120)
         brushes = {name: pg.mkBrush(color) for name, color in colors.items()}
@@ -9557,7 +9575,7 @@ class MeasurementsViewerWin(
             if name in present:
                 self.measurementsLegend.addItem(
                     pg.ScatterPlotItem(symbol='o', brush=brush, pen=None),
-                    name
+                    html.escape(name, quote=False)
                 )
         if '' in present:
             self.measurementsLegend.addItem(
