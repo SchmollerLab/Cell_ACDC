@@ -1732,7 +1732,9 @@ class guiWin(
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
         self.segmentToolAction.setShortcut('R')
         self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
-        widget = editToolBar.addAction(self.segmentToolAction)
+        editToolBar.addAction(self.segmentToolAction)
+        # `addAction` returns None on PyQt6
+        widget = editToolBar.widgetForAction(self.segmentToolAction)
         self.widgetsForActions['Repeat segmentation'] = widget
 
 
@@ -1773,7 +1775,9 @@ class guiWin(
         self.widgetsWithShortcut['Delete all objects outside segm'] = (
             self.delObjsOutSegmMaskAction
         )
-        widget = editToolBar.addAction(self.delObjsOutSegmMaskAction)
+        editToolBar.addAction(self.delObjsOutSegmMaskAction)
+        # `addAction` returns None on PyQt6
+        widget = editToolBar.widgetForAction(self.delObjsOutSegmMaskAction)
         self.widgetsForActions['Delete all objects outside segm'] = widget
 
 
@@ -1934,7 +1938,9 @@ class guiWin(
         self.delNewObjAction.toolbar = editToolBar
         # self.functionsNotTested3D.append(self.delNewObjAction) so id this doesnt work in 3d i dont know anymore
 
-        widget = editToolBar.addAction(self.repeatTrackingAction)
+        editToolBar.addAction(self.repeatTrackingAction)
+        # `addAction` returns None on PyQt6
+        widget = editToolBar.widgetForAction(self.repeatTrackingAction)
         self.widgetsForActions['Repeat Tracking'] = widget
 
         self.manualTrackingAction = editToolBar.addWidget(
@@ -2088,7 +2094,7 @@ class guiWin(
         target.rightClickMenu = menu
         widgets = None
         if isinstance(target, QAction):
-            if name in self.widgetsForActions:
+            if self.widgetsForActions.get(name) is not None:
                 # Only the button of the action (on PyQt5,
                 # `associatedWidgets` also returns the parent toolbar)
                 widgets = [self.widgetsForActions[name]]
@@ -2103,7 +2109,9 @@ class guiWin(
                     if isinstance(obj, QToolButton) and obj is not self
                     and obj is not target.parent
                     ]
-            
+
+            if widgets is not None:
+                widgets = [w for w in widgets if w is not None]
             if widgets is None or len(widgets) == 0:
                 return False, 0
             else:    

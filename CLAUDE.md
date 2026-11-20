@@ -99,6 +99,7 @@ Every save also writes a snapshot to `Images/recovery/<basename>acdc_output.zip`
 ## Code style notes
 
 - Use `qtpy` imports (not `PyQt6` directly) so PyQt5/PyQt6/PySide all work.
+- `toolbar.addAction(action)` returns None (PyQt5 and PyQt6): get the button with `toolbar.widgetForAction(action)` (as `widgets.ToolBar.addButton`), e.g. for `widgetsForActions` (a None there broke launching the main GUI; `tests/test_gui_launch.py` runs the real `guiWin.run()`).
 - GUI code uses Qt-style camelCase method names; newer non-GUI modules (predictors, phase translator) use snake_case functions and class-based APIs with thorough docstrings.
 - Keep module docstrings in sync when changing behavior of the measurements viewer and predictor modules—they serve as the specification.
 - Tool tips: Qt never wraps plain-text tool tips, so keep each line ≤ 80 chars (`qutils.TOOLTIP_MAX_LINE_LENGTH`). Lines of a paragraph must be about equally long (user feedback: clause-by-clause breaks look ragged): fixed texts get explicit `'\n'` where `qutils.balanced_wrap` puts them (paragraph joined, then wrapped; title, list items and `Shortcut:` lines stay separate), tool tips with user content (names, equations, predictor `describe()`) go through `qutils.wrap_tooltip` (balanced) without manual breaks inside sentences; rich text needs a tag on its first line (`qutils.might_be_rich_text`). Keep first lines that name text-less widgets and `Shortcut: "<keys>"` lines (rewritten by `setShortcuts`) intact. Viewer tool tips are checked by `tests/test_tooltip_line_length.py`.
