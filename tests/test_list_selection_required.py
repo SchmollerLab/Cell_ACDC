@@ -1,17 +1,24 @@
 """Single-choice lists (`MeasurementsViewerWin.selectItem`, e.g. the base
 layer of a premade configuration) and the overlay pickers require a
 selection: OK with nothing selected warns and keeps the list open instead of
-ending the calling flow without any message."""
+ending the calling flow without any message. Additional buttons (e.g. "Do
+not track") answer without a selection. `QDialogListbox.ok_cb` never reads
+`sender()`."""
+from unittest.mock import Mock
+
 import pytest
 from qtpy.QtCore import Qt, QTimer
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QAbstractItemView, QApplication, QPushButton
+from qtpy.QtWidgets import (
+    QAbstractItemView, QApplication, QPushButton, QWidget
+)
 
 from cellacdc import widgets
 from cellacdc.gui_overlay import (
     OverlayChannelsGuiElements, OverlayLabelsGuiElements
 )
 from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc.utils import concat
 
 
 @pytest.fixture(scope='module')
@@ -89,15 +96,119 @@ def test_empty_selection_warning_matches_the_selection_mode(
         allowEmptySelection=False
     )
     dialog.listBox.clearSelection()
-    dialog.ok_cb()
+    ok_button(dialog).click()
     assert dialog.cancel
     assert len(texts) == 1
     # Ctrl/Shift+Click hints only where several items can be selected
     assert ('Ctrl+Click' in texts[0]) == multiSelection
     dialog.listBox.item(0).setSelected(True)
+    ok_button(dialog).click()
+    assert not dialog.cancel and dialog.selectedItemsText == ['a']
+    assert dialog.clickedButton is ok_button(dialog) is dialog.okButton
+    dialog.deleteLater()
+
+
+def no_sender(monkeypatch):
+    """Record any `QDialogListbox.sender()` call: outside a slot PyQt returns
+    its last proxy sender, possibly a deleted object, and touching it
+    segfaults (Ubuntu PyQt5 CI)."""
+    calls = []
+    monkeypatch.setattr(
+        widgets.QDialogListbox, 'sender',
+        lambda self: calls.append(self), raising=False
+    )
+    return calls
+
+
+def test_ok_cb_called_directly_reports_the_ok_button(app, monkeypatch):
+    senderCalls = no_sender(monkeypatch)
+    dialog = widgets.QDialogListbox(
+        'Select', 'Select:', ['a', 'b'], multiSelection=False,
+        allowEmptySelection=False
+    )
+    # Outside any slot, e.g. by code, tests or the conftest watchdog
     dialog.ok_cb()
     assert not dialog.cancel and dialog.selectedItemsText == ['a']
+    assert dialog.clickedButton is dialog.okButton
+    assert ok_button(dialog) is dialog.okButton
     dialog.deleteLater()
+
+    # Double-click on an item = OK
+    dialog = widgets.QDialogListbox(
+        'Select', 'Select:', ['a', 'b'], multiSelection=False
+    )
+    dialog.listBox.itemDoubleClicked.emit(dialog.listBox.item(1))
+    assert not dialog.cancel
+    assert dialog.clickedButton is dialog.okButton
+    dialog.deleteLater()
+    assert senderCalls == []
+
+
+def test_additional_buttons_answer_without_a_selection(app, monkeypatch):
+    senderCalls = no_sender(monkeypatch)
+    warnings = []
+    monkeypatch.setattr(
+        widgets.QDialogListbox, 'warnSelectionEmpty',
+        lambda dialog: warnings.append(dialog)
+    )
+    # As segm.py's tracker list: "Do not track" needs no tracker
+    dialog = widgets.QDialogListbox(
+        'Track objects?', 'Select tracker:', ['A', 'B'],
+        additionalButtons=['Do not track'], multiSelection=False,
+        allowEmptySelection=False
+    )
+    doNotTrack, = dialog._additionalButtons
+    dialog.listBox.clearSelection()
+    doNotTrack.click()
+    assert warnings == []
+    assert not dialog.cancel and dialog.selectedItemsText == []
+    assert dialog.clickedButton is doNotTrack
+    dialog.deleteLater()
+
+    # OK still needs a selection
+    dialog = widgets.QDialogListbox(
+        'Track objects?', 'Select tracker:', ['A', 'B'],
+        additionalButtons=['Do not track'], multiSelection=False,
+        allowEmptySelection=False
+    )
+    dialog.listBox.clearSelection()
+    dialog.okButton.click()
+    assert warnings == [dialog] and dialog.cancel
+    dialog.deleteLater()
+    assert senderCalls == []
+
+
+def test_concat_no_button_skips_copying_without_a_selection(
+        app, monkeypatch, tmp_path
+    ):
+    # The "No" button is passed as a widget, connected by the caller
+    senderCalls = no_sender(monkeypatch)
+    (tmp_path / 'Pos1_acdc_output.csv').write_text('')
+    clicked = []
+
+    def exec_(dialog):
+        # "No, do not copy" with nothing selected (Ctrl+Click)
+        dialog.listBox.clearSelection()
+        noButton, = [
+            button for button in dialog.findChildren(QPushButton)
+            if button.text() == 'No, do not copy'
+        ]
+        noButton.click()
+        clicked.append((dialog, noButton))
+
+    monkeypatch.setattr(widgets.QDialogListbox, 'exec_', exec_)
+    host = QWidget()
+    worker = host.worker = Mock(abort=False)
+    try:
+        concat.ConcatWin.askCopyCcaFromAcdcOutput(host, str(tmp_path))
+        (dialog, noButton), = clicked
+        assert dialog.clickedButton is noButton
+    finally:
+        host.deleteLater()
+    assert not worker.abort
+    worker.setAcdcOutputEndname.assert_not_called()
+    worker.waitCond.wakeAll.assert_called_once()
+    assert senderCalls == []
 
 
 def test_escape_cancels_a_single_choice_and_ctrl_keeps_it_single(app):

@@ -1543,6 +1543,7 @@ class QDialogListbox(QDialog):
         else:
             cancelButton = QPushButton(cancelText)
         okButton = okPushButton(' Ok ')
+        self.okButton = okButton
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
@@ -1555,7 +1556,11 @@ class QDialogListbox(QDialog):
                     _button, isCancelButton = getPushButton(button)
                     self._additionalButtons.append(_button)
                     bottomLayout.addWidget(_button)
-                    _button.clicked.connect(self.ok_cb)
+                    # The button is passed explicitly: ok_cb never reads
+                    # `sender()` (see `ok_cb`)
+                    _button.clicked.connect(
+                        partial(self.ok_cb, button=_button)
+                    )
                 else:
                     bottomLayout.addWidget(button)
 
@@ -1652,8 +1657,24 @@ class QDialogListbox(QDialog):
             )
         msg.warning(self, 'Selection cannot be empty!', txt)
     
-    def ok_cb(self, checked=False):
-        self.clickedButton = self.sender()
+    def ok_cb(self, checked=False, button=None):
+        """Confirm the selection and close.
+
+        `button` is the clicked button: None means the OK button (also for a
+        double-click on an item and for direct calls by code or tests), else
+        an additional button (connected with `partial`; buttons passed as
+        widgets must be connected the same way to be reported). The clicked
+        button is stored as `clickedButton`. Never `self.sender()` here:
+        outside a slot of this dialog, PyQt returns its last proxy sender,
+        possibly a deleted object, and touching it segfaults.
+
+        `allowEmptySelection=False` refuses an empty selection only when
+        confirming with OK: additional buttons (e.g. "Do not track") answer
+        without needing a selection.
+        """
+        if button is None:
+            button = self.okButton
+        self.clickedButton = button
         selectedItems = self.listBox.selectedItems()
         selectedItemsText = [item.text() for item in selectedItems]
         if not self.allowSingleSelection and len(selectedItemsText) < 2:
@@ -1665,8 +1686,10 @@ class QDialogListbox(QDialog):
             )
             msg.warning(self, 'Select two or more items', txt)
             return
-        
-        if not self.allowEmptySelection and not selectedItemsText:
+
+        isOkButton = button is self.okButton
+        isEmpty = not selectedItemsText
+        if isOkButton and isEmpty and not self.allowEmptySelection:
             self.warnSelectionEmpty()
             return
 
@@ -12212,13 +12235,13 @@ class selectTrackerGUI(QDialogListbox):
 
         self.mainLayout.insertWidget(1, self.selectFramesGroupbox)
 
-    def ok_cb(self, event):
+    def ok_cb(self, checked=False, button=None):
         if self.selectFramesGroupbox.warningLabel.text():
             return
         else:
             self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
-            super().ok_cb(event)
+            super().ok_cb(checked, button=button)
 
 def addWidgetToScrollArea(
         widget, 
