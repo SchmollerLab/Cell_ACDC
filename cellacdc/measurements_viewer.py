@@ -112,13 +112,14 @@ the main GUI (`gui.guiWin`) through the mixins in:
   As in the main GUI, the channels overlay is turned off and disabled on
   zy/zx planes and restored back on xy (`setOverlayEnabledForPlane`). The
   overlay modes (true transparency, alpha-encoded intensity) keep the check
-  states the user clicked (user settings, also after loading other data)
-  and apply when the overlay is turned on.
+  states the user clicked (channel display settings, see LUTs below; also
+  after loading other data) and apply when the overlay is turned on.
 - LUTs: as in the main GUI, the LUT (colormap) of the displayed channel and
-  of each overlay channel is saved per channel name in the user settings
-  and restored when a channel with that name is loaded
-  (`gui_navigation.LutGuiElements`; `restoreImageChannelLut` runs in
-  `initViewerToolsAfterLoading`, after the first-load `invertBw`).
+  of each overlay channel is saved per channel name in the channel display
+  settings (own file, shared with the main GUI and other open windows) and
+  restored when a channel with that name is loaded
+  (`gui_navigation.LutGuiElements`; `restoreImageChannelLutAfterLoading`
+  runs in `initViewerToolsAfterLoading`).
 - `gui_custom_annotations`: custom annotations of the objects.
 
 Open it from the launcher (button "Launch measurements viewer..." in the
@@ -4462,10 +4463,8 @@ class MeasurementsViewerWin(
     def initViewerToolsAfterLoading(self):
         self.updateImageValueFormatter()
         self.initPixelSizePropsDockWidget()
-        if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
-            self.invertBw(True)
-        # After the first-load `invertBw` (it would invert it again)
-        self.restoreImageChannelLut()
+        # First-load `invertBw`, then the LUT saved for the channel
+        self.restoreImageChannelLutAfterLoading()
         self.gui_createZoomRectItem()
     
     def gui_createGraphicsPlots(self):

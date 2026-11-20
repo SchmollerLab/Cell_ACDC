@@ -6472,6 +6472,20 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         self.lastGradientName = 'grey'
         self.lastGradient = Gradients['grey']
 
+        # Colormaps picked in the LUT menu (pyqtgraph `ColorMapMenu`, also
+        # in pyqtgraph 0.13.7) go through `colorMapMenuClicked`
+        colorMapTriggered = getattr(
+            self.gradient.menu, 'sigColorMapTriggered', None
+        )
+        if colorMapTriggered is not None:
+            try:
+                colorMapTriggered.disconnect(self.gradient.colorMapMenuClicked)
+            except (TypeError, RuntimeError):
+                # Not connected: keep pyqtgraph's own handling
+                pass
+            else:
+                colorMapTriggered.connect(self.colorMapMenuClicked)
+
         for action in self.gradient.menu.actions():
             if action.text() == 'HSV':
                 HSV_action = action
@@ -6571,6 +6585,31 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         cmap = action.cmap
         self.gradient.colorMapMenuClicked(cmap)
         self.gradient.showTicks(True)
+        self.allowAddingShownTicks()
+
+    def colorMapMenuClicked(self, cmap):
+        """Colormap `cmap` picked in the LUT menu
+        (`ColorMapMenu.sigColorMapTriggered`, connected instead of the
+        gradient's own `colorMapMenuClicked`). For colormaps that are not
+        preset gradients pyqtgraph hides the ticks (one per colormap
+        position) only after `setColorMap` emitted
+        `sigGradientChangeFinished`: emit it again once they are hidden, so
+        that the slots saving the LUT save hidden ticks."""
+        self.gradient.colorMapMenuClicked(cmap)
+        if str(cmap.name).startswith('preset-gradient:'):
+            self.allowAddingShownTicks()
+            return
+        self.gradient.sigGradientChangeFinished.emit(self.gradient)
+
+    def allowAddingShownTicks(self):
+        """Allow adding ticks (clicking the gradient) when its ticks are
+        shown. pyqtgraph's `showTicks(False)` backs up `allowAdd` once per
+        tick (i.e. False from the second tick on), so its `showTicks(True)`
+        never allows adding ticks again after a colormap with hidden
+        ticks."""
+        ticks = list(self.gradient.ticks)
+        if ticks and ticks[0].isVisibleTo(self.gradient):
+            self.gradient.allowAdd = True
     
     def setAxisLabel(self, text):
         self.labelText = text
@@ -6585,6 +6624,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     def setGradient(self, gradient):
         self.gradient.restoreState(gradient)
         self.lastGradient = gradient
+        self.allowAddingShownTicks()
     
     def colormapClicked(self, checked=False, name=None):
         name = self.sender().name
@@ -6684,6 +6724,9 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         invertedGradient = {}
         invertedGradient['ticks'] = invertedColors
         invertedGradient['mode'] = gradient['mode']
+        if 'ticksVisible' in gradient:
+            # E.g., colormaps with hidden ticks (`colorMapMenuClicked`)
+            invertedGradient['ticksVisible'] = gradient['ticksVisible']
         return invertedGradient
     
     def invertCurrentColormap(self, inverted, debug=False):

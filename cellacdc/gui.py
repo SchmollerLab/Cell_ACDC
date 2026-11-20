@@ -19829,11 +19829,9 @@ When working with 3D segmentation masks:
         self.setStatusBarLabel()
 
         self.initLookupTableLab()
-        if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
-            self.invertBw(True)
+        # First-load `invertBw`, then the LUT saved for the channel
+        self.restoreImageChannelLutAfterLoading()
         self.restoreSavedSettings()
-        # After the first-load `invertBw` (it would invert it again)
-        self.restoreImageChannelLut()
 
         self.initContoursImage()
         self.initTextAnnot()

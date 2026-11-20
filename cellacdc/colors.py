@@ -1,5 +1,4 @@
 import re
-import json
 import traceback
 
 import skimage.segmentation
@@ -162,7 +161,9 @@ def getFromMatplotlib(name):
 def get_pg_gradient(colors):
     ticks_pos = np.linspace(0,1,len(colors))
     ticks = [(tick_pos, color) for tick_pos, color in zip(ticks_pos, colors)]
-    gradient = {'ticks': ticks, 'mode': 'rgb'}
+    # 'ticksVisible' explicit: without it `GradientEditorItem.restoreState`
+    # hides the ticks (and blocks adding ticks) of a LUT item not shown
+    gradient = {'ticks': ticks, 'mode': 'rgb', 'ticksVisible': True}
     return gradient
 
 def _gradient_ticks_rgba(ticks):
@@ -178,16 +179,18 @@ def _gradient_ticks_rgba(ticks):
     return sorted(rgba_ticks, key=lambda tick: tick[0])
 
 def gradient_state_to_setting(state, bw_inverted=False):
-    """Return the text stored in the user settings (`settings.csv`) for the
-    pyqtgraph gradient `state` (`GradientEditorItem.saveState()`) of the LUT
-    of a channel (see `gui_navigation.LutGuiElements`).
+    """Return the value saved in the channel display settings
+    (`gui_navigation.read_channel_display_settings`) for the pyqtgraph
+    gradient `state` (`GradientEditorItem.saveState()`) of the LUT of a
+    channel (see `gui_navigation.LutGuiElements`).
 
-    The text is JSON with the color mode, the ticks (position and RGBA
-    color), whether the ticks are visible and whether black and white were
-    inverted (`bw_inverted`, menu `Invert black/white`) when the gradient
-    was saved. Read it back with `gradient_state_from_setting`.
+    The value is a JSON-serializable dict with the color mode, the ticks
+    (position and RGBA color), whether the ticks are visible and whether
+    black and white were inverted (`bw_inverted`, menu `Invert
+    black/white`) when the gradient was saved. Read it back with
+    `gradient_state_from_setting`.
     """
-    setting = {
+    return {
         'mode': str(state.get('mode', 'rgb')),
         'ticks': [
             [pos, list(rgba)]
@@ -196,20 +199,20 @@ def gradient_state_to_setting(state, bw_inverted=False):
         'ticksVisible': bool(state.get('ticksVisible', True)),
         'bw_inverted': bool(bw_inverted),
     }
-    return json.dumps(setting, separators=(',', ':'))
 
-def gradient_state_from_setting(text):
-    """Read the text written by `gradient_state_to_setting`.
+def gradient_state_from_setting(setting):
+    """Read the value written by `gradient_state_to_setting`.
 
     Returns
     -------
     tuple of (dict, bool) or None
         The gradient state (for `GradientEditorItem.restoreState`) and
         whether black and white were inverted when it was saved, or None
-        if `text` is not a valid gradient (e.g., a corrupted setting).
+        if `setting` is not a valid gradient (e.g., a corrupted setting).
     """
+    if not isinstance(setting, dict):
+        return None
     try:
-        setting = json.loads(text)
         mode = setting.get('mode', 'rgb')
         if mode not in ('rgb', 'hsv'):
             return None
