@@ -985,11 +985,15 @@ class AddPointsLayerDialog(QBaseDialog):
             hideManualEntrySection=False,
             hideWithMouseClicksSection=False,
             parent=None,
+            reservedShortcuts=None,
         ):
+        """`reservedShortcuts` : {key sequence text: used by} of shortcuts
+        that cannot be used (refused on OK, the dialog stays open)."""
         self.cancel = True
         super().__init__(parent)
 
         self._parent = parent
+        self.reservedShortcuts = dict(reservedShortcuts or {})
 
         self.imagesPath = imagesPath
 
@@ -1527,7 +1531,24 @@ class AddPointsLayerDialog(QBaseDialog):
             return
         self.zColName.setCurrentText('None')
 
+    def warnShortcutAlreadyUsed(self, shortcut, usedBy):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Shortcut already used', html_utils.paragraph(
+                f'The shortcut "{html.escape(shortcut)}" is already used by '
+                f'"{html.escape(usedBy)}". Choose a different shortcut.'
+            )
+        )
+
     def ok_cb(self):
+        shortcut = self.appearanceGroupbox.shortcutWidget.widget.text().strip()
+        usedBy = self.reservedShortcuts.get(
+            QKeySequence(shortcut).toString() if shortcut else None
+        )
+        if usedBy is not None:
+            self.warnShortcutAlreadyUsed(shortcut, usedBy)
+            return
+
         self.pointsData = {}
         self.loadedDfInfo = None
         self.loadedDf = None
