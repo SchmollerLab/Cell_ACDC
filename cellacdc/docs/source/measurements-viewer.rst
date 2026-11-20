@@ -175,13 +175,15 @@ The window
 * **Image** (center): the current frame with the segmentation contours and
   cell IDs. The selected cell is highlighted. The colormap (LUT) of each
   channel, chosen by right-clicking its color bar left of the image, is
-  remembered by channel name (also by the main GUI) and restored whenever a
-  channel with that name is loaded again. A channel without a remembered
+  remembered by channel name and restored whenever a channel with that name
+  is loaded again, also in the main GUI and in other Cell-ACDC windows that
+  are already open. A channel without a remembered
   colormap is grey when displayed and has its overlay color when overlaid;
-  choosing an overlay color makes the overlay colormap follow the color
-  again. The **Alpha** slider of each overlaid channel is remembered by
-  channel name the same way. **Restore default settings** (same menu)
-  resets all of them. The
+  choosing an overlay color (same menu) makes the overlay colormap follow
+  the color again. The overlay color and the **Alpha** slider of each
+  overlaid channel are remembered by channel name the same way.
+  **Restore default settings** (same menu) resets the colormaps and the
+  **Alpha** sliders and keeps the overlay colors. The
   **True transparency** and **Alpha-encoded intensity** options of the
   overlay toolbar are remembered too, also when you load other data.
 * **Navigate** box: Position, frame, z-slice and Cell ID controls (labels,

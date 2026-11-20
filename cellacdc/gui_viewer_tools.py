@@ -2163,8 +2163,10 @@ class DefaultSettingsGuiElements:
         # `restoreState(df)` below restores the old state (e.g. re-inverts)
         df = self.df_settings
         df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
-        # Grey LUT for every channel: drop the saved LUTs (per channel and
-        # the older 'img_cmap_*' of the displayed image) and overlay alphas
+        # Grey LUT for every channel: remove the LUTs and overlay alphas
+        # saved per channel (channel display settings) and the older
+        # 'img_cmap_*' rows of the displayed image
+        self.removeChannelLutSettings()
         self.df_settings = df = gui_navigation.drop_channel_lut_settings(df)
 
         df = df[~df.index.str.contains('lab_cmap')]

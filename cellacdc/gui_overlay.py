@@ -8,25 +8,45 @@ an optional `bottomLayoutFont` (`QFont`) used for the alpha scrollbar labels
 (the main GUI sets it in `resizeSlidersArea` to follow the bottom layout
 zoom); without it an 11 px font is used.
 
-The LUT of each overlay channel is restored from (and saved to) the user
-settings by channel name when its LUT item is created (`getOverlayItems`,
-see `gui_navigation.LutGuiElements`). The check states of the overlay modes
-of `widgets.OverlayToolbar` (true transparency, alpha-encoded intensity) are
-saved when the user clicks them (`saveOverlayModes`, settings
+The settings below are channel display settings (their own file, read again
+on every restore and changed one setting at a time, so that windows open at
+the same time keep each other's settings; see
+`gui_navigation.LutGuiElements`), not rows of `settings.csv`.
+
+The overlay color of each channel (setting
+`gui_navigation.overlay_color_setting_name(<channel>)` = '<channel>_rgb')
+is saved when the user chooses it (`saveOverlayColor`) and read on every
+load (`gui_createOverlayColors` -> `savedOverlayColor`; older versions
+saved it in `settings.csv`, whose row of the same name is still read when
+the channel display settings have none). Restore default settings keeps it.
+The LUT of each overlay channel is restored from (and saved to) the channel
+display settings by channel name when its LUT item is created
+(`getOverlayItems`); without a saved LUT it is made from the overlay color.
+The check states of the overlay modes of `widgets.OverlayToolbar` (true
+transparency, alpha-encoded intensity) are saved when the user clicks them
+(`saveOverlayModes`, settings
 `OVERLAY_TRANSPARENCY_SETTING` / `OVERLAY_ALPHA_ENCODED_SETTING`) and
 checked again when the window is created (`restoreOverlayModes`, without
 signals); they are kept when other data is loaded and applied to the
 current items whenever the overlay is turned on (`overlay_cb`).
 `setOverlayTransparency` may run again on the same items: its signal
-connections are made once (`connectTransparentOverlayUpdates`).
+connections are made once (`connectTransparentOverlayUpdates`). Cancelling
+the channel selection, no other channel to overlay, or a selected channel
+that cannot be loaded (e.g., missing in another Position) leaves the
+overlay off with its toolbar hidden (`_leaveOverlayOff`).
 
 The alpha scrollbar of each overlay channel is saved per channel name too
 (setting `gui_navigation.overlay_alpha_setting_name(<channel>)`, the alpha
 0-1): on every change made by the user (`overlayAlphaActionTriggered`, once
 on release while dragging), never on `setValue` by code. It is restored
-when the overlay items are created (`restoreOverlayAlpha`, without signals:
-the opacities are computed from the scrollbars when the overlay is shown)
-and reset by Restore default settings
+when the overlay items are created (`restoreOverlayAlpha`, without
+signals). Outside the transparency modes the opacities are computed from
+the scrollbars (`setOverlayItemsOpacities`) whenever the overlay is turned
+on (`overlay_cb`, also with the overlay data already loaded) and whenever a
+channel is added to or removed from it (`overlayChannelToggled`; in Single
+channel mode the selected channel stays selected while it is overlaid, else
+the base layer, see `setOverlayChannelsToolbuttonsChecked`). The saved
+alphas are removed by Restore default settings
 (`gui_viewer_tools.DefaultSettingsGuiElements.restoreDefaultSettings`).
 """
 import os
@@ -58,6 +78,17 @@ OVERLAY_ALPHA_ENCODED_SETTING = 'overlay_alpha_encoded_intensity'
 ALPHA_SCROLLBAR_MAXIMUM = 40
 ALPHA_SCROLLBAR_DEFAULT_VALUE = 20
 
+def overlay_color_from_setting(value):
+    """Overlay color `(r, g, b)` saved as '<r>_<g>_<b>' (`saveOverlayColor`),
+    or None when `value` is not such a text with values 0-255."""
+    try:
+        rgb = tuple(int(val) for val in str(value).split('_'))
+    except ValueError:
+        return None
+    if len(rgb) != 3 or not all(0 <= val <= 255 for val in rgb):
+        return None
+    return rgb
+
 def setColorWithoutSignals(colorButton, color):
     """Set the color of the `pg.ColorButton` `colorButton` without emitting
     `sigColorChanging` / `sigColorChanged`."""
@@ -79,9 +110,8 @@ class OverlayChannelsGuiElements:
         )
         self.overlayColors = {}
         for c, ch in enumerate(fluoChannels):
-            if f'{ch}_rgb' in self.df_settings.index:
-                rgb_text = self.df_settings.at[f'{ch}_rgb', 'value']
-                rgb = tuple([int(val) for val in rgb_text.split('_')])
+            rgb = self.savedOverlayColor(ch)
+            if rgb is not None:
                 self.overlayColors[ch] = rgb
             else:
                 if c >= len(self.overlayRGBs) -1:
@@ -94,6 +124,31 @@ class OverlayChannelsGuiElements:
                     self.overlayRGBs.extend(rgbs)
                 rgb = colors.FLUO_CHANNELS_COLORS.get(ch, self.overlayRGBs[c])
                 self.overlayColors[ch] = rgb
+
+    def savedOverlayColor(self, channel):
+        """Overlay color `(r, g, b)` saved for `channel` (`saveOverlayColor`)
+        in the channel display settings, read now (another open window may
+        have saved it since), else in the `settings.csv` row of the same
+        name (`gui_navigation.overlay_color_setting_name`, where older
+        versions saved it), else None (also for an invalid value, logged).
+        """
+        settingName = gui_navigation.overlay_color_setting_name(channel)
+        value = self.channelDisplaySetting(settingName)
+        df_settings = getattr(self, 'df_settings', None)
+        if (
+                value is None and df_settings is not None
+                and settingName in df_settings.index
+            ):
+            value = df_settings.at[settingName, 'value']
+        if value is None:
+            return None
+        rgb = overlay_color_from_setting(value)
+        if rgb is None:
+            self.logger.warning(
+                f'Ignoring the invalid overlay color saved in the setting '
+                f'"{settingName}": {value!r}'
+            )
+        return rgb
 
     def gui_createOverlayItems(self):
         self.imgGrad.setAxisLabel(self.user_ch_name)
@@ -245,28 +300,26 @@ class OverlayChannelsGuiElements:
         (`saveOverlayModes`) without applying them: `overlay_cb` applies
         them when the overlay is turned on."""
         self.overlayToolbar.setModesChecked(
-            transparent=self._get_setting_value(
-                OVERLAY_TRANSPARENCY_SETTING, False, cast=bool
-            ),
-            alphaEncoded=self._get_setting_value(
-                OVERLAY_ALPHA_ENCODED_SETTING, False, cast=bool
-            ),
+            transparent=self.channelDisplaySetting(
+                OVERLAY_TRANSPARENCY_SETTING
+            ) is True,
+            alphaEncoded=self.channelDisplaySetting(
+                OVERLAY_ALPHA_ENCODED_SETTING
+            ) is True,
         )
 
     def saveOverlayModes(self):
         """Save the check states of the overlay modes (true transparency,
-        alpha-encoded intensity) in the user settings. Connected to
+        alpha-encoded intensity) in the channel display settings
+        (`gui_navigation.LutGuiElements`). Connected to
         `overlayToolbar.sigModesClicked`, i.e. only user choices are saved:
         the main GUI also turns transparency on and off by code (exports)."""
-        if self.df_settings is None:
-            return
-        self.df_settings.at[OVERLAY_TRANSPARENCY_SETTING, 'value'] = (
-            self.overlayToolbar.isTransparent()
-        )
-        self.df_settings.at[OVERLAY_ALPHA_ENCODED_SETTING, 'value'] = (
-            self.overlayToolbar.isAlphaEncodedIntensity()
-        )
-        self.df_settings.to_csv(self.settings_csv_path)
+        self.saveChannelDisplaySettings({
+            OVERLAY_TRANSPARENCY_SETTING: self.overlayToolbar.isTransparent(),
+            OVERLAY_ALPHA_ENCODED_SETTING: (
+                self.overlayToolbar.isAlphaEncodedIntensity()
+            ),
+        })
 
     def connectTransparentOverlayUpdates(self, connect: bool):
         """Connect (or only disconnect) the LUT, levels and alpha scrollbar
@@ -315,22 +368,31 @@ class OverlayChannelsGuiElements:
         self.setOverlayImages()
 
     def overlay_cb(self, checked):
-        self.overlayToolbar.setVisible(checked)
-        
+        if not checked:
+            self.overlayToolbar.setVisible(False)
+
         self.UserNormAction, _, _ = self.getCheckNormAction()
         posData = self.data[self.pos_i]
         if checked:
+            selectedChannels = None
             if posData.ol_data is None:
                 selectedChannels = self.askSelectOverlayChannel()
                 if selectedChannels is None:
-                    self.overlayButton.toggled.disconnect()
-                    self.overlayButton.setChecked(False)
-                    self.overlayButton.toggled.connect(self.overlay_cb)
+                    self._leaveOverlayOff()
                     return
-                
-                success = self.loadOverlayData(selectedChannels)         
+
+                success = self.loadOverlayData(selectedChannels)
                 if not success:
+                    # E.g., a channel missing in another Position
+                    self._leaveOverlayOff()
                     return False
+
+            # Shown only now: its mode checkboxes would act on the image
+            # while the (non-modal) channel prompt or a load warning is
+            # open. Before the opacities are set: they skip the toolbuttons
+            # that are not visible
+            self.overlayToolbar.setVisible(True)
+            if selectedChannels is not None:
                 lastChannel = selectedChannels[-1]
                 self.setCheckedOverlayContextMenusActions(selectedChannels)
                 imageItem = self.overlayLayersItems[lastChannel][0]
@@ -358,6 +420,24 @@ class OverlayChannelsGuiElements:
             
         
         self.setOverlayItemsVisible()
+        if checked and not self.overlayToolbar.isTransparent():
+            # Opacities from the alpha scrollbars (restored per channel),
+            # also when the overlay data were already loaded (turned on
+            # again). After `setOverlayItemsVisible`: hidden toolbuttons
+            # are skipped
+            self.setOverlayItemsOpacities()
+
+    def _leaveOverlayOff(self):
+        """The overlay was not turned on (channel selection cancelled,
+        nothing to overlay, or the selected channels cannot be loaded):
+        uncheck the overlay button without `overlay_cb` (`overlay_cb(False)`
+        does not run) and keep the overlay toolbar hidden (`overlay_cb`
+        shows it only once the overlay data are loaded), whose mode
+        checkboxes would act on the image."""
+        self.overlayToolbar.setVisible(False)
+        self.overlayButton.toggled.disconnect()
+        self.overlayButton.setChecked(False)
+        self.overlayButton.toggled.connect(self.overlay_cb)
 
     def showOverlayContextMenu(self, event):
         if not self.overlayButton.isChecked():
@@ -637,8 +717,9 @@ class OverlayChannelsGuiElements:
 
     def saveOverlayColor(self, button):
         """Save the overlay color chosen for `button.channel`
-        (`sigColorChanged`, e.g., OK in the color dialog) and make the
-        channel's LUT follow it: `initColormapOverlayLayerItem` outside
+        (`sigColorChanged`, e.g., OK in the color dialog) in the channel
+        display settings (`savedOverlayColor`) and make the channel's LUT
+        follow it: `initColormapOverlayLayerItem` outside
         `settingChannelLutsFromCode`, so that `overlayLutChangeFinished`
         removes the channel's saved LUT."""
         rgb = button.color().getRgb()[:3]
@@ -649,8 +730,8 @@ class OverlayChannelsGuiElements:
             self.initColormapOverlayLayerItem(rgb, lutItem)
             self.overlayColors[button.channel] = rgb
         rgb_text = '_'.join([str(val) for val in rgb])
-        self.df_settings.at[f'{button.channel}_rgb', 'value'] = rgb_text
-        self.df_settings.to_csv(self.settings_csv_path)
+        settingName = gui_navigation.overlay_color_setting_name(button.channel)
+        self.saveChannelDisplaySettings({settingName: rgb_text})
 
     def overlayColorDialogRejected(self, button):
         """Cancel in the overlay color dialog of `button` (connected after
@@ -720,6 +801,10 @@ class OverlayChannelsGuiElements:
         self.setOverlayItemsVisible()
         self.setRetainSizePolicyLutItems()
         self.updateAllImages()
+        if self.overlayButton.isChecked() and not self.overlayToolbar.isTransparent():
+            # The added (or removed) layer changes every opacity (after
+            # `setOverlayItemsVisible`, as in `overlay_cb`)
+            self.setOverlayItemsOpacities()
 
     def initFluoData(self):
         if len(self.ch_names) <= 1:
@@ -984,7 +1069,8 @@ class OverlayChannelsGuiElements:
         """Set the alpha scrollbar `alphaScrollBar` of the overlay `channel`
         to the alpha saved for it (`saveOverlayAlpha`), without signals:
         call it when the overlay items are created (the opacities are
-        computed from the scrollbars when the overlay is shown).
+        computed from the scrollbars when the overlay is turned on,
+        `overlay_cb`, or a channel is added to it, `overlayChannelToggled`).
 
         Returns
         -------
@@ -992,9 +1078,16 @@ class OverlayChannelsGuiElements:
             Whether a saved alpha was restored.
         """
         settingName = gui_navigation.overlay_alpha_setting_name(channel)
-        # Logs a warning and returns the default for a non-number
-        alpha = self._get_setting_value(settingName, None, cast=float)
-        if alpha is None or not math.isfinite(alpha):
+        alpha = self.channelDisplaySetting(settingName)
+        if alpha is None:
+            return False
+        if isinstance(alpha, bool) or not isinstance(alpha, (int, float)):
+            self.logger.warning(
+                f'Ignoring the invalid alpha saved in the setting '
+                f'"{settingName}": {alpha!r}'
+            )
+            return False
+        if not math.isfinite(alpha):
             return False
         alpha = min(max(alpha, 0.0), 1.0)
         value = round(alpha*alphaScrollBar.maximum())
@@ -1016,23 +1109,38 @@ class OverlayChannelsGuiElements:
 
     def saveOverlayAlpha(self, alphaScrollBar):
         """Save the alpha (0-1) of the alpha scrollbar of an overlay channel
-        in the user settings, per channel name. Reads `sliderPosition()`:
-        `actionTriggered` is emitted before `value()` is updated."""
-        if self.df_settings is None:
-            return
+        in the channel display settings, per channel name. Reads
+        `sliderPosition()`: `actionTriggered` is emitted before `value()` is
+        updated."""
         settingName = gui_navigation.overlay_alpha_setting_name(
             alphaScrollBar.channelName
         )
         alpha = alphaScrollBar.sliderPosition()/alphaScrollBar.maximum()
-        self._set_setting_value(settingName, round(alpha, 4))
+        self.saveChannelDisplaySettings({settingName: round(alpha, 4)})
 
     def setOverlayChannelsToolbuttonsChecked(self):
+        """Check the toolbuttons of the overlaid channels
+        (`checkedOverlayChannels`). In Single channel mode the selected
+        channel stays checked while it is still overlaid. When no toolbutton
+        is left checked (e.g., the selected channel or, with the base layer
+        unchecked, the last checked channel removed from the overlay), the
+        base layer is checked: one toolbutton is always checked, otherwise
+        `setOverlayItemsOpacities` would hide every layer (and Single
+        channel mode would have no channel to show)."""
+        isSingleChannel = self.overlayToolbar.isSingleChannel()
         for channel, items in self.overlayLayersItems.items():
-            _, lutItem, alphaSB, toolbutton = items[:4]
-            toolbutton.setChecked(
-                not self.overlayToolbar.isSingleChannel()
-                and channel in self.checkedOverlayChannels
-            )
+            toolbutton = items[3]
+            isOverlaid = channel in self.checkedOverlayChannels
+            if isSingleChannel:
+                toolbutton.setChecked(toolbutton.isChecked() and isOverlaid)
+            else:
+                toolbutton.setChecked(isOverlaid)
+        isAnyChecked = any(
+            toolbutton.isChecked()
+            for toolbutton in self.allOverlayToolbuttons.values()
+        )
+        if not isAnyChecked:
+            self.baseLayerToolbutton.setChecked(True)
 
     def setOverlayItemsVisible(self):
         for channel, items in self.overlayLayersItems.items():
