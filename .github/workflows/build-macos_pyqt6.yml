@@ -45,3 +45,9 @@ jobs:
     - name: Test with pytest
       run: |
         pytest
+    - name: Slow data-structure tests (Module 0 goldens through child processes)
+      if: matrix.python-version == '3.12'
+      env:
+        ACDC_SLOW_TESTS: '1'
+      run: |
+        pytest tests/datastruct/test_golden_module0.py tests/datastruct/test_bioio_writer.py
