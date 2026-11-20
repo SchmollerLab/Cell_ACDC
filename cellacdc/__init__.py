@@ -1,3 +1,4 @@
+import filecmp
 import os
 import shutil
 import sys
@@ -371,19 +372,97 @@ does_qrc_resources_exists = (
     or os.path.exists(qrc_resources_user_path)
 )
 
+
+def _temp_path_for(dst_path):
+    # The process ID makes the name unique when several processes write
+    # the same destination at the same time
+    return f'{dst_path}.{os.getpid()}.tmp'
+
+
+def _remove_file_if_exists(filepath):
+    try:
+        os.remove(filepath)
+    except FileNotFoundError:
+        pass
+
+
+def _have_same_content(filepath1, filepath2):
+    try:
+        return filecmp.cmp(filepath1, filepath2, shallow=False)
+    except OSError:
+        return False
+
+
+def _move_temp_file_into_place(tmp_path, dst_path, attempts=10):
+    """Move `tmp_path` to `dst_path` with `os.replace`.
+
+    `os.replace` is atomic, so a process that reads `dst_path` sees either
+    the previous file (or no file) or the complete new file, never a
+    partially written one.
+
+    On Windows, `os.replace` raises PermissionError while another process
+    has `dst_path` open, for example to import it. If `dst_path` already
+    has the content of `tmp_path`, another process has written the same
+    file and it is kept. Otherwise the replace is tried again for about
+    one second before the error is raised, for example because `dst_path`
+    is read-only.
+
+    Also on Windows, a process that opens `dst_path` at the moment it is
+    replaced can get a PermissionError. This window is much shorter than
+    the time a plain copy takes, and it is not handled here.
+    """
+    for attempt in range(1, attempts + 1):
+        try:
+            os.replace(tmp_path, dst_path)
+            return
+        except PermissionError:
+            if _have_same_content(tmp_path, dst_path):
+                return
+            if attempt == attempts:
+                raise
+            time.sleep(0.1)
+
+
+def _copy_file_atomic(src_path, dst_path):
+    """Copy `src_path` to `dst_path` through a temporary file in the same
+    folder, so that `dst_path` only ever exists complete.
+    """
+    tmp_path = _temp_path_for(dst_path)
+    try:
+        shutil.copyfile(src_path, tmp_path)
+        _move_temp_file_into_place(tmp_path, dst_path)
+    finally:
+        _remove_file_if_exists(tmp_path)
+
+
+def _write_text_file_atomic(dst_path, text):
+    """Write `text` to `dst_path` through a temporary file in the same
+    folder, so that `dst_path` only ever exists complete.
+    """
+    tmp_path = _temp_path_for(dst_path)
+    try:
+        with open(tmp_path, 'w') as file:
+            file.write(text)
+        _move_temp_file_into_place(tmp_path, dst_path)
+    finally:
+        _remove_file_if_exists(tmp_path)
+
+
 def _copy_qrc_resources_file(
         src_qrc_resources_scheme_path: os.PathLike,
         dst_qrc_resources_path: os.PathLike, 
         user_dst_qrc_resources_path: os.PathLike = qrc_resources_user_path
     ):
     try:
-        shutil.copyfile(src_qrc_resources_scheme_path, dst_qrc_resources_path)
+        _copy_file_atomic(
+            src_qrc_resources_scheme_path, dst_qrc_resources_path
+        )
         return True
     except Exception as err:
         # Copy to user folder because copying to cell-acdc location failed 
         # possibly PermissionError --> return False to stop application 
         # and prompt the user to restart Cell-ACDC
-        shutil.copyfile(
+        _copy_file_atomic(
             src_qrc_resources_scheme_path, user_dst_qrc_resources_path
         )
         return False
@@ -412,8 +491,7 @@ try:
             text = text.replace('from PyQt5', 'from qtpy')
             save_qrc = True
     if save_qrc:
-        with open(qrc_resources_path, 'w') as qrc_py:
-            qrc_py.write(text)
+        _write_text_file_atomic(qrc_resources_path, text)
 except Exception as err:
     raise err
 
