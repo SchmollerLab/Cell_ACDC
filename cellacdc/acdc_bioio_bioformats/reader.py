@@ -1,10 +1,7 @@
+import ast
 import os
 import re
 
-import numpy as np
-
-from .. import printl
-from .. import colors
 from ..myutils import safe_get_or_call
 from . import _utils
 from . import install, EXTENSION_PACKAGE_MAPPER
@@ -12,12 +9,20 @@ from . import EXTENSION_BIOIMAGE_KWARGS_MAPPER
 from . import EXTENSION_METADATA_ATTR_MAPPER
 
 def set_reader(image_filepath, **kwargs):
+    """Return `(kwargs, other_kwargs)` for `BioImage(image_filepath, ...)`.
+
+    The extension is matched case-insensitively. `other_kwargs` holds the
+    extension-specific extras (retried without them on failure) and is
+    always a fresh dict: the module-level mappers are never mutated.
+    Unmapped extensions are read with the Bio-Formats reader.
+    """
     if 'reader' in kwargs:
         return kwargs, {}
     
     _, ext = os.path.splitext(image_filepath)
+    ext = ext.lower()
     if ext in EXTENSION_PACKAGE_MAPPER:
-        other_kwargs = EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
+        other_kwargs = dict(EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {}))
         reader = other_kwargs.get('reader')
         if isinstance(reader, str):
             try:
@@ -30,7 +35,7 @@ def set_reader(image_filepath, **kwargs):
             
         if reader is not None:
             other_kwargs['reader'] = reader
-        return kwargs, EXTENSION_BIOIMAGE_KWARGS_MAPPER.get(ext, {})
+        return kwargs, other_kwargs
     
     try:
         import bioio_bioformats
@@ -43,35 +48,49 @@ def set_reader(image_filepath, **kwargs):
     
     return kwargs, {}
 
+def _create_bioimage(bioimage_factory, image_filepath, kwargs):
+    kwargs, other_kwargs = set_reader(image_filepath, **kwargs)
+    try:
+        all_kwargs = {**kwargs, **other_kwargs}
+        return bioimage_factory(image_filepath, **all_kwargs)
+    except Exception:
+        return bioimage_factory(image_filepath, **kwargs)
+
+def _create_bioio_bioimage(image_filepath, qparent, kwargs):
+    from bioio import BioImage
+    from bioio_base.exceptions import UnsupportedFileFormatError
+
+    # Capture BioImage error and install required dependencies
+    try:
+        return _create_bioimage(BioImage, image_filepath, kwargs)
+    except UnsupportedFileFormatError as err:
+        install.install_reader_dependencies(
+            image_filepath, err,
+            qparent=qparent
+        )
+        return _create_bioimage(BioImage, image_filepath, kwargs)
+
 class ImageReader:
     def __init__(
             self, image_filepath: os.PathLike, qparent=None, lazy_load=True, 
-            **kwargs
+            *, bioimage_factory=None, **kwargs
         ):
-        from bioio import BioImage
-        from bioio_base.exceptions import UnsupportedFileFormatError
+        """Open `image_filepath` with BioIO.
         
+        `bioimage_factory(path, **kwargs)`, when given, replaces
+        `bioio.BioImage` (test seam): bioio is then not imported and missing
+        reader dependencies are not installed.
+        """
         self._image_filepath = image_filepath
         
-        # Capture BioImage error and install required dependencies
-        try:
-            kwargs, other_kwargs = set_reader(image_filepath, **kwargs)
-            try:
-                all_kwargs = {**kwargs, **other_kwargs}
-                self._bioioimage = BioImage(image_filepath, **all_kwargs)
-            except Exception as err:
-                self._bioioimage = BioImage(image_filepath, **kwargs)
-        except UnsupportedFileFormatError as err:
-            install.install_reader_dependencies(
-                image_filepath, err, 
-                qparent=qparent
+        if bioimage_factory is not None:
+            self._bioioimage = _create_bioimage(
+                bioimage_factory, image_filepath, kwargs
             )
-            kwargs, other_kwargs = set_reader(image_filepath, **kwargs)
-            try:
-                all_kwargs = {**kwargs, **other_kwargs}
-                self._bioioimage = BioImage(image_filepath, **all_kwargs)
-            except Exception as err:
-                self._bioioimage = BioImage(image_filepath, **kwargs)
+        else:
+            self._bioioimage = _create_bioio_bioimage(
+                image_filepath, qparent, kwargs
+            )
         
         self._is_lazy_load = lazy_load
         
@@ -85,15 +104,28 @@ class ImageReader:
         if not is_rgb:
             return image_data
         
+        from .. import colors
         return colors.image_rgb_or_rgba_to_uint8_grayscale(image_data)
     
+    def _set_series(self, series):
+        if self._bioioimage.current_scene_index == series:
+            return
+
+        self._bioioimage.set_scene(series)
+        if not self._is_lazy_load:
+            self.img_data = self._check_rgb_to_grayscale(
+                self._bioioimage.data
+            )
+
+    def dims(self, series=0):
+        """Return the (T, C, Z, Y, X) sizes of scene `series`."""
+        self._set_series(series)
+        dims = self._bioioimage.dims
+        sizes = dict(zip(dims.order, dims.shape))
+        return tuple(int(sizes.get(dim, 1)) for dim in 'TCZYX')
+
     def read(self, c=0, z=0, t=0, rescale=False, index=None, series=0):
-        if self._bioioimage.current_scene_index != series:
-            self._bioioimage.set_scene(series)
-            if not self._is_lazy_load:
-                self.img_data = self._check_rgb_to_grayscale(
-                    self._bioioimage.data
-                )
+        self._set_series(series)
         
         if not self._is_lazy_load:
             return self.img_data[t, c, z]
@@ -105,6 +137,7 @@ class ImageReader:
             s_size = 0
         if s_size > 1:
             # RGB(A)
+            from .. import colors
             lazy_img_rgb = self._bioioimage.get_image_dask_data(
                 "YXS", T=t, C=c, Z=z
             )
@@ -116,11 +149,17 @@ class ImageReader:
 
         return img
     
+    def close(self):
+        """Close the underlying BioImage when it supports closing."""
+        close = getattr(self._bioioimage, 'close', None)
+        if callable(close):
+            close()
+
     def __enter__(self):
         return self
     
     def __exit__(self, exc_type, exc_value, traceback):
-        return
+        self.close()
 
 class Metadata:
     def __init__(self):
@@ -143,6 +182,8 @@ class Metadata:
         with open(filepath, 'r') as file:
             self.metadata = file.read()
     
+        return self
+
     def __str__(self):
         return str(self.metadata)
 
@@ -152,13 +193,22 @@ class Channel:
 class Node:
     def __init__(self, image_filepath, bioimage_class):
         _, ext = os.path.splitext(image_filepath)
+        ext = ext.lower()
+        self._node = {}
         try:
             self._node = {
                 'TimeIncrement': bioimage_class.time_interval.total_seconds(),
                 'TimeIncrementUnit': 's'
             }
-        except Exception as err:
-            self._node = {}
+        except Exception:
+            time_increment = getattr(bioimage_class, 'time_increment', None)
+            if time_increment is not None:
+                self._node = {
+                    'TimeIncrement': time_increment,
+                    'TimeIncrementUnit': getattr(
+                        bioimage_class, 'time_increment_unit', 's'
+                    ),
+                }
             
         if ext not in EXTENSION_METADATA_ATTR_MAPPER:
             return
@@ -166,9 +216,11 @@ class Node:
         name_expression_mapper = EXTENSION_METADATA_ATTR_MAPPER[ext]
         for name, expression in name_expression_mapper.items():
             try:
-                self._node[name] = safe_get_or_call(bioimage_class, expression)
+                value = safe_get_or_call(bioimage_class, expression)
+                if value is not None:
+                    self._node[name] = value
             except Exception as err:
-                self._node[name] = None
+                pass
         
     def get(self, name):
         value = self._node.get(name)
@@ -196,7 +248,8 @@ class BioImageMetadata:
     def __init__(
             self, SizeT, SizeC, SizeZ, SizeY, SizeX, 
             PhysicalSizeX, PhysicalSizeY, PhysicalSizeZ, 
-            channel_names, image_count
+            channel_names, image_count,
+            time_increment=None, time_increment_unit=None,
         ):
         self.shape = (SizeT, SizeC, SizeZ, SizeY, SizeX)
         self.physical_pixel_sizes = PhysicalPixelSizes(
@@ -204,20 +257,29 @@ class BioImageMetadata:
         )
         self.channel_names = channel_names
         self.scenes = list(range(image_count))
+        self.time_increment = time_increment
+        self.time_increment_unit = time_increment_unit
+
+def _channel_names_text(channel_names):
+    if channel_names is None:
+        return 'None'
+    return str([str(name) for name in channel_names])
 
 class OMEXML:
     def __init__(self):
         self.qparent = None
     
     def init_from_metadata(self, metadata: Metadata):
-        self.image_filepath = metadata.image_filepath
         self.qparent = metadata.qparent
         
-        image_filepath = self.image_filepath
-        qparent = self.qparent
+        image_filepath = metadata.image_filepath
+        with ImageReader(image_filepath, qparent=self.qparent) as image_reader:
+            return self.init_from_bioimage(image_filepath, image_reader)
         
-        with ImageReader(image_filepath, qparent=qparent) as bioio_image:
-            self.bioimage = bioio_image._bioioimage
+    def init_from_bioimage(self, image_filepath, image_reader: ImageReader):
+        """Build the object from an open `ImageReader` (no second open)."""
+        self.image_filepath = image_filepath
+        self.bioimage = image_reader._bioioimage
         
         self._init_Pixels(image_filepath)
         
@@ -232,7 +294,7 @@ class OMEXML:
         self.image()
         txt = (
             f'Image: {self.image_filepath}\n'
-            f'Channels: {self.Pixels.channel_names}\n'
+            f'Channels: {_channel_names_text(self.Pixels.channel_names)}\n'
             f'SizeC: {self.Pixels.SizeC}\n'
             f'SizeT: {self.Pixels.SizeT}\n'
             f'SizeZ: {self.Pixels.SizeZ}\n'
@@ -243,6 +305,16 @@ class OMEXML:
             f'PhysicalSizeZ: {self.bioimage.physical_pixel_sizes.Z}\n'
             f'Image count: {self.get_image_count()}'
         )
+        try:
+            time_increment = self.Pixels.node.get('TimeIncrement')
+            time_increment_unit = self.Pixels.node.get('TimeIncrementUnit')
+            txt = (
+                f'{txt}\n'
+                f'TimeIncrement: {time_increment}\n'
+                f'TimeIncrementUnit: {time_increment_unit}'
+            )
+        except Exception:
+            pass
         return txt
     
     def to_file(self, filepath):
@@ -255,7 +327,7 @@ class OMEXML:
         
         keys_dtype_kwarg_mapper = {
             'Image': (str, 'image_filepath', ''),
-            'Channels': (eval, 'channel_names', ['ch0']),
+            'Channels': (ast.literal_eval, 'channel_names', ['ch0']),
             'SizeC': (int, 'SizeC', 1),
             'SizeT': (int, 'SizeT', 1),
             'SizeZ': (int, 'SizeZ', 1),
@@ -264,20 +336,33 @@ class OMEXML:
             'PhysicalSizeX': (float, 'PhysicalSizeX', 1.0),
             'PhysicalSizeY': (float, 'PhysicalSizeY', 1.0),
             'PhysicalSizeZ': (float, 'PhysicalSizeZ', 1.0),
-            'Image count': (int, 'image_count', 1.0),
+            'Image count': (int, 'image_count', 1),
         }
         for key, (dtype, kwarg, default) in keys_dtype_kwarg_mapper.items():
-            value = re.search(f'{key}: (.+)', txt).group(1)
-            print(key, value, type(value))
+            match = re.search(f'{key}: (.+)', txt)
             try:
-                setattr(self, kwarg, dtype(value))
+                setattr(self, kwarg, dtype(match.group(1)))
             except Exception as err:
                 setattr(self, kwarg, default)
+
+        time_increment = None
+        time_increment_unit = None
+        time_increment_match = re.search(r'TimeIncrement: (.+)', txt)
+        if time_increment_match is not None:
+            try:
+                time_increment = float(time_increment_match.group(1))
+            except Exception:
+                pass
+        time_increment_unit_match = re.search(r'TimeIncrementUnit: (.+)', txt)
+        if time_increment_unit_match is not None:
+            time_increment_unit = time_increment_unit_match.group(1)
         
         self.bioimage = BioImageMetadata(
             self.SizeT, self.SizeC, self.SizeZ, self.SizeY, self.SizeX, 
             self.PhysicalSizeX, self.PhysicalSizeY, self.PhysicalSizeZ, 
-            self.channel_names, self.image_count
+            self.channel_names, self.image_count,
+            time_increment=time_increment,
+            time_increment_unit=time_increment_unit,
         )
         
         self._init_Pixels(image_filepath)

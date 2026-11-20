@@ -47,6 +47,9 @@ from . import fiji_macros
 from . import acdc_regex
 from . import io
 from . import workers
+from .acdc_datastruct import (
+    backends, convert, errors, metadata, planning, sources
+)
 
 if os.name == 'nt':
     try:
@@ -65,8 +68,23 @@ def worker_exception_handler(func):
         except Exception as error:
             result = None
             self.critical.emit(error)
+            # The error dialog replaces the "task ended/cancelled" messages
+            # and `finished` lets the thread quit
+            self.isCriticalError = True
+            self.cancelled = True
+            self.finished.emit()
         return result
     return run
+
+def make_convert_backend():
+    """Backend that runs the reading and writing tasks of the GUI
+    conversions in worker child processes."""
+    return backends.default_backend(for_gui=True)
+
+def _legacy_sample_dict(arrays):
+    """Sample image data (one array per channel) as the metadata dialog
+    expects it: the same arrays under every 'zct' dimension order."""
+    return {''.join(dimsOrd): arrays for dimsOrd in permutations('zct', 3)}
 
 class bioFormatsWorker(QObject):
     finished = Signal()
@@ -89,8 +107,11 @@ class bioFormatsWorker(QObject):
             bioformats_backend: Literal['bioio', 'python-bioformats'],
             lazy_load=True, move_raw_microscopy_files=True,
             overwrite=False, add_files=False, create_new=False,
-            start_pos_n=1
+            start_pos_n=1, *, backend=None
         ):
+        """`backend` runs the reading and writing tasks of the BioIO
+        conversion (default: `make_convert_backend()`, worker child
+        processes)."""
         QObject.__init__(self)
         self.raw_src_path = raw_src_path
         self.exp_dst_path = exp_dst_path
@@ -109,6 +130,9 @@ class bioFormatsWorker(QObject):
         self.bioformats_backend = bioformats_backend
         self.lazy_load = lazy_load
         self.move_raw_microscopy_files = move_raw_microscopy_files
+        if backend is None:
+            backend = make_convert_backend()
+        self.backend = backend
     
     def _readSampleDataPythonBioformats(
             self, bioformats, rawFilePath, sampleImgData, SizeC, SizeT, SizeZ,
@@ -1035,6 +1059,133 @@ class bioFormatsWorker(QObject):
     
     @worker_exception_handler
     def run(self):
+        if self.bioformats_backend != 'bioio':
+            return self._run_legacy_python_bioformats()
+
+        self.cancelled = False
+        self.isCriticalError = False
+        if getattr(self, 'moveOtherFiles', False):
+            other_files = 'move'
+        elif getattr(self, 'copyOtherFiles', False):
+            other_files = 'copy'
+        else:
+            other_files = 'leave'
+        request = convert.ConvertRequest(
+            src_dir=self.raw_src_path,
+            dst_dir=self.exp_dst_path,
+            layout=sources.RawLayout(self.rawDataStruct),
+            files=tuple(self.rawFilenames),
+            on_existing=planning.OnExisting.from_gui_flags(
+                overwrite=self.overwritePos, add_files=self.addFiles,
+                create_new=self.createNew
+            ),
+            start_pos_n=self.start_pos_n,
+            move_raw=self.move_raw_microscopy_files,
+            use_symlinks=getattr(self, 'useSymLink', False),
+            lazy_load=self.lazy_load,
+            other_files=other_files,
+            one_per_channel=getattr(self, 'one_per_channel', None),
+            schedule='interactive',
+        )
+        callbacks = convert.ConvertCallbacks(
+            log=self._emit_log,
+            progress_init=self.initPbar.emit,
+            progress_step=self.progressPbar.emit,
+            confirm=self._confirm_settings,
+            warn=self._emit_metadata_warning,
+        )
+        try:
+            result = convert.convert(
+                request, callbacks=callbacks, backend=self.backend
+            )
+            self.cancelled = result.cancelled
+        except errors.ConversionCancelled:
+            self.cancelled = True
+        except errors.MetadataReadError as err:
+            self.isCriticalError = True
+            self.cancelled = True
+            self.criticalError.emit(
+                'reading image data or metadata', err.details, err.filename
+            )
+        except errors.MoveRawFilesError as err:
+            if not err.permission:
+                raise
+            self.cancelled = True
+            # createDataStructWin.moveRawMicroscopyFilesFailed emits finished
+            self.sigMoveRawMicrFilesFailed.emit(err.details)
+            return
+        self.finished.emit()
+
+    def _emit_log(self, text, level='INFO'):
+        self.progress.emit(text)
+
+    def _emit_metadata_warning(self, warning):
+        for line in warning.gui_lines():
+            self.progress.emit(line)
+
+    def _confirm_settings(self, ctx):
+        """Confirm hook of `convert` (runs in the worker thread): show the
+        metadata dialog of one file through `confirmMetadata` (answered by
+        `createDataStructWin.askConfirmMetadata`) and wait for it.
+
+        After SizeT, SizeZ or SizeC were edited, the preview (eye) button
+        closes the dialog: the sample image data is read again with the
+        edited values and the dialog is shown again. Returns None when the
+        user cancels.
+        """
+        resolved = ctx.resolved
+        values = dict(
+            LensNA=resolved.lens_na, SizeT=resolved.size_t,
+            SizeZ=resolved.size_z, SizeC=resolved.size_c,
+            SizeS=resolved.size_s, TimeIncrement=resolved.time_increment,
+            PhysicalSizeX=resolved.physical_size_x,
+            PhysicalSizeY=resolved.physical_size_y,
+            PhysicalSizeZ=resolved.physical_size_z,
+            chNames=list(resolved.channel_names),
+            emWavelens=list(resolved.em_wavelens)
+        )
+        while True:
+            sampleImgData = None
+            if self.rawDataStruct != 2:
+                # Read before locking the mutex (a failing read must not
+                # leave it locked)
+                self.progress.emit('Reading sample image data...')
+                arrays = ctx.read_sample(
+                    values['SizeC'], values['SizeT'], values['SizeZ']
+                )
+                sampleImgData = _legacy_sample_dict(arrays)
+                self.sigFinishedReadingSampleImageData.emit(sampleImgData)
+            args = metadata.confirm_signal_args(
+                resolved, filename=ctx.filename, raw_path=ctx.raw_path,
+                sample=sampleImgData, values=values
+            )
+            # The mutex is held from the emit until `wait` releases it, so
+            # the GUI thread can wake this thread only once it waits
+            self.mutex.lock()
+            try:
+                self.confirmMetadata.emit(*args)
+                self.waitCond.wait(self.mutex)
+            finally:
+                self.mutex.unlock()
+
+            metadataWin = self.metadataWin
+            if metadataWin.cancel:
+                return None
+
+            if not metadataWin.requestedReadingSampleImageDataAgain:
+                break
+
+            # Values as edited (units are converted only by "Ok")
+            values = {key: getattr(metadataWin, key) for key in values}
+
+        settings, apply_to_next = metadata.settings_from_dialog_values(
+            metadataWin, file_size_t=ctx.raw.size_t
+        )
+        return convert.ConfirmResult(settings, apply_to_next)
+
+    def _run_legacy_python_bioformats(self):
+        """Conversion with the python-bioformats (Java) backend, unchanged
+        (the BioIO backend converts with `convert` in `run`)."""
         exp_dst_path = self.exp_dst_path
         raw_src_path = self.raw_src_path
         
@@ -1551,9 +1702,11 @@ class createDataStructWin(QMainWindow):
             add_files=add_files,
             create_new=create_new,
             start_pos_n=start_pos_n,
+            backend=make_convert_backend(),
         )
         self.worker.useSymLink = useSymLink
         if self.rawDataStruct == 2:
+            self.worker.one_per_channel = self.one_per_channel
             self.worker.basename = self.basename
             self.worker.SizeS = self.SizeS
             self.worker.posNums = self.posNums
@@ -1633,34 +1786,21 @@ class createDataStructWin(QMainWindow):
             return
         
         from cellacdc import acdc_bioio_bioformats as bioformats
+
+        # The worker processes cannot install packages: install the reader
+        # of every file extension now (with the usual dialogs)
+        for filename in sources.one_file_per_extension(raw_filenames):
+            bioformats.install.install_reader_dependencies(
+                os.path.join(raw_src_path, filename),
+                exception=Exception(
+                    'Failed installing reader dependencies from the GUI, '
+                    'trying from terminal...'
+                ),
+                qparent=self
+            )
+
         raw_filepath = os.path.join(raw_src_path, raw_filenames[0])
-        
-        bioformats.install.install_reader_dependencies(
-            raw_filepath, 
-            exception=Exception(
-                'Failed installing reader dependencies from the GUI, '
-                'trying from terminal...'
-            ),
-            qparent=self
-        )
-        
-        import subprocess
-        from . import _process
-        
-        init_reader_py_filepath = os.path.join(
-            os.path.dirname(bioformats.__file__), '_init_reader.py'
-        )
-        uuid4 = uuid.uuid4()
-        command = (
-            f'{sys.executable}, {init_reader_py_filepath}, '
-            f'-f, {raw_filepath}, '
-            f'-uuid, {uuid4}'
-        )
-        
-        args = [sys.executable, _process.__file__, '-c', command]
-        subprocess.run(args)
-        
-        bioformats._utils.check_raise_exception(uuid4)
+        make_convert_backend().init_reader(raw_filepath)
     
     def addPbar(self):
         self.QPbar = widgets.ProgressBar(self)
@@ -1701,40 +1841,20 @@ class createDataStructWin(QMainWindow):
         self.logger.info(text)
 
     def attemptSeparateMultiChannel(self, rawFilenames):
-        self.chNames = set()
-        self.posNums = set()
-        stripped_filenames = []
-        for file in rawFilenames:
-            filename, ext = os.path.splitext(file)
-            m_iter = myutils.findalliter(fr'(\d+)_(.+)', filename)
-            if len(m_iter) <= 1:
-                self.criticalNoFilenamePattern()
-                return False
-            else:
-                m = m_iter[-2]
-
-            try:
-                posNum, chName = int(m[0][0]), m[0][1]
-                self.chNames.add(chName)
-                self.posNums.add(posNum)
-                ch_idx = filename.find(f'{posNum}_{chName}')
-                stripped_filenames.append(filename[:ch_idx])
-            except Exception as e:
-                traceback_str = traceback.format_exc()
-                self.logger.exception(traceback_str)
-                self.criticalNoFilenamePattern(error=traceback.format_exc())
-                return False
-
-        basename = myutils.getBasename(stripped_filenames)
-        if not basename:
-            self.criticalNoFilenamePattern()
+        try:
+            one_per_channel = sources.parse_one_per_channel_filenames(
+                rawFilenames
+            )
+        except errors.FilenamePatternError as err:
+            self.logger.info(err.message)
+            self.criticalNoFilenamePattern(error=err.details)
             return False
 
-        self.basename = basename
-
-        self.posNums = sorted(list(self.posNums))
-        self.chNames = list(self.chNames)
-        self.SizeS = len(self.posNums)
+        self.one_per_channel = one_per_channel
+        self.basename = one_per_channel.basename
+        self.posNums = list(one_per_channel.position_ids)
+        self.chNames = list(one_per_channel.channel_tokens)
+        self.SizeS = len(one_per_channel.position_ids)
         return True
 
 
@@ -1810,8 +1930,12 @@ class createDataStructWin(QMainWindow):
         )
         self.metadataWin.exec_()
         self.metadataDialogIsOpen = False
+        # The worker holds the mutex until it waits: locking here makes sure
+        # it is waiting before it is woken up
+        self.mutex.lock()
         self.worker.metadataWin = self.metadataWin
         self.waitCond.wakeAll()
+        self.mutex.unlock()
 
     def closeEvent(self, event):
         self.logger.info('Closing data structure logger...')

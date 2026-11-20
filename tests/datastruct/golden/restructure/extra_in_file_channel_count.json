@@ -1,0 +1,56 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "description": "in-file channels: 3 names, 2 channels in the file"
+ },
+ "case": "extra_in_file_channel_count",
+ "dst": {
+  ".": {
+   "kind": "empty_dir"
+  }
+ },
+ "exception": [
+  "ValueError",
+  "a.tif has 2 channels on axis 0, but 3 channel names were provided."
+ ],
+ "result": null,
+ "signals": [
+  ["initProgressBar", 0],
+  ["progress", "Processing TIFF files...", "INFO"]
+ ],
+ "src": {
+  "a.tif": {
+   "axes": "QYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "b88196cb0ffc9d266d5fb05f51de5032ca0d0c9279bf6e24a0dfde244aae5b9a",
+   "shape": [2, 4, 5]
+  }
+ }
+}

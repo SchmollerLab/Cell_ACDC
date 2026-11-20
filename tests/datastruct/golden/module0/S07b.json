@@ -1,0 +1,338 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "channel_order": null,
+  "description": "S07 with one channel (main reads the checkbox)",
+  "dialog_values": [
+   {
+    "LensNA": 1.4,
+    "PhysicalSizeX": 0.1,
+    "PhysicalSizeY": 0.1,
+    "PhysicalSizeZ": 0.5,
+    "SizeC": 1,
+    "SizeS": 3,
+    "SizeT": 3,
+    "SizeZ": 2,
+    "TimeIncrement": 7.5,
+    "addImageName": true,
+    "cancel": false,
+    "chNames": ["GFP"],
+    "emWavelens": [510.0],
+    "overWrite": false,
+    "requestedReadingSampleImageDataAgain": false,
+    "saveChannels": [true],
+    "selectedPos": ["Position_1", "Position_3"],
+    "timeRangeToSave": [1, 3],
+    "to_h5": false,
+    "trust": false
+   }
+  ],
+  "tracebacks": []
+ },
+ "confirm": [
+  {
+   "ImageName": "Scene #1",
+   "LensNA": 1.4,
+   "PhysicalSizeUnit": "µm",
+   "PhysicalSizeX": 0.1,
+   "PhysicalSizeY": 0.1,
+   "PhysicalSizeZ": 0.5,
+   "SizeC": 1,
+   "SizeS": 3,
+   "SizeT": 3,
+   "SizeZ": 2,
+   "TimeIncrement": 7.5,
+   "TimeIncrementUnit": "s",
+   "chNames": ["GFP"],
+   "emWavelens": [510.0],
+   "filename": "exp.ome.tif",
+   "rawFilePath": "<SRC>/exp.ome.tif",
+   "sampleImgData": {
+    "channels": [
+     {
+      "dtype": "uint16",
+      "sha256": "615f4f5547059a6d531bf53ae9188afc941b5e92777d4a4c86f1df4735a14dee",
+      "shape": [3, 2, 16, 20]
+     }
+    ],
+    "keys": ["ctz", "czt", "tcz", "tzc", "zct", "ztc"]
+   }
+  }
+ ],
+ "dialogs": [
+  {
+   "accepted": true,
+   "button": "ok",
+   "title": "Metadata for exp.ome.tif"
+  }
+ ],
+ "dst": {
+  "Position_1/Images/exp_ome__s1_metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["LensNA", "1.4"],
+    ["SizeT", "3"],
+    ["SizeZ", "2"],
+    ["TimeIncrement", "7.5"],
+    ["PhysicalSizeZ", "0.5"],
+    ["PhysicalSizeY", "0.1"],
+    ["PhysicalSizeX", "0.1"],
+    ["basename", "exp_ome__s1_"],
+    ["channel_0_name", "GFP"],
+    ["channel_0_emWavelen", "510.0"]
+   ]
+  },
+  "Position_1/Images/exp_ome__s1_metadataXML.txt": {
+   "_info": {
+    "length": 1794,
+    "sha256": "8c880d428e2ca8bc648d16fb65f54426404cb79635c046d84e0fe3c631a77fe5"
+   },
+   "is_literal_None": false,
+   "kind": "metadataXML",
+   "nonempty": true
+  },
+  "Position_1/Images/exp_ome_s1_GFP.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 0],
+    [0, 1, 0, 0],
+    [0, 2, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "615f4f5547059a6d531bf53ae9188afc941b5e92777d4a4c86f1df4735a14dee",
+   "shape": [3, 2, 16, 20]
+  },
+  "Position_3/Images/exp_ome__s3_metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["LensNA", "1.4"],
+    ["SizeT", "3"],
+    ["SizeZ", "2"],
+    ["TimeIncrement", "7.5"],
+    ["PhysicalSizeZ", "0.5"],
+    ["PhysicalSizeY", "0.1"],
+    ["PhysicalSizeX", "0.1"],
+    ["basename", "exp_ome__s3_"],
+    ["channel_0_name", "GFP"],
+    ["channel_0_emWavelen", "510.0"]
+   ]
+  },
+  "Position_3/Images/exp_ome__s3_metadataXML.txt": {
+   "_info": {
+    "length": 1794,
+    "sha256": "8c880d428e2ca8bc648d16fb65f54426404cb79635c046d84e0fe3c631a77fe5"
+   },
+   "is_literal_None": false,
+   "kind": "metadataXML",
+   "nonempty": true
+  },
+  "Position_3/Images/exp_ome_s3_GFP.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [2, 0, 0, 0],
+    [2, 1, 0, 0],
+    [2, 2, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "0d3ac4e801a9476a6789b351b914c79a9d42e5daf5a2768c06c7d82431b264cf",
+   "shape": [3, 2, 16, 20]
+  }
+ },
+ "exceptions": [],
+ "files": ["exp.ome.tif"],
+ "message_boxes": [],
+ "pbar": {
+  "init": [3],
+  "step_sum": 3
+ },
+ "scenario": "S07b",
+ "signals": [
+  ["progress", "Reading OME metadata..."],
+  ["progress", "Reading sample image data..."],
+  ["confirmMetadata", 0],
+  ["progress", "Position 1/3: saving data to <DST>/Position_1/Images..."],
+  ["progress", "Position 3/3: saving data to <DST>/Position_3/Images..."],
+  ["finished"]
+ ],
+ "src": {
+  "exp.ome.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": {
+    "LensNA": [],
+    "images": [
+     {
+      "Channels": [
+       {
+        "EmissionWavelength": "510.0",
+        "Name": "GFP"
+       }
+      ],
+      "Name": "Scene #1",
+      "Pixels": {
+       "DimensionOrder": "XYZCT",
+       "PhysicalSizeX": "0.1",
+       "PhysicalSizeXUnit": "µm",
+       "PhysicalSizeY": "0.1",
+       "PhysicalSizeYUnit": "µm",
+       "PhysicalSizeZ": "0.5",
+       "PhysicalSizeZUnit": "µm",
+       "SizeC": "1",
+       "SizeT": "3",
+       "SizeX": "20",
+       "SizeY": "16",
+       "SizeZ": "2",
+       "TimeIncrement": "7.5",
+       "TimeIncrementUnit": "s",
+       "Type": "uint16"
+      }
+     },
+     {
+      "Channels": [
+       {
+        "EmissionWavelength": "510.0",
+        "Name": "GFP"
+       }
+      ],
+      "Name": "Scene #2",
+      "Pixels": {
+       "DimensionOrder": "XYZCT",
+       "PhysicalSizeX": "0.1",
+       "PhysicalSizeXUnit": "µm",
+       "PhysicalSizeY": "0.1",
+       "PhysicalSizeYUnit": "µm",
+       "PhysicalSizeZ": "0.5",
+       "PhysicalSizeZUnit": "µm",
+       "SizeC": "1",
+       "SizeT": "3",
+       "SizeX": "20",
+       "SizeY": "16",
+       "SizeZ": "2",
+       "TimeIncrement": "7.5",
+       "TimeIncrementUnit": "s",
+       "Type": "uint16"
+      }
+     },
+     {
+      "Channels": [
+       {
+        "EmissionWavelength": "510.0",
+        "Name": "GFP"
+       }
+      ],
+      "Name": "Scene #3",
+      "Pixels": {
+       "DimensionOrder": "XYZCT",
+       "PhysicalSizeX": "0.1",
+       "PhysicalSizeXUnit": "µm",
+       "PhysicalSizeY": "0.1",
+       "PhysicalSizeYUnit": "µm",
+       "PhysicalSizeZ": "0.5",
+       "PhysicalSizeZUnit": "µm",
+       "SizeC": "1",
+       "SizeT": "3",
+       "SizeX": "20",
+       "SizeY": "16",
+       "SizeZ": "2",
+       "TimeIncrement": "7.5",
+       "TimeIncrementUnit": "s",
+       "Type": "uint16"
+      }
+     }
+    ]
+   },
+   "origins": [
+    [0, 0, 0, 0],
+    [0, 1, 0, 0],
+    [0, 2, 0, 0]
+   ],
+   "other_series": [
+    {
+     "axes": "TZYX",
+     "dtype": "uint16",
+     "origins": [
+      [1, 0, 0, 0],
+      [1, 1, 0, 0],
+      [1, 2, 0, 0]
+     ],
+     "sha256": "4691927a8aa10abd77079b2135fea6b701b9c8c58b9af59d17e6475639168829",
+     "shape": [3, 2, 16, 20]
+    },
+    {
+     "axes": "TZYX",
+     "dtype": "uint16",
+     "origins": [
+      [2, 0, 0, 0],
+      [2, 1, 0, 0],
+      [2, 2, 0, 0]
+     ],
+     "sha256": "0d3ac4e801a9476a6789b351b914c79a9d42e5daf5a2768c06c7d82431b264cf",
+     "shape": [3, 2, 16, 20]
+    }
+   ],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "615f4f5547059a6d531bf53ae9188afc941b5e92777d4a4c86f1df4735a14dee",
+   "shape": [3, 2, 16, 20]
+  }
+ },
+ "task_ended": ["ended"]
+}

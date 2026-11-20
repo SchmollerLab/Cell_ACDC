@@ -189,18 +189,26 @@ def savez_compressed(filepath, *args, safe=True, **kwargs):
         np.savez_compressed(filepath, *args, **kwargs)
 
 def rename_files_replace_invalid_chars(files, src_path, replacement_char='_'):
-    renamed_files = []
-    for file in files:
-        invalid_chars = _validate_filename(file, is_path=False)
-        new_file = file
-        for char in invalid_chars:
-            new_file = new_file.replace(char, replacement_char)
-        if new_file != file:
-            src_filepath = os.path.join(src_path, file)
-            dst_filepath = os.path.join(src_path, new_file)
-            os.rename(src_filepath, dst_filepath)
-        renamed_files.append(new_file)
-    return renamed_files
+    """Rename the ``files`` of ``src_path`` whose name has invalid
+    characters (new names: ``acdc_datastruct.sources.planned_valid_filename``,
+    the rule of main) and return the new names of ``files`` in order.
+
+    The renames are planned with
+    ``acdc_datastruct.sources.plan_invalid_name_renames``, which raises
+    ``acdc_datastruct.errors.SourceError`` before anything is renamed when
+    a new name would overwrite a file or two files would get the same name.
+    """
+    from .acdc_datastruct import sources
+
+    files = list(files)
+    renames = sources.plan_invalid_name_renames(
+        src_path, files, replacement_char
+    )
+    for file, new_file in renames.items():
+        src_filepath = os.path.join(src_path, file)
+        dst_filepath = os.path.join(src_path, new_file)
+        os.rename(src_filepath, dst_filepath)
+    return [renames.get(file, file) for file in files]
 
 def move_separate_channels_tiffs_to_pos_folders(
         tiffs_folderpath: os.PathLike,

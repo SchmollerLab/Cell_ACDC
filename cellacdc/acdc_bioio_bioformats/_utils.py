@@ -45,14 +45,18 @@ def removeInvalidCharacters(chName_in):
     while trim_:
         chName = chName[:-1]
         trim_ = chName.endswith('_')
+    return chName
 
 def getFilename(
         filenameNOext, s0p, appendTxt, series, ext, 
-        return_basename=False
+        return_basename=False, image_name=''
     ):
     # Do not allow dots in the filename since it breaks stuff here and there
     filenameNOext = filenameNOext.replace('.', '_')
-    basename = f'{filenameNOext}_s{s0p}_'
+    if image_name:
+        basename = f'{filenameNOext}_{image_name}_s{s0p}_'
+    else:
+        basename = f'{filenameNOext}_s{s0p}_'
     filename = f'{basename}{appendTxt}{ext}'
     if return_basename:
         return filename, basename
@@ -134,12 +138,14 @@ def saveImgDataChannel(
         use_symlinks: bool,
         src_data_filepath: os.PathLike, 
         lazy_load: bool,
+        image_name: str = '',
     ):
     savedSizeT = timeRangeToSave[1] - timeRangeToSave[0] + 1
     imgData_ch = []
     if use_symlinks:
         filename = getFilename(
-            filenameNOext, s0p, 'symlink', series, '.ini'
+            filenameNOext, s0p, 'symlink', series, '.ini',
+            image_name=image_name
         )
         symlink_ini_filepath = os.path.join(images_path, filename)
         cp_symlink = ConfigParser()
@@ -147,7 +153,8 @@ def saveImgDataChannel(
             cp_symlink.read(symlink_ini_filepath)
     elif to_h5:
         filename = getFilename(
-            filenameNOext, s0p, chName, series, '.h5'
+            filenameNOext, s0p, chName, series, '.h5',
+            image_name=image_name
         )
         tempDir = tempfile.mkdtemp()
         tempFilepath = os.path.join(tempDir, filename)
@@ -167,7 +174,8 @@ def saveImgDataChannel(
         )
     else:
         filename = getFilename(
-            filenameNOext, s0p, chName, series, '.tif'
+            filenameNOext, s0p, chName, series, '.tif',
+            image_name=image_name
         )
 
     framesRange = range(timeRangeToSave[0]-1, timeRangeToSave[1])
@@ -277,6 +285,7 @@ def dump_exception(err, error_id):
         f'error_{error_id}.txt'
     )
 
+    os.makedirs(bioio_sample_data_folderpath, exist_ok=True)
     with open(error_path, 'w', encoding='utf-8') as file:
         file.write(traceback.format_exc())
 
@@ -331,15 +340,25 @@ def load_bioformats_extensions():
     return extensions
 
 def get_supported_image_extensions():
-    import bioio
-
-    # Extensions supported by BioIO plugins installed in the environment
-    bioio_extensions = set(bioio.plugins.get_plugins(use_cache=True))
+    """Extensions of the installed BioIO plugins (the extensions mapped to a
+    plugin in `EXTENSION_PACKAGE_MAPPER` when bioio is not installed) plus
+    the Bio-Formats extensions, with surrounding whitespace removed."""
+    try:
+        import bioio
+    except ImportError:
+        from . import EXTENSION_PACKAGE_MAPPER
+        reader_extensions = set(EXTENSION_PACKAGE_MAPPER)
+    else:
+        # Extensions supported by BioIO plugins installed in the environment
+        reader_extensions = set(bioio.plugins.get_plugins(use_cache=True))
 
     # Extensions advertised by Bio-Formats
     bioformats_extensions = load_bioformats_extensions()
 
-    return bioio_extensions | bioformats_extensions
+    return {
+        extension.strip()
+        for extension in reader_extensions | bioformats_extensions
+    }
 
 def import_reader(dotted_path: str):
     module_path, _, object_name = dotted_path.rpartition(".")

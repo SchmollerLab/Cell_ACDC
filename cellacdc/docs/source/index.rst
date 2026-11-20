@@ -133,6 +133,7 @@ Contents
    video-tutorials
    data-structure
    restructure-loose-tiff-files
+   data-cli
    data-structure-fiji
    contributing
    tooltips
