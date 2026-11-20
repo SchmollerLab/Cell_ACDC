@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from typing import Callable, Literal
+from xml.etree import ElementTree
 
 from .. import load
 from .reader import ImageReader, OMEXML
@@ -43,6 +44,43 @@ def _as_str(value: object) -> str | None:
 def _qualified_name(obj: object) -> str:
     cls = type(obj)
     return f'{cls.__module__}.{cls.__qualname__}'
+
+
+def metadata_text(metadata: object) -> str:
+    """Text of the `metadata` object of a bioio reader (metadataXML text).
+
+    A str is returned unchanged and bytes are decoded as UTF-8 (invalid
+    bytes replaced). An xml.etree or lxml element or element tree (bioio-czi
+    returns an xml.etree Element) is serialized as XML. An object with a
+    `to_xml()` method (the ome_types OME object of bioio-bioformats,
+    bioio-nd2 and bioio-ome-tiff) gives its OME-XML; when `to_xml()` raises
+    or does not return text, str() is used. Anything else, such as the dict
+    of TIFF tags of bioio-tifffile or None, gives str(metadata) ('None' for
+    None).
+    """
+    if isinstance(metadata, str):
+        return metadata
+    if isinstance(metadata, (bytes, bytearray)):
+        return bytes(metadata).decode('utf-8', errors='replace')
+    if isinstance(metadata, ElementTree.ElementTree):
+        metadata = metadata.getroot()
+    if isinstance(metadata, ElementTree.Element):
+        return ElementTree.tostring(metadata, encoding='unicode')
+    if type(metadata).__module__.startswith('lxml.'):
+        from lxml import etree
+        if isinstance(metadata, (etree._Element, etree._ElementTree)):
+            return etree.tostring(metadata, encoding='unicode')
+    to_xml = getattr(metadata, 'to_xml', None)
+    if callable(to_xml):
+        try:
+            text = to_xml()
+        except Exception:
+            logger.debug('to_xml() of %s raised', _qualified_name(metadata),
+                         exc_info=True)
+        else:
+            if isinstance(text, str):
+                return text
+    return str(metadata)
 
 
 def extract_from_metadata_object(
@@ -148,11 +186,13 @@ def read_raw_metadata(
     Otherwise ONE `ImageReader(path, lazy_load=lazy_load,
     bioimage_factory=reader_factory)` is opened and closed again;
     the expressions are evaluated on `reader.OMEXML().init_from_bioimage`,
-    metadata_xml is `str(bioimage.metadata)` and size_y, size_x and dtype
-    come from scene 0. A physical size the reader does not report is stored
-    as 1.0: on main the GUI received these values through the text round
-    trip of `OMEXML.init_from_file`, which turned them into 1.0 silently,
-    so storing None would add 'not found' warnings that main never showed.
+    metadata_xml is `metadata_text(bioimage.metadata)` (the XML text for
+    the readers that return an XML element or an OME object) and size_y,
+    size_x and dtype come from scene 0. A physical size the reader does not
+    report is stored as 1.0: on main the GUI received these values through
+    the text round trip of `OMEXML.init_from_file`, which turned them into
+    1.0 silently, so storing None would add 'not found' warnings that main
+    never showed.
 
     Exceptions propagate (the calling task adds the path).
     """
@@ -176,7 +216,7 @@ def read_raw_metadata(
         raw = extract_from_metadata_object(
             omexml, path=path, source='bioio',
             reader=_qualified_name(getattr(bioimage, 'reader', bioimage)),
-            metadata_xml=str(bioimage.metadata)
+            metadata_xml=metadata_text(bioimage.metadata)
         )
         for key in PHYSICAL_SIZE_KEYS:
             if raw[key] is None:

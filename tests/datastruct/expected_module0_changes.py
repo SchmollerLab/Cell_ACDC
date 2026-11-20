@@ -451,7 +451,9 @@ CHANGES: list[ExpectedChange] = [
         predicate=_none_text_became_metadata,
         description=(
             '*_metadataXML.txt for non-.ome.tif input holds the reader '
-            'metadata (str(bioimage.metadata)) instead of the text None.'
+            'metadata as text (`raw_metadata.metadata_text`: XML for '
+            'readers that return an XML element or an OME object) instead '
+            'of the text None.'
         ),
     ),
     # Metadata dialog (`convertUnits`); S17 shows nm pixel sizes.

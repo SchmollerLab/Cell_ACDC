@@ -4,13 +4,16 @@ evaluated into the JSON-safe RawFileMetadata dict.
 `extract_from_metadata_object` runs on the shared FakeOMEXML cascade grid
 (each raising accessor -> None); `read_raw_metadata` on FakeBioImage files
 (no bioio needed), synthetic '.ome.tif' files (tifffile only) and, with bioio
-installed, a real ImageJ TIFF.
+installed, a real ImageJ TIFF and (with bioio-czi) a real CZI file.
+`metadata_text` turns the reader metadata objects (str, XML elements, OME
+objects, others) into the metadataXML text.
 """
 from __future__ import annotations
 
 import json
 import math
 import re
+from xml.etree import ElementTree
 
 import pytest
 import tifffile
@@ -299,6 +302,114 @@ def test_reader_errors_propagate(tmp_path, stage):
         assert FakeBioImage.log[-1] == ('close', path)
 
 
+# ------------------------------------------------- metadataXML text
+def _reader_returning(metadata):
+    """FakeBioImage factory whose `metadata` is the object `metadata`."""
+    class MetadataObjectFake(FakeBioImage):
+        @property
+        def metadata(self):
+            self._metadata_access()
+            return metadata
+    return MetadataObjectFake
+
+
+def _read_metadata_xml(tmp_path, metadata):
+    path = _fake_raw(tmp_path)
+    raw = raw_metadata.read_raw_metadata(
+        path, reader_factory=_reader_returning(metadata)
+    )
+    _assert_json_safe(raw)
+    return raw['metadata_xml']
+
+
+def _czi_like_element():
+    root = ElementTree.Element('ImageDocument')
+    metadata = ElementTree.SubElement(root, 'Metadata')
+    scaling = ElementTree.SubElement(metadata, 'Distance', Id='X')
+    scaling.text = '1e-07'
+    unit = ElementTree.SubElement(scaling, 'DefaultUnitFormat')
+    unit.text = '\u00b5m & <nm>'
+    return root
+
+
+class _OmeLike:
+    """Stands for an ome_types OME object: str() is not XML."""
+    def to_xml(self):
+        return '<OME><Image Name="s1"/></OME>'
+
+    def __str__(self):
+        return "images=[<1 Image>]"
+
+
+class _BrokenToXml:
+    def to_xml(self):
+        raise ValueError('cannot serialize')
+
+    def __str__(self):
+        return 'broken'
+
+
+def test_element_metadata_is_written_as_xml(tmp_path):
+    """bioio-czi returns an ElementTree Element, whose str() is
+    "<Element 'ImageDocument' at 0x...>"."""
+    element = _czi_like_element()
+    text = _read_metadata_xml(tmp_path, element)
+    assert text == ElementTree.tostring(element, encoding='unicode')
+    parsed = ElementTree.fromstring(text)
+    assert parsed.tag == 'ImageDocument'
+    assert parsed.find('Metadata/Distance/DefaultUnitFormat').text == (
+        '\u00b5m & <nm>'
+    )
+
+
+def test_element_tree_metadata_is_written_as_xml(tmp_path):
+    element = _czi_like_element()
+    text = _read_metadata_xml(tmp_path, ElementTree.ElementTree(element))
+    assert text == ElementTree.tostring(element, encoding='unicode')
+
+
+def test_to_xml_metadata_is_written_as_xml(tmp_path):
+    text = _read_metadata_xml(tmp_path, _OmeLike())
+    assert text == '<OME><Image Name="s1"/></OME>'
+
+
+@pytest.mark.parametrize('metadata, expected', [
+    ('<FakeMetadata a="1"/>', '<FakeMetadata a="1"/>'),
+    ('', ''),
+    (None, 'None'),
+    ('\u00b5m'.encode('utf-8'), '\u00b5m'),
+    ({'ImageWidth': 9}, "{'ImageWidth': 9}"),
+    (_BrokenToXml(), 'broken'),
+])
+def test_other_metadata_objects(tmp_path, metadata, expected):
+    assert _read_metadata_xml(tmp_path, metadata) == expected
+
+
+def test_lxml_element_metadata_is_written_as_xml():
+    etree = pytest.importorskip('lxml.etree')
+    element = etree.fromstring('<ImageDocument><A b="1">x</A></ImageDocument>')
+    expected = '<ImageDocument><A b="1">x</A></ImageDocument>'
+    assert raw_metadata.metadata_text(element) == expected
+    tree = element.getroottree()
+    assert raw_metadata.metadata_text(tree) == expected
+
+
+def test_ome_types_metadata_is_written_as_ome_xml():
+    ome_types = pytest.importorskip('ome_types')
+    ome = ome_types.OME(images=[{
+        'name': 's1',
+        'pixels': {
+            'dimension_order': 'XYCZT', 'type': 'uint16', 'size_x': 2,
+            'size_y': 2, 'size_z': 1, 'size_c': 1, 'size_t': 1,
+            'metadata_only': True,
+        },
+    }])
+    text = raw_metadata.metadata_text(ome)
+    root = ElementTree.fromstring(text)
+    assert root.tag.endswith('}OME')
+    assert ome_types.from_xml(text).images[0].name == 's1'
+
+
 # ---------------------------------------------------- read_raw_metadata, OME
 def test_read_ome_tif(tmp_path):
     path = synthetic.make_ome_tif(str(tmp_path / 'multi.ome.tif'), lens_na=0.95)
@@ -369,6 +480,35 @@ def test_read_real_imagej_tif(tmp_path):
     assert raw['time_increment'] is None
     assert len(raw['channel_names']) == 2
     assert 'ImageJ' in raw['metadata_xml']
+    _assert_json_safe(raw)
+
+
+@requires_bioio
+def test_read_real_czi_writes_xml_text(tmp_path):
+    """bioio-czi returns its metadata as an ElementTree Element.
+
+    The reader is pinned: when bioio-bioformats is also installed, bioio may
+    pick it for '.czi' files instead of bioio-czi.
+    """
+    bioio_czi = pytest.importorskip('bioio_czi')
+    pyczi = pytest.importorskip('pylibCZIrw.czi')
+    import functools
+
+    import bioio
+    import numpy as np
+
+    path = str(tmp_path / 'img.czi')
+    with pyczi.create_czi(path) as czi:
+        for c in range(2):
+            czi.write(
+                np.full((6, 7), c + 1, np.uint16),
+                plane={'C': c, 'T': 0, 'Z': 0}
+            )
+    czi_factory = functools.partial(bioio.BioImage, reader=bioio_czi.Reader)
+    raw = raw_metadata.read_raw_metadata(path, reader_factory=czi_factory)
+    assert raw['reader'].startswith('bioio_czi.')
+    assert (raw['size_c'], raw['size_y'], raw['size_x']) == (2, 6, 7)
+    assert ElementTree.fromstring(raw['metadata_xml']).tag == 'ImageDocument'
     _assert_json_safe(raw)
 
 
