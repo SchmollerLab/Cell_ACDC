@@ -1,4 +1,5 @@
-"""micro-sam (Segment Anything for Microscopy) as a Cell-ACDC promptable model.
+"""micro-sam v1 (Segment Anything for Microscopy with the original Segment
+Anything models, SAM1) as a Cell-ACDC promptable model.
 
 This implements the interactive segmentation of the micro-sam "Annotator 2D"
 and "Annotator 3D" with point and box prompts (the "Annotator Tracking" is
@@ -24,35 +25,22 @@ propagated to the other z-slices like in the micro-sam "Annotator 3D"
 The image embeddings are cached, so that segmenting the same image again
 (e.g., after adding more prompts) only runs the (fast) prompt decoder.
 
-The Segment Anything (SAM1) API of micro-sam is imported with
-`_micro_sam_module`: micro-sam 2.0 moved it from the top-level modules
-(`micro_sam.util.get_sam_model`, `micro_sam.prompt_based_segmentation`,
-...) to `micro_sam.v1` (same functions and models), while micro-sam 1.x
-only has the top-level modules.
+micro-sam >= 2.0 is required: its SAM1 API is the `micro_sam.v1`
+subpackage (`micro_sam.v1.util.get_sam_model`,
+`micro_sam.v1.prompt_based_segmentation`, ...), while the top-level modules
+of micro-sam 2 are for SAM2. micro-sam is imported only when the model is
+used, because the GUI reads the parameters of this module in the main
+Cell-ACDC environment, where micro-sam is not installed.
 """
 import hashlib
-import importlib
 import os
 import threading
 from collections import defaultdict
 
 import numpy as np
 
-def _micro_sam_module(name):
-    """Return the module `name` (e.g., 'util') of the Segment Anything
-    (SAM1) API of micro-sam: `micro_sam.v1.<name>` (micro-sam >= 2.0) or
-    `micro_sam.<name>` (micro-sam 1.x)."""
-    try:
-        return importlib.import_module(f'micro_sam.v1.{name}')
-    except ModuleNotFoundError as err:
-        # Fall back only if `micro_sam.v1` does not exist (micro-sam 1.x),
-        # not if a dependency of micro-sam is missing
-        if err.name not in ('micro_sam.v1', f'micro_sam.v1.{name}'):
-            raise
-    return importlib.import_module(f'micro_sam.{name}')
-
-# Models of the official micro-sam model zoo. The `vit_t` models require
-# MobileSAM (installed in the isolated environment of micro-sam).
+# Models of the official micro-sam model zoo for SAM1. The `vit_t` models
+# require MobileSAM (installed in the isolated environment of micro-sam v1).
 class ModelType:
     values = [
         'vit_b_lm', 'vit_l_lm', 'vit_t_lm',
@@ -85,7 +73,7 @@ def _normalize_z(z):
     return 0 if _is_missing(z) else int(round(float(z)))
 
 def _get_torch_device(device):
-    util = _micro_sam_module('util')
+    from micro_sam.v1 import util
 
     if device in (None, '', 'None', 'auto'):
         return util.get_device(None)
@@ -125,7 +113,7 @@ def _check_mobile_sam(model_type):
         return
     raise ModuleNotFoundError(
         f'The micro-sam model "{model_type}" requires MobileSAM, which is '
-        'not installed in the micro-sam environment (its installation from '
+        'not installed in the micro-sam v1 environment (its installation from '
         'GitHub may have failed, see the log). Select a model that does not '
         'start with "vit_t", or install MobileSAM with:\n\n'
         f'"{sys.executable}" -m pip install {MOBILE_SAM_URL}'
@@ -164,12 +152,12 @@ class Model:
             checkpoint_path: os.PathLike = '',
             device: Device = 'auto',
         ):
-        """Initialize the micro-sam model (downloaded the first time)
+        """Initialize the micro-sam v1 model (downloaded the first time)
 
         Parameters
         ----------
         model_type : ModelType, optional
-            micro-sam model to use. The models ending with "_lm" are
+            micro-sam model (SAM1) to use. The models ending with "_lm" are
             finetuned on light microscopy data, "_em_organelles" on electron
             microscopy data, "_histopathology" on histopathology images and
             "_medical_imaging" on medical images. "vit_b", "vit_l", "vit_h"
@@ -185,7 +173,7 @@ class Model:
             Device used to run the model. 'auto' uses the GPU if available
             (CUDA or Apple MPS) and the CPU otherwise. Default is 'auto'
         """
-        util = _micro_sam_module('util')
+        from micro_sam.v1 import util
 
         if _is_missing(checkpoint_path) or checkpoint_path in ('', 'None'):
             checkpoint_path = None
@@ -335,7 +323,7 @@ class Model:
         (required for 3D propagation), otherwise only the ones of z-slice
         `z`. Only the embeddings of the last image are kept.
         """
-        util = _micro_sam_module('util')
+        from micro_sam.v1 import util
 
         if image_key != self._embeddings_image_key:
             self._embeddings = {}
@@ -379,7 +367,7 @@ class Model:
         ):
         """Segment one object on a 2D image or z-slice. Returns a boolean
         mask with `shape` or None if there are no positive prompts."""
-        pbs = _micro_sam_module('prompt_based_segmentation')
+        from micro_sam.v1 import prompt_based_segmentation as pbs
 
         has_positive = box is not None or any(label == 1 for label in labels)
         if not has_positive:
@@ -448,9 +436,9 @@ class Model:
         ):
         """Boolean mask of one object with the spatial shape of
         `prompt_image` (None if there are no positive prompts)."""
-        segment_mask_in_volume = _micro_sam_module(
-            'multi_dimensional_segmentation'
-        ).segment_mask_in_volume
+        from micro_sam.v1.multi_dimensional_segmentation import (
+            segment_mask_in_volume
+        )
 
         if not is_zstack:
             shape = prompt_image.shape[:2]

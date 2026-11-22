@@ -1,7 +1,9 @@
-"""micro-sam promptable model wrapper, tested with a fake `micro_sam` package.
+"""micro-sam v1 promptable model wrapper (SAM1 models of micro-sam), tested
+with a fake `micro_sam` package.
 
-micro-sam is not needed: a fake package that records the calls is
-registered in `sys.modules`.
+micro-sam is not needed: a fake package with the layout of micro-sam >= 2.0
+(SAM1 API in `micro_sam.v1`) that records the calls is registered in
+`sys.modules`.
 """
 import importlib.util
 import os
@@ -14,7 +16,7 @@ import pytest
 import cellacdc
 
 MODULE_PATH = os.path.join(
-    os.path.dirname(cellacdc.__file__), 'promptable_models', 'micro-sam',
+    os.path.dirname(cellacdc.__file__), 'promptable_models', 'micro-sam_v1',
     'acdcPromptSegment.py'
 )
 
@@ -30,33 +32,21 @@ def _load_module():
     return module
 
 
-MICRO_SAM_LAYOUTS = ('1.x', '2.0')
-
-
 class FakeMicroSam:
-    """Fake `micro_sam` modules.
+    """Fake `micro_sam` modules of micro-sam >= 2.0: the SAM1 API is in
+    `micro_sam.v1`, while the top-level `micro_sam.util` (SAM2) has no
+    `get_sam_model`.
 
     Masks: points --> square of +-3 pixels around the mean of the positive
     points; boxes --> the box. `segment_mask_in_volume` copies the mask of
     the first segmented z-slice to all the z-slices.
-
-    `layout` is the package layout of the micro-sam version: '1.x' has the
-    Segment Anything API in the top-level modules, '2.0' in `micro_sam.v1`
-    (the top-level `micro_sam.util` keeps only `get_device` and a private
-    `_get_sam_model`, see `_layout` fixture).
     """
-    layout = '1.x'
 
     def __init__(self):
         self.calls = []
         self.embeddings_calls = []
 
     def install(self, monkeypatch):
-        if self.layout == '1.x':
-            # Submodules of a real micro-sam >= 2.0 imported before
-            for name in list(sys.modules):
-                if name.startswith('micro_sam.v1.'):
-                    monkeypatch.delitem(sys.modules, name)
         for name, module in self.modules().items():
             monkeypatch.setitem(sys.modules, name, module)
 
@@ -77,7 +67,7 @@ class FakeMicroSam:
     def modules(self):
         fake = self
 
-        util = types.ModuleType('micro_sam.util')
+        util = types.ModuleType('micro_sam.v1.util')
         util.get_device = lambda device=None: (
             'cuda' if device is None else device
         )
@@ -95,7 +85,7 @@ class FakeMicroSam:
             return {'shape': image.shape, 'ndim': ndim}
         util.precompute_image_embeddings = precompute_image_embeddings
 
-        pbs = types.ModuleType('micro_sam.prompt_based_segmentation')
+        pbs = types.ModuleType('micro_sam.v1.prompt_based_segmentation')
 
         def segment_from_points(
                 predictor, points, labels, image_embeddings=None, i=None):
@@ -123,7 +113,9 @@ class FakeMicroSam:
         pbs.segment_from_box = segment_from_box
         pbs.segment_from_box_and_points = segment_from_box_and_points
 
-        mds = types.ModuleType('micro_sam.multi_dimensional_segmentation')
+        mds = types.ModuleType(
+            'micro_sam.v1.multi_dimensional_segmentation'
+        )
 
         def segment_mask_in_volume(
                 segmentation, predictor, image_embeddings, segmented_slices,
@@ -142,24 +134,7 @@ class FakeMicroSam:
 
         package = types.ModuleType('micro_sam')
         package.__path__ = []
-        sam_api = {
-            'util': util,
-            'prompt_based_segmentation': pbs,
-            'multi_dimensional_segmentation': mds,
-        }
-        if self.layout == '1.x':
-            modules = {'micro_sam': package}
-            for name, sam_module in sam_api.items():
-                sam_module.__name__ = f'micro_sam.{name}'
-                setattr(package, name, sam_module)
-                modules[f'micro_sam.{name}'] = sam_module
-            # micro_sam.v1 does not exist: importing `micro_sam.v1.<name>`
-            # fails with `ModuleNotFoundError.name == 'micro_sam.v1'`, as
-            # with a real micro-sam 1.x
-            modules['micro_sam.v1'] = None
-            return modules
-
-        # micro-sam >= 2.0
+        # The top-level modules of micro-sam 2 are for SAM2
         top_util = types.ModuleType('micro_sam.util')
         top_util.get_device = util.get_device
 
@@ -175,21 +150,18 @@ class FakeMicroSam:
             'micro_sam': package, 'micro_sam.util': top_util,
             'micro_sam.v1': v1,
         }
+        sam_api = {
+            'util': util,
+            'prompt_based_segmentation': pbs,
+            'multi_dimensional_segmentation': mds,
+        }
         for name, sam_module in sam_api.items():
-            sam_module.__name__ = f'micro_sam.v1.{name}'
             setattr(v1, name, sam_module)
             modules[f'micro_sam.v1.{name}'] = sam_module
             if name != 'util':
-                # Not in micro-sam 2.0
+                # Not in micro-sam 2
                 modules[f'micro_sam.{name}'] = None
         return modules
-
-
-@pytest.fixture(autouse=True, params=MICRO_SAM_LAYOUTS)
-def _layout(request, monkeypatch):
-    """Run the tests with the package layouts of micro-sam 1.x and 2.0."""
-    monkeypatch.setattr(FakeMicroSam, 'layout', request.param)
-    return request.param
 
 
 def _make_model(monkeypatch, **init_kwargs):
@@ -597,35 +569,25 @@ def test_prompts_are_reset_after_errors(monkeypatch):
     assert not model.points and not model.prompt_ids_image_mapper
 
 
-def test_sam_api_of_the_installed_micro_sam_version(monkeypatch, _layout):
-    """micro-sam 2.0 moved the Segment Anything API (`get_sam_model`, ...)
-    to `micro_sam.v1`; the top-level modules are used only by 1.x."""
-    fake = FakeMicroSam()
-    fake.install(monkeypatch)
-    module = _load_module()
-    prefix = 'micro_sam.v1' if _layout == '2.0' else 'micro_sam'
-    for name in ('util', 'prompt_based_segmentation',
-                 'multi_dimensional_segmentation'):
-        assert module._micro_sam_module(name).__name__ == f'{prefix}.{name}'
-    if _layout == '2.0':
-        assert not hasattr(sys.modules['micro_sam.util'], 'get_sam_model')
+def test_uses_the_sam1_api_of_micro_sam_v1():
+    """The SAM1 API is imported from `micro_sam.v1` (micro-sam >= 2.0),
+    never from the top-level (SAM2) modules of micro-sam."""
+    import ast
 
-
-def test_missing_micro_sam_dependency_is_not_hidden(monkeypatch):
-    """A dependency missing from micro-sam >= 2.0 is reported, instead of
-    falling back to the (missing) modules of micro-sam 1.x."""
-    module = _load_module()
-
-    def import_module(name):
-        err = ModuleNotFoundError("No module named 'elf'")
-        err.name = 'elf'
-        raise err
-    monkeypatch.setattr(
-        module, 'importlib',
-        types.SimpleNamespace(import_module=import_module)
-    )
-    with pytest.raises(ModuleNotFoundError, match="'elf'"):
-        module._micro_sam_module('multi_dimensional_segmentation')
+    with open(MODULE_PATH, encoding='utf-8') as file:
+        tree = ast.parse(file.read())
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            imported.add(node.module)
+        elif isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+    micro_sam_modules = {
+        name for name in imported if name.split('.')[0] == 'micro_sam'
+    }
+    assert micro_sam_modules == {
+        'micro_sam.v1', 'micro_sam.v1.multi_dimensional_segmentation'
+    }
 
 
 def test_incompatible_labels_shape(monkeypatch):
@@ -639,9 +601,7 @@ def test_incompatible_labels_shape(monkeypatch):
     importlib.util.find_spec('micro_sam') is None,
     reason='micro-sam is not installed'
 )
-def test_real_microsam_points_and_box(_layout):
-    if _layout != MICRO_SAM_LAYOUTS[0]:
-        pytest.skip('The real micro-sam does not depend on the fake layout')
+def test_real_microsam_points_and_box():
     import skimage.draw
 
     module = _load_module()
@@ -671,7 +631,7 @@ def test_package_import_checks_installation(monkeypatch):
     myutils.check_install_microsam()
     assert calls == [(
         ('micro_sam',),
-        {'pypi_name': 'micro_sam', 'min_version': '1.8',
+        {'pypi_name': 'micro_sam', 'min_version': '2.0',
          'include_lower_version': True},
     )]
 
@@ -680,8 +640,11 @@ def test_microsam_environment_config():
     from cellacdc import myutils
     from cellacdc.service import environment
 
-    assert environment.get_model_env_name('micro-sam') == '_acdc_micro_sam'
-    config = environment.load_model_env_config('micro-sam')
+    assert (
+        environment.get_model_env_name('micro-sam_v1')
+        == '_acdc_micro_sam_v1'
+    )
+    config = environment.load_model_env_config('micro-sam_v1')
     assert config['python'] == '3.12'
     assert config['torch'] is True and config['torch_version'] == '>=2.5,<3'
     defaults = dict(
@@ -693,11 +656,12 @@ def test_microsam_environment_config():
     )
     assert spec['pkg_name'] == 'micro_sam'
     assert spec['import_pkg_name'] == 'micro_sam'
-    # Installed with pip (official installation), minimum version inclusive
-    myutils._check_package_version_constraints(spec, '1.8.0')
-    myutils._check_package_version_constraints(spec, '1.9.0')
+    # Installed with pip (official installation), minimum version inclusive:
+    # micro-sam 1.x has no `micro_sam.v1`
+    myutils._check_package_version_constraints(spec, '2.0.0')
+    myutils._check_package_version_constraints(spec, '2.0.1')
     with pytest.raises(ModuleNotFoundError):
-        myutils._check_package_version_constraints(spec, '1.7.2')
+        myutils._check_package_version_constraints(spec, '1.9.0')
 
     # MobileSAM (vit_t models) from the GitHub archive: git not required.
     # Optional: the other models work without it

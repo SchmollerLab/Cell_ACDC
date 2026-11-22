@@ -676,7 +676,7 @@ def test_model_execution_init_timeout(monkeypatch, config, expected_args):
         model_execution, 'load_model_env_config', lambda name: dict(config)
     )
     execution = ModelExecution(
-        'micro-sam', model_kind='promptable',
+        'micro-sam_v1', model_kind='promptable',
         run_in_background=lambda f, *a: f(*a), log_func=Mock()
     )
     execution.prepare()
@@ -687,7 +687,7 @@ def test_model_execution_init_timeout(monkeypatch, config, expected_args):
 def test_microsam_init_timeout_config():
     from cellacdc.service.environment import load_model_env_config
 
-    assert load_model_env_config('micro-sam')['init_timeout'] >= 1800
+    assert load_model_env_config('micro-sam_v1')['init_timeout'] >= 1800
     assert 'init_timeout' not in load_model_env_config('segment_anything')
 
 

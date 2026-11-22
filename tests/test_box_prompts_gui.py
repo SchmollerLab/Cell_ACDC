@@ -185,8 +185,8 @@ class _Client(ModelClient):
 
 @pytest.mark.parametrize('model, zoom, image_omitted', [
     (_Model(), False, False),  # in-process (e.g., custom) model
-    (_Client('micro-sam'), False, True),
-    (_Client('micro-sam'), True, False),  # prompts on a crop
+    (_Client('micro-sam_v1'), False, True),
+    (_Client('micro-sam_v1'), True, False),  # prompts on a crop
     (_Client('sam2'), False, True),
     (_Client('SAM2'), False, False),  # custom model, case-sensitive
     (_Client('my_custom_model'), False, False),

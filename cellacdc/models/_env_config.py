@@ -229,12 +229,13 @@ MODEL_ENVS = {
             },
         ],
     },
-    # Promptable model, installed with pip as in the official micro-sam
-    # documentation (it also installs napari and Qt, which only live in this
-    # isolated environment). MobileSAM, needed only by the `vit_t` models, is
-    # not on PyPI: it is installed from the GitHub archive (no git required)
-    # at the commit pinned by micro-sam.
-    'micro-sam': {
+    # Promptable model (SAM1 models of micro-sam, `micro_sam.v1`, which
+    # requires micro-sam >= 2.0), installed with pip as in the official
+    # micro-sam documentation (it also installs napari and Qt, which only live
+    # in this isolated environment). MobileSAM, needed only by the `vit_t`
+    # models, is not on PyPI: it is installed from the GitHub archive (no git
+    # required) at the commit pinned by micro-sam.
+    'micro-sam_v1': {
         'python': '3.12',
         'torch': True,
         'torch_version': '>=2.5,<3',
@@ -242,7 +243,7 @@ MODEL_ENVS = {
         # (from ~40 MB for vit_t up to ~2.5 GB for vit_h)
         'init_timeout': 3600,
         'packages': [
-            {'pkg_name': 'micro_sam', 'min_version': '1.8',
+            {'pkg_name': 'micro_sam', 'min_version': '2.0',
              'include_lower_version': True},
         ],
         'setup_steps': [
