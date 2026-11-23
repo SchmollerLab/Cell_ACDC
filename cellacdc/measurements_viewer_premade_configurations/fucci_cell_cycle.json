@@ -117,13 +117,13 @@
       "order": 3,
       "equations": {
         "fucci_ramp_pattern": "`{GEMININ}_ramp` - `{CDT1}_ramp`",
-        "fucci_rel_diff": "abs(`{GEMININ}_fucci` - `{CDT1}_fucci`) / (`{GEMININ}_fucci` + `{CDT1}_fucci`)"
+        "fucci_rel_diff": "abs(`{GEMININ}_fucci` - `{CDT1}_fucci`) / (abs(`{GEMININ}_fucci`) + abs(`{CDT1}_fucci`))"
       }
     },
     {
       "order": 4,
       "equations": {
-        "fucci_crossing": "(fucci_ramp_pattern == 2) & (fucci_rel_diff <= 0.1)"
+        "fucci_crossing": "(fucci_ramp_pattern == 2) & (fucci_rel_diff <= 0.1) & (`{GEMININ}_fucci` + `{CDT1}_fucci` >= 0.2)"
       }
     }
   ],
@@ -221,11 +221,16 @@
       "symbol": "'s' square",
       "symbolColor": [255, 0, 0, 255],
       "shortcut": "D",
-      "description": "Cell to be excluded from analysis.",
+      "description": "Cell to be excluded from analysis. Predicted for cells without a mother that appear after the first frame (e.g. moved into the field of view).",
       "keepActive": true,
       "isHideChecked": true,
-      "autoApply": false,
-      "overridesPhases": true
+      "autoApply": true,
+      "overridesPhases": true,
+      "predictor": {
+        "type": "equation",
+        "equation": "(MIN(frame_i) > 0) & (MAX(parent_ID_tree) <= 0)",
+        "consolidation": "all"
+      }
     },
     {
       "name": "Arrested",
