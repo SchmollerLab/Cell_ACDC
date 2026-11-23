@@ -908,6 +908,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.notLoadedChNames = []
         if not hasattr(self, 'save_object_counts_table'):
             self.save_object_counts_table = False
+        if not hasattr(self, 'delete_unselected_existing_measurements'):
+            # None = not asked, True = delete the existing measurement
+            # columns that are not selected, False = keep them
+            self.delete_unselected_existing_measurements = None
     
     def log(self, message, level='INFO'):
         try:
@@ -976,6 +980,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
         
         params['save_object_counts_table'] = self.save_object_counts_table
+        params['delete_unselected_existing_measurements'] = bool(
+            getattr(self, 'delete_unselected_existing_measurements', False)
+        )
         
         return params
         
@@ -1001,6 +1008,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.save_object_counts_table = config_params.get(
             'save_object_counts_table', False
         )
+        self.delete_unselected_existing_measurements = config_params.get(
+            'delete_unselected_existing_measurements', False
+        ) is True
         if 'channel_indipendent_custom_metrics_to_save' in config_params:
             self.chIndipendCustomMetricsToSave = (
                 config_params['channel_indipendent_custom_metrics_to_save']
@@ -1033,13 +1043,17 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.save_object_counts_table = yes
     
     def set_metrics_from_set_measurements_dialog(self, setMeasurementsDialog):
+        """Set the measurements to compute from the selection of
+        `apps.SetMeasurementsDialog` (its `selectedMetrics` helpers:
+        checkboxes left checked in an unchecked group are not selected).
+        """
         self.chNamesToSkip = []
         self.chNamesToProcess = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
         self.calc_for_each_zslice_mapper = {}
         self.calc_size_for_each_zslice = False
-        
+
         # Remove unchecked metrics and load checked not loaded channels
         for chNameGroupbox in setMeasurementsDialog.chNameGroupboxes:
             chName = chNameGroupbox.chName
@@ -1047,79 +1061,235 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 # Skip entire channel
                 self.chNamesToSkip.append(chName)
                 continue
-            
+
             self.chNamesToProcess.append(chName)
             self.calc_for_each_zslice_mapper[chName] = (
                 chNameGroupbox.calcForEachZsliceRequested
             )
+            selected = set(chNameGroupbox.selectedMetrics())
+            self.metricsToSkip.setdefault(chName, [])
+            self.metricsToSave.setdefault(chName, [])
             for checkBox in chNameGroupbox.checkBoxes:
                 colname = checkBox.text()
-                if not checkBox.isChecked():
+                if colname not in selected:
                     self.metricsToSkip[chName].append(colname)
                 else:
                     self.metricsToSave[chName].append(colname)
-                    func_name = colname[len(chName):]
 
+        sizeMetricsQGBox = setMeasurementsDialog.sizeMetricsQGBox
         self.calc_size_for_each_zslice = (
-            setMeasurementsDialog.sizeMetricsQGBox.calcForEachZsliceRequested
+            sizeMetricsQGBox.calcForEachZsliceRequested
+            and sizeMetricsQGBox.isChecked()
         )
-        if not setMeasurementsDialog.sizeMetricsQGBox.isChecked():
-            self.sizeMetricsToSave = []
-        else:
-            self.sizeMetricsToSave = []
-            title = setMeasurementsDialog.sizeMetricsQGBox.title()
-            for checkBox in setMeasurementsDialog.sizeMetricsQGBox.checkBoxes:
-                if checkBox.isChecked():
-                    self.sizeMetricsToSave.append(checkBox.text())
+        self.sizeMetricsToSave = sizeMetricsQGBox.selectedMetrics()
+        self.regionPropsToSave = tuple(
+            setMeasurementsDialog.regionPropsQGBox.selectedMetrics()
+        )
 
-        if not setMeasurementsDialog.regionPropsQGBox.isChecked():
-            self.regionPropsToSave = ()
-        else:
-            self.regionPropsToSave = []
-            title = setMeasurementsDialog.regionPropsQGBox.title()
-            for checkBox in setMeasurementsDialog.regionPropsQGBox.checkBoxes:
-                if checkBox.isChecked():
-                    self.regionPropsToSave.append(checkBox.text())
-                    
-            self.regionPropsToSave = tuple(self.regionPropsToSave)
-
-        if setMeasurementsDialog.chIndipendCustomeMetricsQGBox is not None:
-            skipAll = (
-                not setMeasurementsDialog.chIndipendCustomeMetricsQGBox.isChecked()
-            )
-            if not skipAll:
-                title = setMeasurementsDialog.chIndipendCustomeMetricsQGBox.title()
-            chIndipendCustomMetricsToSave = []
-            win = setMeasurementsDialog
-            checkBoxes = win.chIndipendCustomeMetricsQGBox.checkBoxes
-            for checkBox in checkBoxes:
-                if skipAll:
-                    continue
-    
-                if checkBox.isChecked():
-                    chIndipendCustomMetricsToSave.append(checkBox.text())           
-
+        win = setMeasurementsDialog
+        if win.chIndipendCustomeMetricsQGBox is not None:
             self.chIndipendCustomMetricsToSave = tuple(
-                chIndipendCustomMetricsToSave
+                win.chIndipendCustomeMetricsQGBox.selectedMetrics()
             )
-        
-        self.mixedChCombineMetricsToSkip = []
-        if setMeasurementsDialog.mixedChannelsCombineMetricsQGBox is not None:
-            skipAll = (
-                not setMeasurementsDialog.mixedChannelsCombineMetricsQGBox.isChecked()
-            )
-            if not skipAll:
-                title = setMeasurementsDialog.mixedChannelsCombineMetricsQGBox.title()
-            mixedChCombineMetricsToSkip = []
-            win = setMeasurementsDialog
-            checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
-            for checkBox in checkBoxes:
-                if skipAll:
-                    mixedChCombineMetricsToSkip.append(checkBox.text())
-                elif not checkBox.isChecked():
-                    mixedChCombineMetricsToSkip.append(checkBox.text())
 
-            self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
+        self.mixedChCombineMetricsToSkip = []
+        if win.mixedChannelsCombineMetricsQGBox is not None:
+            selected = set(win.mixedChannelsSelectedMetrics())
+            checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
+            self.mixedChCombineMetricsToSkip = tuple(
+                checkBox.text() for checkBox in checkBoxes
+                if checkBox.text() not in selected
+            )
+
+        self._unselected_existing_cache = None
+        if getattr(win, 'uncheckedExistingAsked', False):
+            self.delete_unselected_existing_measurements = bool(
+                win.delExistingCols
+            )
+        else:
+            self.delete_unselected_existing_measurements = None
+
+    def _metrics_with_inputs(self, posData):
+        """Selected channel metrics plus the ones they are computed from.
+
+        Concentrations are computed from the amount, amounts from the
+        background median and channel combined measurements from their
+        equation. Inputs that are not selected are computed anyway (they
+        might have been deleted from the existing table or never computed)
+        and dropped before saving (`_drop_helper_columns`).
+
+        Returns
+        -------
+        tuple
+            `({channel: [colnames]}, set of helper colnames)`
+        """
+        metrics_to_compute = {
+            channel: list(colnames)
+            for channel, colnames in self.metricsToSave.items()
+        }
+        helpers = set()
+        skipped = set(getattr(self, 'chNamesToSkip', ()))
+        channels = sorted(metrics_to_compute, key=len, reverse=True)
+
+        def is_computable(channel, colname):
+            params = measurements.get_metrics_params(
+                {channel: [colname]}, self.metrics_func, self.custom_func_dict
+            )
+            bkgr, foregr, concentration, custom = params
+            return (
+                colname in bkgr[channel] or colname in foregr[channel]
+                or colname in concentration or colname in custom[channel]
+            )
+
+        def add(colname):
+            for channel in channels:
+                if not colname.startswith(f'{channel}_'):
+                    continue
+                if channel in skipped:
+                    return
+                if colname in metrics_to_compute[channel]:
+                    return
+                if not is_computable(channel, colname):
+                    # E.g. annotations or measurements of other tools: the
+                    # existing values are used
+                    return
+                metrics_to_compute[channel].append(colname)
+                helpers.add(colname)
+                return
+
+        # Inputs of channel combined measurements
+        isSegm3D = getattr(self, 'isSegm3D', False)
+        equations = {}
+        config = getattr(posData, 'combineMetricsConfig', None)
+        for channel in channels:
+            _, channel_equations = measurements.channel_combine_metrics_desc(
+                channel, posData=posData, isSegm3D=isSegm3D
+            )
+            equations.update(channel_equations)
+        if config is not None:
+            for section in ('equations', 'user_path_equations'):
+                if config.has_section(section):
+                    equations.update(config[section])
+        mixed_to_skip = set(getattr(self, 'mixedChCombineMetricsToSkip', ()))
+        _, mixed_equations = measurements.combine_mixed_channels_desc(
+            posData=posData, isSegm3D=isSegm3D
+        )
+        selected_combined = [
+            colname for colnames in self.metricsToSave.values()
+            for colname in colnames
+        ]
+        for name, equation in mixed_equations.items():
+            if name in mixed_to_skip:
+                continue
+            equations[name] = equation
+            selected_combined.append(name)
+        for colname in selected_combined:
+            equation = equations.get(colname)
+            if not equation:
+                continue
+            spans = measurements.equation_variable_spans(equation)
+            for name, _, _ in spans:
+                add(name)
+        
+        # Concentration --> amount --> background median
+        for channel in channels:
+            for colname in list(metrics_to_compute[channel]):
+                idx = colname.find('_from_vol_')
+                if colname.find('_concentration_') == -1 or idx == -1:
+                    continue
+                unit_how = colname[idx+len('_from_vol_'):]
+                how = unit_how[unit_how.find('_'):] if '_' in unit_how else ''
+                add(colname[:idx].replace('_concentration_', '_amount_') + how)
+
+        for channel in channels:
+            for colname in list(metrics_to_compute[channel]):
+                if colname.find('_amount_') == -1:
+                    continue
+                if colname.find('manualBkgr') != -1:
+                    continue
+                add(re.sub(
+                    r'amount_([A-Za-z]+)(_?[A-Za-z0-9]*)$',
+                    r'\g<1>_bkgrVal_median\g<2>', colname
+                ))
+
+        return metrics_to_compute, helpers
+
+    def _measurement_channels(self, posData):
+        channels = list(posData.chNames)
+        for channel in (*self.ch_names, *(self.metricsToSave or {})):
+            if channel not in channels:
+                channels.append(channel)
+        return channels
+
+    def unselected_existing_measurements(self, colnames, posData):
+        """Measurement columns in `colnames` that the current selection does
+        not save (see `measurements.unselected_measurement_columns`)."""
+        if getattr(self, 'metricsToSave', None) is None:
+            # No selection --> every measurement is saved
+            return []
+
+        channels = self._measurement_channels(posData)
+        isSegm3D = getattr(self, 'isSegm3D', False)
+        selected = set()
+        for colnames_ch in self.metricsToSave.values():
+            selected.update(colnames_ch)
+        selected.update(self.sizeMetricsToSave or ())
+        selected.update(self.regionPropsToSave or ())
+        selected.update(getattr(self, 'chIndipendCustomMetricsToSave', ()))
+
+        # Combined measurements
+        other = set()
+        for channel in channels:
+            combine_desc, _ = measurements.channel_combine_metrics_desc(
+                channel, posData=posData, isSegm3D=isSegm3D
+            )
+            other.update(combine_desc)
+        config = getattr(posData, 'combineMetricsConfig', None)
+        if config is not None:
+            for section in ('equations', 'user_path_equations'):
+                if config.has_section(section):
+                    other.update(config[section].keys())
+        mixed_desc, _ = measurements.combine_mixed_channels_desc(
+            posData=posData, isSegm3D=isSegm3D
+        )
+        other.update(mixed_desc)
+        mixed_to_skip = set(getattr(self, 'mixedChCombineMetricsToSkip', ()))
+        selected.update(
+            name for name in mixed_desc if name not in mixed_to_skip
+        )
+
+        zslice_channels = [
+            channel for channel, value
+            in self.calc_for_each_zslice_mapper.items() if value
+        ]
+        return measurements.unselected_measurement_columns(
+            colnames, channels, selected,
+            other_measurement_cols=other,
+            zslice_channels=zslice_channels,
+            calc_size_for_each_zslice=self.calc_size_for_each_zslice
+        )
+
+    def _drop_unselected_existing_measurements(self, acdc_df, posData):
+        """Drop the measurement columns of an existing table that are not
+        selected, when the user chose to delete them (Delete/Keep question
+        of `apps.SetMeasurementsDialog.ok_cb`)."""
+        if not getattr(self, 'delete_unselected_existing_measurements', False):
+            return acdc_df
+
+        columns = tuple(acdc_df.columns)
+        cache = getattr(self, '_unselected_existing_cache', None)
+        if cache is None or cache[0] != id(posData) or cache[1] != columns:
+            unselected = self.unselected_existing_measurements(
+                columns, posData
+            )
+            cache = (id(posData), columns, unselected)
+            self._unselected_existing_cache = cache
+
+        unselected = cache[2]
+        if not unselected:
+            return acdc_df
+
+        return acdc_df.drop(columns=unselected)
 
     def _init_metrics_to_save(self, posData):
         posData.setLoadedChannelNames()
@@ -1149,8 +1319,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # Get metrics parameters --> function name, how etc
         self.metrics_func, _ = measurements.standard_metrics_func()
         self.custom_func_dict = measurements.get_custom_metrics_func()
+        self._metrics_to_compute, self._helper_metrics = (
+            self._metrics_with_inputs(posData)
+        )
         params = measurements.get_metrics_params(
-            self.metricsToSave, self.metrics_func, self.custom_func_dict
+            self._metrics_to_compute, self.metrics_func, self.custom_func_dict
         )
         (bkgr_metrics_params, foregr_metrics_params, 
         concentration_metrics_params, custom_metrics_params) = params
@@ -1339,9 +1512,13 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # Arrays loaded from the dataPrep background archives are cached
         # to avoid re-reading (and decompressing) them for every frame
         self._bkgr_archive_cache = {}
+        self._unselected_existing_cache = None
 
         acdc_df_li = []
         keys = []
+        # Columns present before computing: helper columns computed only
+        # as inputs of the selected measurements are kept if present
+        existing_cols = set()
         for frame_i in range(stop_frame_n):
             if saveDataWorker is not None:
                 stop = saveDataWorker.checkAbort()
@@ -1395,6 +1572,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 continue
             
             try:
+                acdc_df = self._drop_unselected_existing_measurements(
+                    acdc_df, posData
+                )
+                existing_cols.update(acdc_df.columns)
                 acdc_df = self._add_volume_metrics(acdc_df, rp, posData)
                 acdc_df, calc_metrics_addtional_args = self._init_calc_metrics(
                     acdc_df, rp, frame_i, lab, posData, 
@@ -1447,6 +1628,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 saveDataWorker.emitUpdateProgressBar()
 
         self._bkgr_archive_cache = None
+        self._unselected_existing_cache = None
 
         if not acdc_df_li:
             print('-'*30)
@@ -1459,17 +1641,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             return
         
         self._concat_and_save_acdc_df(
-            acdc_df_li, keys, posData, save_metrics, 
-            computeMetricsWorker=computeMetricsWorker, 
+            acdc_df_li, keys, posData, save_metrics,
+            computeMetricsWorker=computeMetricsWorker,
             saveDataWorker=saveDataWorker,
             last_cca_frame_i=last_cca_frame_i,
-            stop_frame_n=stop_frame_n
+            stop_frame_n=stop_frame_n,
+            existing_cols=existing_cols
         )
     
     def _concat_and_save_acdc_df(
             self, acdc_df_li, keys, posData, save_metrics,
             computeMetricsWorker=None, saveDataWorker=None,
-            last_cca_frame_i=None, stop_frame_n=None
+            last_cca_frame_i=None, stop_frame_n=None, existing_cols=None
         ):
         
         all_frames_acdc_df = pd.concat(
@@ -1479,6 +1662,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         if save_metrics:
             self._add_combined_metrics(
                 posData, all_frames_acdc_df, saveDataWorker=saveDataWorker
+            )
+            all_frames_acdc_df = self._drop_helper_columns(
+                all_frames_acdc_df, existing_cols
             )
         
         all_frames_acdc_df = self._add_additional_metadata(
@@ -1593,6 +1779,42 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             obj.vol_fl = vol_fl
         return rp
     
+    def _volume_metrics_columns(self):
+        cols = ['cell_area_pxl', 'cell_vol_vox', 'cell_area_um2', 'cell_vol_fl']
+        if getattr(self, 'isSegm3D', False):
+            cols.extend(['cell_vol_vox_3D', 'cell_vol_fl_3D'])
+        return cols
+
+    def _drop_helper_columns(self, df, existing_cols=None):
+        """Drop the columns computed only as inputs of the selected
+        measurements: the size columns written by `_add_volume_metrics`
+        (needed by concentration, custom and combined measurements) and the
+        channel metrics of `_helper_metrics` (see `_metrics_with_inputs`),
+        unless the table already had them (kept on purpose)."""
+        if existing_cols is None:
+            existing_cols = set()
+
+        helpers = set(getattr(self, '_helper_metrics', ()))
+        size_metrics_to_save = getattr(self, 'sizeMetricsToSave', None)
+        if size_metrics_to_save is not None:
+            helpers.update(
+                col for col in self._volume_metrics_columns()
+                if col not in size_metrics_to_save
+            )
+
+        to_drop = []
+        for col in df.columns:
+            if col in existing_cols:
+                continue
+            if col in helpers:
+                to_drop.append(col)
+                continue
+            m = re.match(r'^(.+_zSlice)\d+$', col)
+            if m is not None and m.group(1) in helpers:
+                # Computed for each z-slice
+                to_drop.append(col)
+        return df.drop(columns=to_drop)
+
     def _add_volume_metrics(self, df, rp, posData):
         PhysicalSizeY = posData.PhysicalSizeY
         PhysicalSizeX = posData.PhysicalSizeX
@@ -1624,9 +1846,16 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
             
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
-        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
-        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
+        for col, values in (
+                ('cell_vol_vox', IDs_vol_vox), ('cell_vol_fl', IDs_vol_fl)
+            ):
+            vol = pd.Series(data=values, index=IDs, dtype=float)
+            if col in df.columns:
+                # The volume is computed only when selected --> keep the
+                # existing values where it was not computed
+                vol = vol.reindex(df.index).fillna(df[col])
+            df[col] = vol
         if self.isSegm3D:
             df['cell_vol_vox_3D'] = pd.Series(
                 data=IDs_vol_vox_3D, index=IDs, dtype=float
@@ -1717,6 +1946,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             manualBackgrRp = skimage.measure.regionprops(manualBackgrLab)
         isZstack = posData.SizeZ > 1
         isSegm3D = self.isSegm3D
+        # Helper metrics (`_metrics_with_inputs`) are not pre-filled: their
+        # existing values are kept until they are computed
         all_channels_metrics = self.metricsToSave
         size_metrics_to_save = self.sizeMetricsToSave
         regionprops_to_save = self.regionPropsToSave
@@ -1728,7 +1959,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         all_columns = list(size_metrics_to_save)
         for channel, metrics in all_channels_metrics.items():
             all_columns.extend(metrics)
-        all_columns.extend(regionprops_to_save)
+        all_columns.extend(
+            prop for prop in regionprops_to_save
+            if measurements.PROPS_DTYPES.get(prop) in (int, float)
+            and prop != 'label'
+        )
 
         df_shape = (len(acdc_df), len(all_columns))
         data = np.zeros(df_shape)
@@ -1788,6 +2023,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # or at initMetricsToSave
         self.metricsToSave = None
         self.save_object_counts_table = False
+        self.delete_unselected_existing_measurements = None
         if isSegm3D:
             self.regionPropsToSave = measurements.get_props_names_3D()
         else:
@@ -2083,7 +2319,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # Add channel specifc combined metrics (from equations and 
         # from user_path_equations sections)
         config = posData.combineMetricsConfig
+        chNamesToSkip = getattr(self, 'chNamesToSkip', [])
         for chName in posData.loadedChNames:
+            if chName in chNamesToSkip:
+                continue
             metricsToSkipChannel = self.metricsToSkip.get(chName, [])
             posDataEquations = config['equations']
             userPathChEquations = config['user_path_equations']

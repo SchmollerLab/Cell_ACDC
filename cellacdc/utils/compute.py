@@ -333,6 +333,44 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.measurementsWin.restoreState(self.measurementsWinState)
 
     @staticmethod
+    def _getAllAcdcDfColumns(allPosDataInputs):
+        """Ordered union of the columns of the existing acdc_output tables"""
+        columns = []
+        seen = set()
+        for posDataInputs in allPosDataInputs:
+            for col in posDataInputs.get('acdcDfColumns', []):
+                if col in seen:
+                    continue
+                seen.add(col)
+                columns.append(col)
+        return columns
+
+    def askDeleteUnselectedExistingMeasurements(
+            self, posData, allPosDataInputs
+        ):
+        """With "Use the same selection for all following experiments", ask
+        the Delete/Keep question of the dialog the first time an experiment
+        has existing measurements that are not selected."""
+        kernel = self.worker.kernel
+        if kernel.delete_unselected_existing_measurements is not None:
+            return
+
+        unselected = kernel.unselected_existing_measurements(
+            self._getAllAcdcDfColumns(allPosDataInputs), posData
+        )
+        if not unselected:
+            return
+
+        cancel, delete = apps.askDeleteUncheckedExistingMeasurements(
+            self, unselected, acdc_df_path=posData.images_path
+        )
+        if cancel:
+            self.worker.abort = True
+            return
+
+        kernel.delete_unselected_existing_measurements = delete
+
+    @staticmethod
     def _getAllChNames(posData, allPosDataInputs):
         """Ordered union of the channel names found in all positions
         (order of first appearance, starting from `posData`)."""
@@ -349,6 +387,9 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
                 self.doNotAskAgain
                 and set(allChNames) == set(self.worker.kernel.ch_names)
             ):
+            self.askDeleteUnselectedExistingMeasurements(
+                posData, allPosDataInputs
+            )
             self.worker.waitCond.wakeAll()
             return
 
@@ -383,7 +424,11 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             favourite_funcs=favourite_funcs, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
             allPosData=self.allPosData,
-            addDoNotAskAgainCheckbox=True
+            addDoNotAskAgainCheckbox=True,
+            # Existing columns --> on OK the dialog asks whether to delete
+            # the existing measurements that are not selected
+            allPos_acdc_df_cols=self._getAllAcdcDfColumns(allPosDataInputs),
+            acdc_df_path=posData.images_path,
         )
         self.measurementsWin.sigClosed.connect(self.askSaveObjectsCount)
         self.measurementsWin.sigCancel.connect(self.cancelWorkerMeasurementsWin)

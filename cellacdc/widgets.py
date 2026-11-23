@@ -5477,6 +5477,11 @@ class _metricsQGBox(QGroupBox):
     def toggled_cb(self, checked):
         alreadyWarnedRequired = False
         for checkbox in self.checkBoxes:
+            if getattr(checkbox, 'forcedByCombined', False):
+                # Input of a checked combined measurement --> stays checked
+                # (see `SetMeasurementsDialog.setDisabledMetricsRequestedForCombined`)
+                continue
+
             if self.doesWarnOnUncheck and alreadyWarnedRequired:
                 checkbox.blockSignals(True)
 
@@ -5539,9 +5544,37 @@ class _metricsQGBox(QGroupBox):
         if self._parent is not None:
             self._parent.doNotWarn = True
         for checkBox in self.checkBoxes:
+            if checkBox.isHidden():
+                # Deleted (e.g. combined measurement)
+                continue
             checkBox.setChecked(checked)
+            if not self.isChecked():
+                # Restored by `toggled_cb` when the group is checked again
+                self.checkedState[checkBox] = checkBox.isChecked()
         if self._parent is not None:
             self._parent.doNotWarn = False
+
+    def selectedMetrics(self):
+        """Names of the selected metrics, in display order.
+
+        A metric is selected when its checkbox is checked and the group is
+        checked. Checked metrics of an unchecked group are selected only
+        when another selected measurement requires them (`isRequired`, e.g.
+        the background median of an amount) or a checked combined
+        measurement uses them (`forcedByCombined`).
+        """
+        selected = []
+        for checkBox in self.checkBoxes:
+            if not checkBox.isChecked() or checkBox.isHidden():
+                continue
+            isNeeded = (
+                getattr(checkBox, 'isRequired', False)
+                or getattr(checkBox, 'forcedByCombined', False)
+            )
+            if not self.isChecked() and not isNeeded:
+                continue
+            selected.append(checkBox.text())
+        return selected
 
     def showInfo(self, checked=False):
         info_txt = self.sender().info
@@ -5670,15 +5703,38 @@ class channelMetricsQGBox(QGroupBox):
     def toggleCalcForEachZslice(self, label, toggle=None):
         if toggle is None:
             toggle = self.calcForEachZsliceToggle
-        
+
         toggle.setChecked(not toggle.isChecked())
-    
+
     def isCalcForEachZsliceRequested(self):
         if self.calcForEachZsliceToggle is None:
             return False
-        
+
         return self.calcForEachZsliceToggle.isChecked()
-    
+
+    def subGroupboxes(self):
+        """Standard, background and (if present) custom measurements groups"""
+        groupboxes = list(self.groupboxes)
+        customMetricsQGBox = getattr(self, 'customMetricsQGBox', None)
+        if customMetricsQGBox is not None:
+            groupboxes.append(customMetricsQGBox)
+        return groupboxes
+
+    def selectedMetrics(self):
+        """Names of the selected metrics of this channel, in display order.
+
+        Nothing is selected when the channel group is unchecked. Otherwise
+        see `_metricsQGBox.selectedMetrics` for each sub-group (checkboxes
+        left checked in an unchecked sub-group are not selected).
+        """
+        if not self.isChecked():
+            return []
+
+        selected = []
+        for groupbox in self.subGroupboxes():
+            selected.extend(groupbox.selectedMetrics())
+        return selected
+
     def uncheckAndDisableDataPrepIfPosNotPrepped(self, posData):
         # Uncheck and disable dataprep metrics if pos is not prepped
         if posData is None:
@@ -5792,11 +5848,27 @@ class channelMetricsQGBox(QGroupBox):
             return
         
         if checked:
-            bkgrCheckbox.setChecked(True)
+            if not bkgrCheckbox.isChecked():
+                # Checked only because it is required --> uncheck it again
+                # when it is not required anymore
+                bkgrCheckbox.uncheckWhenNotRequired = True
             bkgrCheckbox.isRequired = True
+            bkgrCheckbox.setChecked(True)
         else:
             bkgrCheckbox.setDisabled(False)
             bkgrCheckbox.isRequired = False
+            bkgrValsQGBox = self.groupboxes[1]
+            uncheck = (
+                getattr(bkgrCheckbox, 'uncheckWhenNotRequired', False)
+                or not bkgrValsQGBox.isChecked()
+            )
+            bkgrCheckbox.uncheckWhenNotRequired = False
+            if uncheck:
+                # The user unchecked it (or its group) while it was
+                # required --> do not keep it checked
+                bkgrCheckbox.setChecked(False)
+                if not bkgrValsQGBox.isChecked():
+                    bkgrValsQGBox.checkedState[bkgrCheckbox] = False
     
     def backgroundMetricToggled(self, checked):
         """Method called when a checkbox of a background metric is toggled.
@@ -5812,16 +5884,18 @@ class channelMetricsQGBox(QGroupBox):
             return
         
         checkbox = self.sender()
-        if not hasattr(checkbox, 'isRequired'):
+        if not getattr(checkbox, 'isRequired', False):
+            # Toggled while not required --> the state is the user's choice
+            checkbox.uncheckWhenNotRequired = False
             return
-        
-        if not checkbox.isRequired:
-            return
-        
+
         if checkbox.isChecked():
             return
-        
+
         checkbox.setChecked(True)
+        # The user wanted it unchecked --> uncheck it when the measurement
+        # requiring it is unchecked
+        checkbox.uncheckWhenNotRequired = True
         if self.doNotWarn:
             return
 

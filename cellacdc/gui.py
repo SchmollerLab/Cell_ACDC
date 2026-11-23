@@ -30484,11 +30484,12 @@ When working with 3D segmentation masks:
         posData = self.data[self.pos_i]
         if self.measurementsWin.delExistingCols:
             self.logger.info('Removing existing unchecked measurements...')
+            # Exact column names (also the `<prop>-<i>` regionprops columns,
+            # see `measurements.unselected_measurement_columns`). The
+            # measurements kernel drops them again when saving
+            # (`delete_unselected_existing_measurements`)
             delCols = self.measurementsWin.existingUncheckedColnames
-            delRps = self.measurementsWin.existingUncheckedRps
             delCols_format = [f'  *  {colname}' for colname in delCols]
-            delRps_format = [f'  *  {colname}' for colname in delRps]
-            delCols_format.extend(delRps_format)
             delCols_format = '\n'.join(delCols_format)
             self.logger.info(delCols_format)
             for _posData in self.data:
@@ -30496,12 +30497,8 @@ When working with 3D segmentation masks:
                     acdc_df = data_dict['acdc_df']
                     if acdc_df is None:
                         continue
-                    
+
                     acdc_df = acdc_df.drop(columns=delCols, errors='ignore')
-                    for col_rp in delRps:
-                        drop_df_rp = acdc_df.filter(regex=fr'{col_rp}.*', axis=1)
-                        drop_cols_rp = drop_df_rp.columns
-                        acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
                     _posData.allData_li[frame_i]['acdc_df'] = acdc_df
         self.setMeasWinState = self.measurementsWin.state()
         self.logger.info('Setting measurements...')

@@ -2204,6 +2204,31 @@ class TrackSubCellObjectsDialog(QBaseDialog):
         }
         self.close()
 
+def askDeleteUncheckedExistingMeasurements(
+        parent, unchecked_existing_colnames, acdc_df_path=None
+    ):
+    """Ask whether to delete the existing measurement columns that the 
+    user did not select. Returns `(cancel, delete)`."""
+    msg = widgets.myMessageBox()
+    msg.setWidth(500)
+    if acdc_df_path:
+        msg.addShowInFileManagerButton(acdc_df_path)
+    txt = html_utils.paragraph(
+        'You chose to <b>not save</b> some measurements that are '
+        '<b>already present</b> in the saved <code>acdc_output.csv</code> '
+        'file.<br><br>'
+        'Do you want to <b>delete</b> these measurements or '
+        '<b>keep</b> them?<br><br>'
+        'Existing measurements not selected:'
+    )
+    listView = widgets.readOnlyQList(msg)
+    listView.addItems(list(unchecked_existing_colnames))
+    _, delButton, keepButton = msg.warning(
+        parent, 'Unchecked existing measurements', txt,
+        widgets=listView, buttonsTexts=('Cancel', 'Delete', 'Keep')
+    )
+    return msg.cancel, msg.clickedButton == delButton
+
 class SetMeasurementsDialog(QBaseDialog):
     sigClosed = Signal()
     sigCancel = Signal()
@@ -2226,6 +2251,11 @@ class SetMeasurementsDialog(QBaseDialog):
         self.cancel = True
 
         self.delExistingCols = False
+        # True when the user answered the Delete/Keep question about
+        # existing measurements that are not selected (see `ok_cb`)
+        self.uncheckedExistingAsked = False
+        self.existingUncheckedColnames = []
+        self.existingUncheckedRps = []
         self.okClicked = False
         self.is_concat = is_concat
         self.allPos_acdc_df_cols = allPos_acdc_df_cols
@@ -2287,6 +2317,7 @@ class SetMeasurementsDialog(QBaseDialog):
             self.chNameGroupboxes.append(channelGBox)
             channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
             channelGBox.sigCheckboxToggled.connect(self.channelCheckboxToggled)
+            channelGBox.toggled.connect(self.channelGroupboxToggled)
             groupsLayout.setColumnStretch(col, 5)
             self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
@@ -2303,6 +2334,7 @@ class SetMeasurementsDialog(QBaseDialog):
             groupsLayout.setColumnStretch(current_col, 5)
             channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
             channelGBox.sigCheckboxToggled.connect(self.channelCheckboxToggled)
+            channelGBox.toggled.connect(self.channelGroupboxToggled)
             current_col += 1
             self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
@@ -2481,9 +2513,7 @@ class SetMeasurementsDialog(QBaseDialog):
         
         self.addCheckboxesToGroup()
 
-        for channelGBox in self.chNameGroupboxes:
-            for checkbox in channelGBox.checkBoxes:
-                self.channelCheckboxToggled(checkbox)
+        self.updateRequiredSizeMetrics()
     
     def allMetricsDict(self):
         all_metrics = {
@@ -2654,46 +2684,42 @@ class SetMeasurementsDialog(QBaseDialog):
             self.checkBoxedGroup.addButton(checkBox)
             
     def channelCheckboxToggled(self, checkbox):
-        # Make sure to automatically check the requested cell_vol metric for 
-        # concentration metrics        
+        # Make sure to automatically check the requested cell_vol metric for
+        # concentration metrics
         if checkbox.text().find('concentration_') == -1:
             return
-        
+
+        self.updateRequiredSizeMetrics()
+
+    def channelGroupboxToggled(self, checked):
+        # Concentration metrics of an unchecked channel do not require the
+        # cell volume anymore
+        self.updateRequiredSizeMetrics()
+
+    def updateRequiredSizeMetrics(self):
+        """Check the cell volume metrics required by the selected
+        concentration metrics (they cannot be unchecked, see
+        `sizeMetricToggled`) and release the ones not required anymore.
+        """
         if self.is_concat:
-            # When this dialogue is used in concatenate pos utility we do not 
+            # When this dialogue is used in concatenate pos utility we do not
             # need to check that certain metrics are present
             return
-        
+
         pattern = r'.+_from_vol_([a-z]+)(_3D)?(_?[A-Za-z0-9]*)'
         repl = r'cell_vol_\1\2'
-        cell_vol_metric_name = re.sub(pattern, repl, checkbox.text())
-        for sizeCheckbox in self.sizeMetricsQGBox.checkBoxes:
-            if sizeCheckbox.text() == cell_vol_metric_name:
-                break
-        else:
-            # Make sure to not check for similarly named custom metrics
-            return 
-        
-        if checkbox.isChecked():
-            sizeCheckbox.setChecked(True)
-            sizeCheckbox.isRequired = True
-        else:
-            # Do not enable cell vol checkbox is any of the other 
-            # concentration metrics requiring it is checked
-            unit = cell_vol_metric_name[9:]
-            is3D = unit.endswith('3D')
-            for channelGBox in self.chNameGroupboxes:
-                if not channelGBox.isChecked():
+        required = set()
+        for channelGBox in self.chNameGroupboxes:
+            for colname in channelGBox.selectedMetrics():
+                if colname.find('concentration_') == -1:
                     continue
-                for _checkbox in channelGBox.checkBoxes: 
-                    if _checkbox.text().find(f'_from_vol_{unit}') == -1: 
-                        continue
-                    if not is3D and _checkbox.text().find(f'{unit}_3D') != -1:
-                        # Metric is 3D but the cell_vol is not 
-                        continue
-                    if _checkbox.isChecked():
-                        return
-            sizeCheckbox.isRequired = False
+                required.add(re.sub(pattern, repl, colname))
+
+        for sizeCheckbox in self.sizeMetricsQGBox.checkBoxes:
+            isRequired = sizeCheckbox.text() in required
+            sizeCheckbox.isRequired = isRequired
+            if isRequired and not sizeCheckbox.isChecked():
+                sizeCheckbox.setChecked(True)
     
     def rpMetricToggled(self, checked):
         pass
@@ -2760,6 +2786,10 @@ class SetMeasurementsDialog(QBaseDialog):
 
     def selectAll(self, button, checked):
         self.doNotWarn = True
+        if self.mixedChannelsCombineMetricsQGBox is not None and not checked:
+            # First release the measurements forced by combined measurements,
+            # else they would be restored after being deselected
+            self.mixedChannelsCombineMetricsQGBox.checkAll(None, checked)
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
                 gb.checkAll(None, checked)
@@ -2798,226 +2828,148 @@ class SetMeasurementsDialog(QBaseDialog):
                     _config.remove_option(section, colname_to_del)
                 posData.saveCombineMetrics()
     
-    def setState(self, state):
-        self.doNotWarn = True
-        for chNameGroupbox in self.chNameGroupboxes:
-            measurementsInfo = state.get(chNameGroupbox.title())
-            if not measurementsInfo:
-                chNameGroupbox.setChecked(False)
-            else:
-                for checkBox in chNameGroupbox.checkBoxes:
-                    colname = checkBox.text()
-                    checkBox.setChecked(measurementsInfo[colname])
-
-        measurementsInfo = state.get(self.sizeMetricsQGBox.title())
-        if not measurementsInfo:
-            self.sizeMetricsQGBox.setChecked(False)
-        else:
-            for checkBox in self.sizeMetricsQGBox.checkBoxes:
-                checked = checkBox.isChecked()
-                colname = checkBox.text()
-                checkBox.setChecked(measurementsInfo[colname])
-
-        measurementsInfo = state.get(self.regionPropsQGBox.title())
-        if not measurementsInfo:
-            self.regionPropsQGBox.setChecked(False)
-        else:
-            self.regionPropsToSave = []
-            for checkBox in self.regionPropsQGBox.checkBoxes:
-                checked = checkBox.isChecked()
-                colname = checkBox.text()
-                checkBox.setChecked(measurementsInfo[colname])
-
+    def _metricsGroupboxes(self):
+        """Groups whose `selectedMetrics()` give the selected measurements, 
+        except the channel groups."""
+        groupboxes = [self.sizeMetricsQGBox, self.regionPropsQGBox]
         if self.chIndipendCustomeMetricsQGBox is not None:
-            measurementsInfo = state.get(
-                self.chIndipendCustomeMetricsQGBox.title()
-            )
-            if not measurementsInfo:
-                self.chIndipendCustomeMetricsQGBox.setChecked(False)
-            else:
-                checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
-                for checkBox in checkBoxes:
-                    checked = checkBox.isChecked()
-                    colname = checkBox.text()
-                    key = self.chIndipendCustomeMetricsQGBox.title()
-                    checkBox.setChecked(measurementsInfo[colname])
-        
+            groupboxes.append(self.chIndipendCustomeMetricsQGBox)
         if self.mixedChannelsCombineMetricsQGBox is not None:
-            measurementsInfo = state.get(
-                self.mixedChannelsCombineMetricsQGBox.title()
-            )
-            if not measurementsInfo:
-                self.mixedChannelsCombineMetricsQGBox.setChecked(False)
-            else:
-                checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
-                for checkBox in checkBoxes:
-                    checked = checkBox.isChecked()
-                    colname = checkBox.text()
-                    key = self.mixedChannelsCombineMetricsQGBox.title()
-                    checkBox.setChecked(measurementsInfo[colname])
+            groupboxes.append(self.mixedChannelsCombineMetricsQGBox)
+        return groupboxes
+    
+    def _stateGroupboxes(self):
+        """(group, state key, mapper key) of every group of measurements"""
+        groups = [
+            (gb, gb.title(), gb.chName) for gb in self.chNameGroupboxes
+        ]
+        groups.extend(
+            (gb, gb.title(), gb.title()) for gb in self._metricsGroupboxes()
+        )
+        return groups
+    
+    def mixedChannelsSelectedMetrics(self):
+        groupbox = self.mixedChannelsCombineMetricsQGBox
+        if groupbox is None:
+            return []
         
-        self.doNotWarn = False
+        return [
+            checkBox.text() for checkBox in groupbox.checkBoxes
+            if groupbox.isChecked() and checkBox.isChecked() 
+            and not checkBox.isHidden()
+        ]
+    
+    def _groupSelectedMetrics(self, groupbox):
+        if groupbox is self.mixedChannelsCombineMetricsQGBox:
+            return self.mixedChannelsSelectedMetrics()
+        
+        return groupbox.selectedMetrics()
+    
+    def selectedMeasurements(self):
+        """Names of all the selected measurements (what the measurements 
+        kernel will compute, see 
+        `cli.ComputeMeasurementsKernel.set_metrics_from_set_measurements_dialog`)
+        """
+        selected = []
+        for groupbox, _, _ in self._stateGroupboxes():
+            selected.extend(self._groupSelectedMetrics(groupbox))
+        return selected
+    
+    def offeredMeasurements(self):
+        """Names of all the measurements that can be selected"""
+        offered = []
+        for groupbox, _, _ in self._stateGroupboxes():
+            offered.extend(checkBox.text() for checkBox in groupbox.checkBoxes)
+        return offered
+    
+    def _setSelection(self, selection, missing_unchecked=False):
+        """Set the selection from `{key: {colname: checked}}` where `key` is
+        the state key (`state`) or the mapper key
+        (`currentSelectionMapper`) of each group.
+
+        A group missing from `selection` keeps its current state (e.g. a
+        group created after the selection was saved) and a group with an
+        empty entry is unchecked. Measurements missing from a group entry
+        are unchecked if `missing_unchecked` (mappers list only the selected
+        ones), else they keep their current state (e.g. a combined
+        measurement added after `state` was saved).
+        """
+        self.doNotWarn = True
+        self._isSettingSelection = True
+        for chNameGroupbox in self.chNameGroupboxes:
+            chNameGroupbox.doNotWarn = True
+        # Measurements forced by combined measurements get the state of the
+        # selection (re-forced at the end if still required)
+        for checkBox in self._forcedByCombinedCheckboxes():
+            checkBox.forcedByCombined = False
+            checkBox.setDisabled(False)
+            checkBox.setToolTip('')
+        try:
+            for groupbox, key, alt_key in selection.pop('_groups'):
+                if key not in selection:
+                    continue
+                
+                groupSelection = selection[key]
+                if not groupSelection:
+                    groupbox.setChecked(False)
+                    continue
+                
+                groupbox.setChecked(True)
+                subGroupboxes = getattr(groupbox, 'subGroupboxes', None)
+                if subGroupboxes is not None:
+                    for subGroupbox in subGroupboxes():
+                        subGroupbox.setChecked(True)
+                for checkBox in groupbox.checkBoxes:
+                    colname = checkBox.text()
+                    if colname not in groupSelection:
+                        if missing_unchecked:
+                            checkBox.setChecked(False)
+                        continue
+                    checkBox.setChecked(bool(groupSelection[colname]))
+        finally:
+            self.doNotWarn = False
+            self._isSettingSelection = False
+            for chNameGroupbox in self.chNameGroupboxes:
+                chNameGroupbox.doNotWarn = False
+        
+        self.updateRequiredSizeMetrics()
+        self.setDisabledMetricsRequestedForCombined()
+    
+    def setState(self, state):
+        """Restore a selection returned by `state`"""
+        groups = self._stateGroupboxes()
+        selection = {key: state[key] for _, key, _ in groups if key in state}
+        selection['_groups'] = groups
+        self._setSelection(selection)
             
     def state(self):
-        state = {
-            self.sizeMetricsQGBox.title(): {},
-            self.regionPropsQGBox.title(): {}
-        }
-        for chNameGroupbox in self.chNameGroupboxes:
-            state[chNameGroupbox.title()] = {}
-            if not chNameGroupbox.isChecked():
-                # Channel unchecked
+        """Current selection as `{group title: {colname: selected}}`. 
+
+        Unchecked groups have an empty dictionary. Measurements left checked 
+        in an unchecked sub-group are not selected (see `selectedMetrics`).
+        """
+        state = {}
+        for groupbox, key, _ in self._stateGroupboxes():
+            selected = set(self._groupSelectedMetrics(groupbox))
+            if not selected and not groupbox.isChecked():
+                state[key] = {}
                 continue
-            else:
-                for checkBox in chNameGroupbox.checkBoxes:
-                    colname = checkBox.text()
-                    state[chNameGroupbox.title()][colname] = checkBox.isChecked()
-
-        if not self.sizeMetricsQGBox.isChecked():
-            pass
-        else:
-            for checkBox in self.sizeMetricsQGBox.checkBoxes:
-                checked = checkBox.isChecked()
-                colname = checkBox.text()
-                state[self.sizeMetricsQGBox.title()][colname] = checked
-
-        if not self.regionPropsQGBox.isChecked():
-            pass
-        else:
-            self.regionPropsToSave = []
-            for checkBox in self.regionPropsQGBox.checkBoxes:
-                checked = checkBox.isChecked()
-                colname = checkBox.text()
-                state[self.regionPropsQGBox.title()][colname] = checked
-
-        if self.chIndipendCustomeMetricsQGBox is not None:
-            state[self.chIndipendCustomeMetricsQGBox.title()] = {}
-            if self.chIndipendCustomeMetricsQGBox.isChecked():
-                checkBoxes = self.chIndipendCustomeMetricsQGBox.checkBoxes
-                for checkBox in checkBoxes:
-                    checked = checkBox.isChecked()
-                    key = self.chIndipendCustomeMetricsQGBox.title()
-                    colname = checkBox.text()
-                    state[key][colname] = checked
-        
-        if self.mixedChannelsCombineMetricsQGBox is not None:
-            state[self.mixedChannelsCombineMetricsQGBox.title()] = {}
-            if self.mixedChannelsCombineMetricsQGBox.isChecked():
-                checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
-                for checkBox in checkBoxes:
-                    checked = checkBox.isChecked()
-                    key = self.mixedChannelsCombineMetricsQGBox.title()
-                    colname = checkBox.text()
-                    state[key][colname] = checked
+            
+            state[key] = {
+                checkBox.text(): checkBox.text() in selected
+                for checkBox in groupbox.checkBoxes
+            }
         
         return state
     
     def restoreState(self, state):
-        for chNameGroupbox in self.chNameGroupboxes:
-            _state = state.get(chNameGroupbox.title())
-            if _state is None or not _state:
-                continue
-            for checkBox in chNameGroupbox.checkBoxes:
-                isChecked = _state.get(checkBox.text())
-                if isChecked is None:
-                    continue
-                checkBox.setChecked(isChecked)
-        
-        _state = state.get(self.sizeMetricsQGBox.title())
-        if _state is None or not _state:
-            pass
-        else:
-            for checkBox in self.sizeMetricsQGBox.checkBoxes:
-                isChecked = _state.get(checkBox.text())
-                if isChecked is None:
-                    continue
-                checkBox.setChecked(isChecked)
-        
-        _state = state.get(self.regionPropsQGBox.title())
-        if _state is None or not _state:
-            pass
-        else:
-            for checkBox in self.regionPropsQGBox.checkBoxes:
-                isChecked = _state.get(checkBox.text())
-                if isChecked is None:
-                    continue
-                checkBox.setChecked(isChecked)
-        
-        if self.chIndipendCustomeMetricsQGBox is not None:
-            _state = state.get(self.chIndipendCustomeMetricsQGBox.title())
-            if _state is None or not _state:
-                pass
-            else:
-                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes:
-                    isChecked = _state.get(checkBox.text())
-                    if isChecked is None:
-                        continue
-                    checkBox.setChecked(isChecked)
-        
-        if self.mixedChannelsCombineMetricsQGBox is not None:
-            _state = state.get(self.mixedChannelsCombineMetricsQGBox.title())
-            if _state is None or not _state:
-                pass
-            else:
-                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
-                    isChecked = _state.get(checkBox.text())
-                    if isChecked is None:
-                        continue
-                    checkBox.setChecked(isChecked)
+        self.setState(state)
     
     def currentSelectionMapper(self):
         current_selected_meas = defaultdict(dict)
-        
-        for chNameGroupbox in self.chNameGroupboxes:
-            if not chNameGroupbox.isChecked():
-                continue
-            
-            chName = chNameGroupbox.chName
-            for checkBox in chNameGroupbox.checkBoxes:
-                if not checkBox.isChecked():
-                    continue
-                
-                current_selected_meas[chName][checkBox.text()] = 'Yes'
-        
-        size_selected_meas = current_selected_meas.get(
-            self.sizeMetricsQGBox.title()
-        )
-        if self.sizeMetricsQGBox.isChecked():
-            for checkBox in self.sizeMetricsQGBox.checkBoxes: 
-                if not checkBox.isChecked():
-                    continue
-                
-                section = self.sizeMetricsQGBox.title()
-                current_selected_meas[section][checkBox.text()] = 'Yes'
-        
-        size_selected_meas = current_selected_meas.get(
-            self.regionPropsQGBox.title()
-        )
-        if self.regionPropsQGBox.isChecked():
-            for checkBox in self.regionPropsQGBox.checkBoxes: 
-                if not checkBox.isChecked():
-                    continue
-                
-                section = self.regionPropsQGBox.title()
-                current_selected_meas[section][checkBox.text()] = 'Yes'
-        
-        if self.chIndipendCustomeMetricsQGBox is not None:
-            if self.chIndipendCustomeMetricsQGBox.isChecked():
-                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes: 
-                    if not checkBox.isChecked():
-                        continue
-                    
-                    section = self.chIndipendCustomeMetricsQGBox.title()
-                    current_selected_meas[section][checkBox.text()] = 'Yes'
-        
-        if self.mixedChannelsCombineMetricsQGBox is not None:
-            if self.mixedChannelsCombineMetricsQGBox.isChecked():
-                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes: 
-                    if not checkBox.isChecked():
-                        continue
-                    
-                    section = self.mixedChannelsCombineMetricsQGBox.title()
-                    current_selected_meas[section][checkBox.text()] = 'Yes'
+        for groupbox, _, key in self._stateGroupboxes():
+            for colname in self._groupSelectedMetrics(groupbox):
+                current_selected_meas[key][colname] = 'Yes'
         
         return current_selected_meas
     
@@ -3083,79 +3035,19 @@ class SetMeasurementsDialog(QBaseDialog):
         load.write_last_selected_set_measurements(last_selected_meas)
     
     def setCurrentSelectionFromMapper(self, selection_mapper):
-        for chNameGroupbox in self.chNameGroupboxes:
-            chName = chNameGroupbox.chName
-            chSelectedMeas = selection_mapper.get(chName)
-            if chSelectedMeas is None:
-                chNameGroupbox.setChecked(False)
-                continue
-            
-            chNameGroupbox.setChecked(True)
-            for checkBox in chNameGroupbox.checkBoxes:
-                checked = chSelectedMeas.get(checkBox.text())
-                if checked is not None:
-                    checkBox.setChecked(True)
-                else:
-                    checkBox.setChecked(False)
-        
-        size_selected_meas = selection_mapper.get(
-            self.sizeMetricsQGBox.title()
-        )
-        if size_selected_meas is None:
-            self.sizeMetricsQGBox.setChecked(False)
-        else:
-            self.sizeMetricsQGBox.setChecked(True)
-            for checkBox in self.sizeMetricsQGBox.checkBoxes: 
-                checked = size_selected_meas.get(checkBox.text())
-                if checked is not None:
-                    checkBox.setChecked(True)
-                else:
-                    checkBox.setChecked(False)
-        
-        size_selected_meas = selection_mapper.get(
-            self.regionPropsQGBox.title()
-        )
-        if size_selected_meas is None:
-            self.regionPropsQGBox.setChecked(False)
-        else:
-            self.regionPropsQGBox.setChecked(True)
-            for checkBox in self.regionPropsQGBox.checkBoxes: 
-                checked = size_selected_meas.get(checkBox.text())
-                if checked is not None:
-                    checkBox.setChecked(True)
-                else:
-                    checkBox.setChecked(False)
-        
-        if self.chIndipendCustomeMetricsQGBox is not None:
-            ch_indip_custom_metrics = selection_mapper.get(
-                self.chIndipendCustomeMetricsQGBox.title()
-            )
-            if size_selected_meas is None:
-                self.chIndipendCustomeMetricsQGBox.setChecked(False)
-            else:
-                self.chIndipendCustomeMetricsQGBox.setChecked(True)
-                for checkBox in self.chIndipendCustomeMetricsQGBox.checkBoxes: 
-                    checked = size_selected_meas.get(checkBox.text())
-                    if checked is not None:
-                        checkBox.setChecked(True)
-                    else:
-                        checkBox.setChecked(False)
-        
-        if self.mixedChannelsCombineMetricsQGBox is not None:
-            ch_indip_custom_metrics = selection_mapper.get(
-                self.mixedChannelsCombineMetricsQGBox.title()
-            )
-            if size_selected_meas is None:
-                self.mixedChannelsCombineMetricsQGBox.setChecked(False)
-            else:
-                self.mixedChannelsCombineMetricsQGBox.setChecked(True)
-                for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes: 
-                    checked = size_selected_meas.get(checkBox.text())
-                    if checked is not None:
-                        checkBox.setChecked(True)
-                    else:
-                        checkBox.setChecked(False)
-    
+        """Set the selection saved by `currentSelectionMapper` (groups 
+        missing from the mapper are unchecked)."""
+        groups = [
+            (groupbox, mapper_key, state_key) 
+            for groupbox, state_key, mapper_key in self._stateGroupboxes()
+        ]
+        selection = {
+            mapper_key: selection_mapper.get(mapper_key) or {}
+            for _, mapper_key, _ in groups
+        }
+        selection['_groups'] = groups
+        self._setSelection(selection, missing_unchecked=True)
+
     def loadLastSelection(self):
         self.doNotWarn = True
         last_selected_meas = load.read_last_selected_set_measurements()
@@ -3165,57 +3057,78 @@ class SetMeasurementsDialog(QBaseDialog):
         
         self.doNotWarn = False
     
-    def setDisabledMetricsRequestedForCombined(self, checked):
-        checkbox = self.sender()
-        
+    def _forcedByCombinedCheckboxes(self):
+        allCheckboxes = []
+        for chNameGroupbox in self.chNameGroupboxes:
+            allCheckboxes.extend(chNameGroupbox.checkBoxes)
+        allCheckboxes.extend(self.sizeMetricsQGBox.checkBoxes)
+        allCheckboxes.extend(self.regionPropsQGBox.checkBoxes)
+        return [
+            cb for cb in allCheckboxes
+            if getattr(cb, 'forcedByCombined', False)
+        ]
+
+    def setDisabledMetricsRequestedForCombined(self, checked=None):
+        """Check and disable the measurements used by the checked mixed 
+        channels combined measurements and restore the previous state of 
+        the ones not used anymore."""
         if self.is_concat:
             # When this dialogue is used in concatenate pos utility we do not 
             # need to check that certain metrics are present
             return
         
-        # Set checked and disable those metrics that are requested for 
-        # combined measurements
-        allCheckboxes = []
-
-        for chNameGroupbox in self.chNameGroupboxes:
-            for chCheckBox in chNameGroupbox.checkBoxes:
-                chCheckBox.setDisabled(False)
-                allCheckboxes.append(chCheckBox)
-        
-        for sizeCheckBox in self.sizeMetricsQGBox.checkBoxes:
-            sizeCheckBox.setDisabled(False)
-            allCheckboxes.append(chCheckBox)
-        
-        for rpCheckBox in self.regionPropsQGBox.checkBoxes:
-            rpCheckBox.setDisabled(False)
-            allCheckboxes.append(chCheckBox)
-        
-        if not self.mixedChannelsCombineMetricsQGBox.isChecked():
+        if self.mixedChannelsCombineMetricsQGBox is None:
             return
+
+        if getattr(self, '_isSettingSelection', False):
+            # Called once at the end of `_setSelection`
+            return
+
+        requiredBy = {}
+        for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
+            if combCheckbox.isHidden():
+                continue
+            if combCheckbox.text() not in self.mixedChannelsSelectedMetrics():
+                continue
+            equation = getattr(combCheckbox, 'equation', '')
+            for name, _, _ in measurements.equation_variable_spans(equation):
+                requiredBy.setdefault(name, combCheckbox.text())
+        
+        allCheckboxes = []
+        for chNameGroupbox in self.chNameGroupboxes:
+            allCheckboxes.extend(chNameGroupbox.checkBoxes)
+        allCheckboxes.extend(self.sizeMetricsQGBox.checkBoxes)
+        allCheckboxes.extend(self.regionPropsQGBox.checkBoxes)
         
         for cb in allCheckboxes:
-            metricName = cb.text()
-            for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
-                equation = combCheckbox.equation
-                if equation.find(metricName) == -1:
-                    continue
-                elif combCheckbox.isChecked():
-                    cb.setChecked(True)
-                    cb.setDisabled(True)
-                    cb.setToolTip(
-                        'This metric cannot be removed because it is required '
-                        f'by the combined measurement "{combCheckbox.text()}"'
-                    )
+            combinedName = requiredBy.get(cb.text())
+            wasForced = getattr(cb, 'forcedByCombined', False)
+            if combinedName is not None:
+                if not wasForced:
+                    cb.checkedBeforeForced = cb.isChecked()
+                cb.forcedByCombined = True
+                cb.setChecked(True)
+                cb.setDisabled(True)
+                cb.setToolTip(
+                    'This metric cannot be removed because it is required '
+                    f'by the combined measurement "{combinedName}"'
+                )
+            elif wasForced:
+                cb.forcedByCombined = False
+                cb.setDisabled(False)
+                cb.setToolTip('')
+                cb.setChecked(getattr(cb, 'checkedBeforeForced', True))
 
     def keyPressEvent(self, a0: QKeyEvent) -> None:
         state = self.state()
         return super().keyPressEvent(a0)
     
     def closeEvent(self, event):
+        self._closedWhileAsking = True
         if self.cancel:
             self.sigCancel.emit()
         super().closeEvent(event)
-    
+
     def restart(self):
         self.cancel = False
         self.close()
@@ -3310,77 +3223,73 @@ class SetMeasurementsDialog(QBaseDialog):
             return
 
         self.okClicked = True
-        existing_colnames = self.allPos_acdc_df_cols
-        unchecked_existing_colnames = []
-        unchecked_existing_rps = []
-        for chNameGroupbox in self.chNameGroupboxes:
-            for checkBox in chNameGroupbox.checkBoxes:
-                colname = checkBox.text()
-                is_existing = colname in existing_colnames
-                if not chNameGroupbox.isChecked() and is_existing:
-                    unchecked_existing_colnames.append(colname)
-                    continue
-                if not checkBox.isChecked() and is_existing:
-                    unchecked_existing_colnames.append(colname)
-    
-        for checkBox in self.sizeMetricsQGBox.checkBoxes:
-            colname = checkBox.text()
-            is_existing = colname in existing_colnames
-            if not self.sizeMetricsQGBox.isChecked() and is_existing:
-                unchecked_existing_colnames.append(colname)
-                continue
-
-            if not checkBox.isChecked() and is_existing:
-                unchecked_existing_colnames.append(colname)
-        for checkBox in self.regionPropsQGBox.checkBoxes:
-            colname = checkBox.text()
-            is_existing = any([col == colname for col in existing_colnames])
-            if not self.regionPropsQGBox.isChecked() and is_existing:
-                unchecked_existing_rps.append(colname)
-                continue
-
-            if not checkBox.isChecked() and is_existing:
-                unchecked_existing_rps.append(colname)
-
-        if unchecked_existing_colnames or unchecked_existing_rps:
-            cancel, self.delExistingCols = self.warnUncheckedExistingMeasurements(
-                unchecked_existing_colnames, unchecked_existing_rps
-            )
-            self.existingUncheckedColnames = unchecked_existing_colnames
-            self.existingUncheckedRps = unchecked_existing_rps
-            if cancel:
+        unchecked_existing_colnames = self.uncheckedExistingMeasurements()
+        self.existingUncheckedColnames = unchecked_existing_colnames
+        # Kept for compatibility: regionprops columns (also the 
+        # `<prop>-<i>` ones) are listed in `existingUncheckedColnames`
+        self.existingUncheckedRps = []
+        self.delExistingCols = False
+        self.uncheckedExistingAsked = False
+        if unchecked_existing_colnames:
+            # The question is not modal --> no OK/Cancel meanwhile
+            self._closedWhileAsking = False
+            self.setDisabled(True)
+            try:
+                cancel, self.delExistingCols = (
+                    self.warnUncheckedExistingMeasurements(
+                        unchecked_existing_colnames, []
+                    )
+                )
+            finally:
+                self.setDisabled(False)
+            if cancel or self._closedWhileAsking:
                 return
-
+            self.uncheckedExistingAsked = True
         
         self.saveLastSelection()
         self.cancel = False  
         self.doNotAskAgain = self.doNotAskAgainToggle.isChecked()
         self.close()
         self.sigClosed.emit()
+    
+    def measurementChannels(self):
+        channels = [gb.chName for gb in self.chNameGroupboxes]
+        for posData in (self.allPosData or []):
+            for channel in (getattr(posData, 'chNames', None) or []):
+                if channel not in channels:
+                    channels.append(channel)
+        return channels
+    
+    def uncheckedExistingMeasurements(self, existing_colnames=None):
+        """Measurement columns of the existing tables that the current 
+        selection would not save (see 
+        `measurements.unselected_measurement_columns`)."""
+        if existing_colnames is None:
+            existing_colnames = self.allPos_acdc_df_cols or []
+        
+        zslice_channels = [
+            gb.chName for gb in self.chNameGroupboxes
+            if gb.isChecked() and gb.isCalcForEachZsliceRequested()
+        ]
+        return measurements.unselected_measurement_columns(
+            existing_colnames, 
+            self.measurementChannels(), 
+            self.selectedMeasurements(),
+            other_measurement_cols=self.offeredMeasurements(),
+            zslice_channels=zslice_channels,
+            calc_size_for_each_zslice=(
+                self.sizeMetricsQGBox.isChecked()
+                and self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+            )
+        )
         
     def warnUncheckedExistingMeasurements(
             self, unchecked_existing_colnames, unchecked_existing_rps
         ):
-        msg = widgets.myMessageBox()
-        msg.setWidth(500)
-        msg.addShowInFileManagerButton(self.acdc_df_path)
-        txt = html_utils.paragraph(
-            'You chose to <b>not save</b> some measurements that are '
-            '<b>already present</b> in the saved <code>acdc_output.csv</code> '
-            'file.<br><br>'
-            'Do you want to <b>delete</b> these measurements or '
-            '<b>keep</b> them?<br><br>'
-            'Existing measurements not selected:'
+        items = [*unchecked_existing_colnames, *unchecked_existing_rps]
+        return askDeleteUncheckedExistingMeasurements(
+            self, items, acdc_df_path=self.acdc_df_path
         )
-        listView = widgets.readOnlyQList(msg)
-        items = unchecked_existing_colnames.copy()
-        items.extend(unchecked_existing_rps)
-        listView.addItems(items)
-        _, delButton, keepButton = msg.warning(
-            self, 'Unchecked existing measurements', txt,
-            widgets=listView, buttonsTexts=('Cancel', 'Delete', 'Keep')
-        )
-        return msg.cancel, msg.clickedButton == delButton
 
     def show(self, block=False):
         super().show(block=False)
