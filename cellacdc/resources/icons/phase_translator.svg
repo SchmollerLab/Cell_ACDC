@@ -15,7 +15,7 @@
    version="1.1"
    id="svg1"
    sodipodi:docname="phase_translator.svg"
-   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -31,13 +31,13 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="7.0047766"
-     inkscape:cx="10.6356"
-     inkscape:cy="19.986362"
-     inkscape:window-width="1440"
-     inkscape:window-height="878"
-     inkscape:window-x="-6"
-     inkscape:window-y="-6"
+     inkscape:zoom="9.9062501"
+     inkscape:cx="-11.608833"
+     inkscape:cy="39.823344"
+     inkscape:window-width="2560"
+     inkscape:window-height="1369"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg1" />
   <rect
@@ -88,4 +88,16 @@
        y2="52.110538"
        style="fill:#f0f0f0;fill-opacity:1;stroke:#4d4d4d;stroke-linecap:round;stroke-miterlimit:3;stroke-opacity:1" />
   </g>
+  <circle
+     cx="16.353312"
+     cy="23.404999"
+     r="7"
+     id="circle1"
+     style="fill:#4d4d4d;fill-opacity:1;stroke:#4d4d4d;stroke-opacity:1" />
+  <circle
+     cx="32.706623"
+     cy="23.404999"
+     r="7"
+     id="circle1-4"
+     style="fill:#4d4d4d;fill-opacity:1;stroke:#4d4d4d;stroke-opacity:1" />
 </svg>

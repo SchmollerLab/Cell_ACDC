@@ -6,7 +6,7 @@
    version="1.1"
    id="svg1"
    sodipodi:docname="reevaluateTimepoint_dark.svg"
-   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -24,11 +24,11 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="14.495689"
      inkscape:cx="22.765389"
-     inkscape:cy="22.075529"
-     inkscape:window-width="1440"
-     inkscape:window-height="878"
-     inkscape:window-x="-6"
-     inkscape:window-y="-6"
+     inkscape:cy="22.110022"
+     inkscape:window-width="2560"
+     inkscape:window-height="1369"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
      inkscape:window-maximized="1"
      inkscape:current-layer="g1" />
   <!-- Default time point identifier icon of the measurements viewer
@@ -53,12 +53,12 @@
        id="circle1"
        style="stroke:#f0f0f0;stroke-opacity:1;fill:#f0f0f0;fill-opacity:1" />
     <path
-       style="color:#4d4d4d;fill:#808080;fill-opacity:1;stroke:none;stroke-width:0.941178"
+       style="color:#4d4d4d;fill:#ff0000;fill-opacity:0.80392158;stroke:none;stroke-width:0.941178"
        d="m 29.727175,17.602897 c -1.567828,-1.712014 -3.821746,-2.78564 -6.326517,-2.78564 -4.736713,0 -8.576146,3.839434 -8.576146,8.576147 h 1.608026 c 0,-3.848546 3.119574,-6.968119 6.96812,-6.968119 2.060419,0 3.911795,0.894599 5.187497,2.316632 l -2.507451,2.507451 h 5.896101 v -5.896102 l -2.250167,2.249631 z"
        class="ColorScheme-Text"
        id="path1" />
     <path
-       style="color:#4d4d4d;fill:#808080;fill-opacity:1;stroke:none;stroke-width:0.941178"
+       style="color:#4d4d4d;fill:#ff0000;fill-opacity:0.80392158;stroke:none;stroke-width:0.941178"
        d="m 30.369313,23.393404 c 0,3.848545 -3.119573,6.968121 -6.968119,6.968121 -2.060419,0 -3.911795,-0.894604 -5.187497,-2.316636 l 2.507451,-2.507448 h -5.8961 v 5.896099 l 2.249631,-2.249631 c 1.567826,1.712015 3.821745,2.785644 6.326515,2.785644 4.736712,0 8.576148,-3.839436 8.576148,-8.576149 z"
        class="ColorScheme-Text"
        id="path2" />
