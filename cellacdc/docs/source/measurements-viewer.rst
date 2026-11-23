@@ -834,7 +834,10 @@ example:
   predictors and phase rules. It plots the two reporters on the left y axis
   and the cell area on its own y axis. Its "Excluded" and "Arrested" annotations
   override phases: annotated cells get the phase "Excluded" or "Arrested" on
-  every frame ("Excluded" wins if a cell has both).
+  every frame ("Excluded" wins if a cell has both). "Excluded" is predicted
+  for cells without a mother (``parent_ID_tree``) that appear after the first
+  frame, e.g. cells that move into the field of view; mark other cells by
+  hand.
 * ``example_two_channel_ratio.json``: a simple example that plots two
   channels and their ratio (a combined measurement).
 
