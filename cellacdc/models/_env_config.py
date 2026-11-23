@@ -263,6 +263,21 @@ MODEL_ENVS = {
             },
         ],
     },
+    # Promptable model (SAM2 models of micro-sam, `micro_sam.v2`), installed
+    # with pip as in the official micro-sam documentation (it also installs
+    # napari and Qt, which only live in this isolated environment).
+    'micro-sam_v2': {
+        'python': '3.12',
+        'torch': True,
+        'torch_version': '>=2.5,<3',
+        # The first initialization of each model downloads its weights
+        # (from ~160 MB for hvit_t up to ~900 MB for hvit_l)
+        'init_timeout': 3600,
+        'packages': [
+            {'pkg_name': 'micro_sam', 'min_version': '2.0',
+             'include_lower_version': True},
+        ],
+    },
     'cellsam': {
         'torch': True,
         'main_env_packages': [{'pkg_name': 'cellSAM'}],
