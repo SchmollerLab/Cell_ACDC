@@ -12,6 +12,8 @@ Guidance for Claude Code when working in this repository.
 
 That is the `acdc` conda environment of the miniforge installation in the user's home folder (Python 3.12, PyQt6, pytest; flake8/pyflakes are currently missing, `pip install flake8` to lint). Its editable install points to a different checkout (`~/repos/Cell_ACDC`), so run Python/pytest from this repo's root (`python -m ...` puts the cwd first on `sys.path`); scripts run from elsewhere (e.g. the scratchpad) need `PYTHONPATH=<this repo>` or they import the other clone. Write it as `~/miniforge3/envs/acdc/python.exe` in Bash and `$env:USERPROFILE\miniforge3\envs\acdc\python.exe` in PowerShell. Do not use a bare `python`/`pytest` from PATH. Examples (Bash):
 
+The GitHub CLI is not on PATH in the Bash or PowerShell tool: call it as `"/c/Program Files/GitHub CLI/gh.exe"` (Bash) or `& "C:Program FilesGitHub CLIgh.exe"` (PowerShell); pass PR bodies with `--body-file`.
+
 ```bash
 ~/miniforge3/envs/acdc/python.exe -m pytest tests/test_phase_translator.py -q
 ~/miniforge3/envs/acdc/python.exe -m pytest tests -k "measurement_viewer"
