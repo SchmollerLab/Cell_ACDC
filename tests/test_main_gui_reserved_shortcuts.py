@@ -4,11 +4,15 @@ clash with the keys already used in the window.
 Two enabled shortcuts with the same key trigger neither, and in snapshots
 the edit tools (e.g., "Annotate cell as dead", D) are shown next to the
 custom annotations. `guiWin.reservedShortcuts` lists the used keys (any
-mode), passed to `apps.customAnnotationDialog`
+mode, including the overlay digits and the "Delete object" key), passed as
+a callable to `apps.customAnnotationDialog`
 (`guiWin.customAnnotationDialogKwargs`) and `apps.AddPointsLayerDialog`,
-which refuse them on OK. The methods are tested on a small host window
-(building `guiWin` takes seconds).
+which refuse them on OK (with the keys of that moment: the dialogs do not
+block the window). The methods are tested on a small host window (building
+`guiWin` takes seconds).
 """
+from unittest.mock import Mock
+
 import pytest
 from qtpy.QtCore import Qt
 from qtpy.QtGui import QKeySequence
@@ -95,21 +99,102 @@ def test_reserved_shortcuts_of_main_window(host):
     assert 'Q' not in host.reservedShortcuts(host.annotButton)
 
 
+def test_overlay_digits_and_delete_object_key_are_reserved(host):
+    # Digits toggle the overlay channels in `keyPressEvent` (0 = base layer)
+    reserved = host.reservedShortcuts()
+    for n in range(10):
+        assert str(n) in reserved
+    # Opacity of the overlaid segmentation (Ctrl+Up/Down in `keyPressEvent`)
+    for key in ('Ctrl+Up', 'Ctrl+Down'):
+        assert QKeySequence(key).toString() in reserved
+    # No "Delete object" key: default (middle click, Ctrl on macOS)
+    assert 'Delete object' not in reserved.values()
+    host.delObjAction = (
+        widgets.KeySequenceFromText('X'), Qt.MouseButton.LeftButton
+    )
+    assert host.reservedShortcuts()['X'] == 'Delete object'
+    # Mouse button only
+    host.delObjAction = (None, Qt.MouseButton.MiddleButton)
+    assert 'Delete object' not in host.reservedShortcuts().values()
+
+
 def test_custom_annotation_dialog_gets_keys_used_by_others(host):
-    # New annotation: every used key, edited annotation: not its own key
+    # New annotation: every used key, edited annotation: not its own key.
+    # Callables evaluated on OK, since the dialog does not block the window
     kwargs = host.customAnnotationDialogKwargs()
-    assert {'D', 'Q', 'J'} <= set(kwargs['reservedShortcuts'])
+    assert {'D', 'Q', 'J'} <= set(kwargs['reservedShortcuts']())
     kwargs = host.customAnnotationDialogKwargs(state={'name': 'budding'})
-    assert 'Q' not in kwargs['reservedShortcuts']
-    assert 'D' in kwargs['reservedShortcuts']
+    host.annotButton.setShortcut('K')
+    assert 'K' not in kwargs['reservedShortcuts']()
+    assert 'D' in kwargs['reservedShortcuts']()
 
 
-@pytest.mark.parametrize('shortcut, refused', [('D', True), ('Shift+D', False)])
-def test_add_points_layer_dialog_refuses_used_key(
-        host, monkeypatch, shortcut, refused
+def _new_tool_button(host, key):
+    button = QToolButton(host)
+    button.setShortcut(key)
+    button.setToolTip(f'Name: Tool {key}')
+    return button
+
+
+def test_custom_annotation_dialog_refuses_key_taken_while_open(
+        host, monkeypatch
+    ):
+    warnings = []
+    monkeypatch.setattr(
+        apps.widgets, 'myMessageBox',
+        lambda *args, **kwargs: type('Msg', (), {
+            'warning': lambda self, parent, title, text: warnings.append(text)
+        })()
+    )
+    dialog = apps.customAnnotationDialog(
+        {}, parent=host, **host.customAnnotationDialogKwargs()
+    )
+    try:
+        dialog.nameWidget.widget.setText('Big')
+        dialog.shortcutWidget.widget.setText('K')
+        # e.g., an edit in the shortcuts editor while the dialog is open
+        _new_tool_button(host, 'K')
+        dialog.cancel = False
+        dialog.clickedButton = dialog.okButton
+        event = Mock()
+        dialog.closeEvent(event)
+        event.ignore.assert_called_once()
+        assert dialog.cancel
+        assert len(warnings) == 1 and 'Tool K' in warnings[0]
+    finally:
+        dialog.deleteLater()
+
+
+def test_add_points_layer_dialog_refuses_key_taken_while_open(
+        host, monkeypatch
     ):
     dialog = apps.AddPointsLayerDialog(
-        parent=host, reservedShortcuts=host.reservedShortcuts()
+        parent=host, reservedShortcuts=host.reservedShortcuts
+    )
+    warnings = []
+    monkeypatch.setattr(
+        dialog, 'warnShortcutAlreadyUsed',
+        lambda shortcut, usedBy: warnings.append((shortcut, usedBy))
+    )
+    dialog.clickEntryRadiobutton.setChecked(True)
+    dialog.appearanceGroupbox.shortcutWidget.widget.setText('K')
+    _new_tool_button(host, 'K')
+    dialog.ok_cb()
+    assert warnings == [('K', 'Tool K')]
+    assert dialog.cancel
+    dialog.deleteLater()
+
+
+@pytest.mark.parametrize('callable_', [True, False])
+@pytest.mark.parametrize('shortcut, refused', [('D', True), ('Shift+D', False)])
+def test_add_points_layer_dialog_refuses_used_key(
+        host, monkeypatch, shortcut, refused, callable_
+    ):
+    dialog = apps.AddPointsLayerDialog(
+        parent=host, reservedShortcuts=(
+            host.reservedShortcuts if callable_
+            else host.reservedShortcuts()
+        )
     )
     warnings = []
     monkeypatch.setattr(

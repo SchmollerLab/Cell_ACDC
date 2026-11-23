@@ -24252,7 +24252,8 @@ When working with 3D segmentation masks:
             hideWithMouseClicksSection=False,
             SizeT=posData.SizeT,
             parent=self,
-            reservedShortcuts=self.reservedShortcuts(),
+            # Called on OK: the dialog is not modal
+            reservedShortcuts=self.reservedShortcuts,
         )
         cmap = matplotlib.colormaps['gist_rainbow']
         i = np.random.default_rng(seed=123).uniform()
@@ -25749,7 +25750,16 @@ When working with 3D segmentation masks:
         'Return': 'Confirm (Enter)',
         'Enter': 'Confirm (Enter)',
         'Z': 'Toggle z-slice/projection (Z key)',
+        # Opacity of the overlaid segmentation (`isOverlaySegmLeft`)
+        'Ctrl+Up': 'Increase overlay segmentation opacity',
+        'Ctrl+Down': 'Decrease overlay segmentation opacity',
     }
+    # Digits toggle the overlay channels (`checkOverlayToolbuttonClicked`,
+    # 0 = base layer)
+    KEY_EVENT_KEYS.update({
+        str(n): f'Toggle overlay channel {n} (overlay active)'
+        for n in range(10)
+    })
 
     def userKeyButtons(self):
         """[(name, button)] of the buttons whose key is chosen in their own
@@ -25773,12 +25783,24 @@ When working with 3D segmentation masks:
         Includes the keys of every action and tool button of the window in
         any mode (e.g., the edit tools of snapshots are shown next to the
         custom annotations, and two buttons with the same key trigger
-        neither), the brush/eraser keys and the keys handled in
-        `keyPressEvent`. The key of `excludeWidget` (e.g., the custom
-        annotation being edited) is not included."""
+        neither), the brush/eraser keys, the key of the "Delete object"
+        action (`delObjAction`) and the keys handled in `keyPressEvent`
+        (including the overlay digits). The key of `excludeWidget` (e.g.,
+        the custom annotation being edited) is not included.
+
+        The dialogs call it on OK (they are not modal), so that keys
+        assigned while they are open are refused too."""
         reserved = dict(self.KEY_EVENT_KEYS)
         zoomOutKey = QKeySequence(self.zoomOutKeyValue).toString()
         reserved[zoomOutKey] = 'Zoom out'
+        delObjAction = getattr(self, 'delObjAction', None)
+        delObjKeySequence = None if delObjAction is None else delObjAction[0]
+        if delObjKeySequence is not None:
+            # Plain QKeySequence text (`KeySequenceFromText.toString` gives
+            # macOS key names on macOS)
+            delObjKey = QKeySequence(delObjKeySequence).toString()
+            if delObjKey:
+                reserved[delObjKey] = 'Delete object'
         for name, widget in self.widgetsWithShortcut.items():
             shortcut = getattr(widget, 'keyPressShortcut', None)
             if shortcut is None:
@@ -25818,7 +25840,9 @@ When working with 3D segmentation masks:
             None if state is None
             else self.customAnnotButtonByName(state['name'])
         )
-        return {'reservedShortcuts': self.reservedShortcuts(button)}
+        # Called on OK (the dialog does not block the window), still without
+        # the key of the edited annotation
+        return {'reservedShortcuts': partial(self.reservedShortcuts, button)}
     
     def useCenterBrushCursorHoverIDtoggled(self, checked):
         if checked:
