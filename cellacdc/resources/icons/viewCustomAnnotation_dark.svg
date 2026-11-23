@@ -8,7 +8,7 @@
    width="89.825569"
    xml:space="preserve"
    sodipodi:docname="viewCustomAnnotation_dark.svg"
-   inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -243,12 +243,12 @@
      inkscape:pagecheckerboard="0"
      showgrid="false"
      inkscape:zoom="5.6568543"
-     inkscape:cx="44.636115"
-     inkscape:cy="69.473241"
-     inkscape:window-width="1440"
-     inkscape:window-height="878"
-     inkscape:window-x="-6"
-     inkscape:window-y="-6"
+     inkscape:cx="44.724504"
+     inkscape:cy="69.384852"
+     inkscape:window-width="2560"
+     inkscape:window-height="1369"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
      inkscape:window-maximized="1"
      inkscape:current-layer="Layer_1"
      inkscape:showpageshadow="2"
@@ -346,4 +346,4 @@
        inkscape:path-effect="#path-effect4227" /></g><path
      d="m 63.176778,59.582108 c -11.558969,0 -21.577625,6.731 -26.5,16.5625 4.922375,9.8315 14.941031,16.5625 26.5,16.5625 11.558969,0 21.575969,-6.731 26.5,-16.5625 -4.922375,-9.8315 -14.941031,-16.5625 -26.5,-16.5625 z m 13.066156,8.783094 c 3.11375,1.985843 5.752156,4.645781 7.734688,7.779406 -1.982532,3.131969 -4.620938,5.793562 -7.734688,7.779406 -3.912062,2.495969 -8.430312,3.814344 -13.066156,3.814344 -4.635844,0 -9.154094,-1.318375 -13.066156,-3.814344 -3.11375,-1.985844 -5.752157,-4.645781 -7.734688,-7.779406 1.982531,-3.131969 4.620938,-5.793563 7.734688,-7.779406 0.202062,-0.129188 0.407437,-0.255063 0.614468,-0.377625 -0.515093,1.414437 -0.798312,2.9415 -0.798312,4.533156 0,7.317312 5.932687,13.25 13.25,13.25 7.317312,0 13.25,-5.932688 13.25,-13.25 0,-1.593313 -0.281563,-3.118719 -0.798313,-4.533156 0.205375,0.122562 0.41075,0.248437 0.614469,0.377625 z m -13.066156,2.810656 c 0,2.744406 -2.224344,4.96875 -4.96875,4.96875 -2.744406,0 -4.96875,-2.224344 -4.96875,-4.96875 0,-2.744406 2.224344,-4.96875 4.96875,-4.96875 2.744406,0 4.96875,2.224344 4.96875,4.96875 z"
      id="path1"
-     style="fill:#808080;fill-opacity:1;stroke-width:1" /></svg>
+     style="fill:#ff0000;fill-opacity:0.80392158;stroke-width:1;stroke:none" /></svg>
