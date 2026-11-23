@@ -3236,17 +3236,18 @@ def check_install_convpaint():
                     sys.modules.pop(module_name, None)
             importlib.invalidate_caches()
 
-def check_install_microsam():
+def check_install_microsam(min_version='2.0'):
     # Keep in sync with `MODEL_ENVS['micro-sam_v1']` and
     # `MODEL_ENVS['micro-sam_v2']` in `cellacdc/models/_env_config.py` (pip
     # installation as in the official micro-sam documentation). micro-sam
     # >= 2.0 has the SAM1 API in `micro_sam.v1` and the SAM2 API in
-    # `micro_sam.v2`
+    # `micro_sam.v2`. micro-sam v2 needs >= 2.0.1, the first release that
+    # declares its `sam2` dependency
     check_install_torch()
     check_install_package(
         'micro_sam',
         pypi_name='micro_sam',
-        min_version='2.0',
+        min_version=min_version,
         include_lower_version=True,
     )
 

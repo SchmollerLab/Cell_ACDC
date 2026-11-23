@@ -26,10 +26,12 @@ embeddings of z-stacks for the video predictor are stored in a temporary
 folder of the micro-sam cache (removed when the embeddings of another image
 are computed or at exit), to keep the memory usage low.
 
-micro-sam >= 2.0 is required (SAM2 API in `micro_sam.v2`). micro-sam is
-imported only when the model is used, because the GUI reads the parameters
-of this module in the main Cell-ACDC environment, where micro-sam is not
-installed.
+micro-sam >= 2.0.1 is required (SAM2 API in `micro_sam.v2`): micro-sam 2.0.0
+does not declare its `sam2` dependency, and its mask postprocessing needs the
+compiled extension of `sam2`, which a pip installation on Windows does not
+build. micro-sam is imported only when the model is used, because the GUI
+reads the parameters of this module in the main Cell-ACDC environment, where
+micro-sam is not installed.
 """
 import os
 

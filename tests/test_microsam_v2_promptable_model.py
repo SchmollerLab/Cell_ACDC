@@ -655,9 +655,70 @@ def test_microsam_v2_environment_config():
     assert spec['pkg_name'] == 'micro_sam'
     assert spec['import_pkg_name'] == 'micro_sam'
     # Installed with pip (official installation), minimum version inclusive
-    myutils._check_package_version_constraints(spec, '2.0.0')
-    with pytest.raises(ModuleNotFoundError):
-        myutils._check_package_version_constraints(spec, '1.9.0')
+    myutils._check_package_version_constraints(spec, '2.0.1')
+    myutils._check_package_version_constraints(spec, '2.1.0')
+    # micro-sam 2.0.0 does not declare its `sam2` dependency: the first
+    # `--only-binary=:all:` pip attempt of Cell-ACDC installed it without
+    # `sam2` (which has only an sdist), and existing environments with it
+    # must be repaired
+    for version in ('2.0.0', '1.9.0'):
+        with pytest.raises(ModuleNotFoundError):
+            myutils._check_package_version_constraints(spec, version)
+
+
+def test_pip_retries_without_only_binary_for_sdist_dependencies(monkeypatch):
+    """micro-sam >= 2.0.1 depends on `sam2`, which has only an sdist: the
+    first `--only-binary=:all:` attempt fails and the installation must be
+    retried with `--prefer-binary` (which builds `sam2`)."""
+    import subprocess
+
+    from cellacdc import myutils
+
+    commands = []
+
+    def run_command_streaming(command, logger=print):
+        commands.append(list(command))
+        if '--only-binary=:all:' in command:
+            # pip: "No matching distribution found for sam2==1.1.0"
+            raise subprocess.CalledProcessError(1, command)
+
+    monkeypatch.setattr(
+        myutils, '_run_command_streaming', run_command_streaming
+    )
+    myutils._install_pip_package(
+        '"micro_sam>=2.0.1"', logger=lambda *args: None, python_exec='py'
+    )
+    assert commands == [
+        ['py', '-m', 'pip', 'install', 'micro_sam>=2.0.1',
+         '--only-binary=:all:'],
+        ['py', '-m', 'pip', 'install', 'micro_sam>=2.0.1', '--prefer-binary'],
+    ]
+
+
+def test_package_import_requires_microsam_with_sam2(monkeypatch):
+    """Importing the model package (worker, or in-process in the Cell-ACDC
+    environment) checks micro-sam >= 2.0.1, like the environment config."""
+    import runpy
+
+    from cellacdc import myutils
+    from cellacdc.service import environment
+
+    calls = []
+    monkeypatch.setattr(myutils, 'check_install_torch', lambda: None)
+    monkeypatch.setattr(
+        myutils, 'check_install_package',
+        lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+    runpy.run_path(os.path.join(os.path.dirname(MODULE_PATH), '__init__.py'))
+    assert calls == [(
+        ('micro_sam',),
+        {'pypi_name': 'micro_sam', 'min_version': '2.0.1',
+         'include_lower_version': True},
+    )]
+    config_spec, = environment.load_model_env_config('micro-sam_v2')[
+        'packages'
+    ]
+    assert config_spec['min_version'] == calls[0][1]['min_version']
 
 
 @pytest.mark.skipif(

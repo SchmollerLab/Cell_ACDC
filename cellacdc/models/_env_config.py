@@ -243,6 +243,9 @@ MODEL_ENVS = {
         # (from ~40 MB for vit_t up to ~2.5 GB for vit_h)
         'init_timeout': 3600,
         'packages': [
+            # micro-sam 2.0.0 is enough for the SAM1 API (`micro_sam.v1`).
+            # Unlike micro-sam v2 (>= 2.0.1), it does not need `sam2`, which
+            # has no wheel and would be built from source
             {'pkg_name': 'micro_sam', 'min_version': '2.0',
              'include_lower_version': True},
         ],
@@ -274,7 +277,14 @@ MODEL_ENVS = {
         # (from ~160 MB for hvit_t up to ~900 MB for hvit_l)
         'init_timeout': 3600,
         'packages': [
-            {'pkg_name': 'micro_sam', 'min_version': '2.0',
+            # micro-sam 2.0.0 does not declare its `sam2` dependency (added in
+            # 2.0.1). `sam2` has no wheel (only an sdist), so the first
+            # `pip install --only-binary=:all:` attempt of Cell-ACDC would
+            # silently install micro-sam 2.0.0 without `sam2`. With >= 2.0.1
+            # that attempt fails and the retry with `--prefer-binary` builds
+            # `sam2`. It also repairs environments with micro-sam 2.0.0.
+            # Keep in sync with `micro-sam_v2/__init__.py`
+            {'pkg_name': 'micro_sam', 'min_version': '2.0.1',
              'include_lower_version': True},
         ],
     },
