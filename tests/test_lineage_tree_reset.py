@@ -20,11 +20,11 @@ import pytest
 from qtpy.QtWidgets import QAction, QApplication
 
 from cellacdc import apps, gui, load, myutils, widgets, workers
-from cellacdc import base_cca_dict, cca_df_colnames
+from cellacdc import base_cca_dict, cca_df_colnames, cca_df_colnames_with_tree
 from cellacdc.regionprops import acdcRegionprops
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     LINEAGE_TREE_SHARED_CCA_COLS, has_lineage_tree_values, lineage_tree_columns,
-    normal_division_lineage_tree
+    normal_division_lineage_tree, tracker as NormalDivisionTracker
 )
 
 G = gui.guiWin
@@ -683,12 +683,9 @@ def _repeat_tracking_prompts(prompts):
     return [p for p in prompts.log if p.title == REPEAT_TRACKING_TITLE]
 
 
-def test_repeat_tracking_video_removes_lineage_after_first_tracked_frame(
+def test_repeat_tracking_video_removes_lineage_from_first_tracked_frame(
         app, prompts, repeat_tracking
     ):
-    # The first re-tracked frame (n. 3, index 2) gets its IDs back
-    # (`trackingWorker._relabel_first_frame_labels`): IDs can change from
-    # index 3 on
     host = _Host()
     original = _visited_dfs(host)
     prompts.answers[REPEAT_TRACKING_TITLE] = YES
@@ -700,17 +697,18 @@ def test_repeat_tracking_video_removes_lineage_after_first_tracked_frame(
     assert len(warnings) == 1
     assert 'lineage tree annotations' in warnings[0].txt
     assert 'cell cycle' not in warnings[0].txt
-    assert 'annotations from frame 4 to frame' in warnings[0].txt
-    _assert_lineage_removed_from(host, 3, original)
+    assert 'annotations from frame 3 to frame' in warnings[0].txt
+    _assert_lineage_removed_from(host, 2, original)
     lineage_cols = lineage_tree_columns(host.posData.acdc_df)
-    assert host.posData.acdc_df.loc[3:, lineage_cols].isna().all(axis=None)
-    assert host.posData.acdc_df.loc[:2, lineage_cols].notna().all(axis=None)
+    assert host.posData.acdc_df.loc[2:, lineage_cols].isna().all(axis=None)
+    assert host.posData.acdc_df.loc[:1, lineage_cols].notna().all(axis=None)
 
 
 @pytest.mark.parametrize('with_cca', [True, False])
-def test_repeat_tracking_video_from_first_frame_keeps_first_frame(
+def test_repeat_tracking_video_from_first_frame_warns_and_removes_all(
         app, prompts, repeat_tracking, with_cca
     ):
+    # It used to re-track from frame 1 without any warning
     host = _Host(with_lineage=not with_cca, with_cca=with_cca)
     original = _visited_dfs(host)
     prompts.answers[REPEAT_TRACKING_TITLE] = YES
@@ -720,20 +718,17 @@ def test_repeat_tracking_video_from_first_frame_keeps_first_frame(
 
     assert len(_repeat_tracking_prompts(prompts)) == 1
     if with_cca:
-        assert [_has_cca(host, i) for i in range(SIZE_T)] == (
-            [True] + [False]*(SIZE_T-1)
-        )
+        assert not any(_has_cca(host, i) for i in range(SIZE_T))
     else:
-        _assert_lineage_removed_from(host, 1, original)
+        _assert_lineage_removed_from(host, 0, original)
 
 
 def test_repeat_tracking_video_of_annotated_frames_only_does_not_warn(
         app, prompts, repeat_tracking
     ):
-    # Annotations up to index 2 = the first re-tracked frame of start_n 3,
-    # which keeps its IDs
+    # Annotations up to index 1, the frame before the first re-tracked one
     host = _Host()
-    host.resetLin_tree_future(from_frame_i=3)
+    host.resetLin_tree_future(from_frame_i=2)
     _go_to(host, 5)
 
     assert repeat_tracking(host, start_n=3)
@@ -781,7 +776,7 @@ def test_repeat_tracking_video_with_cell_cycle_annotations_still_warns(
     assert 'cell cycle annotations' in warnings[0].txt
     assert 'lineage' not in warnings[0].txt
     assert [_has_cca(host, i) for i in range(SIZE_T)] == (
-        [True]*3 + [False]*(SIZE_T-3)
+        [True]*2 + [False]*(SIZE_T-2)
     )
 
 
@@ -927,3 +922,48 @@ def test_last_lineage_annotated_frame_uses_the_lineage_tree_criterion(app):
         _frame_df(unannotated, 0).iloc[0:0]
     )
     assert unannotated.get_last_lin_tree_frame_i() == -1
+
+
+def _store_tracker_output_like_worker(host, start_n):
+    """What `trackingWorker.run` does with the output of a tracker that
+    annotates the lineage tree (normal division tracker): store it into
+    every re-tracked frame with `store_cca_df`."""
+    posData = host.posData
+    video = np.array([d['labels'] for d in posData.allData_li])[start_n-1:]
+    tracker = NormalDivisionTracker()
+    tracked_video = tracker.track(video)
+    posData.trackedLostCentroidsPath = lambda: None
+    posData.saveTrackedLostCentroids = lambda *args, **kwargs: None
+    acdc_df = load.loadData.fromTrackerToAcdcDf(
+        posData, tracker, tracked_video, start_frame_i=start_n-1
+    )
+    for rel_frame_i in range(len(tracked_video)):
+        frame_i = rel_frame_i + start_n - 1
+        cca_cols = acdc_df.columns.intersection(cca_df_colnames_with_tree)
+        host.store_cca_df(
+            frame_i=frame_i, cca_df=acdc_df.loc[frame_i][cca_cols],
+            mainThread=False, autosave=False
+        )
+
+
+@pytest.mark.parametrize('with_cca', [True, False])
+def test_repeat_tracking_video_warns_about_frame_rewritten_by_tracker(
+        app, prompts, repeat_tracking, with_cca
+    ):
+    """Trackers that output annotations rewrite the first re-tracked frame
+    too: it is warned about and reset, so their table can be stored (a
+    kept cell cycle table made `store_cca_df` raise KeyError) and no
+    manual lineage is replaced without a warning."""
+    host = _Host(with_lineage=not with_cca, with_cca=with_cca)
+    if not with_cca:
+        # Lineage annotated up to the first re-tracked frame (index 2)
+        host.resetLin_tree_future(from_frame_i=3)
+    prompts.answers[REPEAT_TRACKING_TITLE] = YES
+    _go_to(host, 5)
+
+    assert repeat_tracking(host, start_n=3)
+    assert len(_repeat_tracking_prompts(prompts)) == 1
+
+    _store_tracker_output_like_worker(host, start_n=3)
+    for frame_i in range(2, SIZE_T):
+        assert has_lineage_tree_values(_frame_df(host, frame_i))

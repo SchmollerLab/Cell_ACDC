@@ -686,14 +686,19 @@ def _open_post_processing_dialog(host):
 @pytest.mark.parametrize('mode', [VIEWER, LIN])
 def test_leaving_segm_mode_closes_post_processing_dialog(app, mode):
     """Left open, the dialog warned about (and removed) the annotations of
-    every frame visited in the other modes. Closing it neither applies
-    nor restores masks and asks nothing."""
+    every frame visited in the other modes. Closing it keeps the shown
+    masks, restores nothing and asks nothing; a preview not applied yet
+    is stored with matching regionprops and table."""
     host = Host(mode=SEGM)
     visit_frames_segm_mode(host)
     go_to_frame(host, 0)
     win, action, preview_lab = _open_post_processing_dialog(host)
     host.warnEditingWithCca_df = MagicMock(name='warnEditingWithCca_df')
-    host.update_rp = MagicMock(name='update_rp')
+
+    def update_rp(*args, **kwargs):
+        host.posData.rp = acdcRegionprops(host.posData.lab)
+        host.update_rp_metadata()
+    host.update_rp = MagicMock(name='update_rp', side_effect=update_rp)
 
     switch_mode(host, mode)
 
@@ -702,10 +707,16 @@ def test_leaving_segm_mode_closes_post_processing_dialog(app, mode):
     assert not action.isChecked()
     host.postProcessSegm.assert_not_called()
     host.warnEditingWithCca_df.assert_not_called()
-    host.update_rp.assert_not_called()
+    host.update_rp.assert_called_once()
     assert FakeMsg.titles == []
     assert np.array_equal(host.posData.lab, preview_lab)
     assert host.modeComboBox.currentText() == mode
+    stored = host.posData.allData_li[0]
+    shown_IDs = set(np.unique(preview_lab)) - {0}
+    assert 2 not in shown_IDs
+    assert set(np.unique(stored['labels'])) - {0} == shown_IDs
+    assert set(stored['regionprops'].IDs) == shown_IDs
+    assert set(stored['acdc_df'].index) == shown_IDs
 
 
 def test_stay_on_current_frame_initialises_the_lineage_tree_once(app):

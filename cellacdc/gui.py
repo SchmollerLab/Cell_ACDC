@@ -14514,12 +14514,14 @@ When working with 3D segmentation masks:
 
         # Merging in annotated past frames would make their annotations
         # wrong: propagate only to the frames after the last annotated one
-        last_annot_i = max(self.getLastAnnotatedFrames())
-        if ask_back_prop and (
-                self.isFrameCcaAnnotated()
-                or posData.frame_i-1 <= last_annot_i
-            ):
+        if ask_back_prop and self.isFrameCcaAnnotated():
             ask_back_prop = False
+
+        last_annot_i = -1
+        if ask_back_prop:
+            last_annot_i = max(self.getLastAnnotatedFrames())
+            if posData.frame_i-1 <= last_annot_i:
+                ask_back_prop = False
 
         if ask_back_prop:
             proceed = self.askPropagateChangePast(f'Merge IDs {unique_ids}')
@@ -16432,14 +16434,17 @@ When working with 3D segmentation masks:
 
     def askRemoveAnnotationsRepeatTrackingVideo(self, start_n):
         """Before repeating tracking on the video from frame n. `start_n`,
-        warn if frames whose IDs tracking can change have cell cycle or
-        lineage tree annotations and, if the user continues, remove them
-        from those frames to the end.
+        warn if the re-tracked frames have cell cycle or lineage tree
+        annotations and, if the user continues, remove them from frame n.
+        `start_n` (index `start_n-1`) to the end.
 
-        The first re-tracked frame (n. `start_n`) gets the IDs it had
-        before tracking back (`trackingWorker._relabel_first_frame_labels`),
-        so its annotations stay valid: IDs can change from frame n.
-        `start_n` + 1 (index `start_n`) on.
+        The first re-tracked frame counts as changed although it gets the
+        IDs it had before tracking back
+        (`trackingWorker._relabel_first_frame_labels`): trackers that
+        output annotations (normal division lineage tree, Trackastra,
+        DeepSea) write their own table into it, where every object starts
+        a new lineage, and their tables without cell cycle columns cannot
+        be stored into a frame that kept them (`store_cca_df`).
 
         Parameters
         ----------
@@ -16452,7 +16457,7 @@ When working with 3D segmentation masks:
             False if the user stopped tracking.
         """
         last_cca_i, last_lin_tree_i = self.getLastAnnotatedFrames()
-        first_changed_i = start_n
+        first_changed_i = start_n - 1
         remove_cca = last_cca_i >= first_changed_i
         remove_lin_tree = last_lin_tree_i >= first_changed_i
         if not remove_cca and not remove_lin_tree:
@@ -17260,16 +17265,21 @@ When working with 3D segmentation masks:
         parameter and frame change (`postProcessing`) in the other modes,
         where removing the annotations resets e.g. the live lineage tree.
 
-        The masks are kept as they are shown: closing applies nothing and
-        restores nothing (the dialog's Cancel restores the masks of the
-        current frame without asking, `PostProcessSegmDialog.undoChanges`).
-        The dialog's `sigClosed` unchecks the menu action
-        (`postProcessSegmWinClosed`).
+        The masks are kept as they are shown (the annotations warning of
+        `apply` was answered for them) and nothing is restored (the
+        dialog's Cancel restores the masks of the current frame without
+        asking, `PostProcessSegmDialog.undoChanges`). A preview that was
+        not applied yet (e.g. the one shown when the dialog opens) changed
+        only `posData.lab`: the regionprops are updated, so that the
+        `store_data` of `changeMode` stores labels, regionprops and table
+        of the same objects. The dialog's `sigClosed` unchecks the menu
+        action (`postProcessSegmWinClosed`).
         """
         win = self.postProcessSegmWin
         if win is None:
             return
 
+        self.update_rp()
         win.cancel = False
         win.close()
 
