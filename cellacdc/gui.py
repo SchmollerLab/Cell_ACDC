@@ -13103,6 +13103,11 @@ When working with 3D segmentation masks:
         if prevMode == 'Normal division: Lineage tree':
             self.askLineageTreeChanges()
             self.lineage_tree = None
+            # The backup of the edited frame belongs to the lineage tree
+            # session: a stale one would be compared with tables changed
+            # in other modes (`get_difference_table`)
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
             self.editLin_TreeBar.setVisible(False)
             self.uncheckAllButtonsFromButtonGroup(self.editLin_TreeGroup)
 
@@ -18747,18 +18752,23 @@ When working with 3D segmentation masks:
         new_df = posData.allData_li[posData.frame_i]['acdc_df']
         original_df = self.original_df_lin_tree.copy()
 
-        if original_df.equals(new_df):
+        if new_df is None or original_df.equals(new_df):
             return
-        
-        compare_columns = ['parent_ID_tree']
 
-        new_df = new_df[original_df.columns]
+        compare_columns = ['parent_ID_tree']
+        for df in (original_df, new_df):
+            if any(col not in df.columns for col in compare_columns):
+                # No lineage tree annotations to compare, e.g. removed by
+                # `resetLin_tree_future` after a segmentation edit
+                return
+
         new_df = myutils.checked_reset_index_Cell_ID(new_df)
-        new_df = new_df[compare_columns]
-        new_df = new_df.sort_index()
         original_df = myutils.checked_reset_index_Cell_ID(original_df)
-        original_df = original_df[compare_columns]
-        original_df = original_df.sort_index()
+        # Segmentation edits can add or remove IDs after the backup:
+        # compare the cells present in both tables
+        IDs = original_df.index.intersection(new_df.index)
+        new_df = new_df.loc[IDs, compare_columns].sort_index()
+        original_df = original_df.loc[IDs, compare_columns].sort_index()
 
         differences = original_df.compare(new_df)
         if differences.empty:
@@ -23097,7 +23107,14 @@ When working with 3D segmentation masks:
                 continue
             df = df.drop(columns=lineage_tree_cols, errors='ignore')
             posData.allData_li[i]['acdc_df'] = df
-    
+
+        backup_frame_i = self.original_df_lin_tree_i
+        if backup_frame_i is not None and backup_frame_i >= frame_i:
+            # The lineage tree edits of the backed up frame were removed
+            # with its annotations: nothing left to propagate or discard
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
+
     def get_cca_df(
             self, frame_i=None, 
             return_df=False, 

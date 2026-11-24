@@ -1200,7 +1200,13 @@ def pd_int_to_bool(acdc_df, colsToCast=None):
         colsToCast = acdc_df_bool_cols
     for col in colsToCast:
         try:
-            acdc_df[col] = acdc_df[col] > 0
+            # Plain numpy bool, missing values False: the columns come as
+            # Int64 from `pd_bool_and_float_to_int_to_str`, where `> 0` gives
+            # nullable 'boolean'. `reindex(fill_value=0)` (main GUI's
+            # `store_data`) corrupts 'boolean' arrays, and concatenating the
+            # frames at save then raises "values should be boolean numpy
+            # array"
+            acdc_df[col] = (acdc_df[col] > 0).fillna(False).astype(bool)
         except KeyError:
             continue
     return acdc_df
