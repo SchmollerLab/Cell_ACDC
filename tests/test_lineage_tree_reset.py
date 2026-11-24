@@ -553,13 +553,14 @@ def test_live_lineage_tree_forgets_reset_frames(app, prompts):
     assert tree.frames_for_dfs == {0, 1, 2}
     assert tree.first_frame_i_for_ID == {1: 0, 3: 2}
     assert tree.ID_frame_i_lookup == {2: 1}
-    # Frames scrollbar ends at the last annotated frame (n. 3)
-    assert host.navigateScrollBar.maximum() == 3
+    # Frames scrollbar ends at the current frame (n. 4), annotated again
+    # when the next frame is entered (`autoLinTree_df`)
+    assert host.navigateScrollBar.maximum() == 4
     assert host.original_df_lin_tree is None
     assert host.original_df_lin_tree_i is None
 
 
-def test_reset_keeps_backup_of_earlier_frame_and_drops_tree_from_frame_0(
+def test_reset_keeps_backup_of_earlier_frame_and_restarts_tree_from_frame_0(
         app
     ):
     host = _Host(mode=LIN)
@@ -574,10 +575,31 @@ def test_reset_keeps_backup_of_earlier_frame_and_drops_tree_from_frame_0(
     assert host.lineage_tree.frames_for_dfs == {0, 1}
     assert host.original_df_lin_tree is backup
 
+    old_tree = host.lineage_tree
+    host.posData.frame_i = 0
+    host.resetLin_tree_future(from_frame_i=0)
+
+    # Lineage tree mode needs a tree (Propagate raised on None): started
+    # again from frame 0, every object a root
+    assert host.lineage_tree is not None
+    assert host.lineage_tree is not old_tree
+    assert host.lineage_tree.frames_for_dfs == {0}
+    first_df = _frame_df(host, 0)
+    assert (first_df['generation_num_tree'] == 1).all()
+    assert (first_df['parent_ID_tree'] == -1).all()
+    assert (first_df['root_ID_tree'] == first_df.index).all()
+    assert host.navigateScrollBar.maximum() == 1
+    assert host.original_df_lin_tree is None
+    assert all(
+        lineage_tree_columns(_frame_df(host, i)) == []
+        for i in range(1, SIZE_T)
+    )
+
+    # Outside lineage tree mode the tree is dropped
+    host.modeComboBox = _Mode(SEGM)
     host.resetLin_tree_future(from_frame_i=0)
 
     assert host.lineage_tree is None
-    assert host.original_df_lin_tree is None
     assert all(
         lineage_tree_columns(_frame_df(host, i)) == [] for i in range(SIZE_T)
     )
