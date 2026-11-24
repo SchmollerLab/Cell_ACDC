@@ -100,7 +100,8 @@ from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree, is_lineage_tree_annotated,
     init_lineage_tree_cols_of_added_IDs, has_lineage_tree_values,
-    lineage_tree_columns, LINEAGE_TREE_SHARED_CCA_COLS
+    lineage_tree_columns, lineage_tree_annotated_frames,
+    LINEAGE_TREE_SHARED_CCA_COLS
 )#, reorg_sister_cells_for_export)
 from . import debugutils
 from . import exec_time
@@ -22741,22 +22742,22 @@ When working with 3D segmentation masks:
         """Index of the last frame with lineage tree annotations, -1 if no
         frame has them.
 
-        Frames are annotated from frame 0 on without gaps (as in
-        `initLinTree`): the first frame without lineage tree values
-        (`has_lineage_tree_values`) ends the annotated frames.
+        Same annotated frames as `initLinTree` and the lineage tree's
+        `frames_for_dfs` (`lineage_tree_annotated_frames`: contiguous from
+        frame 0, frames without objects do not end them), but -1 when none
+        of them has lineage tree values (e.g. only empty first frames).
 
         Returns
         -------
         int
         """
         posData = self.data[self.pos_i]
-        last_lin_tree_frame_i = -1
-        for i, data_dict in enumerate(posData.allData_li):
-            if not has_lineage_tree_values(data_dict['acdc_df']):
-                break
-            last_lin_tree_frame_i = i
+        acdc_dfs = [data_dict['acdc_df'] for data_dict in posData.allData_li]
+        annotated_frames = lineage_tree_annotated_frames(acdc_dfs)
+        if not any(has_lineage_tree_values(acdc_dfs[i]) for i in annotated_frames):
+            return -1
 
-        return last_lin_tree_frame_i
+        return annotated_frames[-1]
 
     def initSegmTrackMode(self):
         posData = self.data[self.pos_i]
@@ -23026,17 +23027,14 @@ When working with 3D segmentation masks:
             return
 
         proceed = True
-        last_lin_tree_frame_i = 0
-        # Determine last annotated frame index
-        for i, dict_frame_i in enumerate(posData.allData_li):
-            df = dict_frame_i['acdc_df']
-            if (df is None or
-                'generation_num_tree' not in df.columns 
-                  or df['generation_num_tree'].isin([np.nan, 0]).all()
-                  ):
-                break
-            else:
-                last_lin_tree_frame_i = i
+        # Last annotated frame index (0 if no frame is annotated), with the
+        # same criterion as the lineage tree's `frames_for_dfs`
+        last_lin_tree_frame_i = max(
+            lineage_tree_annotated_frames(
+                data_dict['acdc_df'] for data_dict in posData.allData_li
+            ),
+            default=0
+        )
 
         if last_lin_tree_frame_i == 0:
             # Remove undoable actions from segmentation mode

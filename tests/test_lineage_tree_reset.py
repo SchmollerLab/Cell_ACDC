@@ -909,3 +909,21 @@ def test_autosave_does_not_rejoin_removed_annotations(app, tmp_path):
         or col in LINEAGE_TREE_SHARED_CCA_COLS
     ]
     assert removed and not set(removed) & set(recovered.columns)
+
+
+def test_last_lineage_annotated_frame_uses_the_lineage_tree_criterion(app):
+    """`get_last_lin_tree_frame_i` counts the same frames as the lineage
+    tree (`lineage_tree_annotated_frames`): frames without objects do not
+    end the annotated frames, a reset frame does."""
+    host = _Host()
+    host.posData.allData_li[2]['acdc_df'] = _frame_df(host, 2).iloc[0:0]
+    assert host.get_last_lin_tree_frame_i() == SIZE_T - 1
+
+    host.resetLin_tree_future(from_frame_i=4)
+    assert host.get_last_lin_tree_frame_i() == 3
+
+    unannotated = _Host(with_lineage=False)
+    unannotated.posData.allData_li[0]['acdc_df'] = (
+        _frame_df(unannotated, 0).iloc[0:0]
+    )
+    assert unannotated.get_last_lin_tree_frame_i() == -1
