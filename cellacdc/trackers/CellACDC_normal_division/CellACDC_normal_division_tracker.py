@@ -1,4 +1,5 @@
 import os
+import re
 import copy
 
 from tqdm import tqdm
@@ -9,7 +10,7 @@ import pandas as pd
 import scipy.optimize
 
 from cellacdc._types import NotGUIParam
-from cellacdc import printl, lineage_tree_cols
+from cellacdc import printl, lineage_tree_cols, base_cca_dict
 from cellacdc.core import lab_replace_values, getBaseCca_df
 from cellacdc.myutils import checked_reset_index, checked_reset_index_Cell_ID
 import cellacdc.debugutils as debugutils
@@ -175,6 +176,37 @@ LINEAGE_TREE_SHARED_CCA_COLS = (
     'emerg_frame_i', 'division_frame_i', 'is_history_known'
 )
 
+# Values of `LINEAGE_TREE_SHARED_CCA_COLS` of a cell whose history is not
+# known (as in `core.getBaseCca_df`), used for continuing cells when the
+# previous frame lacks these columns
+UNKNOWN_HISTORY_VALUES = {
+    col: base_cca_dict[col] for col in LINEAGE_TREE_SHARED_CCA_COLS
+}
+
+_EXTRA_SISTER_COL_PATTERN = re.compile(r'sister_ID_tree_(\d+)')
+
+def _is_parent_ID(parent_ID):
+    """Whether a `parent_ID_tree` value is the ID of a parent cell.
+
+    -1 means no parent. NaN and 0 mean not annotated (see
+    `lineage_tree_values_mask`; ID 0 is the background), so the cell has no
+    known parent either.
+    """
+    return bool(pd.notna(parent_ID) and parent_ID > 0)
+
+def _num_extra_sister_columns(dfs):
+    """Number of extra sister columns `sister_ID_tree_<i>` (highest `i`
+    plus 1) of the tables `dfs` (None items are skipped)."""
+    num_cols = 0
+    for df in dfs:
+        if df is None:
+            continue
+        for col in df.columns:
+            match = _EXTRA_SISTER_COL_PATTERN.fullmatch(str(col))
+            if match is not None:
+                num_cols = max(num_cols, int(match.group(1)) + 1)
+    return num_cols
+
 def lineage_tree_columns(df):
     """Lineage tree columns of a table: `cellacdc.lineage_tree_cols` plus
     the extra sister columns `sister_ID_tree_<i>` of divisions with more
@@ -281,7 +313,8 @@ def init_lineage_tree_cols_of_added_IDs(
       the tree columns, so the frame stays unannotated and is annotated
       later by `normal_division_lineage_tree.real_time`.
     * If the ID has lineage values in the previous frame: those values
-      (the cell continues, as in `add_new_frame`).
+      (the cell continues, as in `add_new_frame`). Columns missing in the
+      previous frame get `UNKNOWN_HISTORY_VALUES` or -1.
     * Otherwise the values of a new cell with unknown history, the same as
       `add_new_frame`: generation 1, parent -1, root = own ID, sisters -1,
       emerged and divided at `frame_i`, history not known.
@@ -345,7 +378,7 @@ def init_lineage_tree_cols_of_added_IDs(
             if col in prev_acdc_df.columns:
                 values = prev_acdc_df.loc[continuing_IDs, col].to_numpy()
             else:
-                values = -1
+                values = UNKNOWN_HISTORY_VALUES.get(col, -1)
             _set_lineage_values(acdc_df, continuing_IDs, col, values)
 
     new_IDs = [ID for ID in added_IDs if ID not in continuing_IDs]
@@ -781,9 +814,12 @@ class normal_division_lineage_tree:
         for identifying daughter cells.
         mother_daughters (list): List of tuples representing mother-daughter 
         relationships for the current frame.
-        frames_for_dfs (set): Set of frame indices for which lineage data is 
+        frames_for_dfs (set): Set of frame indices for which lineage data is
         available.
-        need_update_gen_df (bool): Flag indicating if the general DataFrame 
+        max_daughters_added (int): Number of extra sister columns
+        `sister_ID_tree_<i>` (GUI mode). Starts from the columns of the
+        loaded frames, so that annotating them again overwrites old values.
+        need_update_gen_df (bool): Flag indicating if the general DataFrame
         needs updating.
         families (list): List of families, where each family is a list of 
         (Cell_ID, generation_num_tree) tuples.
@@ -883,7 +919,13 @@ class normal_division_lineage_tree:
                     and lineage_tree_values_mask(data['acdc_df']).all()
                     ):
                     self.frames_for_dfs.add(i)
-        
+            # Continue with the extra sister columns of the loaded table,
+            # so that annotating a frame again overwrites their old values
+            # also when no division adds them again
+            self.max_daughters_added = _num_extra_sister_columns(
+                data['acdc_df'] for data in posData.allData_li
+            )
+
         self.init_lineage_tree(lab, first_df, frame_i)
     
     def _get_first_frame_i_for_ID(self, ID):
@@ -891,10 +933,12 @@ class normal_division_lineage_tree:
             posData = self.gui.data[self.gui.pos_i]
             if ID in self.first_frame_i_for_ID:
                 frame_i = self.first_frame_i_for_ID[ID]
-                if ID in posData.allData_li[frame_i]['acdc_df'].index:
+                df = posData.allData_li[frame_i]['acdc_df']
+                if df is not None and ID in df.index:
                     return frame_i
+            # Frames never visited have no acdc_df
             for i, data in enumerate(posData.allData_li):
-                if ID in data['acdc_df'].index:
+                if data['acdc_df'] is not None and ID in data['acdc_df'].index:
                     self.first_frame_i_for_ID[ID] = i
                     return i
         else:
@@ -956,16 +1000,17 @@ class normal_division_lineage_tree:
                     pass
         if self.gui_mode:
             posData = self.gui.data[self.gui.pos_i]
+            # Frames never visited have no acdc_df
             if start_search_frame_i is not None:
                 df = posData.allData_li[start_search_frame_i]['acdc_df']
-                if ID in df.index:
+                if df is not None and ID in df.index:
                     row = df.loc[ID]
                     self.ID_frame_i_lookup[ID] = start_search_frame_i
                     return row
                 
             for i, data in enumerate(posData.allData_li):
-                if ID in data['acdc_df'].index:
-                    df = data['acdc_df']
+                df = data['acdc_df']
+                if df is not None and ID in df.index:
                     row = df.loc[ID]
                     self.ID_frame_i_lookup[ID] = i
                     return row
@@ -1010,6 +1055,15 @@ class normal_division_lineage_tree:
         if self.gui_mode:
             cca_df = self._get_df_from_frame_i(frame_i)
             if 'parent_ID_tree' in cca_df.columns:
+                # Already annotated: only cells without lineage values
+                # (e.g. rows filled with 0 by older versions) are new cells
+                if 'generation_num_tree' in cca_df.columns:
+                    unannotated_IDs = cca_df.index[
+                        ~lineage_tree_values_mask(cca_df)
+                    ]
+                    init_lineage_tree_cols_of_added_IDs(
+                        cca_df, unannotated_IDs, frame_i, True
+                    )
                 return
             cca_df['emerg_frame_i'] = cca_df['division_frame_i'] = frame_i
             cca_df['generation_num_tree'] = 1
@@ -1076,6 +1130,18 @@ class normal_division_lineage_tree:
         else:
             posData = self.gui.data[self.gui.pos_i]
             cca_df = posData.allData_li[frame_i]['acdc_df']
+            prev_df = self._get_df_from_frame_i(frame_i-1)
+            same_IDs = prev_df.index.intersection(cca_df.index)
+            # Only cells with lineage values in the previous frame continue
+            # their lineage (the others, e.g. rows filled with 0 by older
+            # versions, are new cells, as in
+            # `init_lineage_tree_cols_of_added_IDs`)
+            if 'generation_num_tree' in prev_df.columns:
+                continuing_IDs = same_IDs.intersection(
+                    prev_df.index[lineage_tree_values_mask(prev_df)]
+                )
+            else:
+                continuing_IDs = same_IDs[:0]
 
         daughter_dict = {}
         daughter_set = set()
@@ -1086,6 +1152,10 @@ class normal_division_lineage_tree:
             daughter_set.update(set(daughter_IDs))
 
         new_unknown_IDs = new_IDs - daughter_set
+        if self.gui_mode:
+            new_unknown_IDs = new_unknown_IDs.union(
+                same_IDs.difference(continuing_IDs)
+            ).difference(daughter_set)
 
         if not self.gui_mode:
             for ID in new_unknown_IDs:
@@ -1146,17 +1216,39 @@ class normal_division_lineage_tree:
                         [pd.DataFrame()] * (frame_i + 1 - len_lineage_list))
                 self.lineage_list[frame_i] = cca_df
         else:
-            prev_df = self._get_df_from_frame_i(frame_i-1)
-            same_IDs = prev_df.index.intersection(cca_df.index)
-
-            columns = ['generation_num_tree', 'parent_ID_tree', 
-                       'emerg_frame_i', 'division_frame_i', 
-                       'root_ID_tree', 'sister_ID_tree', 'is_history_known']
-            cca_df.loc[same_IDs, columns] = prev_df.loc[same_IDs, 
-                                columns].values
-            cca_df.loc[same_IDs, self._get_extra_daughter_cols()] = prev_df.loc[
-                same_IDs, self._get_extra_daughter_cols()].values
+            self._copy_previous_frame_lineage(cca_df, prev_df, continuing_IDs)
         self.frames_for_dfs.add(frame_i)
+
+    def _copy_previous_frame_lineage(self, cca_df, prev_df, IDs):
+        """Copy the lineage values of the continuing cells `IDs` from the
+        previous frame's acdc_df `prev_df` to `cca_df` (GUI mode).
+
+        Columns missing in `prev_df` get `UNKNOWN_HISTORY_VALUES` or -1:
+        loading a table with every cell cycle column drops
+        `LINEAGE_TREE_SHARED_CCA_COLS` from the frames without cell cycle
+        values (`guiWin._get_data_unvisited`).
+        """
+        if IDs.empty:
+            return
+
+        columns = ['generation_num_tree', 'parent_ID_tree',
+                   'emerg_frame_i', 'division_frame_i',
+                   'root_ID_tree', 'sister_ID_tree', 'is_history_known']
+        extra_cols = self._get_extra_daughter_cols()
+        for cols in (columns, extra_cols):
+            copied_cols = [col for col in cols if col in prev_df.columns]
+            if copied_cols:
+                cca_df.loc[IDs, copied_cols] = prev_df.loc[
+                    IDs, copied_cols].values
+
+        for col in columns + extra_cols:
+            if col in prev_df.columns:
+                continue
+            if col not in cca_df.columns:
+                cca_df[col] = np.nan
+            _set_lineage_values(
+                cca_df, IDs, col, UNKNOWN_HISTORY_VALUES.get(col, -1)
+            )
 
     def real_time(self, frame_i, lab, prev_lab, rp=None, prev_rp=None):
         """
@@ -1226,7 +1318,9 @@ class normal_division_lineage_tree:
             corrected_rows = []
 
             for _, Cell_info in df.iterrows():
-                if Cell_info['parent_ID_tree'] == -1:
+                # 0 and NaN (not annotated) are no parent either
+                if not _is_parent_ID(Cell_info['parent_ID_tree']):
+                    Cell_info['parent_ID_tree'] = -1
                     Cell_info['generation_num_tree'] = 1
                     Cell_info['root_ID_tree'] = Cell_info['Cell_ID']
                     Cell_info['sister_ID_tree'] = [-1]
@@ -1262,7 +1356,8 @@ class normal_division_lineage_tree:
             
             for ID, Cell_info in df.iterrows():
                 cell_row = df_data.loc[ID].copy()
-                if Cell_info['parent_ID_tree'] == -1:
+                # 0 and NaN (not annotated) are no parent either
+                if not _is_parent_ID(Cell_info['parent_ID_tree']):
                     df.loc[ID, ['generation_num_tree', 'root_ID_tree', 
                                 'sister_ID_tree', 'is_history_known', 
                                 'parent_ID_tree']] = [1, ID, -1, False, -1]
@@ -1551,8 +1646,9 @@ class normal_division_lineage_tree:
             try:
                 mother = cell_row['parent_ID_tree']
             except KeyError:
-                mother = -1            # check for nan mother
-            if mother == -1 or pd.isna(mother):
+                mother = -1
+            # -1, 0 and NaN (not annotated): no parent
+            if not _is_parent_ID(mother):
                 orphan_cells.append(cell)
             else:
                 cells_with_parent.append((cell, mother))
