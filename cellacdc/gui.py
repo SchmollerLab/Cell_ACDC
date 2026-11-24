@@ -3142,6 +3142,9 @@ When working with 3D segmentation masks:
             action.setCheckable(True)
             action.setChecked(True)
             action.removeAnnot = False
+            action.triggered.connect(
+                partial(self.warnEditingWithAnnotActionTriggered, action)
+            )
             self.warnEditingWithAnnotActions[key] = action
             warningsMenu.addAction(action)
             
@@ -27068,8 +27071,12 @@ When working with 3D segmentation masks:
 
         removeAnnot = msg.clickedButton == removeAnnotButton
         if action is not None:
-            action.setChecked(not checkBox.isChecked())
-            action.removeAnnot = removeAnnot
+            remember = checkBox.isChecked()
+            action.setChecked(not remember)
+            # Replay only a remembered answer: a warning turned off from
+            # the Settings menu keeps the annotations (see
+            # `warnEditingWithAnnotActionTriggered`)
+            action.removeAnnot = removeAnnot if remember else False
 
         if return_answer:
             return removeAnnot
@@ -27083,6 +27090,23 @@ When working with 3D segmentation masks:
             return removeAnnot
         else:
             return True
+
+    def warnEditingWithAnnotActionTriggered(self, action, checked=False):
+        """The user toggled one of the "Show warning when ..." items of
+        Settings > Warnings and pop-ups (`warnEditingWithAnnotActions`).
+
+        Forget the answer remembered with "Remember my choice": a warning
+        turned off from the menu means "do not ask" and keeps the
+        annotations, it must not replay an earlier "Remove".
+
+        Parameters
+        ----------
+        action : QAction
+            The toggled item (passed explicitly, not via `sender()`).
+        checked : bool, optional
+            New checked state (unused).
+        """
+        action.removeAnnot = False
 
     def _applyEditingWithAnnotAnswer(
             self, removeAnnot, cell_cycle_stage_present, lineage_tree_present,

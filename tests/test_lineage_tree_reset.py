@@ -10,6 +10,7 @@ synthetic per-frame tables (6 frames, ID 1 divides symmetrically into 3 and
 boxes are answered by the tests.
 """
 import logging
+from functools import partial
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -22,7 +23,7 @@ from cellacdc import apps, gui, myutils, widgets
 from cellacdc import base_cca_dict, cca_df_colnames
 from cellacdc.regionprops import acdcRegionprops
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
-    LINEAGE_TREE_SHARED_CCA_COLS, lineage_tree_columns,
+    LINEAGE_TREE_SHARED_CCA_COLS, has_lineage_tree_values, lineage_tree_columns,
     normal_division_lineage_tree
 )
 
@@ -61,8 +62,10 @@ LINEAGE = {
 
 REAL_METHODS = (
     'warnEditingWithCca_df', '_applyEditingWithAnnotAnswer',
+    'warnEditingWithAnnotActionTriggered',
     'resetLin_tree_future', '_blankLinTreeLoadedAcdcDf',
-    '_removeLinTreeFrames', 'resetCcaFuture', 'resetFutureCcaColCurrentFrame',
+    '_removeLinTreeFrames', 'clearLineageTreeBackup',
+    'resetCcaFuture', 'resetFutureCcaColCurrentFrame',
     'removeCcaAnnotationsCurrentFrame', 'resetWillDivideInfo',
     'getConcatCcaDf', 'storeFromConcatCcaDf', 'ccaCheckerStopChecking',
     'setNavigateScrollBarMaximum', 'get_cca_df', 'store_cca_df',
@@ -255,10 +258,14 @@ class _Host:
         self.app = None
         self.warnEditingWithAnnotActions = {}
         for key in ('Delete ID', 'Merge IDs'):
+            # As in `guiWin.gui_populateToolSettingsMenu` (Settings > Warnings)
             action = QAction()
             action.setCheckable(True)
             action.setChecked(True)
             action.removeAnnot = False
+            action.triggered.connect(
+                partial(self.warnEditingWithAnnotActionTriggered, action)
+            )
             self.warnEditingWithAnnotActions[key] = action
         self.calls = []
 
@@ -463,6 +470,51 @@ def test_remembered_do_not_remove_runs_the_keep_branch(app, prompts):
     # IDs" of the keep branch)
     assert 3 not in host.posData.cca_df.index
     assert all(_has_cca(host, i) for i in range(SIZE_T))
+
+
+def test_remove_without_remember_is_not_replayed(app, prompts):
+    """A Remove answered without "Remember my choice", then the warning
+    turned off in Settings > Warnings: later edits keep the annotations
+    (turning a warning off means "do not ask", as before)."""
+    host = _Host(with_lineage=True, with_cca=True)
+    prompts.answers[EDIT_TITLE] = REMOVE
+    _go_to(host, 4)
+    _delete_ID(host, 5)
+    action = host.warnEditingWithAnnotActions['Delete ID']
+    assert action.isChecked() and not action.removeAnnot
+
+    action.trigger()  # the user unchecks the menu item
+    assert not action.isChecked()
+    before = _visited_dfs(host)
+    _go_to(host, 2)
+    _delete_ID(host, 3)
+
+    assert len(_edit_prompts(prompts)) == 1
+    assert all(_has_cca(host, i) for i in range(4))
+    for frame_i in (2, 3):
+        df = _frame_df(host, frame_i)
+        assert lineage_tree_columns(df) == lineage_tree_columns(before[frame_i])
+        assert has_lineage_tree_values(df)
+
+
+def test_toggling_the_warning_forgets_the_remembered_remove(app, prompts):
+    host = _Host()
+    prompts.answers[EDIT_TITLE] = REMOVE
+    prompts.remember = True
+    _go_to(host, 4)
+    _delete_ID(host, 5)
+    action = host.warnEditingWithAnnotActions['Delete ID']
+    assert not action.isChecked() and action.removeAnnot
+
+    action.trigger()  # warning on again ...
+    action.trigger()  # ... and off again from the menu
+    assert not action.isChecked() and not action.removeAnnot
+    _go_to(host, 2)
+    _delete_ID(host, 3)
+
+    assert len(_edit_prompts(prompts)) == 1
+    assert has_lineage_tree_values(_frame_df(host, 2))
+    assert has_lineage_tree_values(_frame_df(host, 3))
 
 
 @pytest.mark.parametrize('unannotated_value', [np.nan, 0])
