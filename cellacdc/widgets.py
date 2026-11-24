@@ -60,7 +60,7 @@ from qtpy.QtWidgets import (
     QGraphicsBlurEffect, QGraphicsProxyWidget, QGraphicsObject,
     QGraphicsPathItem,
     QButtonGroup, QStyleOptionSlider, QStyledItemDelegate,
-    QStyleOptionViewItem, QAbstractButton, QTreeView
+    QStyleOptionViewItem, QAbstractButton, QTreeView, QShortcut
 )
 import qtpy.compat
 
@@ -3556,22 +3556,188 @@ class ToolBarSeparator:
         for action in self._actions:
             self._toolbar.removeAction(action)
 
+def _isHiddenByOverflow(toolbar: QToolBar, action: QAction, widget: QWidget):
+    """True if `widget` (added to `toolbar` with `addWidget`, returning
+    `action`) is hidden only because it does not fit in the toolbar: it
+    would be visible in a wider toolbar (action visible, widget enabled)
+    and the extension button ">>" is shown."""
+    if widget.isVisible():
+        return False
+    if not action.isVisible() or not widget.isEnabled():
+        return False
+    extendButton = getattr(toolbar, 'extendButton', None)
+    if extendButton is None:
+        return True
+    # A widget hidden while the toolbar does not overflow is hidden on
+    # purpose (e.g., with `widget.hide()`): treat it as hidden
+    return extendButton.isVisible()
+
+class _ToolBarOverflowShortcut(QObject):
+    """Shortcut of a button added with `QToolBar.addWidget` that works while
+    the toolbar overflows and hides the button (see `ToolBar`).
+
+    Qt triggers the shortcut of a widget (`QAbstractButton.setShortcut`)
+    only while the widget is visible, and `QToolBar` hides the widgets that
+    do not fit (shown again only when the extension button ">>" is
+    expanded). This object owns a `QShortcut` of the toolbar (active while
+    the toolbar is visible) with the same key as the button, enabled only
+    while the button is hidden by the overflow: action visible, button
+    enabled, extension button shown. When the button is visible its own
+    shortcut works and this one must be disabled, otherwise Qt would find
+    two shortcuts for the same key and trigger neither of them.
+
+    The key is copied from the button whenever its visibility or enabled
+    state changes; after changing the shortcut of a button that might be
+    hidden, call `ToolBar.updateOverflowShortcuts`
+    (see `updateToolbarsOverflowShortcuts`).
+    """
+    _UPDATE_EVENTS = (
+        QEvent.Type.Show, QEvent.Type.Hide, QEvent.Type.EnabledChange
+    )
+
+    def __init__(self, toolbar: QToolBar, action: QAction, button):
+        super().__init__(toolbar)
+        self._toolbar = toolbar
+        self._action = action
+        self._button = button
+        self._extendButton = getattr(toolbar, 'extendButton', None)
+        self.shortcut = QShortcut(toolbar)
+        self.shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        # Holding the key must not toggle the button repeatedly
+        self.shortcut.setAutoRepeat(False)
+        self.shortcut.setEnabled(False)
+        self.shortcut.activated.connect(self._activated)
+        button.installEventFilter(self)
+        if self._extendButton is not None:
+            self._extendButton.installEventFilter(self)
+        action.changed.connect(self.update)
+        self.update()
+
+    def eventFilter(self, watched, event):
+        if event.type() in self._UPDATE_EVENTS:
+            self.update()
+        return False
+
+    def isButtonHiddenByOverflow(self):
+        return _isHiddenByOverflow(self._toolbar, self._action, self._button)
+
+    def update(self):
+        try:
+            key = self._button.shortcut()
+            enabled = not key.isEmpty() and self.isButtonHiddenByOverflow()
+        except RuntimeError:
+            # Button already deleted
+            self.shortcut.setEnabled(False)
+            return
+        if self.shortcut.key() != key:
+            self.shortcut.setKey(key)
+        if self.shortcut.isEnabled() != enabled:
+            self.shortcut.setEnabled(enabled)
+
+    def _activated(self):
+        if self._button.shortcut() != self.shortcut.key():
+            # Shortcut of the button changed without an update: the new
+            # key is set now, the old one must not click the button
+            self.update()
+            return
+        if not self.isButtonHiddenByOverflow():
+            return
+        self._button.click()
+
+    def remove(self):
+        self.shortcut.setEnabled(False)
+        try:
+            self._action.changed.disconnect(self.update)
+        except (TypeError, RuntimeError):
+            pass
+        for widget in (self._button, self._extendButton):
+            if widget is None:
+                continue
+            try:
+                widget.removeEventFilter(self)
+            except RuntimeError:
+                pass
+        self.shortcut.deleteLater()
+        self.deleteLater()
+
+def updateToolbarsOverflowShortcuts(window: QWidget):
+    """Copy the current shortcuts of the buttons of every `ToolBar` of
+    `window` to the shortcuts that work while the toolbars overflow. Call
+    it after changing the shortcuts of toolbar buttons (see
+    `_ToolBarOverflowShortcut`)."""
+    for toolbar in window.findChildren(ToolBar):
+        toolbar.updateOverflowShortcuts()
+
 class ToolBar(QToolBar):
+    """`QToolBar` with helpers to add widgets.
+
+    Buttons added with `addWidget` keep their shortcut
+    (`QAbstractButton.setShortcut`) while the toolbar overflows and hides
+    them, as `QAction`s added with `addAction` do (see
+    `_ToolBarOverflowShortcut`). Hide such buttons through the action
+    returned by `addWidget` (`action.setVisible(False)`, as Qt requires
+    for toolbar widgets), not with `button.hide()`.
+    """
     def __init__(self, *args, **kwargs) -> None:
         self._log_func = kwargs.pop('log_func', None)
-        
+
         super().__init__(*args, **kwargs)
-        
+
         self.widgetsWithShortcut = {}
         self.widgetsForActions = {}
-        
-        for child in self.children(): 
+        self._overflowShortcuts = {}
+
+        for child in self.children():
             if child.objectName() == 'qt_toolbar_ext_button':
                 self.extendButton = child
                 self.extendButton.setIcon(QIcon(":expand.svg"))
                 break
-        
+
         self._logLabelAdded = False
+
+    def actionEvent(self, event):
+        super().actionEvent(event)
+        overflowShortcuts = getattr(self, '_overflowShortcuts', None)
+        if overflowShortcuts is None:
+            return
+
+        action = event.action()
+        if event.type() == QEvent.Type.ActionRemoved:
+            overflowShortcut = overflowShortcuts.pop(action, None)
+            if overflowShortcut is not None:
+                overflowShortcut.remove()
+            return
+
+        if event.type() != QEvent.Type.ActionAdded:
+            return
+
+        if not isinstance(action, QWidgetAction):
+            # Buttons of QActions: the action shortcut works already
+            return
+
+        button = self.widgetForAction(action)
+        if not isinstance(button, QAbstractButton):
+            return
+
+        overflowShortcuts[action] = _ToolBarOverflowShortcut(
+            self, action, button
+        )
+
+    def updateOverflowShortcuts(self):
+        """Copy the current button shortcuts to the shortcuts that work
+        while the toolbar overflows (see `_ToolBarOverflowShortcut`)."""
+        for overflowShortcut in self._overflowShortcuts.values():
+            overflowShortcut.update()
+
+    def isWidgetHiddenByOverflow(self, widget: QWidget):
+        """True if `widget` (added with `addWidget`) is hidden only because
+        the toolbar overflows, i.e. it would be visible if the toolbar were
+        wider. Key handlers that require a visible tool button should
+        accept it too (e.g., the brush/eraser keys of the main GUI)."""
+        for action in self.actions():
+            if self.widgetForAction(action) is widget:
+                return _isHiddenByOverflow(self, action, widget)
+        return False
 
     def showEvent(self, event):
         if self._log_func is None:
