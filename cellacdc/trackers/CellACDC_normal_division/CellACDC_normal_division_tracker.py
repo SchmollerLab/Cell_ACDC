@@ -276,12 +276,49 @@ def has_lineage_tree_values(df):
         return False
     return bool(lineage_tree_values_mask(df).any())
 
+def lineage_tree_annotated_frames(acdc_dfs):
+    """Indices of the lineage tree annotated frames of a video.
+
+    Lineage tree mode annotates the frames one after the other from frame 0
+    on, so the annotated frames are contiguous: frame 0 and the next frames
+    up to the first frame that was never visited (acdc_df None) or has no
+    lineage tree values (`has_lineage_tree_values`, e.g. a frame whose
+    lineage was reset or never annotated). A frame with only some rows
+    with values (e.g. rows filled with 0 by older versions) is annotated.
+    Frames without objects have nothing to annotate and do not end the
+    annotated frames, whatever their columns (a reloaded table has no rows,
+    and thus no lineage columns, for them).
+
+    `normal_division_lineage_tree.__init__` (GUI mode) counts these frames
+    as annotated (`frames_for_dfs`) and initializes their rows without
+    lineage values; `real_time` annotates the next frames again.
+
+    Parameters
+    ----------
+    acdc_dfs : iterable of pd.DataFrame or None
+        The acdc_df of every frame, in frame order.
+
+    Returns
+    -------
+    list of int
+    """
+    annotated_frames = []
+    for frame_i, df in enumerate(acdc_dfs):
+        if df is None:
+            break
+        # `df.empty` is also True for rows without columns
+        if len(df.index) > 0 and not has_lineage_tree_values(df):
+            break
+        annotated_frames.append(frame_i)
+    return annotated_frames
+
 def is_lineage_tree_annotated(df):
     """Whether every object of a frame's acdc_df has lineage tree values
     (see `lineage_tree_values_mask`: NaN and 0 are not annotated).
 
-    Same criterion as `normal_division_lineage_tree.__init__` uses to count
-    a frame as annotated, except that an empty table is not annotated.
+    `normal_division_lineage_tree` also counts frames with only some
+    annotated rows as annotated (`lineage_tree_annotated_frames`) and
+    initializes their other rows when it is created.
 
     Parameters
     ----------
@@ -815,7 +852,9 @@ class normal_division_lineage_tree:
         mother_daughters (list): List of tuples representing mother-daughter 
         relationships for the current frame.
         frames_for_dfs (set): Set of frame indices for which lineage data is
-        available.
+        available. In GUI mode it starts from the annotated frames of the
+        loaded tables (`lineage_tree_annotated_frames`, contiguous from
+        frame 0); `real_time` annotates the other frames again.
         max_daughters_added (int): Number of extra sister columns
         `sister_ID_tree_<i>` (GUI mode). Starts from the columns of the
         loaded frames, so that annotating them again overwrites old values.
@@ -891,6 +930,17 @@ class normal_division_lineage_tree:
             gui (object, optional): GUI object for real-time annotation. 
             Defaults to None.
 
+        In GUI mode the tables of `gui.data[gui.pos_i].allData_li` are
+        edited in place. The annotated frames
+        (`lineage_tree_annotated_frames`: contiguous from frame 0, also
+        when only some rows have lineage values) go into `frames_for_dfs`
+        and keep their values. Their rows without values (NaN or 0) are
+        initialized in frame order as objects added to an annotated frame
+        (`init_lineage_tree_cols_of_added_IDs`): cells with values in the
+        previous frame continue their lineage, the others are new cells
+        with unknown history. The other frames are annotated again by
+        `real_time`.
+
         Raises:
             ValueError: If neither lab nor first_df is provided.
         """
@@ -908,26 +958,55 @@ class normal_division_lineage_tree:
 
         self.ID_frame_i_lookup = {}
         
+        annotated_frames = []
         if self.gui_mode: # part of loading for gui
             posData = self.gui.data[self.gui.pos_i]
-            for i, data in enumerate(posData.allData_li):
-                # Empty frames count as annotated (unlike in
-                # `is_lineage_tree_annotated`), 0 and NaN do not
-                if (
-                    data['acdc_df'] is not None
-                    and 'generation_num_tree' in data['acdc_df'].columns
-                    and lineage_tree_values_mask(data['acdc_df']).all()
-                    ):
-                    self.frames_for_dfs.add(i)
+            acdc_dfs = [data['acdc_df'] for data in posData.allData_li]
+            # Frames after the first frame without lineage values (e.g.
+            # reset) are annotated again by `real_time`, also if they have
+            # values
+            annotated_frames = lineage_tree_annotated_frames(acdc_dfs)
+            self.frames_for_dfs.update(annotated_frames)
             # Continue with the extra sister columns of the loaded table,
             # so that annotating a frame again overwrites their old values
             # also when no division adds them again
-            self.max_daughters_added = _num_extra_sister_columns(
-                data['acdc_df'] for data in posData.allData_li
-            )
+            self.max_daughters_added = _num_extra_sister_columns(acdc_dfs)
 
         self.init_lineage_tree(lab, first_df, frame_i)
-    
+
+        # In frame order: the rows of a frame continue the lineage of the
+        # previous frame, initialized just before
+        for annotated_frame_i in annotated_frames:
+            if annotated_frame_i > frame_i:
+                self._init_rows_without_lineage_values(annotated_frame_i)
+
+    def _init_rows_without_lineage_values(self, frame_i):
+        """Initialize the rows without lineage tree values (NaN or 0, see
+        `lineage_tree_values_mask`) of an annotated frame (GUI mode) like
+        objects added to it (`init_lineage_tree_cols_of_added_IDs`): cells
+        annotated in the previous frame continue their lineage, the others
+        are new cells with unknown history. Annotated rows are kept.
+
+        Rows filled with 0 by older versions (e.g. objects added in
+        "Segmentation and Tracking" mode) would otherwise remain, or the
+        whole frame would be annotated again by `real_time`, losing the
+        manual corrections of its other cells.
+        """
+        cca_df = self._get_df_from_frame_i(frame_i)
+        if cca_df is None or 'generation_num_tree' not in cca_df.columns:
+            return
+
+        unannotated_IDs = cca_df.index[~lineage_tree_values_mask(cca_df)]
+        if unannotated_IDs.empty:
+            return
+
+        prev_df = None
+        if frame_i > 0:
+            prev_df = self._get_df_from_frame_i(frame_i-1)
+        init_lineage_tree_cols_of_added_IDs(
+            cca_df, unannotated_IDs, frame_i, True, prev_acdc_df=prev_df
+        )
+
     def _get_first_frame_i_for_ID(self, ID):
         if self.gui_mode:
             posData = self.gui.data[self.gui.pos_i]
@@ -1057,13 +1136,7 @@ class normal_division_lineage_tree:
             if 'parent_ID_tree' in cca_df.columns:
                 # Already annotated: only cells without lineage values
                 # (e.g. rows filled with 0 by older versions) are new cells
-                if 'generation_num_tree' in cca_df.columns:
-                    unannotated_IDs = cca_df.index[
-                        ~lineage_tree_values_mask(cca_df)
-                    ]
-                    init_lineage_tree_cols_of_added_IDs(
-                        cca_df, unannotated_IDs, frame_i, True
-                    )
+                self._init_rows_without_lineage_values(frame_i)
                 return
             cca_df['emerg_frame_i'] = cca_df['division_frame_i'] = frame_i
             cca_df['generation_num_tree'] = 1
