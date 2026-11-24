@@ -14495,14 +14495,21 @@ When working with 3D segmentation masks:
         if ask_back_prop and sum(ID in prev_IDs for ID in unique_ids) <= 1:
             ask_back_prop = False
 
-        if ask_back_prop and self.arePastFramesAnnotated():
-            # Merging in the past frames would make their annotations wrong
+        # Merging in annotated past frames would make their annotations
+        # wrong: propagate only to the frames after the last annotated one
+        last_annot_i = max(self.getLastAnnotatedFrames())
+        if ask_back_prop and (
+                self.isFrameCcaAnnotated()
+                or posData.frame_i-1 <= last_annot_i
+            ):
             ask_back_prop = False
 
         if ask_back_prop:
             proceed = self.askPropagateChangePast(f'Merge IDs {unique_ids}')
             if proceed:
-                self.propagateMergeObjsPast(unique_ids)
+                self.propagateMergeObjsPast(
+                    unique_ids, stop_frame_i=last_annot_i
+                )
                 self.whitelistPropagateIDs(
                     only_future_frames=False, update_lab=True
                 )
@@ -15834,11 +15841,22 @@ When working with 3D segmentation masks:
         )
         return msg.clickedButton == yesButton
 
-    def propagateMergeObjsPast(self, IDs_to_merge):
+    def propagateMergeObjsPast(self, IDs_to_merge, stop_frame_i=-1):
+        """Merge `IDs_to_merge` also in the past frames, from the previous
+        frame backwards until a frame lacks one of them.
+
+        Parameters
+        ----------
+        IDs_to_merge : list of int
+        stop_frame_i : int, optional
+            Frames up to this index are not modified (e.g. the last frame
+            with annotations, see `getLastAnnotatedFrames`). Default is -1
+            (down to frame 0).
+        """
         self.store_data(autosave=False)
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
-        for past_frame_i in range(posData.frame_i-1, -1, -1):
+        for past_frame_i in range(posData.frame_i-1, stop_frame_i, -1):
             posData.frame_i = past_frame_i
             self.get_data()
             
@@ -16397,12 +16415,14 @@ When working with 3D segmentation masks:
 
     def askRemoveAnnotationsRepeatTrackingVideo(self, start_n):
         """Before repeating tracking on the video from frame n. `start_n`,
-        warn if the re-tracked frames have cell cycle or lineage tree
-        annotations and, if the user continues, remove them from frame n.
-        `start_n` to the end.
+        warn if frames whose IDs tracking can change have cell cycle or
+        lineage tree annotations and, if the user continues, remove them
+        from those frames to the end.
 
-        As before, the frame preceding the first re-tracked frame counts
-        as re-tracked.
+        The first re-tracked frame (n. `start_n`) gets the IDs it had
+        before tracking back (`trackingWorker._relabel_first_frame_labels`),
+        so its annotations stay valid: IDs can change from frame n.
+        `start_n` + 1 (index `start_n`) on.
 
         Parameters
         ----------
@@ -16414,19 +16434,10 @@ When working with 3D segmentation masks:
         bool
             False if the user stopped tracking.
         """
-        posData = self.data[self.pos_i]
-        # `get_last_cca_frame_i` returns 0 also without annotations
-        first_acdc_df = posData.allData_li[0]['acdc_df']
-        last_cca_i = -1
-        if (
-                first_acdc_df is not None
-                and 'cell_cycle_stage' in first_acdc_df.columns
-            ):
-            last_cca_i = self.get_last_cca_frame_i()
-        last_lin_tree_i = self.get_last_lin_tree_frame_i()
-
-        remove_cca = last_cca_i >= 0 and start_n-2 <= last_cca_i
-        remove_lin_tree = last_lin_tree_i >= 0 and start_n-2 <= last_lin_tree_i
+        last_cca_i, last_lin_tree_i = self.getLastAnnotatedFrames()
+        first_changed_i = start_n
+        remove_cca = last_cca_i >= first_changed_i
+        remove_lin_tree = last_lin_tree_i >= first_changed_i
         if not remove_cca and not remove_lin_tree:
             return True
 
@@ -16435,18 +16446,21 @@ When working with 3D segmentation masks:
             annot_names.append('cell cycle')
         if remove_lin_tree:
             annot_names.append('lineage tree')
+        # `warnRepeatTrackingVideoWithAnnotations` takes 1-based frames
         proceed = self.warnRepeatTrackingVideoWithAnnotations(
-            max(last_cca_i, last_lin_tree_i), start_n,
+            max(last_cca_i, last_lin_tree_i), first_changed_i+1,
             annotations=f'{" and ".join(annot_names)} annotations'
         )
         if not proceed:
             return False
 
-        self.logger.info(f'Removing annotations from frame n. {start_n}.')
+        self.logger.info(
+            f'Removing annotations from frame n. {first_changed_i+1}.'
+        )
         if remove_cca:
-            self.resetCcaFuture(start_n-1)
+            self.resetCcaFuture(first_changed_i)
         if remove_lin_tree:
-            self.resetLin_tree_future(from_frame_i=start_n-1)
+            self.resetLin_tree_future(from_frame_i=first_changed_i)
         return True
 
     def warnTrackerInputNotValid(self, trackerName, warningText):
@@ -26908,48 +26922,29 @@ When working with 3D segmentation masks:
 
         return 'cell_cycle_stage' in acdc_df.columns
 
-    def isFrameLinTreeAnnotated(self, frame_i=None):
-        """Whether a frame has lineage tree annotations (any lineage tree
-        value, see `has_lineage_tree_values`).
+    def getLastAnnotatedFrames(self):
+        """Indices of the last frame with cell cycle annotations and of the
+        last frame with lineage tree annotations, -1 for none.
 
-        Parameters
-        ----------
-        frame_i : int, optional
-            Frame index. Default is the current frame.
-
-        Returns
-        -------
-        bool
-        """
-        posData = self.data[self.pos_i]
-        if frame_i is None:
-            frame_i = posData.frame_i
-        return has_lineage_tree_values(posData.allData_li[frame_i]['acdc_df'])
-
-    def arePastFramesAnnotated(self):
-        """Whether the frames before the current one have annotations that
-        propagating an edit of the current frame to the past would make
-        wrong.
-
-        Cell cycle annotations: the current frame has them (they start at
-        frame 0, without gaps). Lineage tree annotations: the current or
-        the previous frame has them.
+        Both annotations start at frame 0 and have no gaps
+        (`get_last_cca_frame_i`, `get_last_lin_tree_frame_i`). Unlike
+        `get_last_cca_frame_i`, which returns 0 also when no frame is
+        annotated, frame 0 counts only if it has cell cycle annotations.
 
         Returns
         -------
-        bool
+        tuple of int
+            (last_cca_frame_i, last_lin_tree_frame_i)
         """
-        if self.isFrameCcaAnnotated():
-            return True
-
         posData = self.data[self.pos_i]
-        if self.isFrameLinTreeAnnotated():
-            return True
-
-        if posData.frame_i == 0:
-            return False
-
-        return self.isFrameLinTreeAnnotated(frame_i=posData.frame_i-1)
+        first_acdc_df = posData.allData_li[0]['acdc_df']
+        last_cca_frame_i = -1
+        if (
+                first_acdc_df is not None
+                and 'cell_cycle_stage' in first_acdc_df.columns
+            ):
+            last_cca_frame_i = self.get_last_cca_frame_i()
+        return last_cca_frame_i, self.get_last_lin_tree_frame_i()
 
     def warnEditingWithCca_df(
             self, editTxt, return_answer=False, get_answer=False,

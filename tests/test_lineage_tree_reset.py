@@ -19,7 +19,7 @@ import pandas as pd
 import pytest
 from qtpy.QtWidgets import QAction, QApplication
 
-from cellacdc import apps, gui, myutils, widgets
+from cellacdc import apps, gui, load, myutils, widgets, workers
 from cellacdc import base_cca_dict, cca_df_colnames
 from cellacdc.regionprops import acdcRegionprops
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
@@ -71,8 +71,8 @@ REAL_METHODS = (
     'setNavigateScrollBarMaximum', 'get_cca_df', 'store_cca_df',
     'store_cca_df_checker', 'addMissingIDs_cca_df', 'getBaseCca_df',
     'update_cca_df_deletedIDs', 'updateCcaDfDeletedIDsTimelapse',
-    'update_rp_metadata', 'isFrameCcaAnnotated', 'isFrameLinTreeAnnotated',
-    'arePastFramesAnnotated', 'get_last_cca_frame_i',
+    'update_rp_metadata', 'isFrameCcaAnnotated', 'getLastAnnotatedFrames',
+    'get_last_cca_frame_i',
     'get_last_lin_tree_frame_i', 'askRemoveAnnotationsRepeatTrackingVideo',
     'warnRepeatTrackingVideoWithAnnotations', 'segmWorkerFinished',
     'mergeSelectedIDs',
@@ -661,9 +661,12 @@ def _repeat_tracking_prompts(prompts):
     return [p for p in prompts.log if p.title == REPEAT_TRACKING_TITLE]
 
 
-def test_repeat_tracking_video_removes_lineage_from_first_tracked_frame(
+def test_repeat_tracking_video_removes_lineage_after_first_tracked_frame(
         app, prompts, repeat_tracking
     ):
+    # The first re-tracked frame (n. 3, index 2) gets its IDs back
+    # (`trackingWorker._relabel_first_frame_labels`): IDs can change from
+    # index 3 on
     host = _Host()
     original = _visited_dfs(host)
     prompts.answers[REPEAT_TRACKING_TITLE] = YES
@@ -675,10 +678,45 @@ def test_repeat_tracking_video_removes_lineage_from_first_tracked_frame(
     assert len(warnings) == 1
     assert 'lineage tree annotations' in warnings[0].txt
     assert 'cell cycle' not in warnings[0].txt
-    _assert_lineage_removed_from(host, 2, original)
+    assert 'annotations from frame 4 to frame' in warnings[0].txt
+    _assert_lineage_removed_from(host, 3, original)
     lineage_cols = lineage_tree_columns(host.posData.acdc_df)
-    assert host.posData.acdc_df.loc[2:, lineage_cols].isna().all(axis=None)
-    assert host.posData.acdc_df.loc[:1, lineage_cols].notna().all(axis=None)
+    assert host.posData.acdc_df.loc[3:, lineage_cols].isna().all(axis=None)
+    assert host.posData.acdc_df.loc[:2, lineage_cols].notna().all(axis=None)
+
+
+@pytest.mark.parametrize('with_cca', [True, False])
+def test_repeat_tracking_video_from_first_frame_keeps_first_frame(
+        app, prompts, repeat_tracking, with_cca
+    ):
+    host = _Host(with_lineage=not with_cca, with_cca=with_cca)
+    original = _visited_dfs(host)
+    prompts.answers[REPEAT_TRACKING_TITLE] = YES
+    _go_to(host, 5)
+
+    assert repeat_tracking(host, start_n=1)
+
+    assert len(_repeat_tracking_prompts(prompts)) == 1
+    if with_cca:
+        assert [_has_cca(host, i) for i in range(SIZE_T)] == (
+            [True] + [False]*(SIZE_T-1)
+        )
+    else:
+        _assert_lineage_removed_from(host, 1, original)
+
+
+def test_repeat_tracking_video_of_annotated_frames_only_does_not_warn(
+        app, prompts, repeat_tracking
+    ):
+    # Annotations up to index 2 = the first re-tracked frame of start_n 3,
+    # which keeps its IDs
+    host = _Host()
+    host.resetLin_tree_future(from_frame_i=3)
+    _go_to(host, 5)
+
+    assert repeat_tracking(host, start_n=3)
+
+    assert _repeat_tracking_prompts(prompts) == []
 
 
 def test_repeat_tracking_video_stopped_keeps_lineage(
@@ -720,9 +758,9 @@ def test_repeat_tracking_video_with_cell_cycle_annotations_still_warns(
     assert len(warnings) == 1
     assert 'cell cycle annotations' in warnings[0].txt
     assert 'lineage' not in warnings[0].txt
-    assert [_has_cca(host, i) for i in range(SIZE_T)] == [True, True] + [
-        False
-    ]*4
+    assert [_has_cca(host, i) for i in range(SIZE_T)] == (
+        [True]*3 + [False]*(SIZE_T-3)
+    )
 
 
 def _merge_host(with_lineage):
@@ -761,3 +799,91 @@ def test_merge_back_propagation_is_not_offered_after_lineage_reset(app):
     host.mergeSelectedIDs([3, 4])
 
     host.askPropagateChangePast.assert_not_called()
+
+
+def test_merge_back_propagation_stops_before_annotated_frames(app):
+    # Lineage annotated up to frame 2: from frame 5 the merge can still be
+    # propagated to frames 4 and 3, never to the annotated ones
+    host = _merge_host(with_lineage=True)
+    host.resetLin_tree_future(from_frame_i=3)
+    host.askPropagateChangePast = MagicMock(return_value=True)
+    _go_to(host, 5)
+
+    host.mergeSelectedIDs([3, 4])
+
+    host.askPropagateChangePast.assert_called_once()
+    host.propagateMergeObjsPast.assert_called_once_with(
+        [3, 4], stop_frame_i=2
+    )
+
+
+def test_propagate_merge_to_past_frames_stops_at_stop_frame(app):
+    host = _Host()
+    host.firstID = 3
+    stored_frames = []
+    host.store_data = lambda *args, **kwargs: stored_frames.append(
+        host.posData.frame_i
+    )
+    host.get_data = MagicMock()
+    host.update_rp_get_bbox = MagicMock()
+    host.update_rp = MagicMock()
+    _go_to(host, 5)
+
+    G.propagateMergeObjsPast(host, [3, 4], stop_frame_i=2)
+
+    # The current frame is stored first, then frames 4 and 3 only
+    assert stored_frames == [5, 4, 3]
+    assert host.posData.frame_i == 5
+
+
+def test_autosave_does_not_rejoin_removed_annotations(app, tmp_path):
+    """The autosave recovery table takes columns missing in memory (e.g.
+    measurements) from the saved table, but not removed annotations (reset
+    from the first frame), else 'Recover unsaved data' restores them."""
+    saved = pd.DataFrame({
+        'frame_i': [0, 0, 1, 1],
+        'Cell_ID': [1, 2, 1, 2],
+        'is_cell_dead': [0, 0, 0, 0],
+        'cell_area_pxl': [10.0, 11.0, 12.0, 13.0],
+        'generation_num_tree': [1, 1, 1, 1],
+        'parent_ID_tree': [-1, -1, -1, -1],
+        'root_ID_tree': [1, 2, 1, 2],
+        'sister_ID_tree': [-1, -1, -1, -1],
+        'sister_ID_tree_0': [-1, -1, -1, -1],
+        'emerg_frame_i': [0, 0, 0, 0],
+        'division_frame_i': [0, 0, 0, 0],
+        'is_history_known': [False] * 4,
+    })
+    csv_path = tmp_path / 'acdc_output.csv'
+    saved.to_csv(csv_path, index=False)
+    recovery_folderpath = tmp_path / 'recovery'
+    recovery_folderpath.mkdir()
+    posData = SimpleNamespace(
+        acdc_output_csv_path=str(csv_path),
+        recoveryFolderpath=lambda: str(recovery_folderpath)
+    )
+    # In memory after `resetLin_tree_future(from_frame_i=0)`
+    frame_dfs = [
+        pd.DataFrame({'Cell_ID': [1, 2], 'is_cell_dead': [0, 1]})
+        .set_index('Cell_ID') for _ in range(2)
+    ]
+    recovery_acdc_df = pd.concat(
+        frame_dfs, keys=[(0, 0.0), (1, 1.0)],
+        names=['frame_i', 'time_seconds', 'Cell_ID']
+    )
+    worker = SimpleNamespace(logger=SimpleNamespace(log=print))
+
+    workers.AutoSaveWorker._save_acdc_df(worker, recovery_acdc_df, posData)
+
+    recovered = pd.read_csv(
+        load.get_last_stored_unsaved_acdc_df_filepath(
+            str(recovery_folderpath)
+        )
+    )
+    assert recovered['cell_area_pxl'].tolist() == [10.0, 11.0, 12.0, 13.0]
+    removed = [
+        col for col in saved.columns
+        if col in lineage_tree_columns(saved)
+        or col in LINEAGE_TREE_SHARED_CCA_COLS
+    ]
+    assert removed and not set(removed) & set(recovered.columns)
