@@ -12,7 +12,8 @@ from cellacdc import base_cca_dict, load
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree, is_lineage_tree_annotated,
     init_lineage_tree_cols_of_added_IDs, has_lineage_tree_values,
-    lineage_tree_columns, LINEAGE_TREE_SHARED_CCA_COLS
+    lineage_tree_columns, LINEAGE_TREE_SHARED_CCA_COLS,
+    lineage_tree_annotated_frames
 )
 
 SHAPE = (80, 120)
@@ -386,12 +387,17 @@ def _unvisited_frame():
     return {'labels': None, 'regionprops': None, 'acdc_df': None}
 
 
+def _unannotate_rows(df, IDs, value):
+    """Lineage values of rows without annotation: 0 or NaN."""
+    for col in lineage_tree_columns(df):
+        df[col] = df[col].astype(float)
+        df.loc[IDs, col] = value
+
+
 def _zero_fill(df, IDs):
     """Lineage values of rows written as 0 by older versions (store_data
     reindex, loader fill of tables with cell cycle columns)."""
-    for col in lineage_tree_columns(df):
-        df[col] = df[col].astype(float)
-        df.loc[IDs, col] = 0
+    _unannotate_rows(df, IDs, 0)
 
 
 def test_propagate_treats_zero_parent_as_no_parent():
@@ -511,11 +517,14 @@ def test_added_ID_continuing_a_cell_without_shared_cca_columns():
 
 def test_zero_filled_cells_of_previous_frame_start_new_lineages():
     """Rows of the previous frame without lineage values are not copied (the
-    zeros would be copied to every next frame)."""
+    zeros would be copied to every next frame). Creating the tree
+    initializes such rows of the annotated frames (see
+    `test_partially_annotated_frames_keep_manual_corrections`), here they
+    appear afterwards."""
     _, allData_li = _annotate(DIVISION_FRAMES[:3])
     allData_li.append(_frame_data(DIVISION_FRAMES[3]))
-    _zero_fill(allData_li[2]['acdc_df'], [2])
     tree = normal_division_lineage_tree(gui=_gui(allData_li))
+    _zero_fill(allData_li[2]['acdc_df'], [2])
 
     _real_time(tree, allData_li, 3)
 
@@ -614,3 +623,141 @@ def test_zero_parent_is_listed_as_orphan():
     assert cells_with_parent == [(3, 1)]
     assert orphan_cells == [4]
     assert lost_cells == []
+
+
+# --- Frames counted as annotated when a tree is created ---------------------
+# A new tree is created when lineage tree mode starts (e.g. after a reload).
+
+C9 = (60, 70, 100, 110)
+
+
+def _step_to(tree, allData_li, frame_i):
+    """What `guiWin.autoLinTree_df` does when the user goes to a frame: only
+    frames that are not annotated are annotated (again)."""
+    if frame_i not in tree.frames_for_dfs:
+        _real_time(tree, allData_li, frame_i)
+
+
+def _add_object_without_lineage(allData_li, frame_i, ID, box, value):
+    """Object added to an annotated frame by older versions (`store_data`
+    reindex with 0) or with NaN lineage values."""
+    data = allData_li[frame_i]
+    boxes = {**DIVISION_FRAMES[frame_i], ID: box}
+    data.update({
+        k: v for k, v in _frame_data(boxes).items() if k != 'acdc_df'
+    })
+    data['acdc_df'] = data['acdc_df'].reindex(
+        data['regionprops'].IDs, fill_value=value
+    )
+
+
+def test_lineage_tree_annotated_frames():
+    annotated = _generations_df([1, 2])
+    partial = _generations_df([1, 0])
+    unannotated = _generations_df([np.nan, 0])
+    no_lineage_cols = pd.DataFrame(index=pd.Index([1], name='Cell_ID'))
+    no_objects = pd.DataFrame(index=pd.Index([], name='Cell_ID'))
+
+    assert lineage_tree_annotated_frames(
+        [annotated, partial, no_objects, annotated, unannotated, annotated]
+    ) == [0, 1, 2, 3]
+    assert lineage_tree_annotated_frames([annotated, None, annotated]) == [0]
+    assert lineage_tree_annotated_frames([annotated, no_lineage_cols]) == [0]
+    assert lineage_tree_annotated_frames([unannotated, annotated]) == []
+    assert lineage_tree_annotated_frames([]) == []
+
+
+@pytest.mark.parametrize('unannotated_value', [0, np.nan])
+def test_partially_annotated_frames_keep_manual_corrections(
+        unannotated_value
+    ):
+    """Frames > 0 with some rows without lineage values (e.g. objects added
+    by older versions) used to be annotated again by `real_time` when the
+    user went to them, losing the manual corrections of the other cells.
+    Only their rows without values are initialized, in frame order."""
+    tree, allData_li = _annotate(DIVISION_FRAMES)
+    # Manual correction: 4 has an unknown lineage from frame 2 on
+    allData_li[2]['acdc_df'].at[4, 'parent_ID_tree'] = -1
+    tree.propagate(2)
+    # Object 9 added in frames 2 and 3, 4 not annotated in frame 3
+    for frame_i in (2, 3):
+        _add_object_without_lineage(
+            allData_li, frame_i, 9, C9, unannotated_value
+        )
+    _unannotate_rows(allData_li[3]['acdc_df'], [4], unannotated_value)
+
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+    assert tree.frames_for_dfs == set(range(6))
+    for frame_i in range(1, 6):
+        _step_to(tree, allData_li, frame_i)
+
+    for frame_i in range(2, 6):
+        df = allData_li[frame_i]['acdc_df']
+        assert _lineage(df, 4) == (1, -1, 4), frame_i
+        assert _lineage(df, 3) == (2, 1, 1), frame_i
+        assert _lineage(df, 2) == (1, -1, 2), frame_i
+    for frame_i in (2, 3):
+        df = allData_li[frame_i]['acdc_df']
+        # New cell with unknown history in frame 2, continuing in frame 3
+        assert _lineage(df, 9) == (1, -1, 9), frame_i
+        assert df.at[9, 'sister_ID_tree'] == -1
+        assert df.at[9, 'emerg_frame_i'] == 2
+        assert not df.at[9, 'is_history_known']
+        assert is_lineage_tree_annotated(df)
+
+    tree.propagate(3)
+    assert _lineage(allData_li[3]['acdc_df'], 9) == (1, -1, 9)
+
+
+@pytest.mark.parametrize('unannotated_value', [0, np.nan])
+def test_frames_after_a_frame_without_lineage_values_are_annotated_again(
+        unannotated_value
+    ):
+    """Frames are annotated one after the other (as `guiWin.initLinTree`
+    counts them): the frames after a frame without lineage values (e.g.
+    reset) are annotated again, also if they have values."""
+    tree, allData_li = _annotate(DIVISION_FRAMES)
+    df = allData_li[2]['acdc_df']
+    _unannotate_rows(df, df.index, unannotated_value)
+    # Stale values of an earlier annotation
+    allData_li[3]['acdc_df'].loc[
+        4, ['generation_num_tree', 'parent_ID_tree', 'root_ID_tree']
+    ] = [1, -1, 4]
+
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+    assert tree.frames_for_dfs == {0, 1}
+    for frame_i in range(1, 6):
+        _step_to(tree, allData_li, frame_i)
+
+    for frame_i in range(2, 6):
+        df = allData_li[frame_i]['acdc_df']
+        assert _lineage(df, 3) == _lineage(df, 4) == (2, 1, 1), frame_i
+        assert _lineage(df, 2) == (1, -1, 2), frame_i
+    assert tree.frames_for_dfs == set(range(6))
+
+
+@pytest.mark.parametrize('with_lineage_columns', [True, False])
+def test_frames_without_objects_do_not_end_the_annotated_frames(
+        with_lineage_columns
+    ):
+    """A frame without objects has nothing to annotate (`real_time` cannot
+    annotate it). Reloaded, it has no lineage columns."""
+    tree, allData_li = _annotate(DIVISION_FRAMES[:2])
+    empty = _frame_data({})
+    if with_lineage_columns:
+        empty['acdc_df'] = allData_li[1]['acdc_df'].iloc[:0].copy()
+    allData_li.append(empty)
+    for frame_i in (3, 4):
+        allData_li.append(_frame_data(DIVISION_FRAMES[1]))
+        _real_time(tree, allData_li, frame_i)
+    # Manual correction after the frame without objects
+    allData_li[4]['acdc_df'].at[2, 'parent_ID_tree'] = 1
+    tree.propagate(4)
+    expected = _lineage(allData_li[4]['acdc_df'], 2)
+
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+    assert tree.frames_for_dfs == set(range(5))
+    for frame_i in range(1, 5):
+        _step_to(tree, allData_li, frame_i)
+
+    assert _lineage(allData_li[4]['acdc_df'], 2) == expected
