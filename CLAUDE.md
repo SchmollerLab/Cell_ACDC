@@ -122,6 +122,11 @@ Every save also writes a snapshot to `Images/recovery/<basename>acdc_output.zip`
 
 - `gh` older than ~2.82 (installed with winget) fails in `gh pr edit` with "Projects (classic) is being deprecated" (GraphQL): upgrade with `winget upgrade --id GitHub.cli` (2.105 works).
 
+## Long-running work
+
+- When a background process (workflow, subagent, pytest run, script) runs longer than ~10 minutes, check on it about every 10 minutes with cheap reads instead of only waiting for its completion (user request): file modification times and the last entries of the workflow `journal.jsonl` / `agent-*.jsonl` transcripts, log tails, running `python.exe` processes (`Get-CimInstance Win32_Process`). Stop a hung process (no output for minutes, waiting on its timeout) and continue without it; a resumed workflow reuses its finished agents.
+- Give agents' and scripts' Python commands short timeouts (≤ 120 s): a scratch pytest that built a real `guiWin` and loaded a synthetic Position hung after "Counting total number of segmented objects" until its 300–600 s timeout, run after run. Test GUI annotation logic on a stub host that runs the real `guiWin` methods (`tests/test_gui_mixins.py`, `tests/test_normal_division_lineage_tree.py`) instead.
+
 ## Maintaining this file
 
 When you learn something during a task that would have saved time or prevented a mistake, and it is likely to matter again, add it here before finishing the task.
