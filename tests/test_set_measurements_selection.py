@@ -90,7 +90,7 @@ class _ComputeWorkerStub:
                 'labels': lab,
                 'regionprops': skimage.measure.regionprops(lab)
             })
-        if 'cell_vol_vox' not in self.kernel.sizeMetricsToSave:
+        if not self.kernel.needs_rotational_volume(posData):
             return
         for data_dict in posData.allData_li:
             for obj in data_dict['regionprops']:
@@ -108,7 +108,7 @@ def build_dialog(posData, existing_cols=None, **kwargs):
     # As `utils.compute.computeMeasurmentsUtilWin.initAddMetricsWorker`
     return apps.SetMeasurementsDialog(
         list(posData.chNames), [], posData.SizeZ > 1, posData.isSegm3D,
-        posData=posData, allPosData=[posData],
+        posData=posData, allPosData=kwargs.pop('allPosData', [posData]),
         addDoNotAskAgainCheckbox=True,
         allPos_acdc_df_cols=existing_cols, acdc_df_path=posData.images_path,
         **kwargs
@@ -310,7 +310,7 @@ def test_existing_unselected_measurements(
     assert any('_bkgrVal_' in col for col in df_full.columns)
 
     asked = []
-    def answer(parent, colnames, acdc_df_path=None):
+    def answer(parent, colnames, **kwargs):
         asked.append(list(colnames))
         return False, delete
     monkeypatch.setattr(apps, 'askDeleteUncheckedExistingMeasurements', answer)
@@ -582,3 +582,441 @@ def test_deleted_combined_measurement_is_not_selected(app, experiment):
     assert not double.isChecked()
     assert 'GFP_double' not in win.selectedMeasurements()
     win.deleteLater()
+
+
+# ------------------------- PR #1318 review follow-ups -----------------------
+def add_equations(images_path, channel=(), mixed=()):
+    """Save combined measurements `[(name, equation)]` of the Position"""
+    posData = load_posData(images_path)
+    for name, equation in channel:
+        posData.addEquationCombineMetrics(equation, name, False)
+    for name, equation in mixed:
+        posData.addEquationCombineMetrics(equation, name, True)
+    posData.saveCombineMetrics()
+    return load_posData(images_path)
+
+
+def check_names(win, *names):
+    checkboxes = [c for gb in win.chNameGroupboxes for c in gb.checkBoxes]
+    mixed = win.mixedChannelsCombineMetricsQGBox
+    if mixed is not None:
+        checkboxes.extend(mixed.checkBoxes)
+    for checkbox in checkboxes:
+        if checkbox.text() in names:
+            checkbox.setChecked(True)
+
+
+def select_only(win, *names):
+    """`select_individually` plus the measurements `names`, without the
+    channel independent custom metrics and the unrequested mixed channels
+    combined measurements."""
+    select_individually(win)
+    if win.chIndipendCustomeMetricsQGBox is not None:
+        win.chIndipendCustomeMetricsQGBox.setChecked(False)
+    mixed = win.mixedChannelsCombineMetricsQGBox
+    if mixed is not None:
+        for checkbox in mixed.checkBoxes:
+            checkbox.setChecked(False)
+    check_names(win, *names)
+
+
+def save_everything_then_answer(images_path, monkeypatch, delete):
+    """First save with the default selection, then answer the Delete/Keep
+    question with `delete`. Returns the list of the asked columns."""
+    win0 = build_dialog(load_posData(images_path), existing_cols=[])
+    run_kernel(images_path, win0)
+    win0.deleteLater()
+    asked = []
+    def answer(parent, colnames, **kwargs):
+        asked.append(list(colnames))
+        return False, delete
+    monkeypatch.setattr(apps, 'askDeleteUncheckedExistingMeasurements', answer)
+    return asked
+
+
+def objects_of_first_frame(images_path):
+    lab = load_posData(images_path).segm_data[0]
+    return {obj.label: obj for obj in skimage.measure.regionprops(lab)}
+
+
+@pytest.mark.parametrize('inp, existing', [
+    ('area', 'delete'),
+    ('centroid-0', 'fresh'),
+    ('cell_vol_fl', 'fresh'),
+    ('cell_vol_fl', 'delete'),
+])
+def test_non_channel_inputs_of_selected_combined_are_computed(
+        app, experiment, monkeypatch, inp, existing
+    ):
+    images_path, _ = experiment
+    asked = []
+    if existing == 'delete':
+        asked = save_everything_then_answer(images_path, monkeypatch, True)
+    posData = add_equations(
+        images_path, channel=[('GFP_x', f'GFP_mean_meanProj*`{inp}`')]
+    )
+    existing_cols = (
+        list(posData.acdc_df.columns) if existing == 'delete' else []
+    )
+    win = build_dialog(posData, existing_cols=existing_cols)
+    select_only(win, 'GFP_x')
+    kernel, df = run_kernel(images_path, win)
+    win.deleteLater()
+
+    if existing == 'delete':
+        # Listed and deleted, then computed again only for the equation
+        assert inp in asked[0]
+    assert inp not in df.columns
+    objs = objects_of_first_frame(images_path)
+    expected = {
+        'area': lambda obj: obj.area,
+        'centroid-0': lambda obj: obj.centroid[0],
+        'cell_vol_fl': lambda obj: cca_functions._calc_rot_vol(
+            obj, posData.PhysicalSizeY, posData.PhysicalSizeX
+        )[1],
+    }[inp]
+    frame0 = df[df['frame_i'] == 0].set_index('Cell_ID')
+    for ID, row in frame0.iterrows():
+        assert np.isclose(
+            row['GFP_x'], row['GFP_mean_meanProj']*expected(objs[ID])
+        )
+
+
+@pytest.mark.parametrize('existing', ['fresh', 'delete'])
+def test_combined_input_of_combined_is_computed(
+        app, experiment, monkeypatch, existing
+    ):
+    images_path, _ = experiment
+    # GFP_quad is defined before its input
+    equations = [
+        ('GFP_quad', 'GFP_double*2'), ('GFP_double', 'GFP_mean_meanProj*2')
+    ]
+    asked = []
+    if existing == 'delete':
+        add_equations(images_path, channel=equations)
+        asked = save_everything_then_answer(images_path, monkeypatch, True)
+    posData = add_equations(images_path, channel=equations)
+    existing_cols = (
+        list(posData.acdc_df.columns) if existing == 'delete' else []
+    )
+    win = build_dialog(posData, existing_cols=existing_cols)
+    select_only(win, 'GFP_quad')
+    kernel, df = run_kernel(images_path, win)
+    win.deleteLater()
+
+    if existing == 'delete':
+        assert 'GFP_double' in asked[0]
+    assert 'GFP_double' in kernel._helper_metrics
+    assert 'GFP_double' not in df.columns
+    assert np.allclose(df['GFP_quad'], 4*df['GFP_mean_meanProj'])
+
+
+def test_combined_measurements_are_evaluated_after_their_inputs(
+        app, experiment
+    ):
+    images_path, _ = experiment
+    posData = add_equations(
+        images_path,
+        channel=[
+            ('GFP_ratio', 'mCherry_double/GFP_mean_meanProj'),
+            ('GFP_r2', 'ratio_gm*2'),
+            ('mCherry_double', 'mCherry_mean_meanProj*2'),
+        ],
+        mixed=[('ratio_gm', 'GFP_mean_meanProj/mCherry_mean_meanProj')]
+    )
+    win = build_dialog(posData, existing_cols=[])
+    select_only(win, 'GFP_ratio', 'GFP_r2', 'mCherry_double', 'ratio_gm')
+    _, df = run_kernel(images_path, win)
+    win.deleteLater()
+
+    gfp, mcherry = df['GFP_mean_meanProj'], df['mCherry_mean_meanProj']
+    assert np.allclose(df['GFP_ratio'], 2*mcherry/gfp)
+    assert np.allclose(df['GFP_r2'], 2*gfp/mcherry)
+
+
+def test_failed_combined_measurement_is_not_saved_as_values():
+    kernel = object.__new__(cli.ComputeMeasurementsKernel)
+    kernel.metricsToSkip = {}
+    kernel.mixedChCombineMetricsToSkip = []
+    position = SimpleNamespace(
+        loadedChNames=['GFP'],
+        combineMetricsConfig={
+            'equations': {'GFP_x': 'GFP_missing*2'},
+            'user_path_equations': {}, 'mixed_channels_equations': {},
+        },
+    )
+    # Pre-existing (stale) values of the combined measurement
+    df = pd.DataFrame({'GFP_mean': [1., 2.], 'GFP_x': [5., 5.]})
+    kernel._add_combined_metrics(position, df)
+    assert df['GFP_x'].isna().all()
+
+
+def test_volume_input_of_selected_combined_is_computed(app, experiment):
+    images_path, _ = experiment
+    posData = add_equations(
+        images_path, channel=[
+            ('GFP_result', 'GFP_concentration_autoBkgr_from_vol_fl_meanProj*2')
+        ]
+    )
+    win = build_dialog(posData, existing_cols=[])
+    select_only(win)
+    win.ok_cb()
+    kernel = kernel_from_dialog(win)
+    # Plain selection --> no rotational volume
+    assert not kernel.needs_rotational_volume(load_posData(images_path))
+    win.deleteLater()
+
+    win = build_dialog(posData, existing_cols=[])
+    select_only(win, 'GFP_result')
+    kernel, df = run_kernel(images_path, win)
+    win.deleteLater()
+
+    assert kernel.needs_rotational_volume(load_posData(images_path))
+    assert df['GFP_result'].notna().all()
+    for helper in ('cell_vol_fl', 'cell_vol_vox',
+            'GFP_concentration_autoBkgr_from_vol_fl_meanProj',
+            'GFP_amount_autoBkgr_meanProj'):
+        assert helper not in df.columns
+
+
+def test_size_zslice_columns_only_for_selected_units():
+    lab = np.zeros((3, 10, 10), dtype=np.uint32)
+    lab[0:2, 2:5, 2:5] = 1
+    lab[1:3, 6:9, 6:9] = 2
+    rp = skimage.measure.regionprops(lab)
+
+    def zslice_cols(size_metrics):
+        df = pd.DataFrame(index=pd.Index([1, 2], name='Cell_ID'))
+        df = measurements.add_size_metrics(
+            df, rp, size_metrics, True, 0.01, 0.003,
+            calc_size_for_each_zslice=True
+        )
+        return sorted(col for col in df.columns if '_zslice' in col)
+
+    assert zslice_cols(['cell_area_pxl']) == [
+        f'cell_area_pxl_zslice{z}' for z in range(3)
+    ]
+    assert zslice_cols(['cell_vol_vox_3D']) == []
+
+
+def test_helper_columns_are_dropped():
+    kernel = cli.ComputeMeasurementsKernel(None, '', False)
+    kernel.sizeMetricsToSave = ['cell_area_pxl']
+    kernel.calc_size_for_each_zslice = True
+    kernel.metricsToSave = {'GFP': [], 'mCherry': []}
+    kernel._helper_metrics = {'GFP_vsmet_zSlice'}
+    kernel._helper_custom = {'GFP_vsmet_zSlice'}
+    kernel._helper_props = {'centroid'}
+    df = pd.DataFrame(columns=[
+        'cell_area_pxl_zslice0', 'cell_area_um2_zslice0', 'velocity_um',
+        'GFP_vsmet_zSlice_vs_mCherry0', 'GFP_vsmet_zSlice_vs_mCherry',
+        'centroid-0', 'centroid-1', 'area', 'cell_vol_fl', 'is_cell_dead'
+    ])
+    kept = kernel._drop_helper_columns(df, existing_cols={'cell_vol_fl'})
+    assert list(kept.columns) == [
+        'cell_area_pxl_zslice0', 'area', 'cell_vol_fl', 'is_cell_dead'
+    ]
+
+
+@pytest.mark.parametrize('selected, zslice_channels, expected', [
+    (set(), set(), [0, 1, 2, 3]),
+    ({'GFP_vsmet_zSlice'}, {'GFP'}, [3]),
+    ({'GFP_vsmet_zSlice'}, set(), [1, 2, 3]),
+])
+def test_per_zslice_vs_custom_metrics_are_measurements(
+        monkeypatch, selected, zslice_channels, expected
+    ):
+    monkeypatch.setattr(
+        measurements, '_get_custom_metrics_names', lambda: {'vsmet': 'vsmet'}
+    )
+    colnames = [
+        'GFP_vsmet_zSlice_vs_mCherry', 'GFP_vsmet_zSlice_vs_mCherry0',
+        'GFP_vsmet_zSlice_vs_mCherry12', 'GFP_vsmet_meanProj_vs_mCherry',
+        # Unknown channel --> not a measurement
+        'GFP_vsmet_zSlice_vs_RFP0',
+    ]
+    unselected = measurements.unselected_measurement_columns(
+        colnames, ['GFP', 'mCherry'], selected,
+        zslice_channels=zslice_channels
+    )
+    assert unselected == [colnames[i] for i in expected]
+
+
+def test_delete_removes_only_listed_columns(app, experiment):
+    images_path, posData = experiment
+    win = build_dialog(posData)
+    select_only(win)
+    win.ok_cb()
+    kernel = kernel_from_dialog(win)
+    win.deleteLater()
+    kernel.record_existing_measurements_answer(['GFP_sum_meanProj'], True)
+    df = pd.DataFrame(columns=[
+        'GFP_sum_meanProj', 'GFP_median_meanProj', 'solidity', 'is_cell_dead'
+    ])
+    kept = kernel._drop_unselected_existing_measurements(df, posData)
+    assert list(kept.columns) == [
+        'GFP_median_meanProj', 'solidity', 'is_cell_dead'
+    ]
+
+    # Workflow file saved without the list --> every unselected measurement
+    kernel.existing_measurements_to_delete = None
+    kernel._unselected_existing_cache = None
+    kept = kernel._drop_unselected_existing_measurements(df, posData)
+    assert list(kept.columns) == ['is_cell_dead']
+
+
+def test_workflow_file_keeps_the_columns_to_delete(app, experiment, tmp_path):
+    from cellacdc import config, load
+    _, posData = experiment
+    win = build_dialog(posData)
+    select_only(win)
+    win.ok_cb()
+    kernel = kernel_from_dialog(win)
+    win.deleteLater()
+    kernel.record_existing_measurements_answer(
+        ['GFP_sum_meanProj', 'solidity'], True
+    )
+    configPars = config.ConfigParser()
+    configPars['measurements'] = {
+        key: str(value) for key, value
+        in kernel.to_workflow_config_params().items()
+    }
+    ini_path = tmp_path / 'workflow.ini'
+    with open(ini_path, 'w') as ini:
+        configPars.write(ini)
+    params = load.read_measurements_workflow_from_config(str(ini_path))
+    loaded = cli.ComputeMeasurementsKernel(None, '', True)
+    loaded.set_metrics_from_workflow_config_params(params['measurements'])
+    assert loaded.existing_measurements_to_delete == {
+        'GFP_sum_meanProj', 'solidity'
+    }
+
+
+def test_reused_selection_asks_again_for_columns_not_listed(
+        app, experiment, monkeypatch, tmp_path
+    ):
+    """With "Use the same selection for all following experiment folders",
+    a following folder with unselected measurements that were not listed is
+    asked again (only about those) and the answer applies only to them."""
+    _, posData = experiment
+    win = build_dialog(posData)
+    select_only(win)
+    win.ok_cb()
+    kernel = kernel_from_dialog(win)
+    win.deleteLater()
+    # Answer for the first experiment folder
+    kernel.record_existing_measurements_answer(['GFP_sum_meanProj'], True)
+
+    asked = []
+    def answer(parent, colnames, **kwargs):
+        asked.append((list(colnames), kwargs))
+        return False, False
+    monkeypatch.setattr(apps, 'askDeleteUncheckedExistingMeasurements', answer)
+    exp2 = tmp_path / 'exp2'
+    inputs = [
+        {
+            'file_path': str(exp2 / pos / 'Images' / 'img.tif'),
+            'chNames': list(posData.chNames),
+            'combineMetricsConfig': None,
+            'acdcDfColumns': columns,
+        }
+        for pos, columns in (
+            ('Position_1', ['GFP_sum_meanProj', 'solidity', 'is_cell_dead']),
+            ('Position_2', ['GFP_sum_meanProj', 'area']),
+        )
+    ]
+    host = SimpleNamespace(worker=SimpleNamespace(kernel=kernel, abort=False))
+    pos = SimpleNamespace(images_path=str(exp2), exp_path=str(exp2))
+    UtilWin = utils_compute.computeMeasurmentsUtilWin
+    UtilWin.askDeleteUnselectedExistingMeasurements(host, pos, inputs)
+    assert len(asked) == 1
+    colnames, kwargs = asked[0]
+    assert colnames == ['solidity', 'area']
+    assert kwargs['locations']['solidity'] == ['Position_1']
+    assert kwargs['locations']['area'] == ['Position_2']
+    assert kwargs['exp_foldername'] == 'exp2'
+    # Keep --> only the column listed for the first folder is deleted
+    assert kernel.existing_measurements_to_delete == {'GFP_sum_meanProj'}
+
+    # Same columns in the next folder --> not asked again
+    UtilWin.askDeleteUnselectedExistingMeasurements(host, pos, inputs)
+    assert len(asked) == 1
+
+
+def test_dialog_checks_each_position_with_its_combined_measurements(
+        app, experiment, monkeypatch
+    ):
+    import shutil
+    images_path, posData = experiment
+    pos2_path = os.path.join(
+        os.path.dirname(os.path.dirname(images_path)), 'Position_2'
+    )
+    shutil.copytree(os.path.dirname(images_path), pos2_path)
+    pos2 = load_posData(os.path.join(pos2_path, 'Images'))
+    # Combined measurements defined only in Position_2
+    pos2.addEquationCombineMetrics('GFP_mean_maxProj*2', 'GFP_p2only', False)
+    pos2.addEquationCombineMetrics(
+        'phase_mean_maxProj*2', 'phase_p2only', False
+    )
+
+    asked = []
+    def answer(parent, colnames, **kwargs):
+        asked.append((list(colnames), kwargs))
+        return False, True
+    monkeypatch.setattr(apps, 'askDeleteUncheckedExistingMeasurements', answer)
+    columns = [
+        ['GFP_sum_meanProj', 'is_cell_dead'],
+        ['GFP_sum_meanProj', 'GFP_p2only', 'phase_p2only'],
+    ]
+    win = build_dialog(
+        posData, existing_cols=sorted({*columns[0], *columns[1]}),
+        allPosData=[posData, pos2], allPos_acdc_df_cols_per_pos=columns
+    )
+    select_only(win)
+    win.ok_cb()
+    win.deleteLater()
+
+    colnames, kwargs = asked[0]
+    # GFP_p2only is computed again in Position_2 (GFP is selected), the
+    # phase channel is not selected
+    assert colnames == ['GFP_sum_meanProj', 'phase_p2only']
+    assert kwargs['locations'] == {
+        'GFP_sum_meanProj': ['Position_1', 'Position_2'],
+        'phase_p2only': ['Position_2'],
+    }
+    assert kwargs['num_positions'] == 2
+
+
+def test_mixed_measurement_without_checkbox_is_not_saved(app, experiment):
+    images_path, _ = experiment
+    # 'mix2' reads another mixed measurement --> no checkbox in the dialog
+    posData = add_equations(
+        images_path, 
+        mixed=[('mix1', 'GFP_mean_meanProj*2'), ('mix2', 'mix1*2')]
+    )
+    win = build_dialog(posData, existing_cols=[])
+    offered = [c.text() for c in win.mixedChannelsCombineMetricsQGBox.checkBoxes]
+    assert 'mix2' not in offered
+    select_only(win)
+    _, df = run_kernel(images_path, win)
+    win.deleteLater()
+    assert 'mix1' not in df.columns
+    assert 'mix2' not in df.columns
+
+
+def test_selected_combined_named_like_a_vs_column_is_saved(app, experiment):
+    images_path, _ = experiment
+    posData = add_equations(
+        images_path, channel=[(
+            'GFP_sum_meanProj_vs_mCherry', 
+            'GFP_sum_meanProj/mCherry_mean_meanProj'
+        )]
+    )
+    win = build_dialog(posData, existing_cols=[])
+    select_only(win, 'GFP_sum_meanProj_vs_mCherry')
+    kernel, df = run_kernel(images_path, win)
+    win.deleteLater()
+    # The input is a helper, the selected combined measurement is saved
+    assert 'GFP_sum_meanProj' in kernel._helper_metrics
+    assert 'GFP_sum_meanProj' not in df.columns
+    assert df['GFP_sum_meanProj_vs_mCherry'].notna().all()

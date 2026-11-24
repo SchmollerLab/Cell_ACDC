@@ -2,6 +2,7 @@ import os
 import traceback
 import logging
 from functools import partial
+from types import SimpleNamespace
 import datetime
 
 import pandas as pd
@@ -345,30 +346,78 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
                 columns.append(col)
         return columns
 
+    @staticmethod
+    def _posDataInputsPlaceholder(posDataInputs):
+        """Position of `posDataInputs` with what the measurements kernel
+        needs to classify its columns (channels and combined measurements)
+        """
+        file_path = posDataInputs.get('file_path', '')
+        pos_path = os.path.dirname(os.path.dirname(file_path))
+        return SimpleNamespace(
+            chNames=list(posDataInputs.get('chNames', [])),
+            combineMetricsConfig=posDataInputs.get('combineMetricsConfig'),
+            pos_foldername=os.path.basename(pos_path) if file_path else None,
+            exp_path=os.path.dirname(pos_path) if file_path else None,
+        )
+
+    @staticmethod
+    def unselectedExistingMeasurements(kernel, allPosDataInputs):
+        """Existing measurement columns of each Position (classified with
+        the combined measurements of the Position) that the selection of
+        `kernel` does not save.
+
+        Returns
+        -------
+        tuple
+            `(ordered union of the columns, {colname: [Position folders]})`
+        """
+        UtilWin = computeMeasurmentsUtilWin
+        unselected = []
+        locations = {}
+        for posDataInputs in allPosDataInputs:
+            posData = UtilWin._posDataInputsPlaceholder(posDataInputs)
+            colnames = kernel.unselected_existing_measurements(
+                posDataInputs.get('acdcDfColumns', []), posData
+            )
+            for colname in colnames:
+                if colname not in locations:
+                    locations[colname] = []
+                    unselected.append(colname)
+                locations[colname].append(posData.pos_foldername)
+        return unselected, locations
+
     def askDeleteUnselectedExistingMeasurements(
             self, posData, allPosDataInputs
         ):
         """With "Use the same selection for all following experiments", ask
-        the Delete/Keep question of the dialog the first time an experiment
-        has existing measurements that are not selected."""
+        the Delete/Keep question for the existing measurements of this
+        experiment that are not selected and were not listed yet (only the
+        listed columns are deleted, see
+        `cli.ComputeMeasurementsKernel.record_existing_measurements_answer`).
+        """
         kernel = self.worker.kernel
-        if kernel.delete_unselected_existing_measurements is not None:
-            return
-
-        unselected = kernel.unselected_existing_measurements(
-            self._getAllAcdcDfColumns(allPosDataInputs), posData
+        unselected, locations = (
+            computeMeasurmentsUtilWin.unselectedExistingMeasurements(
+                kernel, allPosDataInputs
+            )
         )
-        if not unselected:
+        answered = getattr(kernel, 'existing_measurements_answered', None)
+        answered = answered or set()
+        new_unselected = [col for col in unselected if col not in answered]
+        if not new_unselected:
             return
 
+        exp_path = getattr(posData, 'exp_path', None)
         cancel, delete = apps.askDeleteUncheckedExistingMeasurements(
-            self, unselected, acdc_df_path=posData.images_path
+            self, new_unselected, acdc_df_path=posData.images_path,
+            locations=locations, num_positions=len(allPosDataInputs),
+            exp_foldername=os.path.basename(exp_path) if exp_path else None
         )
         if cancel:
             self.worker.abort = True
             return
 
-        kernel.delete_unselected_existing_measurements = delete
+        kernel.record_existing_measurements_answer(new_unselected, delete)
 
     @staticmethod
     def _getAllChNames(posData, allPosDataInputs):
@@ -404,19 +453,27 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.allPosDataInputs = allPosDataInputs
         self.allChNames = allChNames
 
-        if not hasattr(self, 'allPosData'):
+        # Positions of this experiment (the worker builds new inputs for
+        # each experiment, "Add combined measurement" re-uses them)
+        if getattr(self, '_allPosDataInputs', None) is not allPosDataInputs:
+            self._allPosDataInputs = allPosDataInputs
             self.allPosData = []
             for p, posDataInputs in enumerate(self.allPosDataInputs):
-                combineMetricsConfig = posDataInputs['combineMetricsConfig']
-                combineMetricsPath = posDataInputs['combineMetricsPath']
+                combineMetricsConfig = posDataInputs.get('combineMetricsConfig')
+                combineMetricsPath = posDataInputs.get('combineMetricsPath')
 
-                # Here we build a placeholder loadData class but we get what is 
+                # Here we build a placeholder loadData class but we get what is
                 # needed to save custom combine metrics from posDataInputs
                 _posData = load.loadData(
-                    self.posData.imgPath, self.posData.user_ch_name
+                    posDataInputs.get('file_path', self.posData.imgPath),
+                    posDataInputs.get('chName', self.posData.user_ch_name)
                 )
-                _posData.combineMetricsConfig = combineMetricsConfig
-                _posData.custom_combine_metrics_path = combineMetricsPath
+                if combineMetricsConfig is not None:
+                    _posData.combineMetricsConfig = combineMetricsConfig
+                    _posData.custom_combine_metrics_path = combineMetricsPath
+                _posData.chNames = list(
+                    posDataInputs.get('chNames', posData.chNames)
+                )
                 self.allPosData.append(_posData)
 
         self.measurementsWin = apps.SetMeasurementsDialog(
@@ -428,6 +485,10 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
             # Existing columns --> on OK the dialog asks whether to delete
             # the existing measurements that are not selected
             allPos_acdc_df_cols=self._getAllAcdcDfColumns(allPosDataInputs),
+            allPos_acdc_df_cols_per_pos=[
+                posDataInputs.get('acdcDfColumns', [])
+                for posDataInputs in allPosDataInputs
+            ],
             acdc_df_path=posData.images_path,
         )
         self.measurementsWin.sigClosed.connect(self.askSaveObjectsCount)
@@ -509,7 +570,9 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
 
     def computeVolumeRegionprop(self, end_frame_i, posData):
-        if 'cell_vol_vox' not in self.worker.kernel.sizeMetricsToSave:
+        # Selected or needed by the selected measurements (e.g. input of a
+        # concentration or of a combined measurement)
+        if not self.worker.kernel.needs_rotational_volume(posData):
             self.worker.waitCond.wakeAll()
             return
 

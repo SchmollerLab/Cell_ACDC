@@ -44,6 +44,7 @@ import time
 import sympy as sp
 import json
 import html
+from types import SimpleNamespace
 import tifffile
 
 import pyqtgraph as pg
@@ -2205,24 +2206,50 @@ class TrackSubCellObjectsDialog(QBaseDialog):
         self.close()
 
 def askDeleteUncheckedExistingMeasurements(
-        parent, unchecked_existing_colnames, acdc_df_path=None
+        parent, unchecked_existing_colnames, acdc_df_path=None,
+        locations=None, num_positions=None, exp_foldername=None
     ):
-    """Ask whether to delete the existing measurement columns that the 
-    user did not select. Returns `(cancel, delete)`."""
+    """Ask whether to delete the existing measurement columns that the
+    user did not select. Only the listed columns are deleted. Returns
+    `(cancel, delete)`.
+
+    `locations` (`{colname: [Position folder names]}`) and `num_positions`
+    (number of Positions checked) show which Positions have a column, when
+    not all of them. `exp_foldername` is the experiment folder of the tables.
+    """
     msg = widgets.myMessageBox()
     msg.setWidth(500)
     if acdc_df_path:
         msg.addShowInFileManagerButton(acdc_df_path)
+    folder_txt = ''
+    if exp_foldername:
+        folder_txt = (
+            f'Experiment folder: <code>{html.escape(exp_foldername)}</code>'
+            '<br><br>'
+        )
     txt = html_utils.paragraph(
+        f'{folder_txt}'
         'You chose to <b>not save</b> some measurements that are '
         '<b>already present</b> in the saved <code>acdc_output.csv</code> '
         'file.<br><br>'
         'Do you want to <b>delete</b> these measurements or '
         '<b>keep</b> them?<br><br>'
+        'Only the listed measurements are deleted.<br><br>'
         'Existing measurements not selected:'
     )
+    items = []
+    for colname in unchecked_existing_colnames:
+        positions = (locations or {}).get(colname) or []
+        positions = [pos for pos in positions if pos]
+        is_partial = (
+            num_positions is not None and num_positions > 1
+            and 0 < len(positions) < num_positions
+        )
+        if is_partial:
+            colname = f'{colname}   (only in {", ".join(positions)})'
+        items.append(colname)
     listView = widgets.readOnlyQList(msg)
-    listView.addItems(list(unchecked_existing_colnames))
+    listView.addItems(items)
     _, delButton, keepButton = msg.warning(
         parent, 'Unchecked existing measurements', txt,
         widgets=listView, buttonsTexts=('Cancel', 'Delete', 'Keep')
@@ -2239,8 +2266,14 @@ class SetMeasurementsDialog(QBaseDialog):
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
             allPosData=None, is_concat=False, isSingleSelection=False,
-            state=None, addDoNotAskAgainCheckbox=False
+            state=None, addDoNotAskAgainCheckbox=False,
+            allPos_acdc_df_cols_per_pos=None
         ):
+        """`allPos_acdc_df_cols` are the columns of the existing tables: on
+        OK the dialog asks whether to delete the ones that are measurements
+        and are not selected. `allPos_acdc_df_cols_per_pos` (optional) are
+        the columns of each table, in the order of `allPosData`: each table
+        is then checked with the combined measurements of its Position."""
         super().__init__(parent=parent)
         
         self.checkBoxedGroup = QButtonGroup()
@@ -2259,8 +2292,12 @@ class SetMeasurementsDialog(QBaseDialog):
         self.okClicked = False
         self.is_concat = is_concat
         self.allPos_acdc_df_cols = allPos_acdc_df_cols
+        self.allPos_acdc_df_cols_per_pos = allPos_acdc_df_cols_per_pos
+        self.existingUncheckedLocations = {}
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
+        self._posData = posData
+        self._isSegm3D = isSegm3D
         self.doNotWarn = False
         self.doNotAskAgain = False
 
@@ -3204,16 +3241,19 @@ class SetMeasurementsDialog(QBaseDialog):
             'table. '
         )
 
-    def ok_cb(self):       
+    def _updateCalcForEachZsliceRequested(self):
         for chNameGroupbox in self.chNameGroupboxes:
             chNameGroupbox.calcForEachZsliceRequested = (
                 chNameGroupbox.isCalcForEachZsliceRequested()
             )
-        
+
         self.sizeMetricsQGBox.calcForEachZsliceRequested = (
             self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
         )
-        
+
+    def ok_cb(self):
+        self._updateCalcForEachZsliceRequested()
+                
         if self.allPos_acdc_df_cols is None:
             self.saveLastSelection()
             self.cancel = False
@@ -3260,35 +3300,71 @@ class SetMeasurementsDialog(QBaseDialog):
                     channels.append(channel)
         return channels
     
+    def selectionKernel(self):
+        """Measurements kernel set with the current selection, as the one
+        that computes and saves the measurements
+        (`cli.ComputeMeasurementsKernel.set_metrics_from_set_measurements_dialog`).
+        """
+        from . import cli
+        self._updateCalcForEachZsliceRequested()
+        kernel = cli.ComputeMeasurementsKernel(None, '', False)
+        kernel.init_args(self.measurementChannels(), '')
+        kernel.isSegm3D = bool(self._isSegm3D)
+        kernel.set_metrics_from_set_measurements_dialog(self)
+        return kernel
+
+    def _existingTablesSources(self, existing_colnames=None):
+        """`[(posData, columns)]` of the existing tables to check"""
+        if existing_colnames is not None:
+            return [(self._posData, existing_colnames)]
+
+        perPos = self.allPos_acdc_df_cols_per_pos
+        allPosData = self.allPosData or []
+        if perPos is not None and len(perPos) == len(allPosData):
+            return list(zip(allPosData, perPos))
+
+        return [(self._posData, self.allPos_acdc_df_cols or [])]
+
     def uncheckedExistingMeasurements(self, existing_colnames=None):
-        """Measurement columns of the existing tables that the current 
-        selection would not save (see 
-        `measurements.unselected_measurement_columns`)."""
-        if existing_colnames is None:
-            existing_colnames = self.allPos_acdc_df_cols or []
-        
-        zslice_channels = [
-            gb.chName for gb in self.chNameGroupboxes
-            if gb.isChecked() and gb.isCalcForEachZsliceRequested()
-        ]
-        return measurements.unselected_measurement_columns(
-            existing_colnames, 
-            self.measurementChannels(), 
-            self.selectedMeasurements(),
-            other_measurement_cols=self.offeredMeasurements(),
-            zslice_channels=zslice_channels,
-            calc_size_for_each_zslice=(
-                self.sizeMetricsQGBox.isChecked()
-                and self.sizeMetricsQGBox.isCalcForEachZsliceRequested()
+        """Measurement columns of the existing tables that the current
+        selection would not save, as classified by the measurements kernel
+        (`cli.ComputeMeasurementsKernel.unselected_existing_measurements`,
+        each table with the combined measurements of its Position). Sets
+        `existingUncheckedLocations` (`{colname: [Position folder names]}`).
+        """
+        kernel = self.selectionKernel()
+        unchecked = []
+        locations = {}
+        for posData, colnames in self._existingTablesSources(existing_colnames):
+            if posData is None:
+                posData = SimpleNamespace(
+                    chNames=self.measurementChannels(),
+                    combineMetricsConfig=None
+                )
+            pos_foldername = getattr(posData, 'pos_foldername', None)
+            unselected = kernel.unselected_existing_measurements(
+                colnames, posData
             )
-        )
-        
+            for colname in unselected:
+                if colname not in locations:
+                    locations[colname] = []
+                    unchecked.append(colname)
+                if pos_foldername not in locations[colname]:
+                    locations[colname].append(pos_foldername)
+        self.existingUncheckedLocations = locations
+        return unchecked
+
     def warnUncheckedExistingMeasurements(
             self, unchecked_existing_colnames, unchecked_existing_rps
         ):
         items = [*unchecked_existing_colnames, *unchecked_existing_rps]
+        sources = self._existingTablesSources()
+        exp_path = getattr(self._posData, 'exp_path', None)
         return askDeleteUncheckedExistingMeasurements(
-            self, items, acdc_df_path=self.acdc_df_path
+            self, items, acdc_df_path=self.acdc_df_path,
+            locations=self.existingUncheckedLocations,
+            num_positions=len(sources),
+            exp_foldername=os.path.basename(exp_path) if exp_path else None
         )
 
     def show(self, block=False):

@@ -30448,13 +30448,18 @@ When working with 3D segmentation masks:
 
         posData = self.data[self.pos_i]
         allPos_acdc_df_cols = set()
+        # Columns of each Position (classified with its combined measurements)
+        allPos_acdc_df_cols_per_pos = []
         for _posData in self.data:
+            pos_acdc_df_cols = set()
             for frame_i, data_dict in enumerate(_posData.allData_li):
                 acdc_df = data_dict['acdc_df']
                 if acdc_df is None:
                     continue
-                
-                allPos_acdc_df_cols.update(acdc_df.columns)
+
+                pos_acdc_df_cols.update(acdc_df.columns)
+            allPos_acdc_df_cols.update(pos_acdc_df_cols)
+            allPos_acdc_df_cols_per_pos.append(sorted(pos_acdc_df_cols))
         loadedChNames = posData.setLoadedChannelNames(returnList=True)
         posData.fluo_data_dict.pop(self.user_ch_name, None)
         if self.user_ch_name not in loadedChNames:
@@ -30467,6 +30472,7 @@ When working with 3D segmentation masks:
             loadedChNames, notLoadedChNames, posData.SizeZ > 1, self.isSegm3D,
             favourite_funcs=favourite_funcs, 
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
+            allPos_acdc_df_cols_per_pos=allPos_acdc_df_cols_per_pos,
             acdc_df_path=posData.images_path, posData=posData,
             addCombineMetricCallback=self.addCombineMetric,
             allPosData=self.data, 
@@ -30492,13 +30498,22 @@ When working with 3D segmentation masks:
             delCols_format = [f'  *  {colname}' for colname in delCols]
             delCols_format = '\n'.join(delCols_format)
             self.logger.info(delCols_format)
+            # Only from the Positions where the column was listed
+            locations = self.measurementsWin.existingUncheckedLocations
             for _posData in self.data:
+                posDelCols = [
+                    col for col in delCols
+                    if not locations
+                    or _posData.pos_foldername in locations.get(col, [])
+                ]
+                if not posDelCols:
+                    continue
                 for frame_i, data_dict in enumerate(_posData.allData_li):
                     acdc_df = data_dict['acdc_df']
                     if acdc_df is None:
                         continue
 
-                    acdc_df = acdc_df.drop(columns=delCols, errors='ignore')
+                    acdc_df = acdc_df.drop(columns=posDelCols, errors='ignore')
                     _posData.allData_li[frame_i]['acdc_df'] = acdc_df
         self.setMeasWinState = self.measurementsWin.state()
         self.logger.info('Setting measurements...')
@@ -30607,7 +30622,14 @@ When working with 3D segmentation masks:
             return last_tracked_i
 
     def computeVolumeRegionprop(self):
-        if 'cell_vol_vox' not in self._measurements_kernel.sizeMetricsToSave:
+        # Selected or needed by the selected measurements (e.g. input of a
+        # concentration or of a combined measurement)
+        kernel = self._measurements_kernel
+        posToCompute = [
+            posData for posData in self.data
+            if kernel.needs_rotational_volume(posData)
+        ]
+        if not posToCompute:
             return
 
         # We compute the cell volume in the main thread because calling
@@ -30620,6 +30642,9 @@ When working with 3D segmentation masks:
             if self.posToSave is not None:
                 if posData.pos_foldername not in self.posToSave:
                     continue
+            
+            if not any(posData is _posData for _posData in posToCompute):
+                continue
                 
             PhysicalSizeY = posData.PhysicalSizeY
             PhysicalSizeX = posData.PhysicalSizeX

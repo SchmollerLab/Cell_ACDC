@@ -4592,8 +4592,10 @@ def read_measurements_workflow_from_config(filepath):
         'regionprops_to_save',
         'channel_indipendent_custom_metrics_to_save',
         'mixed_combine_metrics_to_skip',
+        'mixed_combine_metrics_to_save',
         'channel_names_to_skip',
-        'channel_names_to_process'
+        'channel_names_to_process',
+        'existing_measurements_to_delete',
     }
     ini_items = {}
     for section in configPars.sections():

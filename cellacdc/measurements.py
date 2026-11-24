@@ -2117,6 +2117,14 @@ def add_size_metrics(
     else:
         set_value = writer.set
 
+    # "Calculate for each z-slice" (3D objects): area of the selected units
+    zslice_cols = []
+    if calc_size_for_each_zslice and isSegm3D:
+        zslice_cols = [
+            col for col in ('cell_area_pxl', 'cell_area_um2')
+            if col in size_metrics_to_save
+        ]
+
     try:
         for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
             for col in size_metrics_to_save:
@@ -2125,16 +2133,18 @@ def add_size_metrics(
                 )
                 set_value(obj.label, col, val)
 
-                if not calc_size_for_each_zslice:
-                    continue
+            if not zslice_cols:
+                continue
 
-                z0 = obj.bbox[0]
-                for local_z, obj_img_z in enumerate(obj.image):
-                    z_slice = z0 + local_z
-                    area_pxl_z = np.count_nonzero(obj_img_z)
+            z0 = obj.bbox[0]
+            for local_z, obj_img_z in enumerate(obj.image):
+                z_slice = z0 + local_z
+                area_pxl_z = np.count_nonzero(obj_img_z)
+                if 'cell_area_pxl' in zslice_cols:
                     area_pxl_zslice_col = f'cell_area_pxl_zslice{z_slice}'
                     set_value(obj.label, area_pxl_zslice_col, area_pxl_z)
 
+                if 'cell_area_um2' in zslice_cols:
                     area_um2_z = area_pxl_z*yx_pxl_to_um2
                     area_um2_zslice_col = f'cell_area_um2_zslice{z_slice}'
                     set_value(obj.label, area_um2_zslice_col, area_um2_z)
@@ -2679,8 +2689,9 @@ def unselected_measurement_columns(
     * standard, background and custom (`acdc_metrics_path`) metrics of
       every channel in `channels` (with any 3D->2D suffix, any
       ``_vs_<channel>`` suffix of custom metrics and the z-slice index of
-      "Calculate for each z-slice", e.g. ``GFP_mean_zSlice2``)
-    * size metrics (also ``cell_area_pxl_zslice<N>``), region properties
+      "Calculate for each z-slice", e.g. ``GFP_mean_zSlice2``, also after
+      the ``_vs_<channel>`` suffix, e.g. ``GFP_custom_zSlice_vs_mCherry2``)
+    * size metrics (also ``cell_area_<pxl|um2>_zslice<N>``), region properties
       (also the ``<prop>-<i>-<j>`` columns of multi-valued properties) and
       channel independent custom metrics (with any 3D->2D suffix)
     * any name in `other_measurement_cols` (e.g. combined measurements)
@@ -2738,7 +2749,10 @@ def unselected_measurement_columns(
         for how in _HOW_3D_TO_2D_SUFFIXES:
             measurements_names.add(f'{func_name}{how}')
     props_names = set(get_props_names())
-    vs_suffixes = tuple(f'_vs_{channel}' for channel in channels)
+    # Longest first: with channels 'ch1' and 'ch12', 'X_vs_ch12' is against
+    # 'ch12' (not z-slice 2 against 'ch1')
+    channels_by_length = sorted(channels, key=len, reverse=True)
+    channels_set = set(channels)
 
     unselected = []
     for col in colnames:
@@ -2753,11 +2767,25 @@ def unselected_measurement_columns(
         if base in channel_metrics or base in measurements_names:
             pass
         elif (
-                base.endswith(vs_suffixes)
+                '_vs_' in base
                 and base[:base.rfind('_vs_')] in custom_channel_metrics
             ):
             # Custom metric computed against another channel
-            base = base[:base.rfind('_vs_')]
+            idx = base.rfind('_vs_')
+            vs_base, other = base[:idx], base[idx+len('_vs_'):]
+            if other in channels_set:
+                base = vs_base
+            else:
+                # "Calculate for each z-slice": '<metric>_zSlice_vs_<ch><z>'
+                zslice_channel = next((
+                    ch for ch in channels_by_length
+                    if other.startswith(ch) and other[len(ch):].isdigit()
+                ), None)
+                if zslice_channel is None or not vs_base.endswith('_zSlice'):
+                    # Not a measurement
+                    continue
+                base = vs_base
+                is_selected_variant = channel_metrics[base] in zslice_channels
         elif _CHANNEL_ZSLICE_COL_PATTERN.match(base) is not None:
             # Measurement of a single z-slice ("Calculate for each z-slice")
             base = _CHANNEL_ZSLICE_COL_PATTERN.match(base).group(1)

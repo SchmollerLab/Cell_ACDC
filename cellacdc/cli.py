@@ -5,6 +5,8 @@ import time
 from tqdm import tqdm
 
 import re
+import graphlib
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -897,6 +899,9 @@ class SegmKernel(_WorkflowKernel):
 
         self.logger_func(f'\n{posData.relPath} done.')
 
+# Region property column, also `<prop>-<i>` of multi-valued properties
+_PROP_COL_PATTERN = re.compile(r'^(.+?)(?:-\d+)*$')
+
 class ComputeMeasurementsKernel(_WorkflowKernel):
     def __init__(self, logger, log_path, is_cli):
         super().__init__(logger, log_path, is_cli=is_cli)
@@ -912,6 +917,14 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             # None = not asked, True = delete the existing measurement
             # columns that are not selected, False = keep them
             self.delete_unselected_existing_measurements = None
+        if not hasattr(self, 'existing_measurements_to_delete'):
+            # Columns listed in the Delete/Keep question and answered with
+            # Delete (None = every unselected measurement, workflow files
+            # saved without the list)
+            self.existing_measurements_to_delete = set()
+        if not hasattr(self, 'existing_measurements_answered'):
+            # Columns listed in the Delete/Keep question (any answer)
+            self.existing_measurements_answered = set()
     
     def log(self, message, level='INFO'):
         try:
@@ -978,12 +991,20 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             params['mixed_combine_metrics_to_skip'] = (
                 '\n'.join(self.mixedChCombineMetricsToSkip)
             )
+        mixed_to_save = getattr(self, 'mixedChCombineMetricsToSave', None)
+        if mixed_to_save is not None:
+            params['mixed_combine_metrics_to_save'] = '\n'.join(mixed_to_save)
         
         params['save_object_counts_table'] = self.save_object_counts_table
         params['delete_unselected_existing_measurements'] = bool(
             getattr(self, 'delete_unselected_existing_measurements', False)
         )
-        
+        to_delete = getattr(self, 'existing_measurements_to_delete', None)
+        if to_delete is not None:
+            params['existing_measurements_to_delete'] = '\n'.join(
+                sorted(to_delete)
+            )
+
         return params
         
     def set_metrics_from_workflow_config_params(self, config_params):
@@ -1011,6 +1032,17 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.delete_unselected_existing_measurements = config_params.get(
             'delete_unselected_existing_measurements', False
         ) is True
+        if 'existing_measurements_to_delete' in config_params:
+            to_delete = config_params['existing_measurements_to_delete']
+            if isinstance(to_delete, str):
+                to_delete = to_delete.split('\n')
+            self.existing_measurements_to_delete = {
+                col for col in (to_delete or ()) if col
+            }
+        else:
+            # Saved before the list was saved --> every unselected one
+            self.existing_measurements_to_delete = None
+        self.existing_measurements_answered = set()
         if 'channel_indipendent_custom_metrics_to_save' in config_params:
             self.chIndipendCustomMetricsToSave = (
                 config_params['channel_indipendent_custom_metrics_to_save']
@@ -1020,6 +1052,10 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.mixedChCombineMetricsToSkip = (
                 config_params['mixed_combine_metrics_to_skip']
             )
+        # None = workflow file saved before the list was saved
+        self.mixedChCombineMetricsToSave = config_params.get(
+            'mixed_combine_metrics_to_save'
+        )
         
         for channel_value in config_params['calc_for_each_zslice_channels']:
             channel, value = channel_value.split(',')
@@ -1093,7 +1129,13 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
 
         self.mixedChCombineMetricsToSkip = []
+        # Mixed combined measurements without a checkbox (e.g. reading other
+        # mixed ones) are not selected (only evaluated as inputs)
+        self.mixedChCombineMetricsToSave = ()
         if win.mixedChannelsCombineMetricsQGBox is not None:
+            self.mixedChCombineMetricsToSave = tuple(
+                win.mixedChannelsSelectedMetrics()
+            )
             selected = set(win.mixedChannelsSelectedMetrics())
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
             self.mixedChCombineMetricsToSkip = tuple(
@@ -1102,34 +1144,199 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
 
         self._unselected_existing_cache = None
+        self.delete_unselected_existing_measurements = None
+        self.existing_measurements_to_delete = set()
+        self.existing_measurements_answered = set()
         if getattr(win, 'uncheckedExistingAsked', False):
-            self.delete_unselected_existing_measurements = bool(
-                win.delExistingCols
+            self.record_existing_measurements_answer(
+                win.existingUncheckedColnames, bool(win.delExistingCols)
             )
-        else:
-            self.delete_unselected_existing_measurements = None
 
-    def _metrics_with_inputs(self, posData):
-        """Selected channel metrics plus the ones they are computed from.
+    def _combined_equations(self, posData):
+        """Equations of the combined measurements that the kernel evaluates.
 
-        Concentrations are computed from the amount, amounts from the
-        background median and channel combined measurements from their
-        equation. Inputs that are not selected are computed anyway (they
-        might have been deleted from the existing table or never computed)
-        and dropped before saving (`_drop_helper_columns`).
+        The sources are the sections of `posData.combineMetricsConfig`:
+        `equations` and `user_path_equations` (only names starting with a
+        loaded channel that is not skipped) and `mixed_channels_equations`.
 
         Returns
         -------
         tuple
-            `({channel: [colnames]}, set of helper colnames)`
+            `({name: equation} of the channel combined measurements,
+            {name: equation} of the mixed channels combined measurements,
+            set of the names of the channel combined measurements of every
+            channel, also the skipped ones)`
         """
+        config = getattr(posData, 'combineMetricsConfig', None)
+        if config is None:
+            return {}, {}, set()
+
+        def section(name):
+            if name not in config:
+                return {}
+            return dict(config[name])
+
+        # Channels of the Position that are processed (loaded later in `run`,
+        # `loadedChNames` might be still empty)
+        skipped = set(getattr(self, 'chNamesToSkip', None) or ())
+        channels = (
+            getattr(posData, 'chNames', None)
+            or getattr(posData, 'loadedChNames', None) or []
+        )
+        to_process = getattr(self, 'chNamesToProcess', None)
+        if to_process is not None:
+            channels = [ch for ch in channels if ch in to_process]
+        channels = [ch for ch in channels if ch and ch not in skipped]
+        channel_equations = {}
+        all_channel_names = set()
+        for section_name in ('equations', 'user_path_equations'):
+            for name, equation in section(section_name).items():
+                all_channel_names.add(name)
+                if any(name.startswith(ch) for ch in channels):
+                    channel_equations[name] = equation
+        mixed_equations = section('mixed_channels_equations')
+        return channel_equations, mixed_equations, all_channel_names
+
+    def _combined_plan(self, posData):
+        """Combined measurements to evaluate and in which order.
+
+        The selected ones (channel combined measurements not unchecked in
+        `metricsToSkip`, mixed ones in `mixedChCombineMetricsToSave`, or not
+        in `mixedChCombineMetricsToSkip` when the first is None)
+        and, recursively, the combined measurements they read (helpers:
+        evaluated, then saved only if the table already had them, see
+        `_drop_helper_columns`). Every combined measurement is evaluated
+        after the combined measurements it reads.
+
+        Returns
+        -------
+        types.SimpleNamespace
+            `order` (list of `(name, equation, is_mixed)`), `selected` and
+            `helpers` (sets of names), `inputs` (names read by the equations
+            that are not combined measurements) and `all_names` (names of
+            all combined measurements, also of skipped channels).
+        """
+        channel_eqs, mixed_eqs, all_channel_names = (
+            self._combined_equations(posData)
+        )
+        equations = {**channel_eqs, **mixed_eqs}
+        unchecked = set()
+        for colnames in (getattr(self, 'metricsToSkip', None) or {}).values():
+            unchecked.update(colnames)
+        mixed_unchecked = set(
+            getattr(self, 'mixedChCombineMetricsToSkip', None) or ()
+        )
+        mixed_to_save = getattr(self, 'mixedChCombineMetricsToSave', None)
+        selected = [name for name in channel_eqs if name not in unchecked]
+        if mixed_to_save is not None:
+            mixed_to_save = set(mixed_to_save)
+            selected.extend(
+                name for name in mixed_eqs if name in mixed_to_save
+            )
+        else:
+            selected.extend(
+                name for name in mixed_eqs if name not in mixed_unchecked
+            )
+        to_eval = list(selected)
+        helpers = []
+        inputs = []
+        deps = {}
+        i = 0
+        while i < len(to_eval):
+            name = to_eval[i]
+            i += 1
+            deps[name] = set()
+            spans = measurements.equation_variable_spans(equations[name])
+            for var, _, _ in spans:
+                if var == name:
+                    # Reads its own existing values
+                    continue
+                if var in equations:
+                    deps[name].add(var)
+                    if var not in to_eval:
+                        to_eval.append(var)
+                        helpers.append(var)
+                elif var not in inputs:
+                    inputs.append(var)
+
+        try:
+            order = list(graphlib.TopologicalSorter(deps).static_order())
+        except graphlib.CycleError as err:
+            self.log(
+                '[WARNING]: The following combined measurements read each '
+                f'other (circular definition): {err.args[1]}. They are '
+                'evaluated in the order of the configuration file.'
+            )
+            order = to_eval
+        return SimpleNamespace(
+            order=[
+                (name, equations[name], name in mixed_eqs)
+                for name in order if name in equations
+            ],
+            selected=set(selected),
+            helpers=set(helpers),
+            inputs=inputs,
+            all_names={*all_channel_names, *mixed_eqs},
+        )
+
+    def _ensure_metrics_funcs(self):
+        if getattr(self, 'metrics_func', None) is None:
+            self.metrics_func, _ = measurements.standard_metrics_func()
+        if getattr(self, 'custom_func_dict', None) is None:
+            self.custom_func_dict = measurements.get_custom_metrics_func()
+
+    def _resolve_inputs(self, posData):
+        """Measurements to compute: the selected ones plus their inputs.
+
+        Inputs are the measurements read by the selected combined
+        measurements (channel metrics, region properties, size metrics,
+        channel independent custom metrics and, recursively, other combined
+        measurements, see `_combined_plan`), the amount of a concentration
+        (and the background median of the amount) and the cell volume of a
+        concentration. Inputs that are not selected are computed anyway
+        (they might have been deleted from the existing table or never
+        computed) and dropped before saving unless the table already had
+        them (`_drop_helper_columns`). Inputs that cannot be computed (e.g.,
+        metrics of an unchecked channel or annotations) are never deleted
+        from the existing table (`unselected_existing_measurements`), so the
+        combined measurements can read their existing values.
+
+        Returns
+        -------
+        types.SimpleNamespace
+            `metrics_to_compute` (`{channel: [colnames]}`),
+            `size_to_compute`, `props_to_compute`, `ch_indipend_to_compute`,
+            `helpers` (helper column names, except region properties),
+            `helper_props` (helper region properties), `combined` (see
+            `_combined_plan`), `protected` (inputs that cannot be computed)
+            and `needs_rotational_volume`.
+        """
+        self._ensure_metrics_funcs()
+        isSegm3D = getattr(self, 'isSegm3D', False)
+        isZstack = (getattr(posData, 'SizeZ', 1) or 1) > 1
         metrics_to_compute = {
             channel: list(colnames)
-            for channel, colnames in self.metricsToSave.items()
+            for channel, colnames in (self.metricsToSave or {}).items()
         }
+        selected_size = list(getattr(self, 'sizeMetricsToSave', None) or ())
+        selected_props = tuple(getattr(self, 'regionPropsToSave', None) or ())
+        selected_chind = list(
+            getattr(self, 'chIndipendCustomMetricsToSave', None) or ()
+        )
         helpers = set()
-        skipped = set(getattr(self, 'chNamesToSkip', ()))
+        helper_props = []
+        helper_size = []
+        helper_chind = []
+        protected = set()
+        skipped = set(getattr(self, 'chNamesToSkip', None) or ())
         channels = sorted(metrics_to_compute, key=len, reverse=True)
+        if isSegm3D:
+            props_names = set(measurements.get_props_names_3D())
+        else:
+            props_names = set(measurements.get_props_names())
+        size_names = set(measurements.get_size_metrics_desc(isSegm3D, True))
+        size_names.update(self._volume_metrics_columns())
+        chind_names = None
 
         def is_computable(channel, colname):
             params = measurements.get_metrics_params(
@@ -1142,64 +1349,65 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             )
 
         def add(colname):
+            nonlocal chind_names
             for channel in channels:
                 if not colname.startswith(f'{channel}_'):
                     continue
-                if channel in skipped:
-                    return
                 if colname in metrics_to_compute[channel]:
                     return
-                if not is_computable(channel, colname):
-                    # E.g. annotations or measurements of other tools: the
-                    # existing values are used
+                if channel in skipped or not is_computable(channel, colname):
+                    # E.g. unchecked channel, measurements of other tools or
+                    # annotations: the existing values are used
+                    protected.add(colname)
                     return
                 metrics_to_compute[channel].append(colname)
                 helpers.add(colname)
                 return
 
-        # Inputs of channel combined measurements
-        isSegm3D = getattr(self, 'isSegm3D', False)
-        equations = {}
-        config = getattr(posData, 'combineMetricsConfig', None)
-        for channel in channels:
-            _, channel_equations = measurements.channel_combine_metrics_desc(
-                channel, posData=posData, isSegm3D=isSegm3D
-            )
-            equations.update(channel_equations)
-        if config is not None:
-            for section in ('equations', 'user_path_equations'):
-                if config.has_section(section):
-                    equations.update(config[section])
-        mixed_to_skip = set(getattr(self, 'mixedChCombineMetricsToSkip', ()))
-        _, mixed_equations = measurements.combine_mixed_channels_desc(
-            posData=posData, isSegm3D=isSegm3D
-        )
-        selected_combined = [
-            colname for colnames in self.metricsToSave.values()
-            for colname in colnames
-        ]
-        for name, equation in mixed_equations.items():
-            if name in mixed_to_skip:
-                continue
-            equations[name] = equation
-            selected_combined.append(name)
-        for colname in selected_combined:
-            equation = equations.get(colname)
-            if not equation:
-                continue
-            spans = measurements.equation_variable_spans(equation)
-            for name, _, _ in spans:
-                add(name)
-        
-        # Concentration --> amount --> background median
+            m = _PROP_COL_PATTERN.match(colname)
+            if m is not None and m.group(1) in props_names:
+                prop = m.group(1)
+                if prop not in selected_props and prop not in helper_props:
+                    helper_props.append(prop)
+                return
+
+            if colname in size_names:
+                if colname not in selected_size and colname not in helper_size:
+                    helper_size.append(colname)
+                    helpers.add(colname)
+                return
+
+            if chind_names is None:
+                chind_names = set(measurements.ch_indipend_custom_metrics_desc(
+                    isZstack, isSegm3D=isSegm3D
+                ))
+            if colname in chind_names:
+                if colname not in selected_chind and colname not in helper_chind:
+                    helper_chind.append(colname)
+                    helpers.add(colname)
+                return
+
+            protected.add(colname)
+
+        plan = self._combined_plan(posData)
+        helpers.update(plan.helpers)
+        for colname in plan.inputs:
+            add(colname)
+
+        # Concentration --> amount (--> background median) and cell volume
         for channel in channels:
             for colname in list(metrics_to_compute[channel]):
                 idx = colname.find('_from_vol_')
                 if colname.find('_concentration_') == -1 or idx == -1:
                     continue
                 unit_how = colname[idx+len('_from_vol_'):]
-                how = unit_how[unit_how.find('_'):] if '_' in unit_how else ''
+                unit, _, how = unit_how.partition('_')
+                how = f'_{how}' if how else ''
                 add(colname[:idx].replace('_concentration_', '_amount_') + how)
+                if how == '_3D':
+                    add(f'cell_vol_{unit}_3D')
+                else:
+                    add(f'cell_vol_{unit}')
 
         for channel in channels:
             for colname in list(metrics_to_compute[channel]):
@@ -1212,25 +1420,73 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     r'\g<1>_bkgrVal_median\g<2>', colname
                 ))
 
-        return metrics_to_compute, helpers
+        size_to_compute = [*selected_size, *helper_size]
+        chind_to_compute = [*selected_chind, *helper_chind]
+        _, _, _, custom_params = measurements.get_metrics_params(
+            metrics_to_compute, self.metrics_func, self.custom_func_dict
+        )
+        rotational_volume = {'cell_vol_vox', 'cell_vol_fl'}
+        needs_rotational_volume = (
+            bool(rotational_volume.intersection(size_to_compute))
+            # Custom metrics receive the cell volumes
+            or any(custom_params.values())
+            or bool(chind_to_compute)
+        )
+        return SimpleNamespace(
+            metrics_to_compute=metrics_to_compute,
+            size_to_compute=size_to_compute,
+            props_to_compute=(*selected_props, *helper_props),
+            ch_indipend_to_compute=chind_to_compute,
+            helpers=helpers,
+            helper_props=set(helper_props),
+            combined=plan,
+            protected=protected,
+            needs_rotational_volume=needs_rotational_volume,
+        )
+
+    def needs_rotational_volume(self, posData):
+        """Whether the cell volume from the rotational symmetry
+        (`cell_vol_vox`/`cell_vol_fl`) is needed by the selected measurements
+        (directly, as input of a concentration or of a combined measurement,
+        or by custom metrics, which receive the cell volumes).
+
+        The GUI and the "Compute measurements" utility compute it in the main
+        thread (`computeVolumeRegionprop`, it crashes in a thread on macOS).
+        """
+        size_metrics = set(getattr(self, 'sizeMetricsToSave', None) or ())
+        if size_metrics.intersection(('cell_vol_vox', 'cell_vol_fl')):
+            return True
+        if getattr(self, 'metricsToSave', None) is None:
+            # Nothing selected --> everything is saved
+            return True
+        return self._resolve_inputs(posData).needs_rotational_volume
 
     def _measurement_channels(self, posData):
-        channels = list(posData.chNames)
-        for channel in (*self.ch_names, *(self.metricsToSave or {})):
+        channels = list(getattr(posData, 'chNames', None) or [])
+        ch_names = getattr(self, 'ch_names', None) or []
+        for channel in (*ch_names, *(self.metricsToSave or {})):
             if channel not in channels:
                 channels.append(channel)
         return channels
 
     def unselected_existing_measurements(self, colnames, posData):
         """Measurement columns in `colnames` that the current selection does
-        not save (see `measurements.unselected_measurement_columns`)."""
+        not save (see `measurements.unselected_measurement_columns`).
+
+        Combined measurements are selected if the kernel evaluates them (see
+        `_combined_plan`) and the inputs of the selected combined
+        measurements that cannot be computed are never returned (see
+        `_resolve_inputs`).
+        """
         if getattr(self, 'metricsToSave', None) is None:
             # No selection --> every measurement is saved
             return []
 
+        resolved = self._resolve_inputs(posData)
+        plan = resolved.combined
         channels = self._measurement_channels(posData)
         isSegm3D = getattr(self, 'isSegm3D', False)
-        selected = set()
+        selected = set(plan.selected)
         for colnames_ch in self.metricsToSave.values():
             selected.update(colnames_ch)
         selected.update(self.sizeMetricsToSave or ())
@@ -1238,42 +1494,63 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         selected.update(getattr(self, 'chIndipendCustomMetricsToSave', ()))
 
         # Combined measurements
-        other = set()
-        for channel in channels:
-            combine_desc, _ = measurements.channel_combine_metrics_desc(
-                channel, posData=posData, isSegm3D=isSegm3D
-            )
-            other.update(combine_desc)
-        config = getattr(posData, 'combineMetricsConfig', None)
-        if config is not None:
-            for section in ('equations', 'user_path_equations'):
-                if config.has_section(section):
-                    other.update(config[section].keys())
-        mixed_desc, _ = measurements.combine_mixed_channels_desc(
-            posData=posData, isSegm3D=isSegm3D
-        )
-        other.update(mixed_desc)
-        mixed_to_skip = set(getattr(self, 'mixedChCombineMetricsToSkip', ()))
-        selected.update(
-            name for name in mixed_desc if name not in mixed_to_skip
-        )
+        other = set(plan.all_names)
+        if getattr(posData, 'combineMetricsConfig', None) is not None:
+            for channel in channels:
+                combine_desc, _ = measurements.channel_combine_metrics_desc(
+                    channel, posData=posData, isSegm3D=isSegm3D
+                )
+                other.update(combine_desc)
 
         zslice_channels = [
             channel for channel, value
-            in self.calc_for_each_zslice_mapper.items() if value
+            in (getattr(self, 'calc_for_each_zslice_mapper', None) or {}).items()
+            if value
         ]
-        return measurements.unselected_measurement_columns(
+        unselected = measurements.unselected_measurement_columns(
             colnames, channels, selected,
             other_measurement_cols=other,
             zslice_channels=zslice_channels,
-            calc_size_for_each_zslice=self.calc_size_for_each_zslice
+            calc_size_for_each_zslice=getattr(
+                self, 'calc_size_for_each_zslice', False
+            )
         )
+        return [col for col in unselected if col not in resolved.protected]
+
+    def record_existing_measurements_answer(self, colnames, delete):
+        """Record the answer to the Delete/Keep question about the listed
+        existing measurements `colnames` that are not selected. Only the
+        listed columns are deleted (`_drop_unselected_existing_measurements`)
+        and the "Compute measurements" utility asks again when a following
+        experiment folder has columns that were not listed."""
+        colnames = set(colnames)
+        answered = getattr(self, 'existing_measurements_answered', None)
+        if answered is None:
+            answered = set()
+        answered.update(colnames)
+        self.existing_measurements_answered = answered
+        if delete:
+            to_delete = getattr(self, 'existing_measurements_to_delete', None)
+            if to_delete is None:
+                to_delete = set()
+            to_delete.update(colnames)
+            self.existing_measurements_to_delete = to_delete
+            self.delete_unselected_existing_measurements = True
+        elif getattr(self, 'delete_unselected_existing_measurements', None) is None:
+            self.delete_unselected_existing_measurements = False
+        self._unselected_existing_cache = None
 
     def _drop_unselected_existing_measurements(self, acdc_df, posData):
         """Drop the measurement columns of an existing table that are not
-        selected, when the user chose to delete them (Delete/Keep question
-        of `apps.SetMeasurementsDialog.ok_cb`)."""
-        if not getattr(self, 'delete_unselected_existing_measurements', False):
+        selected and that the user chose to delete (Delete/Keep question of
+        `apps.SetMeasurementsDialog.ok_cb`, only the listed columns, see
+        `record_existing_measurements_answer`)."""
+        to_delete = getattr(self, 'existing_measurements_to_delete', None)
+        if to_delete is None:
+            # Workflow file without the list of the columns to delete
+            if not getattr(self, 'delete_unselected_existing_measurements', False):
+                return acdc_df
+        elif not to_delete:
             return acdc_df
 
         columns = tuple(acdc_df.columns)
@@ -1282,6 +1559,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             unselected = self.unselected_existing_measurements(
                 columns, posData
             )
+            if to_delete is not None:
+                unselected = [col for col in unselected if col in to_delete]
             cache = (id(posData), columns, unselected)
             self._unselected_existing_cache = cache
 
@@ -1319,19 +1598,6 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         # Get metrics parameters --> function name, how etc
         self.metrics_func, _ = measurements.standard_metrics_func()
         self.custom_func_dict = measurements.get_custom_metrics_func()
-        self._metrics_to_compute, self._helper_metrics = (
-            self._metrics_with_inputs(posData)
-        )
-        params = measurements.get_metrics_params(
-            self._metrics_to_compute, self.metrics_func, self.custom_func_dict
-        )
-        (bkgr_metrics_params, foregr_metrics_params, 
-        concentration_metrics_params, custom_metrics_params) = params
-        self.bkgr_metrics_params = bkgr_metrics_params
-        self.foregr_metrics_params = foregr_metrics_params
-        self.concentration_metrics_params = concentration_metrics_params
-        self.custom_metrics_params = custom_metrics_params
-        
         self.ch_indipend_custom_func_dict = (
             measurements.get_channel_indipendent_custom_metrics_func()
         )
@@ -1341,11 +1607,45 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                     posData.SizeZ>1, isSegm3D=self.isSegm3D,
                 ).keys()
             )
+
+        # Selected measurements and their inputs (helpers)
+        resolved = self._resolve_inputs(posData)
+        self._metrics_to_compute = resolved.metrics_to_compute
+        self._helper_metrics = resolved.helpers
+        self._helper_props = resolved.helper_props
+        self._size_metrics_to_compute = resolved.size_to_compute
+        self._regionprops_to_compute = resolved.props_to_compute
+        self._ch_indipend_to_compute = resolved.ch_indipend_to_compute
+        self._combined_names = {
+            name for name, _, _ in resolved.combined.order
+        }
+        # Never dropped as helpers (`_drop_helper_columns`)
+        self._selected_outputs = {
+            *resolved.combined.selected,
+            *(col for cols in self.metricsToSave.values() for col in cols),
+            *(self.sizeMetricsToSave or ()),
+            *(self.regionPropsToSave or ()),
+            *self.chIndipendCustomMetricsToSave,
+        }
+        params = measurements.get_metrics_params(
+            self._metrics_to_compute, self.metrics_func, self.custom_func_dict
+        )
+        (bkgr_metrics_params, foregr_metrics_params, 
+        concentration_metrics_params, custom_metrics_params) = params
+        self.bkgr_metrics_params = bkgr_metrics_params
+        self.foregr_metrics_params = foregr_metrics_params
+        self.concentration_metrics_params = concentration_metrics_params
+        self.custom_metrics_params = custom_metrics_params
+        # Helper custom metrics (their `_vs_<channel>` columns are helpers too)
+        self._helper_custom = {
+            col for cols in custom_metrics_params.values() for col in cols
+            if col in self._helper_metrics
+        }
             
         self.ch_indipend_custom_func_params = (
             measurements.get_channel_indipend_custom_metrics_params(
                 self.ch_indipend_custom_func_dict,
-                self.chIndipendCustomMetricsToSave
+                self._ch_indipend_to_compute
             )
         )
     
@@ -1491,12 +1791,12 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         )
         
         posData.init_segmInfo_df()
-        
+
+        self._init_metrics_to_save(posData)
+
         if computeMetricsWorker is not None:
             computeMetricsWorker.emitSigComputeVolume(posData, stop_frame_n)
-            
-        self._init_metrics_to_save(posData)
-    
+        
         if computeMetricsWorker is not None:
             computeMetricsWorker.signals.initProgressBar.emit(stop_frame_n)
         
@@ -1787,31 +2087,70 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
     def _drop_helper_columns(self, df, existing_cols=None):
         """Drop the columns computed only as inputs of the selected
-        measurements: the size columns written by `_add_volume_metrics`
-        (needed by concentration, custom and combined measurements) and the
-        channel metrics of `_helper_metrics` (see `_metrics_with_inputs`),
-        unless the table already had them (kept on purpose)."""
+        measurements (`_helper_metrics` and `_helper_props`, see
+        `_resolve_inputs`) and the size columns that are not selected (e.g.
+        written by `_add_volume_metrics` and by "Calculate for each z-slice",
+        needed by concentration, custom and combined measurements), unless
+        the table already had them (kept on purpose)."""
         if existing_cols is None:
             existing_cols = set()
 
-        helpers = set(getattr(self, '_helper_metrics', ()))
+        helpers = set(getattr(self, '_helper_metrics', None) or ())
+        helper_props = set(getattr(self, '_helper_props', None) or ())
+        helper_custom = set(getattr(self, '_helper_custom', None) or ())
+        selected_outputs = set(getattr(self, '_selected_outputs', None) or ())
+        channels = sorted(
+            getattr(self, 'metricsToSave', None) or {}, key=len, reverse=True
+        )
         size_metrics_to_save = getattr(self, 'sizeMetricsToSave', None)
         if size_metrics_to_save is not None:
+            size_names = {
+                *measurements.get_size_metrics_desc(True, True),
+                *self._volume_metrics_columns()
+            }
             helpers.update(
-                col for col in self._volume_metrics_columns()
-                if col not in size_metrics_to_save
+                col for col in size_names if col not in size_metrics_to_save
             )
+        calc_size_for_each_zslice = getattr(
+            self, 'calc_size_for_each_zslice', False
+        )
 
         to_drop = []
         for col in df.columns:
-            if col in existing_cols:
+            if col in existing_cols or col in selected_outputs:
                 continue
-            if col in helpers:
+            if col in helpers or col in helper_props:
                 to_drop.append(col)
                 continue
-            m = re.match(r'^(.+_zSlice)\d+$', col)
+            m = measurements._CHANNEL_ZSLICE_COL_PATTERN.match(col)
             if m is not None and m.group(1) in helpers:
                 # Computed for each z-slice
+                to_drop.append(col)
+                continue
+            m = measurements._SIZE_ZSLICE_COL_PATTERN.match(col)
+            if m is not None and size_metrics_to_save is not None:
+                is_selected = (
+                    calc_size_for_each_zslice
+                    and m.group(1) in size_metrics_to_save
+                )
+                if not is_selected:
+                    to_drop.append(col)
+                continue
+            idx = col.rfind('_vs_')
+            if idx != -1 and col[:idx] in helper_custom:
+                # Custom metric computed against another channel (and maybe
+                # for each z-slice)
+                other = col[idx+len('_vs_'):]
+                is_vs_channel = any(
+                    other == ch
+                    or (other.startswith(ch) and other[len(ch):].isdigit())
+                    for ch in channels
+                )
+                if is_vs_channel:
+                    to_drop.append(col)
+                    continue
+            m = measurements._REGIONPROP_COL_PATTERN.match(col)
+            if m is not None and m.group(1) in helper_props:
                 to_drop.append(col)
         return df.drop(columns=to_drop)
 
@@ -1946,10 +2285,23 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             manualBackgrRp = skimage.measure.regionprops(manualBackgrLab)
         isZstack = posData.SizeZ > 1
         isSegm3D = self.isSegm3D
-        # Helper metrics (`_metrics_with_inputs`) are not pre-filled: their
-        # existing values are kept until they are computed
-        all_channels_metrics = self.metricsToSave
+        # Helper metrics (`_resolve_inputs`) are not pre-filled: their
+        # existing values are kept until they are computed. Neither are the
+        # combined measurements: a failed equation must not save zeros
+        combined_names = getattr(self, '_combined_names', None) or set()
+        all_channels_metrics = {
+            channel: [col for col in metrics if col not in combined_names]
+            for channel, metrics in self.metricsToSave.items()
+        }
         size_metrics_to_save = self.sizeMetricsToSave
+        size_metrics_to_compute = [
+            col for col in (
+                getattr(self, '_size_metrics_to_compute', None)
+                or size_metrics_to_save
+            )
+            # Velocity needs the previous frame (`_add_velocity_measurement`)
+            if col in size_metrics_to_save or not col.startswith('velocity_')
+        ]
         regionprops_to_save = self.regionPropsToSave
         custom_func_dict = self.custom_func_dict
         
@@ -1989,7 +2341,7 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             return df, []
         
         df = measurements.add_size_metrics(
-            df, rp, size_metrics_to_save, isSegm3D, yx_pxl_to_um2, 
+            df, rp, size_metrics_to_compute, isSegm3D, yx_pxl_to_um2,
             vox_to_fl_3D, calc_size_for_each_zslice=calc_size_for_each_zslice
         )
         
@@ -2024,12 +2376,15 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.metricsToSave = None
         self.save_object_counts_table = False
         self.delete_unselected_existing_measurements = None
+        self.existing_measurements_to_delete = set()
+        self.existing_measurements_answered = set()
         if isSegm3D:
             self.regionPropsToSave = measurements.get_props_names_3D()
         else:
             self.regionPropsToSave = measurements.get_props_names()  
 
         self.mixedChCombineMetricsToSkip = []
+        self.mixedChCombineMetricsToSave = None
         self.chIndipendCustomMetricsToSave = list(
             measurements.ch_indipend_custom_metrics_desc(
                 posData.SizeZ>1, isSegm3D=isSegm3D,
@@ -2138,7 +2493,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         foregr_metrics_params = self.foregr_metrics_params
         calc_for_each_zslice_mapper = self.calc_for_each_zslice_mapper
         concentration_metrics_params = self.concentration_metrics_params
-        regionprops_to_save = self.regionPropsToSave
+        # Selected region properties and the inputs of combined measurements
+        regionprops_to_save = (
+            getattr(self, '_regionprops_to_compute', None)
+            or self.regionPropsToSave
+        )
         custom_metrics_params = self.custom_metrics_params
         ch_indipend_custom_func_params = (
             self.ch_indipend_custom_func_params
@@ -2292,10 +2651,16 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         return acdc_df
     
     def _add_velocity_measurement(self, acdc_df, prev_lab, lab, posData):
-        if 'velocity_pixel' not in self.sizeMetricsToSave:
-            return acdc_df
-        
-        if 'velocity_um' not in self.sizeMetricsToSave:
+        # Selected or input of a combined measurement (`_resolve_inputs`)
+        size_metrics = (
+            getattr(self, '_size_metrics_to_compute', None)
+            or self.sizeMetricsToSave
+        )
+        if 'velocity_pixel' not in size_metrics:
+            if 'velocity_um' not in size_metrics:
+                return acdc_df
+
+        if 'velocity_um' not in size_metrics:
             spacing = None 
         elif self.isSegm3D:
             spacing = np.array([
@@ -2316,64 +2681,44 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         return acdc_df
     
     def _add_combined_metrics(self, posData, df, saveDataWorker=None):
-        # Add channel specifc combined metrics (from equations and 
-        # from user_path_equations sections)
-        config = posData.combineMetricsConfig
-        chNamesToSkip = getattr(self, 'chNamesToSkip', [])
-        for chName in posData.loadedChNames:
-            if chName in chNamesToSkip:
-                continue
-            metricsToSkipChannel = self.metricsToSkip.get(chName, [])
-            posDataEquations = config['equations']
-            userPathChEquations = config['user_path_equations']
-            for newColName, equation in posDataEquations.items():
-                if not newColName.startswith(chName):
+        """Evaluate the selected combined measurements and the combined
+        measurements they read, each one after its inputs (see
+        `_combined_plan`). Mixed channels combined measurements with missing
+        inputs are skipped (e.g. user profile equations of other channels).
+        """
+        plan = self._combined_plan(posData)
+        for newColName, equation, is_mixed in plan.order:
+            if is_mixed:
+                cols = [
+                    name for name, _, _
+                    in measurements.equation_variable_spans(equation)
+                ]
+                if not all([col in df.columns for col in cols]):
                     continue
-                if newColName in metricsToSkipChannel:
-                    continue
-                self._df_eval_equation(
-                    df, newColName, equation, saveDataWorker=saveDataWorker
-                )
-            for newColName, equation in userPathChEquations.items():
-                if not newColName.startswith(chName):
-                    continue
-                if newColName in metricsToSkipChannel:
-                    continue
-                self._df_eval_equation(
-                    df, newColName, equation, saveDataWorker=saveDataWorker
-                )
+            self._df_eval_equation(
+                df, newColName, equation, saveDataWorker=saveDataWorker
+            )
 
-        # Add mixed channels combined metrics
-        mixedChannelsEquations = config['mixed_channels_equations']
-        for newColName, equation in mixedChannelsEquations.items():
-            if newColName in self.mixedChCombineMetricsToSkip:
-                continue
-            cols = [
-                name for name, _, _ in measurements.equation_variable_spans(equation)
-            ]
-            if all([col in df.columns for col in cols]):
-                self._df_eval_equation(
-                    df, newColName, equation, saveDataWorker=saveDataWorker
-                )
-    
     def _df_eval_equation(self, df, newColName, expr, saveDataWorker=None):
         # Yes/no columns as bool, as in the dialog's test (`~` = logical not)
         evalDf = load.bool_cols_as_plain_bool(df)
         try:
             df[newColName] = evalDf.eval(expr)
+            return
         except pd.errors.UndefinedVariableError as error:
             if saveDataWorker is not None:
                 saveDataWorker.sigCombinedMetricsMissingColumn.emit(
                     str(error), newColName
                 )
-
-        try:
-            df[newColName] = evalDf.eval(expr)
         except Exception as error:
             if saveDataWorker is not None:
                 saveDataWorker.customMetricsCritical.emit(
                     traceback.format_exc(), newColName
                 )
+
+        # Failed --> existing values are not results of the equation
+        if newColName in df.columns:
+            df[newColName] = np.nan
     
     def _add_additional_metadata(
             self, posData: load.loadData, df: pd.DataFrame, saved_segm_data
