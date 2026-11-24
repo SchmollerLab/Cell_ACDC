@@ -437,6 +437,80 @@ def test_model_setup_step_failure_propagates(monkeypatch):
         environment.ensure_model_dependencies("test", "model-python")
 
 
+@pytest.mark.parametrize("failure", ["command", "verification"])
+def test_optional_model_setup_step_failure_is_a_warning(monkeypatch, failure):
+    """A failed optional setup step (e.g., MobileSAM for micro-sam vit_t
+    models) does not block the model; the following steps still run."""
+    import subprocess
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from cellacdc.service import environment
+
+    monkeypatch.setattr(environment, "load_model_env_config", lambda name: {
+        "setup_steps": [
+            {"name": "extra", "optional": True, "check": "import extra",
+             "commands": [["-m", "pip", "install", "extra-source"]]},
+            {"name": "build", "commands": [["-m", "pip", "install", "source"]]},
+        ],
+    })
+    check = Mock(return_value=SimpleNamespace(
+        returncode=1, stderr="missing", stdout=""
+    ))
+    monkeypatch.setattr(environment.subprocess, "run", check)
+
+    def run(cmd, logger_func, check=False):
+        if failure == "command" and "extra-source" in cmd:
+            raise subprocess.CalledProcessError(1, cmd)
+        return 0
+
+    run = Mock(side_effect=run)
+    monkeypatch.setattr(environment, "run_streaming", run)
+    logs = []
+    environment.ensure_model_dependencies(
+        "test", "model-python", logger_func=logs.append
+    )
+    assert [call.args[0][-1] for call in run.call_args_list] == [
+        "extra-source", "source"
+    ]
+    assert any(
+        "optional setup step extra failed" in str(log) for log in logs
+    ), logs
+
+
+@pytest.mark.parametrize("prompt_func", [None, lambda prompt: False])
+def test_declined_optional_model_setup_step_is_skipped(monkeypatch, prompt_func):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from cellacdc.service import environment
+
+    steps = [{"name": "extra", "optional": True, "check": "import extra",
+              "commands": [["-m", "pip", "install", "extra-source"]]}]
+    monkeypatch.setattr(
+        environment, "load_model_env_config",
+        lambda name: {"setup_steps": steps}
+    )
+    monkeypatch.setattr(environment.subprocess, "run", Mock(
+        return_value=SimpleNamespace(returncode=1, stderr="", stdout="")
+    ))
+    run = Mock()
+    monkeypatch.setattr(environment, "run_streaming", run)
+    logs = []
+    environment.ensure_model_dependencies(
+        "test", "model-python", logger_func=logs.append, auto_install=False,
+        prompt_func=prompt_func
+    )
+    run.assert_not_called()
+    assert any("optional setup step extra skipped" in str(l) for l in logs)
+
+    # The same step without `optional` raises
+    steps[0]["optional"] = False
+    with pytest.raises(RuntimeError, match="extra"):
+        environment.ensure_model_dependencies(
+            "test", "model-python", logger_func=logs.append,
+            auto_install=False, prompt_func=prompt_func
+        )
+
+
 def test_get_model_arg_spec_from_env():
     from cellacdc import myutils
 
@@ -579,6 +653,42 @@ def test_promptable_model_execution_uses_isolated_worker(monkeypatch):
         model_kind='promptable',
     )
     assert model is backend.start.return_value
+
+
+@pytest.mark.parametrize('config, expected_args', [
+    ({}, ()), ({'init_timeout': 3600}, (3600.0,)),
+])
+def test_model_execution_init_timeout(monkeypatch, config, expected_args):
+    """`init_timeout` of the model environment config is the time allowed
+    to start the worker and initialize the model (e.g., micro-sam downloads
+    its weights at the first initialization)."""
+    from unittest.mock import Mock
+    from cellacdc.service import model_execution
+    from cellacdc.service.model_execution import ModelExecution
+
+    backend = Mock(url='worker-url')
+    backend.start.return_value = object()
+    _patch_model_execution(
+        monkeypatch, getModelArgSpecFromEnv=Mock(return_value=([], [], '')),
+        LocalBackend=Mock(return_value=backend),
+    )
+    monkeypatch.setattr(
+        model_execution, 'load_model_env_config', lambda name: dict(config)
+    )
+    execution = ModelExecution(
+        'micro-sam_v1', model_kind='promptable',
+        run_in_background=lambda f, *a: f(*a), log_func=Mock()
+    )
+    execution.prepare()
+    execution.init_model({}, posData=object())
+    backend.start.assert_called_once_with(*expected_args)
+
+
+def test_microsam_init_timeout_config():
+    from cellacdc.service.environment import load_model_env_config
+
+    assert load_model_env_config('micro-sam_v1')['init_timeout'] >= 1800
+    assert 'init_timeout' not in load_model_env_config('segment_anything')
 
 
 def test_model_execution_does_not_reuse_worker_after_load_model(monkeypatch):

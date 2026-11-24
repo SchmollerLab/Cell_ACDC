@@ -260,7 +260,7 @@ def warnPromptSegmentModelNotInit(qparent=None):
     from cellacdc import widgets
     txt = html_utils.paragraph(f"""
         Promptable model was not initialized!<br><br>
-        To initialize it, please, click on the <codeSelect the promptable 
+        To initialize it, please, click on the <code>Select the promptable
         model to use</code> button in the <code>Magic prompts</code> 
         toolbar.<br><br>
         Thank you for your patience!
@@ -387,6 +387,29 @@ def warnDivisionAnnotationCannotBeUndone(ID, relID, issue_frame_i, qparent=None)
         qparent, 'Division annotation cannot be undone', txt
     )
     return msg.cancel
+
+def warnCannotAddRemoveBoxesProjection(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Box prompts <b>cannot be drawn in a projection</b>!<br><br>
+        Each box belongs to the z-slice where it is drawn. Please, switch to
+        "single z-slice" mode (bottom of the image on the right of the
+        z-slice scrollbar).<br><br>
+        Thank you for your patience.
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(qparent, 'WARNING: Drawing boxes in projection', txt)
+
+def warnNoBoxPrompts(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        There are <b>no box prompts</b> on the current frame!<br><br>
+        Draw a box around an object by left-clicking and dragging on the
+        image.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(qparent, 'No box prompts', txt)
 
 def warnCannotAddRemovePointsProjection(qparent=None):
     from cellacdc import widgets
