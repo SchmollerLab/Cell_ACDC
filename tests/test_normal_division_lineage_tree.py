@@ -8,9 +8,11 @@ import pandas as pd
 import pytest
 
 from cellacdc.regionprops import acdcRegionprops
+from cellacdc import base_cca_dict, load
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree, is_lineage_tree_annotated,
-    init_lineage_tree_cols_of_added_IDs
+    init_lineage_tree_cols_of_added_IDs, has_lineage_tree_values,
+    lineage_tree_columns
 )
 
 SHAPE = (80, 120)
@@ -268,3 +270,99 @@ def test_added_IDs_into_integer_and_bool_columns_do_not_warn():
     assert annotated.at[5, 'sister_ID_tree_0'] == -1
     assert annotated.at[5, 'is_history_known'] == False
     assert unannotated.loc[5, 'generation_num_tree':'sister_ID_tree_0'].isna().all()
+
+
+# --- What counts as lineage annotated: NaN and 0 do not -------------------
+
+
+def _generations_df(generations):
+    return pd.DataFrame(
+        {'generation_num_tree': generations, 'parent_ID_tree': -1},
+        index=pd.Index(range(1, len(generations) + 1), name='Cell_ID')
+    )
+
+
+@pytest.mark.parametrize('generations, has_values, annotated', [
+    ([1, 2], True, True),
+    ([1, np.nan], True, False),
+    ([1, 0], True, False),
+    ([0, 0], False, False),
+    ([np.nan, np.nan], False, False),
+    ([0, np.nan], False, False),
+])
+def test_zero_and_nan_lineage_values_are_not_annotated(
+        generations, has_values, annotated
+    ):
+    df = _generations_df(generations)
+    assert has_lineage_tree_values(df) is has_values
+    assert is_lineage_tree_annotated(df) is annotated
+
+
+def test_lineage_criteria_without_columns_or_rows():
+    no_cols = pd.DataFrame(index=pd.Index([1], name='Cell_ID'))
+    empty = _generations_df([])
+    for df in (None, no_cols, empty):
+        assert not has_lineage_tree_values(df)
+        assert not is_lineage_tree_annotated(df)
+
+
+def test_lineage_tree_columns_include_extra_sister_columns():
+    df = pd.DataFrame(columns=[
+        'cell_area_pxl', 'generation_num_tree', 'parent_ID_tree',
+        'root_ID_tree', 'sister_ID_tree', 'sister_ID_tree_0',
+        'sister_ID_tree_1', 'Cell_ID_tree', 'emerg_frame_i', 'phase_G1'
+    ])
+    assert lineage_tree_columns(df) == [
+        'generation_num_tree', 'parent_ID_tree', 'root_ID_tree',
+        'sister_ID_tree', 'sister_ID_tree_0', 'sister_ID_tree_1',
+        'Cell_ID_tree'
+    ]
+
+
+def test_zero_filled_frames_are_not_in_frames_for_dfs():
+    """Frames whose lineage was reset and saved come back from older
+    versions of the loader as 0: the tree must annotate them again."""
+    tree, allData_li = _annotate(
+        [{1: (0, 20, 0, 20), 2: (0, 20, 40, 60)}] * 4
+    )
+    for frame_i in (2, 3):
+        df = allData_li[frame_i]['acdc_df']
+        for col in lineage_tree_columns(df):
+            df[col] = 0
+    gui = SimpleNamespace(
+        data=[SimpleNamespace(allData_li=allData_li)], pos_i=0
+    )
+    reloaded_tree = normal_division_lineage_tree(gui=gui)
+    assert reloaded_tree.frames_for_dfs == {0, 1}
+
+
+def test_loader_keeps_nan_lineage_values_of_tables_with_cca_columns(tmp_path):
+    """With every cell cycle column present the loader fills NaN with 0 in
+    the other columns, but not in the lineage tree columns (reset or never
+    annotated frames must stay unannotated)."""
+    index = pd.MultiIndex.from_product(
+        [[0, 1], [1, 2]], names=['frame_i', 'Cell_ID']
+    )
+    table = pd.DataFrame(
+        {
+            'cell_area_pxl': [10.0, np.nan, 12.0, 13.0],
+            'generation_num_tree': [1, 1, np.nan, np.nan],
+            'parent_ID_tree': [-1, -1, np.nan, np.nan],
+            'root_ID_tree': [1, 2, np.nan, np.nan],
+            'sister_ID_tree': [-1, -1, np.nan, np.nan],
+            'sister_ID_tree_0': [-1, -1, np.nan, np.nan],
+        },
+        index=index
+    )
+    for column, value in base_cca_dict.items():
+        table[column] = value
+    path = tmp_path / 'acdc_output.csv'
+    table.to_csv(path)
+
+    loaded = load._load_acdc_df_file(path)
+
+    assert loaded.at[(0, 2), 'cell_area_pxl'] == 0
+    frame_1 = loaded.loc[1]
+    for col in lineage_tree_columns(loaded):
+        assert frame_1[col].isna().all(), col
+    assert not has_lineage_tree_values(frame_1)
