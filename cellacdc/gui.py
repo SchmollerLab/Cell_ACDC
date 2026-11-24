@@ -13101,8 +13101,14 @@ When working with 3D segmentation masks:
         self.setAutoSaveSegmentationEnabled(False)
         self.setAutoSaveAnnotationsEnabled(False)
         if prevMode == 'Normal division: Lineage tree':
-            self.askLineageTreeChanges()
-            self.lineage_tree = None
+            # The combo box already shows the new mode: check the pending
+            # lineage tree edits of the mode being left (Cancel keeps them
+            # without propagating, it does not cancel the mode switch)
+            try:
+                self.askLineageTreeChanges(isLeavingMode=True)
+            finally:
+                self.lineage_tree = None
+                self.clearLineageTreeBackup()
             self.editLin_TreeBar.setVisible(False)
             self.uncheckAllButtonsFromButtonGroup(self.editLin_TreeGroup)
 
@@ -18736,6 +18742,97 @@ When working with 3D segmentation masks:
             except Exception as e:
                 self.logger.info(f"Error applying tool {name}: {e}")
         
+    def clearLineageTreeBackup(self):
+        """Forget the frame table backed up by `repeat_click_and_backup`
+        (first right-click of a lineage tree edit), which
+        `askLineageTreeChanges` compares with the current table.
+
+        Call it whenever `self.lineage_tree` is set to None and when new data
+        is loaded. A backup left from a lineage tree session that ended would
+        be checked on the next frame change or save in lineage tree mode,
+        when the backed up frame may have lost its annotations (reset after
+        a segmentation edit) or belong to other data.
+        """
+        self.original_df_lin_tree = None
+        self.original_df_lin_tree_i = None
+
+    def lineageTreeBackupMismatch(self, posData):
+        """Why the table backed up by `repeat_click_and_backup` cannot be
+        compared with the current table of its frame anymore.
+
+        The comparison (`get_difference_table`) needs the `parent_ID_tree`
+        values of the same objects in both tables. The backup is stale when
+        its frame does not exist or was not loaded, when the backup or the
+        frame has no lineage tree values (e.g. the frame's annotations were
+        reset after a segmentation edit) or when the frame's objects changed.
+
+        Parameters
+        ----------
+        posData : cellacdc.load.loadData
+            The position data of the backup.
+
+        Returns
+        -------
+        str or None
+            The reason, or None when the backup can be compared (or there
+            is no backup).
+        """
+        from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
+            has_lineage_tree_values
+        )
+        frame_i = self.original_df_lin_tree_i
+        backup_df = self.original_df_lin_tree
+        if frame_i is None or backup_df is None:
+            return
+
+        if frame_i >= len(posData.allData_li):
+            return f'frame {frame_i+1} does not exist'
+
+        frame_data = posData.allData_li[frame_i]
+        df = frame_data['acdc_df']
+        if frame_data['labels'] is None or df is None:
+            return f'frame {frame_i+1} is not loaded'
+
+        for table in (backup_df, df):
+            if (
+                'parent_ID_tree' not in table.columns
+                or not has_lineage_tree_values(table)
+            ):
+                return f'frame {frame_i+1} has no lineage tree annotations'
+
+        backup_IDs = myutils.checked_reset_index_Cell_ID(backup_df).index
+        IDs = myutils.checked_reset_index_Cell_ID(df).index
+        if set(backup_IDs) != set(IDs):
+            return f'the objects of frame {frame_i+1} changed'
+
+    def clearStaleLineageTreeBackup(self, posData):
+        """Clear the backup of `repeat_click_and_backup` if it cannot be
+        compared with the current table of its frame anymore (see
+        `lineageTreeBackupMismatch`), so that its check neither raises nor
+        brings back the annotations of a reset frame.
+
+        Parameters
+        ----------
+        posData : cellacdc.load.loadData
+            The position data of the backup.
+
+        Returns
+        -------
+        bool
+            True if the backup was stale and was cleared.
+        """
+        reason = self.lineageTreeBackupMismatch(posData)
+        if reason is None:
+            return False
+
+        self.logger.info(
+            '[WARNING]: Lineage tree edits of frame '
+            f'{self.original_df_lin_tree_i+1} are not checked for changes '
+            f'to propagate ({reason}).'
+        )
+        self.clearLineageTreeBackup()
+        return True
+
     @disableWindow
     def get_difference_table(self, return_css_separated=False, return_differece=False):
 
@@ -18743,6 +18840,8 @@ When working with 3D segmentation masks:
             return
 
         posData = self.data[self.pos_i]
+        if self.clearStaleLineageTreeBackup(posData):
+            return
         
         new_df = posData.allData_li[posData.frame_i]['acdc_df']
         original_df = self.original_df_lin_tree.copy()
@@ -18752,7 +18851,6 @@ When working with 3D segmentation masks:
         
         compare_columns = ['parent_ID_tree']
 
-        new_df = new_df[original_df.columns]
         new_df = myutils.checked_reset_index_Cell_ID(new_df)
         new_df = new_df[compare_columns]
         new_df = new_df.sort_index()
@@ -18889,40 +18987,72 @@ When working with 3D segmentation masks:
                 )
 
     @disableWindow
-    def askLineageTreeChanges(self):
+    def askLineageTreeChanges(self, isLeavingMode=False):
         """
         Asks the user for changes in the lineage tree.
 
-        This method is called when the user selects the 'Normal division: Lineage tree' mode.
-        It compared the backed up df (self.original_df from repeat_click_and_backup) with the current df (self.lineage_tree.export_df(posData.frame_i)) and propts the user to keep, propagate or discard the changes.
+        This method is called in the 'Normal division: Lineage tree' mode
+        before changing frame (next/previous frame) and saving, and by
+        `changeMode` when leaving that mode.
+        It compares the backed up df (self.original_df_lin_tree from
+        repeat_click_and_backup) with the current df of that frame and
+        prompts the user to propagate or discard the changes, or to keep
+        them without propagating (Cancel). The backup is cleared afterwards,
+        also when it no longer matches the frame (see
+        `lineageTreeBackupMismatch`).
 
+        Parameters
+        ----------
+        isLeavingMode : bool, optional
+            True when `changeMode` leaves the lineage tree mode: the mode
+            combo box already shows the new mode, so the mode is not
+            checked. Cancel cannot cancel the mode switch there (the combo
+            box already changed): the changes are kept without propagating
+            them, as before a frame change. Default is False.
         """
         mode = str(self.modeComboBox.currentText())
-        if mode != 'Normal division: Lineage tree':
+        if mode != 'Normal division: Lineage tree' and not isLeavingMode:
             return
         
         if not self.lineage_tree:
+            self.clearLineageTreeBackup()
             return
         
         posData = self.data[self.pos_i]
+        if self.clearStaleLineageTreeBackup(posData):
+            return
         
         if self.original_df_lin_tree_i is not None and self.original_df_lin_tree_i != posData.frame_i:
             printl("!This should not happen!")
             self.store_data(autosave=False)
             og_frame = posData.frame_i
             posData.frame_i = self.original_df_lin_tree_i
-            self.get_data()
-            self.logger.info(
-                'Lineage tree changes were not propagated, '
-                'going back to original frame.'
-            )
-            self.askLineageTreeChanges()
-            self.store_data(autosave=False)
-            posData.frame_i = og_frame
-            self.get_data()
+            try:
+                self.get_data()
+                self.logger.info(
+                    'Lineage tree changes were not propagated, '
+                    'going back to original frame.'
+                )
+                self.askLineageTreeChanges(isLeavingMode=isLeavingMode)
+                self.store_data(autosave=False)
+            except Exception as err:
+                # Do not fail again on every frame change and save
+                self.clearLineageTreeBackup()
+                raise err
+            finally:
+                posData.frame_i = og_frame
+                self.get_data()
             return
 
-        result = self.get_difference_table(return_css_separated=True, return_differece=True)
+        try:
+            result = self.get_difference_table(
+                return_css_separated=True, return_differece=True
+            )
+        except Exception as err:
+            # Do not fail again on every frame change and save
+            self.clearLineageTreeBackup()
+            raise err
+
         if result is None:
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
@@ -21625,7 +21755,9 @@ When working with 3D segmentation masks:
         )
 
         self.store_data(autosave=False)
-        self.get_data()
+        # The tree does not exist yet: without `lin_tree_init=False`
+        # get_data would call `initLinTree` again, repeating its prompt
+        self.get_data(lin_tree_init=False)
 
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
@@ -29559,6 +29691,7 @@ When working with 3D segmentation masks:
             self.saveAnnotationOptions()
 
         self.lineage_tree = None
+        self.clearLineageTreeBackup()
         self.getDistanceListMissingIDsCachedFrame = None
         self.isZmodifier = False
         self.zKeptDown = False
