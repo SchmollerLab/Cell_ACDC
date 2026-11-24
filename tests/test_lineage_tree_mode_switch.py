@@ -1,7 +1,9 @@
 """Regression tests for the lineage tree edit backup of the main GUI
-(`guiWin.repeat_click_and_backup` / `askLineageTreeChanges`) and for
+(`guiWin.repeat_click_and_backup` / `askLineageTreeChanges`), for
 entering and leaving the "Normal division: Lineage tree" mode
-(`changeMode`, `initLinTree`, `initMissingFramesLinTree`).
+(`changeMode`, `initLinTree`, `initMissingFramesLinTree`) and for
+annotating frames again after their lineage tree annotations were reset in
+that mode (`resetLin_tree_future`, `autoLinTree_df`).
 
 The real `gui.guiWin` methods run on a stub host (a real `guiWin` with
 loaded data hangs offscreen): the mode combo box is a real
@@ -20,9 +22,9 @@ import numpy as np
 import pytest
 from qtpy.QtCore import QPointF, Qt
 from qtpy.QtTest import QTest
-from qtpy.QtWidgets import QApplication, QComboBox
+from qtpy.QtWidgets import QAction, QApplication, QComboBox
 
-from cellacdc import gui, myutils, widgets
+from cellacdc import apps, gui, myutils, widgets
 from cellacdc import base_cca_dict, cca_df_colnames, lineage_tree_cols
 from cellacdc.regionprops import acdcRegionprops
 
@@ -51,6 +53,7 @@ EXPECTED_LINEAGE = [
 ]
 GOTO_TITLE = 'Go to last annotated frame?'
 CHANGES_TITLE = 'Changes in lineage tree'
+EDIT_TITLE = 'Edited segmentation with annotations!'
 
 
 def _segm_data():
@@ -64,11 +67,14 @@ def _segm_data():
 class FakeMsg:
     """`widgets.myMessageBox` that records the prompt titles and answers
     from the class attributes `goto_answers` ('yes', 'stay' or 'cancel',
-    one per "Go to last annotated frame?" prompt, then 'cancel') and
-    `changes_answer` ('Propagate', 'Discard' or 'Cancel')."""
+    one per "Go to last annotated frame?" prompt, then 'cancel'),
+    `changes_answer` ('Propagate', 'Discard' or 'Cancel') and
+    `edit_answer` (start of the "Edited segmentation with annotations!"
+    button text: 'Remove', 'Do not remove' or 'Cancel')."""
     titles = []
     goto_answers = []
     changes_answer = 'Propagate'
+    edit_answer = 'Remove'
 
     def __init__(self, *args, **kwargs):
         self.cancel = False
@@ -90,6 +96,11 @@ class FakeMsg:
             )
         elif title == CHANGES_TITLE:
             answer_text = FakeMsg.changes_answer
+        elif title == EDIT_TITLE:
+            answer_text = next(
+                text for text in buttonsTexts
+                if text.startswith(FakeMsg.edit_answer)
+            )
         else:
             answer_text = buttonsTexts[0]
         self.clickedButton = buttons[buttonsTexts.index(answer_text)]
@@ -128,6 +139,11 @@ REAL_METHODS = [
     '_get_data_visited', '_get_data_unvisited', 'get_labels_array',
     'apply_manual_edits_to_lab_if_needed', '_get_editID_info',
     'update_rp_metadata', 'warnFrameNeverVisitedSegmMode',
+    'annotateLinTreeFramesBefore', 'warnEditingWithCca_df',
+    '_applyEditingWithAnnotAnswer', 'resetLin_tree_future',
+    '_blankLinTreeLoadedAcdcDf', '_removeLinTreeFrames',
+    'propagateLinTreeAction', 'closePostProcessSegmWin',
+    'postProcessSegmWinClosed',
 ]
 # Decorators that show errors in a dialog: unwrapped to raise them
 UNWRAPPED_METHODS = ['get_data', 'initLinTree']
@@ -201,6 +217,7 @@ class Host:
         self.right_click_ID = None
         self.right_click_i = 0
         self.ccaTableWin = None
+        self.postProcessSegmWin = None
         self.ccaCheckerRunning = False
         self.cca_df_colnames = cca_df_colnames
         self.cca_df_default_values = list(base_cca_dict.values())
@@ -245,18 +262,30 @@ def fake_msg(monkeypatch):
     FakeMsg.titles = []
     FakeMsg.goto_answers = []
     FakeMsg.changes_answer = 'Propagate'
+    FakeMsg.edit_answer = 'Remove'
     monkeypatch.setattr(widgets, 'myMessageBox', FakeMsg)
     return FakeMsg
+
+
+@pytest.fixture
+def host_logs(caplog):
+    caplog.set_level(logging.INFO, logger='test_lineage_tree_mode_switch')
+    return caplog
 
 
 def switch_mode(host, mode):
     """Select `mode` in the combo box as the user does: the click stores
     the previous text, the popup changes the index without the
-    `ComboBox.setCurrentText` override."""
+    `ComboBox.setCurrentText` override. The button is released again:
+    Qt 6 QTest keeps pressed buttons for the whole process (a later
+    `QTest.mouseMove` would drag)."""
     combo = host.modeComboBox
     QTest.mousePress(combo, Qt.MouseButton.LeftButton)
-    combo.hidePopup()
-    QComboBox.setCurrentIndex(combo, combo.findText(mode))
+    try:
+        combo.hidePopup()
+        QComboBox.setCurrentIndex(combo, combo.findText(mode))
+    finally:
+        QTest.mouseRelease(combo, Qt.MouseButton.LeftButton)
     assert combo.currentText() == mode
 
 
@@ -348,8 +377,17 @@ def _is_frame_loaded(host, frame_i):
     )
 
 
+def post_processing_edit(host):
+    """What the post-processing dialog's `apply` runs on the current frame
+    before it sets the new masks (parameter changed, or a frame change
+    with the dialog open, `guiWin.postProcessing`)."""
+    host.warnEditingWithCca_df(
+        'post-processing segmentation mask', update_images=False
+    )
+
+
 @pytest.mark.parametrize('answer', ['Propagate', 'Discard', 'Cancel'])
-def test_leaving_lineage_mode_checks_pending_edits(app, answer):
+def test_leaving_lineage_mode_checks_pending_edits(app, host_logs, answer):
     host = annotated_host()
     right_click_unknown_lineage(host, 3)
     assert host.original_df_lin_tree_i == 2
@@ -367,13 +405,20 @@ def test_leaving_lineage_mode_checks_pending_edits(app, answer):
     if answer == 'Propagate':
         assert lineage(host, 2)[3] == (1, -1)
         assert lineage(host, 3)[3] == (1, -1)
+        assert 'Lineage tree propagated.' in host_logs.messages
     elif answer == 'Discard':
         assert lineage(host, 2) == EXPECTED_LINEAGE[2]
+        assert 'Lineage tree changes discarded.' in host_logs.messages
     else:
         # Kept without propagating, the mode switch is not cancelled
         assert 'Changes kept but not propagated!' in FakeMsg.titles
         assert lineage(host, 2)[3] == (1, -1)
         assert lineage(host, 3) == EXPECTED_LINEAGE[3]
+        assert (
+            'Lineage tree changes kept but not propagated.'
+            in host_logs.messages
+        )
+        assert 'Lineage tree changes discarded.' not in host_logs.messages
 
 
 def test_leaving_lineage_mode_without_edits_clears_the_backup(app):
@@ -495,6 +540,172 @@ def test_frame_is_restored_when_checking_other_frame_fails(app):
     del host.get_difference_table
     host.askLineageTreeChanges()
     assert host.posData.frame_i == 3
+
+
+@pytest.mark.parametrize('answer', ['Propagate', 'Discard'])
+def test_right_click_on_other_frame_checks_edits_of_backed_up_frame(
+        app, answer
+    ):
+    """Edit, frame changed with the scroll bar, right-click on the new
+    frame: the backup of the edited frame used to be replaced without
+    checking its edits, which were never propagated."""
+    host = annotated_host()
+    right_click_unknown_lineage(host, 3)
+    go_to_frame(host, 3, ask_changes=False)
+
+    FakeMsg.changes_answer = answer
+    # Refused (cell 3 is not a new ID on frame 3), the check runs anyway
+    right_click_unknown_lineage(host, 3)
+
+    assert FakeMsg.titles.count(CHANGES_TITLE) == 1
+    assert host.posData.frame_i == 3
+    assert _is_frame_loaded(host, 3)
+    if answer == 'Propagate':
+        for frame_i in (2, 3, 4):
+            assert lineage(host, frame_i)[3] == (1, -1), frame_i
+    else:
+        for frame_i in (2, 3, 4):
+            assert lineage(host, frame_i) == EXPECTED_LINEAGE[frame_i]
+    # The new backup is the current frame after the check
+    assert host.original_df_lin_tree_i == 3
+    assert host.original_df_lin_tree.equals(
+        host.posData.allData_li[3]['acdc_df']
+    )
+    assert next_frame(host)
+    assert FakeMsg.titles.count(CHANGES_TITLE) == 1
+
+
+@pytest.mark.parametrize('how', ['dialog edit', 'previous frame'])
+def test_frame_reset_in_lineage_mode_is_annotated_again_on_next(app, how):
+    """A segmentation edit warning answered with "Remove" in lineage tree
+    mode (post-processing dialog left open) resets the current frame: the
+    next frame used to be annotated from it, every cell a new root."""
+    host = annotated_host()
+    if how == 'dialog edit':
+        post_processing_edit(host)
+    else:
+        # `guiWin.prev_frame` from frame 3 with the dialog open
+        go_to_frame(host, 3)
+        go_to_frame(host, 2)
+        post_processing_edit(host)
+        host.get_data()
+    assert FakeMsg.titles == [EDIT_TITLE]
+    assert lineage(host, 2) is None
+    assert sorted(host.lineage_tree.frames_for_dfs) == [0, 1]
+    scroll_bar_max_after_reset = host.navigateScrollBar.maximum()
+
+    assert next_frame(host)
+
+    assert [lineage(host, i) for i in range(4)] == EXPECTED_LINEAGE[:4]
+    assert sorted(host.lineage_tree.frames_for_dfs) == [0, 1, 2, 3]
+    # The frames scroll bar reaches the current frame
+    assert scroll_bar_max_after_reset == 3
+    assert host.navigateScrollBar.maximum() == 4
+
+
+def test_next_annotates_every_frame_missing_before_it_in_order(app):
+    host = annotated_host()
+    go_to_frame(host, 3)
+    host.resetLin_tree_future(from_frame_i=1)
+    assert sorted(host.lineage_tree.frames_for_dfs) == [0]
+
+    assert next_frame(host)
+
+    assert [lineage(host, i) for i in range(SIZE_T)] == EXPECTED_LINEAGE
+    assert sorted(host.lineage_tree.frames_for_dfs) == list(range(SIZE_T))
+
+
+def test_reset_of_frame_0_in_lineage_mode_starts_the_tree_again(app):
+    host = annotated_host()
+    go_to_frame(host, 0)
+    FakeMsg.titles = []
+
+    post_processing_edit(host)
+
+    assert FakeMsg.titles == [EDIT_TITLE]
+    # The tree used to be dropped: Propagate raised AttributeError on None
+    assert host.lineage_tree is not None
+    assert sorted(host.lineage_tree.frames_for_dfs) == [0]
+    assert lineage(host, 0) == EXPECTED_LINEAGE[0]
+    assert all(lineage(host, i) is None for i in range(1, SIZE_T))
+    assert host.navigateScrollBar.maximum() == 1
+    host.propagateLinTreeAction()
+
+    while next_frame(host):
+        pass
+    assert [lineage(host, i) for i in range(SIZE_T)] == EXPECTED_LINEAGE
+
+
+def test_propagate_does_nothing_without_annotations_of_the_frame(
+        app, host_logs
+    ):
+    host = annotated_host()
+    post_processing_edit(host)
+    assert lineage(host, 2) is None
+
+    # Used to raise a KeyError on the reset frame
+    host.propagateLinTreeAction()
+
+    assert lineage(host, 2) is None
+    assert host_logs.messages[-1] == (
+        'Frame n. 3 has no lineage tree annotations: nothing to propagate.'
+    )
+
+    host.lineage_tree = None
+    host.propagateLinTreeAction()
+
+
+def _open_post_processing_dialog(host):
+    """Post-processing dialog open on the current frame, as
+    `guiWin.postProcessSegm` opens it (the stub host cannot be the
+    dialog's parent), showing a parameter change not applied yet."""
+    posData = host.posData
+    posData.SizeZ = 1
+    posData.isSegm3D = False
+    posData.user_ch_name = 'channel'
+    host.storeUndoRedoStates = MagicMock(name='storeUndoRedoStates')
+    host.postProcessSegm = MagicMock(name='postProcessSegm')
+    action = QAction()
+    action.setCheckable(True)
+    action.setChecked(True)
+    action.toggled.connect(host.postProcessSegm)
+    host.postProcessSegmAction = action
+    win = apps.PostProcessSegmDialog(posData)
+    win.mainWin = host
+    win.setPosData()
+    win.sigClosed.connect(host.postProcessSegmWinClosed)
+    host.postProcessSegmWin = win
+    win.show()
+    # Preview of a parameter change (`postProcessSegmValueChanged`)
+    preview_lab = posData.lab.copy()
+    preview_lab[preview_lab == 2] = 0
+    posData.lab = preview_lab
+    return win, action, preview_lab
+
+
+@pytest.mark.parametrize('mode', [VIEWER, LIN])
+def test_leaving_segm_mode_closes_post_processing_dialog(app, mode):
+    """Left open, the dialog warned about (and removed) the annotations of
+    every frame visited in the other modes. Closing it neither applies
+    nor restores masks and asks nothing."""
+    host = Host(mode=SEGM)
+    visit_frames_segm_mode(host)
+    go_to_frame(host, 0)
+    win, action, preview_lab = _open_post_processing_dialog(host)
+    host.warnEditingWithCca_df = MagicMock(name='warnEditingWithCca_df')
+    host.update_rp = MagicMock(name='update_rp')
+
+    switch_mode(host, mode)
+
+    assert host.postProcessSegmWin is None
+    assert not win.isVisible()
+    assert not action.isChecked()
+    host.postProcessSegm.assert_not_called()
+    host.warnEditingWithCca_df.assert_not_called()
+    host.update_rp.assert_not_called()
+    assert FakeMsg.titles == []
+    assert np.array_equal(host.posData.lab, preview_lab)
+    assert host.modeComboBox.currentText() == mode
 
 
 def test_stay_on_current_frame_initialises_the_lineage_tree_once(app):
