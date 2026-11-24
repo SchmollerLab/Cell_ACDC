@@ -12,7 +12,7 @@ from cellacdc import base_cca_dict, load
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree, is_lineage_tree_annotated,
     init_lineage_tree_cols_of_added_IDs, has_lineage_tree_values,
-    lineage_tree_columns
+    lineage_tree_columns, LINEAGE_TREE_SHARED_CCA_COLS
 )
 
 SHAPE = (80, 120)
@@ -366,3 +366,251 @@ def test_loader_keeps_nan_lineage_values_of_tables_with_cca_columns(tmp_path):
     for col in lineage_tree_columns(loaded):
         assert frame_1[col].isna().all(), col
     assert not has_lineage_tree_values(frame_1)
+
+
+# --- Tables of older versions and of the reset bugs ------------------------
+# Frames 0-1: cells 1 and 2. Frame 2: 1 divides into 3 and 4 (symmetric).
+
+C1, C2 = (0, 20, 0, 20), (30, 50, 50, 70)
+C3, C4 = (0, 10, 0, 20), (10, 20, 0, 20)
+DIVISION_FRAMES = [{1: C1, 2: C2}] * 2 + [{3: C3, 4: C4, 2: C2}] * 4
+
+
+def _gui(allData_li):
+    return SimpleNamespace(
+        data=[SimpleNamespace(allData_li=allData_li)], pos_i=0
+    )
+
+
+def _unvisited_frame():
+    return {'labels': None, 'regionprops': None, 'acdc_df': None}
+
+
+def _zero_fill(df, IDs):
+    """Lineage values of rows written as 0 by older versions (store_data
+    reindex, loader fill of tables with cell cycle columns)."""
+    for col in lineage_tree_columns(df):
+        df[col] = df[col].astype(float)
+        df.loc[IDs, col] = 0
+
+
+def test_propagate_treats_zero_parent_as_no_parent():
+    """A parent_ID_tree of 0 used to raise "ID 0 not found in any frame"."""
+    tree, allData_li = _annotate(DIVISION_FRAMES)
+    _zero_fill(allData_li[3]['acdc_df'], [2])
+
+    tree.propagate(3)
+
+    for frame_i in (3, 4, 5):
+        df = allData_li[frame_i]['acdc_df']
+        assert _lineage(df, 2) == (1, -1, 2)
+        assert _lineage(df, 3) == _lineage(df, 4) == (2, 1, 1)
+    assert not allData_li[3]['acdc_df'].at[2, 'is_history_known']
+
+
+def test_propagate_of_zero_filled_frame_does_not_raise():
+    tree, allData_li = _annotate(DIVISION_FRAMES)
+    for frame_i in (3, 4, 5):
+        df = allData_li[frame_i]['acdc_df']
+        _zero_fill(df, df.index)
+
+    tree.propagate(3)
+
+    df = allData_li[3]['acdc_df']
+    assert [_lineage(df, ID) for ID in (2, 3, 4)] == [
+        (1, -1, 2), (1, -1, 3), (1, -1, 4)
+    ]
+
+
+def test_propagate_without_gui_treats_zero_parent_as_no_parent():
+    def frame_df(rows):
+        return pd.DataFrame(
+            rows, columns=[
+                'Cell_ID', 'generation_num_tree', 'parent_ID_tree',
+                'root_ID_tree', 'sister_ID_tree', 'is_history_known'
+            ]
+        ).set_index('Cell_ID')
+
+    tree = normal_division_lineage_tree(lab=_lab({1: C1, 2: C2}))
+    tree.lineage_list = [
+        frame_df([[1, 1, -1, 1, [-1], False], [2, 1, -1, 2, [-1], False]]),
+        frame_df([[1, 1, -1, 1, [-1], False], [2, 0, 0, 0, [-1], False]]),
+    ]
+
+    tree.propagate(1)
+
+    assert _lineage(tree.lineage_list[1], 2) == (1, -1, 2)
+
+
+def test_parent_search_skips_frames_never_visited():
+    """Frames never visited have no acdc_df: a missing parent must give the
+    "not found" error, not an AttributeError on None."""
+    tree, allData_li = _annotate(DIVISION_FRAMES[:4])
+    allData_li.extend(_unvisited_frame() for _ in range(2))
+
+    assert tree._get_row_from_ID(3)['parent_ID_tree'] == 1
+    assert tree._get_first_frame_i_for_ID(3) == 2
+    assert tree._get_first_frame_i_for_ID(99) is None
+    with pytest.raises(ValueError, match='ID 99 not found'):
+        tree._get_row_from_ID(99)
+    with pytest.raises(ValueError, match='ID 99 not found'):
+        tree._get_row_from_ID(99, start_search_frame_i=5)
+
+    # A parent that does not exist (anymore) as well
+    allData_li[3]['acdc_df'].at[2, 'parent_ID_tree'] = 99
+    with pytest.raises(ValueError, match=r'ID 99(\.0)? not found'):
+        tree.propagate(3)
+
+
+def test_previous_frame_without_shared_cca_columns():
+    """Loading a table with every cell cycle column drops the shared columns
+    from frames without cell cycle values (`guiWin._get_data_unvisited`).
+    Annotating the next frame used to raise KeyError."""
+    _, allData_li = _annotate(DIVISION_FRAMES[:3])
+    allData_li.append(_frame_data(DIVISION_FRAMES[3]))
+    for data in allData_li[:3]:
+        data['acdc_df'] = data['acdc_df'].drop(
+            columns=list(LINEAGE_TREE_SHARED_CCA_COLS)
+        )
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+    assert tree.frames_for_dfs == {0, 1, 2}
+
+    _real_time(tree, allData_li, 3)
+
+    df = allData_li[3]['acdc_df']
+    assert _lineage(df, 2) == (1, -1, 2)
+    assert _lineage(df, 3) == _lineage(df, 4) == (2, 1, 1)
+    assert df.at[3, 'sister_ID_tree'] == 4
+    # Not known anymore: the values of a cell with unknown history
+    for col in LINEAGE_TREE_SHARED_CCA_COLS:
+        assert (df[col] == base_cca_dict[col]).all(), col
+    assert is_lineage_tree_annotated(df)
+
+
+def test_added_ID_continuing_a_cell_without_shared_cca_columns():
+    prev_df = pd.DataFrame(
+        {
+            'generation_num_tree': [2], 'parent_ID_tree': [1],
+            'root_ID_tree': [1], 'sister_ID_tree': [4],
+        },
+        index=pd.Index([3], name='Cell_ID')
+    )
+    acdc_df = prev_df.copy()
+    for col in LINEAGE_TREE_SHARED_CCA_COLS:
+        acdc_df[col] = 7
+    acdc_df = acdc_df.drop(index=3).reindex([3], fill_value=0)
+
+    init_lineage_tree_cols_of_added_IDs(
+        acdc_df, [3], 3, True, prev_acdc_df=prev_df
+    )
+
+    assert _lineage(acdc_df, 3) == (2, 1, 1)
+    for col in LINEAGE_TREE_SHARED_CCA_COLS:
+        assert acdc_df.at[3, col] == base_cca_dict[col], col
+
+
+def test_zero_filled_cells_of_previous_frame_start_new_lineages():
+    """Rows of the previous frame without lineage values are not copied (the
+    zeros would be copied to every next frame)."""
+    _, allData_li = _annotate(DIVISION_FRAMES[:3])
+    allData_li.append(_frame_data(DIVISION_FRAMES[3]))
+    _zero_fill(allData_li[2]['acdc_df'], [2])
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+
+    _real_time(tree, allData_li, 3)
+
+    df = allData_li[3]['acdc_df']
+    assert _lineage(df, 2) == (1, -1, 2)
+    assert df.at[2, 'emerg_frame_i'] == 3
+    assert not df.at[2, 'is_history_known']
+    assert _lineage(df, 3) == _lineage(df, 4) == (2, 1, 1)
+    assert is_lineage_tree_annotated(df)
+
+
+def test_empty_previous_frame_without_lineage_columns():
+    """A frame whose objects were all deleted is rebuilt without lineage
+    columns after a reload."""
+    _, allData_li = _annotate(DIVISION_FRAMES[:1])
+    allData_li.append(_frame_data({}))
+    allData_li.append(_frame_data(DIVISION_FRAMES[1]))
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+
+    _real_time(tree, allData_li, 2)
+
+    df = allData_li[2]['acdc_df']
+    assert _lineage(df, 1) == (1, -1, 1)
+    assert _lineage(df, 2) == (1, -1, 2)
+    assert (df['emerg_frame_i'] == 2).all()
+
+
+def test_new_tree_overwrites_stale_extra_sister_columns():
+    """The extra sister columns of an earlier annotation are kept by the
+    lineage reset: annotating the frames again must overwrite them, also
+    when no division adds the columns again."""
+    _, allData_li = _annotate(DIVISION_FRAMES)
+    assert allData_li[2]['acdc_df'].at[3, 'sister_ID_tree_0'] == 4
+
+    # Merge 3 and 4 into 3 from frame 2 on, lineage reset: lineage values
+    # NaN, the extra sister column of the old annotation stays
+    for data in allData_li[2:]:
+        merged = _frame_data({3: C1, 2: C2})
+        df = data['acdc_df'].reindex(merged['acdc_df'].index)
+        df[['generation_num_tree', 'parent_ID_tree', 'root_ID_tree',
+            'sister_ID_tree']] = np.nan
+        data.update(merged, acdc_df=df)
+
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+    for frame_i in range(2, 6):
+        _real_time(tree, allData_li, frame_i)
+
+    for data in allData_li[2:]:
+        df = data['acdc_df']
+        assert _lineage(df, 3) == (1, -1, 3)
+        assert (df['sister_ID_tree_0'] == -1).all()
+    assert tree.max_daughters_added == 1
+
+
+def test_max_daughters_added_counts_extra_sister_columns():
+    allData_li = [
+        _frame_data({1: C1}), _frame_data({1: C1}), _unvisited_frame()
+    ]
+    allData_li[1]['acdc_df']['sister_ID_tree_2'] = -1
+
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+
+    assert tree.max_daughters_added == 3
+    assert tree._get_extra_daughter_cols() == [
+        'sister_ID_tree_0', 'sister_ID_tree_1', 'sister_ID_tree_2'
+    ]
+
+
+def test_first_frame_cells_without_lineage_values_are_initialized():
+    """Frame 0 counted as annotated when it had lineage columns, also with
+    rows filled with 0 (e.g. objects added by older versions)."""
+    _, allData_li = _annotate(DIVISION_FRAMES[:2])
+    first_df = allData_li[0]['acdc_df']
+    first_df.at[1, 'generation_num_tree'] = 5
+    _zero_fill(first_df, [2])
+    allData_li[1] = _frame_data(DIVISION_FRAMES[1])
+
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+    _real_time(tree, allData_li, 1)
+
+    # Annotated cells are kept
+    assert _lineage(first_df, 1) == (5, -1, 1)
+    assert _lineage(first_df, 2) == (1, -1, 2)
+    assert _lineage(allData_li[1]['acdc_df'], 2) == (1, -1, 2)
+
+
+def test_zero_parent_is_listed_as_orphan():
+    _, allData_li = _annotate(DIVISION_FRAMES[:3])
+    _zero_fill(allData_li[2]['acdc_df'], [4])
+    tree = normal_division_lineage_tree(gui=_gui(allData_li))
+
+    cells_with_parent, orphan_cells, lost_cells = (
+        tree.export_lin_tree_info(2)
+    )
+
+    assert cells_with_parent == [(3, 1)]
+    assert orphan_cells == [4]
+    assert lost_cells == []
