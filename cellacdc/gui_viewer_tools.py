@@ -1335,8 +1335,11 @@ class ShortcutsGuiElements:
             s = widget.toolTip()
             toolTip = re.sub(r'Shortcut: "(.*)"', f'Shortcut: "{text}"', s)
             widget.setToolTip(toolTip)
-        
-        if not save: 
+
+        # Buttons hidden by an overflowing toolbar use a copy of their key
+        widgets.updateToolbarsOverflowShortcuts(self)
+
+        if not save:
             return
         
         from . import config
