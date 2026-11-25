@@ -2002,7 +2002,9 @@ class WhitelistGUIElements:
         """Updates the temp layer with the current whitelist IDs.
         """
         if not self.whitelistIDsButton.isChecked():
-            self.keepIDsTempLayerLeft.clear()
+            if not self.keepIDsButton.isChecked():
+                # Do not clear the "Keep IDs" selection that shares the layer
+                self.keepIDsTempLayerLeft.clear()
             return
 
         if not hasattr(self, 'keptLab'):

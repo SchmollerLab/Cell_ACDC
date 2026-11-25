@@ -62,7 +62,10 @@ Typical sequence of requests (what `LocalBackend.start` + `ModelClient` do)
    auxiliary segmentation that cannot be passed on the command line).
 3. `GET /info` to learn the model's capabilities.
 4. `POST /segment` (or `/segment3DT`, or the `/jobs/...` endpoints) for each
-   image.
+   image. Promptable models (`--model-kind promptable`) first receive their
+   prompts with `POST /add_prompt`; models that learn from the prompts
+   (e.g. ConvPaint brush strokes) are then trained with `POST /train`, and
+   can be saved and loaded with `POST /save_model` and `POST /load_model`.
 5. `POST /shutdown` when done.
 """
 
@@ -218,6 +221,18 @@ def _filter_kwargs(func, kwargs: Dict[str, Any]) -> Dict[str, Any]:
     if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values()):
         return kwargs
     return {k: v for k, v in kwargs.items() if k in params}
+
+def _json_safe(value):
+    """Convert a model method's return value to JSON types (e.g. numpy
+    scalars to Python numbers). Unknown objects become strings."""
+    def default(obj):
+        if isinstance(obj, np.generic):
+            return obj.item()
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return str(obj)
+
+    return json.loads(json.dumps(value, default=default))
 
 async def _read_kwargs(upload) -> Dict[str, Any]:
     """Decode the model arguments sent as a file part (see `payload.encode`)."""
@@ -552,9 +567,10 @@ def create_app(
         """Describe the loaded model (read by `ModelClient` when connecting).
 
         Response (JSON, see `schema.InfoResponse`): name, version, whether a
-        GPU is available, and which optional methods the model implements
-        (`segment3DT`, `second_ch_img_to_stack`, `predictCcaState`). HTTP 503
-        before `/init`.
+        GPU is available, which optional methods the model implements
+        (`segment3DT`, `second_ch_img_to_stack`, `predictCcaState`, `train`),
+        and the prompt types of promptable models (default `['point']`).
+        HTTP 503 before `/init`.
         """
         with model_lock:
             model = state['model']
@@ -565,6 +581,12 @@ def create_app(
                 )
             has_segment3DT = hasattr(model, "segment3DT")
             has_second_ch = hasattr(model, "second_ch_img_to_stack")
+            saved_model_ext = getattr(model, "saved_model_ext", None)
+            can_save_load = bool(
+                saved_model_ext
+                and hasattr(model, "save_model")
+                and hasattr(model, "load_model")
+            )
             return InfoResponse(
                 name=model_name,
                 version=getattr(model, "version", "1.0.0"),
@@ -574,7 +596,13 @@ def create_app(
                     segment3DT=has_segment3DT,
                     second_ch_img_to_stack=has_second_ch,
                     predictCcaState=hasattr(model, "predictCcaState"),
-                )
+                    train=hasattr(model, "train"),
+                    save_load=can_save_load,
+                ),
+                prompt_types=list(
+                    getattr(model, "prompt_types", ("point",))
+                ),
+                saved_model_ext=saved_model_ext if can_save_load else None,
             )
 
     # ---------------------------------------------------- direct segmentation
@@ -655,6 +683,82 @@ def create_app(
         except Exception:
             import traceback
             raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    @app.post('/train')
+    async def train(kwargs: UploadFile = File(...)):
+        """Train a promptable model on the prompts added with `/add_prompt`
+        (e.g. ConvPaint on brush strokes).
+
+        Request (multipart form, see `ModelClient.train`): same as
+        `/add_prompt` (`kwargs` encoded by `payload.encode`).
+        Response (JSON): `{"status": "ok", "result": <model.train() return
+        value converted to JSON, or None>}`. HTTP 400 if the model has no
+        `train` method, 500 with the traceback on errors.
+        """
+        if not hasattr(model, 'train'):
+            raise HTTPException(
+                status_code=400,
+                detail=f'Model {model_name} does not support train',
+            )
+        try:
+            decoded = await _read_kwargs(kwargs)
+            result = await run_in_threadpool(
+                call_model_method_with_files, 'train', **decoded
+            )
+            return {'status': 'ok', 'result': _json_safe(result)}
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    async def _call_save_load_method(method_name, kwargs):
+        if not getattr(model, 'saved_model_ext', None) or not hasattr(
+                model, method_name
+            ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f'Model {model_name} does not support saving and '
+                    'loading trained models'
+                ),
+            )
+        try:
+            decoded = await _read_kwargs(kwargs)
+            result = await run_in_threadpool(
+                call_model_method_with_files, method_name, **decoded
+            )
+            return {'status': 'ok', 'result': _json_safe(result)}
+        except Exception:
+            import traceback
+            raise HTTPException(status_code=500, detail=traceback.format_exc())
+
+    @app.post('/save_model')
+    async def save_model(kwargs: UploadFile = File(...)):
+        """Save the trained promptable model (e.g. ConvPaint) to a file.
+
+        Request (multipart form, see `ModelClient.save_model`): `kwargs`
+        encoded by `payload.encode` with the `filepath` as text, never
+        uploaded (the worker runs on the same machine as the client and
+        writes the file there).
+        Response (JSON): `{"status": "ok", "result": <path of the saved
+        file>}`. HTTP 400 if the model cannot be saved, 500 with the
+        traceback on errors (e.g. the model is not trained).
+        """
+        return await _call_save_load_method('save_model', kwargs)
+
+    @app.post('/load_model')
+    async def load_model(kwargs: UploadFile = File(...)):
+        """Replace the promptable model with a trained model loaded from a
+        file (saved with `/save_model` or e.g. with napari-convpaint).
+
+        Request (multipart form, see `ModelClient.load_model`): `kwargs`
+        encoded by `payload.encode`, with the `filepath` uploaded (the model
+        receives the path of a temporary copy, deleted after the call); a
+        missing file is sent as its path, so the model reports it.
+        Response (JSON): `{"status": "ok", "result": <model.load_model()
+        return value converted to JSON>}`. HTTP 400 if the model cannot load
+        trained models, 500 with the traceback on errors.
+        """
+        return await _call_save_load_method('load_model', kwargs)
 
     @app.post("/segment3DT")
     async def segment3DT(

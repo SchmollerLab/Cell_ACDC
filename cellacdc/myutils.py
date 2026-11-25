@@ -3168,11 +3168,87 @@ def check_install_nnInteractive():
     import nnInteractive
     importlib.reload(nnInteractive)
 
-def check_install_microsam():
+# Dependencies of the ConvPaint model (napari-convpaint without napari/Qt).
+# Keep in sync with `MODEL_ENVS['ConvPaint']['packages']` in
+# `cellacdc/models/_env_config.py`
+_CONVPAINT_PACKAGES = [
+    {'pkg_name': 'catboost', 'min_version': '1.2.8',
+     'include_lower_version': True},
+    {'pkg_name': 'timm', 'min_version': '1.0.20',
+     'include_lower_version': True},
+    'einops',
+    'joblib',
+    'pandas',
+    {'pkg_name': 'pyyaml', 'import_pkg_name': 'yaml'},
+    'requests',
+    {'pkg_name': 'scikit-image', 'import_pkg_name': 'skimage'},
+    {'pkg_name': 'scikit-learn', 'import_pkg_name': 'sklearn'},
+    'scipy',
+]
+
+def check_install_convpaint():
+    import importlib.util
+
+    check_install_torch()
+    check_install_package(_CONVPAINT_PACKAGES)
+
+    # Never import `napari_convpaint` here: its `__init__.py` imports napari
+    # and Qt (the model is imported without it, see
+    # `promptable_models/ConvPaint/acdcPromptSegment.py`)
+    is_installed = importlib.util.find_spec('napari_convpaint') is not None
+    if is_installed and check_pkg_version(
+            'napari-convpaint', '1.2', True, raise_err=False
+        ):
+        return
+
+    registered_stub = False
+    if is_installed and 'napari_convpaint' not in sys.modules:
+        # `check_install_package` imports the package to check its version:
+        # let it import an empty package module (the version is then read
+        # from the metadata) instead of running the outdated `__init__.py`
+        spec = importlib.util.find_spec('napari_convpaint')
+        sys.modules['napari_convpaint'] = importlib.util.module_from_spec(spec)
+        registered_stub = True
+    try:
+        check_install_package(
+            'napari-convpaint',
+            import_pkg_name='napari_convpaint',
+            min_version='1.2',
+            include_lower_version=True,
+            upgrade=is_installed,
+            install_dependencies=False,
+            note=(
+                'napari-convpaint is installed without its dependencies '
+                '(e.g., napari), because Cell-ACDC only uses the ConvPaint '
+                'model.'
+            )
+        )
+    finally:
+        if is_installed or registered_stub:
+            # Make sure that the (upgraded) package files are loaded next
+            # time (do not use `purge_module`, it re-imports the package)
+            for module_name in list(sys.modules):
+                is_convpaint_module = (
+                    module_name == 'napari_convpaint'
+                    or module_name.startswith('napari_convpaint.')
+                )
+                if is_convpaint_module:
+                    sys.modules.pop(module_name, None)
+            importlib.invalidate_caches()
+
+def check_install_microsam(min_version='2.0'):
+    # Keep in sync with `MODEL_ENVS['micro-sam_v1']` and
+    # `MODEL_ENVS['micro-sam_v2']` in `cellacdc/models/_env_config.py` (pip
+    # installation as in the official micro-sam documentation). micro-sam
+    # >= 2.0 has the SAM1 API in `micro_sam.v1` and the SAM2 API in
+    # `micro_sam.v2`. micro-sam v2 needs >= 2.0.1, the first release that
+    # declares its `sam2` dependency
+    check_install_torch()
     check_install_package(
-        'micro-sam', 
-        pypi_name='micro_sam', 
-        installer='conda'
+        'micro_sam',
+        pypi_name='micro_sam',
+        min_version=min_version,
+        include_lower_version=True,
     )
 
 def check_install_yeaz():
