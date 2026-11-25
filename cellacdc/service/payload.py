@@ -103,13 +103,14 @@ def _unpack(body: bytes) -> Tuple[str, bytes]:
     return body[8:text_end].decode('utf-8'), body[text_end:]
 
 
-def encode(kwargs: Dict[str, Any]) -> bytes:
+def encode(kwargs: Dict[str, Any], upload_files: bool = True) -> bytes:
     """Encode the keyword arguments of a model call as one attachment.
 
     Arguments that are paths of existing files (on the client, see
-    `is_file_path`) are uploaded as `ModelFile`; other path-like objects are
-    sent as strings. Other values must be JSON serializable, numpy arrays or
-    pandas DataFrames.
+    `is_file_path`) are uploaded as `ModelFile`, unless `upload_files` is
+    False (e.g. the path where a local worker saves a model, which may
+    already exist); other path-like objects are sent as strings. Other
+    values must be JSON serializable, numpy arrays or pandas DataFrames.
     """
     plain, arrays = {}, {}
     for key, value in kwargs.items():
@@ -119,7 +120,7 @@ def encode(kwargs: Dict[str, Any]) -> bytes:
             plain[key] = {_ARRAY: name}
         elif _is_dataframe(value):
             plain[key] = {_DATAFRAME: value.to_json(orient='split')}
-        elif is_file_path(value):
+        elif upload_files and is_file_path(value):
             path = os.fspath(value)
             with open(path, 'rb') as stream:
                 content = stream.read()

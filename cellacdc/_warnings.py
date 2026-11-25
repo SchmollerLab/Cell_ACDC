@@ -260,7 +260,7 @@ def warnPromptSegmentModelNotInit(qparent=None):
     from cellacdc import widgets
     txt = html_utils.paragraph(f"""
         Promptable model was not initialized!<br><br>
-        To initialize it, please, click on the <codeSelect the promptable 
+        To initialize it, please, click on the <code>Select the promptable
         model to use</code> button in the <code>Magic prompts</code> 
         toolbar.<br><br>
         Thank you for your patience!
@@ -268,6 +268,47 @@ def warnPromptSegmentModelNotInit(qparent=None):
     msg = widgets.myMessageBox(wrapText=False)
     msg.warning(
         qparent, 'Promptable model not initialized', txt, 
+    )
+    return msg.cancel
+
+def warnBrushStrokesMissing(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        There are <b>no brush strokes</b> to train the model on!<br><br>
+        Please, paint <b>foreground</b> strokes (left-click and drag) and
+        <b>background</b> strokes (right-click and drag) on the image
+        first.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Brush strokes missing', txt,
+    )
+    return msg.cancel
+
+def warnBrushStrokesMissingClass(
+        hasForeground, hasBackground, qparent=None
+    ):
+    from cellacdc import widgets
+    missing = []
+    if not hasForeground:
+        missing.append(
+            '<b>foreground</b> strokes (left-click and drag)'
+        )
+    if not hasBackground:
+        missing.append(
+            '<b>background</b> strokes (right-click and drag)'
+        )
+    missing_txt = ' and '.join(missing)
+    txt = html_utils.paragraph(f"""
+        To train the model you need <b>both foreground and background</b>
+        brush strokes.<br><br>
+        Please, paint {missing_txt} on at least one image.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Foreground or background brush strokes missing', txt,
     )
     return msg.cancel
 
@@ -346,6 +387,29 @@ def warnDivisionAnnotationCannotBeUndone(ID, relID, issue_frame_i, qparent=None)
         qparent, 'Division annotation cannot be undone', txt
     )
     return msg.cancel
+
+def warnCannotAddRemoveBoxesProjection(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Box prompts <b>cannot be drawn in a projection</b>!<br><br>
+        Each box belongs to the z-slice where it is drawn. Please, switch to
+        "single z-slice" mode (bottom of the image on the right of the
+        z-slice scrollbar).<br><br>
+        Thank you for your patience.
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(qparent, 'WARNING: Drawing boxes in projection', txt)
+
+def warnNoBoxPrompts(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        There are <b>no box prompts</b> on the current frame!<br><br>
+        Draw a box around an object by left-clicking and dragging on the
+        image.<br><br>
+        Thank you for your patience!
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(qparent, 'No box prompts', txt)
 
 def warnCannotAddRemovePointsProjection(qparent=None):
     from cellacdc import widgets
@@ -516,3 +580,36 @@ def warnExportCurrentViewDstFolderPathInvalid(
     msg.warning(
         qparent, 'Destination folder path not valid', txt, 
     )
+def warnSegmentImageRequiresZslice(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        With 3D segmentation masks, "<b>Segment image</b>" segments only the
+        <b>displayed z-slice</b>, but the current view is not a single
+        z-slice (e.g., a z-projection or another plane).<br><br>
+        Please, select "<code>single z-slice</code>" in the z-slice
+        controls, or click on "<b>Segment z-stack</b>" to segment all the
+        z-slices of the current frame.
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, 'Select a z-slice', txt,
+    )
+    return msg.cancel
+
+def warnSegmentZstackRequires3DMasks(qparent=None):
+    from cellacdc import widgets
+    txt = html_utils.paragraph(f"""
+        Segmenting the <b>entire z-stack</b> requires <b>3D segmentation
+        masks</b>, but the loaded segmentation masks are 2D (one mask per
+        frame).<br><br>
+        With 2D masks, "<b>Segment image</b>" segments the image used for
+        the 2D masks (z-slice or projection) of the current frame.<br><br>
+        To work with 3D masks, load the data again and activate
+        "<code>Work with 3D segmentation masks (z-stack)</code>" (e.g.,
+        with "Create a new segmentation file").
+    """)
+    msg = widgets.myMessageBox(wrapText=False)
+    msg.warning(
+        qparent, '3D segmentation masks required', txt,
+    )
+    return msg.cancel
