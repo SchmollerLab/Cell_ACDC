@@ -19,6 +19,11 @@ class HealthResponse(BaseModel):
     status: str = "ok"
     model: Optional[str] = None
 
+class VersionResponse(BaseModel):
+    """Answer of `GET /version` (see `protocol.py`)."""
+    protocol_version: int
+    cellacdc_version: str = "unknown"
+
 class Capabilities(BaseModel):
     segment: bool = True
     segment3DT: bool = False

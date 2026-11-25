@@ -94,12 +94,17 @@ Code structure
        conda, otherwise a venv in the Cell-ACDC user folder). Installs the
        lightweight Cell-ACDC runtime, the worker dependencies, PyTorch, the
        model packages and the ``setup_steps``, and asks for ``required_env``
-       variables. Main entry point: ``get_or_create_model_env``.
+       variables. Checks that the environment runs the client's Cell-ACDC
+       build and repairs it otherwise (see `Same Cell-ACDC build in the
+       client and the environment`_). Main entry point:
+       ``get_or_create_model_env``.
    * - ``cellacdc/service/worker.py``
      - FastAPI worker running *inside* the model environment. It loads
-       ``acdcSegment.Model`` and serves ``/health``, ``/info``, ``/init``,
-       ``/segment``, ``/segment3DT``, ``/second_ch_img_to_stack``,
-       ``/predictCcaState``, ``/jobs/...`` and ``/shutdown``. A job's result
+       ``acdcSegment.Model`` and serves ``/health``, ``/version``, ``/spec``,
+       ``/info``, ``/init``, ``/segment``, ``/segment3DT``, ``/add_prompt``,
+       ``/second_ch_img_to_stack``, ``/predictCcaState``, ``/jobs/...`` and
+       ``/shutdown``. Requests from clients with another protocol version are
+       rejected (see `Protocol versions`_). A job's result
        can be fetched once (then the job is removed); ``DELETE /jobs/<id>``
        cancels a pending/running job or deletes a finished one, and only the
        newest finished jobs are kept in memory.
@@ -107,9 +112,19 @@ Code structure
      - ``ModelClient`` (drop-in replacement for an ``acdcSegment.Model``
        instance), ``LocalBackend`` (starts and stops a local worker) and
        ``RemoteBackend`` (connects to a running worker).
+       ``check_worker_version`` raises ``WorkerVersionError`` if a worker uses
+       another protocol version.
+   * - ``cellacdc/service/protocol.py``
+     - ``PROTOCOL_VERSION`` of the HTTP protocol between client and worker,
+       and the ``X-Cell-ACDC-Protocol`` header that carries it (see
+       `Protocol versions`_).
    * - ``cellacdc/service/payload.py``
-     - Encodes init arguments that contain data (``numpy`` arrays, ``pandas``
-       DataFrames) for HTTP. Arrays are sent as an ``.npz`` attachment.
+     - Encodes the arguments of every model call (init, segment, prompts)
+       as one binary attachment: JSON plus an ``.npz`` archive with ``numpy``
+       arrays and the bytes of uploaded files; ``pandas`` DataFrames are
+       embedded in the JSON. Arguments that are paths of files on the
+       client's disk are uploaded (see `Request format`_ and `5. Data instead
+       of file paths`_).
    * - ``cellacdc/service/prompts.py``
      - Interface for asking the user something (``choice``, ``confirm``,
        ``text_input``, ``info``) independently of the user interface: Qt
@@ -148,7 +163,8 @@ Code structure
    * - ``cellacdc/cli.py``
      - Workflow kernel. The ``backend`` section of a workflow file (``type``
        = ``in_process``, ``local`` or ``remote``; ``url``; ``env_python``)
-       selects the backend.
+       selects the backend. With an ``env_python``, the Cell-ACDC build of
+       that environment is checked before the worker starts.
 
 In isolated GUI execution, opening the parameter dialog imports the model
 module but does not construct the model or load its weights. After confirmation
@@ -169,25 +185,30 @@ What happens when a model is selected
    on every run (steps that are already done are skipped quickly):
 
    a. links or installs the lightweight Cell-ACDC runtime (Cell-ACDC with
-      ``--no-deps`` plus ``WORKER_RUNTIME_DEPENDENCIES``, no GUI packages);
+      ``--no-deps`` plus ``WORKER_RUNTIME_DEPENDENCIES``, no GUI packages),
+      and reinstalls it if the environment has another Cell-ACDC build (see
+      `Same Cell-ACDC build in the client and the environment`_);
    b. installs the worker dependencies (FastAPI, uvicorn, ...);
    c. installs PyTorch if ``torch: True`` (asks which build: CPU or CUDA);
    d. installs ``packages``;
    e. runs ``setup_steps``.
 
 3. ``LocalBackend.prepare`` starts the model environment's Python worker
-   (``--server --defer-init``) and reads parameter metadata and the help URL
-   from ``/spec``. The GUI builds the parameter dialog while this worker stays
+   (``--server --defer-init``), checks its protocol version with
+   ``/version`` (see `Protocol versions`_) and reads parameter metadata and
+   the help URL from ``/spec``. The GUI builds the parameter dialog while this worker stays
    alive without constructing the model.
 4. The user sets the parameters. ``ModelExecution.init_model`` then:
 
    a. asks for missing ``required_env`` variables;
    b. replaces file selections (auxiliary segmentation, points table) with the
       loaded data;
-   c. gets a worker (see `Reusing running workers`_).
+   c. gets a worker (see `Reusing running workers`_) and sends the init
+      arguments with ``POST /init``.
 
-5. Segmentation calls ``ModelClient.segment``. Images are sent as ``.npy`` and
-   labels are returned the same way.
+5. Segmentation calls ``ModelClient.segment``. Images are sent as ``.npy``
+   and the segment arguments as an attachment (see `Request format`_);
+   labels are returned as ``.npy``.
 
 Reusing running workers
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -215,6 +236,162 @@ workers keep running; at most ``MAX_IDLE_WORKERS`` (default 1) unused
 workers are kept per model because they hold memory, also on the GPU. Workers
 that exited are started again. All workers stop with ``ModelExecution.stop``
 (when the GUI closes).
+
+HTTP protocol between client and worker
+---------------------------------------
+
+Request format
+~~~~~~~~~~~~~~
+
+Every request carries the model arguments in **one binary attachment** (a
+multipart file part), never in form fields: Starlette (FastAPI foundation), the web 
+framework of the worker, limits form fields to 1 MiB, but not files. The 
+attachment is built by ``payload.encode`` and read by ``payload.decode``
+(``cellacdc/service/payload.py``):
+
+.. code-block:: text
+
+    8 bytes   length N of the JSON text (big-endian)
+    N bytes   UTF-8 JSON with the arguments
+    rest      optional .npz archive with the binary data that the JSON refers to
+
+* ``numpy`` arrays are stored in the ``.npz`` archive;
+* ``pandas`` DataFrames are embedded in the JSON (``orient='split'``);
+* files on the client's disk are uploaded: their bytes are stored in the
+  ``.npz`` archive (see `5. Data instead of file paths`_).
+
+The keys in the ``.npz`` archive are generated (``array_N``, ``file_N``),
+never argument names, so no argument can overwrite another one. The same
+container, built by ``payload.encode_value_body``, carries SAM embeddings and
+the worker's responses that contain nested values (for example labels
+together with updated SAM embeddings).
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Endpoint
+     - Multipart file parts
+   * - ``/init``, ``/add_prompt``
+     - ``kwargs``: the arguments (``payload.encode``).
+   * - ``/segment``, ``/segment3DT``, ``/jobs/segment``
+     - ``image``: the image saved with ``np.save`` (``.npy``) and
+       ``params``: the arguments (``payload.encode``). For SAM embedding
+       operations, ``/segment`` also receives ``embeddings``
+       (``payload.encode_value_body``).
+
+``LocalBackend`` always starts the worker with ``--defer-init`` and sends the
+init arguments with ``POST /init`` (``post_init``); arguments are never passed
+on the command line.
+
+Protocol versions
+~~~~~~~~~~~~~~~~~
+
+Client and worker must use the same ``PROTOCOL_VERSION``
+(``cellacdc/service/protocol.py``):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 85
+
+   * - Version
+     - Changes
+   * - 1
+     - Arguments as JSON text in form fields.
+   * - 2
+     - Every argument in a binary attachment (see `Request format`_), files
+       on the client's disk are uploaded automatically, ``GET /version``.
+
+* The worker answers ``GET /version`` with ``{"protocol_version": ...,
+  "cellacdc_version": ...}``.
+* Clients send their version in the ``X-Cell-ACDC-Protocol`` header of every
+  request. The worker rejects requests without a matching header with HTTP
+  426, except ``/health``, ``/version``, ``/shutdown`` and the documentation
+  pages. The interactive ``/docs`` page pre-fills the header.
+* Clients call ``check_worker_version`` before they use a worker: in
+  ``ModelClient.__init__``, in ``LocalBackend`` right after ``/health`` and in
+  ``RemoteBackend.get_client`` before ``/init``. Workers of protocol 1 answer
+  ``/version`` with HTTP 404 and count as protocol 1. A mismatch raises
+  ``WorkerVersionError``.
+
+Increase ``PROTOCOL_VERSION`` whenever a change to the endpoints or to the
+request/response format makes older clients or workers incompatible (for
+example a renamed or removed endpoint or part, a new required part, or another
+encoding). Add the new version to the history in ``protocol.py`` and to the
+table above.
+
+Same Cell-ACDC build in the client and the environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A model environment runs exactly the Cell-ACDC build of the client.
+``environment.ensure_cellacdc_cli`` (called when an environment is created or
+repaired) and the combined check in ``_check_environment_dependencies`` (the
+fast path of ``get_or_create_model_env``, see `Diagnosing slow environment
+resolution`_) compare the environment's Cell-ACDC with the client's. The
+protocol versions must always be equal; in addition:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Client's Cell-ACDC
+     - The environment must have
+   * - Source checkout
+     - ``cellacdc`` imported from the same checkout (linked with a ``.pth``
+       file).
+   * - VCS install (``git+https://...``)
+     - The same commit.
+   * - Archive or wheel URL install
+     - The same URL.
+   * - Index (PyPI) install
+     - The same version.
+
+For the installed builds, the version and PEP 610 ``direct_url.json`` are
+read from the installed distribution that the imported ``cellacdc`` package
+belongs to (metadata of a checkout, such as its ``cellacdc.egg-info``, does
+not count). If the environment imports a Cell-ACDC that is not an installed
+package, for example a checkout in the working directory (``python -c`` and
+``python -m`` put it first on ``sys.path``), that is a mismatch even if an
+installed package matches. Reinstalling cannot fix it: start Cell-ACDC from
+another directory.
+
+On a mismatch, ``environment.repair_cellacdc_runtime`` repairs the
+environment:
+
+* released and VCS builds are reinstalled with
+  ``pip install --no-deps --force-reinstall <spec>``;
+* for a source checkout, a Cell-ACDC copy installed inside the environment
+  (which would hide the linked checkout) is uninstalled and the checkout is
+  linked again.
+
+Then the runtime dependencies are installed and the result is checked again.
+An operating-system lock on the file ``.cellacdc-repair.lock`` in the
+environment prevents several processes (for example cluster jobs) from
+repairing the same environment at the same time. The operating system
+releases the lock when the process holding it exits, also when it is
+killed, so there is no leftover lock to clean up. Processes that find the
+lock held wait up to 30 minutes, then fail. On a file system without locks,
+the environment is repaired without one. On shared file systems whose locks
+apply only within one computer (for example NFS mounted with ``nolock`` or
+``local_lock``, Lustre with ``localflock``, or BeeGFS without global file
+locks), jobs on different computers are not kept apart: repair the
+environment once, for example by running one job, before submitting many.
+
+``LocalBackend`` additionally restarts a worker whose ``/version`` reports
+another protocol, after repairing its environment. It does so only for
+environments created by Cell-ACDC (``_acdc_<model>``, see
+``environment.is_managed_model_env``) and never for the client's own
+interpreter; for other environments it raises an error asking to install the
+same Cell-ACDC version there. The command-line workflow runner
+(``cellacdc/cli.py``, workflows with an ``env_python``) checks the build in
+the same way before it starts the worker: it repairs managed environments and
+warns about environments that the user manages.
+
+.. note::
+
+    Model environments are shared by all Cell-ACDC installations of the user.
+    Alternating between two different Cell-ACDC builds therefore reinstalls
+    Cell-ACDC in the environment at each switch.
 
 Adding a new model
 ------------------
@@ -399,8 +576,8 @@ Other conventions:
 5. Data instead of file paths
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A remote worker cannot read the client's files, so file names are never sent
-to the worker:
+A remote worker cannot read the client's files, so the client never sends its
+own paths to the worker. It sends the data instead:
 
 * If ``Model.__init__`` has a required positional argument after ``self``,
   the GUI shows an *Auxiliary segmentation file* selector. The client loads
@@ -408,10 +585,34 @@ to the worker:
   ``Model(segm_data, **kwargs)``.
 * An ``input_points_path`` parameter (``_types.CsvFilePath``) is loaded on the
   client and sent as the ``input_points_df`` DataFrame.
-* When the init arguments contain arrays or DataFrames, ``LocalBackend``
-  starts the worker with ``--defer-init`` and then sends the data with
-  ``POST /init`` (encoded by ``cellacdc/service/payload.py``). Otherwise the
-  arguments are passed as JSON on the command line.
+* Files on disk are uploaded automatically. A top-level argument of
+  ``__init__``, ``segment``, ``segment3DT``, ``add_prompt`` or of a
+  background job is uploaded if it is the path of an existing file on the
+  client (for example a custom model's weights). The worker receives the path
+  of a temporary copy with the same file name. For ``__init__`` the copy
+  lives as long as the model; for the other calls it is deleted after the
+  call.
+
+An argument counts as a file only if it is unambiguous as a path: a
+path-like object (e.g. ``pathlib.Path``), an absolute path string, or a
+relative path string that contains a folder separator (e.g.
+``models/weights.pth``). Bare words such as ``None``, ``point`` or ``cyto3``
+are never treated as files, even if a file with that name exists in the
+working directory. In addition:
+
+* folders are not uploaded;
+* only the file itself is uploaded, not the files next to it. A model that
+  expects companion files next to the given path will not find them in the
+  worker;
+* path-typed init parameters (kinds ``path``, ``csv_path`` and ``folder``,
+  i.e. ``os.PathLike``, ``_types.CsvFilePath`` and ``_types.FolderPath``)
+  whose value was not uploaded are rejected by the worker with an error that
+  names them.
+
+All arguments, including arrays, DataFrames and uploaded files, are encoded
+by ``cellacdc/service/payload.py`` (see `Request format`_). ``LocalBackend``
+always starts the worker with ``--defer-init`` and sends the init arguments
+with ``POST /init``; arguments are not passed as JSON on the command line.
 
 To send other data, load it on the client (see
 ``myutils.resolve_segm_model_init_data``) and put the array or DataFrame into
@@ -582,14 +783,16 @@ the model supports ``segment3DT``, ``second_ch_img_to_stack`` and
 ``is_segment3DT_available``.
 
 Diagnosing slow environment resolution
--------------------------------------
+--------------------------------------
 
 Launch Cell-ACDC in debug mode (``acdc --debug`` or ``acdc -d``) to log
 elapsed wall-clock times for main-environment metadata, environment discovery,
-source linking, runtime imports, individual dependency checks, PyTorch options
-discovery (only when installation is needed), model-spec inspection, and worker
-startup including process launch, waiting for ``/health``, ``/spec``, payload
-encoding, ``/init``, and the final ``/info`` connection::
+source linking, runtime imports, the Cell-ACDC version check, individual
+dependency checks, PyTorch options discovery (only when installation is
+needed), model-spec inspection (worker preparation and ``/spec`` in
+``LocalBackend.prepare``), and worker startup including process launch,
+waiting for ``/health``, payload encoding, ``/init``, and the final ``/info``
+connection::
 
     acdc --debug
 
@@ -605,9 +808,12 @@ argument inspection, and model construction timings through their output.
 Reusing an existing environment does not invoke a package solver when all
 dependency checks pass. Existing environments are checked in a single Python
 process: runtime, torch/torchvision (when required), base dependencies, and model
-dependencies share Python's import cache. Version constraints are still checked.
-If this combined check fails, its diagnostic is logged and the individual
-checks/installers repair the environment as before. Model-specific setup steps
+dependencies share Python's import cache. Version constraints are still checked,
+and so is the Cell-ACDC build that the environment imports (see `Same
+Cell-ACDC build in the client and the environment`_).
+If this combined check fails or finds another Cell-ACDC build, its diagnostic
+is logged and the individual checks/installers repair the environment as before
+(``ensure_cellacdc_cli`` reinstalls Cell-ACDC). Model-specific setup steps
 are checked even after a successful combined check. New environments use the
 normal installation sequence.
 
@@ -623,12 +829,16 @@ Running a model on a remote server
 
 1. On the server, prepare the environment (``acdc-setup-models MyModel``) and
    set the ``required_env`` variables of the model in the server environment.
+   The server must run a Cell-ACDC version with the same ``PROTOCOL_VERSION``
+   as the client (see `Protocol versions`_). Otherwise
+   ``RemoteBackend.get_client`` (and workflows with ``type = remote``) raise
+   an error asking to install the same Cell-ACDC version on the server.
 2. Start the worker with the model environment's Python::
 
        <model env python> -m cellacdc.service.worker --server --model MyModel --host 0.0.0.0 --port 8520
 
    Add ``--defer-init`` to start it without a model and send the init
-   arguments (including data) with ``POST /init``.
+   arguments (including data and uploaded files) with ``POST /init``.
 3. On the client:
 
    .. code-block:: python

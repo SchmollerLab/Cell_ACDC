@@ -1,4 +1,5 @@
 import collections
+import gc
 import io
 import json
 import os
@@ -12,9 +13,9 @@ from typing import Dict, Any, Optional
 import numpy as np
 import requests
 
-from cellacdc.service.schema import InfoResponse, parse_response
+from cellacdc.service.protocol import PROTOCOL_VERSION, headers as _protocol_headers
+from cellacdc.service.schema import InfoResponse, VersionResponse, parse_response
 from cellacdc._model_startup import startup_timer
-from cellacdc import myutils_models
 
 _LOCAL_ONLY_KWARGS = ("posData", "signals", "logger_func", "signals_tqdm")
 
@@ -55,18 +56,25 @@ def _sanitize_kwargs(kwargs: Dict[str, Any]) -> Dict[str, Any]:
             print(f"Type of key={type(k)}, type of value={type(v)}")
     return sanitized
 
-def _encode_segment_kwargs(kwargs: Dict[str, Any]):
-    """Encode segment kwargs, preserving arrays and DataFrames.
+def _attachment(name: str, content: bytes):
+    """A multipart file part for `requests` (`files={part: ...}`)."""
+    return (name, content, "application/octet-stream")
 
-    Arrays go into the `.npz` attachment (out of size-limited multipart text
-    fields); DataFrames are transported by `payload.encode` as JSON.
+def _encode_segment_kwargs(kwargs: Dict[str, Any]) -> bytes:
+    """Encode segment kwargs as one attachment (see `payload.encode`),
+    preserving arrays, DataFrames and files on disk.
+
+    Path-like values are passed to `payload.encode` unchanged: as strings
+    (`_sanitize_kwargs`), relative paths without a folder such as
+    `Path('weights.pt')` would not be uploaded (see `payload.is_file_path`).
     """
     from cellacdc.service import payload
 
     data_kwargs = {
         key: value for key, value in kwargs.items()
         if key not in _LOCAL_ONLY_KWARGS and (
-            isinstance(value, np.ndarray) or payload._is_dataframe(value)
+            isinstance(value, (np.ndarray, os.PathLike))
+            or payload._is_dataframe(value)
         )
     }
     plain = _sanitize_kwargs({
@@ -75,28 +83,79 @@ def _encode_segment_kwargs(kwargs: Dict[str, Any]):
     plain.update(data_kwargs)
     return payload.encode(plain)
 
+def _segment_files(image: np.ndarray, kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    """Multipart file parts of a segmentation request: the image as `.npy`
+    and the encoded kwargs (see `worker.segment`)."""
+    buf = io.BytesIO()
+    np.save(buf, image)
+    return {
+        "image": _attachment("image.npy", buf.getvalue()),
+        "params": _attachment("params.bin", _encode_segment_kwargs(kwargs)),
+    }
+
+
+class WorkerVersionError(RuntimeError):
+    """The worker uses another protocol version than this client
+    (see `protocol.py`)."""
+
+    def __init__(
+            self, base_url: str, worker_protocol: int,
+            worker_version: Optional[str] = None,
+        ):
+        import cellacdc
+
+        self.base_url = base_url
+        self.worker_protocol = worker_protocol
+        self.worker_version = worker_version
+        worker = (
+            f'Cell-ACDC {worker_version} (protocol {worker_protocol})'
+            if worker_version is not None
+            else f'an older Cell-ACDC (protocol {worker_protocol})'
+        )
+        super().__init__(
+            f'The model worker at {base_url} runs {worker}, but this '
+            f'Cell-ACDC ({cellacdc.__version__}) uses protocol '
+            f'{PROTOCOL_VERSION}.'
+        )
+
+
+def check_worker_version(
+        base_url: str, timeout: float = 10.0, session=None,
+    ) -> VersionResponse:
+    """Return the worker's version, or raise `WorkerVersionError` if it uses
+    another protocol than this client (see `protocol.py`).
+
+    Workers with protocol 1 have no `/version` endpoint (HTTP 404).
+    """
+    res = (session or requests).get(
+        f"{base_url.rstrip('/')}/version", timeout=timeout
+    )
+    if res.status_code == 404:
+        raise WorkerVersionError(base_url, 1)
+    ModelClient._raise_for_status(res)
+    version = parse_response(VersionResponse, res.json())
+    if version.protocol_version != PROTOCOL_VERSION:
+        raise WorkerVersionError(
+            base_url, version.protocol_version, version.cellacdc_version
+        )
+    return version
+
+
 def post_init(base_url: str, init_kwargs: Dict[str, Any], timeout=None):
-    """Initialize a worker started with `--defer-init` (sends data, not paths)."""
-    from cellacdc import myutils
+    """Initialize a worker started with `--defer-init`.
+
+    Sends data, not paths: arguments that are paths of files on this
+    computer are uploaded (see `payload.encode`).
+    """
     from cellacdc.service import payload
 
-    with startup_timer("worker /spec request"):
-        init_params, _ = get_model_arg_spec(base_url, timeout=timeout)
-    file_params = {
-        param.name for param in init_params
-        if myutils_models._serialize_model_param_type(param.type)['kind']
-        in ('path', 'csv_path')
-    }
     with startup_timer("model initialization payload encoding"):
-        kwargs_json, data = payload.encode(init_kwargs, file_params=file_params)
-    files = None
-    if data is not None:
-        files = {"data": ("init.npz", data, "application/octet-stream")}
+        body = payload.encode(init_kwargs)
     with startup_timer("worker /init request (model construction and weights)"):
         res = requests.post(
             f"{base_url.rstrip('/')}/init",
-            data={"kwargs": kwargs_json},
-            files=files,
+            files={"kwargs": _attachment("kwargs.bin", body)},
+            headers=_protocol_headers(),
             timeout=timeout,
         )
         ModelClient._raise_for_status(res)
@@ -111,7 +170,10 @@ def get_model_spec(base_url: str, timeout: float = 10.0):
     """Fetch model argument specs and help URL, including before initialization."""
     from cellacdc import myutils
 
-    res = requests.get(f"{base_url.rstrip('/')}/spec", timeout=timeout)
+    res = requests.get(
+        f"{base_url.rstrip('/')}/spec", headers=_protocol_headers(),
+        timeout=timeout,
+    )
     ModelClient._raise_for_status(res)
     data = res.json()
 
@@ -154,6 +216,10 @@ class ModelClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.session = requests.Session()
+        self.session.headers.update(_protocol_headers())
+        self.worker_version = check_worker_version(
+            self.base_url, session=self.session
+        )
         self.refresh_info()
 
     def refresh_info(self):
@@ -200,46 +266,25 @@ class ModelClient:
         if start_z_slice is not None:
             kwargs["start_z_slice"] = start_z_slice
             
-        params, params_data = _encode_segment_kwargs(kwargs)
-        buf = io.BytesIO()
-        np.save(buf, image)
-        buf.seek(0)
-
-        files = {
-            "image": ("image.npy", buf.getvalue(), "application/octet-stream")
-        }
-        if params_data is not None:
-            files['params_data'] = (
-                'params.npz', params_data, 'application/octet-stream'
-            )
+        files = _segment_files(image, kwargs)
         embedding_operation = any(
             kwargs.get(name)
             for name in (
                 'save_embeddings', 'only_embeddings', 'use_loaded_embeddings'
             )
         )
-        data = {
-            "params": params
-        }
         if embedding_operation:
             frame_embeddings = {}
             if posData is not None and kwargs.get('use_loaded_embeddings'):
                 frame_embeddings = dict(getattr(
                     posData, 'sam_embeddings', {}
                 ).get(frame_i, {}))
-            embedding_meta, embedding_data = payload.encode_value(
-                frame_embeddings
+            files['embeddings'] = _attachment(
+                'embeddings.bin', payload.encode_value_body(frame_embeddings)
             )
-            data['embedding_meta'] = embedding_meta
-            if embedding_data is not None:
-                files['embeddings'] = (
-                    'embeddings.npz', embedding_data,
-                    'application/octet-stream'
-                )
         res = self.session.post(
             f"{self.base_url}/segment",
             files=files,
-            data=data,
             timeout=self.timeout
         )
         self._raise_for_status(res)
@@ -270,25 +315,9 @@ class ModelClient:
             raise NotImplementedError(
                 f"Model {self.model_name} does not support segment3DT"
             )
-        params, params_data = _encode_segment_kwargs(kwargs)
-        buf = io.BytesIO()
-        np.save(buf, video_data)
-        buf.seek(0)
-
-        files = {
-            "image": ("image.npy", buf.getvalue(), "application/octet-stream")
-        }
-        if params_data is not None:
-            files['params_data'] = (
-                'params.npz', params_data, 'application/octet-stream'
-            )
-        data = {
-            "params": params
-        }
         res = self.session.post(
             f"{self.base_url}/segment3DT",
-            files=files,
-            data=data,
+            files=_segment_files(video_data, kwargs),
             timeout=self.timeout
         )
         self._raise_for_status(res)
@@ -298,18 +327,9 @@ class ModelClient:
         """Forward a promptable model's state update to its worker."""
         from cellacdc.service import payload
 
-        kwargs_json, attachment = payload.encode(kwargs)
-        files = None
-        if attachment is not None:
-            files = {
-                'data': (
-                    'prompt.npz', attachment, 'application/octet-stream'
-                )
-            }
         res = self.session.post(
             f'{self.base_url}/add_prompt',
-            data={'kwargs': kwargs_json},
-            files=files,
+            files={'kwargs': _attachment('kwargs.bin', payload.encode(kwargs))},
             timeout=self.timeout,
         )
         self._raise_for_status(res)
@@ -325,24 +345,15 @@ class ModelClient:
             raise NotImplementedError(
                 f"Model {self.model_name} does not support train"
             )
-        kwargs_json, attachment = payload.encode(kwargs)
-        files = None
-        if attachment is not None:
-            files = {
-                'data': (
-                    'train.npz', attachment, 'application/octet-stream'
-                )
-            }
         res = self.session.post(
             f'{self.base_url}/train',
-            data={'kwargs': kwargs_json},
-            files=files,
+            files={'kwargs': _attachment('kwargs.bin', payload.encode(kwargs))},
             timeout=self.timeout,
         )
         self._raise_for_status(res)
         return res.json().get('result')
 
-    def _post_save_load(self, endpoint, filepath):
+    def _post_save_load(self, endpoint, filepath, upload_files):
         from cellacdc.service import payload
 
         if not self.info.capabilities.save_load:
@@ -350,10 +361,12 @@ class ModelClient:
                 f"Model {self.model_name} does not support saving and "
                 "loading trained models"
             )
-        kwargs_json, _ = payload.encode({'filepath': os.fspath(filepath)})
+        body = payload.encode(
+            {'filepath': os.fspath(filepath)}, upload_files=upload_files
+        )
         res = self.session.post(
             f'{self.base_url}/{endpoint}',
-            data={'kwargs': kwargs_json},
+            files={'kwargs': _attachment('kwargs.bin', body)},
             timeout=self.timeout,
         )
         self._raise_for_status(res)
@@ -362,17 +375,23 @@ class ModelClient:
     def save_model(self, filepath):
         """Save the worker's trained promptable model to `filepath`.
 
+        The path is sent as text, never uploaded (also when the file already
+        exists): the worker runs on this computer and writes the file there.
+
         Returns the (JSON) result of the model's `save_model` method (the
         path of the saved file).
         """
-        return self._post_save_load('save_model', filepath)
+        return self._post_save_load('save_model', filepath, False)
 
     def load_model(self, filepath):
         """Load a trained model from `filepath` into the worker.
 
+        The file is uploaded (see `payload.encode`): the worker's model loads
+        a temporary copy of it.
+
         Returns the (JSON) result of the model's `load_model` method.
         """
-        return self._post_save_load('load_model', filepath)
+        return self._post_save_load('load_model', filepath, True)
 
     def second_ch_img_to_stack(
             self, 
@@ -422,22 +441,9 @@ class ModelClient:
         return pd.read_json(io.StringIO(res.json()["cca_df"]), orient="table")
 
     def submit_job(self, image: np.ndarray, **kwargs) -> str:
-        params, params_data = _encode_segment_kwargs(kwargs)
-        buf = io.BytesIO()
-        np.save(buf, image)
-        buf.seek(0)
-        files = {
-            "image": ("image.npy", buf.getvalue(), "application/octet-stream")
-        }
-        if params_data is not None:
-            files['params_data'] = (
-                'params.npz', params_data, 'application/octet-stream'
-            )
-        data = {"params": params}
         res = self.session.post(
             f"{self.base_url}/jobs/segment",
-            files=files,
-            data=data,
+            files=_segment_files(image, kwargs),
             timeout=self.timeout
         )
         self._raise_for_status(res)
@@ -485,6 +491,8 @@ class LocalBackend:
         self.model_name = model_name
         self.env_python = env_python if env_python else sys.executable
         self.host = host
+        # A port chosen here can be replaced when the worker is restarted
+        self._auto_port = port is None
         self.port = port if port is not None else _find_free_port(host)
         self.init_model_kwargs = init_model_kwargs or {}
         self.model_kind = model_kind
@@ -509,7 +517,11 @@ class LocalBackend:
     def start(self, timeout: float = 120.0) -> ModelClient:
         t0 = time.monotonic()
         if not self.is_running():
-            self._start_process(timeout)
+            # The budget counts from the last launch: a repair of the
+            # environment (pip) does not shorten the time for /init
+            launched = self._start_process(timeout)
+            if launched is not None:
+                t0 = launched
         cmd = self.proc.args
         with startup_timer(f"{self.model_name}: deferred initialization"):
             self._initialize(cmd, timeout - (time.monotonic() - t0))
@@ -526,6 +538,87 @@ class LocalBackend:
         return self.client
 
     def _start_process(self, timeout):
+        """Start the worker and check that it uses this client's protocol.
+
+        If it does not, Cell-ACDC is reinstalled in the worker's environment
+        (only in environments created by Cell-ACDC, see
+        `environment.is_managed_model_env`) and the worker is started again.
+        Returns the `time.monotonic()` at which the running worker was
+        launched.
+        """
+        launched = time.monotonic()
+        cmd = self._launch(timeout)
+        mismatch = self._check_version(cmd)
+        if mismatch is None:
+            return launched
+        self.stop()
+        self._repair_environment(mismatch)
+        if self._auto_port:
+            # The previous worker's port may not be reusable right away
+            self.port = _find_free_port(self.host)
+            self.base_url = f"http://{self.host}:{self.port}"
+        launched = time.monotonic()
+        cmd = self._launch(timeout)
+        mismatch = self._check_version(cmd)
+        if mismatch is not None:
+            message = self._describe_failure(
+                f"{mismatch}\nReinstalling Cell-ACDC in the model environment "
+                "did not fix it.", cmd
+            )
+            self.stop()
+            raise RuntimeError(message) from mismatch
+        return launched
+
+    def _check_version(self, cmd) -> Optional[WorkerVersionError]:
+        """Return the version mismatch of the running worker, or None.
+
+        Other errors stop the worker and are raised.
+        """
+        try:
+            check_worker_version(self.base_url)
+        except WorkerVersionError as err:
+            return err
+        except Exception as err:
+            message = self._describe_failure(
+                f"Reading the version of the {self.model_name} worker "
+                f"failed:\n{err}", cmd
+            )
+            self.stop()
+            raise RuntimeError(message) from err
+        return None
+
+    def _repair_environment(self, mismatch: WorkerVersionError):
+        """Reinstall this Cell-ACDC build in the worker's environment."""
+        from cellacdc.service import environment
+
+        # Compare environment directories, not interpreters: on Linux/macOS a
+        # venv's `bin/python` links to the base interpreter, which may also
+        # be the client's
+        env_dir = environment.managed_model_env_dir(self.env_python)
+        own_env = env_dir is not None and environment._same_path(
+            env_dir, sys.prefix
+        )
+        if env_dir is None or own_env:
+            raise RuntimeError(
+                f"{mismatch}\nInstall the same Cell-ACDC version in "
+                f"{self.env_python} (Cell-ACDC repairs only the model "
+                "environments that it created)."
+            ) from mismatch
+        print(
+            f"{mismatch}\nReinstalling Cell-ACDC in {self.env_python}...",
+            flush=True,
+        )
+        if not environment.repair_cellacdc_runtime(self.env_python):
+            raise RuntimeError(
+                f"{mismatch}\nReinstalling Cell-ACDC in {self.env_python} "
+                "failed (see the log above)."
+            ) from mismatch
+
+    def _launch(self, timeout):
+        """Start the worker process and wait until it answers `/health`.
+
+        Returns the command line.
+        """
         from cellacdc.config import parser_args
 
         cmd = [
@@ -551,8 +644,23 @@ class LocalBackend:
 
         with startup_timer(f"{self.model_name}: waiting for worker /health"):
             self._wait_for_health(cmd, timeout)
+        return cmd
 
     def _wait_for_health(self, cmd, timeout):
+        try:
+            self._poll_health(cmd, timeout)
+        finally:
+            if getattr(self, '_health_poll_failed', False):
+                # The connection errors of urllib3 are reference cycles
+                # (exception -> traceback -> frame -> exception) and their
+                # frames keep the callers' frames alive. When the worker is
+                # started inside `SegmKernel.run` (CLI), the arrays of the
+                # position would stay in memory after `run` returns until
+                # the cyclic garbage collector runs
+                gc.collect()
+
+    def _poll_health(self, cmd, timeout):
+        self._health_poll_failed = False
         t0 = time.monotonic()
         last_error = None
         while time.monotonic() - t0 < timeout:
@@ -570,6 +678,7 @@ class LocalBackend:
                     last_error = f"/health returned HTTP {res.status_code}"
             except Exception as err:
                 healthy = False
+                self._health_poll_failed = True
                 last_error = f"{type(err).__name__}: {err}"
             if healthy:
                 return
@@ -720,6 +829,15 @@ class RemoteBackend:
             self, timeout: float = 300.0,
             init_model_kwargs: Optional[Dict[str, Any]] = None,
         ) -> ModelClient:
+        try:
+            check_worker_version(
+                self.base_url,
+                timeout=30.0 if timeout is None else min(timeout, 30.0),
+            )
+        except WorkerVersionError as err:
+            raise RuntimeError(
+                f"{err}\nInstall the same Cell-ACDC version on the server."
+            ) from err
         if init_model_kwargs is not None:
             post_init(self.base_url, init_model_kwargs, timeout=timeout)
         self.client = ModelClient(self.base_url, timeout=timeout)

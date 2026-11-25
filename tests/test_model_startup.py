@@ -202,6 +202,95 @@ def test_combined_check_uses_one_subprocess_and_checks_versions(
     assert "Cell-ACDC runtime imports:" in output
     assert "combined environment checks:" in output
     assert ("checking dependencies individually for repair" in output) is not healthy
+    # The same process reports which Cell-ACDC it imports
+    assert environment._RUNTIME_MARKER in run.call_args.args[0][2]
+    assert "differs from this Cell-ACDC" not in output
+
+
+@pytest.mark.parametrize("runtime, healthy", [
+    ("same", True), ("protocol_1", False), ("other_checkout", False),
+    ("not_reported", False),
+])
+def test_combined_check_reinstalls_other_cellacdc(
+    monkeypatch, tmp_path, runtime, healthy
+):
+    """An environment whose dependencies are fine, but which runs another
+    Cell-ACDC (older protocol, or not this source checkout), is repaired."""
+    import json
+    from types import SimpleNamespace
+    from cellacdc.service import protocol
+
+    checkout = tmp_path / "Cell_ACDC"
+    identity = {
+        "protocol": protocol.PROTOCOL_VERSION, "version": "1.7.0",
+        "file": str(checkout / "cellacdc" / "__init__.py"),
+        "prefix": str(tmp_path / "env"),
+    }
+    if runtime == "protocol_1":
+        identity["protocol"] = 1
+    elif runtime == "other_checkout":
+        identity["file"] = str(tmp_path / "other" / "cellacdc" / "__init__.py")
+    stdout = "[model startup] Cell-ACDC runtime imports: 1.000s (completed)\n"
+    if runtime != "not_reported":
+        stdout += environment._RUNTIME_MARKER + json.dumps(identity) + "\n"
+    stdout += "__ACDC_ENV_OK__\n"
+    run = Mock(return_value=SimpleNamespace(returncode=0, stdout=stdout, stderr=""))
+    monkeypatch.setattr(environment.subprocess, "run", run)
+    monkeypatch.setattr(
+        environment, "_get_cellacdc_source_root", lambda: str(checkout)
+    )
+    monkeypatch.setattr(
+        environment, "load_model_env_config", lambda name: {"packages": ["numpy"]}
+    )
+    logger = Mock()
+
+    assert environment._check_environment_dependencies(
+        "test", "model-python", logger
+    ) is healthy
+
+    run.assert_called_once()
+    assert run.call_args.args[0][0] == "model-python"
+    output = "\n".join(str(call.args[0]) for call in logger.call_args_list)
+    assert "[model startup] Cell-ACDC runtime imports" in output
+    assert ("differs from this Cell-ACDC" in output) is not healthy
+    assert ("reinstalling it" in output) is not healthy
+    assert "checking dependencies individually" not in output
+    if runtime == "protocol_1":
+        assert "protocol 1" in output
+    elif runtime == "other_checkout":
+        assert "not from this source checkout" in output
+
+
+def test_combined_check_reads_identity_of_real_environment(monkeypatch):
+    """Real subprocess: the identity printed by the combined check is
+    parsed; here the environment's protocol differs from the client's."""
+    from cellacdc.service import protocol
+
+    version = protocol.PROTOCOL_VERSION
+    monkeypatch.setattr(
+        environment, "load_model_env_config", lambda name: {"packages": ["numpy"]}
+    )
+    run = Mock(wraps=environment.subprocess.run)
+    monkeypatch.setattr(environment.subprocess, "run", run)
+    logger = Mock()
+    assert environment._check_environment_dependencies(
+        "test", sys.executable, logger
+    )
+    # The client now uses a newer protocol than the environment
+    monkeypatch.setattr(protocol, "PROTOCOL_VERSION", version + 1)
+    logger.reset_mock()
+
+    assert not environment._check_environment_dependencies(
+        "test", sys.executable, logger
+    )
+
+    assert run.call_count == 2
+    output = "\n".join(str(call.args[0]) for call in logger.call_args_list)
+    assert (
+        f"it uses model worker protocol {version}, but this Cell-ACDC uses "
+        f"protocol {version + 1}"
+    ) in output
+    assert "reinstalling it" in output
 
 
 @pytest.mark.parametrize("installed, spec, satisfied", [
@@ -238,12 +327,14 @@ def test_server_startup_timings_follow_debug_mode(monkeypatch, capsys, debug):
         for stage in (
             "worker process launch", "waiting for worker /health",
             "deferred initialization", "client /info connection",
-            "worker /spec request", "model initialization payload encoding",
+            "model initialization payload encoding",
             "worker /init request", "worker runtime imports",
             "worker model module import", "worker model argument inspection",
             "worker model construction",
         ):
             assert (stage in output) is debug
+        # `/init` no longer needs the model's argument specs (`/spec`)
+        assert "worker /spec request" not in output
     finally:
         backend.stop()
 
@@ -251,7 +342,7 @@ def test_server_startup_timings_follow_debug_mode(monkeypatch, capsys, debug):
 def test_prepared_worker_is_used_for_specs_and_inference(monkeypatch):
     import numpy as np
     import requests
-    from cellacdc.service import model_execution
+    from cellacdc.service import model_execution, protocol
 
     monkeypatch.setattr(
         model_execution, "model_installed_in_main_env", lambda name: False
@@ -270,7 +361,11 @@ def test_prepared_worker_is_used_for_specs_and_inference(monkeypatch):
         proc = backend.proc
         assert proc.poll() is None
         assert backend.client is None
-        assert requests.get(f"{backend.url}/info", timeout=10).status_code == 503
+        assert requests.get(
+            f"{backend.url}/info", headers=protocol.headers(), timeout=10
+        ).status_code == 503
+        # Requests without the protocol version are rejected
+        assert requests.get(f"{backend.url}/info", timeout=10).status_code == 426
         assert "gauss_sigma" in [param.name for param in spec[1]]
         assert execution.prepare() is execution.spec
         model = execution.init_model({})

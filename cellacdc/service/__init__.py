@@ -1,5 +1,12 @@
-from .client import ModelClient, LocalBackend, RemoteBackend
-from .schema import HealthResponse, InfoResponse, Capabilities, JobStatusResponse
+from .client import (
+    ModelClient, LocalBackend, RemoteBackend, WorkerVersionError,
+    check_worker_version,
+)
+from .protocol import PROTOCOL_VERSION
+from .schema import (
+    HealthResponse, InfoResponse, Capabilities, JobStatusResponse,
+    VersionResponse,
+)
 from .environment import (
     get_model_env_name,
     get_install_method,
@@ -9,6 +16,9 @@ from .environment import (
     ensure_cellacdc_cli,
     install_cellacdc_cli,
     is_cellacdc_cli_installed,
+    cellacdc_runtime_mismatch,
+    repair_cellacdc_runtime,
+    is_managed_model_env,
     ensure_worker_dependencies,
     ensure_model_dependencies,
     load_model_env_config,
@@ -19,10 +29,14 @@ __all__ = [
     "ModelClient",
     "LocalBackend",
     "RemoteBackend",
+    "WorkerVersionError",
+    "check_worker_version",
+    "PROTOCOL_VERSION",
     "HealthResponse",
     "InfoResponse",
     "Capabilities",
     "JobStatusResponse",
+    "VersionResponse",
     "get_model_env_name",
     "get_install_method",
     "get_model_python_exec",
@@ -31,6 +45,9 @@ __all__ = [
     "ensure_cellacdc_cli",
     "install_cellacdc_cli",
     "is_cellacdc_cli_installed",
+    "cellacdc_runtime_mismatch",
+    "repair_cellacdc_runtime",
+    "is_managed_model_env",
     "ensure_worker_dependencies",
     "ensure_model_dependencies",
     "load_model_env_config",
