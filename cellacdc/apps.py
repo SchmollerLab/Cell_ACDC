@@ -230,8 +230,11 @@ class customAnnotationDialog(QDialog):
             See `apps_measurements_viewer._CustomAnnotationPredictorGroupbox`.
             The viewer also gets the "Overrides phases" option (state key
             'overridesPhases', always written as a bool).
-        reservedShortcuts : dict, optional
-            {key sequence text: used by} of shortcuts that cannot be used.
+        reservedShortcuts : dict or callable, optional
+            {key sequence text: used by} of shortcuts that cannot be used,
+            or a callable returning it. A callable is called on OK, so that
+            keys taken while the dialog is open (the window stays usable)
+            are refused too.
         existingNames : iterable of str, optional
             Names of other annotations that cannot be used.
         allowDeleteSaved : bool, optional
@@ -249,7 +252,7 @@ class customAnnotationDialog(QDialog):
         self.clickedButton = None
         self.savedCustomAnnot = savedCustomAnnot
         self.allowDeleteSaved = allowDeleteSaved
-        self.reservedShortcuts = dict(reservedShortcuts or {})
+        self._reservedShortcuts = reservedShortcuts
         self.existingNames = set(existingNames)
         self.columnConflict = columnConflict
         self.hasPredictor = predictorOptions is not None
@@ -645,6 +648,11 @@ class customAnnotationDialog(QDialog):
             widgets=listView
         )
 
+    def reservedShortcuts(self):
+        """Current {key sequence text: used by} (see `__init__`)."""
+        reserved = self._reservedShortcuts
+        return dict((reserved() if callable(reserved) else reserved) or {})
+
     def closeEvent(self, event):
         if self.clickedButton is None or self.clickedButton==self.cancelButton:
             # cancel button or closed with 'x' button
@@ -713,15 +721,17 @@ class customAnnotationDialog(QDialog):
             return
 
         shortcut = self.shortcutWidget.widget.text().strip()
-        usedBy = self.reservedShortcuts.get(
-            QKeySequence(shortcut).toString() if shortcut else None
-        )
-        if self.clickedButton==self.okButton and usedBy is not None:
+        usedBy = None
+        if self.clickedButton==self.okButton and shortcut:
+            usedBy = self.reservedShortcuts().get(
+                QKeySequence(shortcut).toString()
+            )
+        if usedBy is not None:
             msg = widgets.myMessageBox(wrapText=False)
             msg.warning(
                 self, 'Shortcut already used', html_utils.paragraph(
-                    f'The shortcut "{shortcut}" is already used by '
-                    f'"{usedBy}". Choose a different shortcut.'
+                    f'The shortcut "{html.escape(shortcut)}" is already used '
+                    f'by "{html.escape(usedBy)}". Choose a different shortcut.'
                 )
             )
             event.ignore()
@@ -985,11 +995,17 @@ class AddPointsLayerDialog(QBaseDialog):
             hideManualEntrySection=False,
             hideWithMouseClicksSection=False,
             parent=None,
+            reservedShortcuts=None,
         ):
+        """`reservedShortcuts` : {key sequence text: used by} of shortcuts
+        that cannot be used (refused on OK, the dialog stays open), or a
+        callable returning it, called on OK (the dialog is not modal, so
+        keys can be taken while it is open)."""
         self.cancel = True
         super().__init__(parent)
 
         self._parent = parent
+        self._reservedShortcuts = reservedShortcuts
 
         self.imagesPath = imagesPath
 
@@ -1527,7 +1543,31 @@ class AddPointsLayerDialog(QBaseDialog):
             return
         self.zColName.setCurrentText('None')
 
+    def warnShortcutAlreadyUsed(self, shortcut, usedBy):
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'Shortcut already used', html_utils.paragraph(
+                f'The shortcut "{html.escape(shortcut)}" is already used by '
+                f'"{html.escape(usedBy)}". Choose a different shortcut.'
+            )
+        )
+
+    def reservedShortcuts(self):
+        """Current {key sequence text: used by} (see `__init__`)."""
+        reserved = self._reservedShortcuts
+        return dict((reserved() if callable(reserved) else reserved) or {})
+
     def ok_cb(self):
+        shortcut = self.appearanceGroupbox.shortcutWidget.widget.text().strip()
+        usedBy = None
+        if shortcut:
+            usedBy = self.reservedShortcuts().get(
+                QKeySequence(shortcut).toString()
+            )
+        if usedBy is not None:
+            self.warnShortcutAlreadyUsed(shortcut, usedBy)
+            return
+
         self.pointsData = {}
         self.loadedDfInfo = None
         self.loadedDf = None

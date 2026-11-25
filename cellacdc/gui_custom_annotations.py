@@ -158,7 +158,9 @@ class CustomAnnotationsGuiElements:
         elif isinstance(shortcut, str):
             shortcut = widgets.KeySequenceFromText(shortcut)
         button.setShortcut(shortcut)
-    
+        # The button may be hidden by an overflowing toolbar
+        self.annotateToolbar.updateOverflowShortcuts()
+
     def saveCustomAnnotPositionParams(self, posData):
         posData.saveCustomAnnotationParams()
     
