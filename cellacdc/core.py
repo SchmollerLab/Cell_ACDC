@@ -161,14 +161,19 @@ def nearest_nonzero_z_idx_from_z_centroid(obj, current_z=-1):
 def compute_twoframes_velocity(prev_lab, lab, spacing=None):
     prev_rp = skimage.measure.regionprops(prev_lab)
     rp = skimage.measure.regionprops(lab)
-    prev_IDs = [obj.label for obj in prev_rp]
+    # Map ID --> first prev_rp index (same as `prev_IDs.index(ID)`) to
+    # avoid quadratic list lookups
+    prev_ID_to_idx = {}
+    for idx, prev_obj in enumerate(prev_rp):
+        prev_ID_to_idx.setdefault(prev_obj.label, idx)
     velocities_pxl = [0]*len(rp)
     velocities_um = [0]*len(rp)
     for i, obj in enumerate(rp):
-        if obj.label not in prev_IDs:
+        prev_idx = prev_ID_to_idx.get(obj.label)
+        if prev_idx is None:
             continue
 
-        prev_obj = prev_rp[prev_IDs.index(obj.label)]
+        prev_obj = prev_rp[prev_idx]
         diff = np.subtract(obj.centroid, prev_obj.centroid)
         v_pixel = np.linalg.norm(diff)
         velocities_pxl[i] = v_pixel
@@ -1891,17 +1896,38 @@ def pop_signals_kwarg_if_not_needed(func, kwargs):
     kwargs.pop('signals', None)
     return kwargs
 
+def preprocess_frames_from_recipe(frames, recipe: List[Dict[str, Any]]):
+    """Apply `recipe` to each frame of `frames` (first axis = time).
+
+    The output has the dtype of the pre-processed frames, except that
+    float64 becomes float32: a float64 copy of a whole time-lapse is 4 times
+    the size of a uint16 one, and the whole array is sent at once to the
+    model (to a model worker as well).
+    """
+    filtered_frames = None
+    for i, img in enumerate(frames):
+        img = preprocess_image_from_recipe(img, recipe)
+        if filtered_frames is None:
+            dtype = np.float32 if img.dtype == np.float64 else img.dtype
+            filtered_frames = np.empty((len(frames), *img.shape), dtype=dtype)
+        filtered_frames[i] = img
+
+    if filtered_frames is None:
+        return frames
+
+    return filtered_frames
+
 def segm_model_segment(
         model, image, model_kwargs, frame_i=None, preproc_recipe=None, 
         is_timelapse_model_and_data=False, posData=None, start_z_slice=0,
     ):
-    if preproc_recipe is not None:
+    # Empty recipe = no pre-processing. The GUI parameters dialogs return
+    # `[]` when pre-processing is unchecked (the CLI gets None), and copying
+    # the time-lapse for no step made the GUI send a float64 copy of the
+    # whole video to the model
+    if preproc_recipe:
         if is_timelapse_model_and_data:
-            filtered_image = np.zeros(image.shape)
-            for i, img in enumerate(image):
-                img = preprocess_image_from_recipe(img, preproc_recipe)
-                filtered_image[i] = img
-            image = filtered_image # .astype(image.dtype)
+            image = preprocess_frames_from_recipe(image, preproc_recipe)
         else:
             image = preprocess_image_from_recipe(image, preproc_recipe)
     

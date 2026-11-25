@@ -126,6 +126,8 @@ def test_combined_environment_check_includes_torch_version(monkeypatch):
     })
     run = Mock(return_value=Mock(returncode=0, stdout="__ACDC_ENV_OK__\n"))
     monkeypatch.setattr(environment.subprocess, "run", run)
+    # Which Cell-ACDC the environment runs is tested in test_model_startup.py
+    monkeypatch.setattr(environment, "_runtime_mismatch", lambda identity: None)
     assert environment._check_environment_dependencies("model", "model-python")
     script = run.call_args.args[0][2]
     assert repr(environment._torch_import_check("2.5.1")) in script

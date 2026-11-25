@@ -114,6 +114,53 @@ class _WorkflowKernel:
             self.backend_type in ('remote', 'local')
         )
 
+    def verify_worker_environment(self, logger_func=None):
+        """Check the worker's Cell-ACDC before using it (see
+        `cellacdc/service/protocol.py`).
+
+        Remote worker: raises if it uses another protocol version. Local
+        worker: a model environment created by Cell-ACDC is repaired if it
+        has another Cell-ACDC build; for an environment of the user, a
+        different build is only reported (the worker's own protocol check
+        still applies when it starts).
+        """
+        if logger_func is None:
+            logger_func = getattr(self, 'logger_func', self.logger.info)
+        if self.backend_url is not None or self.backend_type == 'remote':
+            from cellacdc.service.client import (
+                WorkerVersionError, check_worker_version,
+            )
+            try:
+                check_worker_version(self.backend_url, timeout=30.0)
+            except WorkerVersionError as err:
+                raise RuntimeError(
+                    f'{err}\nInstall the same Cell-ACDC version on the server.'
+                ) from err
+            return
+        env_python = self.env_python
+        if env_python is None or (
+            os.path.normcase(os.path.abspath(env_python))
+            == os.path.normcase(os.path.abspath(sys.executable))
+        ):
+            return
+        from cellacdc.service import environment
+        if environment.is_managed_model_env(env_python):
+            if not environment.ensure_cellacdc_cli(
+                env_python, logger_func=logger_func
+            ):
+                raise RuntimeError(
+                    f'Cell-ACDC could not be installed in {env_python} '
+                    '(see the log above).'
+                )
+            return
+        mismatch = environment.cellacdc_runtime_mismatch(env_python)
+        if mismatch is not None:
+            logger_func(
+                f'WARNING: The Cell-ACDC in {env_python} differs from this '
+                f'Cell-ACDC: {mismatch}. Install the same Cell-ACDC version '
+                'in that environment.'
+            )
+
     def init_backend(
             self, 
             module_name, 
@@ -399,6 +446,9 @@ class SegmKernel(_WorkflowKernel):
             backend_url=backend_url,
             env_python=env_python
         )
+        # Read again by `init_segm_model` (CLI), which sets
+        # `is_segment3DT_available` from the model it creates
+        self.reduce_memory_usage = reduce_memory_usage
         self.is_segment3DT_available = (
             is_segment3DT_available and not reduce_memory_usage
         )
@@ -426,9 +476,15 @@ class SegmKernel(_WorkflowKernel):
             self.init_model_kwargs['is_rgb'] = True
 
         if self.uses_worker_backend():
+            if (
+                (self.backend_url is not None or self.backend_type == 'remote')
+                and self.backend_url is None
+            ):
+                raise RuntimeError('A remote backend URL is required.')
+            # Before reading the model's arguments from the worker or its
+            # environment, which must run this Cell-ACDC build
+            self.verify_worker_environment()
             if self.backend_url is not None or self.backend_type == 'remote':
-                if self.backend_url is None:
-                    raise RuntimeError('A remote backend URL is required.')
                 from cellacdc.service.client import get_model_arg_spec
                 init_argspecs, segment_argspecs = get_model_arg_spec(
                     self.backend_url
@@ -476,8 +532,9 @@ class SegmKernel(_WorkflowKernel):
         )
         if client is not None:
             self.model = client
-            self.is_segment3DT_available = getattr(
-                self.model, 'is_segment3DT_available', False
+            self.is_segment3DT_available = (
+                getattr(self.model, 'is_segment3DT_available', False)
+                and not getattr(self, 'reduce_memory_usage', False)
             )
             return
 
@@ -490,8 +547,9 @@ class SegmKernel(_WorkflowKernel):
         if self.model is None:
             # The model was not initialized correctly
             return
-        self.is_segment3DT_available = any(
-            [name=='segment3DT' for name in dir(self.model)]
+        self.is_segment3DT_available = (
+            any([name=='segment3DT' for name in dir(self.model)])
+            and not getattr(self, 'reduce_memory_usage', False)
         )
     
     @exception_handler_cli
@@ -1335,7 +1393,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         self.log(f'Loading channels {channels_to_load}...')
         
         self._load_image_data(posData, channels_to_load)
-        
+
+        # Arrays loaded from the dataPrep background archives are cached
+        # to avoid re-reading (and decompressing) them for every frame
+        self._bkgr_archive_cache = {}
+
         acdc_df_li = []
         keys = []
         for frame_i in range(stop_frame_n):
@@ -1441,7 +1503,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             if saveDataWorker is not None:
                 saveDataWorker.emitUpdateProgressBar()
-        
+
+        self._bkgr_archive_cache = None
+
         if not acdc_df_li:
             print('-'*30)
             self.log(
@@ -1814,9 +1878,11 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 )
     
     def _add_custom_metrics(
-            self, posData, frame_i, isSegm3D, df, rp, custom_metrics_params, 
-            lab, calc_for_each_zslice_mapper
+            self, posData, frame_i, isSegm3D, df, rp, custom_metrics_params,
+            lab, calc_for_each_zslice_mapper, all_channels_projections=None
         ):
+        if all_channels_projections is None:
+            all_channels_projections = {}
         iter_channels = zip(
             posData.loadedChNames, 
             posData.fluo_data_dict.items()
@@ -1855,15 +1921,18 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             
             # Repeat measureemnts for each z-slice
             pbar_z = tqdm(
-                total=posData.SizeZ, desc='Computing for z-slices: ', 
+                total=posData.SizeZ, desc='Computing for z-slices: ',
                 ncols=100, leave=False, unit='z-slice'
             )
+            # Only 'zSlice' is used --> pass the projections computed
+            # earlier to avoid re-computing them for every z-slice
+            projections = all_channels_projections.get(channel)
             for z in range(posData.SizeZ):
                 foregr_data = measurements.get_foregr_data(
-                    foregr_img, isSegm3D, z
+                    foregr_img, isSegm3D, z, projections=projections
                 )
                 foregr_data = {'zSlice': foregr_data['zSlice']}
-                
+
                 df = measurements.add_custom_metrics(
                     df, rp, channel, foregr_data, 
                     custom_metrics_params[channel], 
@@ -1883,6 +1952,8 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
         all_channels_foregr_data = {}
         all_channels_foregr_imgs = {}
         all_channels_z_slices = {}
+        all_channels_projections = {}
+        bkgr_archive_cache = getattr(self, '_bkgr_archive_cache', None)
         isSegm3D = self.isSegm3D
         bkgr_metrics_params = self.bkgr_metrics_params
         metrics_func = self.metrics_func
@@ -1909,15 +1980,27 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
 
             # Get the z-slice if we have z-stacks
             z = posData.zSliceSegmentation(filename, frame_i)
-            
+
+            # Compute z-projections only once per channel
+            projections = None
+            if foregr_img.ndim == 3:
+                projections = measurements.get_zstack_projections(
+                    foregr_img
+                )
+            all_channels_projections[channel] = projections
+
             # Get the background data
             bkgr_data = measurements.get_bkgr_data(
                 foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab,
+                projections=projections,
+                bkgr_archive_cache=bkgr_archive_cache
             )
-            
-            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
-            
+
+            foregr_data = measurements.get_foregr_data(
+                foregr_img, isSegm3D, z, projections=projections
+            )
+
             all_channels_foregr_data[channel] = foregr_data
             all_channels_foregr_imgs[channel] = foregr_img
             all_channels_z_slices[channel] = z
@@ -1947,18 +2030,21 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
                 ncols=100, leave=False, unit='z-slice'
             )
             for z in range(posData.SizeZ):
-                # Get the background data
+                # Get the background data (only 'zSlice' is used)
                 bkgr_data = measurements.get_bkgr_data(
                     foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
+                    autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab,
+                    projections=projections,
+                    bkgr_archive_cache=bkgr_archive_cache,
+                    only_zslice=True
                 )
                 bkgr_data = {
                     'autoBkgr': {'zSlice': bkgr_data['autoBkgr']['zSlice']},
                     'dataPrepBkgr': {'zSlice': bkgr_data['dataPrepBkgr']['zSlice']}
                 }
-                
+
                 foregr_data = measurements.get_foregr_data(
-                    foregr_img, isSegm3D, z
+                    foregr_img, isSegm3D, z, projections=projections
                 )
                 foregr_data = {'zSlice': foregr_data['zSlice']}
 
@@ -2009,8 +2095,9 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             self.regionPropsCritical.emit(traceback_format, str(error))
 
         acdc_df = self._add_custom_metrics(
-            posData, frame_i, isSegm3D, acdc_df, rp, custom_metrics_params, 
-            lab, calc_for_each_zslice_mapper
+            posData, frame_i, isSegm3D, acdc_df, rp, custom_metrics_params,
+            lab, calc_for_each_zslice_mapper,
+            all_channels_projections=all_channels_projections
         )
         
         acdc_df = measurements.add_ch_indipend_custom_metrics(
@@ -2143,24 +2230,28 @@ class ComputeMeasurementsKernel(_WorkflowKernel):
             .sort_index()
         )
         acdc_df['disappears_before_end'] = 0
+        # IDs of the previous frame are re-used from the previous iteration
+        # instead of computing regionprops twice for each frame
+        prev_IDs = None
         for frame_i, lab in enumerate(saved_segm_data):
             if frame_i == 0:
                 continue
-            
+
             try:
                 df_frame = acdc_df.loc[frame_i]
             except KeyError:
                 break
-                
-            prev_lab = saved_segm_data[frame_i-1]
-            prev_rp = skimage.measure.regionprops(prev_lab)
-            
+
+            if prev_IDs is None:
+                prev_lab = saved_segm_data[frame_i-1]
+                prev_rp = skimage.measure.regionprops(prev_lab)
+                prev_IDs = [obj.label for obj in prev_rp]
+
             curr_rp = skimage.measure.regionprops(lab)
-            curr_rp_mapper = {obj.label: obj for obj in curr_rp}
-            lost_IDs = []
-            for prev_obj in prev_rp:
-                if curr_rp_mapper.get(prev_obj.label) is None:
-                    lost_IDs.append(prev_obj.label)
+            curr_IDs = [obj.label for obj in curr_rp]
+            curr_IDs_set = set(curr_IDs)
+            lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs_set]
+            prev_IDs = curr_IDs
             
             if 'parent_ID_tree' in df_frame.columns:
                 parent_IDs = set(df_frame['parent_ID_tree'].values)
