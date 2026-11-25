@@ -57,7 +57,8 @@ from qtpy.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QButtonGroup, QActionGroup, QFileDialog, QAbstractSlider, QMessageBox, QWidget, QGridLayout, 
     QDockWidget, QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
-    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent, QApplication
+    QSpacerItem, QScrollArea, QFormLayout, QGraphicsSceneMouseEvent, QApplication,
+    QAbstractButton
 )
 
 import pyqtgraph as pg
@@ -15626,9 +15627,13 @@ When working with 3D segmentation masks:
             else:
                 self.Button = self.eraserButton
 
-            if not self.Button.isVisible():
+            isButtonAvailable = (
+                self.Button.isVisible()
+                or self.editToolBar.isWidgetHiddenByOverflow(self.Button)
+            )
+            if not isButtonAvailable:
                 return
-            
+
             if self.countKeyPress == 0:
                 # If first time clicking B activate brush and start timer
                 # to catch double press of B
@@ -24312,6 +24317,8 @@ When working with 3D segmentation masks:
             hideWithMouseClicksSection=False,
             SizeT=posData.SizeT,
             parent=self,
+            # Called on OK: the dialog is not modal
+            reservedShortcuts=self.reservedShortcuts,
         )
         cmap = matplotlib.colormaps['gist_rainbow']
         i = np.random.default_rng(seed=123).uniform()
@@ -25734,7 +25741,7 @@ When working with 3D segmentation masks:
     
     def getHardcodedShortcuts(self):
         """Shortcuts displayed (not editable) in the shortcuts editor"""
-        return {
+        hard_shortcuts = {
             'Ctrl+Shift+N': ('New Window', self.newWindowAction),
             'Ctrl+N': ('New Segmentation File', self.newAction),
             'Ctrl+O': ('Load Folder', self.openFolderAction),
@@ -25781,6 +25788,123 @@ When working with 3D segmentation masks:
             'Left': 'Go to previous frame',
             'Right': 'Go to next frame',
         }
+        # Keys of custom annotations and points layers (edited in their own
+        # dialogs), so that the editor flags a tool key that collides
+        for name, button in self.userKeyButtons():
+            shortcut = button.shortcut().toString()
+            if shortcut and shortcut not in hard_shortcuts:
+                hard_shortcuts[shortcut] = (name, button)
+        return hard_shortcuts
+
+    # Keys handled in `keyPressEvent` and `keyReleaseEvent` (not shortcuts
+    # of actions or buttons)
+    KEY_EVENT_KEYS = {
+        'Left': 'Go to previous frame',
+        'Right': 'Go to next frame',
+        'Up': 'Up arrow (navigation and tool size)',
+        'Down': 'Down arrow (navigation and tool size)',
+        'PgUp': 'Page up (navigation)',
+        'PgDown': 'Page down (navigation)',
+        'Home': 'Next z-slice',
+        'End': 'Previous z-slice',
+        'Space': 'Hide annotations (double press)',
+        'Esc': 'Escape (cancel the current action)',
+        'Return': 'Confirm (Enter)',
+        'Enter': 'Confirm (Enter)',
+        'Z': 'Toggle z-slice/projection (Z key)',
+        # Opacity of the overlaid segmentation (`isOverlaySegmLeft`)
+        'Ctrl+Up': 'Increase overlay segmentation opacity',
+        'Ctrl+Down': 'Decrease overlay segmentation opacity',
+    }
+    # Digits toggle the overlay channels (`checkOverlayToolbuttonClicked`,
+    # 0 = base layer)
+    KEY_EVENT_KEYS.update({
+        str(n): f'Toggle overlay channel {n} (overlay active)'
+        for n in range(10)
+    })
+
+    def userKeyButtons(self):
+        """[(name, button)] of the buttons whose key is chosen in their own
+        dialogs (custom annotations and points layers)."""
+        buttons = [
+            (f'Annotation "{annot["state"]["name"]}"', button)
+            for button, annot in self.customAnnotDict.items()
+        ]
+        for toolbar in getattr(self, 'pointsLayersToolbars', []):
+            for action in toolbar.actions():
+                button = toolbar.widgetForAction(action)
+                if isinstance(button, widgets.PointsLayerToolButton):
+                    name = getattr(action, 'layerType', '') or 'Points layer'
+                    buttons.append((f'Points layer "{name}"', button))
+        return buttons
+
+    def reservedShortcuts(self, excludeWidget=None):
+        """Key sequences already used in the main window {sequence: used by},
+        refused as keys of new custom annotations and points layers.
+
+        Includes the keys of every action and tool button of the window in
+        any mode (e.g., the edit tools of snapshots are shown next to the
+        custom annotations, and two buttons with the same key trigger
+        neither), the brush/eraser keys, the key of the "Delete object"
+        action (`delObjAction`) and the keys handled in `keyPressEvent`
+        (including the overlay digits). The key of `excludeWidget` (e.g.,
+        the custom annotation being edited) is not included.
+
+        The dialogs call it on OK (they are not modal), so that keys
+        assigned while they are open are refused too."""
+        reserved = dict(self.KEY_EVENT_KEYS)
+        zoomOutKey = QKeySequence(self.zoomOutKeyValue).toString()
+        reserved[zoomOutKey] = 'Zoom out'
+        delObjAction = getattr(self, 'delObjAction', None)
+        delObjKeySequence = None if delObjAction is None else delObjAction[0]
+        if delObjKeySequence is not None:
+            # Plain QKeySequence text (`KeySequenceFromText.toString` gives
+            # macOS key names on macOS)
+            delObjKey = QKeySequence(delObjKeySequence).toString()
+            if delObjKey:
+                reserved[delObjKey] = 'Delete object'
+        for name, widget in self.widgetsWithShortcut.items():
+            shortcut = getattr(widget, 'keyPressShortcut', None)
+            if shortcut is None:
+                continue
+            shortcut = QKeySequence(shortcut).toString()
+            if shortcut:
+                reserved[shortcut] = name
+        widgets_ = self.findChildren(QAction) + self.findChildren(QAbstractButton)
+        for widget in widgets_:
+            if widget is excludeWidget:
+                continue
+            shortcut = widget.shortcut().toString()
+            if not shortcut or shortcut in reserved:
+                continue
+            owner = widget.parent() if isinstance(widget, QAction) else widget
+            if isinstance(owner, QWidget):
+                ownerWindow = owner.window()
+                if ownerWindow is not self and not isinstance(ownerWindow, QMenu):
+                    # e.g., buttons of a dialog parented to this window
+                    continue
+            text = widget.text() or widget.toolTip().split('\n')[0]
+            text = re.sub(r'<[^>]+>', '', text).replace('&', '').strip()
+            text = re.sub(r'^Name:\s*', '', text)
+            if text.endswith('...'):
+                text = text[:-3]
+            reserved[shortcut] = text or shortcut
+        for name, button in self.userKeyButtons():
+            if button is excludeWidget:
+                continue
+            shortcut = button.shortcut().toString()
+            if shortcut:
+                reserved[shortcut] = name
+        return reserved
+
+    def customAnnotationDialogKwargs(self, state=None):
+        button = (
+            None if state is None
+            else self.customAnnotButtonByName(state['name'])
+        )
+        # Called on OK (the dialog does not block the window), still without
+        # the key of the edited annotation
+        return {'reservedShortcuts': partial(self.reservedShortcuts, button)}
     
     def useCenterBrushCursorHoverIDtoggled(self, checked):
         if checked:

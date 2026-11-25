@@ -622,6 +622,8 @@ def test_toolbar_and_column(viewer):
     reserved = viewer.reservedShortcuts()
     assert 'A' in reserved and 'Shift+A' in reserved
     assert 'A' not in viewer.reservedShortcuts(excludeCustomAnnot=button)
+    # Overlay digits toggle the channels with the overlay on (0 = base layer)
+    assert all(str(n) in reserved for n in range(10))
 
 
 def test_hide_annotations_menu_toggles_and_keeps_state(viewer, monkeypatch):
@@ -729,7 +731,8 @@ def test_default_shortcut_skips_reserved(viewer):
     viewer.setCustomAnnotations([annot_state()])
     kwargs = viewer.customAnnotationDialogKwargs()
     # 'S' is skipped: its auto shortcut Shift+S shuffles the colormap
-    assert 'S' in kwargs['reservedShortcuts']
+    # Callable, evaluated on OK of the (non-modal) dialog
+    assert 'S' in kwargs['reservedShortcuts']()
     assert kwargs['state']['shortcut'] == 'D'
     assert kwargs['existingNames'] == ['Big']
     assert kwargs['predictorOptions']['SizeT'] == 4
@@ -739,7 +742,7 @@ def test_default_shortcut_skips_reserved(viewer):
     )
     assert 'state' not in kwargs
     assert kwargs['existingNames'] == []
-    assert 'A' not in kwargs['reservedShortcuts']
+    assert 'A' not in kwargs['reservedShortcuts']()
 
 
 def test_auto_shortcut_never_duplicates_another_shortcut(viewer):
