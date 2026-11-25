@@ -18961,17 +18961,23 @@ When working with 3D segmentation masks:
         new_df = posData.allData_li[posData.frame_i]['acdc_df']
         original_df = self.original_df_lin_tree.copy()
 
-        if original_df.equals(new_df):
+        if new_df is None or original_df.equals(new_df):
             return
-        
+
         compare_columns = ['parent_ID_tree']
+        for df in (original_df, new_df):
+            if any(col not in df.columns for col in compare_columns):
+                # No lineage tree annotations to compare, e.g. removed by
+                # `resetLin_tree_future` after a segmentation edit
+                return
 
         new_df = myutils.checked_reset_index_Cell_ID(new_df)
-        new_df = new_df[compare_columns]
-        new_df = new_df.sort_index()
         original_df = myutils.checked_reset_index_Cell_ID(original_df)
-        original_df = original_df[compare_columns]
-        original_df = original_df.sort_index()
+        # Segmentation edits can add or remove IDs after the backup:
+        # compare the cells present in both tables
+        IDs = original_df.index.intersection(new_df.index)
+        new_df = new_df.loc[IDs, compare_columns].sort_index()
+        original_df = original_df.loc[IDs, compare_columns].sort_index()
 
         differences = original_df.compare(new_df)
         if differences.empty:
