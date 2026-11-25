@@ -6782,7 +6782,8 @@ class MeasurementsViewerWin(
         reserved = {}
         for name in ('Left', 'Right', 'Up', 'Down', 'Space', 'Z', 'Esc'):
             reserved[name] = 'Viewer navigation'
-        for n in range(1, 10):
+        # `checkOverlayToolbuttonClicked` in `keyPressEvent` (0 = base layer)
+        for n in range(10):
             reserved[str(n)] = 'Overlay channels toggle'
         zoomOutKey = QKeySequence(self.zoomOutKeyValue).toString()
         reserved[zoomOutKey] = 'Zoom out'
@@ -7741,7 +7742,10 @@ class MeasurementsViewerWin(
                     )
                 ),
             },
-            'reservedShortcuts': reservedShortcuts,
+            # Checked on OK with the current keys (the dialog is not modal)
+            'reservedShortcuts': partial(
+                self.reservedShortcuts, excludeCustomAnnot=button
+            ),
             'existingNames': [
                 name for name in self.customAnnotNames()
                 if state is None or name != state['name']
