@@ -34,7 +34,12 @@
   (posted ``DeferredDelete`` events are flushed, then ``gc.collect()``):
   tests never run the main loop and ``processEvents()`` does not deliver
   ``DeferredDelete``, so leaked windows used to pile up and crash the
-  interpreter at exit.
+  interpreter at exit. The objects still alive after a test are then frozen
+  (``gc.freeze()``), so the next test's collection scans only the objects
+  created since: a collection of the whole heap takes up to 0.5 s late in
+  the session and used to be most of the suite's run time. The whole heap is
+  collected after each test module (``gc.unfreeze()``). Set
+  ``ACDC_TESTS_FULL_GC=1`` to collect the whole heap after every test.
 - The user's settings used by the GUI, the measurements viewer and data
   loading are never read or written: for every test, the module-level
   ``settings_folderpath`` and the paths ``settings_csv_path``,
@@ -410,6 +415,7 @@ def _auto_answer_blocking_dialogs():
         finally:
             # The test may have imported Qt and created widgets itself
             flushDeferredDeletes()
+            freezeSurvivingObjects()
         return
     from qtpy.QtWidgets import QApplication
     global _QAPP
@@ -425,6 +431,40 @@ def _auto_answer_blocking_dialogs():
         # ones still alive afterwards were left open
         flushDeferredDeletes()
         watchdog.hideDialogsLeftOpen()
+        freezeSurvivingObjects()
+
+
+# Set ACDC_TESTS_FULL_GC=1 to collect the whole heap after every test
+FREEZE_SURVIVING_OBJECTS = os.environ.get('ACDC_TESTS_FULL_GC') != '1'
+
+
+def freezeSurvivingObjects():
+    """Exclude the objects alive after a test from later per-test collections.
+
+    ``gc.freeze()`` moves them to the permanent generation, so the
+    ``gc.collect()`` of the next test's ``flushDeferredDeletes`` scans only
+    the objects created since (a full collection takes up to 0.5 s once the
+    session has imported and created millions of objects, i.e. most of the
+    suite's time). ``_collect_whole_heap_after_module`` collects them after
+    each test module.
+    """
+    if FREEZE_SURVIVING_OBJECTS:
+        gc.freeze()
+
+
+@pytest.fixture(scope='module', autouse=True)
+def _collect_whole_heap_after_module():
+    """After each test module, collect the objects frozen after its tests.
+
+    A module-scoped autouse fixture of the conftest is set up before and torn
+    down after the module's own fixtures (e.g. windows it shares between
+    tests), so their garbage is collected (and their ``deleteLater()``
+    flushed) here.
+    """
+    yield
+    gc.unfreeze()
+    flushDeferredDeletes()
+    freezeSurvivingObjects()
 
 
 # Module-level names that bind paths inside the user's settings folder,

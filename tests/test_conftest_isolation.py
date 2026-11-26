@@ -4,8 +4,12 @@
   custom annotations, metadata entries, recent paths, ``QSettings``) and the
   log folder are redirected to a temporary folder.
 - Widgets released with ``deleteLater()`` are destroyed after each test.
+- The garbage of each test is collected although the objects alive after
+  earlier tests are frozen.
 """
+import gc
 import os
+import weakref
 
 import numpy as np
 import pandas as pd
@@ -18,6 +22,7 @@ from cellacdc import gui_core, gui_custom_annotations, gui_viewer_tools
 from cellacdc import load, measurements_viewer, myutils, prompts
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.promptable_models import saved_models
+from tests import conftest
 from tests.conftest import flushDeferredDeletes
 
 # Captured at import (collection) time, before any test redirects them
@@ -186,6 +191,21 @@ def test_deleted_later_widget_destroyed_after_previous_test(app):
     assert _released.get('destroyed') is True
     names = [widget.objectName() for widget in QApplication.topLevelWidgets()]
     assert _released['name'] not in names
+
+
+def test_flush_collects_the_cyclic_garbage_of_the_test(app):
+    # The objects that survived earlier tests are frozen (gc.freeze), the
+    # ones created in this test are still collected
+    if conftest.FREEZE_SURVIVING_OBJECTS:
+        assert gc.get_freeze_count() > 0
+    widget = QWidget()
+    # The Python wrapper in a reference cycle: only gc.collect() frees it
+    widget.cycle = widget
+    ref = weakref.ref(widget)
+    del widget
+    assert ref() is not None
+    flushDeferredDeletes()
+    assert ref() is None
 
 
 def test_flush_deferred_deletes_destroys_widget(app):
