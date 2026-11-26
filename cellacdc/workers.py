@@ -1466,7 +1466,13 @@ class ComputeMetricsWorker(QObject):
                     'chName': chName,
                     'chNames': list(posData.chNames),
                     'combineMetricsConfig': posData.combineMetricsConfig,
-                    'combineMetricsPath': posData.custom_combine_metrics_path
+                    'combineMetricsPath': posData.custom_combine_metrics_path,
+                    # Table the kernel will update (the one linked to the
+                    # selected segmentation file)
+                    'acdcDfColumns': load.get_linked_acdc_df_columns(
+                        posData.images_path, posData.basename,
+                        self.mainWin.endFilenameSegm
+                    ),
                 })
 
             if any([posData.SizeT > 1 for posData in posDatas]):
