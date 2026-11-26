@@ -34,8 +34,8 @@ from cellacdc.service import prompts
 from cellacdc._model_startup import startup_timer
 from cellacdc.service.client import LocalBackend
 from cellacdc.service.environment import (
-    ensure_required_env, get_or_create_model_env, model_installed_in_main_env,
-    required_env_fingerprint,
+    ensure_required_env, get_or_create_model_env, load_model_env_config,
+    model_installed_in_main_env, required_env_fingerprint,
 )
 
 # False runs every model in-process (previous behaviour)
@@ -445,9 +445,18 @@ class ModelExecution:
         else:
             self.log(f'Initializing prepared {self.model_name} worker...')
             backend.init_model_kwargs = init_kwargs
+        # Models downloading large weights at initialization (e.g.,
+        # micro-sam) can allow more time (`init_timeout` in
+        # `cellacdc/models/_env_config.py`)
+        start_args = ()
+        init_timeout = load_model_env_config(self.model_name).get(
+            'init_timeout'
+        )
+        if init_timeout is not None:
+            start_args = (float(init_timeout),)
         try:
             with startup_timer(f'{self.model_name}: worker startup and init', self.log):
-                model = self.run_in_background(backend.start)
+                model = self.run_in_background(backend.start, *start_args)
         except Exception:
             backend.stop()
             raise
@@ -490,6 +499,18 @@ class ModelExecution:
             return True
         self._discard_dead_workers()
         return any(worker.model is model for worker in self._workers)
+
+    def forget_init_kwargs(self, model) -> None:
+        """Mark `model` as no longer matching the init kwargs it was created
+        with (e.g., a trained model was loaded into it with `load_model`).
+
+        Its worker is then never reused by `init_model` as an already
+        initialized model with those kwargs (it can still be re-initialized
+        with `POST /init` once released). No-op in-process.
+        """
+        for worker in self._workers:
+            if worker.model is model:
+                worker.key = None
 
     def release(self, model) -> None:
         """Give back an instance from `init_model` (no-op in-process).

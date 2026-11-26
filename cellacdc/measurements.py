@@ -2117,6 +2117,14 @@ def add_size_metrics(
     else:
         set_value = writer.set
 
+    # "Calculate for each z-slice" (3D objects): area of the selected units
+    zslice_cols = []
+    if calc_size_for_each_zslice and isSegm3D:
+        zslice_cols = [
+            col for col in ('cell_area_pxl', 'cell_area_um2')
+            if col in size_metrics_to_save
+        ]
+
     try:
         for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
             for col in size_metrics_to_save:
@@ -2125,16 +2133,18 @@ def add_size_metrics(
                 )
                 set_value(obj.label, col, val)
 
-                if not calc_size_for_each_zslice:
-                    continue
+            if not zslice_cols:
+                continue
 
-                z0 = obj.bbox[0]
-                for local_z, obj_img_z in enumerate(obj.image):
-                    z_slice = z0 + local_z
-                    area_pxl_z = np.count_nonzero(obj_img_z)
+            z0 = obj.bbox[0]
+            for local_z, obj_img_z in enumerate(obj.image):
+                z_slice = z0 + local_z
+                area_pxl_z = np.count_nonzero(obj_img_z)
+                if 'cell_area_pxl' in zslice_cols:
                     area_pxl_zslice_col = f'cell_area_pxl_zslice{z_slice}'
                     set_value(obj.label, area_pxl_zslice_col, area_pxl_z)
 
+                if 'cell_area_um2' in zslice_cols:
                     area_um2_z = area_pxl_z*yx_pxl_to_um2
                     area_um2_zslice_col = f'cell_area_um2_zslice{z_slice}'
                     set_value(obj.label, area_um2_zslice_col, area_um2_z)
@@ -2464,6 +2474,14 @@ def add_regionprops_metrics(df, lab, regionprops_to_save, logger_func=None):
 
     # Drop regionprops that were already calculated in a prev session
     df = df.drop(columns=df_rp.columns, errors='ignore')
+    # Multi-valued props are saved as '<prop>-<i>' columns --> drop the
+    # placeholder column with the bare name (all zeros) of older tables
+    expanded_props = [
+        prop for prop in regionprops_to_save
+        if prop not in df_rp.columns
+        and any(col.startswith(f'{prop}-') for col in df_rp.columns)
+    ]
+    df = df.drop(columns=expanded_props, errors='ignore')
     df = df.join(df_rp)
     return df, rp_errors
 
@@ -2652,6 +2670,146 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
         concentration_metrics_params, custom_metrics_params
     )
     return params
+
+_HOW_3D_TO_2D_SUFFIXES = ('', '_maxProj', '_meanProj', '_zSlice', '_3D')
+_CHANNEL_ZSLICE_COL_PATTERN = re.compile(r'^(.+_zSlice)\d+$')
+_SIZE_ZSLICE_COL_PATTERN = re.compile(r'^(cell_area_(?:pxl|um2))_zslice\d+$')
+_REGIONPROP_COL_PATTERN = re.compile(r'^(.+?)(?:-\d+)+$')
+
+def unselected_measurement_columns(
+        colnames, channels, selected_cols, other_measurement_cols=(),
+        zslice_channels=(), calc_size_for_each_zslice=False
+    ):
+    """Return the measurement columns of `colnames` that are not selected.
+
+    A column is a measurement if it is one of the measurements that can be
+    selected in the "Set measurements" dialog (`apps.SetMeasurementsDialog`)
+    or one of their expansions:
+
+    * standard, background and custom (`acdc_metrics_path`) metrics of
+      every channel in `channels` (with any 3D->2D suffix, any
+      ``_vs_<channel>`` suffix of custom metrics and the z-slice index of
+      "Calculate for each z-slice", e.g. ``GFP_mean_zSlice2``, also after
+      the ``_vs_<channel>`` suffix, e.g. ``GFP_custom_zSlice_vs_mCherry2``)
+    * size metrics (also ``cell_area_<pxl|um2>_zslice<N>``), region properties
+      (also the ``<prop>-<i>-<j>`` columns of multi-valued properties) and
+      channel independent custom metrics (with any 3D->2D suffix)
+    * any name in `other_measurement_cols` (e.g. combined measurements)
+
+    Every other column (cell cycle annotations, custom annotations, metadata,
+    columns added by other tools) is never returned.
+
+    Parameters
+    ----------
+    colnames : iterable of str
+        Columns to check (e.g., the columns of an existing acdc_output table).
+    channels : iterable of str
+        All channel names that can appear in channel measurements.
+    selected_cols : iterable of str
+        Names of the selected measurements (as in the dialog).
+    other_measurement_cols : iterable of str, optional
+        Additional measurement names, e.g., combined measurements.
+    zslice_channels : iterable of str, optional
+        Channels with "Calculate for each z-slice" requested. Z-slice columns
+        of the other channels are not selected.
+    calc_size_for_each_zslice : bool, optional
+        Whether "Calculate for each z-slice" of the size metrics is
+        requested.
+
+    Returns
+    -------
+    list of str
+        Unselected measurement columns, in the order of `colnames`.
+    """
+    selected = set(selected_cols)
+    channels = [ch for ch in channels if ch]
+    zslice_channels = set(zslice_channels)
+    func_names = [
+        *_get_metrics_names(is_manual_bkgr_present=True),
+        *_get_bkgr_val_names(is_manual_bkgr_present=True),
+    ]
+    custom_func_names = list(_get_custom_metrics_names())
+    channel_metrics = {}
+    custom_channel_metrics = set()
+    for channel in channels:
+        for how in _HOW_3D_TO_2D_SUFFIXES:
+            for func_name in func_names:
+                channel_metrics[f'{channel}_{func_name}{how}'] = channel
+            for func_name in custom_func_names:
+                col = f'{channel}_{func_name}{how}'
+                channel_metrics[col] = channel
+                custom_channel_metrics.add(col)
+
+    measurements_names = {
+        *other_measurement_cols,
+        *get_size_metrics_desc(True, True),
+        *get_props_names(),
+    }
+    for func_name in _get_ch_indipendent_custom_metrics_names():
+        for how in _HOW_3D_TO_2D_SUFFIXES:
+            measurements_names.add(f'{func_name}{how}')
+    props_names = set(get_props_names())
+    # Longest first: with channels 'ch1' and 'ch12', 'X_vs_ch12' is against
+    # 'ch12' (not z-slice 2 against 'ch1')
+    channels_by_length = sorted(channels, key=len, reverse=True)
+    channels_set = set(channels)
+
+    unselected = []
+    for col in colnames:
+        if not isinstance(col, str):
+            continue
+
+        if col in selected:
+            continue
+
+        base = col
+        is_selected_variant = True
+        if base in channel_metrics or base in measurements_names:
+            pass
+        elif (
+                '_vs_' in base
+                and base[:base.rfind('_vs_')] in custom_channel_metrics
+            ):
+            # Custom metric computed against another channel
+            idx = base.rfind('_vs_')
+            vs_base, other = base[:idx], base[idx+len('_vs_'):]
+            if other in channels_set:
+                base = vs_base
+            else:
+                # "Calculate for each z-slice": '<metric>_zSlice_vs_<ch><z>'
+                zslice_channel = next((
+                    ch for ch in channels_by_length
+                    if other.startswith(ch) and other[len(ch):].isdigit()
+                ), None)
+                if zslice_channel is None or not vs_base.endswith('_zSlice'):
+                    # Not a measurement
+                    continue
+                base = vs_base
+                is_selected_variant = channel_metrics[base] in zslice_channels
+        elif _CHANNEL_ZSLICE_COL_PATTERN.match(base) is not None:
+            # Measurement of a single z-slice ("Calculate for each z-slice")
+            base = _CHANNEL_ZSLICE_COL_PATTERN.match(base).group(1)
+            if base not in channel_metrics:
+                continue
+            is_selected_variant = channel_metrics[base] in zslice_channels
+        elif _SIZE_ZSLICE_COL_PATTERN.match(base) is not None:
+            base = _SIZE_ZSLICE_COL_PATTERN.match(base).group(1)
+            is_selected_variant = calc_size_for_each_zslice
+        elif _REGIONPROP_COL_PATTERN.match(base) is not None:
+            # Multi-valued region property, e.g. 'centroid-0'
+            base = _REGIONPROP_COL_PATTERN.match(base).group(1)
+            if base not in props_names:
+                continue
+        else:
+            # Not a measurement
+            continue
+
+        if base in selected and is_selected_variant:
+            continue
+
+        unselected.append(col)
+
+    return unselected
 
 def get_regionprops_columns(existing_colnames, selected_props_names):
     selected_rp_cols = []
