@@ -124,6 +124,7 @@ Every save also writes a snapshot to `Images/recovery/<basename>acdc_output.zip`
 
 - `gh` older than ~2.82 (installed with winget) fails in `gh pr edit` with "Projects (classic) is being deprecated" (GraphQL): upgrade with `winget upgrade --id GitHub.cli` (2.105 works).
 - PRs targeting another PR's branch (e.g. a fix on `signal_gui`) are native GitHub stacks: every PR is checked against `main`'s ruleset (1 approval after the last push, builds, merge commits only; "review required" even though `signal_gui` has no rules), merges go bottom-up, admin bypass merges only the bottom PR. Update a stacked branch by merging its base and pushing: the server-side "Rebase stack" force-pushes, and replaying merge-updated branches conflicts (CLAUDE.md notes).
+- A stack's conflicts with `main` show only on its bottom PR (`mergeStateStatus` DIRTY; upper PRs are checked against their own base and show CLEAN, but carry the same conflicts): merge `main` into the bottom branch, resolve there, then merge each branch into the one above. "Stack #N" is not a PR number: `gh api repos/<owner>/<repo>/pulls/<pr>` has `stack` (`number`, `position`, `size`, recorded `base.sha`). Trial-merge without touching the shared checkout: `git merge-tree --write-tree --name-only <branch> <other>`.
 
 ## Long-running work
 
