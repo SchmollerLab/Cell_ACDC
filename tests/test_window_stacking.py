@@ -6,6 +6,8 @@ from qtpy.QtWidgets import QApplication, QWidget
 
 from cellacdc import _window_stacking
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture
 def app():

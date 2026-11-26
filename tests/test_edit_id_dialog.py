@@ -4,6 +4,8 @@ from qtpy.QtWidgets import QApplication
 
 from cellacdc import apps, widgets
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():

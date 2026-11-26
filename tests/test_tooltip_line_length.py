@@ -38,6 +38,8 @@ from cellacdc.measurements_viewer import (
 )
 from cellacdc.timepoint_predictors import TimepointIdentifier
 
+pytestmark = pytest.mark.viewer
+
 MAX = qutils.TOOLTIP_MAX_LINE_LENGTH
 
 LONG_DESCRIPTION = (

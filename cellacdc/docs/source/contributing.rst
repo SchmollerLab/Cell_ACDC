@@ -123,6 +123,9 @@ GUI tests run offscreen, so no windows appear::
     # Only the smoke tests (core workflows, less than a minute)
     python -m pytest -m smoke
 
+    # The slow tests of the measurements viewer
+    python -m pytest -m "viewer and slow"
+
     # The tests related to your changes (compared with upstream/main;
     # arguments after --run go to pytest)
     python tests/related_tests.py --base upstream/main --run
@@ -139,12 +142,27 @@ The tests are marked by speed and purpose (markers registered in
 * ``flaky``: the test failed or hung now and then on CI (timing, threads).
   Like the slow tests, it is left out of the fast tier until it is fixed.
 
-When you add a test, keep it fast (small synthetic data) and check its duration
-with ``python -m pytest tests/test_<name>.py --durations=0``. Mark it
-``@pytest.mark.slow`` if it still takes half a second or more, or mark the whole
-file with ``pytestmark = pytest.mark.slow`` when all its tests are slow. A test
-must pass whatever other tests run before it: the tiers leave out the slow and
-flaky tests.
+Each test file also has exactly one area marker, for the part of Cell-ACDC it
+tests. It is set for the whole file at the top, e.g.
+``pytestmark = pytest.mark.viewer`` (a list when the file has other module
+markers such as ``slow``):
+
+* ``viewer``: the measurements viewer and its predictors, phases, equations and
+  measurement processing.
+* ``gui``: the main GUI, the launcher and shared widgets and dialogs.
+* ``models``: segmentation models, trackers, promptable models and the model
+  server.
+* ``core``: data loading, measurements, image analysis algorithms and batch
+  utilities.
+* ``infra``: the test setup, packaging, resources and repository tooling.
+
+A new test file needs its area marker (``tests/test_area_markers.py`` fails
+without it). When you add a test, keep it fast (small synthetic data) and check
+its duration with ``python -m pytest tests/test_<name>.py --durations=0``. Mark
+it ``@pytest.mark.slow`` if it still takes half a second or more, or add
+``pytest.mark.slow`` to the file's ``pytestmark`` when all its tests are slow. A
+test must pass whatever other tests run before it: the tiers leave out the slow
+and flaky tests.
 
 Continuous integration (GitHub Actions) runs the tests in tiers, on Ubuntu,
 Windows and macOS with PyQt5 and PyQt6 and Python 3.10 to 3.13:

@@ -24,6 +24,8 @@ from cellacdc.promptable_models import saved_models
 from tests import conftest
 from tests.conftest import flushDeferredDeletes
 
+pytestmark = pytest.mark.infra
+
 # Captured at import (collection) time, before any test redirects them
 REAL_SETTINGS_FOLDERPATH = cellacdc.settings_folderpath
 REAL_LOGS_PATH = cellacdc.logs_path

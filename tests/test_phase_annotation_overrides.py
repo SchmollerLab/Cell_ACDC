@@ -17,6 +17,8 @@ from cellacdc import measurements_viewer_utils
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 
+pytestmark = pytest.mark.viewer
+
 
 load_configuration = MeasurementsViewerWin.loadConfiguration
 

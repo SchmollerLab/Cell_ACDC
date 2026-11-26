@@ -7,6 +7,8 @@ from qtpy.QtWidgets import QApplication, QWidget
 
 from cellacdc import apps, cli, config, measurements, timepoint_predictors, widgets
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():

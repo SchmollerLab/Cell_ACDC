@@ -4,8 +4,11 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from cellacdc.promptable_models import utils
+
+pytestmark = pytest.mark.models
 
 
 def _assert_raises(exc_type, func, *args, **kwargs):

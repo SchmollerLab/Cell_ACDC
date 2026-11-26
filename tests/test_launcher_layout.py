@@ -15,6 +15,8 @@ from qtpy.QtWidgets import QApplication, QGroupBox, QPushButton, QWidget
 
 from cellacdc import _main, dataStruct, measurements_viewer, myutils
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():

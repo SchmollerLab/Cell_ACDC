@@ -7,6 +7,8 @@ from cellacdc.trackers.CellACDC import CellACDC_tracker
 from cellacdc.trackers.CellACDC_2steps.CellACDC_2steps_tracker import tracker as TwoStepsTracker
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import tracker as NormalDivisionTracker
 
+pytestmark = pytest.mark.models
+
 
 def test_calc_io_matrix_uses_regionprops_iteration_order_for_axes():
     prev_lab = np.array(

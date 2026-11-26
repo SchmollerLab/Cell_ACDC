@@ -23,6 +23,8 @@ from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc import annotate, measurements_viewer, qutils, widgets
 from cellacdc import measurements_viewer_utils
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():

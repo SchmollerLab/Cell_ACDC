@@ -29,6 +29,8 @@ from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX, TimepointIdentifier
 
 from tests.test_measurement_viewer import make_timelapse_position
 
+pytestmark = pytest.mark.viewer
+
 
 SIZE_T = 6
 LAST = 2  # cca annotated frames 0-2 of 6

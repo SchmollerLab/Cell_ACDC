@@ -14,6 +14,8 @@ from cellacdc.measurement_processing import (
     MEASUREMENT_PROCESSING_MAPPER, apply_recipe
 )
 
+pytestmark = pytest.mark.viewer
+
 
 class _Recorder:
     """Order-sensitive processor that records every call."""

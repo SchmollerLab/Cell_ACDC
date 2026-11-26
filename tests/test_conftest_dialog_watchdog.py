@@ -18,6 +18,8 @@ from tests.conftest import (
     _DialogWatchdog, flushDeferredDeletes
 )
 
+pytestmark = pytest.mark.infra
+
 SAFETY_TIMEOUT_MS = 5000
 
 # Showing a QMessageBox on the offscreen (or minimal) platform crashes the

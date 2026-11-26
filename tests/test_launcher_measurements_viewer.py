@@ -9,6 +9,8 @@ from qtpy.QtWidgets import QApplication, QMenu, QPushButton
 from cellacdc import _main, measurements_viewer
 from cellacdc.info import utilsInfo
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():

@@ -8,6 +8,8 @@ from cellacdc.service import environment
 from cellacdc.service.client import LocalBackend
 from cellacdc import _model_startup
 
+pytestmark = pytest.mark.models
+
 
 @pytest.mark.parametrize("existing", [False, True])
 @pytest.mark.parametrize("needs_torch", [False, True])

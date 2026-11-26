@@ -7,6 +7,8 @@ from qtpy.QtWidgets import QApplication, QWidget
 from cellacdc import apps, widgets
 from cellacdc.gui_viewer_tools import ShortcutsGuiElements
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():

@@ -18,6 +18,8 @@ from cellacdc.measurements_viewer import MeasurementsViewerWin, _TimepointLine, 
 from cellacdc.timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
 from tests.conftest import flushDeferredDeletes
 
+pytestmark = pytest.mark.viewer
+
 load_configuration = MeasurementsViewerWin.loadConfiguration
 
 

@@ -23,6 +23,8 @@ from cellacdc.timepoint_predictors import (
     TIMEPOINT_PREFIX
 )
 
+pytestmark = pytest.mark.viewer
+
 FUCCI_TEMPLATE = os.path.join(
     PREMADE_CONFIGURATIONS_PATH, 'fucci_cell_cycle.json'
 )

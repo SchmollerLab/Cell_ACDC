@@ -23,6 +23,8 @@ from cellacdc.gui_overlay import (
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.utils import concat
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():

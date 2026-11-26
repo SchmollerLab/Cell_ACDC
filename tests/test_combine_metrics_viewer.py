@@ -11,6 +11,8 @@ from qtpy.QtWidgets import QApplication
 from cellacdc import apps, measurements, measurements_viewer
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():

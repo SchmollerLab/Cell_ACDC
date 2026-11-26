@@ -27,6 +27,8 @@ from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker
     normal_division_lineage_tree, tracker as NormalDivisionTracker
 )
 
+pytestmark = pytest.mark.gui
+
 G = gui.guiWin
 SEGM = 'Segmentation and Tracking'
 LIN = 'Normal division: Lineage tree'

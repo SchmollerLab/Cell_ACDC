@@ -9,6 +9,8 @@ import pytest
 from tests import related_tests
 from tests.related_tests import ALL, Selection
 
+pytestmark = pytest.mark.infra
+
 FILES = {
     'cellacdc/__init__.py': 'printl = print\n',
     'cellacdc/gui.py': (

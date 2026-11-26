@@ -10,6 +10,8 @@ import pytest
 from cellacdc import timepoint_predictors as tp
 from cellacdc._equations import equation_variable_spans
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def qapp():

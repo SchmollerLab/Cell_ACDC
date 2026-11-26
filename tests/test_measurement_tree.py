@@ -9,6 +9,8 @@ from qtpy.QtWidgets import QApplication, QTreeView
 
 from cellacdc import apps, apps_measurements_viewer, measurements, measurements_viewer, widgets
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():

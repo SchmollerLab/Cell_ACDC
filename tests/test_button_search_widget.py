@@ -13,6 +13,8 @@ from qtpy.QtWidgets import (
     QAction, QApplication, QMainWindow, QPushButton, QToolBar, QWidget,
 )
 
+pytestmark = pytest.mark.gui
+
 @pytest.fixture(scope='module')
 def app():
     return QApplication.instance() or QApplication([])

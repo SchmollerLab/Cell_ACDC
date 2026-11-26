@@ -8,6 +8,8 @@ import pytest
 
 from cellacdc import myutils
 
+pytestmark = pytest.mark.models
+
 
 def _guard_weights_registry(monkeypatch, tmp_path):
     from cellacdc.models import _yeaz_v2_weights

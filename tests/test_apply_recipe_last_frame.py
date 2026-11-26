@@ -14,6 +14,8 @@ from qtpy.QtWidgets import QApplication
 from cellacdc import measurement_processing, workers
 from cellacdc.measurement_processing import apply_recipe
 
+pytestmark = pytest.mark.viewer
+
 MAX_FRAME = 5
 
 

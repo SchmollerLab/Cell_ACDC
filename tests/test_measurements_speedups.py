@@ -15,6 +15,8 @@ import skimage.measure
 
 from cellacdc import core, measurements
 
+pytestmark = pytest.mark.core
+
 QS = [0.25, 0.75, 0.05, 0.95]
 
 

@@ -13,6 +13,8 @@ from cellacdc import _torch_utils, myutils
 from cellacdc._torch_utils import torch_requirement, torch_version_specifier
 from cellacdc.service import environment, prompts
 
+pytestmark = pytest.mark.models
+
 
 def test_legacy_imports_reexport_torch_helpers():
     for name in (

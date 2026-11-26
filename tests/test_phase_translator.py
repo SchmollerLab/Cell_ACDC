@@ -15,6 +15,8 @@ from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TimepointIdentifier
 
+pytestmark = pytest.mark.viewer
+
 load_configuration = MeasurementsViewerWin.loadConfiguration
 
 

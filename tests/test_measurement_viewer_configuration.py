@@ -21,7 +21,7 @@ from cellacdc.measurements_viewer import MeasurementsViewerWin, VISITED_COLUMN
 from cellacdc.timepoint_predictors import TimepointIdentifier
 
 # The configurations below use the test-only identity processor 'Dummy'
-pytestmark = pytest.mark.usefixtures('dummy_processor')
+pytestmark = [pytest.mark.viewer, pytest.mark.usefixtures('dummy_processor')]
 
 
 @pytest.fixture(scope='module')

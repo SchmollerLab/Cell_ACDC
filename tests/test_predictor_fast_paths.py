@@ -18,6 +18,8 @@ import pytest
 from cellacdc import timepoint_predictors as tp
 from cellacdc.custom_annotation_predictors import CustomAnnotationPredictor
 
+pytestmark = pytest.mark.viewer
+
 
 def random_table(seed, kind='tree', nCells=12, nFrames=7):
     """Random table with tracking gaps, NaN/inf, ties, a backtick-quoted

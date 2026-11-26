@@ -3,6 +3,8 @@ import numpy as np
 
 from cellacdc.regionprops import acdcRegionprops
 
+pytestmark = pytest.mark.core
+
 
 def test_update_regionprops_via_cutout_reuses_cutout_object_with_global_coords():
     old_lab = np.zeros((12, 12), dtype=np.uint16)

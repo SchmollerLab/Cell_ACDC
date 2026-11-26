@@ -1,6 +1,7 @@
 import types
 
 import numpy as np
+import pytest
 from skimage.measure import regionprops
 from types import SimpleNamespace
 
@@ -10,6 +11,8 @@ from cellacdc.workers import SegForLostIDsWorker
 
 from cellacdc.models.thresholding.acdcSegment import Model as ThresholdingModel
 from cellacdc.segm_utils import get_best_overlapping_label
+
+pytestmark = pytest.mark.models
 
 
 def test_get_best_overlapping_label_uses_majority_overlap_with_allowed_labels():

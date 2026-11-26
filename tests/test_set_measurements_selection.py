@@ -17,6 +17,8 @@ from qtpy.QtWidgets import QApplication
 from cellacdc import apps, cli, cca_functions, measurements
 from cellacdc.utils import compute as utils_compute
 
+pytestmark = pytest.mark.core
+
 BASENAME = 'exp_s01_'
 CHANNELS = ['phase', 'GFP', 'mCherry']
 FLUO = ['GFP', 'mCherry']

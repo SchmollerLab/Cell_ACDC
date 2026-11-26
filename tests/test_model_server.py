@@ -11,6 +11,8 @@ from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, 
 from cellacdc.service.client import LocalBackend, ModelClient, RemoteBackend
 from cellacdc import cli, myutils_models
 
+pytestmark = pytest.mark.models
+
 
 def test_local_backend_forwards_worker_output(capsys):
     import collections

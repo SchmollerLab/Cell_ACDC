@@ -6,6 +6,8 @@ from collections import namedtuple
 
 import pytest
 
+pytestmark = pytest.mark.models
+
 
 @pytest.mark.slow
 @pytest.mark.parametrize("mode, delay", [

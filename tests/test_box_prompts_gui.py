@@ -14,6 +14,8 @@ from cellacdc import widgets, workers
 from cellacdc.gui import guiWin
 from cellacdc.service.client import ModelClient
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():

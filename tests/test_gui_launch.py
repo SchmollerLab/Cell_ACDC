@@ -4,7 +4,7 @@ from qtpy.QtWidgets import QApplication, QToolButton
 
 from cellacdc import gui
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.gui, pytest.mark.slow]
 
 
 @pytest.fixture(scope='module')

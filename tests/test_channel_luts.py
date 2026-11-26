@@ -27,6 +27,8 @@ from tests.test_measurement_viewer import (
     real_viewer  # noqa: F401 (fixture)
 )
 
+pytestmark = pytest.mark.gui
+
 GREY_TICKS = default_image_lut()['ticks']
 PRESETS = pg.graphicsItems.GradientEditorItem.Gradients
 CHANNEL_SETTING_PREFIXES = ('image_lut_', 'overlay_lut_', 'overlay_alpha_slider_')

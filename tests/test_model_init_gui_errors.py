@@ -6,7 +6,7 @@ import textwrap
 
 import pytest
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.models, pytest.mark.slow]
 
 
 @pytest.mark.parametrize("entry_point", ["segmentation", "budding"])

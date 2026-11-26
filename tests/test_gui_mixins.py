@@ -25,6 +25,8 @@ from cellacdc.gui_viewer_tools import (
 )
 from cellacdc.gui_navigation import LutGuiElements
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():

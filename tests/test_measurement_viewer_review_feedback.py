@@ -23,6 +23,8 @@ from cellacdc.measurements_viewer import (
     MeasurementsViewerWin, SIGNAL_COLORS, signal_color
 )
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():

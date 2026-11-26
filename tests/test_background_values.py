@@ -22,6 +22,8 @@ from cellacdc.info import utilsInfo
 from cellacdc.utils import base as utilsBase
 from cellacdc.utils import computeBackgroundValues as utilsComputeBackgroundValues
 
+pytestmark = pytest.mark.core
+
 
 @pytest.fixture(scope='module')
 def app():

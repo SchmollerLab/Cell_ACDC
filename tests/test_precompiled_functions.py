@@ -13,6 +13,8 @@ import numpy as np
 from skimage.draw import disk, ellipsoid
 from skimage.measure import regionprops
 
+pytestmark = pytest.mark.core
+
 # ---------------------------------------------------------------------------
 # Skip the whole module when the Cython extension is not compiled yet
 # ---------------------------------------------------------------------------

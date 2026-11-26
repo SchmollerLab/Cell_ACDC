@@ -5,6 +5,8 @@ import pytest
 
 from cellacdc.service import setup_models
 
+pytestmark = pytest.mark.models
+
 
 def test_preselected_models_use_isolated_setup(monkeypatch):
     setup = Mock(return_value='model-python')

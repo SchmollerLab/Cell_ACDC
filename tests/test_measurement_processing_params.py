@@ -8,6 +8,8 @@ from cellacdc import (
     apps, apps_measurements_viewer, measurement_processing, myutils, widgets
 )
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():

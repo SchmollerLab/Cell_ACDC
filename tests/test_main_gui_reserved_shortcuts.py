@@ -21,6 +21,8 @@ from qtpy.QtWidgets import QAction, QApplication, QMainWindow, QToolButton
 from cellacdc import apps, gui, widgets
 from cellacdc.gui_custom_annotations import CustomAnnotationsGuiElements
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():

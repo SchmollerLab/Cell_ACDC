@@ -14,6 +14,8 @@ from cellacdc import apps, apps_measurements_viewer, measurements_viewer, widget
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from tests.conftest import flushDeferredDeletes
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():

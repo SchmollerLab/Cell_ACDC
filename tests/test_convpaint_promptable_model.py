@@ -15,6 +15,8 @@ import pytest
 
 import cellacdc
 
+pytestmark = pytest.mark.models
+
 MODULE_PATH = os.path.join(
     os.path.dirname(cellacdc.__file__), 'promptable_models', 'ConvPaint',
     'acdcPromptSegment.py'
