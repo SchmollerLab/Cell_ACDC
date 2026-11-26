@@ -34,6 +34,11 @@ Entry fields (all optional):
         and optional check (Python code). A successful check skips the step;
         after setup the check must succeed. Output is streamed and errors raised.
         Commands never use a shell. Without a check, a step runs on every setup.
+        A step with optional=True (e.g., a dependency of only some model
+        types) logs a warning instead of raising when it fails or is declined.
+    init_timeout: seconds allowed to start the model worker and initialize
+        the model (default 120). Increase it for models that download large
+        weights the first time they are initialized.
     required_env: environment variables the model needs at runtime (e.g.
         access tokens). Each item is a dict with ``name``, optional
         ``description``, ``secret`` (mask the input) and
@@ -176,6 +181,112 @@ MODEL_ENVS = {
         'python': '3.12',
         'torch': True,
         'packages': ['nnInteractive', 'huggingface_hub'],
+    },
+    # Promptable model. `napari_convpaint/__init__.py` imports napari and Qt,
+    # which the model does not need: napari-convpaint is installed without
+    # dependencies (setup step) and its model is imported without running
+    # `__init__.py` (see promptable_models/ConvPaint/acdcPromptSegment.py).
+    # `packages` are the dependencies of the model (keep in sync with
+    # `myutils._CONVPAINT_PACKAGES`).
+    'ConvPaint': {
+        'python': '3.12',
+        'torch': True,
+        'packages': [
+            {'pkg_name': 'catboost', 'min_version': '1.2.8',
+             'include_lower_version': True},
+            {'pkg_name': 'timm', 'min_version': '1.0.20',
+             'include_lower_version': True},
+            'einops',
+            'joblib',
+            'pandas',
+            {'pkg_name': 'pyyaml', 'import_pkg_name': 'yaml'},
+            'requests',
+            {'pkg_name': 'scikit-image', 'import_pkg_name': 'skimage'},
+            {'pkg_name': 'scikit-learn', 'import_pkg_name': 'sklearn'},
+            'scipy',
+        ],
+        'main_env_packages': [
+            {'pkg_name': 'napari-convpaint', 'min_version': '1.2',
+             'include_lower_version': True},
+        ],
+        'setup_steps': [
+            {
+                'name': 'napari-convpaint',
+                'description': 'Install napari-convpaint without its '
+                               'napari and Qt dependencies (only the '
+                               'ConvPaint model is used).',
+                'check': 'import importlib.util\n'
+                         'import importlib.metadata as m\n'
+                         'from packaging.version import Version\n'
+                         "assert importlib.util.find_spec('napari_convpaint') "
+                         'is not None\n'
+                         "assert Version(m.version('napari-convpaint')) "
+                         ">= Version('1.2')",
+                'commands': [
+                    ['-m', 'pip', 'install', '--no-deps',
+                     'napari-convpaint>=1.2'],
+                ],
+            },
+        ],
+    },
+    # Promptable model (SAM1 models of micro-sam, `micro_sam.v1`, which
+    # requires micro-sam >= 2.0), installed with pip as in the official
+    # micro-sam documentation (it also installs napari and Qt, which only live
+    # in this isolated environment). MobileSAM, needed only by the `vit_t`
+    # models, is not on PyPI: it is installed from the GitHub archive (no git
+    # required) at the commit pinned by micro-sam.
+    'micro-sam_v1': {
+        'python': '3.12',
+        'torch': True,
+        'torch_version': '>=2.5,<3',
+        # The first initialization of each model downloads its weights
+        # (from ~40 MB for vit_t up to ~2.5 GB for vit_h)
+        'init_timeout': 3600,
+        'packages': [
+            # micro-sam 2.0.0 is enough for the SAM1 API (`micro_sam.v1`).
+            # Unlike micro-sam v2 (>= 2.0.1), it does not need `sam2`, which
+            # has no wheel and would be built from source
+            {'pkg_name': 'micro_sam', 'min_version': '2.0',
+             'include_lower_version': True},
+        ],
+        'setup_steps': [
+            {
+                'name': 'MobileSAM',
+                'description': 'Install MobileSAM from GitHub (optional, '
+                               'required only by the vit_t models of '
+                               'micro-sam).',
+                # The other micro-sam models do not need it
+                'optional': True,
+                'check': 'import mobile_sam',
+                'commands': [
+                    ['-m', 'pip', 'install',
+                     'https://github.com/ChaoningZhang/MobileSAM/archive/'
+                     'f706ad9c4eb7f219c00d9050e46328518ffb65d2.zip'],
+                ],
+            },
+        ],
+    },
+    # Promptable model (SAM2 models of micro-sam, `micro_sam.v2`), installed
+    # with pip as in the official micro-sam documentation (it also installs
+    # napari and Qt, which only live in this isolated environment).
+    'micro-sam_v2': {
+        'python': '3.12',
+        'torch': True,
+        'torch_version': '>=2.5,<3',
+        # The first initialization of each model downloads its weights
+        # (from ~160 MB for hvit_t up to ~900 MB for hvit_l)
+        'init_timeout': 3600,
+        'packages': [
+            # micro-sam 2.0.0 does not declare its `sam2` dependency (added in
+            # 2.0.1). `sam2` has no wheel (only an sdist), so the first
+            # `pip install --only-binary=:all:` attempt of Cell-ACDC would
+            # silently install micro-sam 2.0.0 without `sam2`. With >= 2.0.1
+            # that attempt fails and the retry with `--prefer-binary` builds
+            # `sam2`. It also repairs environments with micro-sam 2.0.0.
+            # Keep in sync with `micro-sam_v2/__init__.py`
+            {'pkg_name': 'micro_sam', 'min_version': '2.0.1',
+             'include_lower_version': True},
+        ],
     },
     'cellsam': {
         'torch': True,

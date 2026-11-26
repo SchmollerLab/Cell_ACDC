@@ -896,6 +896,26 @@ def get_acdc_output_files(images_path):
     ]
     return acdc_output_files
 
+def get_linked_acdc_df_columns(images_path, basename, end_filename_segm):
+    """Columns of the acdc_output table linked to the segmentation file
+    ending with `end_filename_segm` (only the header is read). Empty list
+    when the table does not exist."""
+    if not end_filename_segm:
+        return []
+
+    end_filename_segm = end_filename_segm.replace('.npz', '')
+    acdc_df_end_fn = end_filename_segm.replace('segm', 'acdc_output')
+    acdc_df_path = os.path.join(
+        images_path, f'{basename}{acdc_df_end_fn}.csv'
+    )
+    if not os.path.exists(acdc_df_path):
+        return []
+
+    try:
+        return list(pd.read_csv(acdc_df_path, nrows=0).columns)
+    except Exception as err:
+        return []
+
 def get_segm_files(images_path):
     ls = myutils.listdir(images_path)
 
@@ -4593,8 +4613,10 @@ def read_measurements_workflow_from_config(filepath):
         'regionprops_to_save',
         'channel_indipendent_custom_metrics_to_save',
         'mixed_combine_metrics_to_skip',
+        'mixed_combine_metrics_to_save',
         'channel_names_to_skip',
-        'channel_names_to_process'
+        'channel_names_to_process',
+        'existing_measurements_to_delete',
     }
     ini_items = {}
     for section in configPars.sections():

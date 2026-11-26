@@ -17,6 +17,7 @@ import cellacdc
 from cellacdc import gui_core, gui_custom_annotations, gui_viewer_tools
 from cellacdc import load, measurements_viewer, myutils, prompts
 from cellacdc.measurements_viewer import MeasurementsViewerWin
+from cellacdc.promptable_models import saved_models
 from tests.conftest import flushDeferredDeletes
 
 # Captured at import (collection) time, before any test redirects them
@@ -62,6 +63,10 @@ def test_settings_paths_point_to_isolated_folder(_isolate_user_settings):
             (load, 'last_selected_measurements_ini_path'),
             (myutils, 'recentPaths_path'),
             (cellacdc, 'recentPaths_path'),
+            (cellacdc, 'saved_promptable_models_path'),
+            (saved_models, 'saved_promptable_models_path'),
+            (cellacdc, 'promptable_models_list_file_path'),
+            (myutils, 'promptable_models_list_file_path'),
         ):
         assert _isInside(getattr(module, name), folderpath), (module, name)
     # The settings folder itself is redirected too (load.py and prompts.py
