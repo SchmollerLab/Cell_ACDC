@@ -1,0 +1,105 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "description": "T in file, Y == 1 (squeeze)"
+ },
+ "case": "RM",
+ "dst": {
+  "Position_1/Images/Channel_1.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": {
+    "LensNA": [],
+    "images": [
+     {
+      "Channels": [
+       {}
+      ],
+      "Name": "Channel_1",
+      "Pixels": {
+       "DimensionOrder": "XYCZT",
+       "SizeC": "1",
+       "SizeT": "1",
+       "SizeX": "5",
+       "SizeY": "3",
+       "SizeZ": "1",
+       "Type": "uint16"
+      }
+     }
+    ]
+   },
+   "origins": [
+    [0, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "eedf6e5c06e2bb3e0aba486c15e300c3bc433118ef9a4298635f86076c55dee4",
+   "shape": [3, 5]
+  },
+  "Position_1/Images/metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["basename", ""],
+    ["SizeT", "3"],
+    ["SizeZ", "1"],
+    ["channel_0_name", "Channel_1"]
+   ]
+  }
+ },
+ "exception": null,
+ "result": {
+  "image_files": ["<DST>/Position_1/Images/Channel_1.tif"],
+  "position_folders": {
+   "line": "<DST>/Position_1"
+  }
+ },
+ "signals": [
+  ["initProgressBar", 0],
+  ["progress", "Processing TIFF files...", "INFO"],
+  ["initProgressBar", 1],
+  ["progress", "Creating Position folder Position_1...", "INFO"],
+  ["progressBar", 1]
+ ],
+ "src": {
+  "line.tif": {
+   "axes": "SYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "eedf6e5c06e2bb3e0aba486c15e300c3bc433118ef9a4298635f86076c55dee4",
+   "shape": [3, 1, 5]
+  }
+ }
+}

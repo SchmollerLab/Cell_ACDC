@@ -32,6 +32,10 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         python -m pip install -e .
         python -m pip install -r requirements_gui_pyqt6.txt
+    - name: Install optional readers (bioio)
+      continue-on-error: true
+      run: |
+        python -m pip install "bioio>=3.0,<4" "bioio-tifffile>=1.3,<2"
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
@@ -41,3 +45,9 @@ jobs:
     - name: Test with pytest
       run: |
         pytest
+    - name: Slow data-structure tests (Module 0 goldens through child processes)
+      if: matrix.python-version == '3.12'
+      env:
+        ACDC_SLOW_TESTS: '1'
+      run: |
+        pytest tests/datastruct/test_golden_module0.py tests/datastruct/test_bioio_writer.py

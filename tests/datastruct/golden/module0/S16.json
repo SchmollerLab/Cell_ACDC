@@ -1,0 +1,57 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "channel_order": null,
+  "description": "layout 1, truncated (unreadable) TIFF",
+  "dialog_values": [],
+  "tracebacks": [
+   "Traceback (most recent call last):\n  File \"dataStruct.py\", line 302, in readMetadata\n    metadata, metadataXML = self._readMetadataBioIO(rawFilePath)\n                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"dataStruct.py\", line 270, in _readMetadataBioIO\n    bioformats._utils.check_raise_exception(uuid4)\n  File \"_utils.py\", line 297, in check_raise_exception\n    raise RuntimeError(traceback_text)\nRuntimeError: Traceback (most recent call last):\n  File \"reader.py\", line 61, in __init__\n    self._bioioimage = BioImage(image_filepath, **all_kwargs)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 320, in __init__\n    self._reader, self._plugin = self._get_reader(\n                                 ^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 304, in _get_reader\n    plugin = BioImage.determine_plugin(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 245, in determine_plugin\n    raise biob.exceptions.UnsupportedFileFormatError(\nbioio_base.exceptions.UnsupportedFileFormatError: BioImage does not support the image: '<SRC>/pos1.tif'. You may need to install an extra format dependency. See our list of known plugins in the bioio README here: https://github.com/bioio-devs/bioio for a list of known plugins. You can also call the 'bioio.plugins.dump_plugins()' method to report information about currently installed plugins or the 'bioio.plugin_feasibility_report(image)' method to check if a specific image can be handled by the available plugins.\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"reader.py\", line 63, in __init__\n    self._bioioimage = BioImage(image_filepath, **kwargs)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 320, in __init__\n    self._reader, self._plugin = self._get_reader(\n                                 ^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 304, in _get_reader\n    plugin = BioImage.determine_plugin(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 245, in determine_plugin\n    raise biob.exceptions.UnsupportedFileFormatError(\nbioio_base.exceptions.UnsupportedFileFormatError: BioImage does not support the image: '<SRC>/pos1.tif'. You may need to install an extra format dependency. See our list of known plugins in the bioio README here: https://github.com/bioio-devs/bioio for a list of known plugins. You can also call the 'bioio.plugins.dump_plugins()' method to report information about currently installed plugins or the 'bioio.plugin_feasibility_report(image)' method to check if a specific image can be handled by the available plugins.\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"reader.py\", line 72, in __init__\n    self._bioioimage = BioImage(image_filepath, **all_kwargs)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 320, in __init__\n    self._reader, self._plugin = self._get_reader(\n                                 ^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 304, in _get_reader\n    plugin = BioImage.determine_plugin(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 245, in determine_plugin\n    raise biob.exceptions.UnsupportedFileFormatError(\nbioio_base.exceptions.UnsupportedFileFormatError: BioImage does not support the image: '<SRC>/pos1.tif'. You may need to install an extra format dependency. See our list of known plugins in the bioio README here: https://github.com/bioio-devs/bioio for a list of known plugins. You can also call the 'bioio.plugins.dump_plugins()' method to report information about currently installed plugins or the 'bioio.plugin_feasibility_report(image)' method to check if a specific image can be handled by the available plugins.\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"_read_metadata.py\", line 28, in <module>\n    metadataXML = bioformats.get_omexml_metadata(raw_filepath)\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"reader.py\", line 187, in get_omexml_metadata\n    return Metadata().init_from_image_filepath(image_filepath, qparent=None)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"reader.py\", line 137, in init_from_image_filepath\n    with ImageReader(image_filepath, qparent=qparent) as bioio_image:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"reader.py\", line 74, in __init__\n    self._bioioimage = BioImage(image_filepath, **kwargs)\n                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 320, in __init__\n    self._reader, self._plugin = self._get_reader(\n                                 ^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 304, in _get_reader\n    plugin = BioImage.determine_plugin(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"bio_image.py\", line 245, in determine_plugin\n    raise biob.exceptions.UnsupportedFileFormatError(\nbioio_base.exceptions.UnsupportedFileFormatError: BioImage does not support the image: '<SRC>/pos1.tif'. You may need to install an extra format dependency. See our list of known plugins in the bioio README here: https://github.com/bioio-devs/bioio for a list of known plugins. You can also call the 'bioio.plugins.dump_plugins()' method to report information about currently installed plugins or the 'bioio.plugin_feasibility_report(image)' method to check if a specific image can be handled by the available plugins.\n\n"
+  ]
+ },
+ "confirm": [],
+ "dialogs": [],
+ "dst": {
+  ".": {
+   "kind": "empty_dir"
+  }
+ },
+ "exceptions": [],
+ "files": ["pos1.tif"],
+ "message_boxes": [],
+ "pbar": {
+  "init": [],
+  "step_sum": 0
+ },
+ "scenario": "S16",
+ "signals": [
+  ["progress", "Reading OME metadata..."],
+  ["criticalError", "reading image data or metadata", "pos1.tif", true],
+  ["finished"]
+ ],
+ "src": {
+  "pos1.tif": {
+   "_info": {
+    "message": "corrupted IFD structure"
+   },
+   "error": "TiffFileError",
+   "kind": "unreadable",
+   "sha256": "3b3f1e1b643eee4d1b981bf586906b24aacefd80c34c7320b8f90ef1754ce7eb"
+  }
+ },
+ "task_ended": ["nothing"]
+}

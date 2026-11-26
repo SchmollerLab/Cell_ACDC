@@ -151,6 +151,7 @@ cellacdc = "cellacdc.__main__:run"
 acdc = "cellacdc.__main__:run"
 Cell-ACDC = "cellacdc.__main__:run"
 acdc-setup-models = "cellacdc.service.setup_models:main"
+acdc-data = "cellacdc.data_cli:main"
 
 [tool.setuptools]
 include-package-data = true

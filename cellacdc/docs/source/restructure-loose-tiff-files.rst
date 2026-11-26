@@ -24,9 +24,13 @@ Source and destination folders
 
 * **Source folder**: folder containing the loose TIFF files.
 * **Destination folder**: folder where the ``Position_n`` folders will be
-  created.
-* **Segmentation mask folder**: optionally select the folder containing
-  segmentation masks associated with the images.
+  created. If it already contains ``Position_n`` folders, the dialog asks
+  whether to **Overwrite** them (the ``Images`` folder of every position
+  that is written is deleted first) or to **Create new Position folders**
+  after the last existing one.
+* **Segmentation mask folder**: this folder is not used. Segmentation
+  masks are not imported, and a warning is logged when a folder is
+  selected.
 * **Basename**: optionally enter a shared filename prefix for the generated
   channel TIFFs.
 
@@ -68,7 +72,8 @@ Conversion output
 -----------------
 
 For each position, the module creates an ``Images`` folder and writes one
-OME-TIFF file per channel. Each output image is arranged in
+TIFF file per channel, with the ``.tif`` extension and OME-TIFF metadata.
+Each output image is arranged in
 ``(T, Z, Y, X)`` order. Dimensions not present in the input have a size of
 one. Missing timepoint or z-slice indices in separate-file data are filled
 with zeros; the smallest index found for a position becomes the first output
@@ -81,13 +86,38 @@ The resulting structure is similar to:
    destination_folder/
    ├── Position_1/
    │   └── Images/
-   │       ├── <basename>_<channel_1>.ome.tif
-   │       └── <basename>_<channel_2>.ome.tif
+   │       ├── <basename>_<channel_1>.tif
+   │       └── <basename>_<channel_2>.tif
    └── Position_2/
        └── Images/
            └── ...
 
-If no basename is provided, the output filenames contain the channel name.
+Each ``Images`` folder also contains ``<basename>_metadata.csv`` with the
+sizes, the channel names, and the pixel sizes and time increment entered
+in the dialog. If no basename is provided, the output filenames contain
+only the channel name (``<channel>.tif`` and ``metadata.csv``).
+
+Before anything is written, the module reads the headers of all TIFF
+files and checks the whole setup: every position must have a file for
+every channel, all files of a position must have the same Y and X size,
+and no two files may fill the same timepoint and z-slice. If a check
+fails, an error message is shown and no folder is created or deleted.
+
+Command-line equivalent
+-----------------------
+
+The same conversion can run without the GUI with
+``acdc-data restructure`` (see :ref:`data-cli-restructure`). For
+example, for files such as ``tile_x001_y001_z001.tif`` with one file per
+z-slice:
+
+.. code-block:: bash
+
+   acdc-data restructure -i tiffs -o exp --z-marker _z
+
+``--recipe last`` reuses the setup of the last conversion started from
+this dialog, and ``--recipe NAME`` a recipe saved with
+**Save current recipe...**.
 
 See also
 --------

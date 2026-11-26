@@ -1,0 +1,68 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "description": "the source folder does not exist"
+ },
+ "case": "extra_source_missing",
+ "dst": {
+  ".": {
+   "kind": "empty_dir"
+  }
+ },
+ "exception": ["ValueError", "Source folder does not exist: <WORK>/missing"],
+ "result": null,
+ "signals": [],
+ "src": {
+  "img1.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+   "shape": [4, 5]
+  },
+  "img2.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "03fe0be7c34be96e95d024dfebdf1cceeb45ac9aefb9b91dfb8cdd44b80c7ae8",
+   "shape": [4, 5]
+  }
+ }
+}

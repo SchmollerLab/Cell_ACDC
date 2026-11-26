@@ -1,0 +1,3 @@
+# Golden test outputs written by tests/datastruct/tools/make_goldens.py:
+# collapsed in GitHub diffs and left out of the language statistics.
+tests/datastruct/golden/** linguist-generated=true

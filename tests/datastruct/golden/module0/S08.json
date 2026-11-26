@@ -1,0 +1,426 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "channel_order": ["GFP", "mCherry"],
+  "description": "layout 2 + copy other files (ASY015_1_notes.txt, ASY015_10_x.txt), whole field of view in RAM",
+  "dialog_values": [
+   {
+    "LensNA": 1.4,
+    "PhysicalSizeX": 1.0,
+    "PhysicalSizeY": 1.0,
+    "PhysicalSizeZ": 1.0,
+    "SizeC": 2,
+    "SizeS": 2,
+    "SizeT": 3,
+    "SizeZ": 2,
+    "TimeIncrement": 1.0,
+    "addImageName": false,
+    "cancel": false,
+    "chNames": ["GFP", "mCherry"],
+    "emWavelens": [500.0, 500.0],
+    "overWrite": false,
+    "requestedReadingSampleImageDataAgain": false,
+    "saveChannels": [true, true],
+    "selectedPos": ["All Positions"],
+    "timeRangeToSave": [1, 3],
+    "to_h5": false,
+    "trust": false
+   }
+  ],
+  "tracebacks": []
+ },
+ "confirm": [
+  {
+   "ImageName": "",
+   "LensNA": 1.4,
+   "PhysicalSizeUnit": "μm",
+   "PhysicalSizeX": 1.0,
+   "PhysicalSizeY": 1.0,
+   "PhysicalSizeZ": 1.0,
+   "SizeC": 2,
+   "SizeS": 2,
+   "SizeT": 3,
+   "SizeZ": 2,
+   "TimeIncrement": 1.0,
+   "TimeIncrementUnit": "s",
+   "chNames": ["GFP", "mCherry"],
+   "emWavelens": [500.0, 500.0],
+   "filename": "ASY015_1_GFP.tif",
+   "rawFilePath": "<SRC>/ASY015_1_GFP.tif",
+   "sampleImgData": null
+  }
+ ],
+ "dialogs": [
+  {
+   "accepted": true,
+   "button": "ok",
+   "title": "Metadata for ASY015_"
+  }
+ ],
+ "dst": {
+  "Position_1/Images/ASY015__s1_GFP.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [1, 2, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "4691927a8aa10abd77079b2135fea6b701b9c8c58b9af59d17e6475639168829",
+   "shape": [3, 2, 16, 20]
+  },
+  "Position_1/Images/ASY015__s1_mCherry.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 1, 0],
+    [1, 1, 1, 0],
+    [1, 2, 1, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "599609cdc0d1bab9c20d7f3b35fe609a0e31474d35bde896e02921558bbebde9",
+   "shape": [3, 2, 16, 20]
+  },
+  "Position_1/Images/ASY015__s1_metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["LensNA", "1.4"],
+    ["SizeT", "3"],
+    ["SizeZ", "2"],
+    ["TimeIncrement", "1.0"],
+    ["PhysicalSizeZ", "1.0"],
+    ["PhysicalSizeY", "1.0"],
+    ["PhysicalSizeX", "1.0"],
+    ["basename", "ASY015__s1_"],
+    ["channel_0_name", "GFP"],
+    ["channel_1_name", "mCherry"],
+    ["channel_0_emWavelen", "500.0"],
+    ["channel_1_emWavelen", "500.0"]
+   ]
+  },
+  "Position_1/Images/ASY015__s1_metadataXML.txt": {
+   "_info": {
+    "length": 4,
+    "sha256": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91"
+   },
+   "is_literal_None": true,
+   "kind": "metadataXML",
+   "nonempty": true
+  },
+  "Position_1/Images/ASY015__s1_notes.txt": {
+   "kind": "file",
+   "sha256": "7e68f69fa29195c87bcd9182348292c836a234ea8f374e3486b0de5b477fa956"
+  },
+  "Position_1/Images/ASY015__s1_x.txt": {
+   "kind": "file",
+   "sha256": "ff38474f2a39b009e8195e41a762fabd4d8b7c97c010100e3abcfe5e14c0d80d"
+  },
+  "Position_2/Images/ASY015__s2_GFP.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [2, 0, 0, 0],
+    [2, 1, 0, 0],
+    [2, 2, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "0d3ac4e801a9476a6789b351b914c79a9d42e5daf5a2768c06c7d82431b264cf",
+   "shape": [3, 2, 16, 20]
+  },
+  "Position_2/Images/ASY015__s2_mCherry.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [2, 0, 1, 0],
+    [2, 1, 1, 0],
+    [2, 2, 1, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "09611ed36daa22c6bba3d89ec56d83374fd87c7783708ede1ee1965e795f18b4",
+   "shape": [3, 2, 16, 20]
+  },
+  "Position_2/Images/ASY015__s2_metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["LensNA", "1.4"],
+    ["SizeT", "3"],
+    ["SizeZ", "2"],
+    ["TimeIncrement", "1.0"],
+    ["PhysicalSizeZ", "1.0"],
+    ["PhysicalSizeY", "1.0"],
+    ["PhysicalSizeX", "1.0"],
+    ["basename", "ASY015__s2_"],
+    ["channel_0_name", "GFP"],
+    ["channel_1_name", "mCherry"],
+    ["channel_0_emWavelen", "500.0"],
+    ["channel_1_emWavelen", "500.0"]
+   ]
+  },
+  "Position_2/Images/ASY015__s2_metadataXML.txt": {
+   "_info": {
+    "length": 4,
+    "sha256": "dc937b59892604f5a86ac96936cd7ff09e25f18ae6b758e8014a24c7fa039e91"
+   },
+   "is_literal_None": true,
+   "kind": "metadataXML",
+   "nonempty": true
+  }
+ },
+ "exceptions": [],
+ "files": [
+  "ASY015_1_GFP.tif",
+  "ASY015_1_mCherry.tif",
+  "ASY015_2_GFP.tif",
+  "ASY015_2_mCherry.tif"
+ ],
+ "message_boxes": [],
+ "pbar": {
+  "init": [4],
+  "step_sum": 8
+ },
+ "scenario": "S08",
+ "signals": [
+  ["progress", "Reading OME metadata..."],
+  ["progress", "==================================================="],
+  ["progress", "<SRC>/ASY015_1_GFP.tif"],
+  ["progress", "WARNING: LensNA not found in metadata."],
+  ["progress", "==================================================="],
+  ["progress", "==================================================="],
+  ["progress", "<SRC>/ASY015_1_GFP.tif"],
+  ["progress", "WARNING: TimeIncrement not found in metadata."],
+  ["progress", "==================================================="],
+  ["progress", "==================================================="],
+  ["progress", "<SRC>/ASY015_1_GFP.tif"],
+  ["progress", "WARNING: TimeIncrementUnit not found in metadata."],
+  ["progress", "==================================================="],
+  ["progress", "==================================================="],
+  ["progress", "<SRC>/ASY015_1_GFP.tif"],
+  ["progress", "WARNING: PhysicalSizeUnit not found in metadata."],
+  ["progress", "==================================================="],
+  ["progress", "==================================================="],
+  ["progress", "<SRC>/ASY015_1_GFP.tif"],
+  ["progress", "WARNING: Image Name not found in metadata."],
+  ["progress", "==================================================="],
+  ["confirmMetadata", 0],
+  ["progress", "Position 1/2: saving data to <DST>/Position_1/Images..."],
+  ["progress", "Position 2/2: saving data to <DST>/Position_2/Images..."],
+  ["finished"]
+ ],
+ "src": {
+  "ASY015_10_x.txt": {
+   "kind": "file",
+   "sha256": "ff38474f2a39b009e8195e41a762fabd4d8b7c97c010100e3abcfe5e14c0d80d"
+  },
+  "ASY015_1_GFP.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 0, 0],
+    [1, 1, 0, 0],
+    [1, 2, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "4691927a8aa10abd77079b2135fea6b701b9c8c58b9af59d17e6475639168829",
+   "shape": [3, 2, 16, 20]
+  },
+  "ASY015_1_mCherry.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 1, 0],
+    [1, 1, 1, 0],
+    [1, 2, 1, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "599609cdc0d1bab9c20d7f3b35fe609a0e31474d35bde896e02921558bbebde9",
+   "shape": [3, 2, 16, 20]
+  },
+  "ASY015_1_notes.txt": {
+   "kind": "file",
+   "sha256": "7e68f69fa29195c87bcd9182348292c836a234ea8f374e3486b0de5b477fa956"
+  },
+  "ASY015_2_GFP.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [2, 0, 0, 0],
+    [2, 1, 0, 0],
+    [2, 2, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "0d3ac4e801a9476a6789b351b914c79a9d42e5daf5a2768c06c7d82431b264cf",
+   "shape": [3, 2, 16, 20]
+  },
+  "ASY015_2_mCherry.tif": {
+   "axes": "TZYX",
+   "dtype": "uint16",
+   "imagej": {
+    "channels": null,
+    "finterval": null,
+    "frames": 3,
+    "hyperstack": true,
+    "images": 6,
+    "slices": 2,
+    "spacing": null,
+    "unit": null
+   },
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [2, 0, 1, 0],
+    [2, 1, 1, 0],
+    [2, 2, 1, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "09611ed36daa22c6bba3d89ec56d83374fd87c7783708ede1ee1965e795f18b4",
+   "shape": [3, 2, 16, 20]
+  },
+  "unrelated.txt": {
+   "kind": "file",
+   "sha256": "9fb01d6262ddfd228d961d82126e5827cb0c27f78525f6ec9e01bbe5afdf13cb"
+  }
+ },
+ "task_ended": ["ended"]
+}

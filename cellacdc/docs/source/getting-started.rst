@@ -154,6 +154,50 @@ Data-structure created by Cell-ACDC
             ├── basename_s0n_metadataXML.txt
             ...
 
+Command-line data tools (acdc-data)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``acdc-data`` command creates the same data structure without the
+graphical user interface, for example on a computer without a display, in
+a script, or for many experiments with the same settings. It uses the same
+code as Module 0 and **Re-structure image files**, so it writes the same
+files as the GUI.
+
+``acdc-data`` is installed together with Cell-ACDC. To read microscopy
+files, it needs BioIO and the reader plugin of your file format, for
+example for TIFF files:
+
+.. code-block:: bash
+
+    pip install bioio bioio-tifffile
+
+Alternatively, add ``--yes`` to ``acdc-data metadata`` or
+``acdc-data convert`` to install the missing reader packages
+automatically. ``acdc-data restructure`` needs no additional package.
+
+Three typical commands:
+
+.. code-block:: bash
+
+    # Show the metadata of a raw microscopy file
+    acdc-data metadata -i raw/position1.tif
+
+    # Convert a folder with one raw file per position
+    acdc-data convert -i raw -o exp --layout one-per-pos
+
+    # Organize loose TIFF files (one file per channel and per timepoint)
+    acdc-data restructure -i tiffs -o exp --channel GFP=_GFP --channel mCherry=_mCh --time-marker _t
+
+The defaults are safe: existing ``Position_n`` folders are left untouched
+unless you choose otherwise with ``--on-existing``, the raw files stay
+where they are unless you pass ``--move-raw``, and all files and settings
+are checked before anything is written. Add ``--dry-run`` to see what
+would be written.
+
+See :doc:`data-cli` for all the options, and
+:doc:`restructure-loose-tiff-files` for how loose TIFF files are grouped
+into positions.
+
 Preparing data for further analysis (Data-prep)
 -----------------------------------------------
 

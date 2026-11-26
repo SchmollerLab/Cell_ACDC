@@ -1,0 +1,214 @@
+{
+ "@env": {
+  "packages": {
+   "bioio": "3.0.0",
+   "bioio-base": "3.0.0",
+   "bioio-bioformats": "1.3.2",
+   "bioio-czi": "2.4.2",
+   "bioio-nd2": "1.5.0",
+   "bioio-tifffile": "1.3.1",
+   "h5py": "3.15.1",
+   "numpy": "2.0.2",
+   "pandas": "2.2.3",
+   "tifffile": "2025.10.16"
+  },
+  "platform": "Windows-11-10.0.26300-SP0",
+  "python": "3.12.12"
+ },
+ "_info": {
+  "description": "channels not_present, timepoints not_present, z-slices per_file (file axes YX)"
+ },
+ "case": "combo_np-np-pf",
+ "dst": {
+  "Position_1/Images/Channel_1.tif": {
+   "axes": "CYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": {
+    "LensNA": [],
+    "images": [
+     {
+      "Channels": [
+       {},
+       {}
+      ],
+      "Name": "Channel_1",
+      "Pixels": {
+       "DimensionOrder": "XYCZT",
+       "SizeC": "2",
+       "SizeT": "1",
+       "SizeX": "5",
+       "SizeY": "4",
+       "SizeZ": "1",
+       "Type": "uint16"
+      }
+     }
+    ]
+   },
+   "origins": [
+    [0, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "473652c73693f4f5413abde4f3ec89bbfc875b758608b34196312ae009950cad",
+   "shape": [2, 4, 5]
+  },
+  "Position_1/Images/metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["basename", ""],
+    ["SizeT", "1"],
+    ["SizeZ", "2"],
+    ["channel_0_name", "Channel_1"]
+   ]
+  },
+  "Position_2/Images/Channel_1.tif": {
+   "axes": "CYX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": {
+    "LensNA": [],
+    "images": [
+     {
+      "Channels": [
+       {},
+       {}
+      ],
+      "Name": "Channel_1",
+      "Pixels": {
+       "DimensionOrder": "XYCZT",
+       "SizeC": "2",
+       "SizeT": "1",
+       "SizeX": "5",
+       "SizeY": "4",
+       "SizeZ": "1",
+       "Type": "uint16"
+      }
+     }
+    ]
+   },
+   "origins": [
+    [1, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "f543807c69e97742cea77bf93bcdc33c5d06b54111afd981d020170815c3a922",
+   "shape": [2, 4, 5]
+  },
+  "Position_2/Images/metadata.csv": {
+   "kind": "csv",
+   "rows": [
+    ["Description", "values"],
+    ["basename", ""],
+    ["SizeT", "1"],
+    ["SizeZ", "2"],
+    ["channel_0_name", "Channel_1"]
+   ]
+  }
+ },
+ "exception": null,
+ "result": {
+  "image_files": [
+   "<DST>/Position_1/Images/Channel_1.tif",
+   "<DST>/Position_2/Images/Channel_1.tif"
+  ],
+  "position_folders": {
+   "p1": "<DST>/Position_1",
+   "p2": "<DST>/Position_2"
+  }
+ },
+ "signals": [
+  ["initProgressBar", 0],
+  ["progress", "Processing TIFF files...", "INFO"],
+  ["initProgressBar", 2],
+  ["progress", "Creating Position folder Position_1...", "INFO"],
+  ["progressBar", 1],
+  ["progress", "Creating Position folder Position_2...", "INFO"],
+  ["progressBar", 1]
+ ],
+ "src": {
+  "p1_z0.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "2c34ce1df23b838c5abf2a7f6437cca3d3067ed509ff25f11df6b11b582b51eb",
+   "shape": [4, 5]
+  },
+  "p1_z1.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [0, 0, 0, 1]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "7bbd88bafadedcd7a1914e66bc9a23dd7cc7bc29cfd51ac5c987d70a058d7602",
+   "shape": [4, 5]
+  },
+  "p2_z0.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 0, 0]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "03fe0be7c34be96e95d024dfebdf1cceeb45ac9aefb9b91dfb8cdd44b80c7ae8",
+   "shape": [4, 5]
+  },
+  "p2_z1.tif": {
+   "axes": "YX",
+   "dtype": "uint16",
+   "imagej": null,
+   "kind": "tif",
+   "ome": null,
+   "origins": [
+    [1, 0, 0, 1]
+   ],
+   "other_series": [],
+   "resolution": [
+    [1, 1],
+    [1, 1],
+    1
+   ],
+   "sha256": "b3a9f89a3b3f2270493d37eaefde3c22b167493bb350c543eb2d9cce9fd5b4a6",
+   "shape": [4, 5]
+  }
+ }
+}
