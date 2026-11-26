@@ -664,7 +664,7 @@ def _make_apply_window(segm_data=None, isSnapshot=True, qt5Action=False):
     )
     _bind(
         window, 'keyPressEvent', 'getFocusedInputWidget',
-        'isEnterConfirmingTypedValue'
+        'isEnterConfirmingTypedValue', 'triggerPersistentShortcut'
     )
     # As in `guiWin.gui_createActions`
     window.keptIDsLineEdit.sigEnterPressed.connect(
