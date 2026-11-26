@@ -1156,10 +1156,19 @@ class AutoSaveWorker(QObject):
         ]
         try:
             # Try to insert into the recovery_acdc_df any column that was saved
-            # but is not in the recovered df (e.g., metrics)
+            # but is not in the recovered df (e.g., metrics). Not annotation
+            # columns: they are missing because the annotations were removed
+            # (e.g. after a segmentation edit from the first frame)
             df_left = recovery_acdc_df
             existing_cols = df_left.columns.intersection(saved_acdc_df.columns)
-            df_right = saved_acdc_df.drop(columns=existing_cols)
+            annot_cols = [
+                col for col in saved_acdc_df.columns
+                if col in cca_df_colnames or col in lineage_tree_cols
+                or str(col).startswith('sister_ID_tree')
+            ]
+            df_right = saved_acdc_df.drop(
+                columns=existing_cols.union(annot_cols)
+            )
             recovery_acdc_df = df_left.join(df_right, how='left')
         except Exception as error:
             self.logger.log(f'[WARNING]: {error}')

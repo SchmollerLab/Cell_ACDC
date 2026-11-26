@@ -10673,6 +10673,8 @@ class EditIDDialog(QDialog):
         self.how = None
         self.mergeWithExistingID = False
         self.doNotAskAgainExistingID = doNotShowAgain
+        self.doPropagateFutureFrames = False
+        self.howToPropagateZslices = None
         self.allIDs = allIDs
         self.isSegm3D = isSegm3D
         if allIDs is None:
@@ -10949,6 +10951,7 @@ class EditIDDialog(QDialog):
         self.cancel = False
         self.how = None
         self.assignNewID = True
+        self.howToPropagateZslices = self.getHowToPropagateZslices()
         self.close()
     
     def ok_cb(self, event):

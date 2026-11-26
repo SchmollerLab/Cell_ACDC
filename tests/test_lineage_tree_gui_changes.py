@@ -26,10 +26,19 @@ def _frame_df(parents):
     }).set_index('Cell_ID')
 
 
+# Real guiWin methods of the backup check, bound to the stub host
+REAL_METHODS = (
+    'get_difference_table', 'clearLineageTreeBackup',
+    'lineageTreeBackupMismatch', 'clearStaleLineageTreeBackup',
+)
+
+
 def _host(frames_dfs, frame_i, backup_frame_i=None):
     posData = SimpleNamespace(
-        allData_li=[{'acdc_df': df} for df in frames_dfs],
-        frame_i=frame_i, SizeT=len(frames_dfs)
+        # 'labels' only marks the frames as loaded
+        # (`lineageTreeBackupMismatch`)
+        allData_li=[{'acdc_df': df, 'labels': True} for df in frames_dfs],
+        frame_i=frame_i, SizeT=len(frames_dfs), acdc_df=None
     )
     host = MagicMock()
     host.data = [posData]
@@ -43,7 +52,8 @@ def _host(frames_dfs, frame_i, backup_frame_i=None):
     if backup_frame_i is not None:
         host.original_df_lin_tree = frames_dfs[backup_frame_i].copy()
         host.original_df_lin_tree_i = backup_frame_i
-    host.get_difference_table = partial(gui.guiWin.get_difference_table, host)
+    for name in REAL_METHODS:
+        setattr(host, name, partial(getattr(gui.guiWin, name), host))
     return host
 
 
@@ -92,11 +102,11 @@ def test_resetting_future_lineage_drops_backup_of_reset_frames(
     assert (host.original_df_lin_tree_i == 1) == backup_kept
 
 
-def test_difference_ignores_IDs_added_or_removed_after_backup():
+def test_difference_lists_changed_parents():
     backup = _frame_df({1: -1, 2: -1, 3: -1})
     host = _host([_frame_df({1: -1, 2: -1}), backup], 1, backup_frame_i=1)
-    # ID 2 deleted, ID 4 added and parent of ID 3 changed after the backup
-    host.data[0].allData_li[1]['acdc_df'] = _frame_df({1: -1, 3: 2, 4: -1})
+    # Parent of ID 3 changed after the backup
+    host.data[0].allData_li[1]['acdc_df'] = _frame_df({1: -1, 2: -1, 3: 2})
 
     _, _, differences = gui.guiWin.get_difference_table(
         host, return_css_separated=True, return_differece=True
@@ -105,6 +115,23 @@ def test_difference_ignores_IDs_added_or_removed_after_backup():
     assert differences['Cell_ID'].tolist() == [3]
     assert differences['self'].tolist() == [-1]
     assert differences['other'].tolist() == [2]
+
+
+def test_backup_dropped_when_IDs_added_or_removed_after_backup():
+    # Discard would restore the rows of the old objects: the backup is
+    # stale (`lineageTreeBackupMismatch`) and cleared without comparing
+    backup = _frame_df({1: -1, 2: -1, 3: -1})
+    host = _host([_frame_df({1: -1, 2: -1}), backup], 1, backup_frame_i=1)
+    # ID 2 deleted, ID 4 added and parent of ID 3 changed after the backup
+    host.data[0].allData_li[1]['acdc_df'] = _frame_df({1: -1, 3: 2, 4: -1})
+
+    result = gui.guiWin.get_difference_table(
+        host, return_css_separated=True, return_differece=True
+    )
+
+    assert result is None
+    assert host.original_df_lin_tree is None
+    assert host.original_df_lin_tree_i is None
 
 
 def test_no_difference_without_parent_changes():

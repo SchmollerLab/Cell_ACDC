@@ -100,7 +100,9 @@ from .myutils import setupLogger, ArgSpec
 from .help import welcome, about
 from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
     normal_division_lineage_tree, is_lineage_tree_annotated,
-    init_lineage_tree_cols_of_added_IDs
+    init_lineage_tree_cols_of_added_IDs, has_lineage_tree_values,
+    lineage_tree_columns, lineage_tree_annotated_frames,
+    LINEAGE_TREE_SHARED_CCA_COLS
 )#, reorg_sister_cells_for_export)
 from . import debugutils
 from . import exec_time
@@ -3268,6 +3270,9 @@ When working with 3D segmentation masks:
             action.setCheckable(True)
             action.setChecked(True)
             action.removeAnnot = False
+            action.triggered.connect(
+                partial(self.warnEditingWithAnnotActionTriggered, action)
+            )
             self.warnEditingWithAnnotActions[key] = action
             warningsMenu.addAction(action)
             
@@ -8617,6 +8622,12 @@ When working with 3D segmentation masks:
         It handles the back up of the original self.lineage_tree.lineage_list 
         df and the repeated clicking on the same ID to cycle through pssible mothers.
 
+        A backup of another frame holds edits not checked yet (the frames
+        scroll bar and spin box change frame without checking them): they
+        are checked on their frame first (`askLineageTreeChanges`, which
+        reloads the current frame afterwards), then the current frame is
+        backed up.
+
         Parameters
         ----------
         posData : cellacdc.load.loadData
@@ -8633,13 +8644,19 @@ When working with 3D segmentation masks:
         tuple
             A tuple containing the point(tuple: (x, y) coords) and ID of clicked cell.
         """
-        if self.original_df_lin_tree is None:
-            self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
-            self.original_df_lin_tree_i = posData.frame_i
-        elif self.original_df_lin_tree_i != posData.frame_i:
-            self.logger.info(
-                '[WARNING]: !!! Original lineage tree df changed, resetting original_df_lin_tree !!!'
-            )
+        if (
+                self.original_df_lin_tree is not None
+                and self.original_df_lin_tree_i != posData.frame_i
+            ):
+            # Edits of another frame: check them before replacing the backup
+            # (the prompt may propagate them, also into this frame)
+            self.askLineageTreeChanges()
+            self.updateAllImages()
+
+        if (
+                self.original_df_lin_tree is None
+                or self.original_df_lin_tree_i != posData.frame_i
+            ):
             self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
             self.original_df_lin_tree_i = posData.frame_i
 
@@ -13372,6 +13389,10 @@ When working with 3D segmentation masks:
         mode = text
         prevMode = self.modeComboBox.previousText()
         self.annotateToolbar.setVisible(False)
+        if mode not in ('Segmentation and Tracking', 'Snapshot'):
+            # Its segmentation edits (and their annotations warning) do
+            # not belong in the other modes
+            self.closePostProcessSegmWin()
         if prevMode != 'Viewer' and not self.isCancellingModeInit:
             self.store_data(autosave=True)
             
@@ -13380,13 +13401,14 @@ When working with 3D segmentation masks:
         self.setAutoSaveSegmentationEnabled(False)
         self.setAutoSaveAnnotationsEnabled(False)
         if prevMode == 'Normal division: Lineage tree':
-            self.askLineageTreeChanges()
-            self.lineage_tree = None
-            # The backup of the edited frame belongs to the lineage tree
-            # session: a stale one would be compared with tables changed
-            # in other modes (`get_difference_table`)
-            self.original_df_lin_tree = None
-            self.original_df_lin_tree_i = None
+            # The combo box already shows the new mode: check the pending
+            # lineage tree edits of the mode being left (Cancel keeps them
+            # without propagating, it does not cancel the mode switch)
+            try:
+                self.askLineageTreeChanges(isLeavingMode=True)
+            finally:
+                self.lineage_tree = None
+                self.clearLineageTreeBackup()
             self.editLin_TreeBar.setVisible(False)
             self.uncheckAllButtonsFromButtonGroup(self.editLin_TreeGroup)
 
@@ -14976,10 +14998,23 @@ When working with 3D segmentation masks:
         if ask_back_prop and sum(ID in prev_IDs for ID in unique_ids) <= 1:
             ask_back_prop = False
 
-        if not self.isFrameCcaAnnotated() and ask_back_prop:
+        # Merging in annotated past frames would make their annotations
+        # wrong: propagate only to the frames after the last annotated one
+        if ask_back_prop and self.isFrameCcaAnnotated():
+            ask_back_prop = False
+
+        last_annot_i = -1
+        if ask_back_prop:
+            last_annot_i = max(self.getLastAnnotatedFrames())
+            if posData.frame_i-1 <= last_annot_i:
+                ask_back_prop = False
+
+        if ask_back_prop:
             proceed = self.askPropagateChangePast(f'Merge IDs {unique_ids}')
             if proceed:
-                self.propagateMergeObjsPast(unique_ids)
+                self.propagateMergeObjsPast(
+                    unique_ids, stop_frame_i=last_annot_i
+                )
                 self.whitelistPropagateIDs(
                     only_future_frames=False, update_lab=True
                 )
@@ -16360,11 +16395,22 @@ When working with 3D segmentation masks:
         )
         return msg.clickedButton == yesButton
 
-    def propagateMergeObjsPast(self, IDs_to_merge):
+    def propagateMergeObjsPast(self, IDs_to_merge, stop_frame_i=-1):
+        """Merge `IDs_to_merge` also in the past frames, from the previous
+        frame backwards until a frame lacks one of them.
+
+        Parameters
+        ----------
+        IDs_to_merge : list of int
+        stop_frame_i : int, optional
+            Frames up to this index are not modified (e.g. the last frame
+            with annotations, see `getLastAnnotatedFrames`). Default is -1
+            (down to frame 0).
+        """
         self.store_data(autosave=False)
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
-        for past_frame_i in range(posData.frame_i-1, -1, -1):
+        for past_frame_i in range(posData.frame_i-1, stop_frame_i, -1):
             posData.frame_i = past_frame_i
             self.get_data()
             
@@ -16924,17 +16970,10 @@ When working with 3D segmentation masks:
             f'Track parameters: {track_params_log}'
         )
 
-        last_cca_i = self.get_last_cca_frame_i()
-        if start_n-2 <= last_cca_i and start_n>1:
-            proceed = self.warnRepeatTrackingVideoWithAnnotations(
-                last_cca_i, start_n
-            )
-            if not proceed:
-                self.logger.info('Tracking aborted.')
-                return
-            
-            self.logger.info(f'Removing annotations from frame n. {start_n}.')
-            self.resetCcaFuture(start_n-1)
+        proceed = self.askRemoveAnnotationsRepeatTrackingVideo(start_n)
+        if not proceed:
+            self.logger.info('Tracking aborted.')
+            return
 
         self.start_n = start_n
         self.stop_n = stop_n
@@ -16948,6 +16987,59 @@ When working with 3D segmentation masks:
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(stop_n-start_n)
         self.startTrackingWorker(posData, video_to_track)
+
+    def askRemoveAnnotationsRepeatTrackingVideo(self, start_n):
+        """Before repeating tracking on the video from frame n. `start_n`,
+        warn if the re-tracked frames have cell cycle or lineage tree
+        annotations and, if the user continues, remove them from frame n.
+        `start_n` (index `start_n-1`) to the end.
+
+        The first re-tracked frame counts as changed although it gets the
+        IDs it had before tracking back
+        (`trackingWorker._relabel_first_frame_labels`): trackers that
+        output annotations (normal division lineage tree, Trackastra,
+        DeepSea) write their own table into it, where every object starts
+        a new lineage, and their tables without cell cycle columns cannot
+        be stored into a frame that kept them (`store_cca_df`).
+
+        Parameters
+        ----------
+        start_n : int
+            First re-tracked frame (1-based).
+
+        Returns
+        -------
+        bool
+            False if the user stopped tracking.
+        """
+        last_cca_i, last_lin_tree_i = self.getLastAnnotatedFrames()
+        first_changed_i = start_n - 1
+        remove_cca = last_cca_i >= first_changed_i
+        remove_lin_tree = last_lin_tree_i >= first_changed_i
+        if not remove_cca and not remove_lin_tree:
+            return True
+
+        annot_names = []
+        if remove_cca:
+            annot_names.append('cell cycle')
+        if remove_lin_tree:
+            annot_names.append('lineage tree')
+        # `warnRepeatTrackingVideoWithAnnotations` takes 1-based frames
+        proceed = self.warnRepeatTrackingVideoWithAnnotations(
+            max(last_cca_i, last_lin_tree_i), first_changed_i+1,
+            annotations=f'{" and ".join(annot_names)} annotations'
+        )
+        if not proceed:
+            return False
+
+        self.logger.info(
+            f'Removing annotations from frame n. {first_changed_i+1}.'
+        )
+        if remove_cca:
+            self.resetCcaFuture(first_changed_i)
+        if remove_lin_tree:
+            self.resetLin_tree_future(from_frame_i=first_changed_i)
+        return True
 
     def warnTrackerInputNotValid(self, trackerName, warningText):
         msg = widgets.myMessageBox(wrapText=False)
@@ -19815,6 +19907,32 @@ When working with 3D segmentation masks:
         self.postProcessSegmAction.setChecked(False)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
     
+    def closePostProcessSegmWin(self):
+        """Close the post-processing dialog (`postProcessSegm`) when leaving
+        the modes that edit the segmentation (`changeMode`).
+
+        Left open, its `apply` would run `warnEditingWithCca_df` on every
+        parameter and frame change (`postProcessing`) in the other modes,
+        where removing the annotations resets e.g. the live lineage tree.
+
+        The masks are kept as they are shown (the annotations warning of
+        `apply` was answered for them) and nothing is restored (the
+        dialog's Cancel restores the masks of the current frame without
+        asking, `PostProcessSegmDialog.undoChanges`). A preview that was
+        not applied yet (e.g. the one shown when the dialog opens) changed
+        only `posData.lab`: the regionprops are updated, so that the
+        `store_data` of `changeMode` stores labels, regionprops and table
+        of the same objects. The dialog's `sigClosed` unchecks the menu
+        action (`postProcessSegmWinClosed`).
+        """
+        win = self.postProcessSegmWin
+        if win is None:
+            return
+
+        self.update_rp()
+        win.cancel = False
+        win.close()
+
     def postProcessSegmValueChanged(self, lab, delObjs: dict):
         for delObj in delObjs.values():
             self.clearObjContour(obj=delObj, ax=0)
@@ -20542,13 +20660,6 @@ When working with 3D segmentation masks:
         self.update_rp(wl_update=False)
         self.tracking(enforce=True, against_next=posData.frame_i==0)
         
-        proceed = self.checkHandleTooManyNewItems()
-        if proceed:
-            if self.isSnapshot:
-                self.fixCcaDfAfterEdit('Repeat segmentation')
-                self.updateAllImages()
-            else:
-                self.warnEditingWithCca_df('Repeat segmentation')
         proceed = self.checkHandleTooManyNewItems()
         if proceed:
             if self.isSnapshot:
@@ -21396,6 +21507,97 @@ When working with 3D segmentation masks:
             except Exception as e:
                 self.logger.info(f"Error applying tool {name}: {e}")
         
+    def clearLineageTreeBackup(self):
+        """Forget the frame table backed up by `repeat_click_and_backup`
+        (first right-click of a lineage tree edit), which
+        `askLineageTreeChanges` compares with the current table.
+
+        Call it whenever `self.lineage_tree` is set to None and when new data
+        is loaded. A backup left from a lineage tree session that ended would
+        be checked on the next frame change or save in lineage tree mode,
+        when the backed up frame may have lost its annotations (reset after
+        a segmentation edit) or belong to other data.
+        """
+        self.original_df_lin_tree = None
+        self.original_df_lin_tree_i = None
+
+    def lineageTreeBackupMismatch(self, posData):
+        """Why the table backed up by `repeat_click_and_backup` cannot be
+        compared with the current table of its frame anymore.
+
+        The comparison (`get_difference_table`) needs the `parent_ID_tree`
+        values of the same objects in both tables. The backup is stale when
+        its frame does not exist or was not loaded, when the backup or the
+        frame has no lineage tree values (e.g. the frame's annotations were
+        reset after a segmentation edit) or when the frame's objects changed.
+
+        Parameters
+        ----------
+        posData : cellacdc.load.loadData
+            The position data of the backup.
+
+        Returns
+        -------
+        str or None
+            The reason, or None when the backup can be compared (or there
+            is no backup).
+        """
+        from .trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import (
+            has_lineage_tree_values
+        )
+        frame_i = self.original_df_lin_tree_i
+        backup_df = self.original_df_lin_tree
+        if frame_i is None or backup_df is None:
+            return
+
+        if frame_i >= len(posData.allData_li):
+            return f'frame {frame_i+1} does not exist'
+
+        frame_data = posData.allData_li[frame_i]
+        df = frame_data['acdc_df']
+        if frame_data['labels'] is None or df is None:
+            return f'frame {frame_i+1} is not loaded'
+
+        for table in (backup_df, df):
+            if (
+                'parent_ID_tree' not in table.columns
+                or not has_lineage_tree_values(table)
+            ):
+                return f'frame {frame_i+1} has no lineage tree annotations'
+
+        backup_IDs = myutils.checked_reset_index_Cell_ID(backup_df).index
+        IDs = myutils.checked_reset_index_Cell_ID(df).index
+        if set(backup_IDs) != set(IDs):
+            return f'the objects of frame {frame_i+1} changed'
+
+    def clearStaleLineageTreeBackup(self, posData):
+        """Clear the backup of `repeat_click_and_backup` if it cannot be
+        compared with the current table of its frame anymore (see
+        `lineageTreeBackupMismatch`), so that its check neither raises nor
+        brings back the annotations of a reset frame.
+
+        Parameters
+        ----------
+        posData : cellacdc.load.loadData
+            The position data of the backup.
+
+        Returns
+        -------
+        bool
+            True if the backup was stale and was cleared.
+        """
+        reason = self.lineageTreeBackupMismatch(posData)
+        if reason is None:
+            return False
+
+        self.logger.info(
+            '[WARNING]: Lineage tree edits of frame '
+            f'{self.original_df_lin_tree_i+1} are not checked for changes '
+            f'to propagate ({reason}).'
+        )
+        self.clearLineageTreeBackup()
+        return True
+
     @disableWindow
     def get_difference_table(self, return_css_separated=False, return_differece=False):
 
@@ -21403,6 +21605,8 @@ When working with 3D segmentation masks:
             return
 
         posData = self.data[self.pos_i]
+        if self.clearStaleLineageTreeBackup(posData):
+            return
         
         new_df = posData.allData_li[posData.frame_i]['acdc_df']
         original_df = self.original_df_lin_tree.copy()
@@ -21554,40 +21758,76 @@ When working with 3D segmentation masks:
                 )
 
     @disableWindow
-    def askLineageTreeChanges(self):
+    def askLineageTreeChanges(self, isLeavingMode=False):
         """
         Asks the user for changes in the lineage tree.
 
-        This method is called when the user selects the 'Normal division: Lineage tree' mode.
-        It compared the backed up df (self.original_df from repeat_click_and_backup) with the current df (self.lineage_tree.export_df(posData.frame_i)) and propts the user to keep, propagate or discard the changes.
+        This method is called in the 'Normal division: Lineage tree' mode
+        before changing frame (next/previous frame) and saving, by
+        `changeMode` when leaving that mode and by `repeat_click_and_backup`
+        before it backs up another frame.
+        It compares the backed up df (self.original_df_lin_tree from
+        repeat_click_and_backup) with the current df of that frame and
+        prompts the user to propagate or discard the changes, or to keep
+        them without propagating (Cancel). A backup of another frame than
+        the current one (frame changed with the scroll bar or spin box) is
+        checked on its frame, then the current frame is loaded again. The
+        backup is cleared afterwards, also when it no longer matches the
+        frame (see `lineageTreeBackupMismatch`).
 
+        Parameters
+        ----------
+        isLeavingMode : bool, optional
+            True when `changeMode` leaves the lineage tree mode: the mode
+            combo box already shows the new mode, so the mode is not
+            checked. Cancel cannot cancel the mode switch there (the combo
+            box already changed): the changes are kept without propagating
+            them, as before a frame change. Default is False.
         """
         mode = str(self.modeComboBox.currentText())
-        if mode != 'Normal division: Lineage tree':
+        if mode != 'Normal division: Lineage tree' and not isLeavingMode:
             return
         
         if not self.lineage_tree:
+            self.clearLineageTreeBackup()
             return
         
         posData = self.data[self.pos_i]
+        if self.clearStaleLineageTreeBackup(posData):
+            return
         
         if self.original_df_lin_tree_i is not None and self.original_df_lin_tree_i != posData.frame_i:
-            printl("!This should not happen!")
+            # Edits of another frame: the frames scroll bar and spin box
+            # change frame without checking them
             self.store_data(autosave=False)
             og_frame = posData.frame_i
             posData.frame_i = self.original_df_lin_tree_i
-            self.get_data()
-            self.logger.info(
-                'Lineage tree changes were not propagated, '
-                'going back to original frame.'
-            )
-            self.askLineageTreeChanges()
-            self.store_data(autosave=False)
-            posData.frame_i = og_frame
-            self.get_data()
+            try:
+                self.get_data()
+                self.logger.info(
+                    'Lineage tree changes were not propagated, '
+                    'going back to original frame.'
+                )
+                self.askLineageTreeChanges(isLeavingMode=isLeavingMode)
+                self.store_data(autosave=False)
+            except Exception as err:
+                # Do not fail again on every frame change and save
+                self.clearLineageTreeBackup()
+                raise err
+            finally:
+                posData.frame_i = og_frame
+                self.get_data()
             return
 
-        result = self.get_difference_table(return_css_separated=True, return_differece=True)
+        try:
+            result = self.get_difference_table(
+                return_css_separated=True, return_differece=True
+            )
+        except Exception as err:
+            # Do not fail again on every frame change and save
+            self.clearLineageTreeBackup()
+            raise err
+
         if result is None:
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
@@ -21640,7 +21880,7 @@ When working with 3D segmentation masks:
             msg.warning(self, 'Changes kept but not propagated!', txt)
             self.original_df_lin_tree = None
             self.original_df_lin_tree_i = None
-            self.logger.info('Lineage tree changes discarded.')
+            self.logger.info('Lineage tree changes kept but not propagated.')
 
     def manualAnnotRestoreLastTrackedFrame(self, last_tracked_i_to_restore):
         if self.navigateScrollBar.maximum()-1 <= last_tracked_i_to_restore:
@@ -21706,6 +21946,9 @@ When working with 3D segmentation masks:
                     i = max(self.lineage_tree.frames_for_dfs)
                 else:
                     i = 0
+                # The current frame is not annotated yet after a reset of
+                # its annotations (`resetLin_tree_future`)
+                i = max(i, posData.frame_i)
                 self.navigateScrollBar.setMaximum(i+1)
                 self.navSpinBox.setMaximum(i+1)
 
@@ -24294,7 +24537,9 @@ When working with 3D segmentation masks:
         )
 
         self.store_data(autosave=False)
-        self.get_data()
+        # The tree does not exist yet: without `lin_tree_init=False`
+        # get_data would call `initLinTree` again, repeating its prompt
+        self.get_data(lin_tree_init=False)
 
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
@@ -24623,6 +24868,11 @@ When working with 3D segmentation masks:
         to an ACDC dataframe and adds the current frame to the set of frames that have been
         processed.
 
+        A frame is never annotated from an unannotated previous frame (every
+        cell would become a new root): the frames missing between the last
+        annotated frame and the current one are annotated first, in order
+        (`annotateLinTreeFramesBefore`).
+
         Parameters
         ----------
         enforceAll : bool, optional
@@ -24657,6 +24907,9 @@ When working with 3D segmentation masks:
         
         self.store_data(autosave=False)
         self.get_data()
+        if not self.annotateLinTreeFramesBefore(frame_i):
+            return notEnoughG1Cells, proceed
+
         lab = posData.lab
         prev_lab = posData.allData_li[frame_i-1]['labels']
         rp = posData.rp
@@ -24664,6 +24917,56 @@ When working with 3D segmentation masks:
 
         self.lineage_tree.real_time(frame_i, lab, prev_lab, rp=rp, prev_rp=prev_rp)
         self.store_data()
+        return notEnoughG1Cells, proceed
+
+    def annotateLinTreeFramesBefore(self, frame_i):
+        """Annotate the lineage tree of the frames missing between the last
+        annotated frame before `frame_i` and `frame_i` (excluded), in order,
+        so that `frame_i` is annotated from an annotated previous frame.
+
+        A lineage tree reset with a live tree (`resetLin_tree_future`, e.g.
+        after a segmentation edit in lineage tree mode) leaves the current
+        frame unannotated: its labels can still change after the warning
+        (the post-processing dialog warns before it sets the new masks), so
+        it is annotated here, from its stored labels, when the next frame
+        is entered (`autoLinTree_df`).
+
+        Parameters
+        ----------
+        frame_i : int
+            The frame about to be annotated.
+
+        Returns
+        -------
+        bool
+            False if a missing frame was never visited (no stored labels or
+            table): `frame_i` must not be annotated then.
+        """
+        posData = self.data[self.pos_i]
+        last_annotated_i = max(
+            (i for i in self.lineage_tree.frames_for_dfs if i < frame_i),
+            default=0
+        )
+        for i in range(last_annotated_i+1, frame_i):
+            data_dict = posData.allData_li[i]
+            if data_dict['labels'] is None or data_dict['acdc_df'] is None:
+                self.logger.info(
+                    f'[WARNING]: Frame n. {i+1} was never visited: the '
+                    f'lineage tree of frames n. {i+1}-{frame_i+1} cannot be '
+                    'annotated.'
+                )
+                return False
+
+            self.logger.info(
+                f'Annotating lineage tree of frame n. {i+1} again...'
+            )
+            prev_data_dict = posData.allData_li[i-1]
+            self.lineage_tree.real_time(
+                i, data_dict['labels'], prev_data_dict['labels'],
+                rp=data_dict['regionprops'],
+                prev_rp=prev_data_dict['regionprops']
+            )
+        return True
 
     # @exec_time
     def applyEraserMask(self, mask):
@@ -25107,9 +25410,30 @@ When working with 3D segmentation masks:
             if df is None or 'cell_cycle_stage' not in df.columns:
                 last_cca_frame_i = max(i-1, 0)
                 break
-        
+
         return last_cca_frame_i
-    
+
+    def get_last_lin_tree_frame_i(self):
+        """Index of the last frame with lineage tree annotations, -1 if no
+        frame has them.
+
+        Same annotated frames as `initLinTree` and the lineage tree's
+        `frames_for_dfs` (`lineage_tree_annotated_frames`: contiguous from
+        frame 0, frames without objects do not end them), but -1 when none
+        of them has lineage tree values (e.g. only empty first frames).
+
+        Returns
+        -------
+        int
+        """
+        posData = self.data[self.pos_i]
+        acdc_dfs = [data_dict['acdc_df'] for data_dict in posData.allData_li]
+        annotated_frames = lineage_tree_annotated_frames(acdc_dfs)
+        if not any(has_lineage_tree_values(acdc_dfs[i]) for i in annotated_frames):
+            return -1
+
+        return annotated_frames[-1]
+
     def initSegmTrackMode(self):
         posData = self.data[self.pos_i]
         last_tracked_i = self.get_last_tracked_i()
@@ -25378,17 +25702,14 @@ When working with 3D segmentation masks:
             return
 
         proceed = True
-        last_lin_tree_frame_i = 0
-        # Determine last annotated frame index
-        for i, dict_frame_i in enumerate(posData.allData_li):
-            df = dict_frame_i['acdc_df']
-            if (df is None or
-                'generation_num_tree' not in df.columns 
-                  or df['generation_num_tree'].isin([np.nan, 0]).all()
-                  ):
-                break
-            else:
-                last_lin_tree_frame_i = i
+        # Last annotated frame index (0 if no frame is annotated), with the
+        # same criterion as the lineage tree's `frames_for_dfs`
+        last_lin_tree_frame_i = max(
+            lineage_tree_annotated_frames(
+                data_dict['acdc_df'] for data_dict in posData.allData_li
+            ),
+            default=0
+        )
 
         if last_lin_tree_frame_i == 0:
             # Remove undoable actions from segmentation mode
@@ -25481,8 +25802,25 @@ When working with 3D segmentation masks:
     def propagateLinTreeAction(self, dummy_for_button=None):
         """
         Propagates the lineage tree based on the current frame_i. Used in self.propagateLinTreeButton.
+
+        Nothing to propagate without a lineage tree or when the current
+        frame has no lineage tree annotations (e.g. reset after a
+        segmentation edit and not annotated again yet, see
+        `resetLin_tree_future`).
         """
         posData = self.data[self.pos_i]
+        df = posData.allData_li[posData.frame_i]['acdc_df']
+        if (
+                self.lineage_tree is None
+                or not has_lineage_tree_values(df)
+                or 'parent_ID_tree' not in df.columns
+            ):
+            self.logger.info(
+                f'Frame n. {posData.frame_i+1} has no lineage tree '
+                'annotations: nothing to propagate.'
+            )
+            return
+
         self.lineage_tree.propagate(posData.frame_i)
         if posData.frame_i == self.original_df_lin_tree_i:
             self.original_df_lin_tree = posData.allData_li[posData.frame_i]['acdc_df'].copy()
@@ -25753,26 +26091,133 @@ When working with 3D segmentation masks:
         self.updateSingleMotherBudPairLastAnnotatedFrame(last_annot_frame_i)
         self.resetCcaFuture(partial_cca_start_frame_i)
     
-    def resetLin_tree_future(self):
-        posData = self.data[self.pos_i]
-        frame_i = posData.frame_i
+    def resetLin_tree_future(self, from_frame_i=None):
+        """Remove the lineage tree annotations from frame `from_frame_i` to
+        the end, from everywhere they could come back from:
 
-        for i in range(frame_i, posData.SizeT):
-            if self.lineage_tree is not None:
-                self.lineage_tree.frames_for_dfs.discard(frame_i)
+        * Visited frames (`allData_li`): their tables lose the lineage tree
+          columns (`lineage_tree_columns`, including the extra
+          `sister_ID_tree_<i>`) and, in frames without cell cycle
+          annotations (no `cell_cycle_stage` column), the cell cycle
+          columns that the lineage tree also writes
+          (`LINEAGE_TREE_SHARED_CCA_COLS`).
+        * The table loaded from file (`posData.acdc_df`, read by `get_data`
+          for frames not visited yet, also after `reInitLastSegmFrame`):
+          the same columns are set to NaN in the rows of these frames,
+          shared columns only in rows without `cell_cycle_stage`. Rows are
+          kept, they hold the other data of the frames.
+        * The lineage tree of "Normal division: Lineage tree" mode
+          (`self.lineage_tree`): the frames leave `frames_for_dfs` and the
+          entries of the per-ID caches `first_frame_i_for_ID` and
+          `ID_frame_i_lookup` that point to them are dropped (the rows
+          there have no lineage values left to read; the tree finds the
+          IDs again by searching the frames). `max_daughters_added` is
+          kept, the earlier frames still have those sister columns. The
+          reset frames, including the current one, are annotated again
+          when the next frame is entered with Next (`autoLinTree_df`
+          annotates the missing frames before it first): the current
+          frame's masks may still change after the warning. When frame 0
+          is reset no annotated frame is left: in lineage tree mode the
+          tree is created again from frame 0 (every object a root, as when
+          the mode starts), elsewhere it is dropped. In lineage tree mode
+          the frames scrollbar maximum is updated.
+        * The backup of the lineage tree edits (`original_df_lin_tree`,
+          see `repeat_click_and_backup`) if it is of one of these frames.
+
+        Nothing is stored: the tables are edited in place.
+
+        Parameters
+        ----------
+        from_frame_i : int, optional
+            First frame to reset. Default is the current frame.
+        """
+        posData = self.data[self.pos_i]
+        if from_frame_i is None:
+            from_frame_i = posData.frame_i
+
+        for i in range(from_frame_i, posData.SizeT):
             df = posData.allData_li[i]['acdc_df']
-            # reste lineage tree columns
             if df is None:
                 continue
-            df = df.drop(columns=lineage_tree_cols, errors='ignore')
-            posData.allData_li[i]['acdc_df'] = df
+            cols = lineage_tree_columns(df)
+            if 'cell_cycle_stage' not in df.columns:
+                cols += [
+                    col for col in LINEAGE_TREE_SHARED_CCA_COLS
+                    if col in df.columns
+                ]
+            if cols:
+                posData.allData_li[i]['acdc_df'] = df.drop(columns=cols)
+
+        self._blankLinTreeLoadedAcdcDf(posData, from_frame_i)
+
+        if self.lineage_tree is not None:
+            mode = str(self.modeComboBox.currentText())
+            isLinTreeMode = mode == 'Normal division: Lineage tree'
+            if from_frame_i > 0:
+                self._removeLinTreeFrames(from_frame_i)
+            elif isLinTreeMode and posData.allData_li[0]['acdc_df'] is not None:
+                # The mode's actions (e.g. Propagate) need a tree: start
+                # it again from frame 0, as `initLinTree` does
+                self.lineage_tree = normal_division_lineage_tree(gui=self)
+            else:
+                self.lineage_tree = None
+
+            if isLinTreeMode:
+                self.setNavigateScrollBarMaximum()
 
         backup_frame_i = self.original_df_lin_tree_i
-        if backup_frame_i is not None and backup_frame_i >= frame_i:
-            # The lineage tree edits of the backed up frame were removed
-            # with its annotations: nothing left to propagate or discard
-            self.original_df_lin_tree = None
-            self.original_df_lin_tree_i = None
+        if backup_frame_i is not None and backup_frame_i >= from_frame_i:
+            self.clearLineageTreeBackup()
+
+    def _blankLinTreeLoadedAcdcDf(self, posData, from_frame_i):
+        # Lineage tree values of frames >= from_frame_i in the table loaded
+        # from file to NaN (see `resetLin_tree_future`)
+        acdc_df = posData.acdc_df
+        if acdc_df is None:
+            return
+
+        reset_rows = acdc_df.index.get_level_values(0) >= from_frame_i
+        if not reset_rows.any():
+            return
+
+        lineage_cols = lineage_tree_columns(acdc_df)
+        shared_cols = [
+            col for col in LINEAGE_TREE_SHARED_CCA_COLS
+            if col in acdc_df.columns
+        ]
+        if not lineage_cols and not shared_cols:
+            return
+
+        if 'cell_cycle_stage' in acdc_df.columns:
+            no_cca_rows = acdc_df['cell_cycle_stage'].isna().to_numpy()
+            shared_cols_rows = reset_rows & no_cca_rows
+        else:
+            shared_cols_rows = reset_rows
+
+        # Shallow copy: the replaced columns do not change the old table
+        acdc_df = acdc_df.copy(deep=False)
+        for col in lineage_cols:
+            acdc_df[col] = acdc_df[col].mask(reset_rows)
+        for col in shared_cols:
+            acdc_df[col] = acdc_df[col].mask(shared_cols_rows)
+        posData.acdc_df = acdc_df
+
+    def _removeLinTreeFrames(self, from_frame_i):
+        # Frames >= from_frame_i are not annotated anymore in the lineage
+        # tree object (see `resetLin_tree_future`)
+        lineage_tree = self.lineage_tree
+        lineage_tree.frames_for_dfs.difference_update([
+            i for i in lineage_tree.frames_for_dfs if i >= from_frame_i
+        ])
+        for lookup in (
+                lineage_tree.first_frame_i_for_ID,
+                lineage_tree.ID_frame_i_lookup
+            ):
+            stale_IDs = [
+                ID for ID, frame_i in lookup.items() if frame_i >= from_frame_i
+            ]
+            for ID in stale_IDs:
+                del lookup[ID]
 
     def get_cca_df(
             self, frame_i=None, 
@@ -29494,49 +29939,125 @@ When working with 3D segmentation masks:
 
         return 'cell_cycle_stage' in acdc_df.columns
 
+    def getLastAnnotatedFrames(self):
+        """Indices of the last frame with cell cycle annotations and of the
+        last frame with lineage tree annotations, -1 for none.
+
+        Both annotations start at frame 0 and have no gaps
+        (`get_last_cca_frame_i`, `get_last_lin_tree_frame_i`). Unlike
+        `get_last_cca_frame_i`, which returns 0 also when no frame is
+        annotated, frame 0 counts only if it has cell cycle annotations.
+
+        Returns
+        -------
+        tuple of int
+            (last_cca_frame_i, last_lin_tree_frame_i)
+        """
+        posData = self.data[self.pos_i]
+        first_acdc_df = posData.allData_li[0]['acdc_df']
+        last_cca_frame_i = -1
+        if (
+                first_acdc_df is not None
+                and 'cell_cycle_stage' in first_acdc_df.columns
+            ):
+            last_cca_frame_i = self.get_last_cca_frame_i()
+        return last_cca_frame_i, self.get_last_lin_tree_frame_i()
+
     def warnEditingWithCca_df(
-            self, editTxt, return_answer=False, get_answer=False, 
+            self, editTxt, return_answer=False, get_answer=False,
             get_cancelled=False, update_images=True
         ):
-        # Function used to warn that the user is editing in "Segmentation and
-        # Tracking" mode a frame that contains cca annotations.
-        # Ask whether to remove annotations from all future frames 
+        """Warn that the segmentation of the current frame was edited while
+        the frame has annotations that the edit most likely makes wrong,
+        and ask whether to remove them from the current frame to the end.
+
+        Cell cycle annotations are recognized by the `cell_cycle_stage`
+        column, lineage tree annotations by their values
+        (`has_lineage_tree_values`): tables loaded from file have the
+        lineage tree columns on every frame, all NaN where nothing is
+        annotated.
+
+        If the user ticked "Remember my choice and do not ask again" for
+        this edit (edits of `warnEditingWithAnnotActions`), the remembered
+        answer is applied without asking. Both prompted and remembered
+        answers are applied by `_applyEditingWithAnnotAnswer`.
+
+        Parameters
+        ----------
+        editTxt : str
+            The edit, shown in the warning.
+        return_answer : bool, optional
+            If True, only return whether the user chose to remove the
+            annotations, without removing or updating anything: the caller
+            handles the answer. Only cell cycle annotations are considered
+            (the caller re-initializes those of the first frame). Default
+            is False.
+        get_answer : bool, optional
+            If True, return whether the annotations were removed. Default
+            is False.
+        get_cancelled : bool, optional
+            If True, return 'cancelled' when the user cancels. Default is
+            False.
+        update_images : bool, optional
+            If True, update the images also when there is nothing to ask.
+            Default is True.
+
+        Returns
+        -------
+        bool or str
+            False (or 'cancelled' with `get_cancelled`) if the user
+            cancelled, the answer with `return_answer` or `get_answer`,
+            otherwise True.
+        """
         if self.isSnapshot:
             return True
 
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-                
-        if acdc_df is None and self.lineage_tree is None:
-            if update_images:
-                self.updateAllImages()
-            return True
-        
+
         cell_cycle_stage_present = (
             acdc_df is not None and 'cell_cycle_stage' in acdc_df.columns
-            )
+        )
         lineage_tree_present = (
-            self.lineage_tree is not None or 'parent_ID_tree' in acdc_df.columns
+            not return_answer and has_lineage_tree_values(acdc_df)
         )
         if not cell_cycle_stage_present and not lineage_tree_present:
             if update_images:
                 self.updateAllImages()
             return True
-            
+
+        dropDelIDsNoteText = (
+            '' if editTxt.find('Delete') == -1 else ' (drop removed IDs)'
+        )
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
         if action is not None and not action.isChecked():
-            # user has checked that he does not want to be asked again AND he doesnt want to delete
-            if update_images:
-                self.updateAllImages()
+            # The user ticked "Remember my choice and do not ask again"
+            # --> apply the remembered answer without asking
+            removeAnnot = action.removeAnnot
+            if return_answer:
+                return removeAnnot
+
+            self._applyEditingWithAnnotAnswer(
+                removeAnnot, cell_cycle_stage_present, lineage_tree_present,
+                bool(dropDelIDsNoteText)
+            )
+            if get_answer:
+                return removeAnnot
             return True
 
+        annot_names = []
+        if cell_cycle_stage_present:
+            annot_names.append('cell cycle')
+        if lineage_tree_present:
+            annot_names.append('lineage tree')
+        warn_type = f'{" and ".join(annot_names)} annotations'
+
         msg = widgets.myMessageBox()
-        warn_type = 'cell cycle annotations' if cell_cycle_stage_present else 'lineage tree annotations'
         txt = html_utils.paragraph(
             f'You modified a frame that <b>has {warn_type}</b>.<br><br>'
             f'The change <b>"{editTxt}"</b> most likely makes the '
             '<b>annotations wrong</b>.<br><br>'
-            'If you really want to apply this change we reccommend to remove'
+            'If you really want to apply this change we recommend to remove '
             f'ALL {warn_type}<br>'
             'from current frame to the end.<br><br>'
             'What do you want to do?'
@@ -29545,10 +30066,7 @@ When working with 3D segmentation masks:
             checkBox = QCheckBox('Remember my choice and do not ask again')
         else:
             checkBox = None
-        
-        dropDelIDsNoteText = (
-            '' if editTxt.find('Delete') == -1 else ' (drop removed IDs)'
-        )
+
         _, removeAnnotButton, _ = msg.warning(
             self, 'Edited segmentation with annotations!', txt,
             buttonsTexts=(
@@ -29562,23 +30080,80 @@ When working with 3D segmentation masks:
                 return 'cancelled'
             removeAnnotations = False
             return removeAnnotations
-        
+
+        removeAnnot = msg.clickedButton == removeAnnotButton
         if action is not None:
-            action.setChecked(not checkBox.isChecked())
-            action.removeAnnot = msg.clickedButton == removeAnnotButton
-        
+            remember = checkBox.isChecked()
+            action.setChecked(not remember)
+            # Replay only a remembered answer: a warning turned off from
+            # the Settings menu keeps the annotations (see
+            # `warnEditingWithAnnotActionTriggered`)
+            action.removeAnnot = removeAnnot if remember else False
+
         if return_answer:
-            return msg.clickedButton == removeAnnotButton
-        
-        if (msg.clickedButton == removeAnnotButton) and cell_cycle_stage_present:
-            self.resetFutureCcaColCurrentFrame()
-            self.resetCcaFuture(posData.frame_i)
-            self.updateAllImages()
-        elif (msg.clickedButton == removeAnnotButton) and lineage_tree_present:
-            self.resetLin_tree_future()
-            self.updateAllImages()
+            return removeAnnot
+
+        self._applyEditingWithAnnotAnswer(
+            removeAnnot, cell_cycle_stage_present, lineage_tree_present,
+            bool(dropDelIDsNoteText)
+        )
+
+        if get_answer:
+            return removeAnnot
         else:
-            if dropDelIDsNoteText and posData.cca_df is not None:
+            return True
+
+    def warnEditingWithAnnotActionTriggered(self, action, checked=False):
+        """The user toggled one of the "Show warning when ..." items of
+        Settings > Warnings and pop-ups (`warnEditingWithAnnotActions`).
+
+        Forget the answer remembered with "Remember my choice": a warning
+        turned off from the menu means "do not ask" and keeps the
+        annotations, it must not replay an earlier "Remove".
+
+        Parameters
+        ----------
+        action : QAction
+            The toggled item (passed explicitly, not via `sender()`).
+        checked : bool, optional
+            New checked state (unused).
+        """
+        action.removeAnnot = False
+
+    def _applyEditingWithAnnotAnswer(
+            self, removeAnnot, cell_cycle_stage_present, lineage_tree_present,
+            dropDelIDs
+        ):
+        """Apply the answer to `warnEditingWithCca_df`, prompted or
+        remembered.
+
+        Parameters
+        ----------
+        removeAnnot : bool
+            True to remove the annotations of the types present from the
+            current frame to the end, False to keep them. Kept cell cycle
+            annotations are updated to the edited objects (with
+            `dropDelIDs` the deleted IDs are dropped from them); frames
+            without cell cycle annotations never get a cell cycle table.
+        cell_cycle_stage_present : bool
+            Whether the current frame has cell cycle annotations.
+        lineage_tree_present : bool
+            Whether the current frame has lineage tree annotations.
+        dropDelIDs : bool
+            Whether the edit deleted objects.
+        """
+        posData = self.data[self.pos_i]
+        if removeAnnot:
+            if cell_cycle_stage_present:
+                self.resetFutureCcaColCurrentFrame()
+                self.resetCcaFuture(posData.frame_i)
+            if lineage_tree_present:
+                self.resetLin_tree_future()
+            self.updateAllImages()
+            return
+
+        if cell_cycle_stage_present:
+            if dropDelIDs and posData.cca_df is not None:
                 delIDs = [
                     ID for ID in posData.cca_df.index if ID not in posData.IDs
                 ]
@@ -29586,14 +30161,9 @@ When working with 3D segmentation masks:
                     posData, delIDs, dropInPast=False
                 )
             self.addMissingIDs_cca_df(posData)
-            self.updateAllImages()
-            self.store_data()
-        
-        if get_answer:
-            return msg.clickedButton == removeAnnotButton
-        else:
-            return True
-    
+        self.updateAllImages()
+        self.store_data()
+
     def warnRepeatTrackingVideoOnVisitedFrames(self, last_tracked_i, start_n):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
@@ -29621,11 +30191,14 @@ When working with 3D segmentation masks:
         else:
             return True
     
-    def warnRepeatTrackingVideoWithAnnotations(self, last_tracked_i, start_n):
+    def warnRepeatTrackingVideoWithAnnotations(
+            self, last_tracked_i, start_n,
+            annotations='cell cycle annotations'
+        ):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
-            'You are repeating tracking on frames that <b>have cell cycle '
-            'annotations</b>.<br><br>'
+            'You are repeating tracking on frames that <b>have '
+            f'{annotations}</b>.<br><br>'
             'This will very likely make the <b>annotations wrong</b>.<br><br>'
             'If you really want to repeat tracking on the frames before '
             f'{last_tracked_i+1} the <b>annotations from frame '
@@ -32457,6 +33030,7 @@ When working with 3D segmentation masks:
             self.saveAnnotationOptions()
 
         self.lineage_tree = None
+        self.clearLineageTreeBackup()
         self.getDistanceListMissingIDsCachedFrame = None
         self.isZmodifier = False
         self.zKeptDown = False

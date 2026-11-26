@@ -36,7 +36,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 from . import prompts
 from . import myutils, measurements, config
 from . import base_cca_dict, base_acdc_df, html_utils, settings_folderpath
-from . import cca_df_colnames, printl
+from . import cca_df_colnames, printl, lineage_tree_cols
 from . import ignore_exception, cellacdc_path
 from . import models_path
 from . import tooltips_rst_filepath
@@ -617,14 +617,29 @@ def read_acdc_df_csv(acdc_df_filepath, index_col=None):
     )
     return acdc_df
 
+def _lineage_tree_columns(df):
+    # Same as `CellACDC_normal_division_tracker.lineage_tree_columns`
+    # (not imported here to keep `load` free of tracker imports)
+    return [
+        col for col in df.columns
+        if col in lineage_tree_cols or str(col).startswith('sister_ID_tree')
+    ]
+
 def _load_acdc_df_file(acdc_df_file_path):
     acdc_df = read_acdc_df_csv(acdc_df_file_path)
     acdc_df = _remove_redundant_columns(acdc_df)
     try:
-        acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
-        acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
+        acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames)
     except KeyError:
         pass
+    else:
+        # NaN lineage tree values mean "not annotated" (frames never
+        # annotated or reset after a segmentation edit): 0 would make the
+        # lineage tree treat them as annotated, so keep them NaN
+        acdc_df_drop_cca = acdc_df_drop_cca.drop(
+            columns=_lineage_tree_columns(acdc_df_drop_cca)
+        ).fillna(0)
+        acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
     
     acdc_df = _ensure_acdc_df_latest_compatibility(acdc_df)
     return acdc_df
