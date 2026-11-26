@@ -4,10 +4,9 @@
   custom annotations, metadata entries, recent paths, ``QSettings``) and the
   log folder are redirected to a temporary folder.
 - Widgets released with ``deleteLater()`` are destroyed after each test.
-- The garbage of each test is collected although the objects alive after
-  earlier tests are frozen.
+- The garbage of each test (also its fixture windows) is collected after it,
+  although the objects alive after earlier tests are frozen.
 """
-import gc
 import os
 import weakref
 
@@ -15,7 +14,7 @@ import numpy as np
 import pandas as pd
 import pytest
 import tifffile
-from qtpy.QtWidgets import QApplication, QWidget
+from qtpy.QtWidgets import QApplication, QPushButton, QWidget
 
 import cellacdc
 from cellacdc import gui_core, gui_custom_annotations, gui_viewer_tools
@@ -194,10 +193,9 @@ def test_deleted_later_widget_destroyed_after_previous_test(app):
 
 
 def test_flush_collects_the_cyclic_garbage_of_the_test(app):
-    # The objects that survived earlier tests are frozen (gc.freeze), the
-    # ones created in this test are still collected
-    if conftest.FREEZE_SURVIVING_OBJECTS:
-        assert gc.get_freeze_count() > 0
+    # As after each test, the objects alive now are frozen (gc.freeze): the
+    # ones created afterwards are still collected
+    conftest.freezeSurvivingObjects()
     widget = QWidget()
     # The Python wrapper in a reference cycle: only gc.collect() frees it
     widget.cycle = widget
@@ -206,6 +204,33 @@ def test_flush_collects_the_cyclic_garbage_of_the_test(app):
     assert ref() is not None
     flushDeferredDeletes()
     assert ref() is None
+
+
+_fixture_window = {}
+
+
+@pytest.fixture
+def window_with_slot(app):
+    window = QWidget()
+    child = QPushButton(window)
+    # Python wrapper in a reference cycle, also through a PyQt slot proxy
+    window.cycle = window
+    child.clicked.connect(lambda: window.objectName())
+    yield window
+    window.deleteLater()
+
+
+def test_fixture_window_released(window_with_slot):
+    _fixture_window['ref'] = weakref.ref(window_with_slot)
+
+
+def test_fixture_window_of_previous_test_collected(app):
+    # pytest holds the fixture values until after the fixture teardowns: the
+    # conftest collects (and freezes) after that, else the window above would
+    # stay alive until the end of the module
+    if 'ref' not in _fixture_window:
+        pytest.skip('requires test_fixture_window_released to run first')
+    assert _fixture_window['ref']() is None
 
 
 def test_flush_deferred_deletes_destroys_widget(app):

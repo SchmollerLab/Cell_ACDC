@@ -184,9 +184,9 @@ addopts = ["--ignore=cellacdc/test_tracker.py", "--strict-markers"]
 # every push to a pull request runs -m "(smoke or not slow) and not flaky",
 # the full suite runs before merging. A plain `pytest` runs everything.
 markers = [
-    "slow: takes 0.5 s or more (a parametrized test: 5 s for all its cases); runs only in the full suite (deselect with -m 'not slow')",
+    "slow: takes 0.5 s or more (a parametrized test: 5 s for all its cases); left out of the fast tier of pull requests (deselect with -m 'not slow')",
     "smoke: checks a core workflow; runs on every push, also when slow (select with -m smoke)",
-    "flaky: fails or hangs now and then on CI (timing, Qt threads); runs only in the full suite until fixed",
+    "flaky: fails or hangs now and then on CI (timing, Qt threads); left out of the fast tier until fixed",
 ]
 # Print the stack of every thread when a test runs longer than 5 minutes
 # (hung Qt worker threads); the test keeps running

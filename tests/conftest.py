@@ -34,12 +34,15 @@
   (posted ``DeferredDelete`` events are flushed, then ``gc.collect()``):
   tests never run the main loop and ``processEvents()`` does not deliver
   ``DeferredDelete``, so leaked windows used to pile up and crash the
-  interpreter at exit. The objects still alive after a test are then frozen
-  (``gc.freeze()``), so the next test's collection scans only the objects
-  created since: a collection of the whole heap takes up to 0.5 s late in
-  the session and used to be most of the suite's run time. The whole heap is
-  collected after each test module (``gc.unfreeze()``). Set
-  ``ACDC_TESTS_FULL_GC=1`` to collect the whole heap after every test.
+  interpreter at exit. Once pytest released the test's fixture values, its
+  garbage is collected again (after a 1 ms event-loop pass that releases
+  PyQt's slot proxies of deleted widgets) and the objects still alive are
+  frozen (``gc.freeze()``, ``pytest_runtest_protocol``), so the next test's
+  collections scan only the objects created since: a collection of the whole
+  heap takes up to 0.5 s late in the session and used to be half of the
+  suite's run time. After the last test of each module the whole heap is
+  collected (``gc.unfreeze()``). Set ``ACDC_TESTS_FULL_GC=1`` to collect the
+  whole heap after every test.
 - The user's settings used by the GUI, the measurements viewer and data
   loading are never read or written: for every test, the module-level
   ``settings_folderpath`` and the paths ``settings_csv_path``,
@@ -415,7 +418,6 @@ def _auto_answer_blocking_dialogs():
         finally:
             # The test may have imported Qt and created widgets itself
             flushDeferredDeletes()
-            freezeSurvivingObjects()
         return
     from qtpy.QtWidgets import QApplication
     global _QAPP
@@ -431,7 +433,6 @@ def _auto_answer_blocking_dialogs():
         # ones still alive afterwards were left open
         flushDeferredDeletes()
         watchdog.hideDialogsLeftOpen()
-        freezeSurvivingObjects()
 
 
 # Set ACDC_TESTS_FULL_GC=1 to collect the whole heap after every test
@@ -439,31 +440,42 @@ FREEZE_SURVIVING_OBJECTS = os.environ.get('ACDC_TESTS_FULL_GC') != '1'
 
 
 def freezeSurvivingObjects():
-    """Exclude the objects alive after a test from later per-test collections.
+    """Exclude the objects alive now from the following collections.
 
     ``gc.freeze()`` moves them to the permanent generation, so the
-    ``gc.collect()`` of the next test's ``flushDeferredDeletes`` scans only
-    the objects created since (a full collection takes up to 0.5 s once the
-    session has imported and created millions of objects, i.e. most of the
-    suite's time). ``_collect_whole_heap_after_module`` collects them after
-    each test module.
+    ``gc.collect()`` of the next ``flushDeferredDeletes`` scans only the
+    objects created since: a collection of the whole heap takes up to 0.5 s
+    once the session has imported and created millions of objects (it used
+    to be half of the suite's run time).
     """
     if FREEZE_SURVIVING_OBJECTS:
         gc.freeze()
 
 
-@pytest.fixture(scope='module', autouse=True)
-def _collect_whole_heap_after_module():
-    """After each test module, collect the objects frozen after its tests.
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item, nextitem):
+    """After each test, collect its garbage and freeze what survives.
 
-    A module-scoped autouse fixture of the conftest is set up before and torn
-    down after the module's own fixtures (e.g. windows it shares between
-    tests), so their garbage is collected (and their ``deleteLater()``
-    flushed) here.
+    This runs after pytest released the test's fixture values
+    (``item.funcargs``) and, with a short event-loop pass, after PyQt
+    released the slot proxies of deleted widgets: the fixture teardowns are
+    too early, the windows of the test would be frozen while still
+    referenced, then never collected. After the last test of a module (its
+    module fixtures are torn down then), everything frozen during the module
+    is unfrozen and the whole heap collected.
     """
     yield
-    gc.unfreeze()
+    if nextitem is None or (
+            getattr(nextitem, 'module', None)
+            is not getattr(item, 'module', None)):
+        gc.unfreeze()
     flushDeferredDeletes()
+    if 'qtpy' in sys.modules:
+        from qtpy.QtCore import QCoreApplication
+        if QCoreApplication.instance() is not None:
+            from qtpy.QtTest import QTest
+            QTest.qWait(1)
+            flushDeferredDeletes()
     freezeSurvivingObjects()
 
 

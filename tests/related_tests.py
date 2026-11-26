@@ -7,11 +7,15 @@ files::
 
     python tests/related_tests.py --base HEAD^1
 
-It prints one test path per line, or ``tests`` when the whole suite is
-related, and explains the selection on stderr. Without ``--base`` it compares
-with the merge base of ``origin/main``, including uncommitted and untracked
-files, so locally ``python -m pytest $(python tests/related_tests.py)`` runs
-the tests of your changes.
+It prints one test path per line (nothing when no test file is related), or
+``tests`` when the whole suite is related, and explains the selection on
+stderr. Without ``--base`` it compares with the merge base of
+``origin/main``, including uncommitted and untracked files. With ``--run``
+it runs pytest on the selection instead, passing on the other arguments, and
+does nothing when no test file is related (a bare ``pytest`` would run the
+whole suite)::
+
+    python tests/related_tests.py --run -m "slow or flaky"
 
 A test file is related to a changed file when
 
@@ -28,6 +32,10 @@ A test file is related to a changed file when
   ``measurements_viewer``, while the importers of shared modules such as
   ``myutils``, ``widgets`` or ``load`` (dozens) are not followed, else nearly
   every change would select every test;
+* for a module of a plugin, which Cell-ACDC imports by its folder name
+  (``cellacdc/models/<name>/``, ``trackers``, ``promptable_models``,
+  ``measurement_processing``), it contains the folder name as a string
+  literal (``LocalBackend(model_name="thresholding")``);
 * for another file in ``cellacdc`` (configuration templates, docs, icons,
   compiled extensions), it contains the file name, its stem or the name of
   its folder.
@@ -35,12 +43,13 @@ A test file is related to a changed file when
 Deeper dependencies are not followed: the fast tier, which runs everything
 that is neither slow nor flaky, and the full suite before merging cover them.
 
-The whole suite is related when ``cellacdc/__init__.py``, a ``conftest.py``,
-an ``__init__.py`` in ``tests``, a helper the conftest imports, the test data
-(``tests/test_data``), ``pyproject.toml`` or a ``requirements*.txt`` file
-changed, or when the changed files cannot be listed (e.g. unknown base).
-Files outside ``cellacdc`` and ``tests`` (docs, workflows, README) relate to
-no test.
+The whole suite is related when ``cellacdc/__init__.py``, a ``conftest.py``
+or an ``__init__.py`` in ``tests``, a helper the conftest imports, the test
+data (``tests/test_data``), the pytest configuration (``pyproject.toml``, a
+root ``conftest.py``, ``pytest.ini``, ``tox.ini``, ``setup.cfg``) or a
+``requirements*.txt`` file changed, or when the changed files cannot be
+listed or the selection fails (e.g. unknown base). Other files outside
+``cellacdc`` and ``tests`` (docs, workflows, README) relate to no test.
 """
 import argparse
 import ast
@@ -67,6 +76,14 @@ FROM_IMPORT = re.compile(
 MAX_IMPORTERS = 5
 # Generated Qt resource modules (~340k lines): no imports to scan
 SKIPPED_MODULES = re.compile(r'qrc_resources\w*\.py$')
+# Root files that configure pytest or the dependencies of every test
+ROOT_FILES_OF_ALL_TESTS = {
+    'pyproject.toml', 'conftest.py', 'pytest.ini', 'tox.ini', 'setup.cfg',
+}
+# Packages whose plugins Cell-ACDC imports by folder name
+PLUGIN_PACKAGES = {
+    'models', 'trackers', 'promptable_models', 'measurement_processing',
+}
 # Folder or file stems shorter than this match too many unrelated words
 MIN_NAME_LENGTH = 5
 # Folder names too generic to relate a data file to a test
@@ -242,15 +259,16 @@ class Selection:
     def _related_to_file(self, path):
         top = path.parts[0]
         if len(path.parts) == 1:
-            if path.name == 'pyproject.toml' or (
+            if path.name in ROOT_FILES_OF_ALL_TESTS or (
                 path.name.startswith('requirements') and path.suffix == '.txt'
             ):
                 return ALL
             return set()
-        if top not in PACKAGES or path.name == 'conftest.py':
-            return ALL if path.name == 'conftest.py' else set()
+        if top not in PACKAGES:
+            return set()
         if top == 'tests' and (
-            path.name == '__init__.py' or path.parts[1] == 'test_data'
+            path.name in ('__init__.py', 'conftest.py')
+            or path.parts[1] == 'test_data'
         ):
             return ALL
         if path.suffix != '.py':
@@ -269,9 +287,26 @@ class Selection:
             if len(importers) <= MAX_IMPORTERS:
                 for importer in importers:
                     tests |= self.tests_referencing(importer)
+            tests |= self._tests_naming_plugin(path)
         if is_test_file(path) and (self.root / path).is_file():
             tests.add(path.as_posix())
         return tests
+
+    def _tests_naming_plugin(self, path):
+        """Tests that name the plugin folder of `path` in a string literal.
+
+        Plugins (``cellacdc/models/<name>/...``, ``trackers``,
+        ``promptable_models``, ``measurement_processing``) are imported by
+        their folder name, e.g. ``LocalBackend(model_name="thresholding")``.
+        """
+        if len(path.parts) < 4 or path.parts[1] not in PLUGIN_PACKAGES:
+            return set()
+        name = re.escape(path.parts[2])
+        literal = re.compile(rf'''["']{name}["']''')
+        return {
+            test for test in self.test_files
+            if literal.search(self.text(test))
+        }
 
     def _related_to_data_file(self, path):
         names = {path.name}
@@ -290,9 +325,10 @@ def changed_files(base, root=REPO_ROOT):
     (e.g. `base` is unknown or the history is too shallow).
     """
     def git(*args):
+        # git writes paths as UTF-8 whatever the locale (cp1252 on Windows)
         return subprocess.run(
-            ['git', *args], cwd=root, capture_output=True, text=True,
-            check=True,
+            ['git', *args], cwd=root, capture_output=True, check=True,
+            encoding='utf-8', errors='surrogateescape',
         ).stdout
 
     try:
@@ -307,34 +343,66 @@ def changed_files(base, root=REPO_ROOT):
     return sorted(set(files.split('\0')) - {''})
 
 
+def select(base, root=REPO_ROOT):
+    """The related tests (``ALL`` or a list), explained on stderr.
+
+    Fails safe: any error selects the whole suite.
+    """
+    try:
+        files = changed_files(base, root)
+        if files is None:
+            print('Selecting the whole suite.', file=sys.stderr)
+            return ALL
+        tests, reasons = Selection(root).related(files)
+    except Exception as err:
+        print(
+            f'Selecting the whole suite after an error: {err!r}',
+            file=sys.stderr,
+        )
+        return ALL
+    for changed, reason in reasons.items():
+        if isinstance(reason, str):
+            print(f'{changed}: {reason}', file=sys.stderr)
+        else:
+            print(f'{changed}: {len(reason)} test file(s)', file=sys.stderr)
+    return tests
+
+
 def main(argv=None, root=REPO_ROOT):
     parser = argparse.ArgumentParser(
+        allow_abbrev=False,
         description=(
             'Print the test files related to the files changed since the '
-            'merge base of BASE and HEAD ("tests" = the whole suite).'
+            'merge base of BASE and HEAD ("tests" = the whole suite), or run '
+            'pytest on them with --run.'
         )
     )
     parser.add_argument(
         '--base', default=DEFAULT_BASE,
         help=f'git revision to compare with (default: {DEFAULT_BASE})',
     )
-    args = parser.parse_args(argv)
-    files = changed_files(args.base, root)
-    if files is None:
-        print('Selecting the whole suite.', file=sys.stderr)
-        print(ALL)
+    parser.add_argument(
+        '--run', action='store_true',
+        help=(
+            'run "python -m pytest <related files> <other arguments>" '
+            '(nothing when no file is related) instead of printing the files'
+        ),
+    )
+    args, pytest_args = parser.parse_known_args(argv)
+    if pytest_args and not args.run:
+        parser.error(f'unrecognized arguments: {" ".join(pytest_args)}')
+    tests = select(args.base, root)
+    selected = [ALL] if tests == ALL else tests
+    if not args.run:
+        print('\n'.join(selected))
         return 0
-    tests, reasons = Selection(root).related(files)
-    for changed, reason in reasons.items():
-        if isinstance(reason, str):
-            print(f'{changed}: {reason}', file=sys.stderr)
-        else:
-            print(f'{changed}: {len(reason)} test file(s)', file=sys.stderr)
-    if tests == ALL:
-        print(ALL)
-    else:
-        print('\n'.join(tests))
-    return 0
+    if not selected:
+        # A bare `pytest` would run the whole suite (testpaths)
+        print('No test file is related to the changed files.', file=sys.stderr)
+        return 0
+    return subprocess.call(
+        [sys.executable, '-m', 'pytest', *selected, *pytest_args], cwd=root
+    )
 
 
 if __name__ == '__main__':

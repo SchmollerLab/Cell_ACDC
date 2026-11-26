@@ -1,6 +1,7 @@
 """Tests of ``tests/related_tests.py`` (test files related to changed files)."""
 import shutil
 import subprocess
+import sys
 import textwrap
 
 import pytest
@@ -27,6 +28,8 @@ FILES = {
     'cellacdc/viewer/canvas.py': '',
     'cellacdc/measurement_processing/__init__.py': '',
     'cellacdc/measurement_processing/Ramp/acdcProcess.py': '',
+    'cellacdc/models/__init__.py': '',
+    'cellacdc/models/thresholding/acdcSegment.py': '',
     'cellacdc/templates/fucci_cycle.json': '{}',
     'cellacdc/docs/source/page.rst': '',
     'tests/__init__.py': '',
@@ -47,6 +50,8 @@ FILES = {
     'tests/test_reuse.py': 'from tests.test_gui import helper\n',
     'tests/test_helper_b.py': 'from tests.utils.helper_b import helper\n',
     'tests/test_fucci.py': "TEMPLATE = 'fucci_cycle'\n",
+    'tests/test_server.py': 'BACKEND = dict(model_name="thresholding")\n',
+    'tests/test_words.py': '# thresholding, not quoted\n',
     'tests/test_invalid_syntax.py': 'from cellacdc import widgets\ndef (\n',
     'tests/.test_hidden.py': 'from cellacdc import gui\n',
 }
@@ -154,6 +159,10 @@ def test_test_helpers(repo):
     'tests/utils/__init__.py',
     'tests/test_data/table.csv',
     'pyproject.toml',
+    'conftest.py',
+    'pytest.ini',
+    'tox.ini',
+    'setup.cfg',
     'requirements_gui_pyqt6.txt',
 ])
 def test_changes_that_relate_to_the_whole_suite(repo, changed):
@@ -173,6 +182,7 @@ def test_data_files_relate_to_tests_mentioning_them(repo):
 def test_files_outside_the_packages_relate_to_nothing(repo):
     assert related(
         repo, 'README.rst', '.github/workflows/build.yml', 'docs/index.rst',
+        'docs/conftest.py',
     ) == []
 
 
@@ -209,9 +219,12 @@ def test_changed_files_include_commits_and_uncommitted_changes(repo, capsys):
     git('commit', '-q', '-am', 'change gui')
     (repo / 'cellacdc/widgets.py').write_text('# unstaged\n', encoding='utf-8')
     (repo / 'tests/test new.py').write_text('', encoding='utf-8')
+    # git writes UTF-8 names whatever the locale (cp1252 on Windows)
+    (repo / 'cellacdc/Ábc.txt').write_text('', encoding='utf-8')
 
     assert related_tests.changed_files('main', repo) == [
-        'cellacdc/gui.py', 'cellacdc/widgets.py', 'tests/test new.py',
+        'cellacdc/gui.py', 'cellacdc/widgets.py', 'cellacdc/Ábc.txt',
+        'tests/test new.py',
     ]
     assert related_tests.changed_files('unknown-base', repo) is None
     assert 'Cannot list the changed files' in capsys.readouterr().err
@@ -225,3 +238,48 @@ def test_changed_files_include_commits_and_uncommitted_changes(repo, capsys):
     # Unknown base: the whole suite
     assert related_tests.main(['--base', 'unknown-base'], root=repo) == 0
     assert capsys.readouterr().out.split() == [ALL]
+
+
+def test_plugin_modules_relate_to_tests_naming_their_folder(repo):
+    assert related(repo, 'cellacdc/models/thresholding/acdcSegment.py') == [
+        'tests/test_server.py',
+    ]
+
+
+def test_fails_safe_on_errors(repo, monkeypatch, capsys):
+    monkeypatch.setattr(
+        related_tests, 'changed_files', lambda base, root: ['cellacdc/gui.py']
+    )
+
+    def fail(self, files):
+        raise RuntimeError('bug')
+
+    monkeypatch.setattr(Selection, 'related', fail)
+    assert related_tests.select('main', repo) == ALL
+    assert 'RuntimeError' in capsys.readouterr().err
+
+
+def test_run_calls_pytest_on_the_selection_only(repo, monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(
+        related_tests.subprocess, 'call',
+        lambda args, cwd: calls.append((args, cwd)) or 0,
+    )
+    changed = []
+    monkeypatch.setattr(
+        related_tests, 'changed_files', lambda base, root: changed
+    )
+    # Nothing related: no bare pytest (that would run the whole suite)
+    assert related_tests.main(['--run', '-m', 'slow'], root=repo) == 0
+    assert not calls
+    assert 'No test file is related' in capsys.readouterr().err
+
+    changed.append('cellacdc/gui.py')
+    assert related_tests.main(['--run', '-m', 'slow', '-x'], root=repo) == 0
+    assert calls == [([
+        sys.executable, '-m', 'pytest', 'tests/test_gui.py',
+        'tests/test_patch.py', '-m', 'slow', '-x',
+    ], repo)]
+    # pytest arguments are accepted only with --run
+    with pytest.raises(SystemExit):
+        related_tests.main(['-m', 'slow'], root=repo)

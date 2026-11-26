@@ -123,8 +123,9 @@ GUI tests run offscreen, so no windows appear::
     # Only the smoke tests (core workflows, less than a minute)
     python -m pytest -m smoke
 
-    # The tests related to your changes (compared with upstream/main)
-    python -m pytest $(python tests/related_tests.py --base upstream/main)
+    # The tests related to your changes (compared with upstream/main;
+    # arguments after --run go to pytest)
+    python tests/related_tests.py --base upstream/main --run
 
 The tests are marked by speed and purpose (markers registered in
 ``pyproject.toml``):
@@ -135,8 +136,8 @@ The tests are marked by speed and purpose (markers registered in
   starts, a Position loads, the measurements viewer loads data and plots, a
   configuration is saved and loaded again. Smoke tests run on every push, also
   when they are slow.
-* ``flaky``: the test failed or hung now and then on CI (timing, threads) and
-  runs only in the full suite until it is fixed.
+* ``flaky``: the test failed or hung now and then on CI (timing, threads).
+  Like the slow tests, it is left out of the fast tier until it is fixed.
 
 When you add a test, keep it fast (small synthetic data) and check its duration
 with ``python -m pytest tests/test_<name>.py --durations=0``. Mark it
@@ -153,10 +154,11 @@ Windows and macOS with PyQt5 and PyQt6 and Python 3.10 to 3.13:
   tests of the test files related to the changed files
   (``tests/related_tests.py``).
 * **Before merging**: the full suite (workflow ``full-tests.yml``). A maintainer
-  adds the ``full tests`` label to the pull request: the suite runs now and
-  again on every push while the label stays. It can also be started on any
-  branch from the
+  adds the ``full tests`` label to the pull request (the workflow looks for
+  exactly this label name): the suite runs now and again on every push while
+  the label stays. It can also be started from the
   `Actions tab <https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/full-tests.yml>`_
-  ("Run workflow").
+  ("Run workflow") on any branch that contains ``full-tests.yml`` (merge
+  ``main`` into older branches first).
 * **After merging**: every push to ``main`` and a weekly run (Monday) run the
   full suite (workflows ``build-*.yml``, shown by the badges of the README).

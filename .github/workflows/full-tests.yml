@@ -1,8 +1,9 @@
 # Full test suite (also the tests marked slow or flaky) on every platform of the
 # build-*.yml workflows. Run it before merging a pull request:
-# - add the "full tests" label to the pull request: the suite runs now and
-#   again on every push while the label stays;
-# - or manually: Actions > Full test suite > Run workflow (any branch).
+# - add the "full tests" label (exactly this name) to the pull request:
+#   the suite runs now and again on every push while the label stays;
+# - or manually: Actions > Full test suite > Run workflow, on a branch that
+#   contains this file.
 # Pushes to main and the weekly runs of the build-*.yml workflows run the
 # full suite too.
 # See "Running the tests" in cellacdc/docs/source/contributing.rst.
