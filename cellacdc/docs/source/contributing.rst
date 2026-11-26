@@ -102,4 +102,61 @@ Note that if you want to modify the code of the Pull Request, you can simply
 commit and push to the same branch. GitHub will automatically add to the open 
 Pull Request.
 
+Running the tests
+-----------------
 
+The tests are in the ``tests`` folder and use `pytest <https://docs.pytest.org>`_.
+Install pytest and the GUI requirements of your Qt binding in the development
+environment, e.g.::
+
+    pip install pytest -r requirements_gui_pyqt6.txt
+
+Then run the tests from the cloned folder (parent folder of ``cellacdc``). The
+GUI tests run offscreen, so no windows appear::
+
+    # The fast tier, as CI runs it on every push to a pull request
+    python -m pytest -m "(smoke or not slow) and not flaky"
+
+    # The full suite, as CI runs it before merging
+    python -m pytest
+
+    # Only the smoke tests (core workflows, less than a minute)
+    python -m pytest -m smoke
+
+    # The tests related to your changes (compared with upstream/main)
+    python -m pytest $(python tests/related_tests.py --base upstream/main)
+
+The tests are marked by speed and purpose (markers registered in
+``pyproject.toml``):
+
+* ``slow``: the test takes half a second or more (a parametrized test: all
+  its cases together take 5 seconds or more).
+* ``smoke``: the test checks a core workflow, e.g. the GUI or the launcher
+  starts, a Position loads, the measurements viewer loads data and plots, a
+  configuration is saved and loaded again. Smoke tests run on every push, also
+  when they are slow.
+* ``flaky``: the test failed or hung now and then on CI (timing, threads) and
+  runs only in the full suite until it is fixed.
+
+When you add a test, keep it fast (small synthetic data) and check its duration
+with ``python -m pytest tests/test_<name>.py --durations=0``. Mark it
+``@pytest.mark.slow`` if it still takes half a second or more, or mark the whole
+file with ``pytestmark = pytest.mark.slow`` when all its tests are slow. A test
+must pass whatever other tests run before it: the tiers leave out the slow and
+flaky tests.
+
+Continuous integration (GitHub Actions) runs the tests in tiers, on Ubuntu,
+Windows and macOS with PyQt5 and PyQt6 and Python 3.10 to 3.13:
+
+* **Every push to a pull request**: flake8 and the fast tier (workflows
+  ``build-*.yml``, a few minutes), plus, on Ubuntu only, the slow and flaky
+  tests of the test files related to the changed files
+  (``tests/related_tests.py``).
+* **Before merging**: the full suite (workflow ``full-tests.yml``). A maintainer
+  adds the ``full tests`` label to the pull request: the suite runs now and
+  again on every push while the label stays. It can also be started on any
+  branch from the
+  `Actions tab <https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/full-tests.yml>`_
+  ("Run workflow").
+* **After merging**: every push to ``main`` and a weekly run (Monday) run the
+  full suite (workflows ``build-*.yml``, shown by the badges of the README).

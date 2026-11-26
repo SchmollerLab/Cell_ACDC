@@ -1,5 +1,13 @@
-# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
-# For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
+# flake8 and the tests on macOS with PyQt6, Python 3.10 to 3.13.
+# - Pull requests: the fast tier, i.e. the smoke tests and the tests not
+#   marked slow or flaky (a few minutes).
+# - Pushes to main (merges) and every Monday: the full suite (the badges in
+#   README.rst show this status).
+# Run the full suite of a pull request before merging it with the
+# "full tests" label (full-tests.yml). See "Running the tests" in
+# cellacdc/docs/source/contributing.rst.
+# The job id and matrix give the check names "build (3.10)", ... that the
+# main branch ruleset requires: keep them.
 
 name: macOS build, lint and test (PyQt6)
 
@@ -8,10 +16,19 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: "0 3 * * 1"
+
+concurrency:
+  # A new push to a pull request cancels the run of the previous one
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   build:
-
+    # A hung test must not run until the default limit of 6 h (the full
+    # suite takes 20-40 min)
+    timeout-minutes: ${{ github.event_name == 'pull_request' && 30 || 90 }}
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -20,24 +37,26 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v6
+    - uses: ./.github/actions/setup-cellacdc
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip cache purge
-        python -m pip install flake8 pytest
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        python -m pip install -e .
-        python -m pip install -r requirements_gui_pyqt6.txt
+        qt: pyqt6
     - name: Lint with flake8
+      shell: bash
       run: |
         # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with pytest
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+      # --durations lists the slowest tests run. In the fast tier these are
+      # the candidates for the slow marker (see CLAUDE.md, Testing)
       run: |
-        pytest
+        if [ "$EVENT_NAME" = pull_request ]; then
+          python -m pytest -m "(smoke or not slow) and not flaky" --durations=25
+        else
+          python -m pytest --durations=25
+        fi
