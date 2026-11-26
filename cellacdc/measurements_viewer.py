@@ -3,6 +3,12 @@ data while plotting the time-course of `acdc_output` table columns (measurements
 of the selected cell, or two measurements against each other for all cells and
 frames of the current position. Hover over a point for measurement details;
 click a point to navigate to its frame and zoom to its cell.
+The plot options of the context menu disable the transforms FFT, dy/dx and
+Y vs Y' in both plot modes (`disableUnsupportedPlotTransforms`), and
+"Downsample" and "Clip to View" (`disableUnsupportedPlotDownsampling`):
+every point is a cell at one frame with its own symbol brush and hover
+data, while these options change the number of points or the x axis
+(pyqtgraph raised).
 The widget-free code (data loading and the window's data/logic methods,
 `measurements_viewer_utils.MeasurementsViewerUtils`, inherited by
 `MeasurementsViewerWin`) lives in `measurements_viewer_utils`; this
@@ -28,6 +34,45 @@ color. Right-click a column to set a custom color or reset it to the default.
 Custom colors are saved in the configuration's ``measurements_colors``
 ``{column: "#rrggbb"}`` (premade templates may preset them, e.g. green/red
 for the FUCCI reporters).
+Time course y axes: plotted columns share the default y axis (number 1)
+unless the column context menu puts them on another numbered axis
+("Create new y axis for this"; "Add to y-axis of..." lists the other
+displayed axes by their plotted columns, never the axis of the clicked
+column (its remembered axis if it is not plotted), so it stays empty and
+disabled until a column is put on another axis; a plotted column alone on
+its axis cannot get a new one). Moving the last plotted column of axis 1
+to another axis merges that axis into axis 1 (`addToYAxisOf`), so that
+columns plotted later, on axis 1 by default, join it. Nothing merges when
+axis 1 has no plotted column (its columns were unplotted): another axis is
+then the left one, and a column plotted later on axis 1 gets a new left
+axis again. The axis numbers of
+the columns not on axis 1 are kept in ``timeCourseYAxes``
+``{column: number}``, also while a column is not plotted (plotting it
+again puts it back on its axis); a new axis takes the number after every
+number in use, also by columns that are not plotted, so it is the rightmost
+axis. The displayed axes are those with plotted columns, sorted by number:
+the first one is the left axis of the main view box (labeled "Value", or
+"Normalized value", when it is the only axis, also if its number is not 1),
+the others are extra axes on the right labeled with their columns, each
+with its own view box (`_TimeCoursePlotItem`, which also documents mouse
+handling: pan/zoom in the plot area moves every axis, on an axis only that
+axis; "A", "View All", every automatic rescale and every change of the log
+or Subtract Mean transform of the plot options fit each axis to its own
+data; plot options and the plot exporters include every axis). The
+hover tip of the points of every axis is shown on the main view box
+(`measurementPointsHovered`). The unanalyzed frames are shaded under the
+curves of every axis. The phase band gets an empty right axis as wide as
+the extra axes so that frames stay aligned. Comparison mode has no extra
+axes.
+Renaming a column keeps its axis; removing a time point identifier or
+custom annotation column drops it. The axes are saved in the
+configuration's ``time_course_y_axes`` ``{column: number}``: every plotted
+time course column (also those on axis 1), then the other columns not on
+axis 1 (the FUCCI template puts ``area`` on axis 2, next to the 0-1
+reporters). ``Normalize measurements (0-1)`` is independent of the axes:
+it rescales every curve, whatever its axis (with several axes, each axis
+label gets " (normalized)"). Conditional formatting segments of a column
+are drawn on the axis of the column.
 Measurement selectors use the equation editor's tree organization: numerical
 and categorical inputs, channel-specific cell/background/custom measurements,
 size measurements, region properties, and other numerical inputs. Plotting
@@ -39,8 +84,14 @@ The window loads data on its own (menu `File --> Load Folder...`,
 `Open Image File...` or `Open Recent`) and it shares only GUI elements with 
 the main GUI (`gui.guiWin`) through the mixins in:
 
-- `gui_navigation`: frames/z-slices navigation, zoom to object, recent paths 
-  and LUT.
+- `gui_navigation`: frames/z-slices navigation, zoom to object, recent paths
+  and LUT. The arrow keys (Left/Right: frames or z-slices, Up/Down: Cell
+  IDs) are handled by an application event filter (`eventFilter`) whatever
+  widget of the window has the focus (buttons and check boxes would move
+  the focus with them), except text inputs, spin boxes, drop-down menus and
+  lists (`qutils.ARROW_KEYS_WIDGET_CLASSES`), the menu bar and open menus
+  (keyboard navigation of the menus), and while the window is disabled
+  (loading data, `runInThread`).
 - `gui_annotations`: display of contours, segm. masks, IDs, cell cycle and 
   lineage info, mother-daughter lines and object tracks. As in the main
   GUI's 'Viewer' mode, mother-daughter lines come from the cell cycle
@@ -59,17 +110,42 @@ the main GUI (`gui.guiWin`) through the mixins in:
   bar keeps the zoom (the bar is placed in the current view).
 - `gui_overlay`: overlay of other channels and of other segmentation files.
   As in the main GUI, the channels overlay is turned off and disabled on
-  zy/zx planes and restored back on xy (`setOverlayEnabledForPlane`).
+  zy/zx planes and restored back on xy (`setOverlayEnabledForPlane`). The
+  overlay modes (true transparency, alpha-encoded intensity) keep the check
+  states the user clicked (channel display settings, see LUTs below; also
+  after loading other data) and apply when the overlay is turned on.
+- LUTs: as in the main GUI, the LUT (colormap) of the displayed channel and
+  of each overlay channel is saved per channel name in the channel display
+  settings (own file, shared with the main GUI and other open windows) and
+  restored when a channel with that name is loaded
+  (`gui_navigation.LutGuiElements`; `restoreImageChannelLutAfterLoading`
+  runs in `initViewerToolsAfterLoading`).
 - `gui_custom_annotations`: custom annotations of the objects.
 
-Open it from the launcher (Utilities > Measurements > Measurements viewer...)
-or run it with `python -m cellacdc.measurements_viewer [folder_path]`.
+Open it from the launcher (button "Launch measurements viewer..." in the
+"Measurements visualisation" box, or Utilities > Measurements > Measurements
+viewer..., both `_main.mainWin.launchMeasurementsViewer`) or run it with
+`python -m cellacdc.measurements_viewer [folder_path]`.
 After data is loaded (on the first event loop pass after `setData`, i.e.
 after the rest of the load such as the overlay channels), the Cell ID
 controls (label, spinbox and scrollbar at the bottom) blink and the status bar 
-explains how to select the plotted cell. Ctrl+F focuses the search bar and 
+explains how to select the plotted cell. Ctrl+F focuses the search bar and
 blinks it, like the toolbar search
 button.
+As in the main GUI (`gui.guiWin.setStatusBarLabel`), the left label of the
+status bar shows what is displayed (`setStatusBarLabel`, text from
+`measurements_viewer_utils.loaded_data_status`): experiment folder, Position
+folder (with its index when several are loaded), basename, displayed and
+overlay channels, segmentation file and configuration file name; its tool tip
+has the full Images folder and configuration file paths (paths too long for a
+tool tip line broken after separators on indented lines below their label,
+`measurements_viewer_utils.path_tooltip_lines`). It is updated when
+data, a position or a configuration is loaded, the overlay channels change
+and a configuration is saved (logged once per load and position change),
+and cleared without data. It is plain text and clipped (never widens the
+window). Other messages are temporary (`QStatusBar.showMessage`, e.g.
+"Measurements exported to ...", the color scheme restart notice of
+`onToggleColorScheme`): they hide the label only while they are shown.
 The Help menu opens the online user guide (`urls.measurements_viewer_docs_url`,
 source ``docs/source/measurements-viewer.rst``) and the Cell-ACDC
 documentation, shows a quick start (``MEASUREMENTS_VIEWER_QUICK_START``, also
@@ -470,8 +546,8 @@ skipped with 'missing inputs' afterwards); the column's own color and
 conditional formatting are removed with it.
 
 ``Time point to phase translator...`` (icon-only button of the ``Phases``
-toolbar, icon drawn in code by `phase_translator_icon`, tooltip explaining the
-steps; also in the Annotations menu) opens an ordered list of phase rules.
+toolbar, icon ``:phase_translator.svg``, tooltip explaining the steps; also in
+the Annotations menu) opens an ordered list of phase rules.
 Its ``Help...`` button explains the steps and links to the user guide section
 (`urls.measurements_viewer_phase_translator_docs_url`).
 Each rule reuses the custom annotation formula editor (including filters,
@@ -491,8 +567,9 @@ annotation overrides phases (evaluation needs a rule or an overriding
 annotation, `hasPhaseTranslation`).
 Apply phase evaluation updates either the displayed cell or all cells of the
 current position in memory. The ``Phases`` toolbar (and the Annotations menu)
-also has ``Evaluate phases on displayed cell`` (icon `phase_apply_icon`,
-shortcut ``Alt+P``, editable in the shortcuts editor) to apply the configured
+also has ``Evaluate phases on displayed cell`` (icon
+``:phase_translator_apply.svg``, shortcut ``Alt+P``, editable in the
+shortcuts editor) to apply the configured
 rules and overriding annotations to the displayed cell without opening the
 dialog (status bar hint when neither is defined). With ``Automatically
 evaluate phases when time points or annotations change or phases are
@@ -555,10 +632,11 @@ the same as clicking its "A" button (``autoscaleMeasurementsPlot``: x and y
 auto range, y restricted to the visible x range with ``setAutoVisible``), and
 the plot then keeps following the data (e.g. when changing cell or editing
 the table) until the user zooms or pans by hand. The time course is
-autoscaled whenever the set of plotted columns changes (column plotted or
-removed from the list or its context menu, a configuration loaded),
-normalization is toggled, a position is loaded or the view switches back from
-Measurement vs Measurement. These autoscales wait until a plotted value is
+autoscaled whenever the set of plotted columns or their grouping on y axes
+changes (column plotted, removed or moved to another y axis from the list
+or its context menu, a configuration loaded), normalization is toggled, a
+position is loaded or the view switches back from Measurement vs
+Measurement. These autoscales wait until a plotted value is
 finite; until then, without auto range, x shows frames 1..SizeT after loading
 a position. While pyqtgraph's auto range is on (after an autoscale, or with
 ``Rescale plot`` checked) a cell whose plotted values are all NaN still fits
@@ -609,12 +687,11 @@ import skimage.measure
 
 from qtpy.QtCore import (
     Qt, Signal, QTimer, QPoint, QEvent, QRect, QSaveFile, QIODevice,
-    QThread, QMutex, QWaitCondition, QObject, QEventLoop, QCoreApplication,
-    QPointF, QRectF
+    QThread, QMutex, QWaitCondition, QObject, QEventLoop, QCoreApplication
 )
 from qtpy.QtGui import (
     QFont, QIcon, QGuiApplication, QPixmap, QPainter, QCursor, QKeySequence,
-    QColor, QMouseEvent, QPen, QPolygonF
+    QColor, QMouseEvent
 )
 from qtpy.QtWidgets import (
     QMainWindow, QWidget, QLabel, QGridLayout, QVBoxLayout, QHBoxLayout,
@@ -622,7 +699,7 @@ from qtpy.QtWidgets import (
     QCheckBox, QComboBox, QAbstractItemView, QFileDialog, QAction,
     QApplication, QToolButton, QPushButton, QActionGroup, QAbstractSlider,
     QWidgetAction, QMenu, QColorDialog, QStyleOptionViewItem, QTreeView,
-    QAbstractButton
+    QAbstractButton, QSizePolicy
 )
 
 import pyqtgraph as pg
@@ -673,7 +750,7 @@ from .measurements_viewer_utils import (
     evaluate_masked_cell_equation, update_last_analyzed_frame,
     acdc_df_file_stamp, acdc_df_snapshot, position_name, load_positions,
     precompute_position_regionprops, preload_overlay_channels,
-    load_display_positions,
+    load_display_positions, loaded_data_status,
 )
 
 
@@ -695,77 +772,15 @@ PREMADE_CONFIGURATIONS_PATH = os.path.join(
     'measurements_viewer_premade_configurations'
 )
 PREMADE_TAG = '[Premade] '
-# Phase colors of the phase translator icon (Okabe-Ito sky blue, bluish
-# green and orange: no red, readable on light and dark toolbars)
-PHASE_TRANSLATOR_ICON_COLORS = ('#56B4E9', '#009E73', '#E69F00')
-
-
-def phase_translator_icon(size=64):
-    """Icon of the time point to phase translator drawn in code (no resource
-    file): a phase band of three colored segments split by two time point
-    ticks with a marker on top. The ticks are mid-gray, visible on both the
-    light and the dark color scheme."""
-    pixmap = QPixmap(size, size)
-    pixmap.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    margin = size / 16
-    width = size - 2*margin
-    bounds = (
-        margin, margin + width*0.36, margin + width*0.66, size - margin
-    )
-    bandTop, bandHeight = size*0.4, size*0.32
-    painter.setPen(QPen(Qt.PenStyle.NoPen))
-    for x0, x1, color in zip(
-            bounds[:-1], bounds[1:], PHASE_TRANSLATOR_ICON_COLORS
-        ):
-        painter.setBrush(QColor(color))
-        painter.drawRect(QRectF(x0, bandTop, x1 - x0, bandHeight))
-    tickColor = QColor(128, 128, 128)
-    tickPen = QPen(tickColor)
-    tickPen.setWidthF(size / 14)
-    tickPen.setCapStyle(Qt.PenCapStyle.RoundCap)
-    markerY, radius = size*0.2, size/9
-    for x in bounds[1:-1]:
-        painter.setPen(tickPen)
-        painter.drawLine(QPointF(x, markerY), QPointF(x, size*0.86))
-        painter.setPen(QPen(Qt.PenStyle.NoPen))
-        painter.setBrush(tickColor)
-        painter.drawEllipse(QPointF(x, markerY), radius, radius)
-    painter.end()
-    return QIcon(pixmap)
-
-
-def phase_apply_icon(size=64):
-    """Icon of "Evaluate phases on displayed cell" drawn in code: the phase
-    band of `phase_translator_icon` below a play triangle (mid-gray, visible
-    on both color schemes)."""
-    pixmap = QPixmap(size, size)
-    pixmap.fill(QColor(0, 0, 0, 0))
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    margin = size / 16
-    width = size - 2*margin
-    bounds = (
-        margin, margin + width*0.36, margin + width*0.66, size - margin
-    )
-    bandTop, bandHeight = size*0.62, size*0.28
-    painter.setPen(QPen(Qt.PenStyle.NoPen))
-    for x0, x1, color in zip(
-            bounds[:-1], bounds[1:], PHASE_TRANSLATOR_ICON_COLORS
-        ):
-        painter.setBrush(QColor(color))
-        painter.drawRect(QRectF(x0, bandTop, x1 - x0, bandHeight))
-    painter.setBrush(QColor(128, 128, 128))
-    painter.drawPolygon(QPolygonF([
-        QPointF(size*0.34, size*0.06), QPointF(size*0.34, size*0.52),
-        QPointF(size*0.70, size*0.29)
-    ]))
-    painter.end()
-    return QIcon(pixmap)
-
+# Tool tip of the columns list in Time course mode
+TIME_COURSE_COLUMNS_TOOLTIP = (
+    'Click a column to plot/unplot it. Right-click a column\n'
+    'to change its color, y axis or conditional formatting.'
+)
 
 APPLY_PHASES_CELL_SHORTCUT = 'Alt+P'
+# Left/Right: frames (or z-slices), Up/Down: Cell IDs (`navigateWithArrowKey`)
+ARROW_KEYS = (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down)
 
 MASK_UNANALYZED_TOOLTIP = (
     'Ignore frames after the last analyzed frame\n\n'
@@ -915,6 +930,341 @@ class _TimepointLine(pg.InfiniteLine):
             self.sigRemoveRequested.emit(self)
             return
         super().mouseClickEvent(ev)
+
+
+class _TimeCourseViewBox(pg.ViewBox):
+    """Main view box of the measurements plot (`_TimeCoursePlotItem`).
+
+    Panning and zooming in the plot area (mouse drag, wheel, rectangle zoom)
+    emits the y range before and after the change
+    (`sigYRangeChangedInPlot`), so that the extra y axes of the time course
+    move in the same way. It is emitted also when the y range did not change
+    but its auto range was turned off (e.g. a horizontal pan), so that the
+    extra axes stop autoscaling too. Drags and scrolls on the left axis
+    (`axis` given by the `AxisItem`) change only this view box.
+    """
+    sigYRangeChangedInPlot = Signal(object, object)
+
+    def wheelEvent(self, ev, axis=None):
+        before, wasAuto = self.viewRange()[1], self.autoRangeEnabled()[1]
+        super().wheelEvent(ev, axis=axis)
+        self._emitYRangeChangedInPlot(before, wasAuto, axis)
+
+    def mouseDragEvent(self, ev, axis=None):
+        before, wasAuto = self.viewRange()[1], self.autoRangeEnabled()[1]
+        super().mouseDragEvent(ev, axis=axis)
+        self._emitYRangeChangedInPlot(before, wasAuto, axis)
+
+    def _emitYRangeChangedInPlot(self, before, wasAuto, axis):
+        if axis is not None:
+            return
+        after = self.viewRange()[1]
+        isAutoTurnedOff = wasAuto and not self.autoRangeEnabled()[1]
+        if list(after) != list(before) or isAutoTurnedOff:
+            self.sigYRangeChangedInPlot.emit(before, after)
+
+
+class _ExtraYViewBox(pg.ViewBox):
+    """View box of an extra y axis of the time course (`_TimeCoursePlotItem`).
+    A right-click on its axis opens the plot menu of the main view box, as
+    on the left axis."""
+
+    def __init__(self, mainViewBox):
+        super().__init__(enableMenu=False)
+        self._mainViewBox = mainViewBox
+
+    def mouseClickEvent(self, ev):
+        if ev.button() == Qt.MouseButton.RightButton:
+            self._mainViewBox.mouseClickEvent(ev)
+            return
+        super().mouseClickEvent(ev)
+
+
+class _TimeCoursePlotItem(pg.PlotItem):
+    """Plot item of the measurements plot with extra y axes on the right for
+    the time course (`setExtraYAxesCount`).
+
+    Each extra axis has its own view box, a child of the plot item with the
+    geometry of the main view box (`_TimeCourseViewBox`), x-linked to it and
+    stacked under it: the main view box gets the mouse events of the plot
+    area (pan, zoom, context menu, current frame and time point lines),
+    while hover tips and clicks still reach the points of every axis
+    (pyqtgraph sends hover events to every item under the cursor and clicks
+    to the topmost item accepting them; a view box does not accept left
+    clicks). Panning or zooming in the plot area moves every y axis in the
+    same way (`moveExtraYAxesWithMain`); dragging or scrolling on an axis
+    changes only that axis (a right-click on it opens the plot menu,
+    `_ExtraYViewBox`). The "A" button autoscales every axis and is
+    shown when one of them is not autoscaled; "View All" of the plot area
+    menu fits every axis once (`fitExtraYAxes`). Curves of the extra axes
+    are registered in `items`/`curves` (not `dataItems`, so
+    `listDataItems` has only the left axis), so that the plot options
+    (log mode, alpha, FFT, downsampling, ...) and the exporters of the
+    context menu (CSV, SVG, ...) include them; a changed transform
+    autoscales the y range of every axis, as pyqtgraph does for the main
+    view box. The viewer disables the options that change the number of
+    points (FFT, dy/dx, Y vs Y', downsampling, clip to view:
+    `MeasurementsViewerWin.disableUnsupportedPlotTransforms` and
+    `disableUnsupportedPlotDownsampling`), which fail on its per-point
+    brushes. "Subtract Mean" exists only from pyqtgraph 0.14 (0.13.7 is
+    still supported: check the API before using newer options). Background
+    items (`addBackgroundItem`, e.g. shaded frames) stay in the bottom view
+    box, under the curves of every axis. Extra view boxes are created on demand
+    and kept (hidden, axis out of the layout) when not needed.
+    """
+    sigExtraYAxesChanged = Signal()
+    # Read by `updateButtons` also while `PlotItem.__init__` runs
+    extraYAxes = ()
+    extraYAxesCount = 0
+
+    def __init__(self, **kwargs):
+        super().__init__(viewBox=_TimeCourseViewBox(), **kwargs)
+        # [(ViewBox, AxisItem)]: the first `extraYAxesCount` are shown
+        self.extraYAxes = []
+        self.extraYAxesCount = 0
+        # [(ViewBox, PlotDataItem)] added by `addExtraYAxisItem`
+        self._extraItems = []
+        self.backgroundItems = []
+        self._backgroundViewBox = self.vb
+        # Moves of the main view box (axis widths changed on both sides by
+        # the same amount) do not resize it
+        self.vb.geometryChanged.connect(self.updateExtraViewsGeometry)
+        self.vb.sigYRangeChangedInPlot.connect(self.moveExtraYAxesWithMain)
+        self.vb.menu.viewAll.triggered.connect(self.fitExtraYAxes)
+
+    def shownExtraViewBoxes(self):
+        return [vb for vb, _ in self.extraYAxes[:self.extraYAxesCount]]
+
+    def shownExtraAxes(self):
+        return [axis for _, axis in self.extraYAxes[:self.extraYAxesCount]]
+
+    def _createExtraYAxis(self):
+        vb = _ExtraYViewBox(self.vb)
+        vb.setMouseEnabled(x=False, y=True)
+        # Under the main view box (see class docstring; a ViewBox has z -100
+        # and siblings with the same z are stacked in creation order, so
+        # the first extra view box is the bottom one, `bottomViewBox`)
+        vb.setParentItem(self)
+        vb.setZValue(self.vb.zValue() - 1)
+        vb.setXLink(self.vb)
+        vb.setAutoVisible(y=True)
+        vb.sigStateChanged.connect(lambda *args: self.updateButtons())
+        axis = pg.AxisItem('right', parent=self)
+        axis.setLogMode(*self.logModes())
+        axis.linkToView(vb)
+        axis.geometryChanged.connect(self.sigExtraYAxesChanged.emit)
+        vb.hide()
+        axis.hide()
+        self.extraYAxes.append((vb, axis))
+
+    def setExtraYAxesCount(self, count):
+        """Show `count` extra y axes (right of the plot, in order)."""
+        previous = self.extraYAxesCount
+        if count == previous:
+            return
+        while len(self.extraYAxes) < count:
+            self._createExtraYAxis()
+        for i in range(previous, count):
+            vb, axis = self.extraYAxes[i]
+            # Right of the (hidden) default right axis in column 2
+            self.layout.addItem(axis, 2, 3 + i)
+            axis.show()
+            vb.show()
+            # A new axis fits its data
+            vb.enableAutoRange(axis=pg.ViewBox.YAxis)
+        self.extraYAxesCount = count
+        self.updateExtraViewsGeometry()
+        self._placeBackgroundItems()
+        hidden = [vb for vb, _ in self.extraYAxes[count:previous]]
+        for vb, axis in self.extraYAxes[count:previous]:
+            self.layout.removeItem(axis)
+            axis.hide()
+            vb.hide()
+        self._removeExtraItems(hidden)
+        self.updateButtons()
+        self.sigExtraYAxesChanged.emit()
+
+    def bottomViewBox(self):
+        """View box drawn under all the others: the first shown extra view
+        box, else the main one."""
+        viewBoxes = self.shownExtraViewBoxes()
+        return viewBoxes[0] if viewBoxes else self.vb
+
+    def addBackgroundItem(self, item):
+        """Add `item` (ignored by the auto range) under the curves of every
+        y axis (in `bottomViewBox`, moved when axes are shown or hidden)."""
+        self.backgroundItems.append(item)
+        self._backgroundViewBox.addItem(item, ignoreBounds=True)
+        self._placeBackgroundItems()
+
+    def _placeBackgroundItems(self):
+        target = self.bottomViewBox()
+        if target is self._backgroundViewBox:
+            return
+        for item in self.backgroundItems:
+            self._backgroundViewBox.removeItem(item)
+            target.addItem(item, ignoreBounds=True)
+        self._backgroundViewBox = target
+
+    def logModes(self):
+        return (
+            self.ctrl.logXCheck.isChecked(), self.ctrl.logYCheck.isChecked()
+        )
+
+    def addExtraYAxisItem(self, index, item):
+        """Add the data `item` to the view box of the shown extra y axis
+        `index`, with the plot options that `addItem` applies to the curves
+        of the main view box, and register it for the exporters and later
+        plot option changes (`items` and `curves`) once it was added."""
+        vb = self.shownExtraViewBoxes()[index]
+        item.setLogMode(*self.logModes())
+        alpha, auto = self.alphaState()
+        item.setAlpha(alpha, auto)
+        # "Subtract Mean" exists from pyqtgraph 0.14 (0.13.7 is supported)
+        subtractMeanCheck = getattr(self.ctrl, 'subtractMeanCheck', None)
+        if (subtractMeanCheck is not None
+                and hasattr(item, 'setSubtractMeanMode')):
+            item.setSubtractMeanMode(subtractMeanCheck.isChecked())
+        item.setFftMode(self.ctrl.fftCheck.isChecked())
+        item.setDownsampling(*self.downsampleMode())
+        item.setClipToView(self.clipToViewMode())
+        vb.addItem(item)
+        self.items.append(item)
+        self.curves.append(item)
+        self.itemMeta[item] = {}
+        self._extraItems.append((vb, item))
+        self.updateDecimation()
+
+    def _removeExtraItems(self, viewBoxes=None):
+        """Remove the data items of the extra view boxes (of `viewBoxes`
+        only, if given)."""
+        kept = []
+        for vb, item in self._extraItems:
+            if viewBoxes is not None and vb not in viewBoxes:
+                kept.append((vb, item))
+                continue
+            for items in (self.items, self.curves):
+                if item in items:
+                    items.remove(item)
+            self.itemMeta.pop(item, None)
+            vb.removeItem(item)
+        self._extraItems = kept
+
+    def clearExtraYAxesItems(self):
+        self._removeExtraItems()
+
+    def extraYAxesDataItems(self):
+        """Data items of each shown extra y axis (list per axis)."""
+        return [
+            [item for itemVb, item in self._extraItems if itemVb is vb]
+            for vb in self.shownExtraViewBoxes()
+        ]
+
+    def updateLogMode(self, *args):
+        """Apply the log mode of the plot options ("Transforms" of the
+        context menu) also to the extra y axes (their curves are in
+        `items`)."""
+        super().updateLogMode()
+        x, y = self.logModes()
+        for vb, axis in self.extraYAxes:
+            axis.setLogMode(x, y)
+        self._autoRangeExtraYAxesAfterTransform()
+
+    # The other transforms of the plot options apply to the curves of the
+    # extra y axes (in `items`/`curves`), but pyqtgraph then autoscales only
+    # the main view box (`enableAutoRange`): refit the extra y axes too,
+    # else they keep the range of the untransformed data after a pan/zoom
+    # (the viewer disables FFT, dy/dx and Y vs Y' for its own curves:
+    # `MeasurementsViewerWin.disableUnsupportedPlotTransforms`)
+
+    def updateSpectrumMode(self, b=None):
+        super().updateSpectrumMode(b)
+        self._autoRangeExtraYAxesAfterTransform()
+
+    def updateSubtractMeanMode(self, *args):
+        # pyqtgraph >= 0.14 only (connected to `ctrl.subtractMeanCheck`)
+        update = getattr(super(), 'updateSubtractMeanMode', None)
+        if update is not None:
+            update()
+        self._autoRangeExtraYAxesAfterTransform()
+
+    def updateDerivativeMode(self, *args):
+        super().updateDerivativeMode()
+        self._autoRangeExtraYAxesAfterTransform()
+
+    def updatePhasemapMode(self, *args):
+        super().updatePhasemapMode()
+        self._autoRangeExtraYAxesAfterTransform()
+
+    def _autoRangeExtraYAxesAfterTransform(self):
+        for vb, _ in self.extraYAxes:
+            vb.enableAutoRange(axis=pg.ViewBox.YAxis)
+
+    def updateExtraViewsGeometry(self, *args):
+        # The extra view boxes are children of this item, like the main one
+        geometry = self.vb.geometry()
+        for vb in self.shownExtraViewBoxes():
+            vb.setGeometry(geometry)
+            vb.linkedViewChanged(self.vb, vb.XAxis)
+
+    def moveExtraYAxesWithMain(self, before, after):
+        """Apply the change of the main y range from `before` to `after`
+        (pan/zoom in the plot area) to the extra y axes: the same relative
+        shift and scaling, so that every curve moves with the mouse. With
+        an unchanged range, the extra axes keep theirs and stop
+        autoscaling, like the main y axis."""
+        span = before[1] - before[0]
+        if not span:
+            return
+        for vb in self.shownExtraViewBoxes():
+            low, high = vb.viewRange()[1]
+            scale = (high - low) / span
+            vb.setYRange(
+                low + (after[0] - before[0]) * scale,
+                low + (after[1] - before[0]) * scale,
+                padding=0
+            )
+
+    def fitExtraYAxes(self, *args):
+        """Fit every shown extra y axis to its data in the visible x range
+        once ("View All" of the plot area menu, which fits the main view
+        box once with `autoRange`)."""
+        for vb in self.shownExtraViewBoxes():
+            vb.enableAutoRange(axis=pg.ViewBox.YAxis)
+            vb.updateAutoRange()
+            vb.enableAutoRange(axis=pg.ViewBox.YAxis, enable=False)
+
+    def enableExtraYAxesAutoRange(self):
+        """Autoscale the shown extra y axes like the main y axis of the "A"
+        button: y auto range restricted to the visible x range."""
+        for vb in self.shownExtraViewBoxes():
+            vb.setAutoVisible(y=True)
+            vb.enableAutoRange(axis=pg.ViewBox.YAxis)
+
+    def isExtraYAxesAutoRange(self):
+        return all(
+            vb.autoRangeEnabled()[1] for vb in self.shownExtraViewBoxes()
+        )
+
+    def autoBtnClicked(self, *args):
+        if self.autoBtn.mode == 'auto':
+            self.enableExtraYAxesAutoRange()
+        super().autoBtnClicked()
+
+    def updateButtons(self):
+        super().updateButtons()
+        if self.isExtraYAxesAutoRange():
+            return
+        # An extra axis zoomed by hand while the main view box still
+        # autoscales: show "A" as pyqtgraph does for the main view box
+        try:
+            if (getattr(self, '_exportOpts', False) is False
+                    and getattr(self, 'mouseHovering', False)
+                    and not getattr(self, 'buttonsHidden', False)):
+                self.autoBtn.show()
+        except RuntimeError:
+            pass  # deleted plot
+
 
 class _MeasurementColumnDelegate(widgets._ButtonSearchHighlightDelegate):
     indicatorWidth = 28
@@ -1197,8 +1547,68 @@ class MeasurementsViewerWin(
         self.initShortcuts()
         self.readRecentPaths()
         self.postInitLoadSetSettings()
-        
+
         self.setData(data, pos_i=pos_i, frame_i=frame_i, ID=ID)
+        # Arrow keys navigate whatever widget has the focus (`eventFilter`)
+        QApplication.instance().installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        # Installed on the application: the arrow keys reach `keyPressEvent`
+        # only if the focus widget ignores them, while buttons and check
+        # boxes use them to move the focus (e.g., the first toolbar button,
+        # focused when the window is activated again after a dialog)
+        if (
+            event.type() == QEvent.Type.KeyPress
+            and self.isArrowNavigationKeyPress(obj, event)
+        ):
+            self.navigateWithArrowKey(event.key())
+            return True
+        return super().eventFilter(obj, event)
+
+    def isArrowNavigationKeyPress(self, obj, event):
+        """Whether the key press `event` of `obj` (seen by `eventFilter`) is
+        an arrow key navigating frames/z-slices or cells: no modifiers, sent
+        to an enabled widget of this window (disabled during loads, see
+        `runInThread`) while no popup (e.g., a menu) is open, and neither to
+        the menu bar (keyboard navigation of the menus) nor to a widget that
+        uses the arrow keys itself (text, spin boxes, drop-down menus,
+        lists)."""
+        if event.key() not in ARROW_KEYS:
+            return False
+        # Arrow keys always have the keypad modifier on macOS
+        modifiers = event.modifiers()
+        if (modifiers != Qt.KeyboardModifier.NoModifier
+                and modifiers != Qt.KeyboardModifier.KeypadModifier):
+            return False
+        if not self.data:
+            return False
+        if not obj.isWidgetType() or obj.window() is not self:
+            return False
+        # Application event filters see the key presses that Qt then drops
+        # for disabled widgets (`QWidget::event`)
+        if not self.isEnabled() or not obj.isEnabled():
+            return False
+        # Menus: after Alt (Windows/Linux) the menu bar has the focus, and an
+        # open menu passes Left/Right on to its menu bar to switch menus while
+        # the focus widget is still the one focused before
+        if obj.inherits('QMenuBar') or obj.inherits('QMenu'):
+            return False
+        if QApplication.activePopupWidget() is not None:
+            return False
+        return not qutils.focus_widget_uses_arrow_keys()
+
+    def navigateWithArrowKey(self, key):
+        """Left/Right: previous/next frame (z-slice when the z-slice
+        navigation is active), Up/Down: next/previous Cell ID."""
+        if key in (Qt.Key_Left, Qt.Key_Right):
+            step = 1 if key == Qt.Key_Right else -1
+            if self.isZsliceNavigationActive():
+                z = self.zSliceScrollBar.sliderPosition() + step
+                self.zSliceScrollBar.setSliderPosition(z)
+            else:
+                self.setFrame(self.frame_i + step)
+        else:
+            self.stepID(1 if key == Qt.Key_Up else -1)
 
     def showEvent(self, event):
         super().showEvent(event)
@@ -1274,12 +1684,7 @@ class MeasurementsViewerWin(
         segm_endname = segm_filename[len(posData.basename):].lstrip('_')
         # The overlay is turned off only while a zy/zx plane is viewed
         # (`setOverlayEnabledForPlane`)
-        isOverlayOn = (
-            self.overlayButton.isChecked() or bool(self.overlayButtonPrevState)
-        )
-        overlay_channels = (
-            sorted(self.checkedOverlayChannels) if isOverlayOn else []
-        )
+        overlay_channels = self.activeOverlayChannels()
         visible_channels = [
             channel for channel, button in self.allOverlayToolbuttons.items()
             if button.isChecked()
@@ -1319,6 +1724,10 @@ class MeasurementsViewerWin(
             inputs[matches[0]] = copy.deepcopy(currentInput)
         else:
             inputs.append(currentInput)
+        timeCourseColumns = (
+            self.checkedColumns() if self._measurementsMode == 0
+            else sorted(self._timeCourseColumns)
+        )
         return {
             'version': 2,
             **currentInput,
@@ -1326,9 +1735,9 @@ class MeasurementsViewerWin(
             'measurement_processing': copy.deepcopy(self.measurementProcessingSteps),
             'combined_measurements': copy.deepcopy(self.combinedMeasurementSteps),
             'measurements_mode': self.measurementsModeCombobox.currentIndex(),
-            'time_course_columns': (
-                self.checkedColumns() if self._measurementsMode == 0
-                else sorted(self._timeCourseColumns)
+            'time_course_columns': timeCourseColumns,
+            'time_course_y_axes': self.timeCourseYAxesConfiguration(
+                timeCourseColumns
             ),
             'measurements_axes': self.measurementsAxes.copy(),
             'normalize_measurements': self.normalizeCheckbox.isChecked(),
@@ -1408,6 +1817,8 @@ class MeasurementsViewerWin(
         self.loadedInputKey = self.inputOptionKey(configuration)
         self.savedConfiguration = configuration
         self.logger.info(f'Configuration saved to "{filepath}"')
+        # Possibly a new file name
+        self.setStatusBarLabel(log=False)
         self.statusBar().showMessage(f'Configuration saved to "{filepath}".', 5000)
         return True
 
@@ -2412,6 +2823,8 @@ class MeasurementsViewerWin(
             )
             self.seedVisitedTimepointPredictions(data=data)
         self.configurationFilepath = None
+        # `setData` showed the previous configuration file
+        self.setStatusBarLabel(log=False)
         overlays = configuration['overlay_channels']
         if overlays:
             loaded = self.loadOverlayData(overlays)
@@ -2419,13 +2832,21 @@ class MeasurementsViewerWin(
             for posData in data:
                 posData.__dict__.pop('_viewerPreloadedFluo', None)
             if not loaded:
+                # The data stay loaded, without configuration file
+                self.setStatusBarLabel()
                 self.configurationError('load', 'Could not load overlay channels.')
                 return False
             self.setCheckedOverlayContextMenusActions(overlays)
             self.overlayButton.setChecked(True)
         for channel, button in self.allOverlayToolbuttons.items():
             button.setChecked(channel in configuration['visible_channels'])
-        self.setOverlayItemsOpacities()
+        if self.overlayButton.isChecked() and self.overlayToolbar.isTransparent():
+            # As `overlayChannelToolbuttonClicked`: the RGBA composite of
+            # the transparency modes follows the visible channels (the
+            # opacities of the normal mode would hide it)
+            self.setOverlayImages()
+        else:
+            self.setOverlayItemsOpacities()
 
         columns = {item.text() for item in self.columnsModel.measurementItems()}
         selected = set(configuration['time_course_columns'])
@@ -2447,6 +2868,7 @@ class MeasurementsViewerWin(
             col: pg.mkColor(color) for col, color
             in configuration.get('measurements_colors', {}).items()
         }
+        self.loadTimeCourseYAxes(configuration.get('time_course_y_axes', {}))
         self.measurementsModeChanged()
         self.normalizeCheckbox.setChecked(configuration['normalize_measurements'])
         self.configurationFilepath = filepath
@@ -2462,6 +2884,7 @@ class MeasurementsViewerWin(
                 fileStepsLastFrames
             )
         self.logger.info(f'Configuration loaded: "{filepath}"')
+        self.setStatusBarLabel()
         if missing:
             self.configurationError(
                 'restore all plot selections',
@@ -2659,7 +3082,7 @@ class MeasurementsViewerWin(
             'Save the current configuration to a new file'
         )
         self.addTimepointIdentifierAction = QAction(
-            QIcon(":add.svg"), 'Add time point identifier...', self
+            QIcon(":addTimepoint.svg"), 'Add time point identifier...', self
         )
         self.addTimepointIdentifierAction.setToolTip(
             'Add time point identifier\n\n'
@@ -2669,7 +3092,8 @@ class MeasurementsViewerWin(
             'plot and press the shortcut to add a time point at the hovered frame.'
         )
         self.reevaluateAllTimepointsAction = QAction(
-            QIcon(":reload.svg"), 'Re-evaluate predictors on all cells', self
+            QIcon(":reevaluateAllTimepoint.svg"),
+            'Re-evaluate predictors on all cells', self
         )
         self.reevaluateAllTimepointsAction.setToolTip(
             'Re-evaluate predictors on all cells\n\n'
@@ -2678,7 +3102,7 @@ class MeasurementsViewerWin(
             'You will be warned if manual edits would be overwritten.'
         )
         self.reevaluateCellTimepointsAction = QAction(
-            QIcon(":magic_wand.svg"), 
+            QIcon(":reevaluateTimepoint.svg"),
             'Re-evaluate predictors on displayed cell', self
         )
         self.reevaluateCellTimepointsAction.setToolTip(
@@ -2688,8 +3112,8 @@ class MeasurementsViewerWin(
             'will be warned if manual edits would be overwritten.'
         )
         self.phaseTranslatorAction = QAction(
-            phase_translator_icon(), 'Time point to phase translator...',
-            self
+            QIcon(":phase_translator.svg"),
+            'Time point to phase translator...', self
         )
         self.phaseTranslatorAction.setToolTip(PHASE_TRANSLATOR_TOOLTIP)
         self.phaseTranslatorAction.setStatusTip(
@@ -2697,7 +3121,8 @@ class MeasurementsViewerWin(
             'band below the plot, phase columns in the exported table)'
         )
         self.applyPhasesCellAction = QAction(
-            phase_apply_icon(), 'Evaluate phases on displayed cell', self
+            QIcon(":phase_translator_apply.svg"),
+            'Evaluate phases on displayed cell', self
         )
         self.applyPhasesCellAction.setShortcut(APPLY_PHASES_CELL_SHORTCUT)
         self.applyPhasesCellAction.setShortcutContext(
@@ -2760,8 +3185,12 @@ class MeasurementsViewerWin(
         # )
         
         self.gui_createCustomAnnotationsActions()
+        # The shared mixin uses the main GUI's eye icon
+        self.viewAllCustomAnnotAction.setIcon(
+            QIcon(":viewCustomAnnotation.svg")
+        )
         self.reevaluateAllCustomAnnotationsAction = QAction(
-            QIcon(":reload.svg"),
+            QIcon(":reevaluateAllCustomAnnotation.svg"),
             'Re-evaluate annotation predictors on all cells', self
         )
         self.reevaluateAllCustomAnnotationsAction.setToolTip(
@@ -2771,7 +3200,7 @@ class MeasurementsViewerWin(
             'will be warned if manual edits would be overwritten.'
         )
         self.reevaluateCellCustomAnnotationsAction = QAction(
-            QIcon(":magic_wand.svg"),
+            QIcon(":reevaluateCustomAnnotation.svg"),
             'Re-evaluate annotation predictors on displayed cell', self
         )
         self.reevaluateCellCustomAnnotationsAction.setToolTip(
@@ -3166,7 +3595,9 @@ class MeasurementsViewerWin(
         self.overlayToolbar = widgets.OverlayToolbar(parent=self)
         self.addToolBar(Qt.TopToolBarArea, self.overlayToolbar)
         self.overlayToolbar.setVisible(False)
-        
+        # Overlay modes as the user left them (applied by `overlay_cb`)
+        self.restoreOverlayModes()
+
         self.phaseTranslatorToolbar = widgets.ToolBar("Phases", self)
         self.phaseTranslatorToolbar.setToolButtonStyle(
             Qt.ToolButtonStyle.ToolButtonIconOnly
@@ -3280,13 +3711,18 @@ class MeasurementsViewerWin(
             self.changeOverlayColor
         )
         self.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
+        # Cancel: back to the saved color and LUT of the channel
+        self.overlayColorButton.colorDialog.rejected.connect(
+            partial(self.overlayColorDialogRejected, self.overlayColorButton)
+        )
         self.overlayToolbar.sigSetTranspacency.connect(
             self.setOverlayTransparency
         )
         self.overlayToolbar.sigSetSingleChannel.connect(
             self.setOverlaySingleChannel
         )
-    
+        self.overlayToolbar.sigModesClicked.connect(self.saveOverlayModes)
+
     def setEnabledFileToolbar(self, enabled):
         for action in getattr(self, 'annotationsActions', ()):
             action.setEnabled(enabled)
@@ -3604,6 +4040,11 @@ class MeasurementsViewerWin(
             return
         
         if channel is None:
+            if not chNames:
+                self.warnLoading(
+                    f'No channel images found in "{images_paths[0]}".'
+                )
+                return
             channel = self.selectItem(
                 'Select channel', 'Select channel to display:', chNames
             )
@@ -3713,6 +4154,7 @@ class MeasurementsViewerWin(
                 savedStepsLastFrames
             )
         self.logger.info(f'Loaded {len(data)} position(s)')
+        self.setStatusBarLabel()
 
     def runInThread(
             self, func, *args, text='Working...', reportProgress=False,
@@ -3787,11 +4229,20 @@ class MeasurementsViewerWin(
         self.statusBar().showMessage(text)
 
     def selectItem(self, title, text, items):
+        """Return the item chosen in a single-choice list (None if
+        cancelled or `items` is empty: callers with possibly empty `items`
+        report it themselves). OK with nothing selected (Ctrl+Click on the
+        selected item) warns and keeps the list open: an empty answer would
+        end the calling flow without any message (e.g., the base layer of a
+        premade configuration)."""
+        if not items:
+            return None
         if len(items) == 1:
             return items[0]
         
         win = widgets.QDialogListbox(
-            title, text, items, multiSelection=False, parent=self
+            title, text, items, multiSelection=False, parent=self,
+            allowEmptySelection=False
         )
         win.exec_()
         if win.cancel or not win.selectedItemsText:
@@ -3828,6 +4279,7 @@ class MeasurementsViewerWin(
             isMultiPos = False
             self.posLabel.setVisible(isMultiPos)
             self.posCombobox.setVisible(isMultiPos)
+            self.setStatusBarLabel(log=False)
             return
         
         relPath = getattr(self.data[0], 'relPath', '')
@@ -4011,8 +4463,8 @@ class MeasurementsViewerWin(
     def initViewerToolsAfterLoading(self):
         self.updateImageValueFormatter()
         self.initPixelSizePropsDockWidget()
-        if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
-            self.invertBw(True)
+        # First-load `invertBw`, then the LUT saved for the channel
+        self.restoreImageChannelLutAfterLoading()
         self.gui_createZoomRectItem()
     
     def gui_createGraphicsPlots(self):
@@ -4355,13 +4807,20 @@ class MeasurementsViewerWin(
             annot.setScaling(self.scalingLabelsAction.isChecked())
     
     def imgGradLUTfinished_cb(self):
+        if self.isSettingChannelLutsFromCode():
+            return
         self.df_settings = self.imgGrad.saveState(self.df_settings)
+        # LUT of the displayed channel (`gui_navigation.LutGuiElements`)
+        self.saveImageChannelLut()
         self.df_settings.to_csv(self.settings_csv_path)
-    
+
     def initLut(self):
-        """Initialize LUT levels as in `gui.guiWin` after loading data."""
+        """Initialize LUT levels as in `gui.guiWin` after loading data. The
+        LUT (gradient) saved for the channel is restored at the end of the
+        load (`initViewerToolsAfterLoading`)."""
         self.isDataLoaded = True
         posData = self.posData()
+        self.resetImageChannelLut()
         self.user_ch_name = posData.user_ch_name
         self.rescaleIntensChannelHowMapper.setdefault(
             self.user_ch_name, 'Rescale each 2D image'
@@ -4624,7 +5083,10 @@ class MeasurementsViewerWin(
         self.restoreViewerAnnotationOptions()
     
     def gui_createMeasurementsPanel(self):
-        self.measurementsPlot = pg.PlotWidget()
+        # Extra y axes of the time course on the right (`timeCourseYAxes`)
+        self.measurementsPlot = pg.PlotWidget(plotItem=_TimeCoursePlotItem())
+        self.disableUnsupportedPlotTransforms()
+        self.disableUnsupportedPlotDownsampling()
         if self.invertBwAction.isChecked():
             self.measurementsPlot.setBackground(graphLayoutBkgrColor)
         else:
@@ -4643,9 +5105,15 @@ class MeasurementsViewerWin(
         )
         self.currentFrameLine.setZValue(10)
         self.measurementsPlot.addItem(self.currentFrameLine, ignoreBounds=True)
-        # Frames ignored by the calculations (`updateUnanalyzedRegions`)
+        # Frames ignored by the calculations (`updateUnanalyzedRegions`),
+        # under the curves of every y axis
         self.unanalyzedRegion = self.createUnanalyzedRegion()
-        self.measurementsPlot.addItem(self.unanalyzedRegion, ignoreBounds=True)
+        self.measurementsPlot.getPlotItem().addBackgroundItem(
+            self.unanalyzedRegion
+        )
+        # Hovered points of each scatter of the plot, for the joined tip
+        # of all y axes (`measurementPointsHovered`)
+        self._hoveredMeasurementPoints = {}
 
         # Solid band of the selected cell's phases below the time course,
         # x-linked to the measurements plot
@@ -4676,7 +5144,11 @@ class MeasurementsViewerWin(
         self.phaseBandItems = []
         self.phaseBandPlot.setVisible(False)
         # Keep the x positions aligned while the main left axis auto-sizes
+        # and extra y axes are shown, hidden or resized on the right
         self.measurementsPlot.getAxis('left').geometryChanged.connect(
+            self.syncPhaseBandAxisWidth
+        )
+        self.measurementsPlot.getPlotItem().sigExtraYAxesChanged.connect(
             self.syncPhaseBandAxisWidth
         )
         measurementsPlotLayout = QVBoxLayout()
@@ -4715,12 +5187,12 @@ class MeasurementsViewerWin(
         self.columnsListWidget.setContextMenuPolicy(
             Qt.ContextMenuPolicy.CustomContextMenu
         )
-        self.columnsListWidget.setToolTip(
-            'Click a column to plot/unplot it. Right-click on a\n'
-            'column to change its color or conditional formatting.'
-        )
+        self.columnsListWidget.setToolTip(TIME_COURSE_COLUMNS_TOOLTIP)
         # Custom plotting colors set by the user {column: QColor}
         self.measurementsColors = {}
+        # Time course y axis number of the columns not on the default axis
+        # 1, also while they are not plotted {column: int >= 2}
+        self.timeCourseYAxes = {}
         # Index in SIGNAL_COLORS of the default color of each column that
         # was plotted, so that plotting another column does not recolor
         # the plotted ones {column: int}
@@ -4872,14 +5344,78 @@ class MeasurementsViewerWin(
     
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
+        # What is loaded (`setStatusBarLabel`). Plain text (folder and file
+        # names are not HTML), clipped instead of widening the window (its
+        # tool tip lists everything); temporary messages (`showMessage`)
+        # hide it while they are shown
         self.statusBarLabel = QLabel('')
-        self.statusbar.addWidget(self.statusBarLabel)
+        self.statusBarLabel.setTextFormat(Qt.TextFormat.PlainText)
+        self.statusBarLabel.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.statusbar.addWidget(self.statusBarLabel, 1)
         # Permanent widget with mouse hover info (as in guiWin). Its text is
         # updated at every mouse move --> fixed size (growing only) to avoid
         # re-layouting the main window
         self.wcLabel = widgets.AutoGrowFixedSizeLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
-    
+
+    def setStatusBarLabel(self, log=True):
+        """Show what is displayed in the status bar label, as the main GUI's
+        `gui.guiWin.setStatusBarLabel`: experiment and Position folder,
+        basename, displayed and overlay channels, segmentation file and
+        configuration file name, with the full Images folder and
+        configuration paths in its tool tip (`loaded_data_status`; long
+        paths broken after separators, other lines by
+        `qutils.wrap_tooltip`). Empty
+        without data. Called whenever one of them changes; `log` also logs
+        the text (once per load or position change)."""
+        if not self.data:
+            self.statusBarLabel.setText('')
+            self.statusBarLabel.setToolTip('')
+            return
+        text, tooltip = loaded_data_status(
+            self.posData(), pos_i=self.pos_i, num_positions=len(self.data),
+            channel=self.user_ch_name,
+            overlay_channels=self.activeOverlayChannels(),
+            configuration_filepath=self.configurationFilepath
+        )
+        self.statusBarLabel.setText(text)
+        self.statusBarLabel.setToolTip(qutils.wrap_tooltip(tooltip))
+        if log:
+            self.logger.info(text)
+
+    def activeOverlayChannels(self):
+        """Overlaid channels (sorted), also while the overlay is turned off
+        on a zy/zx plane (`setOverlayEnabledForPlane` restores it on xy)."""
+        isOverlayOn = (
+            self.overlayButton.isChecked() or bool(self.overlayButtonPrevState)
+        )
+        if not isOverlayOn:
+            return []
+        return sorted(self.checkedOverlayChannels)
+
+    def overlay_cb(self, checked):
+        result = super().overlay_cb(checked)
+        self.setStatusBarLabel(log=False)
+        return result
+
+    def overlayChannelToggled(self, checked):
+        # Slot of the overlay context menu actions: `sender()` (read by the
+        # mixin) is still the toggled action here
+        super().overlayChannelToggled(checked)
+        self.setStatusBarLabel(log=False)
+
+    def onToggleColorScheme(self):
+        # The mixin writes the restart notice into `statusBarLabel` (kept
+        # until data is loaded again in the main GUI): show it as a
+        # temporary message instead (the warning dialog also says it)
+        super().onToggleColorScheme()
+        self.setStatusBarLabel(log=False)
+        self.statusBar().showMessage(
+            f'Restart {self._appName} for the change to take effect.', 15000
+        )
+
     def gui_connectViewerToolsSignals(self):
         self.launch3dViewerButton.toggled.connect(self.launch3dViewerToggled)
         
@@ -5007,7 +5543,10 @@ class MeasurementsViewerWin(
 
         if self.rescalePlotCheckbox.isChecked():
             self.autoscaleMeasurementsPlot()
-                
+        # Logged at the end of a load (Open folder, configuration), which
+        # can still change it (e.g., the configuration file)
+        self.setStatusBarLabel(log=not self._isLoadingData)
+
     def updateCcaTableWin(self):
         """Show the cell cycle annotations of the current frame in the open
         `ccaTableWin`. Frames without annotations show an empty table and
@@ -5967,7 +6506,10 @@ class MeasurementsViewerWin(
             self.measurementProcessingWarning('Export failed', str(error))
             return
         self.logger.info(f'Measurements exported to "{filepath}"')
-        self.statusBarLabel.setText(f'Measurements exported to {filepath}')
+        # Temporary: `statusBarLabel` shows what is loaded
+        self.statusBar().showMessage(
+            f'Measurements exported to "{filepath}".', 8000
+        )
     
     def refreshAcdcDf(self, plot=True):
         self.acdc_df = self.getAcdcDf()
@@ -7161,6 +7703,7 @@ class MeasurementsViewerWin(
         self.measurementsColors.pop(column, None)
         self._defaultSignalColorIndices.pop(column, None)
         self.conditionalFormatting.pop(column, None)
+        self.timeCourseYAxes.pop(column, None)
         for posData in self.data:
             getattr(posData, 'timepointsEdited', {}).pop(uid, None)
             
@@ -7385,9 +7928,9 @@ class MeasurementsViewerWin(
             self.ensurePredictorPredictions()
 
     def renameMeasurementColumnReferences(self, oldColumn, newColumn):
-        """Move the plot selection, axes, color and conditional formatting
-        of the renamed table column `oldColumn` to `newColumn` and update
-        the columns list."""
+        """Move the plot selection, axes (comparison and time course y
+        axis), color and conditional formatting of the renamed table column
+        `oldColumn` to `newColumn` and update the columns list."""
         if oldColumn == newColumn:
             return
         if oldColumn in self._timeCourseColumns:
@@ -7398,7 +7941,7 @@ class MeasurementsViewerWin(
                 self.measurementsAxes[axis] = newColumn
         for mapping in (
                 self.measurementsColors, self.conditionalFormatting,
-                self._defaultSignalColorIndices):
+                self._defaultSignalColorIndices, self.timeCourseYAxes):
             if oldColumn in mapping:
                 mapping[newColumn] = mapping.pop(oldColumn)
         self.updateColumnsList(renamed={oldColumn: newColumn})
@@ -7957,6 +8500,7 @@ class MeasurementsViewerWin(
         self.measurementsColors.pop(name, None)
         self._defaultSignalColorIndices.pop(name, None)
         self.conditionalFormatting.pop(name, None)
+        self.timeCourseYAxes.pop(name, None)
         self.updateColumnsList()
         self.plotMeasurements()
     
@@ -8545,8 +9089,13 @@ class MeasurementsViewerWin(
             self.updateTimepointLines()
 
     def plotMeasurements(self, *args):
+        plotItem = self.measurementsPlot.getPlotItem()
         for item in self.measurementsPlot.listDataItems():
             self.measurementsPlot.removeItem(item)
+        plotItem.clearExtraYAxesItems()
+        # Removed scatters get no hover exit event: drop their tip (it would
+        # hide the tip of the points hovered next)
+        self.clearMeasurementPointsTip()
         self.measurementsLegend.clear()
         self.updateCurrentFrameLine()
         self.updateColumnsIcons()
@@ -8554,6 +9103,8 @@ class MeasurementsViewerWin(
         isComparison = self.measurementsModeCombobox.currentIndex() == 1
         self.currentFrameLine.setVisible(not isComparison)
         self.updateTimepointLines()
+        if not self.data or isComparison:
+            plotItem.setExtraYAxesCount(0)
         self.updatePhaseBand()
         self.updateUnanalyzedRegions()
         if not self.data:
@@ -8567,10 +9118,13 @@ class MeasurementsViewerWin(
 
         self.measurementsPlot.setLabel('bottom', 'Frame n.')
         isNormalized = self.normalizeCheckbox.isChecked()
-        self.measurementsPlot.setLabel(
-            'left', 'Normalized value' if isNormalized else 'Value'
-        )
-        
+        # Displayed y axes: the first one on the left, the others on the
+        # right (`timeCourseYAxes`)
+        yAxes = self.plottedYAxes()
+        axisIndices = {number: i for i, number in enumerate(yAxes)}
+        plotItem.setExtraYAxesCount(max(len(yAxes) - 1, 0))
+        self.setTimeCourseYAxesLabels(yAxes, isNormalized)
+
         posData = self.posData()
         # Frame range 1..SizeT on the first time course plot of a position
         # (or after comparison mode), kept while nothing can be autoscaled
@@ -8592,10 +9146,14 @@ class MeasurementsViewerWin(
 
         # Autoscale x and y (`autoscaleMeasurementsPlot`, as the plot's "A"
         # button) when the plotted curves change (column plotted or
-        # removed, normalization toggled) or the frame range was reset; the
-        # plot then follows the data until the user zooms or pans by hand.
-        # The key is stored only once there was data to fit (cell with data).
-        rangeKey = (frozenset(columns), isNormalized)
+        # removed, moved to another y axis, normalization toggled) or the
+        # frame range was reset; the plot then follows the data until the
+        # user zooms or pans by hand. The key is stored only once there was
+        # data to fit (cell with data).
+        rangeKey = (
+            tuple(frozenset(axisColumns) for axisColumns in yAxes.values()),
+            isNormalized
+        )
         if isNewXRange or not columns:
             self._timecourseRangeKey = None
         autoscale = getattr(self, '_timecourseRangeKey', None) != rangeKey
@@ -8615,6 +9173,7 @@ class MeasurementsViewerWin(
             values = rawValues
             if isNormalized:
                 values = self._normalize(values)
+            axisIndex = axisIndices[self.yAxisNumber(col)]
             color = self.getSignalColor(col)
             rules = self.conditionalFormatting.get(col, [])
             matched = self.cellConditionalFormatting(df_ID, col, rules)
@@ -8650,15 +9209,15 @@ class MeasurementsViewerWin(
                 if not len(idx):
                     continue
                 pairs = np.column_stack((idx, idx + 1)).ravel()
-                segmentsItem = self.measurementsPlot.plot(
-                    frames_n[pairs], values[pairs], connect='pairs',
-                    pen=pg.mkPen(
+                segmentsItem = self.plotOnTimeCourseAxis(
+                    axisIndex, frames_n[pairs], values[pairs],
+                    connect='pairs', pen=pg.mkPen(
                         color=formatting_color(rule['color'], color), width=2
                     )
                 )
                 segmentsItem.setZValue(-1)
-            item = self.measurementsPlot.plot(
-                frames_n, values, name=col,
+            item = self.plotOnTimeCourseAxis(
+                axisIndex, frames_n, values, name=col,
                 pen=pg.mkPen(color=color, width=2), connect=connect,
                 symbol='o', symbolSize=5, symbolBrush=brushes, symbolPen=None,
                 data=pointData
@@ -8680,16 +9239,193 @@ class MeasurementsViewerWin(
 
         The y auto range uses only the data in the visible x range
         (`ViewBox.setAutoVisible`), so it still follows the data when the
-        user pans or zooms only the x axis. pyqtgraph applies the range on
-        the next paint (tests call ``viewBox.updateAutoRange()``).
+        user pans or zooms only the x axis. The extra y axes of the time
+        course (`_TimeCoursePlotItem`) are autoscaled in the same way, as
+        the "A" button does. pyqtgraph applies the range on the next paint
+        (tests call ``viewBox.updateAutoRange()``).
 
         Every automatic rescaling of this plot must go through this method
-        (column plotted or removed, normalization toggled, ``Rescale plot``,
-        Measurement vs Measurement axes changed).
+        (column plotted, removed or moved to another y axis, normalization
+        toggled, ``Rescale plot``, Measurement vs Measurement axes changed).
         """
         viewBox = self.measurementsPlot.getViewBox()
         viewBox.setAutoVisible(y=True)
         self.measurementsPlot.enableAutoRange()
+        self.measurementsPlot.getPlotItem().enableExtraYAxesAutoRange()
+
+    # Transforms of the plot options that change the number of points or
+    # the meaning of the x axis (`disableUnsupportedPlotTransforms`)
+    UNSUPPORTED_PLOT_TRANSFORMS = (
+        'fftCheck', 'derivativeCheck', 'phasemapCheck'
+    )
+
+    def disableUnsupportedPlotTransforms(self):
+        """Disable the "Power Spectrum (FFT)", "dy/dx" and "Y vs. Y'"
+        transforms of the measurements plot's options (context menu "Plot
+        Options" > "Transforms"; log and "Subtract Mean" stay available).
+
+        Their curves have fewer points than the data, but the time course
+        curves and the comparison scatter pass one symbol brush and one
+        hover data entry per point (the time course also one ``connect``
+        flag), which pyqtgraph applies to the transformed points too: it
+        raised "Number of brushes does not match number of points" (with
+        FFT on, on every replot), on every y axis. Their x axis (frequency,
+        value) would also not match the frame overlays (current frame line,
+        time point lines, phase band, shaded unanalyzed frames) nor the
+        clicked point's frame.
+        """
+        ctrl = self.measurementsPlot.getPlotItem().ctrl
+        for name in self.UNSUPPORTED_PLOT_TRANSFORMS:
+            check = getattr(ctrl, name, None)
+            if check is None:
+                continue
+            check.setChecked(False)
+            check.setEnabled(False)
+            check.setToolTip(
+                'Not available in the measurements viewer: each plotted '
+                'point is a cell at\n'
+                'one frame, and this transform changes the number of '
+                'points or the x axis.'
+            )
+
+    # Options of the plot options' "Downsample" menu that plot fewer points
+    # than the data (`disableUnsupportedPlotDownsampling`); the first two
+    # turn them on, the others only matter while "Downsample" is checked
+    UNSUPPORTED_PLOT_DOWNSAMPLING = (
+        'downsampleCheck', 'clipToViewCheck', 'downsampleSpin',
+        'autoDownsampleCheck', 'peakRadio', 'meanRadio', 'subsampleRadio'
+    )
+
+    def disableUnsupportedPlotDownsampling(self):
+        """Uncheck and disable "Downsample" and "Clip to View" (with their
+        factor, "Auto" and method options) in the "Downsample" menu of the
+        measurements plot's options ("Max Traces" stays available).
+
+        For the same reason as `disableUnsupportedPlotTransforms`: they
+        plot fewer points than the data (one point every N frames, the mean
+        or min/max of N points, only the points in the visible x range), and
+        pyqtgraph applied the per-point symbol brushes and hover data of the
+        time course and the comparison scatter to them: it raised "Number of
+        brushes (or Length of meta data) does not match number of points" on
+        every replot, and with "Clip to View" on every pan or zoom.
+        """
+        ctrl = self.measurementsPlot.getPlotItem().ctrl
+        for name in self.UNSUPPORTED_PLOT_DOWNSAMPLING:
+            widget = getattr(ctrl, name, None)
+            if widget is None:
+                continue
+            if name.endswith('Check'):
+                widget.setChecked(False)
+            widget.setEnabled(False)
+            widget.setToolTip(
+                'Not available in the measurements viewer: each plotted '
+                'point is a\n'
+                'cell at one frame, and this option plots fewer points '
+                'than the data.'
+            )
+
+    def plottedYAxes(self):
+        """Plotted time course columns of each displayed y axis,
+        ``{axis number: [columns]}`` sorted by axis number (the first axis
+        is the left one, the others are on the right; see
+        `timeCourseYAxes`)."""
+        axes = {}
+        for col in self.checkedColumns():
+            axes.setdefault(self.yAxisNumber(col), []).append(col)
+        return dict(sorted(axes.items()))
+
+    def setTimeCourseYAxesLabels(self, yAxes, isNormalized):
+        """Label the left axis 'Value' with a single y axis, otherwise every
+        displayed axis with its plotted columns (`plottedYAxes`), escaped
+        because pyqtgraph renders axis labels as HTML (a CSV column such as
+        `size<5um` would be cut at the `<`)."""
+        leftAxis = self.measurementsPlot.getAxis('left')
+        if len(yAxes) <= 1:
+            leftAxis.setLabel('Normalized value' if isNormalized else 'Value')
+            return
+        suffix = ' (normalized)' if isNormalized else ''
+        plotItem = self.measurementsPlot.getPlotItem()
+        axisItems = [leftAxis, *plotItem.shownExtraAxes()]
+        for axisItem, columns in zip(axisItems, yAxes.values()):
+            label = html.escape(', '.join(columns), quote=False)
+            axisItem.setLabel(label + suffix)
+
+    def plotOnTimeCourseAxis(self, index, *args, name=None, **kwargs):
+        """Plot a `pg.PlotDataItem(*args, **kwargs)` on the displayed y axis
+        `index` of the time course (0: left axis, else the extra axis
+        `index - 1` on the right), with a legend entry if `name` is given.
+
+        The item keeps the raw `name` (`PlotDataItem.name()`, e.g., the
+        column headers of the CSV export), while the legend shows it
+        escaped: pyqtgraph renders legend labels as HTML (a CSV column such
+        as `size<5um` would be cut at the `<`).
+        """
+        item = pg.PlotDataItem(*args, **kwargs)
+        if index == 0:
+            self.measurementsPlot.addItem(item)
+        else:
+            plotItem = self.measurementsPlot.getPlotItem()
+            plotItem.addExtraYAxisItem(index - 1, item)
+        if name is not None:
+            # Named once added: `PlotItem.addItem` would add a legend entry
+            # with the unescaped name
+            item.opts['name'] = name
+            self.measurementsLegend.addItem(
+                item, html.escape(name, quote=False)
+            )
+        return item
+
+    def timeCourseDataItems(self):
+        """Data items of the time course on every displayed y axis (left
+        axis first)."""
+        plotItem = self.measurementsPlot.getPlotItem()
+        items = list(plotItem.listDataItems())
+        for axisItems in plotItem.extraYAxesDataItems():
+            items.extend(axisItems)
+        return items
+
+    def columnItem(self, col):
+        """Item of column `col` in the columns list, or None."""
+        for item in self.columnsModel.measurementItems():
+            if item.text() == col:
+                return item
+        return None
+
+    def plotOnNewYAxis(self, col):
+        """Plot column `col` on a new y axis of the time course (context
+        menu "Create new y axis for this")."""
+        self.logger.info(f'Plotting "{col}" on a new y axis')
+        self.plotOnYAxis(col, self.newYAxisNumber())
+
+    def addToYAxisOf(self, col, number):
+        """Plot column `col` on the y axis `number` (context menu "Add to
+        y-axis of...", listing the axes by their plotted columns).
+
+        Moving the last plotted column of the default axis 1 merges the
+        axis `number` into axis 1 instead: columns plotted later (on axis 1
+        by default) then join the merged axis rather than getting a new
+        left axis of their own. Nothing merges when no column of axis 1 is
+        plotted (the left axis is then another one)."""
+        yAxes = self.plottedYAxes()
+        self.logger.info(
+            f'Plotting "{col}" on the y axis of '
+            + ', '.join(f'"{column}"' for column in yAxes.get(number, []))
+        )
+        if number != 1 and yAxes.get(1) == [col]:
+            self.mergeYAxisIntoDefault(number)
+            number = 1
+        self.plotOnYAxis(col, number)
+
+    def plotOnYAxis(self, col, number):
+        item = self.columnItem(col)
+        if item is None:
+            return
+        self.setYAxisNumber(col, number)
+        if item.checkState() == Qt.Checked:
+            self.plotMeasurements()
+        else:
+            # Plots it (`measurementColumnChanged`)
+            item.setCheckState(Qt.Checked)
 
     def measurementsModeChanged(self, *args):
         isComparison = self.measurementsModeCombobox.currentIndex() == 1
@@ -8712,9 +9448,7 @@ class MeasurementsViewerWin(
         self.columnsListWidget.setToolTip(
             'Click two columns to plot: first X, then Y.\n'
             'Click a selected column again to free its axis.'
-            if isComparison else
-            'Click a column to plot/unplot it. Right-click on a\n'
-            'column to change its color or conditional formatting.'
+            if isComparison else TIME_COURSE_COLUMNS_TOOLTIP
         )
         self.plotMeasurements()
 
@@ -8757,8 +9491,13 @@ class MeasurementsViewerWin(
         yCol = self.measurementsAxes['Y']
         isNormalized = self.normalizeCheckbox.isChecked()
         suffix = ' (normalized)' if isNormalized else ''
-        self.measurementsPlot.setLabel('bottom', f'{xCol}{suffix}')
-        self.measurementsPlot.setLabel('left', f'{yCol}{suffix}')
+        # Axis labels are HTML (`setTimeCourseYAxesLabels`)
+        self.measurementsPlot.setLabel(
+            'bottom', html.escape(xCol, quote=False) + suffix
+        )
+        self.measurementsPlot.setLabel(
+            'left', html.escape(yCol, quote=False) + suffix
+        )
         self.measurementsPlot.setTitle('All cells, all frames (current position)')
         # Autoscale only when the scatter's axes change (or a position is
         # loaded, or after the time course): redraws for other reasons (e.g.
@@ -8830,7 +9569,8 @@ class MeasurementsViewerWin(
         self.plotMeasurements()
 
     def comparisonPhaseBrushes(self, phases):
-        """Per-point brushes by phase; adds a legend entry per shown phase."""
+        """Per-point brushes by phase; adds a legend entry per shown phase
+        (names escaped: legend labels are HTML)."""
         colors = self.phaseColorMap()
         unassigned = pg.mkBrush(150, 150, 150, 120)
         brushes = {name: pg.mkBrush(color) for name, color in colors.items()}
@@ -8839,7 +9579,7 @@ class MeasurementsViewerWin(
             if name in present:
                 self.measurementsLegend.addItem(
                     pg.ScatterPlotItem(symbol='o', brush=brush, pen=None),
-                    name
+                    html.escape(name, quote=False)
                 )
         if '' in present:
             self.measurementsLegend.addItem(
@@ -8849,8 +9589,21 @@ class MeasurementsViewerWin(
         return [brushes.get(phase, unassigned) for phase in phases]
 
     def syncPhaseBandAxisWidth(self):
+        """Give the phase band the left axis width of the measurements plot
+        and, with extra y axes, an empty right axis as wide as them, so that
+        both plots show the frames at the same x positions."""
         width = self.measurementsPlot.getAxis('left').width()
         self.phaseBandPlot.getAxis('left').setWidth(int(width))
+        plotItem = self.measurementsPlot.getPlotItem()
+        rightWidth = sum(axis.width() for axis in plotItem.shownExtraAxes())
+        if not rightWidth:
+            self.phaseBandPlot.hideAxis('right')
+            return
+        rightAxis = self.phaseBandPlot.getAxis('right')
+        rightAxis.setStyle(showValues=False)
+        rightAxis.setTicks([[]])
+        rightAxis.setWidth(int(round(rightWidth)))
+        self.phaseBandPlot.showAxis('right')
 
     def updatePhaseBand(self):
         """Draw the selected cell's phases as colored bars below the time
@@ -8897,8 +9650,9 @@ class MeasurementsViewerWin(
     def createUnanalyzedRegion():
         """Gray, non-movable region over the frames ignored by the
         calculations (red hues are reserved for the frame lines). Below the
-        data, time point and frame lines; added with ``ignoreBounds=True``
-        so that it never changes the auto range."""
+        data (of every y axis: `_TimeCoursePlotItem.addBackgroundItem`),
+        time point and frame lines; added with ``ignoreBounds=True`` so that
+        it never changes the auto range."""
         region = pg.LinearRegionItem(
             values=(0, 1), movable=False,
             brush=pg.mkBrush(128, 128, 128, 60), pen=pg.mkPen(None)
@@ -8936,6 +9690,48 @@ class MeasurementsViewerWin(
             hoverSize=11, hoverBrush=pg.mkBrush(255, 100, 100)
         )
         item.scatter.sigClicked.connect(self.measurementPointClicked)
+        item.scatter.sigHovered.connect(self.measurementPointsHovered)
+
+    def measurementPointsHovered(self, scatter, points, event):
+        """Show the tip of the hovered points of every y axis on the main
+        view box. Each scatter sets the tip of its own view box, and Qt
+        shows only the topmost one (the main view box): points of
+        different axes at the same pixel (common, as every axis fits its
+        own data) would show only the left axis values. Emitted after each
+        scatter's hover event (also on exit, with no points), so the last
+        call of a mouse move has the points of every scatter."""
+        if len(points):
+            self._hoveredMeasurementPoints[scatter] = list(points)
+        else:
+            self._hoveredMeasurementPoints.pop(scatter, None)
+        order = {
+            item.scatter: i for i, item in enumerate(self.timeCourseDataItems())
+        }
+        hovered = sorted(
+            self._hoveredMeasurementPoints.items(),
+            key=lambda entry: order.get(entry[0], len(order))
+        )
+        points = [point for _, scatterPoints in hovered for point in scatterPoints]
+        # As `ScatterPlotItem.hoverEvent`: at most 3 tips
+        tips = [
+            self.measurementPointTip(
+                x=point.pos().x(), y=point.pos().y(), data=point.data()
+            )
+            for point in points[:3]
+        ]
+        if len(points) > 3:
+            tips.append(f'({len(points) - 3} others...)')
+        plotItem = self.measurementsPlot.getPlotItem()
+        plotItem.vb.setToolTip('\n\n'.join(tips))
+        for vb in plotItem.shownExtraViewBoxes():
+            vb.setToolTip('')
+
+    def clearMeasurementPointsTip(self):
+        self._hoveredMeasurementPoints = {}
+        plotItem = self.measurementsPlot.getPlotItem()
+        plotItem.vb.setToolTip('')
+        for vb, _ in plotItem.extraYAxes:
+            vb.setToolTip('')
 
     @staticmethod
     def measurementPointTip(x, y, data):
@@ -9076,7 +9872,10 @@ class MeasurementsViewerWin(
             menu.popup(self.columnsListWidget.viewport().mapToGlobal(pos))
             return
         menu.addSeparator()
-        
+
+        self.addYAxisActions(menu, col, item.checkState() == Qt.Checked)
+        menu.addSeparator()
+
         changeColorAction = QAction('Change color...', menu)
         changeColorAction.triggered.connect(
             lambda checked=False, col=col: self.changeSignalColor(col)
@@ -9108,6 +9907,39 @@ class MeasurementsViewerWin(
 
         menu.popup(self.columnsListWidget.viewport().mapToGlobal(pos))
     
+    def addYAxisActions(self, menu, col, isPlotted):
+        """Add the time course y axis actions of column `col` to its context
+        `menu`: "Create new y axis for this" and the "Add to y-axis of..."
+        submenu, which lists the other displayed y axes by their plotted
+        columns. The column's own axis (remembered if it is not plotted) is
+        not listed, so the submenu is empty (disabled) until a column is
+        put on another axis."""
+        yAxes = self.plottedYAxes()
+        number = self.yAxisNumber(col)
+        newAxisAction = QAction('Create new y axis for this', menu)
+        # A plotted column alone on its axis already has its own axis
+        newAxisAction.setEnabled(
+            not isPlotted or len(yAxes.get(number, [])) > 1
+        )
+        newAxisAction.triggered.connect(
+            lambda checked=False, col=col: self.plotOnNewYAxis(col)
+        )
+        menu.addAction(newAxisAction)
+
+        addToAxisMenu = menu.addMenu('Add to y-axis of...')
+        for otherNumber, columns in yAxes.items():
+            if otherNumber == number:
+                continue
+            # '&' would be a mnemonic
+            text = ', '.join(columns).replace('&', '&&')
+            action = QAction(text, addToAxisMenu)
+            action.triggered.connect(
+                lambda checked=False, col=col, number=otherNumber:
+                self.addToYAxisOf(col, number)
+            )
+            addToAxisMenu.addAction(action)
+        addToAxisMenu.setEnabled(not addToAxisMenu.isEmpty())
+
     def changeSignalColor(self, col):
         initialColor = pg.mkColor(self.getSignalColor(col))
         color = QColorDialog.getColor(
@@ -9673,15 +10505,10 @@ class MeasurementsViewerWin(
                 self.zSliceCheckbox.setChecked(
                     not self.zSliceCheckbox.isChecked()
                 )
-        elif key in (Qt.Key_Left, Qt.Key_Right):
-            step = 1 if key == Qt.Key_Right else -1
-            if self.isZsliceNavigationActive():
-                z = self.zSliceScrollBar.sliderPosition() + step
-                self.zSliceScrollBar.setSliderPosition(z)
-            else:
-                self.setFrame(self.frame_i + step)
-        elif key in (Qt.Key_Up, Qt.Key_Down):
-            self.stepID(1 if key == Qt.Key_Up else -1)
+        elif key in ARROW_KEYS:
+            # Also reached with modifiers or when a widget that uses the
+            # arrow keys ignored them (`eventFilter` handles the others)
+            self.navigateWithArrowKey(key)
         else:
             super().keyPressEvent(event)
     

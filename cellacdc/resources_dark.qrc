@@ -192,6 +192,15 @@
     <file alias="info.svg">resources/icons/info_dark.svg</file>
     <file alias="help.svg">resources/icons/help_dark.svg</file>
     <file alias="addCustomAnnotation.svg">resources/icons/addCustomAnnotation_dark.svg</file>
+    <file alias="addTimepoint.svg">resources/icons/addTimepoint_dark.svg</file>
+    <file alias="reevaluateTimepoint.svg">resources/icons/reevaluateTimepoint_dark.svg</file>
+    <file alias="reevaluateAllTimepoint.svg">resources/icons/reevaluateAllTimepoint_dark.svg</file>
+    <file alias="viewCustomAnnotation.svg">resources/icons/viewCustomAnnotation_dark.svg</file>
+    <file alias="reevaluateCustomAnnotation.svg">resources/icons/reevaluateCustomAnnotation_dark.svg</file>
+    <file alias="reevaluateAllCustomAnnotation.svg">resources/icons/reevaluateAllCustomAnnotation_dark.svg</file>
+    <file alias="phase_translator.svg">resources/icons/phase_translator_dark.svg</file>
+    <file alias="phase_translator_apply.svg">resources/icons/phase_translator_apply_dark.svg</file>
+    <file alias="graphs.svg">resources/icons/graphs_dark.svg</file>
     <file alias="toolbar.png">resources/screenshots/toolbar.png</file>
     <file alias="toolTip.png">resources/screenshots/toolTip.png</file>
     <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>

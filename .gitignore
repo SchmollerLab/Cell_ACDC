@@ -19,6 +19,7 @@ cellacdc/q_debug.py
 cellacdc/_q_debug.py
 global_cca_df_with_single_moth_bud_pair.csv
 .test_qt_app.py
+.claude/
 
 env_dependencies_issues.txt
 not_installed_requirements.txt

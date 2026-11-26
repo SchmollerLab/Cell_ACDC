@@ -92,7 +92,8 @@ win = widgets.QDialogListbox(
     'Select model',
     'Select model to use for segmentation: ',
     models,
-    multiSelection=False
+    multiSelection=False,
+    allowEmptySelection=False
 )
 win.exec_()
 

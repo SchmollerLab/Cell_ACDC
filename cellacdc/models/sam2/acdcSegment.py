@@ -98,7 +98,7 @@ class Model:
             Note that `id = 0` will be used for the negative points, i.e. those
             objects (like the background) that should not be segmented.
 
-            In the Cell-ACDC GUI (module 3) you can click to add points and
+            In the Cell-ACDC GUI you can click to add points and
             save them to a file whose path or endname can be provided for the
             `input_points_path`. To do so, click on the "Add points layer"
             button on the top toolbar and choose "Add points with mouse clicks".

@@ -426,7 +426,6 @@ class guiWin(
         self.newSegmEndName = ''
         self.closeGUI = False
         self.warnKeyPressedMsg = None
-        self.img1ChannelGradients = {}
         self.AutoPilotProfile = autopilot.AutoPilotProfile()
         self.storeStateWorker = None
         self.AutoPilot = None
@@ -2498,7 +2497,10 @@ class guiWin(
         self.overlayToolbar.sigSetSingleChannel.connect(
             self.setOverlaySingleChannel
         )
-        
+        # Overlay modes as the user left them (applied by `overlay_cb`)
+        self.restoreOverlayModes()
+        self.overlayToolbar.sigModesClicked.connect(self.saveOverlayModes)
+
         self.autoPilotZoomToObjToolbar = widgets.ToolBar(
             "Auto-zoom to objects", self
         )
@@ -4035,6 +4037,10 @@ When working with 3D segmentation masks:
         )
         self.overlayColorButton.sigColorChanging.connect(self.changeOverlayColor)
         self.overlayColorButton.sigColorChanged.connect(self.saveOverlayColor)
+        # Cancel: back to the saved color and LUT of the channel
+        self.overlayColorButton.colorDialog.rejected.connect(
+            partial(self.overlayColorDialogRejected, self.overlayColorButton)
+        )
         self.textIDsColorButton.sigColorChanging.connect(
             self.updateTextAnnotColor
         )
@@ -13376,6 +13382,11 @@ When working with 3D segmentation masks:
         if prevMode == 'Normal division: Lineage tree':
             self.askLineageTreeChanges()
             self.lineage_tree = None
+            # The backup of the edited frame belongs to the lineage tree
+            # session: a stale one would be compared with tables changed
+            # in other modes (`get_difference_table`)
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
             self.editLin_TreeBar.setVisible(False)
             self.uncheckAllButtonsFromButtonGroup(self.editLin_TreeGroup)
 
@@ -15088,7 +15099,8 @@ When working with 3D segmentation masks:
         selectSegmWin = widgets.QDialogListbox(
             'Select segmentation file',
             'Select segmentation file to use as ROI:\n',
-            existingSegmEndnames, multiSelection=False, parent=self
+            existingSegmEndnames, multiSelection=False, parent=self,
+            allowEmptySelection=False
         )
         selectSegmWin.exec_()
         if selectSegmWin.cancel:
@@ -15703,6 +15715,18 @@ When working with 3D segmentation masks:
     def editingSpinboxValueTimerCallback(self):
         self.typingEditID = False
 
+    def ownedWindowsOutsideParentChain(self):
+        """Windows of this GUI whose parent chain does not reach it, so that
+        `eventFilter` still treats their key presses as the GUI's own (e.g.,
+        Left/Right stepping the frames). The 3D viewer is a child of the
+        launcher (`mainWin`, for its lifetime), but its frames follow the
+        GUI ("Sync frames with parent GUI"). None items are ignored.
+
+        Progress windows parented to the launcher are not included: the GUI
+        is disabled while they run.
+        """
+        return (getattr(self, '_volume_renderer', None),)
+
     def getFocusedInputWidget(self):
         """Return the widget with keyboard focus if it is a text or number
         input box (e.g., line edit or spin box), None otherwise.
@@ -15754,25 +15778,67 @@ When working with 3D segmentation masks:
         if self.getFocusedInputWidget() is not None:
             return super().eventFilter(obj, ev)
 
+        # The filter also sees the clicks that Qt ignores for a disabled
+        # scroll bar (e.g., the GUI busy, or the lost cells prompt open)
         if (
                 ev.type() == QEvent.MouseButtonPress
-                and obj == self.navigateScrollBar 
+                and obj == self.navigateScrollBar
+                and self.navigateScrollBar.isEnabled()
             ):
             self.navigateScrollBar.handleMousePressEventFromAppFilter(ev)
 
-        # handle presistant shortcuts (for multiple shportcuts)
-        if ev.type() == QEvent.Type.KeyPress: 
-            for name, key in self.widgetsPersistentShortcut.items():
-                if not key == ev.key():
-                    continue
-                action = self.widgetsWithShortcut[name]
-                if hasattr(action, 'click'):
-                    action.click()
-                elif hasattr(action, 'trigger'):
-                    action.trigger()
-                return True
+        # handle presistant shortcuts (for multiple shportcuts). The filter
+        # is installed on the app: leave the key presses of windows not owned
+        # by the GUI (e.g., the arrow keys of the measurements viewer) alone.
+        # Not while the GUI (busy, or disabled by the measurements viewer's
+        # `runInThread`) or the key's target is disabled: the filter also
+        # sees the key presses that Qt ignores for disabled widgets, the
+        # actions do not follow the GUI's enabled state, and a dialog that
+        # they open would nest its event loop in the viewer's wait. Nor
+        # while the action itself is disabled (`triggerPersistentShortcut`)
+        if (
+            ev.type() == QEvent.Type.KeyPress
+            and self.isEnabled()
+            and qutils.is_key_event_target_enabled(obj)
+            and qutils.is_key_event_for_window(
+                self, obj, owned_windows=self.ownedWindowsOutsideParentChain()
+            )
+            and self.triggerPersistentShortcut(ev.key())
+        ):
+            return True
 
         return super().eventFilter(obj, ev)
+
+    def triggerPersistentShortcut(self, key):
+        """Trigger (or click) the action with the persistent shortcut `key`
+        (`widgetsPersistentShortcut`: Left/Right for the previous/next
+        frame), from `eventFilter` and `keyPressEvent`.
+
+        Not when it is disabled on purpose (e.g., `prevAction`/`nextAction`
+        while the lost cells prompt is open, `setFrameNavigationDisabled`):
+        Qt5's `QAction.trigger()` would still emit `triggered`, and the key
+        goes on to its target instead (e.g., to move the focus between the
+        prompt's buttons). So while frame navigation is disabled, Left/Right
+        do not step the z-slices either (z-slice checkbox or Z held, as
+        with Qt6 before); Up/Down still do.
+
+        Returns
+        -------
+        bool
+            Whether an action was triggered (or clicked).
+        """
+        for name, persistentKey in self.widgetsPersistentShortcut.items():
+            if persistentKey != key:
+                continue
+            action = self.widgetsWithShortcut[name]
+            if not action.isEnabled():
+                return False
+            if hasattr(action, 'click'):
+                action.click()
+            elif hasattr(action, 'trigger'):
+                action.trigger()
+            return True
+        return False
     
     def get3DActionKeyboardModifier(self, modifiers):
         if not self.isSegm3D:
@@ -15924,17 +15990,9 @@ When working with 3D segmentation masks:
         
         if ev.key() == Qt.Key_End:
             self.onKeyEnd()
-            
-        for name, key in self.widgetsPersistentShortcut.items():
-            if not key == ev.key():
-                continue
-            action = self.widgetsWithShortcut[name]
-            if hasattr(action, 'click'):
-                action.click()
-            elif hasattr(action, 'trigger'):
-                action.trigger()
-            break
-        
+
+        self.triggerPersistentShortcut(ev.key())
+
         self.checkSetDelObjActionActive(ev)
         
         self.isZmodifier = (
@@ -19669,7 +19727,8 @@ When working with 3D segmentation masks:
                 'Select model to use for segmentation: ',
                 models,
                 multiSelection=False,
-                parent=self
+                parent=self,
+                allowEmptySelection=False
             )
             win.exec_()
             if win.cancel:
@@ -21348,18 +21407,23 @@ When working with 3D segmentation masks:
         new_df = posData.allData_li[posData.frame_i]['acdc_df']
         original_df = self.original_df_lin_tree.copy()
 
-        if original_df.equals(new_df):
+        if new_df is None or original_df.equals(new_df):
             return
-        
-        compare_columns = ['parent_ID_tree']
 
-        new_df = new_df[original_df.columns]
+        compare_columns = ['parent_ID_tree']
+        for df in (original_df, new_df):
+            if any(col not in df.columns for col in compare_columns):
+                # No lineage tree annotations to compare, e.g. removed by
+                # `resetLin_tree_future` after a segmentation edit
+                return
+
         new_df = myutils.checked_reset_index_Cell_ID(new_df)
-        new_df = new_df[compare_columns]
-        new_df = new_df.sort_index()
         original_df = myutils.checked_reset_index_Cell_ID(original_df)
-        original_df = original_df[compare_columns]
-        original_df = original_df.sort_index()
+        # Segmentation edits can add or remove IDs after the backup:
+        # compare the cells present in both tables
+        IDs = original_df.index.intersection(new_df.index)
+        new_df = new_df.loc[IDs, compare_columns].sort_index()
+        original_df = original_df.loc[IDs, compare_columns].sort_index()
 
         differences = original_df.compare(new_df)
         if differences.empty:
@@ -22452,8 +22516,8 @@ When working with 3D segmentation masks:
         self.setStatusBarLabel()
 
         self.initLookupTableLab()
-        if self.invertBwAction.isChecked() and not self.invertBwAlreadyCalledOnce:
-            self.invertBw(True)
+        # First-load `invertBw`, then the LUT saved for the channel
+        self.restoreImageChannelLutAfterLoading()
         self.restoreSavedSettings()
 
         self.initContoursImage()
@@ -22863,7 +22927,16 @@ When working with 3D segmentation masks:
                 self.rightImageFramesScrollbarValueChanged
             )
 
+    def isZsliceScrollBarActive(self):
+        """False with 2D images: z-stack data loaded before in the same GUI
+        leaves the z-slice scrollbar connected (`connectScrollbars`), and the
+        keys stepping it (Up/Down, Home/End, ...) would reach `update_z_slice`,
+        which needs `segmInfo_df` (None without z-stacks)."""
+        return self.data[self.pos_i].SizeZ > 1
+
     def zSliceScrollBarActionTriggered(self, action):
+        if not self.isZsliceScrollBarActive():
+            return
         singleMove = (
             action == SliderSingleStepAdd
             or action == SliderSingleStepSub
@@ -22906,6 +22979,8 @@ When working with 3D segmentation masks:
             self.highlightSearchedID(self.highlightedID, force=True)
             
     def zSliceScrollBarReleased(self):
+        if not self.isZsliceScrollBarActive():
+            return
         self.clearTempBrushImage()
         self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
@@ -25691,7 +25766,14 @@ When working with 3D segmentation masks:
                 continue
             df = df.drop(columns=lineage_tree_cols, errors='ignore')
             posData.allData_li[i]['acdc_df'] = df
-    
+
+        backup_frame_i = self.original_df_lin_tree_i
+        if backup_frame_i is not None and backup_frame_i >= frame_i:
+            # The lineage tree edits of the backed up frame were removed
+            # with its annotations: nothing left to propagate or discard
+            self.original_df_lin_tree = None
+            self.original_df_lin_tree_i = None
+
     def get_cca_df(
             self, frame_i=None, 
             return_df=False, 
@@ -28241,15 +28323,12 @@ When working with 3D segmentation masks:
         blinker.start()
     
     def imgGradLUTfinished_cb(self):
-        posData = self.data[self.pos_i]
-        ticks = self.imgGrad.gradient.listTicks()
+        if self.isSettingChannelLutsFromCode():
+            return
 
-        self.img1ChannelGradients[self.user_ch_name] = {
-            'ticks': [(x, t.color.getRgb()) for t,x in ticks],
-            'mode': 'rgb'
-        }
-        
         self.df_settings = self.imgGrad.saveState(self.df_settings)
+        # LUT of the displayed channel (`gui_navigation.LutGuiElements`)
+        self.saveImageChannelLut()
         self.df_settings.to_csv(self.settings_csv_path)
 
     def setTextAnnotZsliceScrolling(self):
@@ -32350,9 +32429,12 @@ When working with 3D segmentation masks:
         if cancel:
             return False
         
-        if self.overlayToolbar.isTransparent():
-            self.overlayToolbar.setTransparent(False)
-        
+        # The overlay modes keep the user's check states (saved in the
+        # settings): `overlay_cb` applies them to the new data's items
+
+        # LUT of the channel to load: restored in `loadingDataCompleted`
+        self.resetImageChannelLut()
+
         self.secondLevelToolbar.setVisible(False)
         
         self.gui_createLazyLoader()
@@ -34043,7 +34125,9 @@ When working with 3D segmentation masks:
         
         if activateTransparencyMode:
             self.overlayToolbar.setTransparent(True)
-        
+            # The user chose it and it stays on after the export
+            self.saveOverlayModes()
+
         return True
     
     def exportToVideoTriggered(self):

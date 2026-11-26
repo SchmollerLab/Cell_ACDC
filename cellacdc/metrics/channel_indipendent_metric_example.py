@@ -35,7 +35,7 @@ def channel_indipendent_metric(
     all_channels_dataPrepBkgr : dictionary of single numeric value
         Dictionary with channel names as keys and as value the median of all 
         the pixels inside the background ROIs added during the
-        data prep step (Cell-ACDC module 1).
+        Cell-ACDC data prep module.
         Pass None if background correction with this vaue is not needed.
     objectRp : skimage.measure.RegionProperties class
         Refer to `skimage.measure.regionprops` for more information

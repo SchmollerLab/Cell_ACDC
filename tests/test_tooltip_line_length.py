@@ -372,6 +372,37 @@ def test_wrap_tooltip_never_splits_long_or_hyphenated_words():
     assert lines_fit(wrapped)
 
 
+def test_wrap_path_breaks_after_separators_into_even_lines():
+    # `wrap_tooltip` never splits a path: tool tips with full paths (status
+    # bar of the measurements viewer) break them with `wrap_path`
+    path = '/'.join(
+        ['', 'home', 'user'] + ['experiment_folder']*8 + ['Position_1/Images']
+    )
+    assert qutils.wrap_tooltip(path) == path
+    lines = qutils.wrap_path(path)
+    assert len(lines) > 1 and lines_fit('\n'.join(lines))
+    assert ''.join(lines) == path
+    assert all(line.endswith('/') for line in lines[:-1])
+    # Balanced: same number of lines as greedy packing at 80, about equally
+    # long (greedy: 65, 72 and 35 characters)
+    lengths = [len(line) for line in lines]
+    assert len(lines) == 3 and max(lengths) - min(lengths) <= 15, lines
+    # Windows separators (also mixed); the indent counts in the width
+    winPath = 'C:\\data/' + path[1:].replace('/', '\\')
+    lines = qutils.wrap_path(winPath, indent='    ')
+    assert lines_fit('\n'.join(lines))
+    assert all(line.startswith('    ') for line in lines)
+    assert ''.join(line[4:] for line in lines) == winPath
+    assert qutils.wrap_tooltip('\n'.join(lines)) == '\n'.join(lines)
+    # Short path: one line; a name longer than the width is not split
+    assert qutils.wrap_path('/data/exp', indent='  ') == ['  /data/exp']
+    name = 'x'*100
+    assert qutils.wrap_path(f'/data/{name}/Images') == [
+        '/data/', f'{name}/', 'Images'
+    ]
+    assert qutils.wrap_path('') == ['']
+
+
 def test_wrap_tooltip_returns_rich_text_unchanged():
     text = f'<b>Title</b> {LONG_LINE}'
     assert qutils.might_be_rich_text(text)

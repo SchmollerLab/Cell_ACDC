@@ -64,7 +64,8 @@ txt = html_utils.paragraph('''
     <b>Select the tracker</b> to use<br><br>
 ''')
 win = widgets.QDialogListbox(
-    'Select tracker', txt, trackers, multiSelection=False, parent=None
+    'Select tracker', txt, trackers, multiSelection=False, parent=None,
+    allowEmptySelection=False
 )
 win.exec_()
 

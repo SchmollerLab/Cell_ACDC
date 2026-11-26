@@ -68,7 +68,7 @@ def run_fucci_pipeline(
         f'{TIMEPOINT_PREFIX}{identifier["name"]}': identifier['predictor']
         for identifier in configuration['timepoint_identifiers']
     }
-    # Manual annotations (e.g. "Excluded") have no predictor, like in
+    # Manual-only annotations have no predictor, like in
     # `MeasurementsViewerWin.validateConfiguration`
     annotations = {
         state['name']: state.get('predictor') or {'type': PREDICTOR_NONE}
@@ -414,6 +414,28 @@ def test_arrested_cell_is_annotated():
     assert table['phase_Arrested'].dtype == bool
     assert table['phase_Arrested'].all()
     assert not table['phase_Excluded'].any()
+
+
+def test_cells_moving_into_the_field_of_view_are_excluded():
+    """Cells without a mother (parent_ID_tree -1, or 0 = not annotated) that
+    appear after the first frame are excluded; cells present from the first
+    frame and daughters are not."""
+    df = synthetic_fucci_table()
+    daughter = df[df['Cell_ID'] == 2]
+    moved_in = pd.concat([
+        daughter.assign(Cell_ID=4, parent_ID_tree=-1),
+        daughter.assign(Cell_ID=5, parent_ID_tree=0),
+    ])
+    table, _ = run_fucci_pipeline(
+        pd.concat([df, moved_in], ignore_index=True),
+        {'GEMININ': 'GFP', 'CDT1': 'mCherry'}, SizeT=170
+    )
+    excluded = table['Excluded'].groupby(level='Cell_ID')
+    expected = {1: 0, 2: 0, 3: 0, 4: 1, 5: 1}
+    assert excluded.min().to_dict() == excluded.max().to_dict() == expected
+    for ID in (4, 5):
+        assert table.xs(ID, level='Cell_ID')['phase'].eq('Excluded').all()
+    assert not table.xs(1, level='Cell_ID')['phase_Excluded'].any()
 
 
 def test_excluded_cell_overrides_complete_cycle_and_arrested():

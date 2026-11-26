@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  Icon of "Time point to phase translator..." (measurements viewer, Phases
+  toolbar): a phase band of three colored segments split by two time point
+  markers. Loaded by path (measurements_viewer.PHASE_TRANSLATOR_ICON_PATH),
+  one file for both color schemes: keep the markers mid-gray and the phase
+  colors non-red (red is the current frame line), checked by
+  test_phase_icons_are_colorful_but_not_red.
+-->
+
+<svg
+   width="49.059937"
+   height="46.809998"
+   viewBox="0 0 49.059937 46.809998"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="phase_translator.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="9.9062501"
+     inkscape:cx="-11.608833"
+     inkscape:cy="39.823344"
+     inkscape:window-width="2560"
+     inkscape:window-height="1369"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg1" />
+  <rect
+     style="opacity:0.997151;fill:#dd2323;fill-opacity:1;stroke-width:2.213;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:0;stroke-dasharray:none;paint-order:markers fill stroke"
+     id="rect1"
+     width="16.353313"
+     height="19.179811"
+     x="0"
+     y="13.815095"
+     rx="0"
+     ry="17.463722" />
+  <rect
+     style="opacity:0.997151;fill:#2328dd;fill-opacity:1;stroke-width:2.213;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:0;stroke-dasharray:none;paint-order:markers fill stroke"
+     id="rect2"
+     width="16.353313"
+     height="19.179811"
+     x="16.35331"
+     y="13.815095"
+     rx="0"
+     ry="17.463722" />
+  <rect
+     style="opacity:0.997151;fill:#26dd23;fill-opacity:1;stroke-width:2.213;stroke-linecap:square;stroke-linejoin:round;stroke-miterlimit:0;stroke-dasharray:none;paint-order:markers fill stroke"
+     id="rect3"
+     width="16.353313"
+     height="19.179811"
+     x="32.706623"
+     y="13.815095"
+     rx="0"
+     ry="17.463722" />
+  <g
+     id="time-points"
+     stroke-width="4.57"
+     stroke-linecap="round"
+     transform="translate(-10.498423,-7.5855396)"
+     style="fill:#f0f0f0;fill-opacity:1;stroke:#4d4d4d;stroke-linecap:round;stroke-miterlimit:3;stroke-opacity:1">
+    <line
+       id="tick-1"
+       x1="26.851734"
+       y1="9.8705397"
+       x2="26.851734"
+       y2="52.110538"
+       style="fill:#f0f0f0;fill-opacity:1;stroke:#4d4d4d;stroke-linecap:round;stroke-miterlimit:3;stroke-opacity:1" />
+    <line
+       id="tick-2"
+       x1="43.205048"
+       y1="9.8705397"
+       x2="43.205048"
+       y2="52.110538"
+       style="fill:#f0f0f0;fill-opacity:1;stroke:#4d4d4d;stroke-linecap:round;stroke-miterlimit:3;stroke-opacity:1" />
+  </g>
+  <circle
+     cx="16.353312"
+     cy="23.404999"
+     r="7"
+     id="circle1"
+     style="fill:#4d4d4d;fill-opacity:1;stroke:#4d4d4d;stroke-opacity:1" />
+  <circle
+     cx="32.706623"
+     cy="23.404999"
+     r="7"
+     id="circle1-4"
+     style="fill:#4d4d4d;fill-opacity:1;stroke:#4d4d4d;stroke-opacity:1" />
+</svg>
