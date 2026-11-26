@@ -106,6 +106,7 @@ def _parentImageItemCalls():
             yield node
 
 
+@pytest.mark.slow
 def test_parent_image_item_keywords_are_not_swallowed():
     # Unknown keywords end up in `**kargs` and are silently ignored by
     # `pg.ImageItem` (e.g., the `activatingAction` typo)

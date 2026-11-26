@@ -100,6 +100,7 @@ CONDITIONS = [
 ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('kind,source', SOURCES)
 @pytest.mark.parametrize('condition,mode', CONDITIONS)
 @pytest.mark.parametrize('seed,frames', [(0, None), (1, ('t - 2', 't + 1'))])
@@ -171,6 +172,7 @@ def prepare_shared_and_per_target(monkeypatch, *args, **kwargs):
     return results
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mode', ['where_true', 'any', 'all'])
 @pytest.mark.parametrize('condition', [
     'area >= MEDIAN(area)', '(COUNT(area) >= 2) & (FIRST(stage) != "S")',
@@ -285,6 +287,7 @@ EQUATIONS = [
 ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('seed', [0, 4])
 @pytest.mark.parametrize('equation,source', EQUATIONS)
 @pytest.mark.parametrize('mode', list(tp.EQUATION_MODES))
@@ -395,6 +398,7 @@ def test_column_membership_is_not_row_wise(monkeypatch):
         assert actual == reference == expected
 
 
+@pytest.mark.slow
 def test_other_cell_condition_with_column_membership():
     # Per target, this_relative_ID holds one value, so ``in`` behaves like
     # ``==``; batching the targets must not turn it into isin over all

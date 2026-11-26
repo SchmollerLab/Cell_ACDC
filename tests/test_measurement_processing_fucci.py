@@ -304,6 +304,7 @@ def synthetic_fucci_table():
     return pd.DataFrame(rows)
 
 
+@pytest.mark.smoke
 def test_fucci_pipeline_on_synthetic_cell():
     table, _ = run_fucci_pipeline(
         synthetic_fucci_table(), {'GEMININ': 'GFP', 'CDT1': 'mCherry'},

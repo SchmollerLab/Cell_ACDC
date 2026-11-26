@@ -732,6 +732,7 @@ def open_viewer_dialogs(viewer, dialogs):
     last_opened(dialogs, mv._FormattingConditionDialog)
 
 
+@pytest.mark.slow
 def test_viewer_window_tooltips(viewer, fucci):
     setup_dynamic_tooltips(viewer, fucci)
     tooltips = collect_tooltips(viewer)
@@ -750,6 +751,7 @@ def test_viewer_window_tooltips(viewer, fucci):
     assert_no_offenders(tooltips)
 
 
+@pytest.mark.slow
 def test_viewer_dialog_tooltips(viewer, fucci, opened):
     dialogs, tooltips = opened
     setup_dynamic_tooltips(viewer, fucci)

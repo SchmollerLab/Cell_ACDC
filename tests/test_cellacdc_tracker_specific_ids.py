@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 from skimage.measure import regionprops
 
@@ -191,6 +192,7 @@ def test_normal_division_specific_ids_preserve_division_context():
     assert add_info['assignments'] == {7: 20}
 
 
+@pytest.mark.smoke
 def test_normal_division_second_step_does_not_track_daughters_as_lost_cells():
     prev_lab = np.array(
         [

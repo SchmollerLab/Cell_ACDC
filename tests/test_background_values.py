@@ -559,6 +559,7 @@ def _exec_util(win):
     return thread
 
 
+@pytest.mark.slow
 def test_util_error_closes_modal_window_and_stops_thread(
         app, tmp_path, monkeypatch, _auto_answer_blocking_dialogs
     ):
@@ -612,6 +613,7 @@ def test_util_error_closes_modal_window_and_stops_thread(
     ]
 
 
+@pytest.mark.smoke
 def test_util_with_presets_runs_modally_and_returns_summary(
         app, tmp_path, monkeypatch, _auto_answer_blocking_dialogs
     ):

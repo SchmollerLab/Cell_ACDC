@@ -422,6 +422,7 @@ def test_ctrl_f_blinks_search_bar(viewer, blinks):
     assert blinks == [[viewer.searchWidget]]
 
 
+@pytest.mark.slow
 def test_loading_data_blinks_cell_id_controls(app, monkeypatch, tmp_path, blinks):
     from tests.test_measurement_viewer import make_timelapse_position
     errors = []
@@ -454,6 +455,7 @@ def test_loading_data_blinks_cell_id_controls(app, monkeypatch, tmp_path, blinks
         app.processEvents()
 
 
+@pytest.mark.slow
 def test_navigate_box_aligns_labels_spinboxes_and_sliders(viewer, app):
     """Labels, spin boxes and sliders of the Navigate box are each in their
     own left-aligned grid column, also the overlay alpha sliders (added by
@@ -544,6 +546,7 @@ def test_save_changes_buttons_have_icons(app, text, expected):
     button.deleteLater()
 
 
+@pytest.mark.slow
 def test_process_measurements_button_has_tooltip(viewer):
     tooltip = viewer.processMeasurementsButton.toolTip()
     assert 'recipe' in tooltip
@@ -559,6 +562,7 @@ def test_viewer_log_messages_reach_stdout(viewer, capsys):
     assert '[WARNING]: Warning message of the viewer' in out
 
 
+@pytest.mark.slow
 def test_log_level_prefix_is_not_doubled(viewer, capsys):
     # E.g. messages of the mixins shared with the main GUI
     viewer.logger.warning('[WARNING] rp was requested before being set')
@@ -590,6 +594,7 @@ def test_plotting_and_removing_a_column_logs_its_name(viewer, capsys):
     assert 'Removing "intensity" from the plot' in capsys.readouterr().out
 
 
+@pytest.mark.slow
 def test_changing_and_resetting_a_color_is_logged(viewer, capsys, monkeypatch):
     monkeypatch.setattr(
         measurements_viewer.QColorDialog, 'getColor',
@@ -666,6 +671,7 @@ def record_load_threads(monkeypatch):
     return threads
 
 
+@pytest.mark.slow
 def test_run_in_thread_keeps_event_loop_running(loading_window, capsys):
     timerFired = threading.Event()
     states = []
@@ -694,6 +700,7 @@ def test_run_in_thread_keeps_event_loop_running(loading_window, capsys):
     assert 'Testing task done in' in out
 
 
+@pytest.mark.slow
 def test_run_in_thread_reraises_and_reenables(loading_window, capsys):
     def task():
         raise OSError('Cannot read')
@@ -704,6 +711,8 @@ def test_run_in_thread_reraises_and_reenables(loading_window, capsys):
     assert 'Failing task failed after' in capsys.readouterr().out
 
 
+@pytest.mark.slow
+@pytest.mark.smoke
 def test_load_images_paths_loads_in_worker_thread(
         loading_window, tmp_path, monkeypatch):
     from tests.test_measurement_viewer import make_timelapse_position
@@ -727,6 +736,7 @@ def test_load_images_paths_loads_in_worker_thread(
     assert not loading_window._isLoadingData
 
 
+@pytest.mark.slow
 def test_load_configuration_loads_in_worker_thread_and_reports_errors(
         loading_window, tmp_path, monkeypatch):
     from tests.test_measurement_viewer import make_timelapse_position
@@ -766,6 +776,7 @@ def test_load_configuration_loads_in_worker_thread_and_reports_errors(
     assert not loading_window._isLoadingData
 
 
+@pytest.mark.slow
 def test_reentrant_load_and_close_are_refused(
         loading_window, tmp_path, monkeypatch):
     """The dialogs of a load (e.g. "Save changes?") do not block the
@@ -805,6 +816,7 @@ def test_reentrant_load_and_close_are_refused(
     assert loading_window.isEnabled()
 
 
+@pytest.mark.slow
 def test_run_in_thread_disables_the_other_windows(loading_window, app):
     """A dialog opened from another window would nest its event loop in the
     wait and keep the viewer disabled until it closes."""
@@ -821,6 +833,7 @@ def test_run_in_thread_disables_the_other_windows(loading_window, app):
         other.deleteLater()
 
 
+@pytest.mark.slow
 def test_load_is_refused_while_the_closing_prompt_is_open(
         loading_window, tmp_path, monkeypatch):
     from tests.test_measurement_viewer import make_timelapse_position
@@ -900,6 +913,7 @@ def test_processing_is_refused_while_loading(viewer, monkeypatch):
     assert viewer.measurementProcessingThread is None
 
 
+@pytest.mark.slow
 def test_configuration_overlays_are_read_in_the_worker_thread(
         loading_window, tmp_path, monkeypatch):
     import tifffile
@@ -961,6 +975,7 @@ def props_dock_viewer(app, monkeypatch, tmp_path):
     app.processEvents()
 
 
+@pytest.mark.slow
 def test_selected_cell_is_shown_in_objects_dock(props_dock_viewer):
     window = props_dock_viewer
     propsQGBox = window.guiTabControl.propsQGBox
@@ -985,6 +1000,7 @@ def test_selected_cell_is_shown_in_objects_dock(props_dock_viewer):
     assert not window.slotErrors
 
 
+@pytest.mark.slow
 def test_editing_objects_dock_id_selects_the_cell(
         props_dock_viewer, monkeypatch
     ):
@@ -1008,6 +1024,7 @@ def test_editing_objects_dock_id_selects_the_cell(
     assert not window.slotErrors
 
 
+@pytest.mark.slow
 def test_objects_dock_with_3D_cell_outside_the_z_slice(
         app, monkeypatch, tmp_path):
     from tests.test_measurement_viewer import make_timelapse_position
@@ -1047,6 +1064,7 @@ def test_objects_dock_with_3D_cell_outside_the_z_slice(
         app.processEvents()
 
 
+@pytest.mark.slow
 def test_hover_updates_objects_dock_without_selecting(props_dock_viewer):
     window = props_dock_viewer
     propsQGBox = window.guiTabControl.propsQGBox
@@ -1143,6 +1161,7 @@ def icon_image(icon, size=32):
     return icon.pixmap(size, size).toImage()
 
 
+@pytest.mark.slow
 def test_viewer_actions_use_their_resource_icons(bare_viewer):
     images = {}
     for attr, alias in VIEWER_ACTION_ICONS.items():
@@ -1235,6 +1254,7 @@ def test_help_texts_build_real_message_boxes(app):
 
 # Evaluate phases on displayed cell (toolbar button + shortcut)
 
+@pytest.mark.slow
 def test_apply_phases_cell_action_has_icon_shortcut_and_toolbar(bare_viewer):
     action = bare_viewer.applyPhasesCellAction
     assert not action.icon().isNull()
@@ -1252,6 +1272,7 @@ def test_apply_phases_cell_action_has_icon_shortcut_and_toolbar(bare_viewer):
     assert QKeySequence('P').toString() not in bare_viewer.reservedShortcuts()
 
 
+@pytest.mark.slow
 def test_apply_phases_cell_action_evaluates_only_displayed_cell(viewer):
     from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
     column = f'{TIMEPOINT_PREFIX}Start'
@@ -1271,6 +1292,7 @@ def test_apply_phases_cell_action_evaluates_only_displayed_cell(viewer):
     assert not phases.loc[(1, 2)] and not phases.loc[(2, 2)]
 
 
+@pytest.mark.slow
 def test_apply_phases_cell_action_without_rules_shows_hint(
         viewer, monkeypatch):
     viewer.isDataLoaded = True
@@ -1284,6 +1306,7 @@ def test_apply_phases_cell_action_without_rules_shows_hint(
 
 # Custom annotations are shown also when their button is not active
 
+@pytest.mark.slow
 def test_custom_annotations_of_inactive_buttons_are_shown(app, tmp_path):
     from tests.test_measurement_viewer import make_timelapse_position
     window = MeasurementsViewerWin()

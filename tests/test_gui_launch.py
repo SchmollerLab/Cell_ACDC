@@ -4,12 +4,15 @@ from qtpy.QtWidgets import QApplication, QToolButton
 
 from cellacdc import gui
 
+pytestmark = pytest.mark.slow
+
 
 @pytest.fixture(scope='module')
 def app():
     return QApplication.instance() or QApplication([])
 
 
+@pytest.mark.smoke
 def test_gui_launches_with_right_click_menus(app):
     win = gui.guiWin(app)
     try:

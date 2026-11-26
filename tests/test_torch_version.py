@@ -43,6 +43,7 @@ def test_relocated_device_selection(monkeypatch, gpu, cuda, mps, expected):
     torch.device.assert_called_once_with(expected)
 
 
+@pytest.mark.slow
 def test_torch_utils_import_does_not_load_gui_or_torch():
     script = """
 import sys

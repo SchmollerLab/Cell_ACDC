@@ -175,6 +175,7 @@ def test_existing_environment_combined_check_preserves_repair_and_setup(
         setup.assert_not_called()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("packages, healthy", [
     (["numpy"], True),
     ([{"pkg_name": "numpy", "min_version": "999"}], False),
@@ -261,6 +262,7 @@ def test_combined_check_reinstalls_other_cellacdc(
         assert "not from this source checkout" in output
 
 
+@pytest.mark.slow
 def test_combined_check_reads_identity_of_real_environment(monkeypatch):
     """Real subprocess: the identity printed by the combined check is
     parsed; here the environment's protocol differs from the client's."""
@@ -315,6 +317,7 @@ def test_shared_version_constraints(installed, spec, satisfied):
             myutils._check_package_version_constraints(full_spec, installed)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("debug", [False, True])
 def test_server_startup_timings_follow_debug_mode(monkeypatch, capsys, debug):
     monkeypatch.setitem(config.parser_args, "debug", debug)
@@ -339,6 +342,8 @@ def test_server_startup_timings_follow_debug_mode(monkeypatch, capsys, debug):
         backend.stop()
 
 
+@pytest.mark.slow
+@pytest.mark.smoke
 def test_prepared_worker_is_used_for_specs_and_inference(monkeypatch):
     import numpy as np
     import requests

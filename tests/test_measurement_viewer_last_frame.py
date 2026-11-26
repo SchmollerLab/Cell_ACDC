@@ -252,6 +252,7 @@ def test_evaluate_masked_cell_equation_uses_analyzed_frames():
 # 2. Loading prompt
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 def test_loading_partial_position_prompts_and_masks(viewer, tmp_path):
     path = load(viewer, tmp_path, mask=True)
     viewer.askMaskUnanalyzedFrames.assert_called_once()
@@ -279,6 +280,7 @@ def test_loading_partial_position_prompts_and_masks(viewer, tmp_path):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_loading_with_use_all_frames(viewer, tmp_path):
     load(viewer, tmp_path, mask=False)
     viewer.askMaskUnanalyzedFrames.assert_called_once()
@@ -294,6 +296,7 @@ def test_loading_with_use_all_frames(viewer, tmp_path):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_cancelling_the_prompt_keeps_loaded_data(viewer, tmp_path):
     full = load(viewer, tmp_path / 'full', cca_frames=range(SIZE_T))
     viewer.askMaskUnanalyzedFrames.assert_not_called()
@@ -310,6 +313,7 @@ def test_cancelling_the_prompt_keeps_loaded_data(viewer, tmp_path):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_cancelling_the_prompt_without_loaded_data(viewer, tmp_path):
     viewer.askMaskUnanalyzedFrames.return_value = None
     viewer.loadImagesPaths([make_position(tmp_path)], channel='phase')
@@ -318,6 +322,7 @@ def test_cancelling_the_prompt_without_loaded_data(viewer, tmp_path):
     assert not viewer.data
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('cca_frames', [range(SIZE_T), None])
 def test_fully_analyzed_data_does_not_prompt(viewer, tmp_path, cca_frames):
     load(viewer, tmp_path, cca_frames=cca_frames)
@@ -334,6 +339,7 @@ def test_fully_analyzed_data_does_not_prompt(viewer, tmp_path, cca_frames):
     assert not viewer.unanalyzedRegion.isVisible()
 
 
+@pytest.mark.slow
 def test_partially_tracked_position_without_cca(viewer, tmp_path):
     path = make_position(tmp_path, cca_frames=None)
     tablepath = os.path.join(path, 'test_acdc_output.csv')
@@ -351,6 +357,7 @@ def test_partially_tracked_position_without_cca(viewer, tmp_path):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_only_partial_positions_are_listed(viewer, tmp_path):
     paths = [
         make_position(tmp_path, pos=1, cca_frames=range(SIZE_T)),
@@ -407,6 +414,7 @@ def predict_timepoints(viewer, uids):
     }
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mask', [True, False])
 def test_timepoint_predictor_uses_analyzed_frames(viewer, tmp_path, mask):
     # Cell 2 appears only after the last analyzed frame
@@ -432,6 +440,7 @@ def test_timepoint_predictor_uses_analyzed_frames(viewer, tmp_path, mask):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_toggling_mask_changes_new_predictions(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     uid, = add_identifiers(viewer, End='frame_i == SizeT - 1')
@@ -451,6 +460,7 @@ def custom_annotation_state(name, equation, consolidation='all'):
     }
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mask, expected', [(True, 1), (False, 0)])
 def test_custom_annotation_consolidated_from_analyzed_frames(
         viewer, tmp_path, mask, expected
@@ -466,6 +476,7 @@ def test_custom_annotation_consolidated_from_analyzed_frames(
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_custom_annotation_most_counts_analyzed_frames(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     # True on frames 0-1 (2 of 3 analyzed frames, 2 of 6 frames)
@@ -499,6 +510,7 @@ def boundary_rule():
     }
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mask', [True, False])
 def test_phases_stop_at_last_analyzed_frame(viewer, tmp_path, mask):
     load(viewer, tmp_path, mask=mask)
@@ -512,6 +524,7 @@ def test_phases_stop_at_last_analyzed_frame(viewer, tmp_path, mask):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_phase_boundary_after_last_frame_is_ignored(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     uid, = add_identifiers(viewer, Start='frame_i == 4')
@@ -531,6 +544,7 @@ def test_phase_boundary_after_last_frame_is_ignored(viewer, tmp_path):
     )
 
 
+@pytest.mark.slow
 def test_toggling_mask_reapplies_automatic_phases(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     viewer.autoApplyPhases = True
@@ -547,6 +561,7 @@ def test_toggling_mask_reapplies_automatic_phases(viewer, tmp_path):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_toggling_mask_saves_reevaluated_phases_of_other_positions(
         viewer, tmp_path
     ):
@@ -577,6 +592,7 @@ def test_toggling_mask_saves_reevaluated_phases_of_other_positions(
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_phase_translator_dialog_options_use_analyzed_frames(
         viewer, tmp_path, monkeypatch
     ):
@@ -629,6 +645,7 @@ def accept_formula(monkeypatch, formula, name):
     return dialogs
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mask', [True, False])
 def test_combined_measurement_is_nan_after_last_frame(
         viewer, tmp_path, monkeypatch, mask
@@ -702,6 +719,10 @@ def test_replay_measurement_steps_with_last_frame(
             assert_nan_after(sizeT)
 
 
+@pytest.mark.slow
+# Hung CI jobs until their 6 h limit (measurement processing QThread):
+# runs 43257660833, 44787139835, 45617542408
+@pytest.mark.flaky
 def test_processing_in_viewer_is_nan_after_last_frame(
         viewer, tmp_path, dummy_processor
     ):
@@ -719,6 +740,7 @@ def test_processing_in_viewer_is_nan_after_last_frame(
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_processing_results_stale_when_last_frame_changes(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     posData = viewer.posData()
@@ -757,6 +779,7 @@ def test_conditional_formatting_with_last_frame():
     ).tolist() == [-1] * len(late)
 
 
+@pytest.mark.slow
 def test_viewer_conditional_formatting_uses_analysis_frames(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     df_ID = viewer.acdc_df.xs(1, level='Cell_ID')
@@ -796,6 +819,7 @@ def write_configuration(tmp_path, configuration):
     return str(filepath)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('stored', [True, False])
 def test_configuration_with_stored_choice_does_not_prompt(
         viewer, tmp_path, dummy_processor, stored
@@ -830,6 +854,7 @@ def test_configuration_with_stored_choice_does_not_prompt(
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('answer', [True, False])
 def test_configuration_without_stored_choice_prompts(
         viewer, tmp_path, dummy_processor, answer
@@ -850,6 +875,7 @@ def test_configuration_without_stored_choice_prompts(
     assert not viewer.hasUnsavedConfiguration()
 
 
+@pytest.mark.slow
 def test_configuration_without_stored_choice_on_full_data(
         viewer, tmp_path, dummy_processor
     ):
@@ -861,6 +887,7 @@ def test_configuration_without_stored_choice_on_full_data(
     assert not viewer.hasUnsavedConfiguration()
 
 
+@pytest.mark.slow
 def test_cancelling_prompt_cancels_configuration_load(
         viewer, tmp_path, dummy_processor
     ):
@@ -875,6 +902,7 @@ def test_cancelling_prompt_cancels_configuration_load(
     viewer.configurationError.assert_not_called()
 
 
+@pytest.mark.slow
 def test_existing_outputs_are_blanked_after_last_frame(
         viewer, tmp_path, dummy_processor
     ):
@@ -899,6 +927,7 @@ def test_existing_outputs_are_blanked_after_last_frame(
     ]
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('value', ['yes', 1, None])
 def test_validate_configuration_rejects_non_bool(viewer, tmp_path, value):
     load(viewer, tmp_path)
@@ -913,6 +942,7 @@ def test_validate_configuration_rejects_non_bool(viewer, tmp_path, value):
     MeasurementsViewerWin.validateConfiguration(configuration)
 
 
+@pytest.mark.slow
 def test_toggling_the_option_marks_configuration_unsaved(viewer, tmp_path):
     load(viewer, tmp_path)
     assert not viewer.hasUnsavedConfiguration()
@@ -925,6 +955,7 @@ def test_toggling_the_option_marks_configuration_unsaved(viewer, tmp_path):
 # 8. Toggling the action: label and shading
 # ---------------------------------------------------------------------------
 
+@pytest.mark.slow
 def test_toggling_action_updates_label_and_shading(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     regions = (viewer.unanalyzedRegion, viewer.phaseBandUnanalyzedRegion)
@@ -959,6 +990,7 @@ def test_toggling_action_updates_label_and_shading(viewer, tmp_path):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_toggling_is_refused_while_loading(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     viewer._isLoadingData = True
@@ -970,6 +1002,7 @@ def test_toggling_is_refused_while_loading(viewer, tmp_path):
     assert viewer.maskUnanalyzedFramesAction.isChecked()
 
 
+@pytest.mark.slow
 def test_set_option_without_update_keeps_label(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     viewer.setMaskUnanalyzedFrames(False, update=False)
@@ -1005,6 +1038,7 @@ def rewrite_cca_frames(path, cca_frames):
     table.to_csv(tablepath, index=False)
 
 
+@pytest.mark.slow
 def test_reload_updates_last_analyzed_frame(viewer, tmp_path):
     path = load(viewer, tmp_path, mask=True)
     posData = viewer.posData()
@@ -1026,6 +1060,7 @@ def test_reload_updates_last_analyzed_frame(viewer, tmp_path):
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_reload_blanks_recorded_outputs_after_last_frame(viewer, tmp_path):
     path = load(viewer, tmp_path, mask=True)
     posData = viewer.posData()
@@ -1042,6 +1077,7 @@ def test_reload_blanks_recorded_outputs_after_last_frame(viewer, tmp_path):
     assert_nan_after(double)
 
 
+@pytest.mark.slow
 def test_reload_and_save_saves_phases_of_new_last_frame(
         viewer, tmp_path, monkeypatch
     ):
@@ -1175,6 +1211,7 @@ def assert_snapshot_matches(posData, columns):
         )
 
 
+@pytest.mark.slow
 def test_reload_keeps_step_outputs_empty_on_newly_analyzed_frames(
         viewer, tmp_path, monkeypatch
     ):
@@ -1203,6 +1240,7 @@ def test_reload_keeps_step_outputs_empty_on_newly_analyzed_frames(
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mask', [True, False])
 def test_open_folder_keeps_step_outputs_empty_after_recorded_frame(
         viewer, tmp_path, monkeypatch, capsys, mask
@@ -1231,6 +1269,7 @@ def test_open_folder_keeps_step_outputs_empty_after_recorded_frame(
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_existing_values_blanked_after_recorded_steps_frame(
         viewer, tmp_path, dummy_processor
     ):
@@ -1253,6 +1292,7 @@ def test_existing_values_blanked_after_recorded_steps_frame(
     assert not viewer.hasUnsavedConfiguration()
 
 
+@pytest.mark.slow
 def test_recalculated_steps_record_their_last_frame(
         viewer, tmp_path, dummy_processor
     ):
@@ -1274,6 +1314,7 @@ def test_recalculated_steps_record_their_last_frame(
         })
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('fileRecord', [None, 1])
 def test_changed_steps_record_is_offered_for_saving(
         viewer, tmp_path, dummy_processor, fileRecord
@@ -1311,6 +1352,7 @@ def test_changed_steps_record_is_offered_for_saving(
     viewer.configurationError.assert_not_called()
 
 
+@pytest.mark.slow
 def test_open_folder_changing_steps_record_is_offered_for_saving(
         viewer, tmp_path, dummy_processor
     ):
@@ -1346,6 +1388,7 @@ def test_open_folder_changing_steps_record_is_offered_for_saving(
     assert not viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_masked_bool_combined_measurement_stays_numeric(
         viewer, tmp_path, monkeypatch
     ):
@@ -1365,6 +1408,7 @@ def test_masked_bool_combined_measurement_stays_numeric(
     assert pd.api.types.is_float_dtype(table['flag'])
 
 
+@pytest.mark.slow
 def test_combine_refused_when_option_toggled_meanwhile(
         viewer, tmp_path, monkeypatch
     ):
@@ -1384,6 +1428,7 @@ def test_combine_refused_when_option_toggled_meanwhile(
     assert not viewer.combinedMeasurementSteps
 
 
+@pytest.mark.slow
 def test_shaded_regions_have_no_tool_tip(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     for region in (viewer.unanalyzedRegion, viewer.phaseBandUnanalyzedRegion):
@@ -1391,6 +1436,7 @@ def test_shaded_regions_have_no_tool_tip(viewer, tmp_path):
         assert region.toolTip() == ''
 
 
+@pytest.mark.slow
 def test_toggling_is_refused_while_processing(viewer, tmp_path):
     load(viewer, tmp_path, mask=True)
     viewer.measurementProcessingThread = object()
@@ -1402,6 +1448,7 @@ def test_toggling_is_refused_while_processing(viewer, tmp_path):
         viewer.measurementProcessingThread = None
 
 
+@pytest.mark.slow
 def test_reload_refreshes_label_with_option_off(viewer, tmp_path):
     path = load(viewer, tmp_path, mask=False)
     assert viewer.lastAnalyzedFrameLabel.text() == (

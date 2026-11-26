@@ -137,6 +137,7 @@ def test_module_buttons_are_grouped_in_stacked_group_boxes(buildLauncher):
     )
 
 
+@pytest.mark.smoke
 def test_module_buttons_get_the_same_height_when_shown(
         app, buildLauncher, monkeypatch
     ):

@@ -7,6 +7,7 @@ from collections import namedtuple
 import pytest
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("mode, delay", [
     ("success", "run"),
     ("success", "finish"),

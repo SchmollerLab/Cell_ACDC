@@ -190,6 +190,7 @@ def test_reapply_exported_table_including_never_used_phases(table, tmp_path):
     pd.testing.assert_frame_equal(result.table, first.table)
 
 
+@pytest.mark.smoke
 def test_reapply_table_reloaded_by_acdc_output_loader(table, tmp_path):
     # With cell cycle columns, the loader fills empty phases ('') with 0.
     from cellacdc import base_cca_dict, load
@@ -924,6 +925,7 @@ def test_viewer_failure_is_atomic_and_processing_blocks_apply(viewer):
     assert viewer.measurementProcessingWarning.call_count == 2
 
 
+@pytest.mark.slow
 def test_translator_apply_warnings_are_children_of_the_modal_dialog(
         viewer, monkeypatch
     ):
@@ -1007,6 +1009,8 @@ def test_export_aborts_if_phase_evaluation_fails(viewer, tmp_path, monkeypatch):
     viewer.measurementProcessingWarning.assert_called_once()
 
 
+@pytest.mark.slow
+@pytest.mark.smoke
 def test_configuration_save_load_and_legacy(viewer, tmp_path, monkeypatch):
     pos = viewer.posData()
     pos.images_path = str(tmp_path)
@@ -1069,6 +1073,7 @@ def test_configuration_save_load_and_legacy(viewer, tmp_path, monkeypatch):
     assert configuration['phase_translator_rules'][0]['phases'][0] == 'G1'
 
 
+@pytest.mark.slow
 def test_timepoint_and_annotation_renames_keep_rule_requirements(viewer, monkeypatch):
     identifier = TimepointIdentifier(name='Start', color=(255, 0, 0), shortcut='Q')
     viewer.addTimepointIdentifierItem(identifier)
@@ -1113,6 +1118,7 @@ def test_manager_phase_color_buttons(app):
     dialog.deleteLater()
 
 
+@pytest.mark.slow
 def test_viewer_stores_only_chosen_phase_colors(viewer, monkeypatch):
     # Stored defaults kept their color while later defaults (by phase
     # order) could repeat it
@@ -1211,6 +1217,7 @@ def test_phase_runs():
     assert runs == [(1, 2, 'A'), (3, 3, 'B'), (5, 5, 'B'), (7, 7, 'B')]
 
 
+@pytest.mark.slow
 def test_phase_band_and_comparison_colors(viewer, tmp_path):
     viewer.settings_csv_path = str(tmp_path / 'settings.csv')
     viewer.showPhasesCheckbox.setChecked(True)

@@ -170,6 +170,7 @@ class _ValidatingDialog(QDialog):
         self.warnings.append(msg)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     'useMyMessageBox', [pytest.param(False, marks=shows_qmessagebox), True]
 )
@@ -212,6 +213,9 @@ def _assertNoStateLeft(watchdog):
 # Freed dialogs give their id() to the next one: state keyed by id() skipped
 # the grace period and, from the third dialog on, exceeded MAX_ATTEMPTS so
 # the dialog was closed (cancelled) instead of OK'd
+@pytest.mark.slow
+# Failed now and then on CI (timing): runs 43251748816, 45474855842
+@pytest.mark.flaky
 @shows_qmessagebox
 def test_sequential_message_boxes_get_fresh_state(
         app, safety_net, _auto_answer_blocking_dialogs
@@ -231,6 +235,7 @@ def test_sequential_message_boxes_get_fresh_state(
     _assertNoStateLeft(watchdog)
 
 
+@pytest.mark.slow
 def test_sequential_custom_message_boxes_get_fresh_state(
         app, safety_net, _auto_answer_blocking_dialogs
     ):

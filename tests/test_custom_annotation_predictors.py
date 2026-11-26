@@ -1168,6 +1168,7 @@ def test_rename_onto_existing_table_column_is_refused(viewer):
     assert list(viewer.acdc_df.columns).count('mitotic') == 1
 
 
+@pytest.mark.slow
 def test_rename_moves_selection_and_formatting(viewer, monkeypatch):
     viewer.setCustomAnnotations([annot_state()])
     button = viewer.customAnnotButtonByName('Big')
@@ -1371,6 +1372,7 @@ def test_add_dialog_stays_open_on_column_conflict(viewer, monkeypatch):
     assert 'other than 0/1' in kwargs['columnConflict']('GFP_ratio')
 
 
+@pytest.mark.slow
 def test_annotation_dialogs_are_deleted_after_use(viewer, monkeypatch):
     """The add/modify dialogs are children of the viewer and each one kept
     its predictor table alive (here masked copies, one per dialog): they

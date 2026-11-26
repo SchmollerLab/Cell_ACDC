@@ -193,6 +193,7 @@ def test_channel_display_settings_are_in_the_isolated_settings_folder(
 
 
 # --- Displayed (base) channel ----------------------------------------------
+@pytest.mark.slow
 def test_base_lut_is_saved_and_restored_per_channel(
         app, real_viewer, tmp_path
     ):
@@ -227,6 +228,7 @@ def test_base_lut_is_saved_and_restored_per_channel(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_base_lut_follows_invert_black_white(app, real_viewer, tmp_path):
     images = make_overlay_position(tmp_path / 'exp')
     load(real_viewer, images, 'phase')
@@ -265,6 +267,7 @@ def test_base_lut_follows_invert_black_white(app, real_viewer, tmp_path):
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_colormaps_with_hidden_ticks_are_saved_with_hidden_ticks(
         app, real_viewer, tmp_path, monkeypatch
     ):
@@ -317,6 +320,7 @@ def test_colormaps_with_hidden_ticks_are_saved_with_hidden_ticks(
 
 
 # --- Overlay channels ------------------------------------------------------
+@pytest.mark.slow
 def test_overlay_lut_is_saved_per_channel_and_follows_the_color(
         app, real_viewer, tmp_path
     ):
@@ -356,6 +360,7 @@ def test_overlay_lut_is_saved_per_channel_and_follows_the_color(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_overlay_color_dialog_preview_and_cancel_keep_the_saved_lut(
         app, real_viewer, tmp_path
     ):
@@ -398,6 +403,7 @@ def test_overlay_color_dialog_preview_and_cancel_keep_the_saved_lut(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_overlay_color_saved_in_settings_csv_by_older_versions_is_read(
         app, real_viewer, tmp_path
     ):
@@ -430,6 +436,7 @@ def test_overlay_color_saved_in_settings_csv_by_older_versions_is_read(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_overlay_color_saved_by_another_open_window_is_restored_and_kept(
         app, real_viewer, tmp_path
     ):
@@ -459,6 +466,7 @@ def test_overlay_color_saved_by_another_open_window_is_restored_and_kept(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_restore_default_settings_resets_the_channel_luts(
         app, real_viewer, tmp_path
     ):
@@ -492,6 +500,7 @@ def test_restore_default_settings_resets_the_channel_luts(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_restore_default_settings_keeps_the_ticks_of_hidden_overlay_luts(
         app, real_viewer, tmp_path, monkeypatch
     ):
@@ -509,6 +518,7 @@ def test_restore_default_settings_keeps_the_ticks_of_hidden_overlay_luts(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_overlay_alpha_is_saved_and_restored_per_channel(
         app, real_viewer, tmp_path
     ):
@@ -565,6 +575,7 @@ def test_overlay_alpha_is_saved_and_restored_per_channel(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_overlay_opacities_follow_the_saved_alphas(
         app, real_viewer, tmp_path, monkeypatch
     ):
@@ -618,6 +629,7 @@ def test_overlay_opacities_follow_the_saved_alphas(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_single_channel_selection_survives_context_menu_changes(
         app, real_viewer, tmp_path, monkeypatch
     ):
@@ -671,6 +683,7 @@ def test_single_channel_selection_survives_context_menu_changes(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_removing_the_last_shown_channel_shows_the_base_layer(
         app, real_viewer, tmp_path, monkeypatch
     ):
@@ -700,6 +713,7 @@ def test_removing_the_last_shown_channel_shows_the_base_layer(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_cancelled_overlay_channel_selection_hides_the_overlay_toolbar(
         app, real_viewer, tmp_path, monkeypatch
     ):
@@ -760,6 +774,7 @@ def test_cancelled_overlay_channel_selection_hides_the_overlay_toolbar(
 
 
 # --- Other open windows (each writes its whole `settings.csv` table) ------
+@pytest.mark.slow
 def test_settings_saved_by_another_open_window_are_restored_and_kept(
         app, real_viewer, tmp_path
     ):
@@ -801,6 +816,7 @@ TRANSPARENCY = gui_overlay.OVERLAY_TRANSPARENCY_SETTING
 ALPHA_ENCODED = gui_overlay.OVERLAY_ALPHA_ENCODED_SETTING
 
 
+@pytest.mark.slow
 def test_overlay_modes_are_saved_and_applied_when_the_overlay_is_on(
         app, real_viewer, tmp_path, monkeypatch
     ):
@@ -864,6 +880,7 @@ def test_overlay_modes_are_saved_and_applied_when_the_overlay_is_on(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_configuration_with_overlays_in_transparent_mode(
         app, real_viewer, tmp_path, monkeypatch
     ):
@@ -1009,6 +1026,7 @@ def _gui_win_calls():
     return methods
 
 
+@pytest.mark.slow
 def test_main_gui_calls_the_channel_lut_and_overlay_mode_hooks():
     """The main GUI's own call sites (no test builds `guiWin`): merges of
     `main` into `gui.py` have dropped or moved lines before."""
