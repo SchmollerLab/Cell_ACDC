@@ -1,0 +1,26 @@
+refactor: split apps.py
+
+The dialogs of apps.py move, byte-exact, to shared/dialogs/
+(base, generic, file_selection, metadata, image_tools,
+set_measurements, combine_measurements, preprocessing,
+model_selection, model_params, tracker_params) when several parts
+use them, to gui/mixins/dialogs.py when only the GUI mixins shared
+with the viewer use them, and to the dialogs module of their
+single program part or utility otherwise (gui/dialogs/,
+launcher/dialogs.py, data_prep/dialogs.py,
+data_structure/dialogs/, segmentation_module/dialogs.py,
+utils/<utility>.py). apps.py is a split shim.
+
+Verified with tools/refactor/run.py check: plan_check, the static
+fingerprint compare (every item byte-equal or rewritten to the same
+new home, other edits listed in out/<commit>/changes.jsonl), the MRO
+snapshot of guiWin and MeasurementsViewerWin, the headless entry
+points, flake8 E9/F63/F7/F82 and the push tier of the tests.
+
+Old import paths keep working through cellacdc/_compat.py and the
+generated cellacdc/_compat_moves.py (same objects, a MovedWarning,
+a DeprecationWarning, on use; patches of moved names reach their new
+home); Cell-ACDC itself switches to the new paths in the reference
+rewrite commit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

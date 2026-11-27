@@ -1,0 +1,11 @@
+chore: .git-blame-ignore-revs for the reference rewrites
+
+Lists the commits that only rewrote import paths, references,
+docstrings and comments for the new layout, so that git blame
+(git config blame.ignoreRevsFile .git-blame-ignore-revs; GitHub
+reads the file by itself) shows the commits that wrote the code.
+The move commits are not listed: git blame -C -C follows moved
+lines to their old module. Written by tools/refactor/run.py from
+the final SHAs of the rebuilt branch.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

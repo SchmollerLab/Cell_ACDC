@@ -1,0 +1,15 @@
+test: enforce the new import paths
+
+pytest turns the MovedWarning of old import paths into an error,
+so Cell-ACDC code and tests cannot fall back to the compat layer.
+New tests: test_compat (the compat layer on a synthetic package and
+the real tables), test_no_old_paths (cellacdc/, tests/ and
+notebooks/ use no old path; files at old paths are shims),
+test_import_paths, test_import_layering, the window layout tests
+of guiWin and MeasurementsViewerWin (mixin composition, MRO),
+test_package_init_files and tests of read_version, plot.imshow and
+python -m cellacdc.measurements_viewer. tests/related_tests.py
+skips compat shims and counts importers per program part, so that
+splitting the windows into mixins does not hide related tests.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

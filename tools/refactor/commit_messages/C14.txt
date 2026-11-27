@@ -1,0 +1,13 @@
+docs: update docstrings and comments for the new layout
+
+Docstrings, comments and user-visible texts of cellacdc/ that
+still name old modules (rewrite.py reports them as mentions and
+never rewrites them) name the new modules: classes and functions
+through the canonical alias of their module, the two windows by
+their classes, program parts in words ("the data prep module"),
+and modules without a docstring get the one of the mapping.
+
+No code changes (fingerprints equal apart from docstrings). Listed
+in .git-blame-ignore-revs.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

@@ -1,0 +1,31 @@
+refactor: use the new import paths in cellacdc and the tests
+
+tools/refactor/acdc_refactor/rewrite.py rewrites every reference to
+an old module path in cellacdc/, tests/ (the hidden
+tests/**/.test_*.py and the scripts in strings of tests included) and
+the code cells of notebooks/: imports of the old modules become
+imports of the modules that define the names now (module aliases with
+attribute access, scope-aware), old.X becomes <home alias>.X, Qt and
+stdlib names read through cellacdc modules are imported from qtpy and
+the stdlib, and test patches target the modules whose code looks the
+name up (repeated when several modules hold code of the old module).
+Imports of old modules and of moved names that are left unused are
+dropped, and the intermediate compat blocks of the move commits go.
+The test spots the rewriter only reports are edited by the C12
+fixups: the exec namespaces of the SAM tests, the widget-module swap
+of the GPU tests, class lookups by name, the checks of the headless
+and torch import scripts, string annotations, the button classes of
+_view_all_buttons.py and one line the qualification made too long.
+The generated cellacdc/_compat_moves.py is repaired for the rewritten
+tree: the entries of the intermediate modules go, and old names whose
+binding import the rewrite dropped point to their defining module.
+
+Code is unchanged apart from references and imports: the
+fingerprint compare finds no changed, lost or new item; flake8
+E9/F63/F7/F82, the MRO snapshot, the headless checks and the push
+tier pass. Listed in .git-blame-ignore-revs.
+
+The old import paths keep working for external code (spotMAX,
+custom models) through the compat layer.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

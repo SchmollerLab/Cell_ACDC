@@ -1,0 +1,27 @@
+refactor: split widgets.py
+
+The widgets of widgets.py move, byte-exact, to
+shared/widgets/<theme>.py when several parts or library code use
+them (style, basic_widgets, push_buttons, message_box, line_edits,
+numeric_inputs, combo_boxes, item_views, search_widgets,
+lut_items, plot_items, toolbars, imshow_window), to
+gui/mixins/widgets.py when only the GUI mixins shared with the
+measurements viewer use them, and next to their single user
+otherwise (gui/widgets/, measurements_viewer/widgets.py, dialogs
+and utilities). The pyqtgraph configuration and colormaps load
+with shared/widgets/style.py; load.get_all_buttons_names reads
+push_buttons.py. widgets.py is a split shim.
+
+Verified with tools/refactor/run.py check: plan_check, the static
+fingerprint compare (every item byte-equal or rewritten to the same
+new home, other edits listed in out/<commit>/changes.jsonl), the MRO
+snapshot of guiWin and MeasurementsViewerWin, the headless entry
+points, flake8 E9/F63/F7/F82 and the push tier of the tests.
+
+Old import paths keep working through cellacdc/_compat.py and the
+generated cellacdc/_compat_moves.py (same objects, a MovedWarning,
+a DeprecationWarning, on use; patches of moved names reach their new
+home); Cell-ACDC itself switches to the new paths in the reference
+rewrite commit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

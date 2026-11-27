@@ -39,3 +39,5 @@ prune FijiMacros
 exclude requirements.txt
 exclude not_installed_requirements.txt
 exclude requirements_new.txt
+# Refactoring tools (not part of the package)
+prune tools

@@ -1,0 +1,35 @@
+refactor: move whole modules into program-part packages
+
+git mv of the modules that move unchanged: gui.py to
+gui/main_window/window.py and the gui_* mixins to gui/mixins/
+(navigation, annotations, custom_annotations, overlay,
+viewer_tools, window_core; gui_combine to
+gui/main_window/image_processing.py), measurements_viewer.py,
+measurements_viewer_utils.py, apps_measurements_viewer.py, the
+predictor and phase translator modules and the premade
+configurations into measurements_viewer/, _main.py to
+launcher/main_window.py, dataStruct.py and dataReStruct.py to
+data_structure/, dataPrep.py to data_prep/main_window.py and
+segm.py to segmentation_module/main_window.py, with the package
+__init__ files and measurements_viewer/__main__.py. Only the
+import depth of relative imports changes in the moved files
+(plus the logged fixups: premade folder path, lazy guiWin import
+of help/welcome.py).
+
+The old files are alias shims (the old path is the moved module
+itself) or split shims; git diff -B -M (git log --follow -B,
+git blame -C -C) follows the moves.
+
+Verified with tools/refactor/run.py check: plan_check, the static
+fingerprint compare (every item byte-equal or rewritten to the same
+new home, other edits listed in out/<commit>/changes.jsonl), the MRO
+snapshot of guiWin and MeasurementsViewerWin, the headless entry
+points, flake8 E9/F63/F7/F82 and the push tier of the tests.
+
+Old import paths keep working through cellacdc/_compat.py and the
+generated cellacdc/_compat_moves.py (same objects, a MovedWarning,
+a DeprecationWarning, on use; patches of moved names reach their new
+home); Cell-ACDC itself switches to the new paths in the reference
+rewrite commit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

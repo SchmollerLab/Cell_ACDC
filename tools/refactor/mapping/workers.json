@@ -1,0 +1,213 @@
+{
+  "shard": "workers",
+  "default_commit": "C7",
+  "packages": {
+    "cellacdc/shared/workers": {
+      "doc": "Workers used by several program parts.\n\n- base.py: the worker infrastructure (worker_exception_handler,\n  workerLogger, signals) and the generic workers (SimpleWorker,\n  CustomPreprocessWorkerGUI, ...). A foundation leaf: it imports no dialog,\n  widget, gui or utils module, so every worker module can import it at\n  module level.\n- saving.py: saveDataWorker, the save worker of the main GUI, also used by\n  the Compute measurements utility.\n\nWorkers of one program part live in that part: <part>/workers.py, for the\nmain GUI gui/workers/<theme>.py. Utility workers live in their\nutils/<utility>.py, BaseWorkerUtil in utils/base.py, and the workers whose\nnames clash with utility window classes in utils/segm_workers.py.\n\nThis package re-exports nothing: import its modules.",
+      "commit": "C7"
+    },
+    "cellacdc/gui/workers": {
+      "doc": "Workers used only by the main GUI window (guiWin and its gui/main_window\nmixins), by theme:\n\n- loading_saving.py: loading Positions and frames, undo states, autosave.\n- segmentation_tracking.py: repeat segmentation, promptable models,\n  tracking, post-processing and segmentation edits.\n- annotation_checks.py: the cell cycle annotation integrity checker.\n- image_processing.py: preprocessing and combining channels, saving their\n  images.\n\nThe measurements viewer never uses these modules (the viewer-shared\ngui/mixins use only SimpleWorker from shared/workers/base.py). The save\nworker of the main GUI, saveDataWorker, is in shared/workers/saving.py.\n\nThis package re-exports nothing: import its modules. Names of the former\nworkers.py module reached through the import path of this package are\nforwarded by the compat layer with a deprecation warning.",
+      "commit": "C7"
+    }
+  },
+  "modules": {
+    "cellacdc/shared/workers/base.py": {
+      "alias": "workers_base",
+      "doc": "Shared worker infrastructure and generic workers.\n\nworker_exception_handler decorates the run method of every worker.\nworkerLogger and the signals QObject are the logging/progress signals of\nQObject workers, also used by utility workers and the CellACDC_2steps\ntracker. SimpleWorker runs a function in a QThread.\nCustomPreprocessWorkerGUI is the queued preprocessing job base subclassed by\ngui/workers/image_processing.py and measurements_viewer/workers.py.\nApplyImageFilterWorker, ScreenRecorderWorker (record.py) and AutoPilotWorker\nare generic workers without static users.\n\nFoundation leaf: this module imports no dialog, widget, gui or utils module,\nso any module can import it at module level without an import cycle."
+    },
+    "cellacdc/shared/workers/saving.py": {
+      "alias": "workers_saving",
+      "doc": "saveDataWorker, the save worker of the main GUI: segmentation masks,\nacdc_output tables (measurements, cell cycle and custom annotations) and the\nother per-Position files.\n\nguiWin.saveData builds it with the main window itself; the Compute\nmeasurements utility (utils/compute.py) builds it with its headless main\nwindow. The worker reads guiWin attributes, so its host is always a guiWin."
+    },
+    "cellacdc/gui/workers/loading_saving.py": {
+      "alias": "gui_workers_loading_saving",
+      "doc": "Main GUI (guiWin-only) workers that load data and store state:\nloadDataWorker (loads Positions), LazyLoader (loads frames in the\nbackground), StoreGuiStateWorker (undo states) and AutoSaveWorker (periodic\nautosave of the annotations).\n\nThe save worker of the main GUI, saveDataWorker, is in\nshared/workers/saving.py."
+    },
+    "cellacdc/gui/workers/segmentation_tracking.py": {
+      "alias": "gui_workers_segmentation_tracking",
+      "doc": "Main GUI (guiWin-only) workers that segment, track and edit masks:\nsegmWorker and segmVideoWorker (repeat segmentation of a frame or a video),\nMagicPromptsWorker and MagicPromptsSegmStackWorker (promptable models; the\nlatter subclasses segmVideoWorker), LabelRoiWorker, SegForLostIDsWorker,\ntrackingWorker, relabelSequentialWorker, PostProcessSegmWorker, and the\nsegmentation edit helpers FindNextNewIdWorker, CopyAllLostObjectsWorker and\nDelObjectsOutsideSegmROIWorker."
+    },
+    "cellacdc/gui/workers/annotation_checks.py": {
+      "alias": "gui_workers_annotation_checks",
+      "doc": "Main GUI (guiWin-only) cell cycle annotation integrity checker:\nCcaIntegrityCheckerWorker checks the cell cycle annotations in the\nbackground while the user annotates."
+    },
+    "cellacdc/gui/workers/image_processing.py": {
+      "alias": "gui_workers_image_processing",
+      "doc": "Main GUI (guiWin-only) workers for preprocessing and combining channels:\nCombineChannelsWorkerGUI (a subclass of CustomPreprocessWorkerGUI in\nshared/workers/base.py), and SaveProcessedDataWorker and\nSaveCombinedChannelsWorker, which save the preprocessed and the\ncombined-channel images."
+    },
+    "cellacdc/data_prep/workers.py": {
+      "alias": "data_prep_workers",
+      "doc": "Data prep module workers: AlignDataWorker (aligns the frames),\nDataPrepSaveBkgrDataWorker (saves the background data), DataPrepCropWorker\nand MoveTempFilesWorker. Used by data_prep/main_window.py."
+    },
+    "cellacdc/data_structure/workers.py": {
+      "alias": "data_structure_workers",
+      "doc": "Data structure workers: CreateSymLinkToPosWinWorker creates the symlinked\nPositions of the CreateSymLinkToPosWin window in\ndata_structure/data_struct.py.\n\nThese workers use worker_exception_handler of shared/workers/base.py, which\nemits (worker, error) on the critical signal of the worker and of its\nsignals object. data_struct.py defines a different worker_exception_handler\nfor its own bioFormatsWorker, which emits only the error on the worker's\ncritical signal: never mix the two."
+    },
+    "cellacdc/launcher/workers.py": {
+      "alias": "launcher_workers",
+      "doc": "Launcher workers: MigrateUserProfileWorker moves the user profile folder to\na new location (the launcher action in launcher/main_window.py imports this\nmodule inside the function that starts it)."
+    },
+    "cellacdc/utils/segm_workers.py": {
+      "alias": "segm_workers",
+      "doc": "Workers of segmentation-file utilities that cannot live in their utility\nmodule.\n\nCreateConnected3Dsegm, Stack2DsegmTo3Dsegm and FilterObjsFromCoordsTable\nhave the same names as the utility window classes in\nutils/createConnected3Dsegm.py, utils/stack2Dinto3Dsegm.py and\nutils/filterObjFromCoordsTable.py. Those modules use them as\nsegm_workers.<Name>, never through a from-import, which would rebind the\nwindow class name. ApplyTrackInfoWorker is shared by\nutils/applyTrackFromTable.py and utils/applyTrackFromTrackMateXML.py."
+    },
+    "cellacdc/utils/acdcOutputToCtcTable.py": {
+      "alias": "utils_acdcOutputToCtcTable"
+    },
+    "cellacdc/utils/acdcToSymDiv.py": {
+      "alias": "utils_acdcToSymDiv"
+    },
+    "cellacdc/utils/align.py": {
+      "alias": "utils_align"
+    },
+    "cellacdc/utils/applyTrackFromTable.py": {
+      "alias": "utils_applyTrackFromTable"
+    },
+    "cellacdc/utils/combineChannels.py": {
+      "alias": "utils_combineChannels"
+    },
+    "cellacdc/utils/compute.py": {
+      "alias": "utils_compute"
+    },
+    "cellacdc/utils/computeBackgroundValues.py": {
+      "alias": "utils_computeBackgroundValues"
+    },
+    "cellacdc/utils/computeMultiChannel.py": {
+      "alias": "utils_computeMultiChannel"
+    },
+    "cellacdc/utils/concat.py": {
+      "alias": "utils_concat"
+    },
+    "cellacdc/utils/convert.py": {
+      "alias": "utils_convert"
+    },
+    "cellacdc/utils/countObjects.py": {
+      "alias": "utils_countObjects"
+    },
+    "cellacdc/utils/customPreprocess.py": {
+      "alias": "utils_customPreprocess"
+    },
+    "cellacdc/utils/editMetadata.py": {
+      "alias": "utils_editMetadata"
+    },
+    "cellacdc/utils/fillHolesInSegm.py": {
+      "alias": "utils_fillHolesInSegm"
+    },
+    "cellacdc/utils/filterObjFromCoordsTable.py": {
+      "alias": "utils_filterObjFromCoordsTable"
+    },
+    "cellacdc/utils/fucciPreprocess.py": {
+      "alias": "utils_fucciPreprocess"
+    },
+    "cellacdc/utils/rename.py": {
+      "alias": "utils_rename"
+    },
+    "cellacdc/utils/repeat.py": {
+      "alias": "utils_repeat"
+    },
+    "cellacdc/utils/resize/util.py": {
+      "alias": "utils_resize_util"
+    },
+    "cellacdc/utils/splitVideoIntoFrameTiffs.py": {
+      "alias": "utils_splitVideoIntoFrameTiffs"
+    },
+    "cellacdc/utils/toImageJroi.py": {
+      "alias": "utils_toImageJroi"
+    },
+    "cellacdc/utils/toObjCoords.py": {
+      "alias": "utils_toObjCoords"
+    },
+    "cellacdc/utils/toTrackastraInputData.py": {
+      "alias": "utils_toTrackastraInputData"
+    },
+    "cellacdc/utils/trackSubCellObjects.py": {
+      "alias": "utils_trackSubCellObjects"
+    }
+  },
+  "items": {
+    "cellacdc/workers.py::DEBUG": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::worker_exception_handler": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::workerLogger": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::signals": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::AutoPilotWorker": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::FindNextNewIdWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::SegForLostIDsWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::AlignDataWorker": "cellacdc/data_prep/workers.py",
+    "cellacdc/workers.py::LabelRoiWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::StoreGuiStateWorker": "cellacdc/gui/workers/loading_saving.py",
+    "cellacdc/workers.py::AutoSaveWorker": "cellacdc/gui/workers/loading_saving.py",
+    "cellacdc/workers.py::segmWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::segmVideoWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::ComputeMetricsWorker": "cellacdc/utils/compute.py",
+    "cellacdc/workers.py::loadDataWorker": "cellacdc/gui/workers/loading_saving.py",
+    "cellacdc/workers.py::trackingWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::reapplyDataPrepWorker": "cellacdc/utils/repeat.py",
+    "cellacdc/workers.py::LazyLoader": "cellacdc/gui/workers/loading_saving.py",
+    "cellacdc/workers.py::ImagesToPositionsWorker": "cellacdc/utils/convert.py",
+    "cellacdc/workers.py::BaseWorkerUtil": "cellacdc/utils/base.py",
+    "cellacdc/workers.py::DataPrepSaveBkgrDataWorker": "cellacdc/data_prep/workers.py",
+    "cellacdc/workers.py::DataPrepCropWorker": "cellacdc/data_prep/workers.py",
+    "cellacdc/workers.py::TrackSubCellObjectsWorker": "cellacdc/utils/trackSubCellObjects.py",
+    "cellacdc/workers.py::PostProcessSegmWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::CreateConnected3Dsegm": "cellacdc/utils/segm_workers.py",
+    "cellacdc/workers.py::ApplyTrackInfoWorker": "cellacdc/utils/segm_workers.py",
+    "cellacdc/workers.py::ComputeMetricsMultiChannelWorker": "cellacdc/utils/computeMultiChannel.py",
+    "cellacdc/workers.py::ConcatAcdcDfsWorker": "cellacdc/utils/concat.py",
+    "cellacdc/workers.py::FromImajeJroiToSegmNpzWorker": "cellacdc/utils/fromImageJroiToSegm.py",
+    "cellacdc/workers.py::ToImajeJroiWorker": "cellacdc/utils/toImageJroi.py",
+    "cellacdc/workers.py::ToSymDivWorker": "cellacdc/utils/acdcToSymDiv.py",
+    "cellacdc/workers.py::AlignWorker": "cellacdc/utils/align.py",
+    "cellacdc/workers.py::ToObjCoordsWorker": "cellacdc/utils/toObjCoords.py",
+    "cellacdc/workers.py::EditMetadataWorker": "cellacdc/utils/editMetadata.py",
+    "cellacdc/workers.py::Stack2DsegmTo3Dsegm": "cellacdc/utils/segm_workers.py",
+    "cellacdc/workers.py::MigrateUserProfileWorker": "cellacdc/launcher/workers.py",
+    "cellacdc/workers.py::DelObjectsOutsideSegmROIWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::ConcatSpotmaxDfsWorker": "cellacdc/utils/concat.py",
+    "cellacdc/workers.py::FilterObjsFromCoordsTable": "cellacdc/utils/segm_workers.py",
+    "cellacdc/workers.py::ScreenRecorderWorker": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::CcaIntegrityCheckerWorker": "cellacdc/gui/workers/annotation_checks.py",
+    "cellacdc/workers.py::ApplyImageFilterWorker": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::MoveTempFilesWorker": "cellacdc/data_prep/workers.py",
+    "cellacdc/workers.py::ResizeUtilWorker": "cellacdc/utils/resize/util.py",
+    "cellacdc/workers.py::FucciPreprocessWorker": "cellacdc/utils/fucciPreprocess.py",
+    "cellacdc/workers.py::SimpleWorker": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::CopyAllLostObjectsWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::SaveProcessedDataWorker": "cellacdc/gui/workers/image_processing.py",
+    "cellacdc/workers.py::SaveCombinedChannelsWorker": "cellacdc/gui/workers/image_processing.py",
+    "cellacdc/workers.py::CustomPreprocessWorkerGUI": "cellacdc/shared/workers/base.py",
+    "cellacdc/workers.py::MeasurementProcessingWorkerGUI": "cellacdc/measurements_viewer/workers.py",
+    "cellacdc/workers.py::CombineChannelsWorkerGUI": "cellacdc/gui/workers/image_processing.py",
+    "cellacdc/workers.py::CustomPreprocessWorkerUtil": "cellacdc/utils/customPreprocess.py",
+    "cellacdc/workers.py::CombineChannelsWorkerUtil": "cellacdc/utils/combineChannels.py",
+    "cellacdc/workers.py::saveDataWorker": "cellacdc/shared/workers/saving.py",
+    "cellacdc/workers.py::relabelSequentialWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::MagicPromptsWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::MagicPromptsSegmStackWorker": "cellacdc/gui/workers/segmentation_tracking.py",
+    "cellacdc/workers.py::FillHolesInSegWorker": "cellacdc/utils/fillHolesInSegm.py",
+    "cellacdc/workers.py::GenerateMotherBudTotalTableWorker": "cellacdc/utils/generateMothBudTotalTable.py",
+    "cellacdc/workers.py::CountObjectsInSegm": "cellacdc/utils/countObjects.py",
+    "cellacdc/workers.py::ComputeBackgroundValuesWorker": "cellacdc/utils/computeBackgroundValues.py",
+    "cellacdc/workers.py::CreateSymLinkToPosWinWorker": "cellacdc/data_structure/workers.py",
+    "cellacdc/workers.py::SplitVideoIntoFrameTiffs": "cellacdc/utils/splitVideoIntoFrameTiffs.py",
+    "cellacdc/workers.py::CreateCtcTableFromAcdcOutput": "cellacdc/utils/acdcOutputToCtcTable.py",
+    "cellacdc/workers.py::CreateTrackastraInputDataWorker": "cellacdc/utils/toTrackastraInputData.py"
+  },
+  "notes": [
+    "Coverage: all 66 non-import top-level statements of cellacdc/workers.py at 4c4e498b are mapped (64 classes, 1 function, the assignment DEBUG). The old file becomes a split shim in C7 (shard moves).",
+    "Placements follow the workers design (abb7651a98255d6ef) with synthesis R13: AutoPilotWorker -> shared/workers/base.py (the design had data_prep/workers.py; autopilot is also used by guiWin). MeasurementProcessingWorkerGUI -> measurements_viewer/workers.py, a module created and documented by the viewer shard (it also receives _ThreadTaskWorker); it must exist from C7 on (measurements_viewer package from C3).",
+    "DEBUG (unused flag, not on the plan delete list) -> shared/workers/base.py, so that the compat table can resolve the old name cellacdc.workers.DEBUG. The design wanted it only as a plain attribute of the compat module, which the shard format cannot express.",
+    "The commented-out _correctAcdcOutput block (old lines 7421-7474) is indented inside ComputeBackgroundValuesWorker and moves with it to utils/computeBackgroundValues.py; update the comment in background_values.py that points to workers.py.",
+    "Name clashes: utils/createConnected3Dsegm.py, utils/stack2Dinto3Dsegm.py and utils/filterObjFromCoordsTable.py define window classes named like their workers. The rewriter must emit `from . import segm_workers` + `segm_workers.<Name>` there, never `from .segm_workers import <Name>`.",
+    "Utility workers moved into their own utility module are then referenced by bare name there (`workers.X(` -> `X(`); BaseWorkerUtil comes from utils/base.py (relative, same part).",
+    "Packages: this shard creates cellacdc/shared/workers and cellacdc/gui/workers (C7). The parent packages cellacdc/shared (widgets shard, C5) and cellacdc/gui, data_prep, data_structure, launcher, measurements_viewer (moves shard, C3) must already exist at C7.",
+    "gui/workers/__init__.py and measurements_viewer/workers.py shadow the old attributes gui.workers and measurements_viewer.workers (the old workers module imported as `workers`): the compat layer adds forwarders for old workers names there (synthesis section 3).",
+    "Function-local relative imports that change meaning with the new depth (move.py recomputes them): SegForLostIDsWorker.run `from . import regionprops` (-> cellacdc.regionprops), MigrateUserProfileWorker `from . import models_path` and `from . import user_profile_path_txt` (-> cellacdc). The absolute local imports (roifile, spotmax, cellacdc.service.client, cellacdc.promptable_models, cellacdc.promptable_models_path) are unaffected.",
+    "Implicit submodule loading (fixups, optional): SegForLostIDsWorker uses skimage.segmentation, which workers.py never imported (another module loads it); add an explicit `import skimage.segmentation` in gui/workers/segmentation_tracking.py. `from .utils import resize` is needed only by ResizeUtilWorker (utils/resize/util.py: `from .. import resize`). `measurement_processing` is then imported only by viewer modules: the main GUI no longer triggers processor discovery, which it never used.",
+    "Unused imports of workers.py that no destination needs: h5py, plot, measurements and the duplicate `core` import are dropped by the import recomputation.",
+    "record.py (unimportable today: level-2 relative imports from a top-level module) uses workers.ScreenRecorderWorker; leave it untouched and allow-list it in the import tests, or fix all three imports to level 1 and use shared/workers/base.py.",
+    "References outside code to update (C12-C15): CellACDC_2steps tracker annotation (line 81, evaluated at def time) and docstring (line 109) `cellacdc.workers.signals` -> shared/workers/base.py; docstrings in background_values.py (lines 5, 267), apps.py (~20182), lineage_tree_integrity.py (~96), service/model_execution.py (7), tests/related_tests.py (80), tests/test_background_values.py (2); docs model-environments.rst (153); CLAUDE.md (utility pattern: worker in utils/<name>.py, BaseWorkerUtil in utils/base.py).",
+    "Tests that reference moved workers: test_segm_utils, test_gpu_availability (SegForLostIDsWorker), test_box_prompts_gui (MagicPromptsWorker), test_lineage_tree_reset (AutoSaveWorker, trackingWorker), test_keep_ids (trackingWorker), test_background_values (ComputeBackgroundValuesWorker, class-level monkeypatch of _processPosition), test_apply_recipe_last_frame and test_measurement_processing_viewer (MeasurementProcessingWorkerGUI; issubclass check against shared CustomPreprocessWorkerGUI), test_set_measurements_selection (ComputeMetricsWorker, saveDataWorker).",
+    "Aliases of the utility modules that receive workers or dialogs (alias only, set by the integration step): utils_<module> (utils/resize/util.py: utils_resize_util), the alias plan_check derives; the widgets shard pins utils_base, utils_fromImageJroiToSegm and utils_generateMothBudTotalTable the same way. Existing local names (utilsCompute, ...) are rewritten to these in C12/C13."
+  ]
+}

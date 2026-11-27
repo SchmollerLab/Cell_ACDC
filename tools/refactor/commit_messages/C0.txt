@@ -1,0 +1,12 @@
+tools: refactoring pipeline for the package reorganization
+
+tools/refactor holds the codemod (byte-exact moves driven by the
+mapping shards in tools/refactor/mapping/), the reference rewriter,
+the verification scripts (fingerprints, MRO snapshot, import
+sweeps), the scripted fixups per commit, the commit messages and
+run.py, which rebuilds the refactor commits from a base commit
+(tools/refactor/README.md; also the guide for porting branches
+started on the old layout). MANIFEST.in prunes tools from the
+sdist. No package code changes.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

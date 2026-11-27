@@ -1,0 +1,29 @@
+refactor: split the measurements viewer window into mixins
+
+The methods of MeasurementsViewerWin move, byte-exact, into
+Viewer<Topic>GuiElements mixins in
+measurements_viewer/main_window/<topic>.py (ui_setup,
+configuration, data_io, navigation, image_panel, plotting,
+columns, processing, phases, timepoints, custom_annotations), and
+the widget-free MeasurementsViewerUtils splits into viewer_utils.py,
+position_data.py and annotation_data.py. The viewer specification
+(the old module docstring) is the docstring of the
+measurements_viewer package.
+
+Every attribute of MeasurementsViewerWin resolves to the same
+function as before (MRO snapshot), the methods are unchanged
+(fingerprints).
+
+Verified with tools/refactor/run.py check: plan_check, the static
+fingerprint compare (every item byte-equal or rewritten to the same
+new home, other edits listed in out/<commit>/changes.jsonl), the MRO
+snapshot of guiWin and MeasurementsViewerWin, the headless entry
+points, flake8 E9/F63/F7/F82 and the push tier of the tests.
+
+Old import paths keep working through cellacdc/_compat.py and the
+generated cellacdc/_compat_moves.py (same objects, a MovedWarning,
+a DeprecationWarning, on use; patches of moved names reach their new
+home); Cell-ACDC itself switches to the new paths in the reference
+rewrite commit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

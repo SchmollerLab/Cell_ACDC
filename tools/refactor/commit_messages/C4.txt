@@ -1,0 +1,23 @@
+refactor: split the existing GUI mixin modules
+
+gui/mixins/viewer_tools.py keeps the display tools; the object
+info and window core mixins move into gui/mixins/object_info.py
+and gui/mixins/window_core.py (whole classes, byte-exact).
+WhitelistGUIElements moves to gui/main_window/whitelist_ids.py and
+nearest_ID_to_centroid (gui_utils.py) to whitelist.py, which keeps
+the Whitelist data class used by load.py. gui_viewer_tools,
+gui_core, gui_combine and gui_utils are split shims.
+
+Verified with tools/refactor/run.py check: plan_check, the static
+fingerprint compare (every item byte-equal or rewritten to the same
+new home, other edits listed in out/<commit>/changes.jsonl), the MRO
+snapshot of guiWin and MeasurementsViewerWin, the headless entry
+points, flake8 E9/F63/F7/F82 and the push tier of the tests.
+
+Old import paths keep working through cellacdc/_compat.py and the
+generated cellacdc/_compat_moves.py (same objects, a MovedWarning,
+a DeprecationWarning, on use; patches of moved names reach their new
+home); Cell-ACDC itself switches to the new paths in the reference
+rewrite commit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

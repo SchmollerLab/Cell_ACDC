@@ -1,0 +1,32 @@
+refactor: split myutils.py into the myutils package
+
+myutils.py becomes the package cellacdc/myutils/ with
+themed modules (filesystem, app_info, installs, model_installs,
+segm_models, downloads, image_utils, table_utils, misc), joined by
+myutils_models.py (model_modules.py) and _torch_utils.py
+(torch_utils.py). Helpers with a single program part as user live
+next to it (gui/helpers.py, data_structure/helpers.py, ...).
+Every myutils module imports without Qt: Qt classes, the shared
+message box and the push buttons are imported under
+`if GUI_INSTALLED`, dialogs only inside the functions that open
+them. Code run in model environments works with the old and the
+new layout of an environment's Cell-ACDC.
+
+myutils/__init__.py is a lazy facade: the plugin API of custom
+models and trackers (check_install_package, get_model_path,
+to_uint8, ...) stays available as cellacdc.myutils.<name> without
+a warning, every other old name warns.
+
+Verified with tools/refactor/run.py check: plan_check, the static
+fingerprint compare (every item byte-equal or rewritten to the same
+new home, other edits listed in out/<commit>/changes.jsonl), the MRO
+snapshot of guiWin and MeasurementsViewerWin, the headless entry
+points, flake8 E9/F63/F7/F82 and the push tier of the tests.
+
+Old import paths keep working through cellacdc/_compat.py and the
+generated cellacdc/_compat_moves.py (same objects, a MovedWarning,
+a DeprecationWarning, on use; patches of moved names reach their new
+home); Cell-ACDC itself switches to the new paths in the reference
+rewrite commit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

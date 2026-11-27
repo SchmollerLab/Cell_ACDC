@@ -1,0 +1,226 @@
+{
+  "shard": "apps",
+  "default_commit": "C6",
+  "modules": {
+    "cellacdc/shared/dialogs/base.py": {
+      "doc": "Base class of the Cell-ACDC dialogs (from apps.py).\n\nQBaseDialog subclasses the non-modal _base_widgets.py QBaseDialog\n(exec_ runs a local event loop, Escape is ignored). Foundation leaf:\nit imports only _base_widgets.py at module level, because most\ndialog modules subclass it at import time. spotMAX subclasses it too.",
+      "alias": "dialogs_base"
+    },
+    "cellacdc/shared/dialogs/generic.py": {
+      "doc": "Generic input, list, tree and progress dialogs used by several program\nparts, library modules (prompts.py, service/prompts.py) and shared\nwidgets (from apps.py).\n\nQDialogCombobox, QLineEditDialog (with POSITIVE_FLOAT_REGEX),\nNumericEntryDialog, QInput, QDialogEntriesWidget, the tree selectors\nQTreeDialog, TreeSelectorDialog (spotMAX subclasses it) and\nTreesSelectorDialog, SearchableListboxDialog (recent paths) and\nQDialogWorkerProgress, plus the widgets that only these dialogs use.",
+      "alias": "dialogs_generic"
+    },
+    "cellacdc/shared/dialogs/file_selection.py": {
+      "doc": "File, folder and Position selection dialogs used by several program\nparts and batch utilities (from apps.py).\n\nfilenameDialog with FilenameEntryFormatter, SelectSegmFileDialog,\nSelectFoldersToAnalyse (MODULES_TYPES is defined above it: its\nsignature annotation is evaluated at import), get_existing_directory,\nthe Position selection that load.py asks for\n(SelectPositionFoldersDialogue) and selectPositionsMultiExp (spotMAX).",
+      "alias": "dialogs_file_selection"
+    },
+    "cellacdc/shared/dialogs/metadata.py": {
+      "doc": "Image metadata dialog QDialogMetadata (from apps.py).\n\nload.py (loadData) asks for it when the metadata is missing, and the\nEdit metadata utility (utils/editMetadata.py) opens it.",
+      "alias": "dialogs_metadata"
+    },
+    "cellacdc/shared/dialogs/image_tools.py": {
+      "doc": "Image display tools shared by the main GUI, the GUI mixins, data prep,\ndata structure, the utilities and the 3D volume renderer (from apps.py).\n\nThe imageViewer slideshow, the z-crop tool QCropZtool, the points-layer\nappearance dialog and group box (also used by volume_renderer/canvas.py),\nOverlayLabelsAppearanceDialog and pgTestWindow (both unused). Sets\npyqtgraph's row-major image axis order at import, as apps.py did.",
+      "alias": "dialogs_image_tools"
+    },
+    "cellacdc/shared/dialogs/set_measurements.py": {
+      "doc": "Set measurements dialog (from apps.py), used by the main GUI\n(showSetMeasurements), the Compute measurements and Concatenate\nutilities and the model parameters feature ranges.\n\nSetMeasurementsDialog with its delete-unselected-columns prompt\naskDeleteUncheckedExistingMeasurements, and the measurement errors\nreport ComputeMetricsErrorsDialog, plus the measurement group boxes\nthat only this dialog uses. Read the selection only via\nselectedMetrics() / selectedMeasurements() (see CLAUDE.md).",
+      "alias": "dialogs_set_measurements"
+    },
+    "cellacdc/shared/dialogs/combine_measurements.py": {
+      "doc": "Combine-measurements equation editors (from apps.py).\n\n_CombineMetricsDialog is also the base of the measurements viewer's\npredictor, filter and conditional formatting editors, and\nCombineMetricsEquationDialog is used by the main GUI, the Compute\nmeasurements utility and the viewer.\nAlso FormulaEditWidget (also used to combine channels) and the unused\nCombineFeaturesCalculator. The debug_trace decorator of\ntimepoint_predictors.py is applied at class-definition time. Keep\nequation-editor.rst in sync when changing these editors.",
+      "alias": "dialogs_combine_measurements"
+    },
+    "cellacdc/shared/dialogs/preprocessing.py": {
+      "doc": "Preprocessing and function-parameter dialogs (from apps.py).\n\nArgWidget, FunctionParamsDialog (emits every edit live), the recipe\nwidgets and dialogs PreProcessParamsWidget (also the base of the\nviewer's measurement processing parameters), PreProcessRecipeDialog\n(main GUI) and PreProcessRecipeDialogUtil (utilities, viewer), and the\ncombine-channels setup base CombineChannelsSetupDialog with\nCombineChannelsWidget (subclassed in gui/dialogs/segmentation.py and\nutils/combineChannels.py).",
+      "alias": "dialogs_preprocessing"
+    },
+    "cellacdc/shared/dialogs/model_selection.py": {
+      "doc": "Segmentation model selection and installation dialogs (from apps.py).\n\nQDialogSelectModel (main GUI, segmentation module) with the custom model\ninstructions addCustomModelMessages, the weights download window\ndownloadModel (also myutils/segm_models.py, test_segm_model.py) and the PyTorch\ninstall prompt InstallPyTorchDialog (myutils/torch_utils.py,\nservice/prompts.py), plus the model picker widgets only they use.",
+      "alias": "dialogs_model_selection"
+    },
+    "cellacdc/shared/dialogs/model_params.py": {
+      "doc": "Model parameters window QDialogModelParams (from apps.py), used by the\nmain GUI, the segmentation module, prompts.py, the tracker\ninitialisation in myutils/segm_models.py and spotMAX.\n\nAlso its post-processing and feature-range sub-widgets\n(PostProcessSegmParams, SelectFeaturesRange*) and the automatic\nthresholding parameters QDialogAutomaticThresholding (main GUI and\nsegmentation module).",
+      "alias": "dialogs_model_params"
+    },
+    "cellacdc/shared/dialogs/tracker_params.py": {
+      "doc": "Tracker-specific parameter windows (Cell-ACDC, BayesianTracker, Delta)\nopened by the tracker initialisation in myutils/segm_models.py\n(from apps.py).\n\nPaths to the tracker folders are built from cellacdc_path, not from\nthis file location.",
+      "alias": "dialogs_tracker_params"
+    },
+    "cellacdc/gui/mixins/dialogs.py": {
+      "doc": "Dialogs opened only from the GUI mixins in gui/mixins/, which the\nmeasurements viewer also composes (from apps.py): changes here affect\nboth the main GUI and the viewer.\n\ncustomAnnotationDialog (imports the measurements viewer's predictor\ngroup box only locally, when the viewer passes predictorOptions),\nAnnotateObjTrackSettingsDialog, FindIDDialog,\nViewCcaTableWindow (with DataFrameModel and pdDataFrameWidget),\nShortcutEditorDialog, ScaleBarPropertiesDialog,\nTimestampPropertiesDialog, ObjectCountDialog and SetCustomLevelsLut.\nNever import gui/main_window/, gui/dialogs/, gui/widgets/,\ngui/workers/ or gui/helpers.py from here.",
+      "alias": "gui_mixin_dialogs"
+    },
+    "cellacdc/gui/dialogs/editing.py": {
+      "doc": "Main-GUI-only dialogs to edit objects and annotations (from apps.py).\n\nEditIDDialog, the manual separation window manualSeparateGui, the cell\ncycle table editor editCcaTableWidget, the future-frames prompt\nFutureFramesAction_QDialog and the unused wandToleranceWidget, plus the\nhelpers only they use. Sets pyqtgraph row-major image axis order at\nimport, as apps.py did.",
+      "alias": "gui_dialogs_editing"
+    },
+    "cellacdc/gui/dialogs/segmentation.py": {
+      "doc": "Main-GUI-only segmentation dialogs (from apps.py).\n\nPromptable model selection and loading (SelectPromptableModelDialog,\nLoadSavedPromptableModelDialog, addCustomPromptModelMessages), the model\ninfo viewer ViewTextDialog, startStopFramesDialog, the post-processing\ndialog PostProcessSegmDialog, the combine-channels setup\nCombineChannelsSetupDialogGUI and the unused randomWalkerDialog, plus\nthe widgets only they use.",
+      "alias": "gui_dialogs_segmentation"
+    },
+    "cellacdc/gui/dialogs/data_io.py": {
+      "doc": "Main-GUI-only loading, saving, restore and export dialogs (from\napps.py).\n\nQDialogZsliceAbsent, the save progress bar QDialogPbar, the\nacdc_output version restore SelectAcdcDfVersionToRestore,\nAutoSaveIntervalDialog and the export to video/image parameters\n(ExportToVideoParametersDialog, ExportToImageParametersDialog), plus\nthe widgets only they use.",
+      "alias": "gui_dialogs_data_io"
+    },
+    "cellacdc/gui/dialogs/points_layers.py": {
+      "doc": "Main-GUI-only Add points layer dialog AddPointsLayerDialog (from\napps.py). Its appearance group box comes from\nshared/dialogs/image_tools.py (shared with the volume renderer).\nKeys chosen here are checked against guiWin.reservedShortcuts.",
+      "alias": "gui_dialogs_points_layers"
+    },
+    "cellacdc/launcher/dialogs.py": {
+      "doc": "Launcher-only dialogs (from apps.py): the Track sub-cellular objects\nsetup TrackSubCellObjectsDialog, LogoDialog (only a commented use) and\nthe unused ChangeUserProfileFolderPathDialog, plus the widgets only\nthey use.",
+      "alias": "launcher_dialogs"
+    },
+    "cellacdc/data_prep/dialogs.py": {
+      "doc": "Data-prep-only dialogs (from apps.py): the sub-crops save paths\nDataPrepSubCropsPathsDialog and the frame-range crop tool\nQCropTrangeTool.",
+      "alias": "data_prep_dialogs"
+    },
+    "cellacdc/data_structure/dialogs/metadata.py": {
+      "doc": "Data structure module dialogs for raw-file metadata and conversion\n(from apps.py): the OME-XML metadata dialog QDialogMetadataXML and the\nFiji macro setup InitFijiMacroDialog, plus the widgets only they use.",
+      "alias": "data_structure_dialogs_metadata"
+    },
+    "cellacdc/data_structure/dialogs/setup.py": {
+      "doc": "Data structure setup dialogs (from apps.py): DataStructureSetupDialogue\n(data_structure/data_struct.py) and\nReStructTiffDataStructureSetupDialogue (data_structure/data_restruct.py),\nplus the widgets only they use.",
+      "alias": "data_structure_dialogs_setup"
+    },
+    "cellacdc/segmentation_module/dialogs.py": {
+      "doc": "Prompts used only by the segmentation and tracking module\n(segmentation_module/main_window.py; from apps.py): the stop-frame\nselection askStopFrameSegm and the z-plane view askZPlaneView, which\nimports launchDataPrepSelectZPlane locally from\ndata_prep/main_window.py.",
+      "alias": "segm_dialogs"
+    }
+  },
+  "items": {
+    "cellacdc/apps.py::stmt:try:": "DELETE",
+    "cellacdc/apps.py::stmt:pg.setConfigOption('imageAxisOrder', 'row-major')": "cellacdc/shared/dialogs/image_tools.py",
+    "cellacdc/apps.py::POSITIVE_FLOAT_REGEX": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::TREEWIDGET_STYLESHEET": "cellacdc/shared/widgets/style.py",
+    "cellacdc/apps.py::LISTWIDGET_STYLESHEET": "cellacdc/shared/widgets/style.py",
+    "cellacdc/apps.py::BACKGROUND_RGBA": "cellacdc/utils/computeMultiChannel.py",
+    "cellacdc/apps.py::LINEEDIT_WARNING_STYLESHEET": "cellacdc/shared/widgets/style.py",
+    "cellacdc/apps.py::ArgWidget": "cellacdc/shared/dialogs/preprocessing.py",
+    "cellacdc/apps.py::addCustomModelMessages": "cellacdc/shared/dialogs/model_selection.py",
+    "cellacdc/apps.py::addCustomPromptModelMessages": "cellacdc/gui/dialogs/segmentation.py",
+    "cellacdc/apps.py::QBaseDialog": "cellacdc/shared/dialogs/base.py",
+    "cellacdc/apps.py::customAnnotationDialog": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::_PointsLayerAppearanceGroupbox": "cellacdc/shared/dialogs/image_tools.py",
+    "cellacdc/apps.py::AddPointsLayerDialog": "cellacdc/gui/dialogs/points_layers.py",
+    "cellacdc/apps.py::EditPointsLayerAppearanceDialog": "cellacdc/shared/dialogs/image_tools.py",
+    "cellacdc/apps.py::FilenameEntryFormatter": "cellacdc/shared/dialogs/file_selection.py",
+    "cellacdc/apps.py::filenameDialog": "cellacdc/shared/dialogs/file_selection.py",
+    "cellacdc/apps.py::wandToleranceWidget": "cellacdc/gui/dialogs/editing.py",
+    "cellacdc/apps.py::TrackSubCellObjectsDialog": "cellacdc/launcher/dialogs.py",
+    "cellacdc/apps.py::askDeleteUncheckedExistingMeasurements": "cellacdc/shared/dialogs/set_measurements.py",
+    "cellacdc/apps.py::SetMeasurementsDialog": "cellacdc/shared/dialogs/set_measurements.py",
+    "cellacdc/apps.py::QDialogMetadataXML": "cellacdc/data_structure/dialogs/metadata.py",
+    "cellacdc/apps.py::CellACDCTrackerParamsWin": "cellacdc/shared/dialogs/tracker_params.py",
+    "cellacdc/apps.py::BayesianTrackerParamsWin": "cellacdc/shared/dialogs/tracker_params.py",
+    "cellacdc/apps.py::DeltaTrackerParamsWin": "cellacdc/shared/dialogs/tracker_params.py",
+    "cellacdc/apps.py::QDialogWorkerProgress": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::QDialogCombobox": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::OrderableListWidgetDialog": "cellacdc/utils/base.py",
+    "cellacdc/apps.py::QDialogAutomaticThresholding": "cellacdc/shared/dialogs/model_params.py",
+    "cellacdc/apps.py::GenerateMotherBudTotalTableSelectColumnsDialog": "cellacdc/utils/generateMothBudTotalTable.py",
+    "cellacdc/apps.py::ApplyTrackTableSelectColumnsDialog": "cellacdc/utils/applyTrackFromTable.py",
+    "cellacdc/apps.py::SelectPromptableModelDialog": "cellacdc/gui/dialogs/segmentation.py",
+    "cellacdc/apps.py::LoadSavedPromptableModelDialog": "cellacdc/gui/dialogs/segmentation.py",
+    "cellacdc/apps.py::QDialogSelectModel": "cellacdc/shared/dialogs/model_selection.py",
+    "cellacdc/apps.py::ViewTextDialog": "cellacdc/gui/dialogs/segmentation.py",
+    "cellacdc/apps.py::startStopFramesDialog": "cellacdc/gui/dialogs/segmentation.py",
+    "cellacdc/apps.py::QDialogAppendTextFilename": "cellacdc/utils/rename.py",
+    "cellacdc/apps.py::QDialogEntriesWidget": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::QDialogMetadata": "cellacdc/shared/dialogs/metadata.py",
+    "cellacdc/apps.py::QCropZtool": "cellacdc/shared/dialogs/image_tools.py",
+    "cellacdc/apps.py::randomWalkerDialog": "cellacdc/gui/dialogs/segmentation.py",
+    "cellacdc/apps.py::FutureFramesAction_QDialog": "cellacdc/gui/dialogs/editing.py",
+    "cellacdc/apps.py::ComputeMetricsErrorsDialog": "cellacdc/shared/dialogs/set_measurements.py",
+    "cellacdc/apps.py::PostProcessSegmParams": "cellacdc/shared/dialogs/model_params.py",
+    "cellacdc/apps.py::PostProcessSegmDialog": "cellacdc/gui/dialogs/segmentation.py",
+    "cellacdc/apps.py::imageViewer": "cellacdc/shared/dialogs/image_tools.py",
+    "cellacdc/apps.py::TreeSelectorDialog": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::TreesSelectorDialog": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::MultiListSelector": "cellacdc/utils/computeMultiChannel.py",
+    "cellacdc/apps.py::selectPositionsMultiExp": "cellacdc/shared/dialogs/file_selection.py",
+    "cellacdc/apps.py::editCcaTableWidget": "cellacdc/gui/dialogs/editing.py",
+    "cellacdc/apps.py::askStopFrameSegm": "cellacdc/segmentation_module/dialogs.py",
+    "cellacdc/apps.py::QLineEditDialog": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::FindIDDialog": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::NumericEntryDialog": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::EditIDDialog": "cellacdc/gui/dialogs/editing.py",
+    "cellacdc/apps.py::SelectPositionFoldersDialogue": "cellacdc/shared/dialogs/file_selection.py",
+    "cellacdc/apps.py::manualSeparateGui": "cellacdc/gui/dialogs/editing.py",
+    "cellacdc/apps.py::DataFrameModel": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::pdDataFrameWidget": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::QDialogZsliceAbsent": "cellacdc/gui/dialogs/data_io.py",
+    "cellacdc/apps.py::SelectSegmFileDialog": "cellacdc/shared/dialogs/file_selection.py",
+    "cellacdc/apps.py::QDialogPbar": "cellacdc/gui/dialogs/data_io.py",
+    "cellacdc/apps.py::FunctionParamsDialog": "cellacdc/shared/dialogs/preprocessing.py",
+    "cellacdc/apps.py::QDialogModelParams": "cellacdc/shared/dialogs/model_params.py",
+    "cellacdc/apps.py::downloadModel": "cellacdc/shared/dialogs/model_selection.py",
+    "cellacdc/apps.py::_CombineMetricsDialog": "cellacdc/shared/dialogs/combine_measurements.py",
+    "cellacdc/apps.py::CombineMetricsEquationDialog": "cellacdc/shared/dialogs/combine_measurements.py",
+    "cellacdc/apps.py::stopFrameDialog": "cellacdc/utils/compute.py",
+    "cellacdc/apps.py::pgTestWindow": "cellacdc/shared/dialogs/image_tools.py",
+    "cellacdc/apps.py::CombineMetricsMultiDfsDialog": "cellacdc/utils/computeMultiChannel.py",
+    "cellacdc/apps.py::CombineMetricsMultiDfsSummaryDialog": "cellacdc/utils/computeMultiChannel.py",
+    "cellacdc/apps.py::ShortcutEditorDialog": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::SelectAcdcDfVersionToRestore": "cellacdc/gui/dialogs/data_io.py",
+    "cellacdc/apps.py::ChangeUserProfileFolderPathDialog": "cellacdc/launcher/dialogs.py",
+    "cellacdc/apps.py::SelectFeaturesRange": "cellacdc/shared/dialogs/model_params.py",
+    "cellacdc/apps.py::SelectFeaturesRangeDialog": "cellacdc/shared/dialogs/model_params.py",
+    "cellacdc/apps.py::SelectFeaturesRangeGroupbox": "cellacdc/shared/dialogs/model_params.py",
+    "cellacdc/apps.py::get_existing_directory": "cellacdc/shared/dialogs/file_selection.py",
+    "cellacdc/apps.py::ScaleBarPropertiesDialog": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::SetColumnNamesDialog": "cellacdc/utils/filterObjFromCoordsTable.py",
+    "cellacdc/apps.py::CombineFeaturesCalculator": "cellacdc/shared/dialogs/combine_measurements.py",
+    "cellacdc/apps.py::QInput": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::InstallPyTorchDialog": "cellacdc/shared/dialogs/model_selection.py",
+    "cellacdc/apps.py::ExportToVideoParametersDialog": "cellacdc/gui/dialogs/data_io.py",
+    "cellacdc/apps.py::TimestampPropertiesDialog": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::ExportToImageParametersDialog": "cellacdc/gui/dialogs/data_io.py",
+    "cellacdc/apps.py::DataPrepSubCropsPathsDialog": "cellacdc/data_prep/dialogs.py",
+    "cellacdc/apps.py::PreProcessParamsWidget": "cellacdc/shared/dialogs/preprocessing.py",
+    "cellacdc/apps.py::CombineChannelsWidget": "cellacdc/shared/dialogs/preprocessing.py",
+    "cellacdc/apps.py::FormulaEditWidget": "cellacdc/shared/dialogs/combine_measurements.py",
+    "cellacdc/apps.py::InitFijiMacroDialog": "cellacdc/data_structure/dialogs/metadata.py",
+    "cellacdc/apps.py::ImageJRoisToSegmManager": "cellacdc/utils/fromImageJroiToSegm.py",
+    "cellacdc/apps.py::ResizeUtilProps": "cellacdc/utils/resize/util.py",
+    "cellacdc/apps.py::LogoDialog": "cellacdc/launcher/dialogs.py",
+    "cellacdc/apps.py::SetCustomLevelsLut": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::FucciPreprocessDialog": "cellacdc/utils/fucciPreprocess.py",
+    "cellacdc/apps.py::BackgroundValuesParamsDialog": "cellacdc/utils/computeBackgroundValues.py",
+    "cellacdc/apps.py::ViewCcaTableWindow": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::ObjectCountDialog": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::PreProcessRecipeDialog": "cellacdc/shared/dialogs/preprocessing.py",
+    "cellacdc/apps.py::PreProcessRecipeDialogUtil": "cellacdc/shared/dialogs/preprocessing.py",
+    "cellacdc/apps.py::CombineChannelsSetupDialog": "cellacdc/shared/dialogs/preprocessing.py",
+    "cellacdc/apps.py::CombineChannelsSetupDialogUtil": "cellacdc/utils/combineChannels.py",
+    "cellacdc/apps.py::CombineChannelsSetupDialogGUI": "cellacdc/gui/dialogs/segmentation.py",
+    "cellacdc/apps.py::QCropTrangeTool": "cellacdc/data_prep/dialogs.py",
+    "cellacdc/apps.py::QTreeDialog": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::MODULES_TYPES": "cellacdc/shared/dialogs/file_selection.py",
+    "cellacdc/apps.py::SelectFoldersToAnalyse": "cellacdc/shared/dialogs/file_selection.py",
+    "cellacdc/apps.py::OverlayLabelsAppearanceDialog": "cellacdc/shared/dialogs/image_tools.py",
+    "cellacdc/apps.py::AutoSaveIntervalDialog": "cellacdc/gui/dialogs/data_io.py",
+    "cellacdc/apps.py::TestSegmModelInitalDialog": "cellacdc/test_segm_model.py",
+    "cellacdc/apps.py::AnnotateObjTrackSettingsDialog": "cellacdc/gui/mixins/dialogs.py",
+    "cellacdc/apps.py::DataStructureSetupDialogue": "cellacdc/data_structure/dialogs/setup.py",
+    "cellacdc/apps.py::SearchableListboxDialog": "cellacdc/shared/dialogs/generic.py",
+    "cellacdc/apps.py::SetupSplitVideoIntoTiffsDialog": "cellacdc/utils/base.py",
+    "cellacdc/apps.py::SetupCreateTrackastraInputDataDialog": "cellacdc/utils/toTrackastraInputData.py",
+    "cellacdc/apps.py::askZPlaneView": "cellacdc/segmentation_module/dialogs.py",
+    "cellacdc/apps.py::ReStructTiffDataStructureSetupDialogue": "cellacdc/data_structure/dialogs/setup.py"
+  },
+  "classes": {},
+  "notes": [
+    "Coverage: all 119 non-import top-level statements of cellacdc/apps.py at 4c4e498b are mapped exactly once: 111 classes/functions, 6 module-level assignments (POSITIVE_FLOAT_REGEX, TREEWIDGET_STYLESHEET, LISTWIDGET_STYLESHEET, BACKGROUND_RGBA, LINEEDIT_WARNING_STYLESHEET, MODULES_TYPES) and 2 unnamed statements.",
+    "stmt:try: is the unused try/except 'import tkinter as tk' block (no reference to tk anywhere): DELETE, per the apps design. If C1 already drops it as an unused import, this DELETE is a no-op in C6.",
+    "stmt:pg.setConfigOption('imageAxisOrder', 'row-major') is mapped once, to shared/dialogs/image_tools.py. Per the tooling rule (idempotent configuration is copied into every new module whose origin had it and that uses pg) it must also be repeated in cellacdc/gui/dialogs/editing.py (manualSeparateGui uses pg); no other apps item uses pg.",
+    "TREEWIDGET_STYLESHEET, LISTWIDGET_STYLESHEET and LINEEDIT_WARNING_STYLESHEET of apps.py are byte-identical duplicates of cellacdc/widgets.py lines 93-96, which the widgets shard maps to cellacdc/shared/widgets/style.py in C5 (R3). The move tool must merge them with the existing identical definitions (keep one binding), not paste a second copy. Users after the move: selectPositionsMultiExp (file_selection), _CombineMetricsDialog and CombineFeaturesCalculator (combine_measurements), ShortcutEditorDialog (gui/mixins/dialogs); LISTWIDGET_STYLESHEET has no user in apps.py.",
+    "MODULES_TYPES must stay above SelectFoldersToAnalyse in file_selection.py (evaluated signature annotation); source order already guarantees it.",
+    "TestSegmModelInitalDialog goes into the dev script cellacdc/test_segm_model.py (completeness correction): insert it after the import block and before the script body (the script instantiates it at module level, line 35 at base). The script keeps importing its other names (downloadModel) from shared/dialogs/model_selection.py.",
+    "Commented-out code moves with its neighbour per the tooling extraction rules: the CellConstantEquationDialog stub (base lines 15298-15429) with CombineMetricsEquationDialog to combine_measurements.py; QComboBoxChangeColor (19066-19091) with PreProcessParamsWidget and ComboDelegate (20931-20940) with PreProcessRecipeDialogUtil to preprocessing.py; the indented comment tail at 14494-14497 with downloadModel.",
+    "Placement changes versus the final apps design (ab5051b3c28947898): TreeSelectorDialog -> shared/dialogs/generic.py (completeness: spotMAX subclasses it); TreesSelectorDialog -> shared/dialogs/generic.py too (unused, kept by theme next to TreeSelectorDialog and QTreeDialog instead of being the only tree dialog left in launcher/dialogs.py); TestSegmModelInitalDialog -> cellacdc/test_segm_model.py (completeness); QBaseDialog stays a subclass of the top-level _base_widgets.py (R9, no shared/base_widgets.py); POSITIVE_FLOAT_REGEX -> generic, MODULES_TYPES -> file_selection, BACKGROUND_RGBA -> utils/computeMultiChannel.py, duplicate stylesheets -> shared/widgets/style.py (R3, not shared/dialogs/base.py as the consistency check proposed).",
+    "Packages needed by these modules (owned by the moves shard): cellacdc/shared and cellacdc/shared/dialogs (first module created in C6, or in C5 if the widgets shard places widgets into shared/dialogs/* then), cellacdc/gui/dialogs, cellacdc/data_structure/dialogs, plus gui/mixins, launcher, data_prep, data_structure and segmentation_module from C3. Suggested docstrings: shared/dialogs = \"Dialogs used by several program parts, library modules or plugins, grouped by theme (from apps.py); base.py holds the QBaseDialog base class. Dialogs of one part live in <part>/dialogs, dialogs of one batch utility in utils/<utility>.py.\" gui/dialogs = \"Dialogs used only by the main GUI window (guiWin); dialogs also reached from the viewer-shared mixins are in gui/mixins/dialogs.py.\" data_structure/dialogs = \"Dialogs of the data structure module (data_struct.py, data_restruct.py).\" All without Qt imports or re-exports.",
+    "Layering checked with ast on the base source: no shared/dialogs module references a part module, gui/mixins/dialogs.py references no gui/dialogs module, and the module graph of the new dialog modules is acyclic (base < generic < file_selection < set_measurements/combine_measurements < preprocessing < model_params; image_tools, metadata, model_selection and tracker_params on top of base/generic/file_selection). Import-time (base class) edges across modules: QBaseDialog everywhere, QLineEditDialog -> FindIDDialog, CombineChannelsSetupDialog -> CombineChannelsSetupDialogGUI/Util, _CombineMetricsDialog -> CombineMetricsMultiDfsDialog, FunctionParamsDialog -> FucciPreprocessDialog, SetupSplitVideoIntoTiffsDialog -> SetupCreateTrackastraInputDataDialog.",
+    "Functions that bind a moved widget name as a local variable (MultiListSelector.__init__, SelectSegmFileDialog.__init__, SelectPositionFoldersDialogue.__init__, SearchableListboxDialog.__init__, FunctionParamsDialog.getWidgetsLayout, QDialogModelParams.createGroupParams, SelectFeaturesRangeDialog.__init__, askZPlaneView.__init__) must keep module-qualified access to the new widgets module (apps design risk 3); with the module-alias import style (rule 8) this holds automatically.",
+    "Local imports in moved code that the rewriter must fix (apps design): SetMeasurementsDialog 'from . import cli', GenerateMotherBudTotalTableSelectColumnsDialog 'from . import single_pos_index_cols' (now in utils/), LoadSavedPromptableModelDialog '.promptable_models', manualSeparateGui 'from . import regionprops' (x2), the 3 lazy timepoint_predictors imports in _CombineMetricsDialog (timepoint_predictors stays top-level, R1), SearchableListboxDialog '._palettes', customAnnotationDialog '.apps_measurements_viewer' (-> viewer dialogs module, stays local), askZPlaneView 'from cellacdc.dataPrep import launchDataPrepSelectZPlane' (-> data_prep/main_window.py, stays local). BayesianTrackerParamsWin/DeltaTrackerParamsWin use os.path.dirname(__file__) (C1 replaces it with cellacdc_path)."
+  ]
+}

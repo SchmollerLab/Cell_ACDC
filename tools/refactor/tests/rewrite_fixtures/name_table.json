@@ -1,0 +1,103 @@
+{
+  "modules": {
+    "cellacdc.gui_navigation": "cellacdc.gui.mixins.navigation",
+    "cellacdc.gui": "cellacdc.gui.main_window.window",
+    "cellacdc.measurements_viewer": "cellacdc.measurements_viewer.main_window.window",
+    "cellacdc._main": "cellacdc.launcher.main_window",
+    "cellacdc.phase_translator": "cellacdc.measurements_viewer.phase_translator"
+  },
+  "names": {
+    "cellacdc.apps": {
+      "QDialogCombobox": "cellacdc.shared.dialogs.generic",
+      "QLineEditDialog": "cellacdc.shared.dialogs.generic",
+      "SetMeasurementsDialog": "cellacdc.shared.dialogs.set_measurements",
+      "askDeleteUncheckedExistingMeasurements": "cellacdc.shared.dialogs.set_measurements",
+      "editCcaTableWidget": "cellacdc.gui.dialogs.editing",
+      "widgets": "cellacdc",
+      "myutils": "cellacdc",
+      "QAction": "qtpy.QtGui",
+      "printl": "cellacdc"
+    },
+    "cellacdc.widgets": {
+      "myMessageBox": "cellacdc.shared.widgets.message_box",
+      "QDialogListbox": "cellacdc.shared.widgets.item_views",
+      "is_mac": "cellacdc.shared.widgets.line_edits",
+      "LutItem": "cellacdc.gui.mixins.widgets",
+      "apps": "cellacdc.apps",
+      "QAction": "qtpy.QtGui",
+      "QMenu": "cellacdc.shared.widgets.line_edits",
+      "qtpy": "cellacdc.shared.widgets.line_edits"
+    },
+    "cellacdc.myutils": {
+      "check_install_package": "cellacdc.myutils.installs",
+      "printl": "cellacdc",
+      "subprocess": "cellacdc.myutils.installs",
+      "get_torch_device": "cellacdc.myutils.torch_utils",
+      "browse_url": "cellacdc.myutils.filesystem",
+      "widgets": "cellacdc"
+    },
+    "cellacdc.gui_navigation": {
+      "MovedThing": "cellacdc.gui.mixins.object_info",
+      "widgets": "cellacdc"
+    },
+    "cellacdc.gui": {
+      "_font": "cellacdc.gui.main_window.constants",
+      "apps": "cellacdc",
+      "widgets": "cellacdc",
+      "QMenu": "qtpy.QtWidgets",
+      "make": "cellacdc.gui.main_window.toolbars"
+    },
+    "cellacdc.measurements_viewer": {
+      "get_channels_and_segm_endnames": "cellacdc.measurements_viewer.viewer_utils",
+      "widgets": "cellacdc",
+      "apps": "cellacdc",
+      "QColor": "qtpy.QtGui",
+      "phase_translator": "cellacdc.measurements_viewer"
+    }
+  },
+  "aliases": {
+    "cellacdc.shared.dialogs.generic": "dialogs_generic",
+    "cellacdc.shared.dialogs.set_measurements": "dialogs_set_measurements",
+    "cellacdc.shared.widgets.message_box": "widgets_message_box",
+    "cellacdc.shared.widgets.item_views": "widgets_item_views",
+    "cellacdc.shared.widgets.line_edits": "widgets_line_edits",
+    "cellacdc.shared.widgets": "shared_widgets",
+    "cellacdc.gui.dialogs.editing": "gui_dialogs_editing",
+    "cellacdc.gui.mixins.navigation": "gui_navigation",
+    "cellacdc.gui.mixins.object_info": "gui_mixin_object_info",
+    "cellacdc.gui.mixins.widgets": "gui_mixin_widgets",
+    "cellacdc.gui.main_window.window": "gui_window",
+    "cellacdc.gui.main_window.constants": "gui_constants",
+    "cellacdc.gui.widgets": "gui_widgets",
+    "cellacdc.myutils.installs": "installs",
+    "cellacdc.myutils.torch_utils": "torch_utils",
+    "cellacdc.myutils.filesystem": "filesystem",
+    "cellacdc.launcher.main_window": "launcher_window",
+    "cellacdc.measurements_viewer.main_window.window": "viewer_window",
+    "cellacdc.measurements_viewer.viewer_utils": "viewer_utils",
+    "cellacdc.measurements_viewer.phase_translator": "phase_translator",
+    "cellacdc.gui.main_window.toolbars": "gui_toolbars"
+  },
+  "packages": [
+    "cellacdc.shared",
+    "cellacdc.shared.dialogs",
+    "cellacdc.shared.widgets",
+    "cellacdc.gui",
+    "cellacdc.gui.mixins",
+    "cellacdc.gui.main_window",
+    "cellacdc.gui.dialogs",
+    "cellacdc.gui.widgets",
+    "cellacdc.myutils",
+    "cellacdc.launcher",
+    "cellacdc.measurements_viewer",
+    "cellacdc.measurements_viewer.main_window"
+  ],
+  "classes": {
+    "cellacdc.gui.guiWin": {
+      "host": "cellacdc.gui.main_window.window",
+      "methods": {
+        "make": "cellacdc.gui.main_window.toolbars.ToolbarsGuiElements"
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+refactor: split guiWin into mixins
+
+The methods of guiWin (gui/main_window/window.py) move, byte-exact,
+into <Topic>GuiElements mixins in gui/main_window/<topic>.py
+(layout, menus_actions, toolbars, keyboard, modes, frame_data,
+image_display, drawing_tools, segmentation, tracking,
+cca_annotation, lineage_tree, loading, saving, exports, ...).
+The window class keeps its bases list (QMainWindow first, then the
+window-only mixins, then the mixins shared with the viewer), its
+Signals, Qt overrides, __init__ and the methods that call super();
+module constants move to gui/main_window/constants.py (_font is
+read and written through the module).
+
+Every attribute of guiWin resolves to the same function as before
+(MRO snapshot), the methods are unchanged (fingerprints).
+
+Verified with tools/refactor/run.py check: plan_check, the static
+fingerprint compare (every item byte-equal or rewritten to the same
+new home, other edits listed in out/<commit>/changes.jsonl), the MRO
+snapshot of guiWin and MeasurementsViewerWin, the headless entry
+points, flake8 E9/F63/F7/F82 and the push tier of the tests.
+
+Old import paths keep working through cellacdc/_compat.py and the
+generated cellacdc/_compat_moves.py (same objects, a MovedWarning,
+a DeprecationWarning, on use; patches of moved names reach their new
+home); Cell-ACDC itself switches to the new paths in the reference
+rewrite commit.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

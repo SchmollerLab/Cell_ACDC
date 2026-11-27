@@ -1,0 +1,20 @@
+refactor: prepare the old layout for the package moves
+
+Behaviour-preserving edits on the old layout that the moves need
+(fixups/C1): paths built from __file__ use cellacdc_path, the
+shortcuts file path is defined once in cellacdc/__init__.py,
+calls of the non-existent myutils.print_call_stack and
+apps.imshow_tk and a misspelled bioformats import are fixed or
+removed, unused imports that would become import edges to the
+split modules go, dataReStruct imports the launcher only for type
+checking, and the volume renderer guard re-raises missing
+cellacdc modules. The tests that scan sources or build docs paths
+from the location of gui.py/_main.py find the code wherever it
+lives, and the settings isolation of tests/conftest.py reads
+module bindings with vars() and also covers modules first imported
+inside a test.
+
+Verified with the fingerprint compare (each edit listed in
+changes.jsonl) and the push tier.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

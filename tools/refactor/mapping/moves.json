@@ -1,0 +1,477 @@
+{
+  "shard": "moves",
+  "default_commit": "C3",
+  "module_moves": [
+    {
+      "old": "cellacdc/gui.py",
+      "new": "cellacdc/gui/main_window/window.py",
+      "shim": "none",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/gui_navigation.py",
+      "new": "cellacdc/gui/mixins/navigation.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/gui_annotations.py",
+      "new": "cellacdc/gui/mixins/annotations.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/gui_custom_annotations.py",
+      "new": "cellacdc/gui/mixins/custom_annotations.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/gui_overlay.py",
+      "new": "cellacdc/gui/mixins/overlay.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/gui_viewer_tools.py",
+      "new": "cellacdc/gui/mixins/viewer_tools.py",
+      "shim": "split",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/gui_core.py",
+      "new": "cellacdc/gui/mixins/window_core.py",
+      "shim": "split",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/gui_combine.py",
+      "new": "cellacdc/gui/main_window/image_processing.py",
+      "shim": "split",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/measurements_viewer.py",
+      "new": "cellacdc/measurements_viewer/main_window/window.py",
+      "shim": "none",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/measurements_viewer_utils.py",
+      "new": "cellacdc/measurements_viewer/viewer_utils.py",
+      "shim": "split",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/apps_measurements_viewer.py",
+      "new": "cellacdc/measurements_viewer/dialogs/predictor_editors.py",
+      "shim": "split",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/custom_annotation_predictors.py",
+      "new": "cellacdc/measurements_viewer/custom_annotation_predictors.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/phase_translator.py",
+      "new": "cellacdc/measurements_viewer/phase_translator.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/measurements_viewer_premade_configurations",
+      "new": "cellacdc/measurements_viewer/premade_configurations",
+      "shim": "none",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/_main.py",
+      "new": "cellacdc/launcher/main_window.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/dataStruct.py",
+      "new": "cellacdc/data_structure/data_struct.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/dataReStruct.py",
+      "new": "cellacdc/data_structure/data_restruct.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/dataPrep.py",
+      "new": "cellacdc/data_prep/main_window.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/segm.py",
+      "new": "cellacdc/segmentation_module/main_window.py",
+      "shim": "alias",
+      "commit": "C3"
+    },
+    {
+      "old": "cellacdc/myutils_models.py",
+      "new": "cellacdc/myutils/model_modules.py",
+      "shim": "alias",
+      "commit": "C8"
+    },
+    {
+      "old": "cellacdc/_torch_utils.py",
+      "new": "cellacdc/myutils/torch_utils.py",
+      "shim": "alias",
+      "commit": "C8"
+    }
+  ],
+  "shims": {
+    "cellacdc/gui_navigation.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/gui_annotations.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/gui_custom_annotations.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/gui_overlay.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/gui_viewer_tools.py": {
+      "kind": "split",
+      "commit": "C3"
+    },
+    "cellacdc/gui_core.py": {
+      "kind": "split",
+      "commit": "C3"
+    },
+    "cellacdc/gui_combine.py": {
+      "kind": "split",
+      "commit": "C3"
+    },
+    "cellacdc/measurements_viewer_utils.py": {
+      "kind": "split",
+      "commit": "C3"
+    },
+    "cellacdc/apps_measurements_viewer.py": {
+      "kind": "split",
+      "commit": "C3"
+    },
+    "cellacdc/custom_annotation_predictors.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/phase_translator.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/_main.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/dataStruct.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/dataReStruct.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/dataPrep.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/segm.py": {
+      "kind": "alias",
+      "commit": "C3"
+    },
+    "cellacdc/myutils_models.py": {
+      "kind": "alias",
+      "commit": "C8"
+    },
+    "cellacdc/_torch_utils.py": {
+      "kind": "alias",
+      "commit": "C8"
+    },
+    "cellacdc/gui_utils.py": {
+      "kind": "split",
+      "commit": "C4"
+    },
+    "cellacdc/widgets.py": {
+      "kind": "split",
+      "commit": "C5"
+    },
+    "cellacdc/apps.py": {
+      "kind": "split",
+      "commit": "C6"
+    },
+    "cellacdc/workers.py": {
+      "kind": "split",
+      "commit": "C7"
+    }
+  },
+  "package_compat": {
+    "cellacdc/gui/__init__.py": "cellacdc/gui.py",
+    "cellacdc/measurements_viewer/__init__.py": "cellacdc/measurements_viewer.py",
+    "cellacdc/myutils/__init__.py": "cellacdc/myutils.py"
+  },
+  "attribute_forwarders": {
+    "cellacdc/gui/widgets/__init__.py": {
+      "old": "cellacdc/gui.py::widgets",
+      "table": "cellacdc/widgets.py",
+      "commit": "C5"
+    },
+    "cellacdc/gui/workers/__init__.py": {
+      "old": "cellacdc/gui.py::workers",
+      "table": "cellacdc/workers.py",
+      "commit": "C7"
+    },
+    "cellacdc/measurements_viewer/widgets.py": {
+      "old": "cellacdc/measurements_viewer.py::widgets",
+      "table": "cellacdc/widgets.py",
+      "commit": "C5"
+    },
+    "cellacdc/measurements_viewer/workers.py": {
+      "old": "cellacdc/measurements_viewer.py::workers",
+      "table": "cellacdc/workers.py",
+      "commit": "C7"
+    }
+  },
+  "packages": {
+    "cellacdc/shared": {
+      "doc": "Code used by more than one program part.\n\nThe program parts are launcher/, data_structure/, data_prep/, segmentation_module/, gui/, measurements_viewer/ and the batch utilities in utils/. A dialog, widget or worker belongs here when two or more parts use it, or a library module (load.py, core.py, prompts.py, plot.py, myutils/, ...), a plugin (models/, trackers/, promptable_models/, measurement_processing/) or spotMAX. Code with a single user part lives in that part's package. Cohesive families stay together even when some members have one user (the PushButton family in widgets/push_buttons.py).\n\n- dialogs/: shared dialogs, by theme.\n- widgets/: shared widgets and pyqtgraph items, by theme, and the style module.\n- workers/: the worker infrastructure and the shared workers.\n\nModules here never import a program part package at module level. This package re-exports nothing: import its modules.",
+      "commit": "C5",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/shared/dialogs": {
+      "doc": "Dialogs used by several program parts, library modules or plugins, one module per theme: generic input, list, tree and progress dialogs; file, folder and Position selection; image metadata; image tools (slideshow, z-crop); Set measurements; the combine-measurements equation editors; preprocessing and function parameters; segmentation model selection and parameters; tracker parameters.\n\nbase.py holds the QBaseDialog subclass the dialogs derive from. It is a foundation leaf: it imports no other dialog or widget module, so every dialog module can import it at module level.\n\nA dialog used by one program part lives in that part (<part>/dialogs.py or <part>/dialogs/), one opened only from the GUI mixins shared with the measurements viewer in gui/mixins/dialogs.py, one used by one batch utility in utils/<utility>.py and one used by several utilities in utils/base.py.\n\nThis package re-exports nothing: import its modules.",
+      "commit": "C5",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/shared/widgets": {
+      "doc": "Widgets used by several program parts, by library modules or by plugins, grouped by theme (formerly widgets.py).\n\nThe package imports style.py, so the pyqtgraph setup (row-major images, colormap registry) runs before the body of any widget module, as importing widgets.py did.\n\n- style.py: stylesheets, colors, font, colormap registries (cmaps, Gradients, custom colormaps).\n- basic_widgets.py: separators, spacers, ScrollArea, labels, progress bars, log console.\n- push_buttons.py: PushButton and the icon buttons, getPushButton, Toggle, myColorButton.\n- message_box.py: myMessageBox and its content helpers.\n- line_edits.py: validated and numeric line edits, path controls, formWidget, shortcut text conversion.\n- numeric_inputs.py: SpinBox, DoubleSpinBox, sliders, scroll bars, RangeSelector.\n- combo_boxes.py: ComboBox and other combo boxes, PreProcessingSelector.\n- item_views.py: QDialogListbox, listWidget, TreeWidget.\n- search_widgets.py: ButtonSearchWidget and the fuzzy search helpers.\n- lut_items.py: histogram LUT items and colormap menus.\n- plot_items.py: pyqtgraph plot, image and graphics items.\n- toolbars.py: ToolBar with overflow shortcuts, OverlayToolbar, tool buttons.\n- imshow_window.py: the image preview window of imshow in plot.py.\n\nDialog modules import widget modules at module level. Three widget modules import dialog modules at module level too: combo_boxes.py (shared/dialogs/generic.py and preprocessing.py), line_edits.py and lut_items.py (shared/dialogs/generic.py). These import cycles are safe because the dialogs are used only at call time through the module alias (dialogs_generic.QInput), never through a from-import of a name. The other widget modules import no dialog module at module level.",
+      "commit": "C5",
+      "init": "docstring + `from . import style  # noqa: F401` (pyqtgraph and colormap registry setup before any widget module body runs)",
+      "init_code": "from . import style  # noqa: F401"
+    },
+    "cellacdc/shared/workers": {
+      "doc": "Workers used by several program parts.\n\n- base.py: the worker infrastructure (worker_exception_handler,\n  workerLogger, signals) and the generic workers (SimpleWorker,\n  CustomPreprocessWorkerGUI, ...). A foundation leaf: it imports no dialog,\n  widget, gui or utils module, so every worker module can import it at\n  module level.\n- saving.py: saveDataWorker, the save worker of the main GUI, also used by\n  the Compute measurements utility.\n\nWorkers of one program part live in that part: <part>/workers.py, for the\nmain GUI gui/workers/<theme>.py. Utility workers live in their\nutils/<utility>.py, BaseWorkerUtil in utils/base.py, and the workers whose\nnames clash with utility window classes in utils/segm_workers.py.\n\nThis package re-exports nothing: import its modules.",
+      "commit": "C7",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/gui": {
+      "doc": "The main GUI: the window for annotating and correcting segmentation, tracking and cell cycle data (class guiWin).\n\n- main_window/: guiWin and the mixins that only guiWin composes. window.py holds the class body, every other module one or more <Topic>GuiElements mixins of one topic.\n- mixins/: mixins that the measurements viewer window ALSO composes: changes there affect both windows.\n- dialogs/, widgets/, workers/: dialogs, widgets and workers used only by guiWin.\n- helpers.py: non-UI helpers used only by guiWin.\n\nmixins/ and the measurements viewer never import main_window/, dialogs/, widgets/, workers/ or helpers.py.\n\nThis __init__ imports qtpy, pyqtgraph and matplotlib (the GUI requirements), so importing the package still fails without them (spotMAX relies on it). It imports nothing else eagerly: the names that the former single-module main GUI defined at this import path (guiWin, its constants, ...) are served lazily with a deprecation warning, for external code only (see _compat.py and CODEMAP.md).",
+      "commit": "C3",
+      "init": "docstring; `from qtpy import QtCore  # noqa: F401`, `import pyqtgraph  # noqa: F401`, `import matplotlib  # noqa: F401` (same requirements as GUI_INSTALLED in cellacdc/__init__.py); then the package_compat call of _compat.py serving the old gui.py names (see package_compat)",
+      "init_code": "from qtpy import QtCore  # noqa: F401\nimport pyqtgraph  # noqa: F401\nimport matplotlib  # noqa: F401"
+    },
+    "cellacdc/gui/main_window": {
+      "doc": "The main GUI window guiWin and the code that only guiWin composes. The measurements viewer never imports these modules.\n\n- window.py: class guiWin with its base classes (QMainWindow first, then the window-only mixins of this package, then the shared mixins of gui/mixins/), Signals, overriding class attributes, __init__, the Qt-named overrides and the methods that call super(). It also runs the import-time setup of the main GUI.\n- <topic>.py: the <Topic>GuiElements mixins of one topic each (window setup, layout, menus and actions, toolbars, cursors and hover, mouse and keyboard, modes, frame navigation and data, image display, drawing tools, object editing, ROIs, segmentation, magic prompts, tracking, cell cycle and lineage tree annotation, points layers, loading, saving, exports, image processing, whitelist IDs). Add a new guiWin method to the mixin of its topic, never to the class body unless it is Qt-named or calls super().\n- constants.py: module-level constants of the main GUI. Read and write the font as constants._font: a from-import would not see the font size changes.\n\nThis __init__ imports nothing, so importing one module does not load window.py.",
+      "commit": "C3",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/gui/mixins": {
+      "doc": "Mixins composed by BOTH the main GUI window (gui/main_window/window.py) and the measurements viewer window (measurements_viewer/main_window/window.py): changes affect both windows.\n\nHost-specific behaviour goes through hooks with main-GUI defaults that the viewer overrides (e.g. showDeleteObjectShortcut, canDeleteSavedCustomAnnot). dialogs.py and widgets.py hold the dialogs and widgets reached only from these mixins.\n\nNothing here imports gui/main_window/, gui/dialogs/, gui/widgets/, gui/workers/ or gui/helpers.py. The only import of the viewer is the lazy one of its predictor editors in dialogs.py, made when the viewer passes predictor options.",
+      "commit": "C3",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/gui/dialogs": {
+      "doc": "Dialogs used only by the main GUI window (guiWin), one module per theme: loading, saving, restoring and exporting data; editing objects and annotations (edit IDs, manual separation, the cell cycle table editor); points layers; segmentation and tracking (promptable models, tracker selection, start and stop frames).\n\nDialogs opened from the mixins shared with the measurements viewer live in gui/mixins/dialogs.py, dialogs of several program parts in shared/dialogs/.\n\nThis package re-exports nothing: import its modules.",
+      "commit": "C5",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/gui/widgets": {
+      "doc": "Widgets used only by the main GUI window (gui/main_window/), never by the measurements viewer. Widgets that the viewer-shared mixins reach are in gui/mixins/widgets.py.\n\n- edit_toolbars.py: editing toolbars (manual tracking, merge and whitelist IDs, separate bud, edit ID, ...).\n- main_window_items.py: ghost items, brush circle, delete ROI, log widget and other window parts.\n- points_layer_widgets.py: points layers and magic prompts toolbars and items.",
+      "commit": "C5",
+      "init": "docstring + compat forwarder of the old attribute gui.widgets (see attribute_forwarders), no other imports"
+    },
+    "cellacdc/gui/workers": {
+      "doc": "Workers used only by the main GUI window (guiWin and its gui/main_window\nmixins), by theme:\n\n- loading_saving.py: loading Positions and frames, undo states, autosave.\n- segmentation_tracking.py: repeat segmentation, promptable models,\n  tracking, post-processing and segmentation edits.\n- annotation_checks.py: the cell cycle annotation integrity checker.\n- image_processing.py: preprocessing and combining channels, saving their\n  images.\n\nThe measurements viewer never uses these modules (the viewer-shared\ngui/mixins use only SimpleWorker from shared/workers/base.py). The save\nworker of the main GUI, saveDataWorker, is in shared/workers/saving.py.\n\nThis package re-exports nothing: import its modules. Names of the former\nworkers.py module reached through the import path of this package are\nforwarded by the compat layer with a deprecation warning.",
+      "commit": "C7",
+      "init": "docstring + compat forwarder of the old attribute gui.workers (see attribute_forwarders), no other imports"
+    },
+    "cellacdc/measurements_viewer": {
+      "doc": "The measurements viewer: a standalone window that plots per-cell time courses of acdc_output columns, with time point identifiers, custom annotations, phases and measurement processing.\n\n- main_window/: the window class MeasurementsViewerWin (window.py) and its Viewer<Topic>GuiElements mixins.\n- viewer_utils.py, position_data.py, annotation_data.py: the widget-free logic (MeasurementsViewerUtils and its bases) and the module functions (loading positions and tables, frame masks, logger).\n- dialogs/, widgets.py, workers.py: dialogs, widgets and workers used only by the viewer.\n- custom_annotation_predictors.py, phase_translator.py: the custom annotation predictors and the phase translation. The time point predictors stay in the top-level timepoint_predictors.py, which shared and library code also use.\n- premade_configurations/: the premade configuration templates (JSON files).\n- __main__.py: runs the viewer with python -m on this package, optionally loading a folder.\n\nThe window also composes the shared mixins of gui/mixins/. Nothing here imports gui/main_window/, gui/dialogs/, gui/widgets/, gui/workers/ or gui/helpers.py. This __init__ imports nothing eagerly: the names that the former single-module viewer defined at this import path are served lazily with a deprecation warning, for external code only (see _compat.py).",
+      "commit": "C3",
+      "init": "docstring + the package_compat call of _compat.py serving the old measurements_viewer.py names (see package_compat); no other imports. In C11 the viewer shard puts the viewer specification (module docstring of the old measurements_viewer.py) first and keeps this text as its \"where the code lives\" part"
+    },
+    "cellacdc/measurements_viewer/main_window": {
+      "doc": "The measurements viewer window.\n\n- window.py: class MeasurementsViewerWin with its base classes (QMainWindow first, then the Viewer<Topic>GuiElements mixins of this package, then MeasurementsViewerUtils, then the shared mixins of gui/mixins/), class attributes, __init__, the Qt-named overrides, the overrides that call super(), and run().\n- <topic>.py: one Viewer<Topic>GuiElements mixin per topic (UI setup, configuration and premade templates, opening, loading and saving data, navigation, image panel, plotting, columns list, measurement processing, phases, time points, custom annotations). Module constants live with the mixin that reads them.\n\nAdd a new window method to the mixin of its topic. Widget-free logic goes to measurements_viewer/viewer_utils.py, position_data.py or annotation_data.py.\n\nThis __init__ imports nothing.",
+      "commit": "C3",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/measurements_viewer/dialogs": {
+      "doc": "Dialogs used only by the measurements viewer, one module per theme: the editors of time point identifiers, predictors and filters (with the custom annotation predictor group box and disabled_while_nested), the premade template setup, conditional formatting, the phase translator, the measurement processing recipe.\n\nThe predictor editors are also reached from the custom annotation dialog in gui/mixins/dialogs.py, through a lazy import made only when the viewer passes predictor options: an accepted exception to the placement rules. Shared bases (the combine-measurements editors, the preprocessing widgets) live in shared/dialogs/.\n\nThis package re-exports nothing: import its modules.",
+      "commit": "C3",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/launcher": {
+      "doc": "The launcher: the first window of Cell-ACDC, which opens the modules (data structure, data prep, segmentation and tracking, GUI, measurements viewer) and the batch utilities.\n\n- main_window.py: class mainWin with its module buttons and menus, and the self-update helpers.\n- dialogs.py, workers.py: dialogs and workers used only by the launcher.\n\nThis __init__ imports nothing.",
+      "commit": "C3",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/data_structure": {
+      "doc": "The data structure module: creates the Cell-ACDC folder structure (experiment folder, Position_<n>/Images) from raw microscopy files or from loose TIFF files.\n\n- data_struct.py: the data structure window createDataStructWin (Bio-Formats conversion), the symlinked-Positions window CreateSymLinkToPosWin and the Fiji macro setup InitFijiMacro.\n- data_restruct.py: re-structuring TIFF files into Positions (run, started from the launcher).\n- helpers.py: the Java, Bio-Formats and javabridge helpers (locating, downloading and installing them) and the git check.\n- workers.py, dialogs/: workers and dialogs used only by this module.\n\nThis __init__ imports nothing.",
+      "commit": "C3",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/data_structure/dialogs": {
+      "doc": "Dialogs used only by the data structure module (data_struct.py, data_restruct.py), by theme: raw-file metadata (OME-XML metadata, Fiji macro conversion setup) and setup (data structure and TIFF re-structuring setup).\n\nThis package re-exports nothing: import its modules.",
+      "commit": "C5",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/data_prep": {
+      "doc": "The data prep module: prepares Positions before segmentation (z-slice and frame selection, cropping, alignment, background ROIs).\n\n- main_window.py: the window dataPrepWin, and the entry points that open it from other modules for z-plane or ROI selection.\n- dialogs.py, workers.py: dialogs and workers used only by the data prep module.\n\nThis __init__ imports nothing.",
+      "commit": "C3",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/segmentation_module": {
+      "doc": "The segmentation and tracking module: segments and tracks whole experiments with the selected model and tracker, outside the GUI.\n\n- main_window.py: the window segmWin and its segmentation worker.\n- dialogs.py: prompts used only by this module (stop frame, z-plane view).\n\nThis __init__ imports nothing.",
+      "commit": "C3",
+      "init": "docstring only, no imports"
+    },
+    "cellacdc/myutils": {
+      "doc": "Helper library of Cell-ACDC without windows of its own (it replaces the single module myutils.py), split by theme: filesystem.py (experiments, files, recent paths), app_info.py (version, git, logging), installs.py (pip/conda, check_install_package), model_installs.py (check_install_<model>, GPU checks), segm_models.py (model and tracker registry, ArgSpec, init), downloads.py (URLs, model weights, manual, ffmpeg), image_utils.py (dtype conversions, TIFF), table_utils.py (acdc_df helpers), misc.py (small Python helpers), model_modules.py (Qt-free model introspection, was myutils_models.py) and torch_utils.py (PyTorch install and device helpers, was _torch_utils.py). Helpers with a single program part as user live next to it: gui/helpers.py, data_structure/helpers.py, launcher/main_window.py (self-update), fiji_macros/__init__.py (Fiji), qutils.py (setRetainSizePolicy), help/about.py, help/welcome.py and the utilities in utils/.\n\nEvery module imports without Qt: Qt classes and the shared message box and push buttons are imported under if GUI_INSTALLED, dialogs only inside the functions that open them.\n\nThis __init__ imports no submodule. Its __getattr__ forwards the plugin API (the names that custom models, trackers and promptable models use as myutils.<name>, listed in the PLUGIN_API table of _compat_moves.py) without a warning, imports a submodule when its name is accessed, and forwards every other name of the old myutils.py with a MovedWarning (DeprecationWarning). Cell-ACDC code imports the submodule that defines a name and never uses the forwarding.",
+      "commit": "C8",
+      "init": "lazy facade written in C8 (myutils shard: _SUBMODULES, _PLUGIN_API, deprecated forwarding); imports no submodule"
+    }
+  },
+  "modules": {
+    "cellacdc/gui/main_window/window.py": {
+      "alias": "gui_window",
+      "doc": "Class guiWin, the main GUI window for annotating and correcting segmentation, tracking and cell cycle data.\n\nThe class body holds the base classes (QMainWindow, then the window-only <Topic>GuiElements mixins of gui/main_window/, then the mixins shared with the measurements viewer from gui/mixins/), the Signals, the overriding class attributes (KEY_EVENT_KEYS), __init__, the Qt-named overrides and the methods that call super(). Every other method lives in the mixin of its topic. The module also runs the import-time setup of the main GUI: the pyqtgraph row-major image axis order, the pandas PerformanceWarning filter, np.seterr and the Windows AppUserModelID.",
+      "doc_commit": "C14",
+      "commit": "C3"
+    },
+    "cellacdc/gui/mixins/navigation.py": {
+      "alias": "gui_navigation",
+      "commit": "C3"
+    },
+    "cellacdc/gui/mixins/annotations.py": {
+      "alias": "gui_annotations",
+      "commit": "C3"
+    },
+    "cellacdc/gui/mixins/custom_annotations.py": {
+      "alias": "gui_custom_annotations",
+      "commit": "C3"
+    },
+    "cellacdc/gui/mixins/overlay.py": {
+      "alias": "gui_overlay",
+      "commit": "C3"
+    },
+    "cellacdc/gui/mixins/viewer_tools.py": {
+      "alias": "gui_viewer_tools",
+      "commit": "C3"
+    },
+    "cellacdc/gui/mixins/window_core.py": {
+      "alias": "gui_window_core",
+      "doc": "Core window services of the main GUI and the measurements viewer: values of the settings CSV, window geometry and 2D region properties (GUICoreElements), worker progress (WorkersGuiElements), keyboard shortcuts with the host hook showDeleteObjectShortcut (ShortcutsGuiElements) and the default settings (DefaultSettingsGuiElements).",
+      "doc_commit": "C14",
+      "commit": "C3"
+    },
+    "cellacdc/gui/main_window/image_processing.py": {
+      "alias": "gui_main_image_processing",
+      "doc": "Image processing of the displayed channels in the main GUI: preprocessing recipes (preview, apply to the frame, the z-stack, all frames or all Positions, save) in PreprocessingGuiElements, and combining channels in CombineGuiElements with its worker callbacks CombineGUIWorker.",
+      "doc_commit": "C14",
+      "commit": "C3"
+    },
+    "cellacdc/measurements_viewer/main_window/window.py": {
+      "alias": "viewer_window",
+      "doc": "Class MeasurementsViewerWin, the measurements viewer window, and run(), its standalone entry point.\n\nThe class body holds the base classes (QMainWindow, then the Viewer<Topic>GuiElements mixins of measurements_viewer/main_window/, then MeasurementsViewerUtils, then the mixins shared with the main GUI from gui/mixins/), the class attributes, __init__, the Qt-named overrides and the overrides that call super(). The specification of the viewer is the docstring of measurements_viewer/__init__.py.",
+      "doc_commit": "C11",
+      "commit": "C3"
+    },
+    "cellacdc/measurements_viewer/viewer_utils.py": {
+      "alias": "viewer_utils",
+      "commit": "C3"
+    },
+    "cellacdc/measurements_viewer/dialogs/predictor_editors.py": {
+      "alias": "viewer_dialogs_predictor_editors",
+      "commit": "C3"
+    },
+    "cellacdc/measurements_viewer/custom_annotation_predictors.py": {
+      "alias": "custom_annotation_predictors",
+      "commit": "C3"
+    },
+    "cellacdc/measurements_viewer/phase_translator.py": {
+      "alias": "phase_translator",
+      "commit": "C3"
+    },
+    "cellacdc/measurements_viewer/__main__.py": {
+      "alias": "viewer_main",
+      "doc": "Runs the measurements viewer with python -m on the measurements_viewer package, optionally loading the folder given as the first argument (run of main_window/window.py).",
+      "doc_commit": "C3",
+      "commit": "C3",
+      "code": "import sys\n\nfrom .main_window import window as viewer_window\n\nif __name__ == '__main__':\n    viewer_window.run(sys.argv[1] if len(sys.argv) > 1 else None)"
+    },
+    "cellacdc/launcher/main_window.py": {
+      "alias": "launcher_window",
+      "doc": "The launcher window mainWin: the module buttons (data structure, data prep, segmentation and tracking, GUI, measurements viewer, spotMAX), the Utilities and Help menus that start the batch utilities and guides, the settings and user profile actions, and the self-update helpers.",
+      "doc_commit": "C14",
+      "commit": "C3"
+    },
+    "cellacdc/data_structure/data_struct.py": {
+      "alias": "data_struct",
+      "doc": "The data structure window createDataStructWin, which converts raw microscopy files into the Cell-ACDC Position structure with Bio-Formats (bioFormatsWorker, with its own worker_exception_handler that emits critical), the symlinked-Positions window CreateSymLinkToPosWin and the Fiji macro conversion setup InitFijiMacro.",
+      "doc_commit": "C14",
+      "commit": "C3"
+    },
+    "cellacdc/data_structure/data_restruct.py": {
+      "alias": "data_restruct",
+      "doc": "Re-structuring of loose TIFF files into the Cell-ACDC Position structure: reads Positions, channels, frames and z-slices from the file names or the file dimensions as set in the setup dialog and writes the Images folders (run, started from the launcher).",
+      "doc_commit": "C14",
+      "commit": "C3"
+    },
+    "cellacdc/data_prep/main_window.py": {
+      "alias": "data_prep_window",
+      "doc": "The data prep window dataPrepWin: selecting the z-slices and the frames to analyse, cropping (also into sub-crops), aligning frames and drawing background ROIs before segmentation. launchDataPrepSelectZPlane and launchDataPrepSelectROI open it from other modules.",
+      "doc_commit": "C14",
+      "commit": "C3"
+    },
+    "cellacdc/segmentation_module/main_window.py": {
+      "alias": "segm_window",
+      "doc": "The segmentation and tracking window segmWin, which segments and tracks the selected Positions with the chosen model and tracker in a worker thread (SegmWorker), outside the GUI.",
+      "doc_commit": "C14",
+      "commit": "C3"
+    },
+    "cellacdc/myutils/model_modules.py": {
+      "alias": "model_modules",
+      "doc": "Qt-free introspection of segmentation and promptable model modules: importing a model's acdcSegment module, reading the parameters of its Model class and segment method from signatures and NumPy docstrings (ArgSpec here differs from the ArgSpec of segm_models.py), and the base cell cycle table. Used without the GUI by core.py and the model service.",
+      "doc_commit": "C14",
+      "commit": "C8"
+    },
+    "cellacdc/myutils/torch_utils.py": {
+      "alias": "torch_utils",
+      "commit": "C8"
+    }
+  },
+  "items": {},
+  "classes": {},
+  "notes": [
+    "Commits: module_moves, shims, packages, modules and attribute_forwarders carry explicit commits. A package's commit is the first commit in which a module lands in it per the current shards (shared, shared/dialogs, gui/dialogs, gui/widgets and data_structure/dialogs receive widgets.py items in C5, see the widgets shard notes). If a shard moves those items later, create the __init__.py with the first module that lands in the folder; plan_check should flag a package whose commit differs from that.",
+    "C3 must be a rename commit (git mv; `git diff -M90% --summary HEAD~1` shows renames). Edits in the moved files are limited to import depth and the logged fixups below; no docstrings are added in C3.",
+    "Shim kinds follow the plan (target layout): the eleven 1:1 moves get alias shims (sys.modules alias, identity holds); gui_viewer_tools, gui_core, gui_combine, measurements_viewer_utils and apps_measurements_viewer get split shims (lazy __getattr__ over the dir() table of the old module) already in C3. gui_core and gui_combine keep all their items (GUICoreElements and _logger in window_core.py, both classes in image_processing.py, see the gui shard notes), but window_core.py receives three more mixins in C4 and image_processing.py the guiWin PreprocessingGuiElements in C10: the split shim keeps the old namespace (including module-valued names such as apps/widgets that the C12 rewrite removes from the new files) instead of exposing the new one. measurements_viewer_utils keeps its top-level items in viewer_utils.py per the viewer design; its split shim stays valid if the viewer shard moves functions out in C11. gui_utils.py becomes a split shim in C4 (nearest_ID_to_centroid -> whitelist.py, gui shard).",
+    "No shim files for cellacdc/gui.py, cellacdc/measurements_viewer.py and cellacdc/myutils.py: packages of the same name replace them, and the package __init__ serves the old names (package_compat, tables generated from dir() of the old module at the base SHA). Old names equal to a submodule name are never in those tables: gui.py bound the modules widgets and workers, measurements_viewer.py bound widgets, workers, custom_annotation_predictors and phase_translator (myutils.py: no collision). custom_annotation_predictors and phase_translator are the same module objects after the move, so nothing is needed for them.",
+    "attribute_forwarders: the same-named submodules shadow the old module attributes from the listed commit on (the first commit in which the submodule exists: gui/widgets C5, gui/workers C7, measurements_viewer/widgets.py C5 with MeasurementTreeModel from the widgets shard, measurements_viewer/workers.py C7 with MeasurementProcessingWorkerGUI from the workers shard). From then on the submodule needs a module __getattr__ forwarding the names of the old widgets.py/workers.py table with a MovedWarning, and CompatModule __setattr__ forwarding (tests patch measurements_viewer.widgets.myMessageBox about 21 times until C13). Before that commit package_compat maps the name to the old module, which is the real widgets.py/workers.py until C5/C7 and their shim afterwards. measurements_viewer/widgets.py and workers.py are real modules of the viewer shard: the forwarder is added next to their code.",
+    "Package __init__ files with code (the packages entries give the docstring; `init` says what else goes in): gui/__init__.py (qtpy, pyqtgraph and matplotlib imports, then package_compat); measurements_viewer/__init__.py (package_compat; the spec docstring arrives in C11); myutils/__init__.py (the lazy facade, C8, myutils shard); shared/widgets/__init__.py (`from . import style  # noqa: F401`); gui/widgets/__init__.py and gui/workers/__init__.py (forwarders). Every other new __init__.py holds only its docstring and imports nothing, so importing a submodule never loads a window module.",
+    "measurements_viewer/__main__.py (C3, new): docstring, `import sys`, `from .main_window import window as viewer_window`, and under `if __name__ == '__main__':` the call `viewer_window.run(sys.argv[1] if len(sys.argv) > 1 else None)`. The guard is required: package walks (import_all, test_import_cellacdc) import __main__ modules. The old `if __name__ == '__main__':` block stays in main_window/window.py (harmless; the viewer shard may delete it).",
+    "C3 fixup: PREMADE_CONFIGURATIONS_PATH (measurements_viewer.py:770) is built from os.path.dirname(__file__) + 'measurements_viewer_premade_configurations'. C1 rewrites it to cellacdc_path; C3 points it at the moved folder: os.path.join(cellacdc_path, 'measurements_viewer', 'premade_configurations'). The folder holds only the two JSON templates (no __init__.py): they ship as package data of the measurements_viewer package through include-package-data and setuptools_scm (git-tracked). The spec docstring (old measurements_viewer.py:278) and CLAUDE.md:45 name the old folder (C14/C15).",
+    "C3 import depth (move.py recomputes every relative import of the moved files, module level and nested): imports leaving the destination part become absolute, imports inside it stay relative. Traps: `from . import widgets`/`workers` in files under gui/ would silently resolve to gui/widgets/ and gui/workers/ from C5/C7 on, and under measurements_viewer/ to measurements_viewer/widgets.py/workers.py; myutils/model_modules.py's `from . import config, promptable_models_list_file_path, models_list_file_path, ...` must become `from cellacdc import ...` in C8 (cellacdc/myutils has no config submodule); torch_utils.py likewise.",
+    "Related C1/C3 fixups owned by the plan: help/welcome.py imports guiWin inside openGUIfolder/openGUIsingleImage (R6, the gui window <-> welcome cycle); dataReStruct's `from . import _main` becomes a TYPE_CHECKING import in C1 (data_restruct.py must not import the launcher); utils/convert.py and utils/rename.py drop sys.path.append(cellacdc_path) in C1, else the new folders (gui, shared, launcher, ...) become importable top-level packages.",
+    "cellacdc/whitelist.py is no shim and keeps Whitelist: in C4 it gets a module __getattr__ serving the deprecated name WhitelistGUIElements (moved to gui/main_window/whitelist_ids.py by the gui shard). timepoint_predictors.py and _base_widgets.py stay where they are, without shims.",
+    "C8: myutils_models.py and _torch_utils.py move with git mv in the same commit that turns myutils.py into the myutils/ package. Importing the alias shims (cellacdc/myutils_models.py, cellacdc/_torch_utils.py) runs the lazy myutils/__init__.py only, so headless users (core.py, service/worker.py, service/model_execution.py) stay Qt-free. tests/test_torch_version.py::test_torch_utils_import_does_not_load_gui_or_torch blocks the exact name cellacdc.myutils: from C8 on it must allow the package and myutils/torch_utils.py and block the Qt-using modules instead (retarget in C8, not C13, or the test fails in C8).",
+    "Aliases (synthesis rule 8, aligned with the other shards): windows gui_window, viewer_window, launcher_window, data_prep_window, segm_window, data_struct, data_restruct; gui/mixins modules gui_<stem> (gui_navigation, gui_annotations, gui_custom_annotations, gui_overlay, gui_viewer_tools, gui_window_core; the gui shard adds gui_object_info); gui/main_window modules gui_main_<stem> (gui_main_image_processing, as in the gui shard); viewer part modules viewer_<kind>[_<module>] (viewer_utils, viewer_dialogs_predictor_editors); myutils submodules bare names (model_modules, torch_utils); the moved predictor modules keep their names (custom_annotation_predictors, phase_translator). __main__.py has no alias (never imported).",
+    "Module docs: for whole-moved modules, `doc` is the docstring to add when the moved file has none (gui.py, gui_core.py, gui_combine.py, _main.py, dataStruct.py, dataReStruct.py, dataPrep.py, segm.py, myutils_models.py have none at the base), in `doc_commit` (C14), never in the move commit. Existing docstrings stay; C14 only rewrites the old names in them (gui_viewer_tools.py names guiWin as cellacdc-dot-gui-dot-guiWin, its docstring also needs the C4 narrowing to display tools, gui shard). measurements_viewer/main_window/window.py loses the spec docstring to the package __init__ in C11: its `doc` replaces it then (the viewer shard may supply its own text instead). predictor_editors.py: the viewer shard writes its docstring in C9 (the old one moves to dialogs/__init__.py per the viewer design).",
+    "Packages owned elsewhere: shared/widgets and gui/widgets (widgets shard), shared/workers and gui/workers (workers shard) and myutils (myutils shard) are listed here as identical copies of those shards' entries (plus `init`). If they ever differ, the entry of the shard that creates the package's first module wins.",
+    "Docstrings name files with slash paths only and contain no cellacdc-prefixed dotted names (tests/related_tests.py DOTTED_NAME)."
+  ]
+}
