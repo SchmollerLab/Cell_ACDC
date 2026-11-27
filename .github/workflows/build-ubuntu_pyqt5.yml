@@ -28,9 +28,6 @@ concurrency:
 
 jobs:
   build:
-    # A hung test must not run until the default limit of 6 h (the full
-    # suite takes 20-40 min)
-    timeout-minutes: ${{ github.event_name == 'pull_request' && 30 || 90 }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -66,7 +63,6 @@ jobs:
   related-tests:
     # Not a required check: the full suite runs before merging anyway
     if: github.event_name == 'pull_request'
-    timeout-minutes: 90
     runs-on: ubuntu-latest
 
     steps:

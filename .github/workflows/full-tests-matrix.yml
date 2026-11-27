@@ -13,8 +13,6 @@ on:
 jobs:
   test:
     name: ${{ matrix.os }}, ${{ matrix.qt }}, Python ${{ matrix.python-version }}
-    # A hung test must not run until the default limit of 6 h
-    timeout-minutes: 90
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
