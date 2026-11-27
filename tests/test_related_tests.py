@@ -32,6 +32,11 @@ FILES = {
     'cellacdc/measurement_processing/Ramp/acdcProcess.py': '',
     'cellacdc/models/__init__.py': '',
     'cellacdc/models/thresholding/acdcSegment.py': '',
+    'cellacdc/promptable_models/__init__.py': '',
+    'cellacdc/promptable_models/sam_base.py': '',
+    'cellacdc/promptable_models/sam-v1/acdcPromptSegment.py': (
+        'from cellacdc.promptable_models import sam_base\n'
+    ),
     'cellacdc/templates/fucci_cycle.json': '{}',
     'cellacdc/docs/source/page.rst': '',
     'tests/__init__.py': '',
@@ -53,6 +58,7 @@ FILES = {
     'tests/test_helper_b.py': 'from tests.utils.helper_b import helper\n',
     'tests/test_fucci.py': "TEMPLATE = 'fucci_cycle'\n",
     'tests/test_server.py': 'BACKEND = dict(model_name="thresholding")\n',
+    'tests/test_sam.py': "MODEL = 'sam-v1'\n",
     'tests/test_words.py': '# thresholding, not quoted\n',
     'tests/test_invalid_syntax.py': 'from cellacdc import widgets\ndef (\n',
     'tests/.test_hidden.py': 'from cellacdc import gui\n',
@@ -166,6 +172,7 @@ def test_test_helpers(repo):
     'tox.ini',
     'setup.cfg',
     'requirements_gui_pyqt6.txt',
+    '.github/actions/setup-cellacdc/action.yml',
 ])
 def test_changes_that_relate_to_the_whole_suite(repo, changed):
     tests, reasons = Selection(repo).related(['cellacdc/gui.py', changed])
@@ -200,7 +207,9 @@ def test_selection_of_this_repository():
     tests, _ = selection.related(['cellacdc/phase_translator.py'])
     assert 'tests/test_phase_translator.py' in tests
     tests, _ = selection.related(['tests/related_tests.py'])
-    assert tests == ['tests/test_related_tests.py']
+    assert tests == [
+        'tests/test_area_markers.py', 'tests/test_related_tests.py',
+    ]
 
 
 @pytest.mark.slow
@@ -245,6 +254,14 @@ def test_changed_files_include_commits_and_uncommitted_changes(repo, capsys):
 def test_plugin_modules_relate_to_tests_naming_their_folder(repo):
     assert related(repo, 'cellacdc/models/thresholding/acdcSegment.py') == [
         'tests/test_server.py',
+    ]
+
+
+def test_shared_base_modules_relate_to_tests_naming_their_plugins(repo):
+    # The plugin imports the base module, the test names only the plugin
+    # folder (a dashed folder name is no importable module name)
+    assert related(repo, 'cellacdc/promptable_models/sam_base.py') == [
+        'tests/test_sam.py',
     ]
 
 

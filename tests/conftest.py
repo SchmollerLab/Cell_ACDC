@@ -34,10 +34,15 @@
   (posted ``DeferredDelete`` events are flushed, then ``gc.collect()``):
   tests never run the main loop and ``processEvents()`` does not deliver
   ``DeferredDelete``, so leaked windows used to pile up and crash the
-  interpreter at exit. Once pytest released the test's fixture values, its
-  garbage is collected again (after a 1 ms event-loop pass that releases
-  PyQt's slot proxies of deleted widgets) and the objects still alive are
-  frozen (``gc.freeze()``, ``pytest_runtest_protocol``), so the next test's
+  interpreter at exit. After the test's fixture teardowns, a single
+  event-loop pass (``QTest.qWait(0)``, still with the isolated settings and
+  the watchdog below) runs the test's timers already due and queued slots and
+  releases PyQt's slot proxies of deleted widgets. Timers with a delay still
+  pending fire later, in the event loop of another test (with its settings):
+  a test that starts one waits for it or stops it.
+  Once pytest released the test's fixture values, its garbage is collected
+  again and the objects still alive are frozen (``gc.freeze()``,
+  ``pytest_runtest_protocol``; not after the last test), so the next test's
   collections scan only the objects created since: a collection of the whole
   heap takes up to 0.5 s late in the session and used to be half of the
   suite's run time. After the last test of each module the whole heap is
@@ -457,25 +462,30 @@ def pytest_runtest_protocol(item, nextitem):
     """After each test, collect its garbage and freeze what survives.
 
     This runs after pytest released the test's fixture values
-    (``item.funcargs``) and, with a short event-loop pass, after PyQt
-    released the slot proxies of deleted widgets: the fixture teardowns are
-    too early, the windows of the test would be frozen while still
-    referenced, then never collected. After the last test of a module (its
-    module fixtures are torn down then), everything frozen during the module
-    is unfrozen and the whole heap collected.
+    (``item.funcargs``): the fixture teardowns are too early, the windows of
+    the test would be frozen while still referenced, then never collected.
+    PyQt released the slot proxies of the deleted widgets before, in the
+    event-loop pass of ``_process_pending_events_of_test``. After the last
+    test of a module (its module fixtures are torn down then), everything
+    frozen during the module is unfrozen and the whole heap collected. A
+    widget of a module fixture with a Python slot connected is freed only
+    one module later (its slot proxy is released in the next test's pass,
+    run with that test's isolated settings); no module fixture creates
+    widgets so far.
     """
     yield
-    if nextitem is None or (
-            getattr(nextitem, 'module', None)
-            is not getattr(item, 'module', None)):
+    if nextitem is None:
+        # End of the session: nothing to speed up any more, and objects left
+        # in the permanent generation are skipped by the final collection
         gc.unfreeze()
+        flushDeferredDeletes()
+        return
+    if getattr(nextitem, 'module', None) is not getattr(item, 'module', None):
+        gc.unfreeze()
+    # No event-loop pass here: the settings isolation, the monkeypatches and
+    # the dialog watchdog are already undone, so pending timers and queued
+    # slots of the test must run before (_process_pending_events_of_test)
     flushDeferredDeletes()
-    if 'qtpy' in sys.modules:
-        from qtpy.QtCore import QCoreApplication
-        if QCoreApplication.instance() is not None:
-            from qtpy.QtTest import QTest
-            QTest.qWait(1)
-            flushDeferredDeletes()
     freezeSurvivingObjects()
 
 
@@ -575,6 +585,39 @@ def _isolate_user_settings(tmp_path_factory, monkeypatch):
                     module, 'QSettings', IsolatedQSettings, raising=False
                 )
     yield folderpath
+
+
+@pytest.fixture(autouse=True)
+def _process_pending_events_of_test():
+    """Destroy the test's released widgets and run its pending events.
+
+    A single event-loop pass after the test's own fixtures are torn down:
+    PyQt releases the slot proxies of deleted widgets only in an event loop,
+    and a proxy still alive keeps its widget's Python wrapper alive through
+    the collection of ``pytest_runtest_protocol`` (which then freezes it).
+    The pass also runs the test's timers already due (e.g.
+    ``QTimer.singleShot(0, ...)``) and queued slots; timers with a delay
+    still pending fire later, in another test's event loop. Autouse
+    fixtures of this file are set up in name order, so this teardown runs
+    before the ones of ``_isolate_user_settings`` and
+    ``_auto_answer_blocking_dialogs``: those slots still see the isolated
+    settings and the dialog watchdog.
+
+    ``QTest.qWait(0)`` processes the events and the deferred deletes once;
+    ``qWait(1)`` would then sleep until the timer tick, about 15 ms per test
+    on Windows.
+    """
+    yield
+    if 'qtpy' not in sys.modules:
+        return
+    from qtpy.QtCore import QCoreApplication
+    if QCoreApplication.instance() is None:
+        return
+    from qtpy.QtTest import QTest
+    flushDeferredDeletes()
+    QTest.qWait(0)
+    # Destroy what the pass released while the settings are still isolated
+    flushDeferredDeletes()
 
 
 @pytest.fixture(scope='session', autouse=True)

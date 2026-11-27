@@ -270,6 +270,8 @@ def test_install_failure_does_not_open_qt_dialog(monkeypatch, external):
     monkeypatch.setattr(myutils, "is_gui_running", lambda: True)
     dialog = Mock(side_effect=AssertionError("CLI must not open Qt dialogs"))
     monkeypatch.setattr(myutils, "_inform_install_package_failed", dialog)
+    # printl looks up the source file of every caller frame (0.5 s)
+    monkeypatch.setattr(myutils, "printl", Mock())
     logger = Mock()
     with pytest.raises(RuntimeError) as raised:
         myutils.check_install_package(

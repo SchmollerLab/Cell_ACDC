@@ -17,7 +17,7 @@ import cellacdc
 
 pytestmark = pytest.mark.infra
 
-CELLACDC_PATH =os.path.dirname(os.path.abspath(cellacdc.__file__))
+CELLACDC_PATH = os.path.dirname(os.path.abspath(cellacdc.__file__))
 SCHEMES = ('light', 'dark')
 
 

@@ -334,26 +334,9 @@ def test_dialogs_left_open_are_hidden_but_not_older_ones(app):
             dialog.deleteLater()
 
 
-# Set by the test below, checked by the one after it: the conftest hides the
-# dialog after the test (the leaked "Computing" progress window of a
-# background utility test used to reach these watchdog tests in CI)
-_LEFT_OPEN_BY_PREVIOUS_TEST = []
-
-
-@pytest.mark.filterwarnings('ignore::tests.conftest.LeftOpenDialogWarning')
-def test_leave_dialog_open(app):
-    dialog = _ProgressLikeDialog()
-    dialog.setWindowTitle('Left open by a test')
-    dialog.show()
-    _LEFT_OPEN_BY_PREVIOUS_TEST.append(dialog)
-
-
-def test_dialog_left_open_by_previous_test_was_hidden(app):
-    if not _LEFT_OPEN_BY_PREVIOUS_TEST:
-        pytest.skip('test_leave_dialog_open did not run before')
-    dialog = _LEFT_OPEN_BY_PREVIOUS_TEST.pop()
-    assert not dialog.isVisible()
-    dialog.deleteLater()
+# That the conftest hides a dialog left open by a test after it is checked
+# end to end by test_conftest_cleans_up_after_each_test
+# (test_conftest_isolation.py)
 
 
 def test_message_box_without_title_is_named_by_its_text(app):

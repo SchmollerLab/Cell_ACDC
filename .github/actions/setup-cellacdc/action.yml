@@ -2,7 +2,7 @@ name: Set up Cell-ACDC for testing
 description: >-
   Install Python, Cell-ACDC with the GUI requirements of a Qt binding, pytest
   and flake8, and start a virtual display on Linux. Shared by the test
-  workflows (build-*.yml, full-tests.yml).
+  workflows (build-*.yml, full-tests-matrix.yml).
 
 inputs:
   python-version:

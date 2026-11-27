@@ -164,8 +164,8 @@ it ``@pytest.mark.slow`` if it still takes half a second or more, or add
 test must pass whatever other tests run before it: the tiers leave out the slow
 and flaky tests.
 
-Continuous integration (GitHub Actions) runs the tests in tiers, on Ubuntu,
-Windows and macOS with PyQt5 and PyQt6 and Python 3.10 to 3.13:
+Continuous integration (GitHub Actions) runs the tests in tiers, with Python
+3.10 to 3.13 on Windows and macOS (PyQt5 and PyQt6) and on Ubuntu (PyQt5):
 
 * **Every push to a pull request**: flake8 and the fast tier (workflows
   ``build-*.yml``, a few minutes), plus, on Ubuntu only, the slow and flaky
@@ -174,9 +174,12 @@ Windows and macOS with PyQt5 and PyQt6 and Python 3.10 to 3.13:
 * **Before merging**: the full suite (workflow ``full-tests.yml``). A maintainer
   adds the ``full tests`` label to the pull request (the workflow looks for
   exactly this label name): the suite runs now and again on every push while
-  the label stays. It can also be started from the
+  the label stays (a new push or removing the label cancels a running full
+  suite). It can also be started from the
   `Actions tab <https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/full-tests.yml>`_
   ("Run workflow") on any branch that contains ``full-tests.yml`` (merge
-  ``main`` into older branches first).
+  ``main`` into older branches first). Its checks are named ``full / <os>,
+  <Qt binding>, Python <version>``; without the label a single skipped check
+  ``full`` is listed.
 * **After merging**: every push to ``main`` and a weekly run (Monday) run the
   full suite (workflows ``build-*.yml``, shown by the badges of the README).

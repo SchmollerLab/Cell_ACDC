@@ -35,7 +35,10 @@ A test file is related to a changed file when
 * for a module of a plugin, which Cell-ACDC imports by its folder name
   (``cellacdc/models/<name>/``, ``trackers``, ``promptable_models``,
   ``measurement_processing``), it contains the folder name as a string
-  literal (``LocalBackend(model_name="thresholding")``);
+  literal (``LocalBackend(model_name="thresholding")``); the same for the
+  plugins among the importers followed above (a shared base module such as
+  ``promptable_models/micro_sam_base.py`` selects the tests naming
+  ``'micro-sam_v1'``);
 * for another file in ``cellacdc`` (configuration templates, docs, icons,
   compiled extensions), it contains the file name, its stem or the name of
   its folder.
@@ -47,9 +50,11 @@ The whole suite is related when ``cellacdc/__init__.py``, a ``conftest.py``
 or an ``__init__.py`` in ``tests``, a helper the conftest imports, the test
 data (``tests/test_data``), the pytest configuration (``pyproject.toml``, a
 root ``conftest.py``, ``pytest.ini``, ``tox.ini``, ``setup.cfg``) or a
-``requirements*.txt`` file changed, or when the changed files cannot be
-listed or the selection fails (e.g. unknown base). Other files outside
-``cellacdc`` and ``tests`` (docs, workflows, README) relate to no test.
+``requirements*.txt`` file or the CI setup of the test environment
+(``.github/actions``, installs the dependencies) changed, or when the changed
+files cannot be listed or the selection fails (e.g. unknown base). Other files
+outside ``cellacdc`` and ``tests`` (docs, workflows, README) relate to no
+test.
 """
 import argparse
 import ast
@@ -80,6 +85,8 @@ SKIPPED_MODULES = re.compile(r'qrc_resources\w*\.py$')
 ROOT_FILES_OF_ALL_TESTS = {
     'pyproject.toml', 'conftest.py', 'pytest.ini', 'tox.ini', 'setup.cfg',
 }
+# Folder of the CI actions that set up the test environment (dependencies)
+CI_SETUP_FOLDER = ('.github', 'actions')
 # Packages whose plugins Cell-ACDC imports by folder name
 PLUGIN_PACKAGES = {
     'models', 'trackers', 'promptable_models', 'measurement_processing',
@@ -192,6 +199,7 @@ class Selection:
         self._references = {}
         self._texts = {}
         self._package_references = None
+        self._module_paths = {}
 
     def references(self, path):
         if path not in self._references:
@@ -215,12 +223,17 @@ class Selection:
         """Modules of ``cellacdc`` that import or name `module` (or a submodule)."""
         if self._package_references is None:
             package = self.root / 'cellacdc'
-            self._package_references = {
-                module_name(path.relative_to(self.root).as_posix()): (
-                    self.references(path.relative_to(self.root).as_posix())
+            self._module_paths = {
+                module_name(relative): relative
+                for relative in (
+                    path.relative_to(self.root).as_posix()
+                    for path in package.rglob('*.py')
+                    if not SKIPPED_MODULES.search(path.name)
                 )
-                for path in package.rglob('*.py')
-                if not SKIPPED_MODULES.search(path.name)
+            }
+            self._package_references = {
+                name: self.references(relative)
+                for name, relative in self._module_paths.items()
             }
         # The top-level package imports most modules and every test
         # imports it: not an importer
@@ -264,6 +277,8 @@ class Selection:
             ):
                 return ALL
             return set()
+        if path.parts[:2] == CI_SETUP_FOLDER:
+            return ALL
         if top not in PACKAGES:
             return set()
         if top == 'tests' and (
@@ -287,6 +302,10 @@ class Selection:
             if len(importers) <= MAX_IMPORTERS:
                 for importer in importers:
                     tests |= self.tests_referencing(importer)
+                    # e.g. a shared base module of plugins (micro_sam_base)
+                    tests |= self._tests_naming_plugin(
+                        PurePosixPath(self._module_paths[importer])
+                    )
             tests |= self._tests_naming_plugin(path)
         if is_test_file(path) and (self.root / path).is_file():
             tests.add(path.as_posix())

@@ -1,7 +1,9 @@
 # Full test suite (also the tests marked slow or flaky) on every platform of the
-# build-*.yml workflows. Run it before merging a pull request:
+# build-*.yml workflows (the jobs are in full-tests-matrix.yml). Run it before
+# merging a pull request:
 # - add the "full tests" label (exactly this name) to the pull request:
-#   the suite runs now and again on every push while the label stays;
+#   the suite runs now and again on every push while the label stays (a push
+#   or removing the label cancels a running suite);
 # - or manually: Actions > Full test suite > Run workflow, on a branch that
 #   contains this file.
 # Pushes to main and the weekly runs of the build-*.yml workflows run the
@@ -13,49 +15,31 @@ name: Full test suite
 on:
   pull_request:
     branches: [ main ]
-    types: [ opened, synchronize, reopened, labeled ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
   workflow_dispatch:
 
 concurrency:
-  # Runs that skip the job (pull requests without the label) get their own
-  # group, so that they never cancel a running full suite
+  # A push cancels the running full suite of the pull request (also after
+  # the label was removed), and so does removing the label. Adding or
+  # removing another label gets its own group: it never cancels a full suite
   group: >-
     ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{
-    github.event_name != 'pull_request' ||
-    (contains(github.event.pull_request.labels.*.name, 'full tests') &&
-    (github.event.action != 'labeled' || github.event.label.name == 'full tests')) }}
+    (github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+    github.event.label.name == 'full tests' }}
   cancel-in-progress: true
 
 jobs:
   full:
-    name: full (${{ matrix.os }}, ${{ matrix.qt }}, ${{ matrix.python-version }})
-    # Pull requests: only with the label, and adding another label does not
-    # start the suite again
+    # Not a matrix job: the jobs are in full-tests-matrix.yml, so that the
+    # check of a skipped run is named "full" (a skipped matrix job shows its
+    # unevaluated name template). The checks of a run are named
+    # "full / <os>, <qt>, Python <version>".
+    name: full
+    # Pull requests: only with the label, and adding or removing another
+    # label does not start the suite again
     if: >-
       github.event_name != 'pull_request' ||
       (contains(github.event.pull_request.labels.*.name, 'full tests') &&
+      github.event.action != 'unlabeled' &&
       (github.event.action != 'labeled' || github.event.label.name == 'full tests'))
-    # A hung test must not run until the default limit of 6 h
-    timeout-minutes: 90
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ ubuntu-latest, windows-latest, macos-latest ]
-        qt: [ pyqt5, pyqt6 ]
-        python-version: [ "3.10", "3.11", "3.12", "3.13" ]
-        exclude:
-          # As build-*.yml: PyQt5 only on Ubuntu
-          - os: ubuntu-latest
-            qt: pyqt6
-
-    steps:
-    - uses: actions/checkout@v6
-    - uses: ./.github/actions/setup-cellacdc
-      with:
-        python-version: ${{ matrix.python-version }}
-        qt: ${{ matrix.qt }}
-    - name: Test with pytest (full suite)
-      shell: bash
-      run: |
-        python -m pytest --durations=25
+    uses: ./.github/workflows/full-tests-matrix.yml

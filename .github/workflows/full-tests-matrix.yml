@@ -1,0 +1,39 @@
+# The jobs of the full test suite, one per platform of the build-*.yml
+# workflows. Called by full-tests.yml (see there), never run directly: a
+# matrix job skipped by `if:` is never expanded, so GitHub shows its check
+# with the unevaluated name template ("full (${{ matrix.os }}, ...)"). The
+# caller's job is not a matrix job, so when the full suite does not run its
+# check is just "full" (skipped).
+
+name: Full test suite (jobs)
+
+on:
+  workflow_call:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}, ${{ matrix.qt }}, Python ${{ matrix.python-version }}
+    # A hung test must not run until the default limit of 6 h
+    timeout-minutes: 90
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        qt: [ pyqt5, pyqt6 ]
+        python-version: [ "3.10", "3.11", "3.12", "3.13" ]
+        exclude:
+          # As build-*.yml: PyQt5 only on Ubuntu
+          - os: ubuntu-latest
+            qt: pyqt6
+
+    steps:
+    - uses: actions/checkout@v6
+    - uses: ./.github/actions/setup-cellacdc
+      with:
+        python-version: ${{ matrix.python-version }}
+        qt: ${{ matrix.qt }}
+    - name: Test with pytest (full suite)
+      shell: bash
+      run: |
+        python -m pytest --durations=25

@@ -8,12 +8,17 @@ from pathlib import Path
 
 import pytest
 
+from tests.related_tests import is_test_file
+
 pytestmark = pytest.mark.infra
 
 AREA_MARKERS = {'viewer', 'gui', 'models', 'core', 'infra'}
 TESTS_FOLDER = Path(__file__).resolve().parent
 AREA_PATTERN = re.compile(r'\bmark\.(%s)\b' % '|'.join(sorted(AREA_MARKERS)))
 PYTESTMARK_PATTERN = re.compile(r'^pytestmark\s*=', re.MULTILINE)
+# Any assignment to pytestmark, also indented (e.g. in an `if` block)
+PYTESTMARK_ASSIGNMENT = re.compile(r'^[ \t]*pytestmark\s*=(?!=)', re.MULTILINE)
+REASSIGNED = 'pytestmark assigned more than once'
 
 
 def area_markers(path):
@@ -22,8 +27,12 @@ def area_markers(path):
     Parsing every test file takes about half a second, so only the
     `pytestmark` statement is parsed, and the whole file only when area
     names appear elsewhere too (markers of single tests, or text in strings).
+    A file that assigns `pytestmark` more than once gives ``[REASSIGNED]``
+    twice: pytest uses only the last assignment, which may lack the marker.
     """
     text = path.read_text(encoding='utf-8')
+    if len(PYTESTMARK_ASSIGNMENT.findall(text)) > 1:
+        return [REASSIGNED], [REASSIGNED]
     in_pytestmark = []
     for match in PYTESTMARK_PATTERN.finditer(text):
         statement = _statement_at(text, match.start())
@@ -63,14 +72,22 @@ def test_area_markers_are_registered(pytestconfig):
 
 def test_every_test_file_has_one_area_marker():
     wrong = {}
-    for path in sorted(TESTS_FOLDER.rglob('test_*.py')):
+    repoFolder = TESTS_FOLDER.parent
+    # The files pytest collects (also *_test.py), as in related_tests.py
+    for path in sorted(TESTS_FOLDER.rglob('*.py')):
+        if not is_test_file(path.relative_to(repoFolder).as_posix()):
+            continue
         in_pytestmark, in_file = area_markers(path)
-        if len(in_pytestmark) != 1 or len(in_file) != 1:
+        if (
+            len(in_pytestmark) != 1 or len(in_file) != 1
+            or in_pytestmark == [REASSIGNED]
+        ):
             wrong[path.relative_to(TESTS_FOLDER).as_posix()] = in_file
     assert not wrong, (
-        'Each test file needs exactly one area marker, set in its module '
-        'pytestmark (e.g. "pytestmark = pytest.mark.viewer"), and none on '
-        f'single tests. Areas: {sorted(AREA_MARKERS)}. Files: {wrong}'
+        'Each test file needs exactly one area marker, set in its only '
+        'module pytestmark (e.g. "pytestmark = pytest.mark.viewer"), and '
+        f'none on single tests. Areas: {sorted(AREA_MARKERS)}. '
+        f'Files: {wrong}'
     )
 
 
@@ -100,6 +117,15 @@ def test_every_test_file_has_one_area_marker():
         'def test_x(x):\n'
         '    pass\n',
         ([], ['core']),
+    ),
+    (
+        # pytest uses only the last assignment, without the area marker
+        'import sys\n'
+        'import pytest\n'
+        'pytestmark = pytest.mark.gui\n'
+        'if sys.platform == "win32":\n'
+        '    pytestmark = pytest.mark.skip(reason="")\n',
+        ([REASSIGNED], [REASSIGNED]),
     ),
 ])
 def test_area_markers_are_read_from_pytestmark_and_code(
