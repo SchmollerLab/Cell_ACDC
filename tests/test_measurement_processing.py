@@ -8,6 +8,8 @@ from cellacdc.measurement_processing.SmoothMeasurement.acdcProcess import (
 )
 from tests.utils.measurement_processing import Dummy
 
+pytestmark = pytest.mark.viewer
+
 SUFFIX = 'processed'
 
 

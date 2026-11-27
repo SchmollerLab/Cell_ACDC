@@ -7,6 +7,8 @@ import pytest
 
 from cellacdc.timepoint_predictors import parse_flags
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.mark.parametrize('values, expected', [
     (['True', 'False', '0', '1', ' true ', '', 'x'],

@@ -17,6 +17,8 @@ from cellacdc import measurements_viewer_utils
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 
+pytestmark = pytest.mark.viewer
+
 
 load_configuration = MeasurementsViewerWin.loadConfiguration
 
@@ -144,6 +146,7 @@ def modify_annotation(viewer, monkeypatch, name, state):
     viewer.customAnnotModify(viewer.customAnnotButtonByName(name))
 
 
+@pytest.mark.slow
 def test_toggling_overriding_annotation_replaces_rule_phases(
         viewer, app, monkeypatch
     ):
@@ -216,6 +219,7 @@ def test_predictions_evaluate_only_cells_whose_annotation_changed(
     assert schedule.call_count == 1
 
 
+@pytest.mark.slow
 def test_clearing_overriding_annotation_restores_rule_phases(
         viewer, app, monkeypatch
     ):
@@ -232,6 +236,7 @@ def test_clearing_overriding_annotation_restores_rule_phases(
         assert phases(viewer, ID) == RULE_PHASES
 
 
+@pytest.mark.slow
 def test_switching_overrides_option_reevaluates_annotated_cells(
         viewer, app, monkeypatch, capsys
     ):
@@ -259,6 +264,7 @@ def test_switching_overrides_option_reevaluates_annotated_cells(
     assert 'phase_Arrested' not in viewer.acdc_df
 
 
+@pytest.mark.slow
 def test_renaming_overriding_annotation_renames_phase_and_color(
         viewer, app, monkeypatch
     ):
@@ -277,6 +283,7 @@ def test_renaming_overriding_annotation_renames_phase_and_color(
     assert viewer.phaseColors == {'Stopped': '#123456', 'G1': '#654321'}
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('remove_column', [False, True])
 def test_removing_overriding_annotation_restores_rule_phases(
         viewer, app, monkeypatch, remove_column
@@ -313,6 +320,7 @@ def test_removing_overriding_annotation_restores_rule_phases(
     assert 'phase_Arrested' not in viewer.acdc_df
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('order', [
     ('Excluded', 'Arrested'), ('Arrested', 'Excluded')
 ])
@@ -332,6 +340,7 @@ def test_first_overriding_annotation_in_toolbar_order_wins(viewer, app, order):
     assert phases(viewer, 3) == RULE_PHASES
 
 
+@pytest.mark.slow
 def test_without_auto_apply_annotation_changes_evaluate_nothing(
         viewer, app, monkeypatch
     ):
@@ -350,6 +359,7 @@ def test_without_auto_apply_annotation_changes_evaluate_nothing(
     assert phases(viewer, 2) == RULE_PHASES
 
 
+@pytest.mark.slow
 def test_overriding_annotations_without_rules(viewer, app, monkeypatch):
     viewer.isDataLoaded = True
     configure(
@@ -402,6 +412,7 @@ def position_phases(posData, ID):
     return posData.acdc_df.xs(ID, level='Cell_ID')['phase'].tolist()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('action, autoApply', [
     ('switch_off', False), ('remove_button', True), ('remove_column', True),
 ])
@@ -457,6 +468,7 @@ def test_without_rules_last_override_gone_clears_its_phase(
     assert viewer._pendingPhaseClears == {}
 
 
+@pytest.mark.slow
 def test_phases_cleared_in_memory_stay_cleared_and_can_be_evaluated_again(
         viewer, app, monkeypatch, tmp_path
     ):
@@ -498,6 +510,7 @@ def test_phases_cleared_in_memory_stay_cleared_and_can_be_evaluated_again(
     assert phases(viewer, 2) == [''] * 4
 
 
+@pytest.mark.slow
 def test_saving_tables_evaluates_pending_cells_of_other_positions(
         viewer, app, monkeypatch
     ):
@@ -521,6 +534,7 @@ def test_saving_tables_evaluates_pending_cells_of_other_positions(
     assert id(second) not in viewer._pendingPhaseIDs
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('save', ['save_tables', 'save_changes_prompt'])
 def test_saving_includes_positions_changed_only_by_pending_phases(
         viewer, app, monkeypatch, save
@@ -568,6 +582,7 @@ def test_saving_includes_positions_changed_only_by_pending_phases(
     assert id(second) not in viewer._pendingPhaseIDs
 
 
+@pytest.mark.slow
 def test_translator_dialog_gets_and_applies_overriding_annotations(
         viewer, app, monkeypatch, capsys
     ):
@@ -611,6 +626,7 @@ def test_translator_dialog_gets_and_applies_overriding_annotations(
     viewer.measurementProcessingWarning.assert_not_called()
 
 
+@pytest.mark.slow
 def test_override_respects_last_analyzed_frame(viewer, app):
     viewer.posData().lastAnalyzedFrame = 2
     configure(viewer, app, [annot_state(overrides=True)])
@@ -622,6 +638,7 @@ def test_override_respects_last_analyzed_frame(viewer, app):
     ]
 
 
+@pytest.mark.slow
 def test_setting_annotations_in_bulk_evaluates_nothing(
         viewer, app, monkeypatch
     ):
@@ -642,6 +659,7 @@ def test_setting_annotations_in_bulk_evaluates_nothing(
     assert viewer.acdc_df['phase'].eq('G1').all()
 
 
+@pytest.mark.slow
 def test_adding_overriding_annotation_with_annotated_cells(
         viewer, app, monkeypatch
     ):
@@ -667,6 +685,7 @@ def test_adding_overriding_annotation_with_annotated_cells(
     assert phases(viewer, 2) == RULE_PHASES
 
 
+@pytest.mark.slow
 def test_phase_color_map_lists_overrides_after_rule_phases(viewer):
     viewer.phaseTranslatorRules = [copy.deepcopy(CYCLE)]
     before = viewer.phaseColorMap()
@@ -693,6 +712,7 @@ def prepare_configuration(viewer, tmp_path):
     return viewer.configuration()
 
 
+@pytest.mark.slow
 def test_configuration_keeps_and_validates_overrides_phases(viewer, tmp_path):
     viewer.phaseTranslatorRules = [copy.deepcopy(CYCLE)]
     viewer.setCustomAnnotations([
@@ -728,6 +748,7 @@ def test_configuration_keeps_and_validates_overrides_phases(viewer, tmp_path):
         )
 
 
+@pytest.mark.slow
 def test_loading_configuration_keeps_saved_phases(
         viewer, app, tmp_path, monkeypatch
     ):

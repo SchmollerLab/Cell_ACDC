@@ -9,6 +9,8 @@ import pytest
 
 from cellacdc import myutils
 
+pytestmark = pytest.mark.models
+
 
 @pytest.mark.parametrize("return_types", [False, True])
 def test_cpu_does_not_probe_environment(monkeypatch, return_types):

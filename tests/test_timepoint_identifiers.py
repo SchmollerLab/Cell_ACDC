@@ -18,6 +18,8 @@ from cellacdc.measurements_viewer import MeasurementsViewerWin, _TimepointLine, 
 from cellacdc.timepoint_predictors import TimepointIdentifier, TIMEPOINT_PREFIX
 from tests.conftest import flushDeferredDeletes
 
+pytestmark = pytest.mark.viewer
+
 load_configuration = MeasurementsViewerWin.loadConfiguration
 
 
@@ -139,6 +141,8 @@ def test_predictor_dependency_cycles(predictors, cycle):
         })
 
 
+@pytest.mark.slow
+@pytest.mark.smoke
 @pytest.mark.parametrize('automatic', [False, True])
 def test_mixed_predictors_run_prerequisites_first(viewer, automatic):
     final = TimepointIdentifier(
@@ -167,6 +171,7 @@ def test_mixed_predictors_run_prerequisites_first(viewer, automatic):
     viewer.measurementProcessingWarning.assert_not_called()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('automatic', [False, True])
 def test_other_cell_predictor_prerequisites_cover_all_cells(viewer, automatic):
     final = TimepointIdentifier(
@@ -191,6 +196,7 @@ def test_other_cell_predictor_prerequisites_cover_all_cells(viewer, automatic):
     viewer.measurementProcessingWarning.assert_not_called()
 
 
+@pytest.mark.slow
 def test_automatic_prediction_keeps_edited_prerequisite_cells(viewer, monkeypatch):
     final = TimepointIdentifier(
         'Final', (0, 0, 255), '',
@@ -228,6 +234,7 @@ def test_automatic_prediction_keeps_edited_prerequisite_cells(viewer, monkeypatc
     assert viewer.cellTimepoints(final.uid, 1) == []
 
 
+@pytest.mark.slow
 def test_all_cells_auto_prerequisite_keeps_visited_cells_of_loaded_table(
         viewer, monkeypatch
     ):
@@ -264,6 +271,7 @@ def test_all_cells_auto_prerequisite_keeps_visited_cells_of_loaded_table(
     viewer.measurementProcessingWarning.assert_not_called()
 
 
+@pytest.mark.slow
 def test_new_identifier_with_existing_column_keeps_visited_cells(
         viewer, monkeypatch
     ):
@@ -332,6 +340,7 @@ def test_timepoint_column_list_and_axes_follow_add_rename_remove(viewer, monkeyp
     viewer.plotMeasurements()
 
 
+@pytest.mark.slow
 def test_edit_of_identifier_removed_while_dialog_open_is_not_applied(
         viewer, monkeypatch
     ):
@@ -400,6 +409,7 @@ def test_comparison_plot_ignores_axis_missing_from_table(viewer):
     assert 'Select X and Y' in viewer.measurementsPlot.plotItem.titleLabel.text
 
 
+@pytest.mark.slow
 def test_timepoint_rename_is_refused_while_referenced(viewer, monkeypatch):
     point = TimepointIdentifier(
         'Point', (255, 0, 0), '',
@@ -503,6 +513,7 @@ def test_prerequisite_manual_annotations_are_protected(viewer, monkeypatch, answ
     )
 
 
+@pytest.mark.slow
 def test_prerequisite_failure_stops_dependent_prediction(viewer):
     annotation_predictors(viewer, [('Flag', 'missing_column > 0')])
     final = TimepointIdentifier(
@@ -580,6 +591,7 @@ def test_annotation_customization_warns_about_mixed_cycle(viewer, monkeypatch):
         dialog.deleteLater()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('Dialog', [
     apps_measurements_viewer.TimepointPredictorEquationDialog,
     apps_measurements_viewer.CustomAnnotationPredictorEquationDialog,
@@ -1110,6 +1122,7 @@ def test_identifier_dict_roundtrip():
         TimepointIdentifier.from_dict({**identifier.to_dict(), 'color': [1]})
 
 
+@pytest.mark.slow
 def test_toolbar_and_default_identifier(viewer):
     assert viewer.addTimepointIdentifierAction in viewer.timepointsToolBar.actions()
     identifier = viewer.defaultTimepointIdentifier()
@@ -1125,6 +1138,7 @@ def test_toolbar_and_default_identifier(viewer):
     assert 'Q' not in viewer.reservedShortcuts(excludeUid=identifier.uid)
 
 
+@pytest.mark.slow
 def test_add_identifier_creates_action_with_shortcut(viewer, monkeypatch):
     def accept(dialog):
         assert dialog.nameLineEdit.text() == 'Time point 1'
@@ -1140,6 +1154,7 @@ def test_add_identifier_creates_action_with_shortcut(viewer, monkeypatch):
     assert action.shortcut().toString() == 'Q'
 
 
+@pytest.mark.slow
 def test_identifier_dialog_checks_names_and_shortcuts_on_ok(
         viewer, monkeypatch
     ):
@@ -1179,6 +1194,7 @@ def press_key(viewer, app, key, modifier=Qt.NoModifier):
     app.processEvents()
 
 
+@pytest.mark.slow
 def test_shortcut_adds_timepoint_at_hovered_frame(viewer, app, monkeypatch):
     identifier = TimepointIdentifier('Bud', (255, 0, 0), 'Q')
     viewer.addTimepointIdentifierItem(identifier)
@@ -1206,6 +1222,7 @@ def test_shortcut_adds_timepoint_at_hovered_frame(viewer, app, monkeypatch):
     assert not action.triggeredByShortcut
 
 
+@pytest.mark.slow
 def test_clicking_timepoint_button_adds_at_current_frame(
         viewer, app, monkeypatch
     ):
@@ -1256,6 +1273,7 @@ def test_clicking_timepoint_button_adds_at_current_frame(
     ]
 
 
+@pytest.mark.slow
 def test_auto_shortcut_predicts_selected_cell_and_replots(viewer, app):
     identifier = TimepointIdentifier(
         'Big', (0, 255, 0), 'Q',
@@ -1275,6 +1293,7 @@ def test_auto_shortcut_predicts_selected_cell_and_replots(viewer, app):
     viewer.hide()
 
 
+@pytest.mark.slow
 def test_auto_shortcut_is_never_ambiguous(viewer, app, monkeypatch):
     shifted = TimepointIdentifier('Bud', (255, 0, 0), 'Shift+Q')
     empty = TimepointIdentifier('Septum', (0, 255, 0), '')
@@ -1307,6 +1326,7 @@ def test_auto_shortcut_is_never_ambiguous(viewer, app, monkeypatch):
     assert timepoints(viewer, shifted.uid) == {1: [2]}
 
 
+@pytest.mark.slow
 def test_timepoint_shortcut_used_by_a_tool_key_is_not_set(
         viewer, app, monkeypatch, capsys
     ):
@@ -1413,6 +1433,7 @@ def test_lines_follow_selected_cell_and_mode(viewer):
     assert not viewer.addTimepoint(identifier.uid, 2)
 
 
+@pytest.mark.slow
 def test_predictor_runs_and_export_columns(viewer):
     identifier = TimepointIdentifier(
         'Big', (0, 255, 0), 'W', 
@@ -1433,6 +1454,7 @@ def test_predictor_runs_and_export_columns(viewer):
     assert timepoints(viewer, identifier.uid) == {1: [3]}
 
 
+@pytest.mark.slow
 def test_combine_measurements_uses_timepoint_columns_and_cell_aggregations(
         viewer, monkeypatch
     ):
@@ -1473,6 +1495,7 @@ def big_identifier(viewer):
     return identifier
 
 
+@pytest.mark.slow
 def test_automatic_predictions_only_run_on_newly_viewed_cells(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
@@ -1528,6 +1551,7 @@ def test_viewed_cells_are_scoped_to_position_table(viewer, monkeypatch):
     assert other.xs(1, level='Cell_ID')[VISITED_COLUMN].all()
 
 
+@pytest.mark.slow
 def test_adding_identifier_does_not_repredict_viewed_cells(viewer, monkeypatch):
     big_identifier(viewer)
     other = TimepointIdentifier(
@@ -1545,6 +1569,7 @@ def test_adding_identifier_does_not_repredict_viewed_cells(viewer, monkeypatch):
     assert all(call.kwargs['IDs'] == {2} for call in predict.call_args_list)
 
 
+@pytest.mark.slow
 def test_predictor_edit_does_not_repredict_viewed_cells(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     monkeypatch.setattr(viewer, 'execTimepointIdentifierDialog', Mock(return_value={
@@ -1578,6 +1603,7 @@ def test_explicit_shortcut_preserves_manual_edit_warning(viewer, monkeypatch):
     assert timepoints(viewer, identifier.uid) == {1: [0, 1, 3]}
 
 
+@pytest.mark.slow
 def test_viewed_cells_configuration_roundtrip(viewer, tmp_path, monkeypatch):
     big_identifier(viewer)
     viewer.setSelectedID(2)
@@ -1649,6 +1675,7 @@ def test_predictor_requires_auto_apply_unless_forced(viewer, monkeypatch):
     assert timepoints(viewer, identifier.uid) == {1: [1, 3]}
 
 
+@pytest.mark.slow
 def test_auto_predictions_track_each_cell_including_empty_results(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     viewer.timepointAutoPredictions.clear()
@@ -1668,6 +1695,7 @@ def test_auto_predictions_track_each_cell_including_empty_results(viewer, monkey
     assert timepoints(viewer, identifier.uid) == {1: [1, 3]}
 
 
+@pytest.mark.slow
 def test_auto_predictions_are_scoped_to_position_path_and_identifier(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     predict = Mock(wraps=timepoint_predictors.TimepointPredictor.predict)
@@ -1700,6 +1728,7 @@ def test_auto_predictions_retry_failures(viewer, monkeypatch):
     assert timepoints(viewer, identifier.uid)[1] == [2]
 
 
+@pytest.mark.slow
 def test_auto_predictions_skip_cells_without_marking_them_completed(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     viewer.timepointAutoPredictions.clear()
@@ -1713,6 +1742,7 @@ def test_auto_predictions_skip_cells_without_marking_them_completed(viewer, monk
     assert predict.call_count == 2
 
 
+@pytest.mark.slow
 def test_reevaluation_bypasses_auto_apply_guard(viewer):
     identifier = TimepointIdentifier(
         'Big', (0, 255, 0), 'W',
@@ -1738,6 +1768,7 @@ def test_enabling_auto_apply_after_position_load(viewer):
     assert timepoints(viewer, identifier.uid) == {1: [1, 3]}
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('auto_apply', [False, True])
 def test_edit_identifier_preserves_and_updates_auto_apply(viewer, monkeypatch, auto_apply):
     identifier = TimepointIdentifier(
@@ -1811,6 +1842,7 @@ def test_manual_edits_are_tracked(viewer, app):
     assert edited[identifier.uid] == {1}
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('answer, expected', [
     ('cancel', {1: [3], 2: [0]}),
     ('skip', {1: [3], 2: [0]}),
@@ -1829,6 +1861,7 @@ def test_reevaluate_all_cells_warns_on_edits(viewer, monkeypatch, answer, expect
     assert edited == (set() if answer == 'overwrite' else {1, 2})
 
 
+@pytest.mark.slow
 def test_reevaluate_displayed_cell_only(viewer, monkeypatch):
     identifier = big_identifier(viewer)
     viewer.addTimepoint(identifier.uid, 0, ID=1)
@@ -1862,6 +1895,7 @@ def test_reevaluate_single_identifier(viewer, monkeypatch):
     assert timepoints(viewer, other.uid) == {2: [0]}
 
 
+@pytest.mark.slow
 def test_remove_identifier(viewer):
     identifier = TimepointIdentifier('Bud', (255, 0, 0), 'Q')
     action = viewer.addTimepointIdentifierItem(identifier)
@@ -2382,6 +2416,7 @@ def test_nested_editors_are_deleted_after_use(app, acdc_df, monkeypatch):
         caller.deleteLater()
 
 
+@pytest.mark.slow
 def test_viewer_deletes_identifier_and_condition_dialogs(viewer, monkeypatch):
     mv = apps_measurements_viewer
 

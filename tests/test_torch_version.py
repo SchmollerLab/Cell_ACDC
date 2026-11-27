@@ -13,6 +13,8 @@ from cellacdc import _torch_utils, myutils
 from cellacdc._torch_utils import torch_requirement, torch_version_specifier
 from cellacdc.service import environment, prompts
 
+pytestmark = pytest.mark.models
+
 
 def test_legacy_imports_reexport_torch_helpers():
     for name in (
@@ -43,6 +45,7 @@ def test_relocated_device_selection(monkeypatch, gpu, cuda, mps, expected):
     torch.device.assert_called_once_with(expected)
 
 
+@pytest.mark.slow
 def test_torch_utils_import_does_not_load_gui_or_torch():
     script = """
 import sys

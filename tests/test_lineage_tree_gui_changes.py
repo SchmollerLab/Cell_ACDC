@@ -10,6 +10,8 @@ import pytest
 
 from cellacdc import gui, lineage_tree_cols, widgets
 
+pytestmark = pytest.mark.gui
+
 LIN_TREE_MODE = 'Normal division: Lineage tree'
 
 

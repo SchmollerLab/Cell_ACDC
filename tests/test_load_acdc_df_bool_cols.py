@@ -2,8 +2,11 @@
 (`load.acdc_df_bool_cols`), cast by `load._load_acdc_df_file`."""
 import numpy as np
 import pandas as pd
+import pytest
 
 from cellacdc import load
+
+pytestmark = pytest.mark.core
 
 CSV = """frame_i,Cell_ID,is_cell_dead,is_cell_excluded,is_history_known,cell_cycle_stage,relationship
 0,1,0,0,1,G1,mother

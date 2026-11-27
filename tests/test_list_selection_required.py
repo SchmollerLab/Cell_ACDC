@@ -23,6 +23,8 @@ from cellacdc.gui_overlay import (
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.utils import concat
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():
@@ -295,6 +297,7 @@ def _unchecked_single_choices(scope):
             )
 
 
+@pytest.mark.slow
 def test_single_choices_read_by_index_require_a_selection():
     # Ctrl+Click on the selected item of a single-choice list empties it: an
     # OK then returned `selectedItemsText == []` and `[0]` raised IndexError

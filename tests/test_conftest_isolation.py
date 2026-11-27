@@ -4,8 +4,18 @@
   custom annotations, metadata entries, recent paths, ``QSettings``) and the
   log folder are redirected to a temporary folder.
 - Widgets released with ``deleteLater()`` are destroyed after each test.
+- The garbage of each test (also its fixture windows) is collected after it,
+  although the objects alive after earlier tests are frozen.
+- The pending events of a test run after it with its settings still
+  isolated.
+
+Checks that span several tests run in their own pytest session
+(``test_conftest_cleans_up_after_each_test``).
 """
 import os
+import subprocess
+import sys
+import weakref
 
 import numpy as np
 import pandas as pd
@@ -18,7 +28,10 @@ from cellacdc import gui_core, gui_custom_annotations, gui_viewer_tools
 from cellacdc import load, measurements_viewer, myutils, prompts
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc.promptable_models import saved_models
+from tests import conftest
 from tests.conftest import flushDeferredDeletes
+
+pytestmark = pytest.mark.infra
 
 # Captured at import (collection) time, before any test redirects them
 REAL_SETTINGS_FOLDERPATH = cellacdc.settings_folderpath
@@ -162,30 +175,124 @@ def test_viewer_does_not_touch_real_settings(app, _isolate_user_settings):
     assert settings.value('geometry_conftest_isolation') is not None
 
 
-_released = {}
-
-
-def test_deleted_later_widget_released(app):
+def test_flush_collects_the_cyclic_garbage_of_the_test(app):
+    # As after each test, the objects alive now are frozen (gc.freeze): the
+    # ones created afterwards are still collected
+    conftest.freezeSurvivingObjects()
     widget = QWidget()
+    # The Python wrapper in a reference cycle: only gc.collect() frees it
+    widget.cycle = widget
+    ref = weakref.ref(widget)
+    del widget
+    assert ref() is not None
+    flushDeferredDeletes()
+    assert ref() is None
+
+
+# Run in its own pytest session (with the conftest as plugin): the checks
+# span several tests, and a test must not depend on an earlier test of the
+# suite (deselection would skip it)
+_BETWEEN_TESTS_SESSION = '''
+import weakref
+
+import pytest
+from qtpy.QtCore import QTimer
+from qtpy.QtWidgets import QApplication, QDialog, QPushButton, QWidget
+
+import cellacdc
+
+REAL_SETTINGS_FOLDERPATH = cellacdc.settings_folderpath
+APP = QApplication.instance() or QApplication([])
+state = {}
+
+
+class ProgressLikeDialog(QDialog):
+    """Refuses to close, like the progress window of a running worker."""
+
+    def closeEvent(self, event):
+        event.ignore()
+
+
+@pytest.fixture
+def window_with_slot():
+    window = QWidget()
+    child = QPushButton(window)
+    # Python wrapper in a reference cycle, also through a PyQt slot proxy
+    window.cycle = window
+    child.clicked.connect(lambda: window.objectName())
+    yield window
+    window.deleteLater()
+
+
+def test_fixture_window(window_with_slot):
+    state['window'] = weakref.ref(window_with_slot)
+
+
+def test_pending_timer():
+    def record():
+        state['settings_folderpath'] = cellacdc.settings_folderpath
+    QTimer.singleShot(0, record)
+
+
+def test_deleted_later_widget():
+    widget = QWidget()
+    widget.setObjectName('released_by_a_test')
     widget.show()
-    _released['destroyed'] = False
-    widget.destroyed.connect(lambda *args: _released.update(destroyed=True))
+    state['destroyed'] = False
+    widget.destroyed.connect(lambda *args: state.update(destroyed=True))
     widget.deleteLater()
-    app.processEvents()
-    # processEvents() does not deliver DeferredDelete outside an event loop
-    assert not _released['destroyed']
-    _released['name'] = 'conftest_isolation_released_widget'
-    widget.setObjectName(_released['name'])
 
 
-def test_deleted_later_widget_destroyed_after_previous_test(app):
-    # End-to-end check of the autouse fixture's teardown; the self-contained
-    # check is test_flush_deferred_deletes_destroys_widget
-    if 'name' not in _released:
-        pytest.skip('requires test_deleted_later_widget_released to run first')
-    assert _released.get('destroyed') is True
+@pytest.mark.filterwarnings('ignore::tests.conftest.LeftOpenDialogWarning')
+def test_dialog_left_open():
+    # e.g. the leaked "Computing" progress window of a background utility
+    # test, which used to reach the watchdog tests in CI
+    dialog = ProgressLikeDialog()
+    dialog.setWindowTitle('Left open by a test')
+    dialog.show()
+    state['dialog'] = dialog
+
+
+def test_after_the_other_tests():
+    # pytest holds the fixture values until after the fixture teardowns: the
+    # conftest collects (and freezes) after that, else the window would stay
+    # alive until the end of the module
+    assert state['window']() is None
+    # The event-loop pass after a test runs while its settings are isolated
+    assert state['settings_folderpath'] != REAL_SETTINGS_FOLDERPATH
+    # Widgets released with deleteLater() are destroyed after the test
+    # (processEvents() never delivers DeferredDelete outside an event loop)
+    assert state['destroyed'] is True
     names = [widget.objectName() for widget in QApplication.topLevelWidgets()]
-    assert _released['name'] not in names
+    assert 'released_by_a_test' not in names
+    # Dialogs left open by a test are hidden after it
+    assert not state['dialog'].isVisible()
+'''
+
+
+@pytest.mark.slow
+def test_conftest_cleans_up_after_each_test(tmp_path):
+    """End-to-end checks of the conftest's cleanup between tests.
+
+    The self-contained parts are checked in the push tier by the other
+    tests of this file and of ``test_conftest_dialog_watchdog.py``.
+    """
+    testFile = tmp_path / 'test_between_tests.py'
+    testFile.write_text(_BETWEEN_TESTS_SESSION)
+    repoPath = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env = {
+        **os.environ, 'PYTHONPATH': repoPath, 'QT_QPA_PLATFORM': 'offscreen'
+    }
+    env.pop('ACDC_TESTS_FULL_GC', None)
+    result = subprocess.run(
+        [
+            sys.executable, '-m', 'pytest', str(testFile), '-q',
+            '-p', 'tests.conftest', '-p', 'no:cacheprovider',
+            '--basetemp', str(tmp_path / 'basetemp'),
+        ],
+        cwd=repoPath, env=env, capture_output=True, text=True, timeout=120
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_flush_deferred_deletes_destroys_widget(app):

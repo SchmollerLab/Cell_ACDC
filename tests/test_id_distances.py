@@ -4,6 +4,8 @@ import pytest
 from cellacdc import myutils
 from cellacdc.regionprops import acdcRegionprops
 
+pytestmark = pytest.mark.core
+
 
 @pytest.fixture(params=[None, [1, 8, 16], [16, 8, 1]])
 def rps(request):

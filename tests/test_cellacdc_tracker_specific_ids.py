@@ -1,3 +1,4 @@
+import pytest
 import numpy as np
 from skimage.measure import regionprops
 
@@ -5,6 +6,8 @@ from cellacdc.regionprops import acdcRegionprops
 from cellacdc.trackers.CellACDC import CellACDC_tracker
 from cellacdc.trackers.CellACDC_2steps.CellACDC_2steps_tracker import tracker as TwoStepsTracker
 from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker import tracker as NormalDivisionTracker
+
+pytestmark = pytest.mark.models
 
 
 def test_calc_io_matrix_uses_regionprops_iteration_order_for_axes():
@@ -191,6 +194,7 @@ def test_normal_division_specific_ids_preserve_division_context():
     assert add_info['assignments'] == {7: 20}
 
 
+@pytest.mark.smoke
 def test_normal_division_second_step_does_not_track_daughters_as_lost_cells():
     prev_lab = np.array(
         [

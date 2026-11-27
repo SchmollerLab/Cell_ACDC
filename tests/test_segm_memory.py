@@ -18,6 +18,8 @@ import requests
 from cellacdc import cli, core, myutils
 from cellacdc.service import client as service_client
 
+pytestmark = pytest.mark.models
+
 
 class _RecordingModel:
     """Model that records the images it receives."""

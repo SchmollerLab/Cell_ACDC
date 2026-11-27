@@ -18,6 +18,8 @@ from tests.conftest import (
     _DialogWatchdog, flushDeferredDeletes
 )
 
+pytestmark = pytest.mark.infra
+
 SAFETY_TIMEOUT_MS = 5000
 
 # Showing a QMessageBox on the offscreen (or minimal) platform crashes the
@@ -170,6 +172,7 @@ class _ValidatingDialog(QDialog):
         self.warnings.append(msg)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     'useMyMessageBox', [pytest.param(False, marks=shows_qmessagebox), True]
 )
@@ -212,6 +215,9 @@ def _assertNoStateLeft(watchdog):
 # Freed dialogs give their id() to the next one: state keyed by id() skipped
 # the grace period and, from the third dialog on, exceeded MAX_ATTEMPTS so
 # the dialog was closed (cancelled) instead of OK'd
+@pytest.mark.slow
+# Failed now and then on CI (timing): runs 43251748816, 45474855842
+@pytest.mark.flaky
 @shows_qmessagebox
 def test_sequential_message_boxes_get_fresh_state(
         app, safety_net, _auto_answer_blocking_dialogs
@@ -231,6 +237,7 @@ def test_sequential_message_boxes_get_fresh_state(
     _assertNoStateLeft(watchdog)
 
 
+@pytest.mark.slow
 def test_sequential_custom_message_boxes_get_fresh_state(
         app, safety_net, _auto_answer_blocking_dialogs
     ):
@@ -327,26 +334,9 @@ def test_dialogs_left_open_are_hidden_but_not_older_ones(app):
             dialog.deleteLater()
 
 
-# Set by the test below, checked by the one after it: the conftest hides the
-# dialog after the test (the leaked "Computing" progress window of a
-# background utility test used to reach these watchdog tests in CI)
-_LEFT_OPEN_BY_PREVIOUS_TEST = []
-
-
-@pytest.mark.filterwarnings('ignore::tests.conftest.LeftOpenDialogWarning')
-def test_leave_dialog_open(app):
-    dialog = _ProgressLikeDialog()
-    dialog.setWindowTitle('Left open by a test')
-    dialog.show()
-    _LEFT_OPEN_BY_PREVIOUS_TEST.append(dialog)
-
-
-def test_dialog_left_open_by_previous_test_was_hidden(app):
-    if not _LEFT_OPEN_BY_PREVIOUS_TEST:
-        pytest.skip('test_leave_dialog_open did not run before')
-    dialog = _LEFT_OPEN_BY_PREVIOUS_TEST.pop()
-    assert not dialog.isVisible()
-    dialog.deleteLater()
+# That the conftest hides a dialog left open by a test after it is checked
+# end to end by test_conftest_cleans_up_after_each_test
+# (test_conftest_isolation.py)
 
 
 def test_message_box_without_title_is_named_by_its_text(app):

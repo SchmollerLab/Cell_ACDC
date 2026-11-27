@@ -1,0 +1,45 @@
+# Full test suite (also the tests marked slow or flaky) on every platform of the
+# build-*.yml workflows (the jobs are in full-tests-matrix.yml). Run it before
+# merging a pull request:
+# - add the "full tests" label (exactly this name) to the pull request:
+#   the suite runs now and again on every push while the label stays (a push
+#   or removing the label cancels a running suite);
+# - or manually: Actions > Full test suite > Run workflow, on a branch that
+#   contains this file.
+# Pushes to main and the weekly runs of the build-*.yml workflows run the
+# full suite too.
+# See "Running the tests" in cellacdc/docs/source/contributing.rst.
+
+name: Full test suite
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+  workflow_dispatch:
+
+concurrency:
+  # A push cancels the running full suite of the pull request (also after
+  # the label was removed), and so does removing the label. Adding or
+  # removing another label gets its own group: it never cancels a full suite
+  group: >-
+    ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{
+    (github.event.action != 'labeled' && github.event.action != 'unlabeled') ||
+    github.event.label.name == 'full tests' }}
+  cancel-in-progress: true
+
+jobs:
+  full:
+    # Not a matrix job: the jobs are in full-tests-matrix.yml, so that the
+    # check of a skipped run is named "full" (a skipped matrix job shows its
+    # unevaluated name template). The checks of a run are named
+    # "full / <os>, <qt>, Python <version>".
+    name: full
+    # Pull requests: only with the label, and adding or removing another
+    # label does not start the suite again
+    if: >-
+      github.event_name != 'pull_request' ||
+      (contains(github.event.pull_request.labels.*.name, 'full tests') &&
+      github.event.action != 'unlabeled' &&
+      (github.event.action != 'labeled' || github.event.label.name == 'full tests'))
+    uses: ./.github/workflows/full-tests-matrix.yml

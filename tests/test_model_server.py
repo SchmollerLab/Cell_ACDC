@@ -11,6 +11,8 @@ from cellacdc.service.schema import HealthResponse, InfoResponse, Capabilities, 
 from cellacdc.service.client import LocalBackend, ModelClient, RemoteBackend
 from cellacdc import cli, myutils_models
 
+pytestmark = pytest.mark.models
+
 
 def test_local_backend_forwards_worker_output(capsys):
     import collections
@@ -88,6 +90,7 @@ def test_parse_response_supports_pydantic_1_and_2():
     assert info_v1.capabilities.segment3DT is True
 
 
+@pytest.mark.slow
 def test_local_backend_lifecycle():
     with LocalBackend(model_name="thresholding") as client:
         assert isinstance(client, ModelClient)
@@ -130,6 +133,8 @@ def test_local_backend_lifecycle():
             client.get_job_result(job_id)
 
 
+@pytest.mark.slow
+@pytest.mark.smoke
 def test_segm_kernel_with_local_backend():
     kernel = cli.SegmKernel(logger=None, log_path=None, is_cli=True)
     try:
@@ -177,6 +182,7 @@ def test_segm_kernel_with_local_backend():
         assert kernel.backend is None
 
 
+@pytest.mark.slow
 def test_workflow_kernel_backend_general():
     base_kernel = cli._WorkflowKernel(
         logger=None, 
@@ -264,6 +270,8 @@ def test_install_failure_does_not_open_qt_dialog(monkeypatch, external):
     monkeypatch.setattr(myutils, "is_gui_running", lambda: True)
     dialog = Mock(side_effect=AssertionError("CLI must not open Qt dialogs"))
     monkeypatch.setattr(myutils, "_inform_install_package_failed", dialog)
+    # printl looks up the source file of every caller frame (0.5 s)
+    monkeypatch.setattr(myutils, "printl", Mock())
     logger = Mock()
     with pytest.raises(RuntimeError) as raised:
         myutils.check_install_package(
@@ -512,6 +520,7 @@ def test_declined_optional_model_setup_step_is_skipped(monkeypatch, prompt_func)
         )
 
 
+@pytest.mark.slow
 def test_get_model_arg_spec_from_env():
     from cellacdc import myutils
 
@@ -1306,6 +1315,7 @@ def test_model_param_metadata_creates_typed_gui_widgets():
         dialog.close()
 
 
+@pytest.mark.slow
 def test_create_and_link_venv(tmp_path):
     import subprocess
     from cellacdc.service.environment import (
@@ -1384,6 +1394,7 @@ def test_create_and_link_venv(tmp_path):
 #     assert "CPU" in get_torch_choices()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("server_mode", [False, True])
 def test_headless_server_config_import(server_mode):
     import subprocess
@@ -1839,6 +1850,7 @@ def _points_df(num_rows):
 _FORM_FIELD_LIMIT = 1024 * 1024  # Starlette's limit for one form field
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('with_array', [False, True])
 def test_payload_keeps_large_json_in_one_attachment(with_array):
     """The worker (Starlette) limits each form field to 1 MiB, so all
@@ -1945,6 +1957,7 @@ def _serve_app(app):
     raise RuntimeError('The test server did not start')
 
 
+@pytest.mark.slow
 def test_worker_accepts_arguments_larger_than_form_fields(monkeypatch):
     """Over real HTTP (uvicorn and the real client): the worker (Starlette)
     rejects form fields larger than 1 MiB. A table of point prompts for SAM
@@ -2033,6 +2046,7 @@ def test_worker_accepts_arguments_larger_than_form_fields(monkeypatch):
         stop()
 
 
+@pytest.mark.slow
 def test_worker_rejects_clients_of_other_protocol_versions(monkeypatch):
     """Over real HTTP: requests without the client's protocol version (e.g.
     from an older Cell-ACDC) or with another version are answered with
@@ -2497,6 +2511,7 @@ def test_runtime_identity_of_old_cellacdc_is_protocol_1(tmp_path):
     assert 'protocol 1' in environment._runtime_mismatch(identity)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('cwd, imports_installed', [
     ('elsewhere', True),
     # A checkout hides the installed package (`python -c` imports the
@@ -2557,6 +2572,7 @@ def test_runtime_identity_uses_metadata_of_imported_package(
         assert 'which is not an installed Cell-ACDC package' in reason
 
 
+@pytest.mark.slow
 def test_runtime_of_this_source_checkout_matches():
     """Real subprocess: this interpreter imports this Cell-ACDC."""
     import cellacdc
@@ -2661,6 +2677,7 @@ def test_repair_cellacdc_runtime_reinstalls_and_verifies(
         assert 'still differs' in output and after in output
 
 
+@pytest.mark.slow
 def test_repair_lock_admits_one_holder_at_a_time(tmp_path):
     """While one holder repairs an environment, another one waits (and times
     out); it gets the lock when the first releases it and knows that it
@@ -2705,6 +2722,7 @@ def test_repair_lock_admits_one_holder_at_a_time(tmp_path):
     assert (env_dir / environment._REPAIR_LOCK_NAME).exists()
 
 
+@pytest.mark.slow
 def test_repair_lock_of_killed_process_is_released(tmp_path):
     """A process killed while it repairs an environment leaves no lock
     behind: the operating system releases it, so the next process repairs
@@ -3130,6 +3148,7 @@ def test_model_file_rejects_invalid_names(name):
         ModelFile(name, b'weights')
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('file_param', ['model_path', 'input_points_path'])
 def test_remote_backend_uploads_and_reinitializes_model_files(
         monkeypatch, tmp_path, file_param,
@@ -3219,6 +3238,7 @@ def test_remote_backend_uploads_and_reinitializes_model_files(
         stop()
 
 
+@pytest.mark.slow
 def test_worker_passes_uploaded_files_to_model_calls(monkeypatch, tmp_path):
     """Over real HTTP: files on the client's disk in the kwargs of /segment,
     /segment3DT, /add_prompt and background jobs reach the model as
@@ -3631,6 +3651,7 @@ def test_worker_runs_model_specific_methods(monkeypatch):
     assert not endpoints[('/info', ('GET',))]().capabilities.predictCcaState
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('method', ['segment', 'segment3DT', 'submit_job'])
 def test_model_client_large_array_kwargs_over_http(monkeypatch, method):
     import asyncio
@@ -3847,6 +3868,7 @@ def test_worker_sends_binary_responses_in_chunks(monkeypatch, path):
     assert labels.dtype == result.dtype
 
 
+@pytest.mark.slow
 def test_model_client_receives_responses_larger_than_one_socket_write(
         monkeypatch
     ):
@@ -4465,6 +4487,7 @@ def test_model_client_save_load_forwarding_and_capability(tmp_path):
     assert len(posted) == 2
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('num_slices,single_slice_payload', [
     (1, False), (1, True), (500, False),
 ])
@@ -4989,6 +5012,7 @@ def test_failed_torch_or_cellacdc_install_aborts_setup(monkeypatch):
     with pytest.raises(RuntimeError, match='Cell-ACDC could not be installed'):
         environment.ensure_worker_dependencies(sys.executable)
 
+@pytest.mark.slow
 def test_local_backend_deferred_init_sends_segm_data():
     """Init data (arrays) is sent via POST /init, not as client file paths."""
     segm = np.arange(8, dtype=np.uint32).reshape(2, 2, 2)
@@ -5005,6 +5029,7 @@ def test_local_backend_deferred_init_sends_segm_data():
         backend.stop()
 
 
+@pytest.mark.slow
 def test_local_backend_deferred_init_error_is_reported():
     backend = LocalBackend(
         'skip_segmentation', env_python=sys.executable,
@@ -5015,6 +5040,7 @@ def test_local_backend_deferred_init_error_is_reported():
     assert backend.proc is None or backend.proc.poll() is not None
 
 
+@pytest.mark.slow
 def test_local_backend_reinitialize_keeps_process():
     """`reinitialize` replaces the model without restarting the worker."""
     first = np.full((1, 2, 2), 1, dtype=np.uint32)

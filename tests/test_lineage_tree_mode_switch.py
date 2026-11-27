@@ -28,6 +28,8 @@ from cellacdc import apps, gui, myutils, widgets
 from cellacdc import base_cca_dict, cca_df_colnames, lineage_tree_cols
 from cellacdc.regionprops import acdcRegionprops
 
+pytestmark = pytest.mark.gui
+
 G = gui.guiWin
 VIEWER = 'Viewer'
 SEGM = 'Segmentation and Tracking'

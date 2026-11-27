@@ -176,9 +176,29 @@ conflicts = [
     ],
 ]
 
-# Ignore DeprecationWarnings
 [tool.pytest.ini_options]
-addopts = ["--ignore=cellacdc/test_tracker.py"]
+testpaths = ["tests"]
+# --strict-markers: a typo in a marker name is an error
+addopts = ["--ignore=cellacdc/test_tracker.py", "--strict-markers"]
+# Test tiers (see "Running the tests" in cellacdc/docs/source/contributing.rst):
+# every push to a pull request runs -m "(smoke or not slow) and not flaky",
+# the full suite runs before merging. A plain `pytest` runs everything.
+markers = [
+    "slow: takes 0.5 s or more (a parametrized test: 5 s for all its cases); left out of the fast tier of pull requests (deselect with -m 'not slow')",
+    "smoke: checks a core workflow; runs on every push, also when slow (select with -m smoke)",
+    "flaky: fails or hangs now and then on CI (timing, Qt threads); left out of the fast tier until fixed",
+    # Areas: every test file has exactly one, in its module pytestmark
+    # (checked by tests/test_area_markers.py), e.g. -m "viewer and slow"
+    "viewer: area: the measurements viewer, its predictors, phases, equations and measurement processing",
+    "gui: area: the main GUI, the launcher and shared widgets and dialogs",
+    "models: area: segmentation models, trackers, promptable models and the model server",
+    "core: area: data loading, measurements, image analysis algorithms and batch utilities",
+    "infra: area: the test setup, packaging, resources and repository tooling",
+]
+# Print the stack of every thread when a test runs longer than 5 minutes
+# (hung Qt worker threads); the test keeps running
+faulthandler_timeout = 300
+# Ignore DeprecationWarnings
 filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore:cannot import name '_C' from 'sam2':UserWarning",

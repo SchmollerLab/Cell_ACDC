@@ -10,6 +10,8 @@ import pytest
 from cellacdc import timepoint_predictors as tp
 from cellacdc._equations import equation_variable_spans
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def qapp():
@@ -1094,6 +1096,7 @@ def lineage_frame(kind, seed):
     return df.sample(frac=1, random_state=seed).set_index(['frame_i', 'Cell_ID'])
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('kind,source', [
     ('tree', tp.SOURCE_MOTHER), ('tree', tp.SOURCE_SISTER),
     ('tree', tp.SOURCE_DAUGHTER), ('budding', tp.SOURCE_MOTHER),

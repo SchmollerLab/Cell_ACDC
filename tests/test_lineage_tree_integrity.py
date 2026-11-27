@@ -5,6 +5,8 @@ import pytest
 from cellacdc import base_cca_dict
 from cellacdc import lineage_tree_integrity as lti
 
+pytestmark = pytest.mark.core
+
 # Lineage: 1 divides into 3 + 4 (frame 3), 3 divides into 5 + 6 (frame 6).
 # 2 has unknown history for the whole movie, 4 disappears at frame 7.
 N_FRAMES = 10

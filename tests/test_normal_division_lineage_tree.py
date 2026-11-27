@@ -16,6 +16,8 @@ from cellacdc.trackers.CellACDC_normal_division.CellACDC_normal_division_tracker
     lineage_tree_annotated_frames
 )
 
+pytestmark = pytest.mark.models
+
 SHAPE = (80, 120)
 
 

@@ -14,6 +14,8 @@ from cellacdc import apps, apps_measurements_viewer, measurements_viewer, widget
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from tests.conftest import flushDeferredDeletes
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():
@@ -252,6 +254,7 @@ def test_worker_error_is_reported_once_and_controls_reenabled(viewer):
     assert viewer.refreshButton.isEnabled()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mode', [0, 1])
 @pytest.mark.parametrize('normalize', [False, True])
 def test_processed_columns_plot_in_both_modes(viewer, mode, normalize):
@@ -529,6 +532,7 @@ def test_cancel_does_not_process(viewer, monkeypatch):
     start.assert_not_called()
 
 
+@pytest.mark.slow
 def test_recipe_dialog_is_deleted_after_use(viewer, monkeypatch):
     # A child of the viewer, it kept the table it was opened with alive for
     # the whole session (e.g. after a position switch or Reload table)
@@ -627,6 +631,7 @@ def test_recipe_inputs_dropped_meanwhile_are_refused(viewer, monkeypatch):
     )
 
 
+@pytest.mark.slow
 def test_export_includes_processed_columns(viewer, monkeypatch, tmp_path):
     viewer.startMeasurementsProcessing(
         ['area'], [{'method': 'Dummy', 'kwargs': {}}], ['area_copy']

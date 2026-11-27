@@ -21,7 +21,7 @@ from cellacdc.measurements_viewer import MeasurementsViewerWin, VISITED_COLUMN
 from cellacdc.timepoint_predictors import TimepointIdentifier
 
 # The configurations below use the test-only identity processor 'Dummy'
-pytestmark = pytest.mark.usefixtures('dummy_processor')
+pytestmark = [pytest.mark.viewer, pytest.mark.usefixtures('dummy_processor')]
 
 
 @pytest.fixture(scope='module')
@@ -93,6 +93,7 @@ def make_experiment(root, positions=2):
     return paths
 
 
+@pytest.mark.smoke
 def test_real_workflow_roundtrip_and_lazy_predictions(viewer, tmp_path):
     paths = make_experiment(tmp_path)
     configuration = config(paths[0])
@@ -170,6 +171,7 @@ def write_stale_outputs(paths):
         table.to_csv(tablepath, index=False)
 
 
+@pytest.mark.slow
 def test_load_prompt_can_use_existing_values(viewer, tmp_path):
     paths = make_experiment(tmp_path)
     write_stale_outputs(paths)
@@ -190,6 +192,7 @@ def test_load_prompt_can_use_existing_values(viewer, tmp_path):
     )
 
 
+@pytest.mark.slow
 def test_load_prompt_recalculate_overwrites_outputs(viewer, tmp_path):
     paths = make_experiment(tmp_path)
     write_stale_outputs(paths)
@@ -215,6 +218,7 @@ def test_load_prompt_cancel_preserves_window(viewer, tmp_path):
     viewer.configurationError.assert_not_called()
 
 
+@pytest.mark.slow
 def test_load_without_steps_does_not_prompt(viewer, tmp_path):
     paths = make_experiment(tmp_path, positions=1)
     configuration = config(paths[0])
@@ -288,6 +292,7 @@ def load_clean_workflow(viewer, tmp_path, steps=True):
     return paths, path
 
 
+@pytest.mark.slow
 def test_configuration_changes_are_tracked(viewer, tmp_path):
     load_clean_workflow(viewer, tmp_path)
     assert not viewer.hasUnsavedConfiguration()
@@ -297,6 +302,7 @@ def test_configuration_changes_are_tracked(viewer, tmp_path):
     assert not viewer.hasUnsavedConfiguration()
 
 
+@pytest.mark.slow
 def test_table_changes_are_tracked_and_saved(viewer, tmp_path):
     paths, _ = load_clean_workflow(viewer, tmp_path)
     # Replayed workflow columns are not on disk yet.
@@ -318,6 +324,7 @@ def test_table_changes_are_tracked_and_saved(viewer, tmp_path):
     assert viewer.unsavedAcdcDfPositions() == [viewer.posData()]
 
 
+@pytest.mark.slow
 def test_save_tables_saves_only_changed_tables(viewer, tmp_path, monkeypatch):
     paths, _ = load_clean_workflow(viewer, tmp_path)
     saved = []
@@ -346,6 +353,7 @@ def test_save_tables_saves_only_changed_tables(viewer, tmp_path, monkeypatch):
     assert len(saved) == 2
 
 
+@pytest.mark.slow
 def test_empty_viewer_columns_are_not_changes(viewer, tmp_path):
     load_clean_workflow(viewer, tmp_path)
     viewer.saveAcdcDfs(viewer.data)
@@ -358,6 +366,7 @@ def test_empty_viewer_columns_are_not_changes(viewer, tmp_path):
     assert viewer.hasUnsavedAcdcDf(pos)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('tables, configChanged, expected', [
     (True, True, [
         'Cancel', "Don't save", 'Save tables only', 'Save configuration only',
@@ -382,6 +391,7 @@ def test_close_prompt_options_are_dynamic(
     assert FakeCloseBox.offered == expected
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('click, tablesSaved, configSaved, saveAs', [
     ("Don't save", False, False, None),
     ('Save tables only', True, False, None),
@@ -406,6 +416,7 @@ def test_close_prompt_actions(
         saveConfiguration.assert_not_called()
 
 
+@pytest.mark.slow
 def test_close_prompt_failed_save_cancels_close(viewer, tmp_path, monkeypatch):
     load_clean_workflow(viewer, tmp_path)
     monkeypatch.setattr(measurements_viewer.widgets, 'myMessageBox', FakeCloseBox)
@@ -414,6 +425,7 @@ def test_close_prompt_failed_save_cancels_close(viewer, tmp_path, monkeypatch):
     assert not viewer.askSaveBeforeClosing()
 
 
+@pytest.mark.slow
 def test_close_prompt_asks_again_for_changes_made_while_open(
         viewer, tmp_path, monkeypatch
     ):
@@ -450,6 +462,7 @@ def test_close_prompt_asks_again_for_changes_made_while_open(
     saveConfiguration.assert_called_once_with(save_as=False)
 
 
+@pytest.mark.slow
 def test_close_without_changes_does_not_prompt(viewer, tmp_path, monkeypatch):
     load_clean_workflow(viewer, tmp_path)
     viewer.saveAcdcDfs(viewer.data)
@@ -459,6 +472,7 @@ def test_close_without_changes_does_not_prompt(viewer, tmp_path, monkeypatch):
     box.assert_not_called()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('answer', ['reload', 'overwrite', None])
 @pytest.mark.parametrize('reloaded', [False, True])
 def test_saving_table_changed_on_disk_asks_first(
@@ -554,6 +568,7 @@ def phase_workflow(paths, autoApplyPhases=False):
     return configuration
 
 
+@pytest.mark.slow
 def test_empty_phases_survive_save_and_reload_with_cca_columns(
         viewer, tmp_path, app
     ):
@@ -581,6 +596,7 @@ def test_empty_phases_survive_save_and_reload_with_cca_columns(
     assert viewer.applyPhaseTranslator()
 
 
+@pytest.mark.slow
 def test_reload_and_save_keeps_phases_evaluated_in_memory(
         viewer, tmp_path, monkeypatch
     ):
@@ -612,6 +628,7 @@ def test_reload_and_save_keeps_phases_evaluated_in_memory(
     assert table['phase_Active'].tolist() == [True, True]
 
 
+@pytest.mark.slow
 def test_phase_evaluation_rebuilds_columns_only_when_they_change(
         viewer, tmp_path, monkeypatch
     ):
@@ -639,6 +656,7 @@ def test_phase_evaluation_rebuilds_columns_only_when_they_change(
     assert previous['phase'].tolist() == ['Active', '']
 
 
+@pytest.mark.slow
 def test_loading_configuration_auto_applies_phases_to_displayed_cell(
         viewer, tmp_path, app
     ):
@@ -652,6 +670,7 @@ def test_loading_configuration_auto_applies_phases_to_displayed_cell(
     assert phases.xs(1, level='Cell_ID').tolist() == ['Active']
 
 
+@pytest.mark.slow
 def test_navigation_toggles_are_persisted(viewer, app):
     for checkbox, name in (
             (viewer.rescalePlotCheckbox, 'rescalePlot'),
@@ -669,6 +688,7 @@ def test_navigation_toggles_are_persisted(viewer, app):
         app.processEvents()
 
 
+@pytest.mark.slow
 def test_configuration_shows_base_channel_without_visible_layers(
         viewer, tmp_path
     ):
@@ -680,6 +700,7 @@ def test_configuration_shows_base_channel_without_visible_layers(
     viewer.configurationError.assert_not_called()
 
 
+@pytest.mark.slow
 def test_new_experiment_without_visible_overlays_shows_base_channel(
         viewer, tmp_path, monkeypatch
     ):
@@ -741,6 +762,7 @@ def load_other_data(viewer, loader, root):
     return viewer.loadImagesPaths(paths)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('loader', ['configuration', 'folder'])
 @pytest.mark.parametrize('click', ['Cancel', "Don't save", 'Save tables'])
 def test_loading_other_data_asks_to_save_changes(
@@ -776,6 +798,7 @@ def test_loading_other_data_asks_to_save_changes(
     assert saved[VISITED_COLUMN].all() == (click == 'Save tables')
 
 
+@pytest.mark.slow
 def test_loading_other_data_offers_unsaved_configuration(
         viewer, tmp_path, monkeypatch
     ):
@@ -795,6 +818,7 @@ def test_loading_other_data_offers_unsaved_configuration(
     assert viewer.hasUnsavedConfiguration()
 
 
+@pytest.mark.slow
 def test_loading_other_data_without_changes_does_not_prompt(
         viewer, tmp_path, monkeypatch
     ):
@@ -808,6 +832,7 @@ def test_loading_other_data_without_changes_does_not_prompt(
     assert viewer.data is not before
 
 
+@pytest.mark.slow
 def test_reopening_unsaved_data_predicts_unvisited_cells_again(
         viewer, tmp_path, monkeypatch
     ):
@@ -951,6 +976,7 @@ def test_new_experiment_missing_overlays_prompt(
         assert option['visible_channels'] == ['phase']
 
 
+@pytest.mark.slow
 def test_configuration_actions_in_menu_and_toolbar(viewer):
     actions = (
         viewer.saveTablesAction, viewer.loadConfigurationAction,
@@ -989,6 +1015,7 @@ def test_configuration_actions_in_menu_and_toolbar(viewer):
     assert not viewer.saveTables()
 
 
+@pytest.mark.slow
 def test_input_choices_include_new_experiment(viewer, tmp_path, monkeypatch):
     configuration = config(tmp_path / 'old')
     paths = make_experiment(tmp_path / 'new', positions=1)
@@ -1271,6 +1298,7 @@ def test_successful_processing_and_combining_are_recorded(viewer, monkeypatch):
     assert len(viewer.combinedMeasurementSteps) == 1
 
 
+@pytest.mark.slow
 def test_visited_flag_survives_export_and_reload(viewer, tmp_path, monkeypatch):
     paths = make_experiment(tmp_path, positions=1)
     configuration = config(paths[0])
@@ -1297,6 +1325,7 @@ def test_visited_flag_survives_export_and_reload(viewer, tmp_path, monkeypatch):
     assert viewer.posData().acdc_df[VISITED_COLUMN].tolist() == [True, False]
 
 
+@pytest.mark.slow
 def test_legacy_config_migrates_viewed_ids(viewer, tmp_path):
     paths = make_experiment(tmp_path, positions=1)
     configuration = config(paths[0])
@@ -1312,6 +1341,7 @@ def test_legacy_config_migrates_viewed_ids(viewer, tmp_path):
     assert 'viewed_cells' not in viewer.configuration()
 
 
+@pytest.mark.slow
 def test_new_experiment_input_is_retained_on_save(viewer, tmp_path, monkeypatch):
     original = make_experiment(tmp_path / 'original', positions=1)
     other = make_experiment(tmp_path / 'other', positions=1)
@@ -1330,6 +1360,10 @@ def test_new_experiment_input_is_retained_on_save(viewer, tmp_path, monkeypatch)
     assert saved['images_paths'] == other
 
 
+@pytest.mark.slow
+# "wrapped C/C++ object deleted" on macOS, Python 3.11: runs 44305929981,
+# 44305929158, 44311383812
+@pytest.mark.flaky
 def test_saved_input_restores_channels_and_overlays(viewer, tmp_path, monkeypatch):
     # Exceptions raised inside Qt slots (e.g. `overlay_cb` when reloading
     # with overlays active) only reach sys.excepthook
@@ -1372,6 +1406,7 @@ def test_saved_input_restores_channels_and_overlays(viewer, tmp_path, monkeypatc
     assert json.loads(path.read_text())['input_options'] == configuration['input_options']
 
 
+@pytest.mark.slow
 def test_saving_unsorted_overlays_does_not_duplicate_input(viewer, tmp_path):
     paths = make_experiment(tmp_path, positions=1)
     images = tmp_path / 'Position_1' / 'Images'
@@ -1402,6 +1437,7 @@ def test_saving_unsorted_overlays_does_not_duplicate_input(viewer, tmp_path):
     assert len(MeasurementsViewerWin.configurationInputOptions(saved)) == 1
 
 
+@pytest.mark.slow
 def test_toggling_layer_visibility_updates_input_in_place(viewer, tmp_path):
     paths = make_experiment(tmp_path, positions=1)
     images = tmp_path / 'Position_1' / 'Images'
@@ -1431,6 +1467,7 @@ def test_toggling_layer_visibility_updates_input_in_place(viewer, tmp_path):
     assert len(MeasurementsViewerWin.configurationInputOptions(saved)) == 1
 
 
+@pytest.mark.slow
 def test_layer_change_updates_loaded_input_not_first_same_experiment(
         viewer, tmp_path):
     paths = make_experiment(tmp_path, positions=1)
@@ -1483,6 +1520,7 @@ def test_input_labels_show_overlays(viewer, tmp_path, monkeypatch):
     assert labels[1].endswith('; overlays: GFP)')
 
 
+@pytest.mark.slow
 def test_loading_configuration_removes_previous_custom_annotations(
         viewer, tmp_path, monkeypatch):
     first = make_experiment(tmp_path / 'first', positions=1)
@@ -1524,6 +1562,7 @@ def test_loading_configuration_removes_previous_custom_annotations(
     assert autoAction.shortcut().toString() == 'Shift+Q'
 
 
+@pytest.mark.slow
 def test_exported_manual_assignments_are_not_predicted_again(viewer, tmp_path):
     paths = make_experiment(tmp_path, positions=1)
     images = tmp_path / 'Position_1' / 'Images'
@@ -1562,6 +1601,7 @@ def set_table_columns(images, **columns):
     table.to_csv(tablepath, index=False)
 
 
+@pytest.mark.slow
 def test_configuration_annotation_named_like_a_measurement_is_refused(
         viewer, tmp_path):
     # Loading would turn the measurement into 0/1 (later saved): refused
@@ -1596,6 +1636,7 @@ def test_configuration_annotation_named_like_a_measurement_is_refused(
     assert viewer.configurationFilepath == str(first)
 
 
+@pytest.mark.slow
 def test_open_folder_refused_when_annotation_is_named_like_a_measurement(
         viewer, tmp_path, monkeypatch):
     # The annotations persist across loading: opening data whose table has
@@ -1683,6 +1724,7 @@ def test_quoted_placeholders_keep_backticks_only_if_needed():
     assert quoted == {'mKO2-hCdt1_mean'}
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('name, valid', [
     ('GFP_mean', True), ('mKO2-hCdt1_mean', True), ('_561_mean', True),
     ('561_mean', False), ('GFP-488_mean', False), ('GFP.488_mean', False),
@@ -1765,6 +1807,7 @@ def patch_premade_dialogs(viewer, monkeypatch, folder, saved, mapping):
     return offered
 
 
+@pytest.mark.slow
 def test_premade_configuration_is_copied_and_loaded(viewer, tmp_path, monkeypatch):
     experiment = tmp_path / 'exp'
     paths = make_experiment(experiment)
@@ -1803,6 +1846,7 @@ def test_premade_configuration_is_copied_and_loaded(viewer, tmp_path, monkeypatc
     assert json.loads(premade.read_text()) == premade_config()
 
 
+@pytest.mark.slow
 def test_premade_selected_display_channel_is_base(viewer, tmp_path, monkeypatch):
     experiment = tmp_path / 'exp'
     paths = make_experiment(experiment, positions=1)
@@ -2005,6 +2049,7 @@ def test_evaluate_conditional_formatting_first_true_rule_wins():
             )
 
 
+@pytest.mark.slow
 def test_conditional_formatting_colors_points_and_segments(viewer, tmp_path):
     load_clean_workflow(viewer, tmp_path)
     viewer.acdc_df = pd.DataFrame({
@@ -2058,6 +2103,7 @@ def pg_color_name(color):
     return pg.mkColor(color).name()
 
 
+@pytest.mark.slow
 def test_conditional_formatting_is_saved_and_loaded(viewer, tmp_path, monkeypatch):
     _, path = load_clean_workflow(viewer, tmp_path)
     rules = [{'condition': 'area > 20', 'color': '#123456'}]
@@ -2074,6 +2120,7 @@ def test_conditional_formatting_is_saved_and_loaded(viewer, tmp_path, monkeypatc
     assert not viewer.hasUnsavedConfiguration()
 
 
+@pytest.mark.slow
 def test_custom_signal_colors_are_saved_and_loaded(
         viewer, tmp_path, monkeypatch):
     _, path = load_clean_workflow(viewer, tmp_path)
@@ -2097,6 +2144,7 @@ def test_custom_signal_colors_are_saved_and_loaded(
     assert not viewer.hasUnsavedConfiguration()
 
 
+@pytest.mark.slow
 def test_time_course_y_axes_are_saved_and_loaded(
         viewer, tmp_path, monkeypatch):
     _, path = load_clean_workflow(viewer, tmp_path)
@@ -2144,6 +2192,7 @@ def test_time_course_y_axes_are_saved_and_loaded(
     assert not viewer.hasUnsavedConfiguration()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('bad', [
     [], {'': 2}, {'a': 0}, {'a': -1}, {'a': '2'}, {'a': True}, {'a': 1.5},
 ])
@@ -2155,6 +2204,7 @@ def test_invalid_time_course_y_axes_are_rejected(viewer, tmp_path, bad):
         MeasurementsViewerWin.validateConfiguration(configuration)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('bad', [
     [], {'': '#00ff00'}, {'a': 'green'}, {'a': '#00ff0'}, {'a': [0, 255, 0]},
 ])
@@ -2274,6 +2324,7 @@ def test_formatting_condition_editor_missing_values_are_false(app):
     dialog.deleteLater()
 
 
+@pytest.mark.slow
 def test_relative_formatting_colors(app, viewer, tmp_path):
     base = measurements_viewer.QColor('#ff0000')
     lighter = measurements_viewer.formatting_color('lighter', base)
@@ -2403,6 +2454,7 @@ def test_setup_dialog_asks_for_inputs(app, monkeypatch):
     assert dialog.values == {'BG': 1000.0, 'N': 4, 'LABEL': 'x'}
 
 
+@pytest.mark.slow
 def test_premade_input_values_are_written(viewer, tmp_path, monkeypatch):
     experiment = tmp_path / 'exp'
     paths = make_experiment(experiment)
@@ -2473,6 +2525,7 @@ def test_premade_mean_columns_of_zstack_tables(tmp_path, columns, expected):
     ) == expected
 
 
+@pytest.mark.slow
 def test_premade_template_uses_zstack_mean_columns(
         viewer, tmp_path, monkeypatch
     ):
@@ -2916,6 +2969,7 @@ def test_compute_background_summary_presets_utility(viewer, monkeypatch):
     })]
 
 
+@pytest.mark.slow
 def test_premade_setup_gets_background_values_and_experiment(
         viewer, tmp_path, monkeypatch
     ):
@@ -2969,6 +3023,7 @@ def test_fucci_template_has_both_reporters_as_overlays():
     assert result['visible_channels'] == ['GFP', 'mCherry']
 
 
+@pytest.mark.slow
 def test_premade_without_channel_asks_unmapped_first(viewer, tmp_path, monkeypatch):
     experiment = tmp_path / 'exp'
     paths = make_experiment(experiment, positions=1)

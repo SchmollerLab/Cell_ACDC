@@ -33,10 +33,13 @@ MODEL_NAMES = sorted(
 IMAGE_PATH = (
     # r'/home/stegosaurus/Downloads/JA E#15.10 B7_001_001_s01_DAPI.tif'
 )
-pytestmark = pytest.mark.skipif(
-    not IMAGE_PATH,
-    reason="Set IMAGE_PATH to enable dependency/weight downloads and inference.",
-)
+pytestmark = [
+    pytest.mark.models,
+    pytest.mark.skipif(
+        not IMAGE_PATH,
+        reason="Set IMAGE_PATH to enable dependency/weight downloads and inference.",
+    ),
+]
 
 
 @pytest.fixture(scope="module")

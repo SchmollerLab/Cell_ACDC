@@ -8,6 +8,8 @@ from cellacdc import phase_translator
 from cellacdc.custom_annotation_predictors import CustomAnnotationPredictor
 from cellacdc.timepoint_predictors import TIMEPOINT_PREFIX
 
+pytestmark = pytest.mark.viewer
+
 START = f'{TIMEPOINT_PREFIX}Start'
 END = f'{TIMEPOINT_PREFIX}End'
 FRAMES = 6

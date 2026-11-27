@@ -18,6 +18,8 @@ from qtpy.QtWidgets import QApplication, QMainWindow, QToolButton, QWidget
 from cellacdc import widgets
 from cellacdc.gui_viewer_tools import ShortcutsGuiElements
 
+pytestmark = pytest.mark.gui
+
 KEYS = 'ABCDEFGH'
 
 

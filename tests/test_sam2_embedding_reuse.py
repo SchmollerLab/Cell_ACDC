@@ -10,6 +10,8 @@ import pytest
 
 from cellacdc import _types, myutils, myutils_models, sam_embeddings
 
+pytestmark = pytest.mark.models
+
 
 @pytest.fixture
 def sam2_wrapper(monkeypatch):

@@ -15,6 +15,8 @@ import skimage.measure
 
 from cellacdc import core, measurements
 
+pytestmark = pytest.mark.core
+
 QS = [0.25, 0.75, 0.05, 0.95]
 
 
@@ -212,6 +214,7 @@ def test_set_column_values_at_matches_df_at(seed):
         _assert_same_df(result, expected)
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('seed', range(30))
 def test_metrics_values_cache_matches_to_dict(seed):
     rng = np.random.default_rng(seed)

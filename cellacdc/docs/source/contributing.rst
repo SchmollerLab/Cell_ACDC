@@ -102,4 +102,84 @@ Note that if you want to modify the code of the Pull Request, you can simply
 commit and push to the same branch. GitHub will automatically add to the open 
 Pull Request.
 
+Running the tests
+-----------------
 
+The tests are in the ``tests`` folder and use `pytest <https://docs.pytest.org>`_.
+Install pytest and the GUI requirements of your Qt binding in the development
+environment, e.g.::
+
+    pip install pytest -r requirements_gui_pyqt6.txt
+
+Then run the tests from the cloned folder (parent folder of ``cellacdc``). The
+GUI tests run offscreen, so no windows appear::
+
+    # The fast tier, as CI runs it on every push to a pull request
+    python -m pytest -m "(smoke or not slow) and not flaky"
+
+    # The full suite, as CI runs it before merging
+    python -m pytest
+
+    # Only the smoke tests (core workflows, less than a minute)
+    python -m pytest -m smoke
+
+    # The slow tests of the measurements viewer
+    python -m pytest -m "viewer and slow"
+
+    # The tests related to your changes (compared with upstream/main;
+    # arguments after --run go to pytest)
+    python tests/related_tests.py --base upstream/main --run
+
+The tests are marked by speed and purpose (markers registered in
+``pyproject.toml``):
+
+* ``slow``: the test takes half a second or more (a parametrized test: all
+  its cases together take 5 seconds or more).
+* ``smoke``: the test checks a core workflow, e.g. the GUI or the launcher
+  starts, a Position loads, the measurements viewer loads data and plots, a
+  configuration is saved and loaded again. Smoke tests run on every push, also
+  when they are slow.
+* ``flaky``: the test failed or hung now and then on CI (timing, threads).
+  Like the slow tests, it is left out of the fast tier until it is fixed.
+
+Each test file also has exactly one area marker, for the part of Cell-ACDC it
+tests. It is set for the whole file at the top, e.g.
+``pytestmark = pytest.mark.viewer`` (a list when the file has other module
+markers such as ``slow``):
+
+* ``viewer``: the measurements viewer and its predictors, phases, equations and
+  measurement processing.
+* ``gui``: the main GUI, the launcher and shared widgets and dialogs.
+* ``models``: segmentation models, trackers, promptable models and the model
+  server.
+* ``core``: data loading, measurements, image analysis algorithms and batch
+  utilities.
+* ``infra``: the test setup, packaging, resources and repository tooling.
+
+A new test file needs its area marker (``tests/test_area_markers.py`` fails
+without it). When you add a test, keep it fast (small synthetic data) and check
+its duration with ``python -m pytest tests/test_<name>.py --durations=0``. Mark
+it ``@pytest.mark.slow`` if it still takes half a second or more, or add
+``pytest.mark.slow`` to the file's ``pytestmark`` when all its tests are slow. A
+test must pass whatever other tests run before it: the tiers leave out the slow
+and flaky tests.
+
+Continuous integration (GitHub Actions) runs the tests in tiers, with Python
+3.10 to 3.13 on Windows and macOS (PyQt5 and PyQt6) and on Ubuntu (PyQt5):
+
+* **Every push to a pull request**: flake8 and the fast tier (workflows
+  ``build-*.yml``, a few minutes), plus, on Ubuntu only, the slow and flaky
+  tests of the test files related to the changed files
+  (``tests/related_tests.py``).
+* **Before merging**: the full suite (workflow ``full-tests.yml``). A maintainer
+  adds the ``full tests`` label to the pull request (the workflow looks for
+  exactly this label name): the suite runs now and again on every push while
+  the label stays (a new push or removing the label cancels a running full
+  suite). It can also be started from the
+  `Actions tab <https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/full-tests.yml>`_
+  ("Run workflow") on any branch that contains ``full-tests.yml`` (merge
+  ``main`` into older branches first). Its checks are named ``full / <os>,
+  <Qt binding>, Python <version>``; without the label a single skipped check
+  ``full`` is listed.
+* **After merging**: every push to ``main`` and a weekly run (Monday) run the
+  full suite (workflows ``build-*.yml``, shown by the badges of the README).

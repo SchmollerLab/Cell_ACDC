@@ -3,6 +3,8 @@ import pytest
 
 from cellacdc import myutils
 
+pytestmark = pytest.mark.core
+
 
 @pytest.mark.parametrize(
     'rows, expected_paths, expected_dates',

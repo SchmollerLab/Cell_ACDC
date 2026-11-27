@@ -8,6 +8,8 @@ import pytest
 import cellacdc
 from cellacdc.promptable_models import saved_models
 
+pytestmark = pytest.mark.models
+
 MODEL_NAME = 'ConvPaint'
 EXT = '.pkl'
 

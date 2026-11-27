@@ -8,6 +8,8 @@ import pytest
 
 from cellacdc import load, sam_embeddings
 
+pytestmark = pytest.mark.models
+
 
 @pytest.fixture
 def without_torch(monkeypatch):

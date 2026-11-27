@@ -9,6 +9,8 @@ from qtpy.QtWidgets import QApplication, QTreeView
 
 from cellacdc import apps, apps_measurements_viewer, measurements, measurements_viewer, widgets
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():
@@ -244,6 +246,7 @@ def test_viewer_passes_table_and_channels_to_processing_tree(viewer, monkeypatch
     viewer.processMeasurements()
 
 
+@pytest.mark.slow
 def test_tree_leaf_click_and_keyboard_toggle_but_group_does_not(viewer, app):
     viewer._startupConfigurationPrompted = True
     viewer.show()

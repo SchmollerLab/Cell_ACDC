@@ -6,6 +6,8 @@ import textwrap
 
 import pytest
 
+pytestmark = [pytest.mark.models, pytest.mark.slow]
+
 
 @pytest.mark.parametrize("entry_point", ["segmentation", "budding"])
 def test_model_initialization_error_does_not_escape_qt_callback(entry_point):

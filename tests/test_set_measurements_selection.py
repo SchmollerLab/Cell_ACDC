@@ -17,6 +17,8 @@ from qtpy.QtWidgets import QApplication
 from cellacdc import apps, cli, cca_functions, measurements
 from cellacdc.utils import compute as utils_compute
 
+pytestmark = pytest.mark.core
+
 BASENAME = 'exp_s01_'
 CHANNELS = ['phase', 'GFP', 'mCherry']
 FLUO = ['GFP', 'mCherry']
@@ -283,6 +285,7 @@ def test_required_background_medians_are_released(app, experiment):
 
 
 # ------------------------- saved acdc_output -------------------------------
+@pytest.mark.smoke
 def test_fresh_table_has_only_the_selection(app, experiment):
     images_path, posData = experiment
     win = build_dialog(posData, existing_cols=[])
@@ -298,6 +301,7 @@ def test_fresh_table_has_only_the_selection(app, experiment):
     win.deleteLater()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('delete', [True, False])
 def test_existing_unselected_measurements(
         app, experiment, monkeypatch, delete
@@ -370,6 +374,7 @@ def test_utility_passes_existing_columns(app, experiment, monkeypatch):
 
 
 # ------------------------- dialog state helpers ----------------------------
+@pytest.mark.slow
 def test_restore_state_keeps_unchecked_groups_unchecked(app, experiment):
     _, posData = experiment
     win = build_dialog(posData)
@@ -385,6 +390,7 @@ def test_restore_state_keeps_unchecked_groups_unchecked(app, experiment):
     win2.deleteLater()
 
 
+@pytest.mark.slow
 def test_set_state_with_new_measurement(app, experiment):
     _, posData = experiment
     win = build_dialog(posData)
@@ -399,6 +405,7 @@ def test_set_state_with_new_measurement(app, experiment):
     win2.deleteLater()
 
 
+@pytest.mark.slow
 def test_selection_mapper_round_trip(app, experiment):
     _, posData = experiment
     win = build_dialog(posData)
@@ -461,6 +468,7 @@ def test_linked_acdc_df_columns(tmp_path):
     assert load.get_linked_acdc_df_columns(str(tmp_path), 'b_', 'segm') == []
 
 
+@pytest.mark.slow
 def test_inputs_of_selected_concentration_are_computed(
         app, experiment, monkeypatch
     ):
@@ -487,6 +495,7 @@ def test_inputs_of_selected_concentration_are_computed(
     assert df[conc].notna().all()
 
 
+@pytest.mark.slow
 def test_restore_keeps_combined_inputs_and_new_measurements(app, experiment):
     _, posData = experiment
     posData.addEquationCombineMetrics(
@@ -514,6 +523,7 @@ def test_restore_keeps_combined_inputs_and_new_measurements(app, experiment):
     win3.deleteLater()
 
 
+@pytest.mark.slow
 def test_combined_input_not_computed_keeps_existing_values(
         app, experiment, monkeypatch
     ):
@@ -639,6 +649,7 @@ def objects_of_first_frame(images_path):
     return {obj.label: obj for obj in skimage.measure.regionprops(lab)}
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('inp, existing', [
     ('area', 'delete'),
     ('centroid-0', 'fresh'),
@@ -682,6 +693,7 @@ def test_non_channel_inputs_of_selected_combined_are_computed(
         )
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('existing', ['fresh', 'delete'])
 def test_combined_input_of_combined_is_computed(
         app, experiment, monkeypatch, existing
@@ -751,6 +763,7 @@ def test_failed_combined_measurement_is_not_saved_as_values():
     assert df['GFP_x'].isna().all()
 
 
+@pytest.mark.slow
 def test_volume_input_of_selected_combined_is_computed(app, experiment):
     images_path, _ = experiment
     posData = add_equations(

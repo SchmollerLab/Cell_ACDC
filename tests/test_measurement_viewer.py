@@ -23,6 +23,8 @@ from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc import annotate, measurements_viewer, qutils, widgets
 from cellacdc import measurements_viewer_utils
 
+pytestmark = pytest.mark.viewer
+
 
 @pytest.fixture(scope='module')
 def app():
@@ -157,6 +159,7 @@ def test_points_keep_metadata_and_hover_details(viewer, mode):
         np.testing.assert_allclose(item.yData, [0, 0.75, 0.25, 1])
 
 
+@pytest.mark.slow
 def test_comparison_click_selects_frame_and_forces_zoom(viewer, app):
     item = comparison(viewer)
     event = SimpleNamespace(button=lambda: Qt.LeftButton)
@@ -269,6 +272,7 @@ def test_time_course_replots_keep_x_zoom(viewer):
     assert 1.5 < xMin <= 2 and xMax >= 3
 
 
+@pytest.mark.slow
 def test_time_course_click_navigates_to_measurement(viewer, app):
     item, = viewer.measurementsPlot.listDataItems()
     item.scatter.sigClicked.emit(
@@ -283,6 +287,7 @@ def test_time_course_click_navigates_to_measurement(viewer, app):
     )
 
 
+@pytest.mark.slow
 def test_right_click_does_not_navigate(viewer, app):
     item = comparison(viewer)
     item.scatter.sigClicked.emit(
@@ -424,6 +429,7 @@ def test_mode_switching_without_data(app):
     app.processEvents()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mode', [0, 1])
 def test_mouse_hover_shows_popup_and_click_navigates(
         viewer, app, mode, monkeypatch):
@@ -507,6 +513,7 @@ def test_axes_refresh_preserves_choices_and_clears_missing_columns(viewer):
     assert not viewer.measurementsPlot.listDataItems()
 
 
+@pytest.mark.slow
 def test_filtered_checkbox_toggles_axis_and_preserves_time_course(viewer, app):
     comparison(viewer)
     viewer.show()
@@ -534,6 +541,7 @@ def test_filtered_checkbox_toggles_axis_and_preserves_time_course(viewer, app):
     np.testing.assert_array_equal(item.yData, [10, 20])
 
 
+@pytest.mark.slow
 def test_comparison_context_menu_toggles_check(viewer, app):
     comparison(viewer)
     viewer.show()
@@ -601,6 +609,7 @@ def test_comparison_requires_unchecking_before_replacing_axis(viewer):
     assert column(viewer, 'third').data(Qt.AccessibleDescriptionRole) == 'X'
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mode', [0, 1])
 @pytest.mark.parametrize('filtered', [False, True])
 def test_indicator_replaces_tick_without_shifting_text(viewer, app, mode, filtered):
@@ -638,6 +647,7 @@ def test_indicator_replaces_tick_without_shifting_text(viewer, app, mode, filter
     assert text_rect() == before
 
 
+@pytest.mark.slow
 def test_clicking_column_name_toggles_selection(viewer, app):
     viewer.show()
     app.processEvents()
@@ -740,6 +750,7 @@ def mock_filename_dialog(monkeypatch, folder, *filenames):
     return dialog
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mode', [0, 1])
 def test_configuration_roundtrip(viewer, tmp_path, monkeypatch, mode):
     images = configuration_data(viewer, tmp_path)
@@ -856,6 +867,7 @@ def test_save_cancel_and_write_failure(viewer, tmp_path, monkeypatch):
     error.assert_called_once()
 
 
+@pytest.mark.slow
 def test_startup_prompt_only_once(app, monkeypatch):
     prompt = Mock()
     monkeypatch.setattr(MeasurementsViewerWin, 'loadConfiguration', prompt)
@@ -883,6 +895,7 @@ def test_startup_opens_configuration_picker_directly(app, monkeypatch):
     app.processEvents()
 
 
+@pytest.mark.slow
 def test_geometry_is_restored_only_on_first_show(app, monkeypatch):
     window = MeasurementsViewerWin()
     window._startupConfigurationPrompted = True
@@ -899,6 +912,7 @@ def test_geometry_is_restored_only_on_first_show(app, monkeypatch):
     app.processEvents()
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('folder', [True, False])
 def test_run_with_folder_skips_startup_prompt(app, tmp_path, monkeypatch, folder):
     from cellacdc import _run
@@ -1026,6 +1040,8 @@ def test_close_prompts_and_respects_cancel(
     assert save.called == (choice == 'save')
 
 
+@pytest.mark.slow
+@pytest.mark.smoke
 def test_configuration_restores_real_images_and_overlay(app, tmp_path, monkeypatch):
     import tifffile
 
@@ -1166,6 +1182,7 @@ def focus_in_active_window(app, window, widget):
     assert QApplication.focusWidget() is widget
 
 
+@pytest.mark.slow
 def test_arrow_keys_navigate_whatever_widget_has_the_focus(
         real_viewer, app, tmp_path
     ):
@@ -1193,6 +1210,7 @@ def test_arrow_keys_navigate_whatever_widget_has_the_focus(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_arrow_keys_stay_with_text_inputs(real_viewer, app, tmp_path):
     images = make_timelapse_position(tmp_path, SizeT=4)
     load_real(real_viewer, [images])
@@ -1207,6 +1225,7 @@ def test_arrow_keys_stay_with_text_inputs(real_viewer, app, tmp_path):
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_arrow_keys_do_nothing_while_the_window_is_disabled(
         real_viewer, app, tmp_path
     ):
@@ -1247,6 +1266,7 @@ def close_popups(app):
         app.processEvents()
 
 
+@pytest.mark.slow
 def test_arrow_keys_switch_the_menus_of_an_open_menu(
         real_viewer, app, tmp_path
     ):
@@ -1279,6 +1299,7 @@ def test_arrow_keys_switch_the_menus_of_an_open_menu(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_arrow_keys_navigate_the_menu_bar_after_alt(
         real_viewer, app, tmp_path
     ):
@@ -1352,6 +1373,7 @@ def test_key_events_of_other_windows_are_not_for_the_window(app):
         app.processEvents()
 
 
+@pytest.mark.slow
 def test_loading_shorter_timelapse_resets_navigation(real_viewer, tmp_path):
     longer = make_timelapse_position(tmp_path / 'A', SizeT=10)
     shorter = make_timelapse_position(tmp_path / 'B', SizeT=3)
@@ -1365,6 +1387,7 @@ def test_loading_shorter_timelapse_resets_navigation(real_viewer, tmp_path):
     assert real_viewer.navigateScrollBar.maximum() == 3
 
 
+@pytest.mark.slow
 def test_loading_channel_shorter_than_segmentation(real_viewer, tmp_path):
     # Image and segmentation are cut to the shorter of both (per-frame
     # structures such as allData_li have SizeT items)
@@ -1386,6 +1409,7 @@ def test_loading_channel_shorter_than_segmentation(real_viewer, tmp_path):
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_loading_smaller_zstack_resets_z_navigation(real_viewer, tmp_path):
     larger = make_timelapse_position(tmp_path / 'A', SizeT=2, SizeZ=10)
     smaller = make_timelapse_position(tmp_path / 'B', SizeT=2, SizeZ=4)
@@ -1398,6 +1422,7 @@ def test_loading_smaller_zstack_resets_z_navigation(real_viewer, tmp_path):
     assert real_viewer.zSliceScrollBar.value() == 2
 
 
+@pytest.mark.slow
 def test_loading_2d_data_resets_viewed_plane(real_viewer, tmp_path):
     # A zy/zx plane left from a z-stack must not stay active (hidden) for
     # 2D data, where it would silently disable custom annotations.
@@ -1432,6 +1457,7 @@ def make_zstack_overlay_position(root, SizeT=2, SizeZ=5):
     return images
 
 
+@pytest.mark.slow
 def test_overlay_is_turned_off_on_zy_zx_planes(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -1469,6 +1495,7 @@ def test_overlay_is_turned_off_on_zy_zx_planes(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_loading_fewer_positions_resets_position(real_viewer, tmp_path):
     paths = [
         make_timelapse_position(tmp_path / 'A', pos=pos) for pos in (1, 2)
@@ -1598,6 +1625,7 @@ def test_loaded_data_status_breaks_long_paths_after_separators():
     ]
 
 
+@pytest.mark.slow
 def test_status_bar_shows_the_loaded_data(real_viewer, tmp_path, capsys):
     # Reviewer request: as in the main GUI, the status bar tells what is
     # loaded, also after switching position; logged once per load/switch
@@ -1632,6 +1660,7 @@ def test_status_bar_shows_the_loaded_data(real_viewer, tmp_path, capsys):
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_status_bar_lists_overlay_channels_and_keeps_the_loaded_data(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -1686,6 +1715,7 @@ def test_status_bar_lists_overlay_channels_and_keeps_the_loaded_data(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_status_bar_shows_the_configuration_file(
         real_viewer, tmp_path, monkeypatch, capsys
     ):
@@ -1731,6 +1761,7 @@ def test_status_bar_shows_the_configuration_file(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_cca_table_on_frames_without_annotations(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -1759,6 +1790,7 @@ def test_cca_table_on_frames_without_annotations(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_cca_table_zoomed_on_cell_without_annotations(real_viewer, tmp_path):
     # The viewer's cca tables keep only cells with complete annotations,
     # while the zoomed IDs come from the label image
@@ -1779,6 +1811,7 @@ def test_cca_table_zoomed_on_cell_without_annotations(real_viewer, tmp_path):
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_search_id_in_later_frame_with_unvisited_positions(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -1803,6 +1836,7 @@ def test_search_id_in_later_frame_with_unvisited_positions(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_count_objects_snapshots_with_unvisited_positions(
         real_viewer, tmp_path
     ):
@@ -1821,6 +1855,7 @@ def test_count_objects_snapshots_with_unvisited_positions(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_live_object_counts_compute_undisplayed_positions_once(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -1854,6 +1889,7 @@ def test_live_object_counts_compute_undisplayed_positions_once(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_slideshow_shows_the_viewer_z_slice(real_viewer, tmp_path):
     # Without segmInfo.csv (`segmInfo_df` None). The slideshow's own z-slider
     # wrote `segmInfo_df` (AttributeError) and did not change the image
@@ -1881,6 +1917,7 @@ def test_slideshow_shows_the_viewer_z_slice(real_viewer, tmp_path):
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_slideshow_of_snapshots_survives_image_updates(real_viewer, tmp_path):
     # Single frames: the slideshow has no "Link" checkbox, while the viewer
     # calls `updateViewerWindow` on every `updateImages`
@@ -1896,6 +1933,7 @@ def test_slideshow_of_snapshots_survives_image_updates(real_viewer, tmp_path):
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_restore_default_settings_un_inverts_black_white(
         real_viewer, tmp_path
     ):
@@ -1922,6 +1960,7 @@ def test_restore_default_settings_un_inverts_black_white(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_line_weight_actions_after_restore_default_settings(
         real_viewer, tmp_path
     ):
@@ -1947,6 +1986,7 @@ def test_line_weight_actions_after_restore_default_settings(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_inverted_text_colors_survive_position_switch(real_viewer, tmp_path):
     # The viewer recreates the text items on every position switch
     # (`gui_setTextAnnotColors`): the S-phase/G1 cell cycle texts must keep
@@ -2009,6 +2049,7 @@ def annotation_state(name, predictor=None):
     return state
 
 
+@pytest.mark.slow
 def test_opening_folder_keeps_saved_annotations_of_visited_cells(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -2042,6 +2083,7 @@ def test_opening_folder_keeps_saved_annotations_of_visited_cells(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_unbound_mouse_side_button_over_image(real_viewer, tmp_path, app):
     load_real(real_viewer, [make_timelapse_position(tmp_path, SizeT=3)])
     assert real_viewer.isDataLoaded
@@ -2076,6 +2118,7 @@ def test_unbound_mouse_side_button_over_image(real_viewer, tmp_path, app):
     real_viewer.hide()
 
 
+@pytest.mark.slow
 def test_on_demand_ax1_items_stay_above_overlays_after_reload(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -2128,6 +2171,7 @@ def accept_scale_bar_and_timestamp_dialogs(monkeypatch):
         )
 
 
+@pytest.mark.slow
 def test_loading_data_removes_scale_bar_and_timestamp(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -2159,6 +2203,7 @@ def test_loading_data_removes_scale_bar_and_timestamp(
     assert not real_viewer.slotErrors
 
 
+@pytest.mark.slow
 def test_loading_data_while_scale_bar_and_timestamp_dialogs_are_open(
         real_viewer, tmp_path, monkeypatch
     ):
@@ -2196,6 +2241,7 @@ def test_loading_data_while_scale_bar_and_timestamp_dialogs_are_open(
     assert real_viewer.timestampDialog is None
 
 
+@pytest.mark.slow
 def test_scale_bar_keeps_the_zoom(real_viewer, tmp_path, monkeypatch):
     # The bar is placed in the zoomed view: rescaling would move it to the
     # middle of the image and lose the user's zoom
@@ -2222,6 +2268,7 @@ def formatted_brushes(window, column):
     return [brush.color().name() for brush in item.scatter.data['brush']]
 
 
+@pytest.mark.slow
 def test_time_point_and_annotation_edits_refresh_formatting(
         real_viewer, tmp_path
     ):
@@ -2365,6 +2412,7 @@ def axes_columns(viewer):
     ]
 
 
+@pytest.mark.slow
 def test_y_axis_menu_creates_and_joins_axes(viewer, app):
     column(viewer, 'intensity').setCheckState(Qt.Checked)
     plotItem = viewer.measurementsPlot.getPlotItem()
@@ -2411,6 +2459,7 @@ def test_y_axis_menu_creates_and_joins_axes(viewer, app):
     menu.hide()
 
 
+@pytest.mark.slow
 def test_new_y_axis_plots_unplotted_column_and_is_kept(viewer, app):
     plotItem = viewer.measurementsPlot.getPlotItem()
     assert viewer.checkedColumns() == ['area']
@@ -2540,6 +2589,7 @@ def relative_change(before, after):
     return [(after[0] - before[0]) / span, (after[1] - before[0]) / span]
 
 
+@pytest.mark.slow
 def test_y_axes_autoscale_separately_and_zoom_together(viewer, app):
     viewer.plotOnNewYAxis('intensity')
     viewer.show()
@@ -2625,6 +2675,7 @@ def hover_point(viewer, vb, point):
     return viewportPos
 
 
+@pytest.mark.slow
 def test_points_of_extra_y_axis_show_tip_and_navigate(viewer, app, monkeypatch):
     errors = []
     monkeypatch.setattr(
@@ -2656,6 +2707,7 @@ def test_points_of_extra_y_axis_show_tip_and_navigate(viewer, app, monkeypatch):
     assert viewer.frame_i == 1
 
 
+@pytest.mark.slow
 def test_coinciding_points_of_all_axes_share_the_tip(viewer, app):
     # Cell 1 over frames 1-3, middle values in the middle of both axes
     # (each axis fits its data), so the frame-2 points coincide
@@ -2676,6 +2728,7 @@ def test_coinciding_points_of_all_axes_share_the_tip(viewer, app):
     assert not mainVb.toolTip()
 
 
+@pytest.mark.slow
 def test_horizontal_drag_freezes_every_y_axis(viewer, app):
     viewer.rescalePlotCheckbox.setChecked(False)
     plotItem, mainVb, extraVb = show_two_axes(viewer, app)
@@ -2698,6 +2751,7 @@ def test_horizontal_drag_freezes_every_y_axis(viewer, app):
     assert extraVb.viewRange()[1] == pytest.approx(extraRange)
 
 
+@pytest.mark.slow
 def test_view_all_and_right_click_on_extra_axis(viewer, app):
     plotItem, mainVb, extraVb = show_two_axes(viewer, app)
     extraAxis, = plotItem.shownExtraAxes()
@@ -2721,6 +2775,7 @@ def test_view_all_and_right_click_on_extra_axis(viewer, app):
     menu.hide()
 
 
+@pytest.mark.slow
 def test_extra_y_axes_follow_moves_of_main_view_box(viewer, app):
     # Opposite magnitudes: switching cell swaps the tick label widths of
     # the left and right axis, which moves the main view box without
@@ -2764,6 +2819,7 @@ def test_moving_last_left_column_merges_into_axis_1(viewer, app):
     assert viewer.timeCourseYAxes == {'volume': 2, 'area': 2}
 
 
+@pytest.mark.slow
 def test_extra_y_axes_curves_are_exported_and_shaded_under(
         viewer, app, tmp_path):
     plotItem, mainVb, extraVb = show_two_axes(viewer, app)
@@ -2880,6 +2936,7 @@ def test_available_plot_transforms_work_on_viewer_curves(
     assert not errors, errors
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize('mode', [0, 1])
 def test_plot_downsampling_options_are_disabled(viewer, monkeypatch, mode):
     # "Downsample" (factor 2: one point every 2 frames, or the mean of 2
@@ -2956,6 +3013,7 @@ def test_extra_y_axes_work_without_subtract_mean_option(viewer, monkeypatch):
     assert failing not in plotItem.extraYAxesDataItems()[0]
 
 
+@pytest.mark.slow
 def test_formatting_and_normalization_on_extra_y_axis(viewer):
     # Both points of cell 1 (intensity 100, 250) match: the segment between
     # them is drawn by the rule, the main curve draws only the points
@@ -2984,6 +3042,7 @@ def test_formatting_and_normalization_on_extra_y_axis(viewer):
         assert extraAxis.labelText == 'intensity' + suffix
 
 
+@pytest.mark.slow
 def test_phase_band_matches_extra_y_axes_width(viewer, app):
     viewer.show()
     app.processEvents()

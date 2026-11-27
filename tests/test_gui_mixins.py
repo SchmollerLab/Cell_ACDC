@@ -25,6 +25,8 @@ from cellacdc.gui_viewer_tools import (
 )
 from cellacdc.gui_navigation import LutGuiElements
 
+pytestmark = pytest.mark.gui
+
 
 @pytest.fixture(scope='module')
 def app():
@@ -322,6 +324,7 @@ class _ShownPersistentShortcutsHost(_PersistentShortcutsHost):
     mousePressEvent = _qmainwindow_method('mousePressEvent')
 
 
+@pytest.mark.slow
 def test_gui_persistent_shortcuts_wait_for_the_viewer_load(app):
     # The measurements viewer's `runInThread` disables the other windows
     # (here the main GUI) while its worker runs. A disabled window can still

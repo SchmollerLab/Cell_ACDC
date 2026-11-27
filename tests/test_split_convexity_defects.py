@@ -14,6 +14,8 @@ from cellacdc.core_split_IDs import (
     convexity_defects,
 )
 
+pytestmark = pytest.mark.core
+
 
 def _dumbbell_mask(shape=(40, 40)):
     yy, xx = np.ogrid[:shape[0], :shape[1]]

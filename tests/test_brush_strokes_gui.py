@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytestmark = pytest.mark.gui
+
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 pytest.importorskip('qtpy')
