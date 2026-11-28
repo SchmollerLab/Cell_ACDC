@@ -1709,3 +1709,10 @@ class ChannelImageHelpersGuiElements:
             filename_no_ext = filename.replace('.ini', '')
         
         return channel_file_path, filename_no_ext
+
+
+def get_number_fstring_formatter(dtype, precision=4):
+    if np.issubdtype(dtype, np.integer):
+        return 'd'
+    else:
+        return f'.{precision}f'

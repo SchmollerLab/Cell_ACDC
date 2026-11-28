@@ -5,6 +5,10 @@ import os
 from cellacdc import load
 from . import base as utils_base
 from cellacdc.shared.workers import base as workers_base
+import skimage
+import skimage.io
+import skimage.measure
+from cellacdc import core
 
 class toImageRoiUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -121,3 +125,54 @@ class ToImajeJroiWorker(utils_base.BaseWorkerUtil):
                 roiwrite(roi_filepath, rois)
                         
         self.signals.finished.emit(self)
+
+
+def lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=None, z=None):
+    rp = skimage.measure.regionprops(lab2D)
+    rois = []
+    for obj in rp:
+        cont = core.get_obj_contours(obj=obj)
+        yc, xc = obj.centroid
+        x_str = str((int(xc))).zfill(ndigits)
+        y_str = str((int(yc))).zfill(ndigits)
+        name = f'{x_str}-{y_str}'
+        if z is not None:
+            z_str = str(z).zfill(ndigits)
+            name = f'{z_str}-{name}'
+        
+        if t is not None:
+            t_str = str(t).zfill(ndigits)
+            name = f'{t_str}-{name}'
+        
+        name = f'id={obj.label}-{name}'
+        
+        roi = ImagejRoi.frompoints(
+            cont, name=name, t=t, z=z, index=obj.label
+        )
+        rois.append(roi)
+    return rois
+
+def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
+    if max_ID is None:
+        max_ID = lab.max()
+    
+    if SizeT == 1:
+        t = None
+    
+    SizeY, SizeX = lab.shape[-2:]
+    ndigitsT = len(str(SizeT))
+    ndigitsY = len(str(SizeY))
+    ndigitsX = len(str(SizeX))
+    
+    if lab.ndim == 3:
+        rois = []
+        SizeZ = len(lab)
+        ndigitsZ = len(str(SizeZ))
+        ndigits = max(ndigitsT, ndigitsZ, ndigitsY, ndigitsX)
+        for z, lab2D in enumerate(lab):
+            z_rois = lab2d_to_rois(ImagejRoi, lab2D, ndigits, t=t, z=z)
+        rois.extend(z_rois)
+    else:
+        ndigits = max(ndigitsT, ndigitsY, ndigitsX)
+        rois = lab2d_to_rois(ImagejRoi, lab, ndigits, t=t)
+    return rois

@@ -57,9 +57,12 @@ sys.modules.pop('cellacdc._torch_utils', None)
 class BlockHeavyImports(MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         if fullname.split('.')[0] in {'torch', 'torchvision', 'qtpy'} or fullname in {
-            'cellacdc.apps', 'cellacdc.widgets', 'cellacdc.myutils',
+            'cellacdc.apps', 'cellacdc.widgets',
             'cellacdc.service.environment',
-        }:
+        } or (
+            fullname.startswith('cellacdc.myutils.')
+            and fullname != 'cellacdc.myutils.torch_utils'
+        ):
             raise AssertionError('Unexpected import: ' + fullname)
 
 sys.meta_path.insert(0, BlockHeavyImports())

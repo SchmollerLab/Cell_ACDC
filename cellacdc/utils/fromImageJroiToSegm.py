@@ -12,6 +12,10 @@ from qtpy.QtCore import Signal
 from cellacdc import load, io
 from . import base as utils_base
 from cellacdc.shared.workers import base as workers_base
+import numpy as np
+import skimage
+import skimage.io
+import skimage.measure
 
 class fromImageJRoiToSegmUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -361,3 +365,60 @@ class FromImajeJroiToSegmNpzWorker(utils_base.BaseWorkerUtil):
                 io.savez_compressed(segm_filepath, segm_data)
         
         self.signals.finished.emit(self)
+
+
+def from_imagej_rois_to_segm_data(
+        TZYX_shape, 
+        ID_to_roi_mapper, 
+        rescale_rois_sizes, 
+        repeat_2d_rois_zslices_range: tuple[int, int] | None
+    ):
+    SizeT, SizeZ, SizeY, SizeX = TZYX_shape
+    segm_data = np.zeros(TZYX_shape, dtype=np.uint32)
+    for ID, roi in ID_to_roi_mapper.items():
+        name = roi.name
+        is_3d_roi = (
+            roi.z_position > 0 or
+            roi.position > 0
+        )
+        zz = [0]
+        if repeat_2d_rois_zslices_range is not None and SizeZ > 1:
+            # 2D roi in 3D segm data --> place 2D roi on each z-slice
+            zz = range(*repeat_2d_rois_zslices_range)
+        elif SizeZ > 1:
+            if roi.z_position > 0:
+                z = roi.z_position - 1
+            else:
+                # Fallback to position if z_position not encoded
+                z = roi.position - 1
+            zz = [z]
+        
+        tt = [0]*len(zz)
+        if SizeT > 1:
+            tt = [roi.t_position - 1]*len(zz)
+        
+        coordinates = roi.coordinates()
+        xx = coordinates[:, 0]
+        yy = coordinates[:, 1]
+        if rescale_rois_sizes is not None:        
+            rescale_z = rescale_rois_sizes['Z']
+            rescale_y = rescale_rois_sizes['Y']
+            rescale_x = rescale_rois_sizes['X']
+            
+            factor_z = rescale_z[1]/rescale_z[0]
+            factor_y = rescale_y[1]/rescale_y[0]
+            factor_x = rescale_x[1]/rescale_x[0]
+            
+            xx = np.clip(np.round(xx * factor_x).astype(int), 0, SizeX-1)
+            yy = np.clip(np.round(yy * factor_y).astype(int), 0, SizeY-1)
+
+        for t, z in zip(tt, zz):
+            if rescale_rois_sizes is not None:
+                z = round(z*factor_z)
+                z = z if z<SizeZ else SizeZ
+                z = z if z>=0 else 0
+            
+            rr, cc = skimage.draw.polygon(yy, xx)
+            segm_data[t, z, rr, cc] = ID
+    
+    return np.squeeze(segm_data)

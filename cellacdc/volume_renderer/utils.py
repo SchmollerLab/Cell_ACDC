@@ -4,6 +4,7 @@ from functools import reduce
 from typing import Any, Callable, Sequence
 
 import numpy as np
+from cellacdc.myutils import downloads
 
 # Max. number of threads used to process the frames of large arrays
 _MAX_NUM_THREADS = 8
@@ -67,3 +68,21 @@ def frames_min_max(arr: np.ndarray) -> tuple[Any, Any]:
 
     mins, maxs = zip(*map_frames(_frame_min_max, len(arr)))
     return np.min(mins), np.max(maxs)
+
+
+def download_3d_renderer_demo_data():
+    from cellacdc.volume_renderer import data_path
+    
+    url = 'https://hmgubox2.helmholtz-muenchen.de/public.php/dav/files/5maWLyHRX4Lrk7x/?accept=zip'
+    file_size = 66398550
+    
+    dst_zip_filepath = os.path.join(data_path, 'mtHINESS_Sample_Position.zip')
+    exp_folderpath = dst_zip_filepath.replace('.zip', '')
+    
+    if os.path.exists(exp_folderpath):
+        return exp_folderpath
+
+    downloads.download_url(url, dst_zip_filepath, file_size=file_size)
+    downloads.extract_zip(dst_zip_filepath, data_path)   
+    
+    return exp_folderpath

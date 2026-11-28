@@ -14,12 +14,14 @@ from qtpy.QtCore import Qt
 from qtpy import QtCore
 
 from ..myutils import read_version, get_date_from_version
-from ..myutils import get_pip_install_cellacdc_version_command
-from ..myutils import get_git_pull_checkout_cellacdc_version_commands
 from ..myutils import get_info_version_text
 from .. import widgets, myutils
 from .. import html_utils, printl
 from .. import cellacdc_path
+from cellacdc import github_home_url
+from cellacdc import urls
+from cellacdc.myutils import installs
+from cellacdc.myutils import app_info
 
 class QDialogAbout(QDialog):
     def __init__(self, parent=None):
@@ -223,3 +225,35 @@ def _test():
     win = QDialogAbout()
     win.show()
     app.exec_()
+
+
+def get_pip_install_cellacdc_version_command(version=None):
+    conda_prefix, pip_prefix = installs.get_pip_conda_prefix()
+
+    if version is None:
+        version = app_info.read_version()
+    commit_hash_idx = version.find('+g')
+    is_dev_version = commit_hash_idx > 0    
+    if is_dev_version:
+        commit_hash = version[commit_hash_idx+2:].split('.')[0]
+        command = f'{pip_prefix} --upgrade "git+{github_home_url}.git@{commit_hash}"'
+        command_github = None
+    else:
+        command = f'{pip_prefix} --upgrade cellacdc=={version}'
+        command_github = f'{pip_prefix} --upgrade "git+{urls.github_url}@{version}"'
+    return command, command_github  
+
+def get_git_pull_checkout_cellacdc_version_commands(version=None):
+    if version is None:
+        version = app_info.read_version()
+    commit_hash_idx = version.find('+g')
+    is_dev_version = commit_hash_idx > 0 
+    if not is_dev_version:
+        return []
+    commit_hash = version[commit_hash_idx+2:].split('.')[0]
+    commands = (
+        f'cd "{os.path.dirname(cellacdc_path)}"',
+        'git pull',
+        f'git checkout {commit_hash}'
+    )
+    return commands

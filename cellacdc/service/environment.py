@@ -256,9 +256,24 @@ def _acdc_runtime_identity():
 _acdc_runtime_identity()
 '''
 _RUNTIME_IMPORTS_OK = "__ACDC_RUNTIME_IMPORTS_OK__"
+# Run in a model environment, whose Cell-ACDC may still have the
+# single-module myutils.py of older versions: imports every module of
+# the myutils package (as `import cellacdc.myutils` imported the whole
+# old module) and binds `installs` to the module with the package spec
+# helpers. No try/except ImportError: missing dependencies must fail
+_MYUTILS_IMPORT_CODE = '''
+import cellacdc.myutils
+if hasattr(cellacdc.myutils, "__path__"):
+    import importlib, pkgutil
+    for _acdc_module in pkgutil.iter_modules(cellacdc.myutils.__path__):
+        importlib.import_module("cellacdc.myutils." + _acdc_module.name)
+    from cellacdc.myutils import installs
+else:
+    from cellacdc import myutils as installs
+'''
 _RUNTIME_CHECK_CODE = _RUNTIME_IDENTITY_CODE + f'''
 import cellacdc.core
-import cellacdc.myutils
+{_MYUTILS_IMPORT_CODE}
 import cellacdc.service.worker
 print({_RUNTIME_IMPORTS_OK!r})
 '''
@@ -443,10 +458,10 @@ def is_cellacdc_cli_installed(python_exec: str) -> bool:
     Does not check its version, see `cellacdc_runtime_mismatch`.
     """
     test_code = (
-        "import cellacdc; "
-        "import cellacdc.core; "
-        "import cellacdc.myutils; "
-        "import cellacdc.service.worker"
+        "import cellacdc\n"
+        "import cellacdc.core\n"
+        + _MYUTILS_IMPORT_CODE
+        + "import cellacdc.service.worker\n"
     )
     try:
         res = subprocess.run(
@@ -920,7 +935,7 @@ from cellacdc.config import parser_args
 parser_args["debug"] = {bool(parser_args["debug"])!r}
 with startup_timer("Cell-ACDC runtime imports"):
     import cellacdc.core
-    from cellacdc import myutils
+    exec({_MYUTILS_IMPORT_CODE!r})
     import cellacdc.service.worker
 {_RUNTIME_IDENTITY_CODE}
 if {bool(config.get("torch"))!r}:
@@ -928,7 +943,7 @@ if {bool(config.get("torch"))!r}:
         exec({_torch_import_check(config.get("torch_version"))!r})
 defaults = dict(min_version="", max_version="", exact_version="",
                 include_lower_version=False, include_higher_version=False)
-specs = myutils._normalize_pkg_specs(json.loads({json.dumps(packages)!r}), "", "", defaults)
+specs = installs._normalize_pkg_specs(json.loads({json.dumps(packages)!r}), "", "", defaults)
 for spec in specs:
     with startup_timer("dependency check (shared process): " + spec["import_pkg_name"]):
         module = import_module(spec["import_pkg_name"])
@@ -938,7 +953,7 @@ for spec in specs:
                 installed = version(spec["pkg_name"])
             except PackageNotFoundError:
                 installed = ""
-        myutils._check_package_version_constraints(spec, installed)
+        installs._check_package_version_constraints(spec, installed)
 print("__ACDC_ENV_OK__")
 '''
     with startup_timer(f"{model_name}: combined environment checks", logger_func):

@@ -26,6 +26,8 @@ from .. import _palettes
 
 # NOTE: Enable icons
 from .. import cellacdc_path, settings_folderpath
+from cellacdc import user_profile_path
+from cellacdc.myutils import downloads
 
 if os.name == 'nt':
     try:
@@ -1102,6 +1104,54 @@ class welcomeWin(QWidget):
             event.ignore()
             return True
         return False
+
+
+def get_examples_path(which):
+    if which == 'time_lapse_2D':
+        foldername = 'TimeLapse_2D'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/KgJQtsQKZJnWZjL/download/TimeLapse_2D.zip'
+        file_size = 45143552
+    elif which == 'snapshots_3D':
+        foldername = 'Multi_3D_zStack_Analysed'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/3RNjGiPwKcdnGtj/download/Yeast_Analysed_multi3D_zStacks.zip'
+        file_size = 124822528
+    else:
+        return ''
+    
+    examples_path = os.path.join(user_profile_path, 'acdc-examples')
+    example_path = os.path.join(examples_path, foldername)
+    return examples_path, example_path, url, file_size
+
+def download_examples(which='time_lapse_2D', progress=None):
+    examples_path, example_path, url, file_size = get_examples_path(which)
+    if os.path.exists(example_path):
+        if progress is not None:
+            # display 100% progressbar
+            progress.emit(0, 0)
+        return example_path
+
+    zip_dst = os.path.join(examples_path, 'example_temp.zip')
+
+    if not os.path.exists(examples_path):
+        os.makedirs(examples_path, exist_ok=True)
+
+    print(f'Downloading example to {example_path}')
+
+    downloads.download_url(
+        url, zip_dst, verbose=False, file_size=file_size,
+        progress=progress
+    )
+    exctract_to = examples_path
+    downloads.extract_zip(zip_dst, exctract_to)
+
+    if progress is not None:
+        # display 100% progressbar
+        progress.emit(0, 0)
+
+    # Remove downloaded zip archive
+    os.remove(zip_dst)
+    print('Example downloaded successfully')
+    return example_path
 
 if __name__ == '__main__':
     app = QApplication([])

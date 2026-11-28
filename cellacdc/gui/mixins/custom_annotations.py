@@ -898,3 +898,14 @@ class CustomAnnotationsGuiElements:
                 self.clearScatterPlotCustomAnnotButton(button)
             self.setHighlightID(False)
             self.resetCursor()
+
+
+def getCustomAnnotTooltip(annotState):
+    toolTip = (
+        f'Name: {annotState["name"]}\n\n'
+        f'Type: {annotState["type"]}\n\n'
+        f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
+        f'Description: {annotState["description"]}\n\n'
+        f'SHORTCUT: "{annotState["shortcut"]}"'
+    )
+    return toolTip

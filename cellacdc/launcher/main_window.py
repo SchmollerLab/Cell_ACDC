@@ -72,6 +72,9 @@ from cellacdc import user_profile_path
 from cellacdc import cellacdc_path
 from cellacdc import favourite_func_metrics_csv_path, shortcut_filepath
 from cellacdc.config import parser_args
+import shutil
+import subprocess
+from cellacdc.myutils import installs
 
 try:
     import spotmax
@@ -2400,3 +2403,167 @@ class mainWin(QMainWindow):
             self.logger.info('**********************************************')
             self.logger.info(f'Cell-ACDC closed. {myutils.get_salute_string()}')
             self.logger.info('**********************************************')
+
+
+def to_relative_path(path, levels=3, prefix='...'):
+    path = path.replace('\\', '/')
+    parts = path.split('/')
+    if levels >= len(parts):
+        return path
+    parts = parts[-levels:]
+    rel_path = '/'.join(parts)
+    rel_path.replace('/', os.sep)
+    if prefix:
+        rel_path = f'{prefix}{os.sep}{rel_path}'
+    return rel_path
+
+
+def get_package_info(package_name):
+    try:
+        result = subprocess.run([
+            sys.executable, '-m', 'pip', 'show', package_name
+        ], capture_output=True, text=True, check=True)
+        
+        info = {}
+        for line in result.stdout.split('\n'):
+            if ':' in line:
+                key, value = line.split(':', 1)
+                info[key.strip()] = value.strip()
+        
+        # Check if it's editable by looking at the location
+        location = info.get('Location', '')
+        editable_location = info.get('Editable project location', '')
+        
+        return {
+            'installed': True,
+            'editable': bool(editable_location),
+            'location': location,
+            'editable_location': editable_location
+        }
+        
+    except subprocess.CalledProcessError:
+        return {'installed': False, 'editable': False}
+
+# Usage
+def update_package(parent, package_name):
+    package_info = get_package_info(package_name)
+    if not package_info['installed']:
+        printl(f"Package {package_name} is not installed.")
+        return False
+    editable = package_info.get('editable', False)
+    if editable:
+        return update_editable_package(parent, package_name, package_info)
+    else:
+        return update_not_editable_package(package_name, package_info)
+
+def update_editable_package(parent, package_name, package_info):
+    repo_location = package_info.get('editable_location', '')
+    
+    if not repo_location or not os.path.exists(repo_location):
+        print(f"Repository location not found for {package_name}")
+        return False
+
+    return _update_repo_with_git_command(package_name, repo_location)
+
+def _update_repo_with_git_command(package_name, repo_location):
+    """Update repository using git command"""
+    try:
+        print(f"Updating {package_name} repository at {repo_location} using git command...")
+        
+        # Change to repository directory
+        original_cwd = os.getcwd()
+        os.chdir(repo_location)
+        
+        stashed_changes = False
+
+        # check if there is a portable git
+        from cellacdc.config import parser_args
+        try:
+            cp = parser_args
+            if cp["install_details"] is not None:
+                no_cli_install = True
+                install_details = cp["install_details"]
+                target_dir = install_details.get('target_dir', '') 
+                target_dir = target_dir.strip().strip('"').strip("'")
+                target_dir = os.path.abspath(target_dir)
+            else:
+                no_cli_install = False
+        except:
+            no_cli_install = False
+            pass
+
+        if is_win and no_cli_install:
+            git_loc = os.path.join(target_dir,
+                                   "portable_git",
+                                   "cmd",
+                                   "git.exe")
+            if not os.path.exists(git_loc):
+                print(f"Portable git not found at {git_loc}. Using system git.")
+                git_loc = 'git'
+        else:
+            git_loc = 'git'
+        
+        # Check if git is available
+        if not shutil.which(git_loc):
+            print(f"Git command not found. Please install git to update {package_name}.")
+            return False
+        
+        try:
+            # Check for uncommitted changes
+
+            branch_result = subprocess.run([git_loc, 'branch', '--show-current'], 
+                                         capture_output=True, text=True, check=True)
+            current_branch = branch_result.stdout.strip()
+            print(f"Current branch: {current_branch}")
+
+            result = subprocess.run([git_loc, 'status', '--porcelain'], 
+                                  capture_output=True, text=True, check=True)
+            if result.stdout.strip():
+                print(f"Repository {package_name} has uncommitted changes")
+                print("Stashing changes before update...")
+                subprocess.run([git_loc, 'stash'], check=True)
+                stashed_changes = True
+            
+            # Pull changes
+            subprocess.run([git_loc, 'pull'], check=True)
+            print(f"Successfully updated {package_name}")
+            
+            # Pop stashed changes if any were stashed
+            if stashed_changes:
+                try:
+                    subprocess.run([git_loc, 'stash', 'pop'], check=True)
+                    print("Restored stashed changes")
+                except subprocess.CalledProcessError as pop_error:
+                    print(f"Warning: Could not restore stashed changes: {pop_error}")
+            
+            return True
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Git command failed for {package_name}: {e}")
+            return False
+        finally:
+            os.chdir(original_cwd)
+            
+    except Exception as e:
+        print(f"Error updating {package_name} with git command: {e}")
+        return False
+
+def update_not_editable_package(package_name, package_info):
+    """Update a non-editable package using pip"""
+    try:
+        _, pip_list = installs.get_pip_conda_prefix(list_return=True)
+        command = pip_list + ["--upgrade ", package_name]
+        
+        print(f"Updating {package_name} using pip...")
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print(f"Successfully updated {package_name}")
+            return True
+        else:
+            print(f"Failed to update {package_name}: {result.stderr}")
+            return False
+            
+    except Exception as e:
+        print(f"Error updating {package_name}: {e}")
+        return False

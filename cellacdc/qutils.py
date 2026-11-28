@@ -524,3 +524,9 @@ def wrap_tooltip(text, width=TOOLTIP_MAX_LINE_LENGTH):
         indent = ' ' * len(_LIST_ITEM_PREFIX.match(line).group())
         lines.extend(balanced_wrap(line, width, indent=indent))
     return '\n'.join(lines)
+
+
+def setRetainSizePolicy(widget, retain=True):
+    sp = widget.sizePolicy()
+    sp.setRetainSizeWhenHidden(retain)
+    widget.setSizePolicy(sp)

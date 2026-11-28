@@ -37,6 +37,7 @@ import skimage.io
 import skimage.measure
 import skimage.exposure
 from cellacdc.shared.workers import base as workers_base
+from cellacdc.myutils import filesystem
 
 if os.name == 'nt':
     try:
@@ -674,3 +675,23 @@ class ImagesToPositionsWorker(QObject):
             if self.abort:
                 break
         self.finished.emit()
+
+
+def filterCommonStart(images_path):
+    startNameLen = 6
+    ls = filesystem.listdir(images_path)
+    if not ls:
+        return []
+    allFilesStartNames = [f[:startNameLen] for f in ls]
+    mostCommonStart = Counter(allFilesStartNames).most_common(1)[0][0]
+    commonStartFilenames = [f for f in ls if f.startswith(mostCommonStart)]
+    return commonStartFilenames
+
+
+def trim_path(path, depth=3, start_with_dots=True):
+    path_li = os.path.abspath(path).split(os.sep)
+    rel_path = f'{f"{os.sep}".join(path_li[-depth:])}'
+    if start_with_dots:
+        return f'...{os.sep}{rel_path}'
+    else:
+        return rel_path
