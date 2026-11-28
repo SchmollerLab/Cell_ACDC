@@ -14,7 +14,7 @@ from skimage.transform import resize
 from deepsea.model import DeepSeaTracker
 from deepsea.utils import track_cells
 
-from cellacdc import myutils, printl
+from cellacdc import printl
 from cellacdc.models.DeepSea import _init_model, _resize_img
 from cellacdc.models.DeepSea import image_size as segm_image_size
 from cellacdc.models.DeepSea import _get_segm_transforms

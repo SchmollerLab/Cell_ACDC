@@ -22,6 +22,7 @@ from qtpy.QtWidgets import (
 from cellacdc.measurements_viewer import MeasurementsViewerWin
 from cellacdc import annotate, measurements_viewer, qutils, widgets
 from cellacdc import measurements_viewer_utils
+from cellacdc import cellacdc_path
 
 pytestmark = pytest.mark.viewer
 
@@ -1336,7 +1337,7 @@ def test_user_guide_limits_alt_menu_navigation_to_windows_and_linux():
     # macOS: the menu bar is native (outside the window) and its style has
     # no Alt navigation, so the arrow keys keep navigating frames/cells
     rst_path = os.path.join(
-        os.path.dirname(measurements_viewer.__file__),
+        cellacdc_path,
         'docs', 'source', 'measurements-viewer.rst'
     )
     with open(rst_path, encoding='utf-8') as file:

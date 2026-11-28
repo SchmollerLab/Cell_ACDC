@@ -9,6 +9,8 @@ The `guiWin` methods are tested on fake `self` objects (no main window).
 import ast
 import inspect
 import os
+import pathlib
+import warnings
 from types import MethodType, SimpleNamespace
 from unittest.mock import Mock
 
@@ -26,6 +28,7 @@ import pyqtgraph as pg
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QAction, QApplication
 
+import cellacdc
 from cellacdc import gui, widgets
 
 
@@ -99,13 +102,33 @@ def _rgba(item, x, y):
 
 
 def _parentImageItemCalls():
-    tree = ast.parse(inspect.getsource(gui))
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Attribute) and func.attr == 'ParentImageItem':
-            yield node
+    """`(path, call)` of the `ParentImageItem(...)` calls in the modules of
+    cellacdc (`path`: posix path relative to the package folder)."""
+    package = os.path.dirname(cellacdc.__file__)
+    for dirpath, dirnames, filenames in os.walk(package):
+        dirnames[:] = sorted(
+            name for name in dirnames if name != '__pycache__'
+        )
+        for filename in sorted(filenames):
+            if not filename.endswith('.py') or filename.startswith('qrc_'):
+                continue
+            path = os.path.join(dirpath, filename)
+            with open(path, encoding='utf-8') as file:
+                source = file.read()
+            if 'ParentImageItem(' not in source:
+                continue
+            with warnings.catch_warnings():
+                # Invalid escape sequences of old code
+                warnings.simplefilter('ignore', SyntaxWarning)
+                tree = ast.parse(source)
+            relpath = pathlib.Path(os.path.relpath(path, package)).as_posix()
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                func = node.func
+                name = getattr(func, 'attr', getattr(func, 'id', None))
+                if name == 'ParentImageItem':
+                    yield relpath, node
 
 
 @pytest.mark.slow
@@ -118,11 +141,15 @@ def test_parent_image_item_keywords_are_not_swallowed():
         if param.kind is not inspect.Parameter.VAR_KEYWORD
     }
     calls = list(_parentImageItemCalls())
+    # The main GUI's layers (also the viewer's image)
     assert len(calls) >= 3
-    for call in calls:
+    for path, call in calls:
         for keyword in call.keywords:
+            if keyword.arg is None:
+                # **kwargs passed on
+                continue
             assert keyword.arg in named, (
-                f'gui.py:{call.lineno}: unknown keyword `{keyword.arg}` '
+                f'{path}:{call.lineno}: unknown keyword `{keyword.arg}` '
                 'passed to ParentImageItem'
             )
 

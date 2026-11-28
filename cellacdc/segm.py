@@ -1531,9 +1531,6 @@ class segmWin(QMainWindow):
         worker.loop.exit()
         raise error
 
-    def debugSegmWorker(self, lab):
-        apps.imshow_tk(lab)
-
     def segmWorkerProgress(self, text):
         print('-----------------------------------------')
         self.logger.info(text)

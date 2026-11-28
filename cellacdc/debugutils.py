@@ -498,38 +498,44 @@ def call_stack_benchmark(func=None, *, call_stack_depth=8):
 
     return wrapper
 
-def check_unused_methods(node_name):
+def check_unused_methods(node_name='guiWin'):
+    """Print the methods of the main window class `node_name` (a class of
+    the module that defines guiWin) and of its cellacdc base classes (the
+    mixins, wherever they are defined) that no `self.<method>` or
+    `<one of those classes>.<method>` reference in their methods uses."""
     import ast
-    from pathlib import Path
+    import textwrap
     from collections import Counter
+    from .gui import guiWin
 
-    file_path = Path("cellacdc/gui.py")
-    src = file_path.read_text(encoding="utf-8")
-    tree = ast.parse(src)
-
-    gui_cls = None
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef) and node.name == node_name:
-            gui_cls = node
-            break
-
-    if gui_cls is None:
+    gui_cls = vars(sys.modules[guiWin.__module__]).get(node_name)
+    if not isinstance(gui_cls, type):
         raise RuntimeError(f"{node_name} class not found")
 
+    classes = [
+        cls for cls in gui_cls.__mro__
+        if cls.__module__.split('.')[0] == 'cellacdc'
+    ]
+    class_names = {cls.__name__ for cls in classes}
     methods = []
     refs = Counter()
 
-    for node in gui_cls.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            methods.append(node.name)
+    for cls in classes:
+        source = textwrap.dedent(inspect.getsource(cls))
+        class_node = ast.parse(source).body[0]
+        for node in class_node.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if node.name not in methods:
+                methods.append(node.name)
 
             for n in ast.walk(node):
                 # Count any self.method reference (calls, signal connections, passing callbacks, etc.)
                 if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == "self":
                     refs[n.attr] += 1
 
-                # Also count guiWin.method(...) direct class-qualified calls inside class
-                if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id == node_name:
+                # Also count class-qualified calls (guiWin.method(...), <Mixin>.method(...))
+                if isinstance(n, ast.Attribute) and isinstance(n.value, ast.Name) and n.value.id in class_names:
                     refs[n.attr] += 1
 
     unused_inside_guiwin = [m for m in methods if refs[m] == 0]

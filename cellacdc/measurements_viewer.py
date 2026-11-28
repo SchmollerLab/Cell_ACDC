@@ -706,6 +706,7 @@ import pyqtgraph as pg
 
 from . import widgets, core, load, myutils, colors, transformation, qutils
 from . import urls
+from . import cellacdc_path
 from . import (
     graphLayoutBkgrColor, darkBkgrColor, settings_csv_path, settings_folderpath
 )
@@ -768,8 +769,7 @@ MEASUREMENTS_CONFIGURATIONS_PATH = os.path.join(
     settings_folderpath, 'measurements_viewer_configurations'
 )
 PREMADE_CONFIGURATIONS_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    'measurements_viewer_premade_configurations'
+    cellacdc_path, 'measurements_viewer_premade_configurations'
 )
 PREMADE_TAG = '[Premade] '
 # Tool tip of the columns list in Time course mode

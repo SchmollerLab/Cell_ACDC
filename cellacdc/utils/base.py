@@ -28,7 +28,7 @@ from qtpy.QtWidgets import (
 
 from .. import (
     widgets, apps, workers, html_utils, myutils,
-    gui, load, printl, exception_handler
+    load, printl, exception_handler
 )
 
 def log_init_util(logger, expPaths: dict, util_title, util_module):

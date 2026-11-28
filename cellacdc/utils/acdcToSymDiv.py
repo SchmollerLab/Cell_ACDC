@@ -13,7 +13,7 @@ from qtpy.QtWidgets import (
 
 from .. import (
     widgets, apps, workers, html_utils, myutils,
-    gui, load, printl
+    load, printl
 )
 
 class AcdcToSymDivUtil(QDialog):

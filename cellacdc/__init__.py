@@ -517,6 +517,7 @@ saved_promptable_models_path = os.path.join(
 favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
 )
+shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 recentPaths_path = os.path.join(settings_folderpath, 'recentPaths.csv')
 export_current_view_gui_recent_paths_csv_path = os.path.join(
     settings_folderpath, 'export_current_view_gui_recent_paths.csv'
@@ -930,5 +931,8 @@ valid_image_data_ends = (
 if GUI_INSTALLED:
     try:
         from cellacdc.volume_renderer.canvas import VolumeRendererWindow
-    except ModuleNotFoundError:
-        pass
+    except ModuleNotFoundError as err:
+        # Optional dependencies (vispy) may be missing, cellacdc modules
+        # may not
+        if (err.name or '').split('.')[0] == 'cellacdc':
+            raise

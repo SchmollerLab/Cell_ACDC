@@ -27,7 +27,6 @@ if GUI_INSTALLED:
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
     import seaborn as sns
-    from cellacdc.plot import imshow
 
 try:
     import networkx as nx

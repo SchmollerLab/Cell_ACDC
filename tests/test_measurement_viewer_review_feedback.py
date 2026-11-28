@@ -19,6 +19,7 @@ from qtpy.QtWidgets import QApplication, QWidget
 
 from cellacdc import measurements_viewer, qutils, widgets
 from cellacdc import measurements_viewer_utils
+from cellacdc import cellacdc_path
 from cellacdc.measurements_viewer import (
     MeasurementsViewerWin, SIGNAL_COLORS, signal_color
 )
@@ -1087,7 +1088,7 @@ def test_hover_updates_objects_dock_without_selecting(props_dock_viewer):
 # Documentation (Help menu, info buttons) and phase translator toolbutton
 # ---------------------------------------------------------------------------
 DOCS_RST_PATH = (
-    __import__('pathlib').Path(measurements_viewer.__file__).parent
+    __import__('pathlib').Path(cellacdc_path)
     / 'docs' / 'source' / 'measurements-viewer.rst'
 )
 

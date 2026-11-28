@@ -5,7 +5,9 @@ selected warns and keeps the list open instead of ending the calling flow
 without any message. Additional buttons (e.g. "Do not track") answer without
 a selection. `QDialogListbox.ok_cb` never reads `sender()`."""
 import ast
+import inspect
 import os
+import pathlib
 import warnings
 from unittest.mock import Mock
 
@@ -16,7 +18,9 @@ from qtpy.QtWidgets import (
     QAbstractItemView, QApplication, QPushButton, QWidget
 )
 
+import cellacdc
 from cellacdc import widgets
+from cellacdc.gui import guiWin
 from cellacdc.gui_overlay import (
     OverlayChannelsGuiElements, OverlayLabelsGuiElements
 )
@@ -220,8 +224,9 @@ def _single_choice_lists_read_without_a_selection_check():
     """`QDialogListbox(..., multiSelection=False)` assignments in cellacdc
     whose `selectedItemsText` is indexed in the same function (or module)
     without a `not <dialog>.selectedItemsText` check, as
-    `(path, line, dialog, allowEmptySelection keyword value or None)`."""
-    package = os.path.dirname(widgets.__file__)
+    `(path, line, dialog, allowEmptySelection keyword value or None)`
+    (`path`: posix path relative to the package folder)."""
+    package = os.path.dirname(cellacdc.__file__)
     found = []
     for dirpath, _, filenames in os.walk(package):
         for filename in filenames:
@@ -240,7 +245,7 @@ def _single_choice_lists_read_without_a_selection_check():
                 node for node in ast.walk(tree)
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
             ]
-            relpath = os.path.relpath(path, package)
+            relpath = pathlib.Path(os.path.relpath(path, package)).as_posix()
             for scope in scopes:
                 for row in _unchecked_single_choices(scope):
                     found.append((relpath, *row))
@@ -302,8 +307,18 @@ def test_single_choices_read_by_index_require_a_selection():
     # Ctrl+Click on the selected item of a single-choice list empties it: an
     # OK then returned `selectedItemsText == []` and `[0]` raised IndexError
     found = _single_choice_lists_read_without_a_selection_check()
-    # The scan finds the callers (e.g. the main GUI's model selection)
-    assert ('gui.py', 'win') in {(path, dialog) for path, _, dialog, _ in found}
+    # The scan finds the callers (e.g. the main GUI's model selection,
+    # wherever the method is defined)
+    method = inspect.unwrap(guiWin.autoSegm_cb)
+    path = pathlib.Path(os.path.relpath(
+        inspect.getsourcefile(method), os.path.dirname(cellacdc.__file__)
+    )).as_posix()
+    lines, start = inspect.getsourcelines(method)
+    assert [
+        row for row in found
+        if row[0] == path and start <= row[1] < start + len(lines)
+        and row[2] == 'win'
+    ], found
     missing = [row for row in found if row[-1] is not False]
     assert missing == []
 

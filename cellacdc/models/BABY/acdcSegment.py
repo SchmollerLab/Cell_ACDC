@@ -3,7 +3,6 @@ import numpy as np
 from baby import modelsets
 from baby import BabyCrawler
 
-from cellacdc import myutils
 from cellacdc.trackers import BABY
 from cellacdc.trackers.BABY import BABY_tracker
 

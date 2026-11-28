@@ -34,8 +34,7 @@ from . import qutils, QtScoped
 from . import transformation, core
 from . import is_mac
 from .cca_functions import _calc_rot_vol
-
-shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
+from . import shortcut_filepath
 
 class ZoomGuiElements:
     def gui_createZoomRectItem(self):

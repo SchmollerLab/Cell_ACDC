@@ -90,6 +90,7 @@ from . import _palettes
 from . import base_cca_dict
 from . import widgets
 from . import user_profile_path, promptable_models_path, models_path
+from . import cellacdc_path
 from . import features
 from . import _core
 from . import _types
@@ -4409,7 +4410,7 @@ class BayesianTrackerParamsWin(QDialog):
         paramsBox = QGroupBox()
 
         row = 0
-        this_path = os.path.dirname(os.path.abspath(__file__))
+        this_path = cellacdc_path
         default_model_path = os.path.join(
             this_path, 'trackers', 'BayesianTracker',
             'model', 'cell_config.json'
@@ -4665,7 +4666,7 @@ class DeltaTrackerParamsWin(QDialog):
         paramsBox = QGroupBox()
 
         row = 0
-        this_path = os.path.dirname(os.path.abspath(__file__))
+        this_path = cellacdc_path
         default_model_path = this_path
 
         label = QLabel(html_utils.paragraph('Original Images path'))

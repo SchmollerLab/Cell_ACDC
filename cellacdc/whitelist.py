@@ -732,7 +732,8 @@ class Whitelist:
 
         if self._debug:
             printl('Propagating IDs...')
-            myutils.print_call_stack()
+            from . import debugutils
+            debugutils.print_call_stack()
             printl(new_whitelist, IDs_to_add, IDs_to_remove)
 
         # if labs is None and not allData_li and not IDs_curr:

@@ -204,7 +204,14 @@ def test_mentions_matches_whole_words_only():
 @pytest.mark.slow  # parses every module of cellacdc (~5 s)
 def test_selection_of_this_repository():
     selection = Selection()
-    tests, _ = selection.related(['cellacdc/phase_translator.py'])
+    # The phase translator module, from the path its tests import it
+    module, = [
+        name for name in selection.references(
+            'tests/test_phase_translator.py'
+        )
+        if name.split('.')[-1] == 'phase_translator'
+    ]
+    tests, _ = selection.related([module.replace('.', '/') + '.py'])
     assert 'tests/test_phase_translator.py' in tests
     tests, _ = selection.related(['tests/related_tests.py'])
     assert tests == [

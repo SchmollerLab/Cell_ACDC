@@ -9,6 +9,7 @@ from functools import partial
 
 from collections import defaultdict
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -17,9 +18,11 @@ from natsort import natsorted
 from qtpy.QtCore import QThread
 from qtpy.QtWidgets import QFileDialog
 
-from . import _main
 from . import apps, html_utils, myutils, printl, widgets, workers
 from . import exception_handler
+
+if TYPE_CHECKING:
+    from . import _main
 
 def fail(message):
     raise ValueError(message)

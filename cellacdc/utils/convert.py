@@ -26,7 +26,6 @@ from qtpy import QtGui
 
 script_path = os.path.dirname(os.path.realpath(__file__))
 cellacdc_path = os.path.join(os.path.dirname(script_path))
-sys.path.append(cellacdc_path)
 
 # Custom modules
 from .. import exception_handler, printl

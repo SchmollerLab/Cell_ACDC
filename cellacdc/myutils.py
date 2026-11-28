@@ -933,7 +933,10 @@ def read_version(logger=None, return_success=False):
     else:
         try:
             from setuptools_scm import get_version
-            version = get_version(root='..', relative_to=__file__)
+            version = get_version(
+                root='..',
+                relative_to=os.path.join(cellacdc_path, '__init__.py')
+            )
             success = True
         except Exception as e:
             if logger is None:

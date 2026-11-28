@@ -5,6 +5,7 @@ viewer, which loads real data cheaply; the main GUI's own call sites are
 checked on its source)."""
 import os
 import ast
+import inspect
 import json
 from unittest.mock import MagicMock
 
@@ -992,20 +993,25 @@ def test_main_gui_callback_saves_the_channel_lut_only_after_restoring(
     assert ticks(host.imgGrad) == GREY_TICKS
 
 
-def _gui_win_calls():
-    """{method name of `gui.guiWin`: (calls, connected)}: `calls` lists the
-    `(line, name)` of every `<...>.name(...)` call, `connected` the names of
-    the `self.<name>` passed (also through `partial`) to a `connect`."""
-    with open(gui.__file__, encoding='utf-8') as file:
-        tree = ast.parse(file.read())
-    guiWin = next(
-        node for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name == 'guiWin'
-    )
+def _method_node(function):
+    """`ast.FunctionDef` of `function`, parsed from its own source
+    (wherever it is defined; decorators are unwrapped)."""
+    source = inspect.getsource(function)
+    if source[:1].isspace():
+        # A method: its source is indented, parse it as a class body
+        return ast.parse('class _Host:\n' + source).body[0].body[0]
+    return ast.parse(source).body[0]
+
+
+def _gui_win_calls(*names):
+    """{name: (calls, connected)} of the methods `names` as resolved on
+    `gui.guiWin` (defined in its class body or in a mixin): `calls` lists
+    the `(line, name)` of every `<...>.name(...)` call (lines relative to
+    the method), `connected` the names of the `self.<name>` passed (also
+    through `partial`) to a `connect`."""
     methods = {}
-    for method in guiWin.body:
-        if not isinstance(method, ast.FunctionDef):
-            continue
+    for name in names:
+        method = _method_node(getattr(gui.guiWin, name))
         calls, connected = [], set()
         for node in ast.walk(method):
             if not isinstance(node, ast.Call):
@@ -1024,15 +1030,18 @@ def _gui_win_calls():
                     )
                     if isSelfAttr:
                         connected.add(sub.attr)
-        methods[method.name] = (calls, connected)
+        methods[name] = (calls, connected)
     return methods
 
 
-@pytest.mark.slow
 def test_main_gui_calls_the_channel_lut_and_overlay_mode_hooks():
     """The main GUI's own call sites (no test builds `guiWin`): merges of
     `main` into `gui.py` have dropped or moved lines before."""
-    methods = _gui_win_calls()
+    methods = _gui_win_calls(
+        'loadingDataCompleted', 'reInitGui', 'imgGradLUTfinished_cb',
+        'gui_connectEditActions', 'gui_createControlsToolbar',
+        'exportToCheckAskOverlay'
+    )
 
     def names(method):
         return [name for _, name in methods[method][0]]

@@ -165,7 +165,8 @@ def imshow(
         win_stay_on_top: bool=True,
     ):
     if print_call_stack:
-        myutils.print_call_stack()
+        from . import debugutils
+        debugutils.print_call_stack()
 
     if isinstance(images[0], dict):
         images_dict = images[0]

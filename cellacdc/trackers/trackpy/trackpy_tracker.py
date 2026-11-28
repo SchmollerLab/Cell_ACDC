@@ -9,7 +9,7 @@ from tqdm import tqdm
 import skimage.measure
 from ..CellACDC import CellACDC_tracker
 
-from cellacdc import apps, printl
+from cellacdc import printl
 
 from tqdm import tqdm
 

@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import ndimage as ndi
 import skimage.measure
+import skimage.measure._regionprops
 import cv2
 from . import printl, debugutils
 from skimage.measure._regionprops_utils import (

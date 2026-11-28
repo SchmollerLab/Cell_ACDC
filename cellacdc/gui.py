@@ -82,6 +82,7 @@ from . import user_manual_url
 from . import (settings_folderpath, settings_csv_path, 
                seg_for_lost_IDs_settings_path)
 from . import favourite_func_metrics_csv_path
+from . import shortcut_filepath
 from . import qutils, autopilot, QtScoped
 from . import _palettes
 from . import transformation
@@ -151,7 +152,6 @@ RP_OPT_PERC_CUTOUT_MAX = 0.3 # th for trying to do local updates to regionprops,
                              # if region which we have to update is too large too 
                              # many cells are probably inside and its not worth
                              # local updating (since we actually need to call RP twice!)
-shortcut_filepath = os.path.join(settings_folderpath, 'shortcuts.ini')
 
 # Hard-coded shortcuts that are reserved for non-customizable actions.
 

@@ -14,6 +14,7 @@ from qtpy.QtGui import QIcon
 from qtpy.QtWidgets import QApplication, QGroupBox, QPushButton, QWidget
 
 from cellacdc import _main, dataStruct, measurements_viewer, myutils
+from cellacdc import cellacdc_path
 
 pytestmark = pytest.mark.gui
 
@@ -276,7 +277,7 @@ def test_getting_started_lists_the_module_buttons_in_launcher_order(
     # numbers: docs and messages name the modules)
     win = buildLauncher(spotmaxInstalled=True)
     rst_path = os.path.join(
-        os.path.dirname(_main.__file__),
+        cellacdc_path,
         'docs', 'source', 'getting-started.rst'
     )
     with open(rst_path, encoding='utf-8') as file:

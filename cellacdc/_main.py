@@ -68,6 +68,7 @@ from . import _warnings
 from . import exception_handler
 from . import user_profile_path
 from . import cellacdc_path
+from . import favourite_func_metrics_csv_path, shortcut_filepath
 from . config import parser_args
 
 try:
@@ -338,9 +339,9 @@ class mainWin(QMainWindow):
     def checkConfigFiles(self):
         print('Loading configuration files...')
         paths_to_check = [
-            gui.favourite_func_metrics_csv_path, 
+            favourite_func_metrics_csv_path, 
             # gui.custom_annot_path, 
-            gui.shortcut_filepath, 
+            shortcut_filepath, 
             os.path.join(settings_folderpath, 'recentPaths.csv'), 
             load.last_entries_metadata_path, 
             load.additional_metadata_path, 

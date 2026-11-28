@@ -40,6 +40,7 @@ from . import issues_url
 from . import exception_handler
 from . import apps, myutils, widgets, html_utils, printl
 from . import load, settings_csv_path
+from . import cellacdc_path
 from . import _palettes
 from . import urls
 from . import acdc_fiji_path
@@ -288,7 +289,7 @@ class bioFormatsWorker(QObject):
             from cellacdc import acdc_bioio_bioformats as bioformats
         else:
             import javabridge
-            from cellacdc import bioformat
+            from cellacdc import bioformats
             
         rawFilePath = os.path.join(raw_src_path, filename)
 
@@ -1466,7 +1467,7 @@ class createDataStructWin(QMainWindow):
                 'os2': lambda foldername: os.system('open "%s"' % foldername)
                  }
 
-            main_path = pathlib.Path(__file__).resolve().parents[1]
+            main_path = pathlib.Path(cellacdc_path).resolve().parent
             userManual_path = main_path / 'UserManual'
             systems.get(os.name, os.startfile)(userManual_path)
         elif link == 'fiji':
@@ -1476,7 +1477,7 @@ class createDataStructWin(QMainWindow):
                 'os2': lambda foldername: os.system('open "%s"' % foldername)
                  }
 
-            main_path = pathlib.Path(__file__).resolve().parents[1]
+            main_path = pathlib.Path(cellacdc_path).resolve().parent
             fijiMacros_path = main_path / 'FijiMacros'
             systems.get(os.name, os.startfile)(fijiMacros_path)
 
