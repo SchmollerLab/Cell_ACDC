@@ -5,6 +5,9 @@ import pandas as pd
 from .. import apps, myutils, workers, widgets, html_utils, load
 
 from .base import NewThreadMultipleExpBaseUtil
+from qtpy.QtCore import Qt
+from qtpy.QtWidgets import QLabel, QComboBox, QGridLayout
+from cellacdc.shared.dialogs import preprocessing as dialogs_preprocessing
 
 class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -115,3 +118,49 @@ class FucciPreprocessUtil(NewThreadMultipleExpBaseUtil):
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
         super().workerFinished(worker)
         self.close()
+
+
+class FucciPreprocessDialog(dialogs_preprocessing.FunctionParamsDialog):
+    def __init__(
+            self, channel_names,
+            df_metadata=None,
+            parent=None,
+        ):
+        
+        from cellacdc.preprocess import fucci_filter
+        params_argspecs = myutils.get_function_argspec(fucci_filter)
+        
+        super().__init__(
+            params_argspecs, 
+            function_name='FUCCI pre-processing', 
+            df_metadata=df_metadata,
+            parent=parent,
+        )
+        
+        channelNamesLayout = QGridLayout()
+        
+        row = 0
+        label = QLabel('First channel name:  ')
+        channelNamesLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
+        self.firstChNameWidget = QComboBox()
+        self.firstChNameWidget.addItems(channel_names)
+        channelNamesLayout.addWidget(self.firstChNameWidget, row, 1)
+        
+        row += 1
+        label = QLabel('Second channel name:  ')
+        channelNamesLayout.addWidget(label, row, 0, alignment=Qt.AlignLeft)
+        self.secondChNameWidget = QComboBox()
+        self.secondChNameWidget.addItems(channel_names)
+        self.secondChNameWidget.setCurrentText(list(channel_names)[1])
+        channelNamesLayout.addWidget(self.secondChNameWidget, row, 1)
+        
+        channelNamesLayout.setColumnStretch(0, 0)
+        channelNamesLayout.setColumnStretch(1, 1)
+        
+        self.mainLayout.insertLayout(0, channelNamesLayout)
+        self.mainLayout.insertWidget(1, widgets.QHLine())
+    
+    def ok_cb(self):
+        self.firstChannelName = self.firstChNameWidget.currentText()
+        self.secondChannelName = self.secondChNameWidget.currentText()
+        super().ok_cb()

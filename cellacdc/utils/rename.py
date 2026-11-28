@@ -26,6 +26,8 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 # Custom modules
 from .. import prompts, load, myutils, apps, html_utils, widgets
 from .. import cellacdc_path, settings_folderpath
+from qtpy.QtWidgets import QLineEdit, QHBoxLayout, QDialog, QFormLayout
+from cellacdc import _window_stacking
 
 if os.name == 'nt':
     try:
@@ -265,3 +267,91 @@ class renameFilesWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
+
+
+class QDialogAppendTextFilename(QDialog):
+    def __init__(self, filename, ext, parent=None, font=None):
+        super().__init__(parent)
+        self.cancel = True
+        filenameNOext, _ = os.path.splitext(filename)
+        self.filenameNOext = filenameNOext
+        if ext.find('.') == -1:
+            ext = f'.{ext}'
+        self.ext = ext
+
+        self.setWindowTitle('Append text to file name')
+
+        mainLayout = QVBoxLayout()
+        formLayout = QFormLayout()
+        buttonsLayout = QHBoxLayout()
+
+        if font is not None:
+            self.setFont(font)
+
+        self.LE = QLineEdit()
+        self.LE.setAlignment(Qt.AlignCenter)
+        formLayout.addRow('Appended text', self.LE)
+        self.LE.textChanged.connect(self.updateFinalFilename)
+
+        self.finalName_label = QLabel(
+            f'Final file name: "{filenameNOext}_{ext}"'
+        )
+        # padding: top, left, bottom, right
+        self.finalName_label.setStyleSheet(
+            'font-size:13px; padding:5px 0px 0px 0px;'
+        )
+
+        okButton = widgets.okPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addWidget(self.finalName_label, alignment=Qt.AlignCenter)
+        mainLayout.addLayout(buttonsLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        self.formLayout = formLayout
+
+        self.setLayout(mainLayout)
+        # self.setModal(True)
+
+    def updateFinalFilename(self, text):
+        finalFilename = f'{self.filenameNOext}_{text}{self.ext}'
+        self.finalName_label.setText(f'Final file name: "{finalFilename}"')
+
+    def ok_cb(self, event):
+        if not self.LE.text():
+            err_msg = (
+                'Appended name cannot be empty!'
+            )
+            msg = QMessageBox()
+            msg.critical(
+               self, 'Empty name', err_msg, msg.Ok
+            )
+            return
+        self.cancel = False
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        _window_stacking.set_window_flags_on_top(self, Qt.Window)
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()

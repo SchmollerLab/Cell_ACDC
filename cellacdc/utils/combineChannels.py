@@ -6,6 +6,9 @@ from .. import apps, myutils, workers, widgets, html_utils, load
 from .. import printl
 
 from .base import NewThreadMultipleExpBaseUtil
+from qtpy.QtWidgets import QLabel, QSpinBox
+from cellacdc import qutils
+from cellacdc.shared.dialogs import preprocessing as dialogs_preprocessing
 
 class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -133,3 +136,38 @@ class CombineChannelsUtil(NewThreadMultipleExpBaseUtil):
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
         super().workerFinished(worker)
         self.close()
+
+
+class CombineChannelsSetupDialogUtil(dialogs_preprocessing.CombineChannelsSetupDialog):
+    def __init__(
+            self,
+            channel_names,
+            df_metadata=None,
+            parent=None,
+        ):
+
+        super().__init__(
+            channel_names,
+            parent=parent,
+            df_metadata=df_metadata
+            )
+        
+        # add int input for number of workers
+
+        
+        self.mainLayout.addSpacing(20)
+
+        qutils.hide_and_delete_layout(self.buttonsLayout)
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+        self.buttonsLayout = buttonsLayout
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addLayout(buttonsLayout)
+        
+        self.nThreadsSpinBox = QSpinBox()
+        self.nThreadsSpinBox.setMinimum(1)
+        self.nThreadsSpinBox.setValue(4)
+        self.nThreadsSpinBox.setToolTip("Number of threads to use for processing")
+        self.mainLayout.addWidget(QLabel("Number of threads:"))
+        self.mainLayout.addWidget(self.nThreadsSpinBox)

@@ -3,6 +3,7 @@ import os
 from .. import apps, myutils, workers, widgets, html_utils, printl
 
 from .base import NewThreadMultipleExpBaseUtil
+from . import base as utils_base
 
 class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
     def __init__(
@@ -150,3 +151,30 @@ class CreateTrackastraInputData(NewThreadMultipleExpBaseUtil):
             )
         super().workerFinished(worker)
         self.close()
+
+
+class SetupCreateTrackastraInputDataDialog(utils_base.SetupSplitVideoIntoTiffsDialog):
+    def __init__(self, video_filepath, logger_func=print, parent=None):
+        super().__init__(
+            video_filepath, 
+            logger_func=logger_func, 
+            parent=parent
+        )
+
+        self.prefixLineEdit.setText('t')
+        self.prefixLineEdit.setDisabled(True)
+
+        self.onlyUntilTrackedFormWidget.widget.setChecked(False)
+        self.onlyUntilAnnotatedFormWidget.widget.setChecked(True)
+
+        self.onlyUntilAnnotatedFormWidget.setDisabled(True)
+        self.onlyUntilTrackedFormWidget.setDisabled(True)
+
+        self._headerLabel.setText(html_utils.paragraph(
+            self._headerText.replace(
+                'Split video into single-frame TIFFs setup',
+                'Generate Trackastra training data setup'
+            )
+        ))
+
+        self.setWindowTitle('Generate Trackastra training data setup')

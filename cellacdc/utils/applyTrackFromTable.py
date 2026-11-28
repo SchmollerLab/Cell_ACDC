@@ -8,6 +8,11 @@ from .. import myutils, apps, widgets, html_utils, printl, workers
 from ..utils import base
 
 from qtpy.QtWidgets import QFileDialog
+from qtpy.QtWidgets import (
+    QLabel, QVBoxLayout, QHBoxLayout, QFormLayout, QCheckBox
+)
+from cellacdc import fonts
+from cellacdc.shared.dialogs import base as dialogs_base
 
 class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
     def __init__(
@@ -100,3 +105,111 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
         win.filename = ''
         win.close()
         
+
+
+class ApplyTrackTableSelectColumnsDialog(dialogs_base.QBaseDialog):
+    def __init__(self, df, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Select columns containing tracking info')
+        
+        self.cancel = True
+        self.mainLayout = QVBoxLayout()
+
+        options = (
+            '"Frame index", "Tracked IDs" and "Segmentation mask IDs"<br>',
+            '"Frame index", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
+        )
+        self.instructionsText = html_utils.paragraph(
+            f"""
+            <b>Select which columns</b> contain the tracking information.<br><br>
+            You must choose one of the following combinations:<br> 
+            {html_utils.to_list(options)}
+            Optionally, you can provide the column name containing the parent ID.<br>
+            This will allow you to load lineage information into Cell-ACDC. 
+            """
+        )
+        self.mainLayout.addWidget(QLabel(self.instructionsText))
+
+        formLayout = QFormLayout()
+
+        self.frameIndexCombobox = widgets.QCenteredComboBox()
+        self.frameIndexCombobox.addItems(df.columns)
+        self.frameIndexCheckbox = QCheckBox('1st frame is index 1')
+        frameIndexLayout = QHBoxLayout()
+        frameIndexLayout.addWidget(self.frameIndexCombobox)
+        frameIndexLayout.addWidget(self.frameIndexCheckbox)
+        frameIndexLayout.setStretch(0, 2)
+        frameIndexLayout.setStretch(1, 0)
+        formLayout.addRow(
+            'Frame index: ', frameIndexLayout
+        )
+
+        self.trackedIDsCombobox = widgets.QCenteredComboBox()
+        self.trackedIDsCombobox.addItems(df.columns)
+        formLayout.addRow('Tracked IDs: ', self.trackedIDsCombobox)
+
+        items = df.columns.to_list()
+        items.insert(0, 'None')
+        self.maskIDsCombobox = widgets.QCenteredComboBox()
+        self.maskIDsCombobox.addItems(items)
+        formLayout.addRow('Segmentation mask IDs: ', self.maskIDsCombobox)
+
+        self.xCentroidCombobox = widgets.QCenteredComboBox()
+        self.xCentroidCombobox.addItems(items)
+        formLayout.addRow('X coord. centroid: ', self.xCentroidCombobox)
+
+        self.yCentroidCombobox = widgets.QCenteredComboBox()
+        self.yCentroidCombobox.addItems(items)
+        formLayout.addRow('Y coord. centroid: ', self.yCentroidCombobox)
+
+        self.parentIDcombobox = widgets.QCenteredComboBox()
+        self.parentIDcombobox.addItems(items)
+        formLayout.addRow('Parent ID (optional): ', self.parentIDcombobox)
+
+        deleteUntrackedLayout = QHBoxLayout()
+        self.deleteUntrackedIDsToggle = widgets.Toggle()
+        deleteUntrackedLayout.addStretch(1)
+        deleteUntrackedLayout.addWidget(self.deleteUntrackedIDsToggle)
+        deleteUntrackedLayout.addStretch(1)
+        formLayout.addRow('Delete untracked IDs: ', deleteUntrackedLayout)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addSpacing(30)
+        self.mainLayout.addLayout(formLayout)
+        self.mainLayout.addSpacing(20)
+        self.mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(self.mainLayout)
+        self.setFont(fonts.font)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.frameIndexCol = self.frameIndexCombobox.currentText()
+        self.trackedIDsCol = self.trackedIDsCombobox.currentText()
+        self.maskIDsCol = self.maskIDsCombobox.currentText()
+        self.xCentroidCol = self.xCentroidCombobox.currentText()
+        self.yCentroidCol = self.yCentroidCombobox.currentText()
+        self.deleteUntrackedIDs = self.deleteUntrackedIDsToggle.isChecked()
+        if self.maskIDsCol == 'None':
+            if self.xCentroidCol == 'None' or self.yCentroidCol == 'None':
+                self.warnInvalidSelection()
+                return
+        else:
+            self.xCentroidCol = 'None'
+            self.yCentroidCol = 'None'
+        self.parentIDcol = self.parentIDcombobox.currentText()
+        self.isFirstFrameOne = self.frameIndexCheckbox.isChecked()
+        self.close()
+    
+    def warnInvalidSelection(self):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.warning(
+            self, 'Invalid selection', html_utils.paragraph(
+                f'<b>Invalid selection</b><br> {self.instructionsText}'
+            )
+        )

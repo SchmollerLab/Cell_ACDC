@@ -22,6 +22,12 @@ from .. import (
 )
 
 from .. import cellacdc_path, settings_folderpath
+from qtpy.QtCore import Qt, QTimer
+from qtpy.QtWidgets import QSpinBox
+from cellacdc import prompts
+from cellacdc import fonts
+from cellacdc.shared.dialogs import base as dialogs_base
+from cellacdc.shared.dialogs import image_tools as dialogs_image_tools
 
 favourite_func_metrics_csv_path = os.path.join(
     settings_folderpath, 'favourite_func_metrics.csv'
@@ -639,3 +645,255 @@ class computeMeasurmentsUtilWin(NewThreadMultipleExpBaseUtil):
         if loggerLevel.upper() == 'EXCEPTION':
             loggerLevel = 'ERROR'
         self.logger.log(getattr(logging, loggerLevel.upper()), text)
+
+
+# class CellConstantEquationDialog(_CombineMetricsDialog):
+#     """Shared formula editor with candidate and enquiring-cell input trees."""
+#     def __init__(
+#             self, constant, acdc_df=None, SizeT=None, condition=False,
+#             parent=None
+#         ):
+#         from . import timepoint_predictors
+#         self._predictors = timepoint_predictors
+#         self.constant = dict(constant)
+#         self.SizeT = SizeT
+#         self.isCondition = condition
+#         self.sourceDf = acdc_df
+#         df = (
+#             timepoint_predictors._flat_df(acdc_df)
+#             if acdc_df is not None else pd.DataFrame(columns=['frame_i', 'Cell_ID'])
+#         )
+#         super().__init__(
+#             [], False, False, parent=parent,
+#             acdcDfs={'Candidate cell': df, 'Enquiring cell': df}
+#         )
+#         self.setWindowTitle('Cell filter formula' if condition else 'Constant formula')
+#         self.newColNameLineEdit.setText(constant['name'])
+#         self.newColNameLineEdit.setReadOnly(True)
+#         self.equation = ''
+#         functions = QHBoxLayout()
+#         for name, (_, description) in timepoint_predictors.CELL_FUNCTIONS.items():
+#             button = QPushButton(name)
+#             button.setToolTip(description)
+#             button.clicked.connect(partial(self.insertEquationText, f'{name}('))
+#             functions.addWidget(button)
+#         self.layout().insertLayout(self.layout().count()-3, functions)
+#         infoLabel = QLabel(html_utils.paragraph(
+#             'Left: candidate measurements. '
+#             'Right: enquiring-cell measurements at the same frame, prefixed '
+#             '<code>this_</code>. Double-click inputs to insert them.<br>'
+#             + ('Return bool or 0/1, either a scalar or one value per overlapping '
+#                'frame. Any/All selects cells; Only where true selects frames.'
+#                if condition else
+#                'Reduce the selected source rows to one value using MAX, MEAN, '
+#                'FIRST, etc. Time scope determines whether this is per frame '
+#                'over the entire video, or within a custom window around t.')
+#         ))
+#         infoLabel.setWordWrap(True)
+#         self.layout().insertWidget(0, infoLabel)
+#         self.formulaEditWidget.setText(
+#             constant['condition' if condition else 'equation']
+#         )
+
+#     def addTreeItems(self, parentItem, itemsText, **kwargs):
+#         start = parentItem.childCount()
+#         super().addTreeItems(parentItem, itemsText, **kwargs)
+#         for i in range(start, parentItem.childCount()):
+#             item = parentItem.child(i)
+#             if not getattr(item, 'isCol', False):
+#                 continue
+#             old = item.variableName
+#             name = item.text(0)
+#             item.variableName = f'this_{name}' if kwargs.get('index') == 1 else name
+#             self.variableNames[self.variableNames.index(old)] = item.variableName
+
+#     def getTestData(self, preview=False):
+#         df = self.acdcDfs['Candidate cell'].head(10).reset_index(drop=True).copy()
+#         for col in list(df.columns):
+#             df[f'this_{col}'] = df[col]
+#         return df
+
+#     def validateEquation(self, formula):
+#         try:
+#             if not formula.strip():
+#                 raise ValueError('Formula cannot be empty.')
+#             result = self._predictors.eval_cell_equation(
+#                 self.getTestData(), formula,
+#                 {'SizeT': self.SizeT} if self.SizeT is not None else None
+#             )
+#             if self.isCondition:
+#                 self._predictors.boolean_filter_values(result, len(self.getTestData()))
+#         except Exception as err:
+#             return False, str(err)
+#         return True, formula
+
+#     def test_cb(self):
+#         formula = self.formulaEditWidget.text()
+#         success, message = self.validateEquation(formula)
+#         if success:
+#             constant = dict(self.constant)
+#             constant['condition' if self.isCondition else 'equation'] = formula
+#             if self.isCondition:
+#                 constant['condition_type'] = 'equation'
+#                 # Show selected source-cell counts independently of the value formula.
+#                 constant['equation'] = 'NUNIQUE(Cell_ID)'
+#             try:
+#                 values = self._predictors.compute_cell_constants(
+#                     self.sourceDf, [constant], SizeT=self.SizeT
+#                 )
+#             except Exception as err:
+#                 success, message = False, str(err)
+#             else:
+#                 if values and self.sourceDf is not None:
+#                     preview = self._predictors.add_constants_columns(
+#                         self.sourceDf, values
+#                     ).reset_index()
+#                     preview = preview[['frame_i', 'Cell_ID', constant['name']]]
+#                     self.testOutputDisplay.setHtml(preview.head(20).to_html(index=False))
+#                 else:
+#                     self.testOutputDisplay.setPlainText('Formula is valid; no data to preview.')
+#         self.statusLabel.setText('Formula is valid.' if success else message)
+#         if not success:
+#             self.testOutputDisplay.setPlainText(message)
+#         self.testOutputDisplay.setStyleSheet(
+#             f'border: 2px solid {"green" if success else "red"}'
+#         )
+#         self.okButton.setEnabled(success)
+
+#     def ok_cb(self):
+#         self.test_cb()
+#         if not self.okButton.isEnabled():
+#             return
+#         self.equation = self.formulaEditWidget.text()
+#         self.cancel = False
+#         self.close()
+
+#     def showHelp(self):
+#         msg = widgets.myMessageBox(wrapText=False)
+#         msg.information(self, 'Constant formulas', html_utils.paragraph(
+#             'Candidate inputs have their measurement names. Enquiring-cell '
+#             'inputs have the prefix <code>this_</code>, for example '
+#             '<code>area &gt; this_area</code>. Functions such as MAX and MEAN '
+#             'operate on the candidate/enquirer overlapping frames when filtering. '
+#             'Custom ranges use inclusive integer bounds relative to t, '
+#             'the frame receiving the result (e.g. t - 5 to t + 2). '
+#             'SizeT is the total number of video frames.'
+#         ))
+
+
+class stopFrameDialog(dialogs_base.QBaseDialog):
+    def __init__(self, posDatas, parent=None):
+        super().__init__(parent=parent)
+
+        self.cancel = True
+
+        self.setWindowTitle('Stop frame')
+
+        mainLayout = QVBoxLayout()
+
+        infoTxt = html_utils.paragraph(
+            'Enter a <b>stop frame number</b> for each of the loaded Positions',
+            center=True
+        )
+        exp_path = posDatas[0].exp_path
+        exp_path = os.path.normpath(exp_path).split(os.sep)
+        exp_path = f'...{f"{os.sep}".join(exp_path[-4:])}'
+        subInfoTxt = html_utils.paragraph(
+            f'Experiment folder: <code>{exp_path}<code>', font_size='12px',
+            center=True
+        )
+        infoLabel = QLabel(f'{infoTxt}{subInfoTxt}')
+        infoLabel.setToolTip(posDatas[0].exp_path)
+        mainLayout.addWidget(infoLabel)
+        mainLayout.addSpacing(20)
+
+        self.posDatas = posDatas
+        for posData in posDatas:
+            _layout = QHBoxLayout()
+            _layout.addStretch(1)
+            _label = QLabel(html_utils.paragraph(f'{posData.pos_foldername}'))
+            _layout.addWidget(_label)
+
+            _spinBox = QSpinBox()
+            _spinBox.setMaximum(214748364)
+            _spinBox.setAlignment(Qt.AlignCenter)
+            _spinBox.setFont(fonts.font)
+            if posData.acdc_df is not None:
+                _val = posData.acdc_df.index.get_level_values(0).max()+1
+            else:
+                _val = posData.readLastUsedStopFrameNumber()
+            if _val is None:
+                _val = posData.SizeT
+            _spinBox.setValue(_val)
+
+            posData.stopFrameSpinbox = _spinBox
+
+            _layout.addWidget(_spinBox)
+
+            viewButton = widgets.viewPushButton('Visualize...')
+            viewButton.clicked.connect(
+                partial(self.viewChannelData, posData, _spinBox)
+            )
+            _layout.addWidget(viewButton, alignment=Qt.AlignRight)
+
+            _layout.addStretch(1)
+
+            mainLayout.addLayout(_layout)
+
+        buttonsLayout = QHBoxLayout()
+
+        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton(' Cancel ')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        self.setLayout(mainLayout)
+    
+    def viewChannelData(self, posData, spinBox):
+        self.sender().setText('Loading...')
+        QTimer.singleShot(
+            200, partial(self._viewChannelData, posData, spinBox, self.sender())
+        )
+
+    def _viewChannelData(self, posData, spinBox, senderButton):      
+        chNames = posData.chNames
+        if len(chNames) > 1:
+            ch_name_selector = prompts.select_channel_name(
+                which_channel='segm', allow_abort=False
+            )
+            ch_name_selector.QtPrompt(
+                self, chNames,'Select channel name to visualize: '
+            )
+            if ch_name_selector.was_aborted:
+                return
+            chName = ch_name_selector.channel_name
+        else:
+            chName = chNames[0]
+        
+        channel_file_path = load.get_filename_from_channel(
+            posData.images_path, chName
+        )
+        posData.frame_i = 0
+        posData.loadImgData(imgPath=channel_file_path)
+        self.slideshowWin = dialogs_image_tools.imageViewer(
+            posData=posData, spinBox=spinBox
+        )
+        self.slideshowWin.update_img()
+        self.slideshowWin.show()
+        senderButton.setText('Visualize...')
+
+    def ok_cb(self):
+        self.cancel = False
+        for posData in self.posDatas:
+            stopFrameNum = posData.stopFrameSpinbox.value()
+            posData.stopFrameNum = stopFrameNum
+        self.close()
