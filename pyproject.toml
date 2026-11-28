@@ -198,8 +198,11 @@ markers = [
 # Print the stack of every thread when a test runs longer than 5 minutes
 # (hung Qt worker threads); the test keeps running
 faulthandler_timeout = 300
-# Ignore DeprecationWarnings
+# Ignore DeprecationWarnings, except the ones of old Cell-ACDC import paths
+# (compat shims, cellacdc/_compat.py): Cell-ACDC's code and tests use the new
+# paths (CODEMAP.md). Later entries win.
 filterwarnings = [
     "ignore::DeprecationWarning",
+    "error:Cell-ACDC import path moved:DeprecationWarning",
     "ignore:cannot import name '_C' from 'sam2':UserWarning",
 ]

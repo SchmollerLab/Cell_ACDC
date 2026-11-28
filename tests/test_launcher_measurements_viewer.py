@@ -85,3 +85,19 @@ def test_measurements_viewer_action_opens_and_tracks_window(
 
     win.close()
     assert host.measurementsViewerWins == []
+
+
+def test_python_m_measurements_viewer_runs_the_viewer(monkeypatch):
+    """``python -m cellacdc.measurements_viewer [folder]`` (the package's
+    ``__main__.py``) runs ``run`` of the viewer window module."""
+    import runpy
+    import sys
+    calls = []
+    monkeypatch.setattr(
+        viewer_window, 'run', lambda folder=None: calls.append(folder)
+    )
+    monkeypatch.setattr(sys, 'argv', ['measurements_viewer', 'exp_folder'])
+    runpy.run_module('cellacdc.measurements_viewer', run_name='__main__')
+    monkeypatch.setattr(sys, 'argv', ['measurements_viewer'])
+    runpy.run_module('cellacdc.measurements_viewer', run_name='__main__')
+    assert calls == ['exp_folder', None]
