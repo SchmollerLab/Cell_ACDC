@@ -2,12 +2,13 @@
 
 The package layout moved most modules (CODEMAP.md). The old import paths
 keep working for external code (plugins, spotMAX, users' scripts) through
-compat shims that emit a ``MovedWarning`` (``cellacdc/_compat.py``, tables
-in the generated ``cellacdc/_compat_moves.py``), and pytest turns that
-warning into an error (``filterwarnings`` in ``pyproject.toml``). This
-static scan also finds old paths that the tests never execute:
+the import hook and lazy module attributes of ``cellacdc/_compat.py``,
+which emit a ``MovedWarning`` (tables in the generated
+``cellacdc/_compat_moves.py``), and pytest turns that warning into an
+error (``filterwarnings`` in ``pyproject.toml``). This static scan also
+finds old paths that the tests never execute:
 
-- imports of a shim (``import cellacdc.apps``, ``from cellacdc import
+- imports of an old module (``import cellacdc.apps``, ``from cellacdc import
   widgets``, ``from . import gui_navigation``) or of a name through a module
   it moved out of (``from cellacdc.gui import guiWin``,
   ``from cellacdc.myutils import listdir``);
@@ -21,11 +22,11 @@ static scan also finds old paths that the tests never execute:
   Cell-ACDC installed there and is skipped) and string annotations naming
   an old module that the file does not import (``'widgets.myMessageBox'``).
 
-Docstrings and comments are not scanned. Every file at an old path must
-be a shim: ``__cellacdc_compat__ = True`` and no definitions.
+Docstrings and comments are not scanned. No file may exist at an old
+module path (``OLD_MODULES``, served by the import hook).
 
-Exempt: ``cellacdc/_compat*.py``, the shims themselves and
-``tests/test_compat.py``, which checks the old paths on purpose.
+Exempt: ``cellacdc/_compat*.py`` and ``tests/test_compat.py``, which
+checks the old paths on purpose.
 """
 import ast
 import json
@@ -69,7 +70,7 @@ class OldPaths:
 
     def __init__(self):
         moves = source_scan.compat_moves()
-        self.shims = set(source_scan.shim_modules()) | set(
+        self.shims = set(source_scan.old_modules()) | set(
             moves['MODULE_ALIASES']
         )
         name_moves = moves['NAME_MOVES']
@@ -476,36 +477,37 @@ def test_notebooks_use_no_old_import_paths(old_paths):
     assert not findings, format_findings(findings)
 
 
-def test_files_at_old_paths_are_shims():
-    """Every module at an old import path is a compat shim: the marker
-    ``__cellacdc_compat__ = True`` and no definitions."""
+def test_old_module_paths_have_no_files():
+    """Old module paths are served by the import hook of
+    ``cellacdc/_compat.py`` (``OLD_MODULES``): no file may exist there (the
+    hook is asked only when no file is found, and git sees the 1:1 moves as
+    renames only without a file at the old path). ``OLD_MODULES`` covers
+    every old module of the tables, with the right kind."""
     moves = source_scan.compat_moves()
     index = source_scan.module_index()
-    # Every old module was a top-level module of cellacdc (tables of new
-    # modules list names moved by a later step of the refactor)
-    old_modules = set(moves['MODULE_ALIASES']) | {
-        module for module in moves['NAME_MOVES']
-        if module.count('.') == 1 and (index.get(module) or '').endswith(
-            '.py') and not source_scan.is_package_file(index[module])
-    }
+    old_modules = moves['OLD_MODULES']
     wrong = {}
-    for module in sorted(old_modules | source_scan.shim_modules()):
-        rel = index.get(module)
-        if rel is None:
-            wrong[module] = 'missing (old paths must keep working)'
-            continue
-        tree = source_scan.parse(rel)
-        definitions = [
-            node.name for node in source_scan.iter_module_level(tree.body)
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
-                                 ast.ClassDef))
-        ]
-        if not source_scan.is_shim(tree):
-            if module in KEPT_MODULES_WITH_MOVED_NAMES:
-                continue
-            wrong[module] = f'{rel} is no shim (no {source_scan.SHIM_MARKER})'
-        elif definitions:
-            wrong[module] = f'{rel} defines {definitions}'
+    for module, kind in sorted(old_modules.items()):
+        expected = 'alias' if module in moves['MODULE_ALIASES'] else 'split'
+        if module in index:
+            wrong[module] = f'{index[module]} exists at an old module path'
+        elif kind != expected:
+            wrong[module] = f'kind {kind!r}, expected {expected!r}'
+        elif kind == 'split' and module not in moves['NAME_MOVES']:
+            wrong[module] = 'split old module without a NAME_MOVES table'
+    for module in moves['MODULE_ALIASES']:
+        if module not in old_modules:
+            wrong[module] = 'MODULE_ALIASES entry missing in OLD_MODULES'
+    # Every old module was a top-level module of cellacdc (tables of new
+    # modules list names moved by a later step of the refactor): one
+    # without a file must be served by the hook
+    for module in moves['NAME_MOVES']:
+        if module.count('.') == 1 and module not in index \
+                and module not in old_modules:
+            wrong[module] = 'old module with neither a file nor OLD_MODULES'
+    for module in KEPT_MODULES_WITH_MOVED_NAMES:
+        if module not in index:
+            wrong[module] = 'module with moved names is missing'
     # A file next to a same-name package is never imported
     for rel in source_scan.package_files():
         path = REPO_ROOT / rel

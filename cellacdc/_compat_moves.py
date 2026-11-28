@@ -22,6 +22,34 @@ MODULE_ALIASES = {
     'cellacdc.segm': 'cellacdc.segmentation_module.main_window',
 }
 
+# Old modules that have no file any more, served by the import hook of
+# _compat.py (OldPathFinder): 'alias' = the module at its new path
+# (MODULE_ALIASES), 'split' = its names are forwarded lazily (NAME_MOVES)
+OLD_MODULES = {
+    'cellacdc._main': 'alias',
+    'cellacdc._torch_utils': 'alias',
+    'cellacdc.apps': 'split',
+    'cellacdc.apps_measurements_viewer': 'split',
+    'cellacdc.custom_annotation_predictors': 'alias',
+    'cellacdc.dataPrep': 'alias',
+    'cellacdc.dataReStruct': 'alias',
+    'cellacdc.dataStruct': 'alias',
+    'cellacdc.gui_annotations': 'alias',
+    'cellacdc.gui_combine': 'split',
+    'cellacdc.gui_core': 'split',
+    'cellacdc.gui_custom_annotations': 'alias',
+    'cellacdc.gui_navigation': 'alias',
+    'cellacdc.gui_overlay': 'alias',
+    'cellacdc.gui_utils': 'split',
+    'cellacdc.gui_viewer_tools': 'split',
+    'cellacdc.measurements_viewer_utils': 'split',
+    'cellacdc.myutils_models': 'alias',
+    'cellacdc.phase_translator': 'alias',
+    'cellacdc.segm': 'alias',
+    'cellacdc.widgets': 'split',
+    'cellacdc.workers': 'split',
+}
+
 # Module -> {name: (home module, attribute)}; attribute None: the name is
 # the home module itself
 NAME_MOVES = {

@@ -37,15 +37,19 @@ listed, or when a path or `path::Name` named here does not exist.
   `gui/main_window/`, `gui/dialogs/`, `gui/widgets/`, `gui/workers/` and
   `gui/helpers.py`; `gui/mixins/` and `measurements_viewer/` never import
   them.
-- **Compat shims**: the files at the old module paths (`apps.py`,
-  `widgets.py`, `workers.py`, `gui_navigation.py`, `_main.py`, ...) and the
-  `__getattr__` of `gui/__init__.py`, `measurements_viewer/__init__.py` and
-  `myutils/__init__.py` only forward old names to their new homes, with a
-  `MovedWarning` (`_compat.py`, tables in `_compat_moves.py`). They exist
-  for external code (spotMAX, user plugins, notebooks). Cell-ACDC code and
-  tests never use them: pytest turns the warning into an error and
-  `tests/test_no_old_paths.py` scans for old paths. Exception: the plugin
-  API names of `cellacdc.myutils` (`PLUGIN_API` in `_compat_moves.py`, e.g.
+- **Old import paths (compat)**: the old modules (`cellacdc.apps`,
+  `cellacdc.widgets`, `cellacdc.workers`, `cellacdc.gui_navigation`,
+  `cellacdc._main`, ...) have no files any more: an import hook of
+  `_compat.py` (`OldPathFinder`, installed by `__init__.py`, table
+  `OLD_MODULES` in `_compat_moves.py`) serves them, and the `__getattr__`
+  of `gui/__init__.py`, `measurements_viewer/__init__.py` and
+  `myutils/__init__.py` forwards the old names of those packages. Both give
+  the objects at their new homes, with a `MovedWarning`. They exist for
+  external code (spotMAX, user plugins, notebooks). Cell-ACDC code and tests
+  never use them: pytest turns the warning into an error and
+  `tests/test_no_old_paths.py` scans for old paths (and fails when a file
+  exists at an old module path). Exception: the plugin API names of
+  `cellacdc.myutils` (`PLUGIN_API` in `_compat_moves.py`, e.g.
   `myutils.check_install_package`) stay reachable without a warning for
   external models.
 
@@ -87,8 +91,8 @@ Placement rules:
 ## 3. Package tree
 
 One line per package, module and data folder (indented by folder level), its
-line count (`1.4k` = about 1400 lines) and its theme. Not listed: the
-compat shims at old paths, `qrc_resources*.py` (generated Qt resources), the
+line count (`1.4k` = about 1400 lines) and its theme. Not listed:
+`qrc_resources*.py` (generated Qt resources), the
 contents of `docs/` and `bioformats/` (vendored) and the plugin folders
 (`models/<Name>/`, ...: one folder per plugin).
 
@@ -98,8 +102,8 @@ cellacdc/                                    the package root; library modules (
   __init__.py                          940   package globals: paths, settings files, GUI_INSTALLED, printl, exception_handler, disableWindow
   __main__.py                          170   entry point run() of cellacdc/acdc/Cell-ACDC: launcher GUI, or headless CLI with --params
   _base_widgets.py                      40   QBaseDialog (non-modal exec_), leaf base of every dialog
-  _compat.py                           380   compat layer of old import paths: MovedWarning, alias_module, moved_module, package_compat
-  _compat_moves.py                    1.9k   GENERATED tables old module -> new home of every moved name (do not edit)
+  _compat.py                           450   compat layer of old import paths: import hook OldPathFinder (install), MovedWarning, alias_module, moved_module, package_compat
+  _compat_moves.py                    2.0k   GENERATED tables old module -> new home of every moved name (do not edit)
   _core.py                             180   small numeric helpers: unit conversion, rotational volume, significant digits
   _debug.py                            110   debugging helpers (callers, lineage tree, mother-bud line)
   _equations.py                         65   input-token detection of pandas measurement equations (backtick names)
@@ -544,7 +548,7 @@ cellacdc/                                    the package root; library modules (
   ones). `gui/main_window/constants.py` `_font` is read and written
   through the module (`gui_main_constants._font`), never with `global`.
 - **No old paths** in `cellacdc/`, `tests/` and notebooks (section 1,
-  compat shims).
+  old import paths).
 - **Checks**: `tests/test_import_paths.py` (every import names something
   that exists, no relative import leaves its part),
   `tests/test_import_layering.py` (library and `shared/` modules never import

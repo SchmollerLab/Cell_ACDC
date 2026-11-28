@@ -12,13 +12,15 @@ tests, see ``pyproject.toml``).
 - Real tables (``cellacdc/_compat_moves.py``), in a fresh interpreter:
   every entry resolves to the object of its home module and warns at the
   caller, 1:1 moves are ``sys.modules`` aliases, the documented plugin API
-  of ``cellacdc.myutils`` does not warn and ``import cellacdc`` loads no
-  shim.
+  of ``cellacdc.myutils`` does not warn and ``import cellacdc`` imports no
+  old module (the old modules have no files: the import hook of
+  ``_compat.py`` serves them, ``OLD_MODULES``).
 
 This is the one test file allowed to use old paths
 (``tests/test_no_old_paths.py`` exempts it).
 """
 import importlib
+import importlib.util
 import itertools
 import json
 import os
@@ -60,6 +62,9 @@ COMPAT_SOURCE = REPO_ROOT / 'cellacdc' / '_compat.py'
 
 COMPAT_MOVES = '''
 MODULE_ALIASES = {'{pkg}.oldmod': '{pkg}.sub.newmod'}
+# 'real' has a file: the import hook must never shadow it
+OLD_MODULES = {'{pkg}.oldmod': 'alias', '{pkg}.split': 'split',
+               '{pkg}.real': 'split'}
 NAME_MOVES = {
     '{pkg}.split': {
         'Thing': ('{pkg}.home', 'Thing'),
@@ -79,9 +84,11 @@ FORWARDERS = {'{pkg}.fwd': '{pkg}.split'}
 PATCH_FANOUT = {'{pkg}.split': ('{pkg}.copy', '{pkg}.home')}
 '''
 
-SHIM = '__cellacdc_compat__ = True\nfrom {pkg} import _compat\n'
+# The old modules oldmod and split have no files: the import hook installed
+# by the package serves them (as cellacdc/__init__.py does)
 FILES = {
-    '__init__.py': '',
+    '__init__.py': 'from {pkg} import _compat\n_compat.install()\n',
+    'real.py': 'REAL = True\n',
     '_compat_moves.py': COMPAT_MOVES,
     'home.py': (
         'class Thing:\n    pass\n\nVALUE = 1\n\n\ndef api():\n'
@@ -96,8 +103,6 @@ FILES = {
         '__getattr__, __dir__ = _compat.package_compat(__name__)\n'
     ),
     'sub/newmod.py': 'X = 5\n',
-    'oldmod.py': SHIM + '_compat.alias_module(__name__)\n',
-    'split.py': SHIM + '__getattr__, __dir__ = _compat.moved_module(__name__)\n',
     'fwd.py': (
         'OWN = 1\nfrom {pkg} import _compat\n'
         "__getattr__, __dir__ = _compat.forward_module(__name__, '{pkg}.split')\n"
@@ -124,6 +129,10 @@ def pkg(tmp_path, monkeypatch):
     for module in list(sys.modules):
         if module == name or module.startswith(name + '.'):
             del sys.modules[module]
+    sys.meta_path[:] = [
+        finder for finder in sys.meta_path
+        if getattr(finder, 'package', None) != name
+    ]
 
 
 def module(name):
@@ -153,6 +162,40 @@ def test_alias_module_is_the_module_at_the_new_path(pkg):
     ]
     # Reported at the code that used the old path
     assert record[0].filename == __file__
+
+
+def hooks_of(pkg):
+    return [f for f in sys.meta_path if getattr(f, 'package', None) == pkg]
+
+
+def test_old_modules_without_files_come_from_the_import_hook(pkg):
+    module(pkg)
+    hooks = hooks_of(pkg)
+    assert len(hooks) == 1
+    assert type(hooks[0]) is module(f'{pkg}._compat').OldPathFinder
+    # Appended last: the regular finders are asked first
+    assert sys.meta_path.index(hooks[0]) > 0
+    for old in ('oldmod', 'split'):
+        spec = importlib.util.find_spec(f'{pkg}.{old}')
+        assert spec is not None and spec.origin is None
+        assert type(spec.loader).__name__ == '_OldPathLoader'
+    split = module(f'{pkg}.split')
+    assert split.__cellacdc_compat__ is True
+    assert 'moved to other modules' in split.__doc__
+
+
+def test_import_hook_never_shadows_files_nor_invents_modules(pkg):
+    real = module(f'{pkg}.real')
+    assert real.REAL is True and real.__file__.endswith('real.py')
+    with pytest.raises(ModuleNotFoundError):
+        module(f'{pkg}.not_an_old_module')
+
+
+def test_install_adds_the_import_hook_once(pkg):
+    compat = module(f'{pkg}._compat')
+    first = hooks_of(pkg)
+    assert compat.install() is first[0]
+    assert hooks_of(pkg) == first
 
 
 def test_moved_names_resolve_lazily_through_their_home(pkg):
@@ -443,8 +486,8 @@ warnings.filterwarnings('ignore', category=DeprecationWarning,
                         message='(?!Cell-ACDC import path moved)')
 import cellacdc
 
-shims = set(json.loads(sys.argv[1]))
-print(json.dumps(sorted(shims & set(sys.modules))))
+old_modules = set(json.loads(sys.argv[1]))
+print(json.dumps(sorted(old_modules & set(sys.modules))))
 '''
 
 
@@ -477,14 +520,12 @@ def test_every_old_name_resolves_to_its_home_with_a_warning(tmp_path):
 
 
 @pytest.mark.slow  # starts a fresh interpreter
-def test_import_cellacdc_loads_no_shim(tmp_path):
-    moves = source_scan.compat_moves()
-    shims = sorted(
-        set(source_scan.shim_modules()) | set(moves['MODULE_ALIASES'])
-    )
-    assert 'cellacdc.apps' in shims and 'cellacdc.gui_navigation' in shims
+def test_import_cellacdc_imports_no_old_module(tmp_path):
+    old_modules = sorted(source_scan.old_modules())
+    assert 'cellacdc.apps' in old_modules
+    assert 'cellacdc.gui_navigation' in old_modules
     _, loaded = run_python(
-        tmp_path, CHECK_IMPORT_CELLACDC, json.dumps(shims)
+        tmp_path, CHECK_IMPORT_CELLACDC, json.dumps(old_modules)
     )
     assert loaded == []
 

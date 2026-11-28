@@ -1,0 +1,25 @@
+refactor: serve old import paths from an import hook
+
+The 22 compat shim files at the old module paths (cellacdc/apps.py,
+widgets.py, workers.py, gui_navigation.py, _main.py, dataPrep.py, ...)
+are deleted. An import hook serves the same paths instead:
+cellacdc/__init__.py appends _compat.OldPathFinder to sys.meta_path, and
+the new table OLD_MODULES of _compat_moves.py says which old modules it
+serves ('alias': the module at the new path, 'split': names forwarded
+lazily). The finder is asked only for modules that no file provides, so
+it never shadows real modules. Old imports keep working for external code
+(spotMAX, user plugins, notebooks): identical objects, the same
+MovedWarning at the caller's line, patches through old paths still reach
+the moved code.
+
+Why: the top level of cellacdc shows only the new layout, and git now sees
+the modules that moved whole as renames (gui_navigation.py ->
+gui/mixins/navigation.py, ...), also when branches started on the old
+layout are merged, so their edits follow into the new files.
+
+Tests: test_no_old_paths fails on any file at an old module path and
+checks that OLD_MODULES covers the tables; test_compat covers the hook
+(served old modules, real modules never shadowed, unknown modules still
+raise, install once). CODEMAP.md and CLAUDE.md describe the hook.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

@@ -88,6 +88,7 @@ checked-out commit.
 | C14 | module docstrings of `modules` entries with `doc_commit: "C14"`; docstrings, comments and user strings by fixups |
 | C15 | none: docs (CODEMAP.md, CLAUDE.md, rst docs, code_structure.md) by fixups |
 | C16 | `.git-blame-ignore-revs` (after the C16 fixups) listing C12 and C14 with their final SHAs: replay passes them, `apply C16` takes `ACDC_REFACTOR_SHAS` or finds the commits in HEAD's history by the subjects of `commit_messages/` |
+| C17 | none: the import hook of `_compat.py` replaces the shim files at old paths (fixup C17/01 applies `fixups/C17/import_hook.patch`) |
 
 Every C3-C11 step regenerates `cellacdc/_compat_moves.py` for the state
 after that commit.
@@ -449,6 +450,7 @@ Fixups so far:
 | C15 | 01_codemap | CODEMAP.md (template + tools/codemap.py), tools/codemap.py and tests/test_codemap.py |
 | C15 | 02_claude_md | CLAUDE.md for the new layout (three-way merge of fixups/C15/files/CLAUDE.md) |
 | C15 | 03_docs | model-environments.rst, models.rst, contributing.rst and cellacdc/code_structure.md name the new modules |
+| C17 | 01_import_hook | applies `fixups/C17/import_hook.patch` (`git apply --index --3way`): deletes the 22 shim files at old paths, `_compat.OldPathFinder` (installed by `cellacdc/__init__.py`, table `OLD_MODULES`) serves those paths; tests and docs. Regenerate the patch from the C17 commit with `git diff <C16> <C17> --binary -- . ":(exclude)tools" > tools/refactor/fixups/C17/import_hook.patch` |
 
 To rebuild the PR on a newer main: update the base (`--base`), run
 `mapping.py validate` (new or renamed items of main show up as coverage or
@@ -500,10 +502,11 @@ Remaining issues (none blocks the PR):
 1. Merge main up to the refactor's parent into the branch (resolve as
    usual).
 2. Merge the refactor. Files moved whole follow by rename detection (also
-   use `git merge -X find-renames=50%` if a rename is missed). Split
-   modules (apps.py, widgets.py, workers.py, myutils.py, ...) are shims now:
-   take the refactor's side of those files (`git checkout --theirs` / the
-   refactor version), keep the branch's changes aside.
+   use `git merge -X find-renames=50%` if a rename is missed): since C17
+   no file stays at their old paths, so the branch's edits land in the new
+   files. Split modules (apps.py, widgets.py, workers.py, myutils.py, ...)
+   are deleted: keep the deletion (no file may come back at an old path,
+   `tests/test_no_old_paths.py`) and keep the branch's changes aside.
 3. For every item the branch changed in a split module (diff the old
    module between the merge base and the branch tip, item by item:
    `items.module_items` gives the spans), find its new home with
@@ -529,11 +532,12 @@ cheaper: replay then absorbs them.
 
 ## Limitations
 
-- Old paths become shim files in the same commit, so `git diff -M` shows
-  the C3 moves as copies (`git diff -B -M --summary`, `git log --follow
-  -B`, `git blame -C -C` follow them). Splitting C3 into "git mv" and
-  "shims" commits would give pure renames at the cost of one commit
-  without working old paths.
+- Until C16 the old paths are shim files (C3 creates them in the same
+  commit as the moves), so the single commits C3-C16 show the moves as
+  copies (`git diff -B -M --summary`, `git log --follow -B`, `git blame
+  -C -C` follow them). C17 deletes the shims (import hook instead), so the
+  whole refactor (base..C17), which merges and the pull request show, has
+  the 1:1 moves as renames.
 - Rewritten import lines are regenerated (`from a import (x, y)` style)
   when a statement must be split; comments inside such statements are
   lost (logged). No line is rewrapped.

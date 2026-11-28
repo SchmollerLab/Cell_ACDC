@@ -3,6 +3,12 @@ import shutil
 import sys
 from importlib.metadata import version
 
+# Old module paths of the package layout refactor (cellacdc.apps,
+# cellacdc.widgets, cellacdc.gui_navigation, ...) have no files: an import
+# hook serves them for external code, with a DeprecationWarning (_compat.py)
+from . import _compat
+_compat.install()
+
 # Server mode is selected with the `--server` command-line flag, e.g.
 # `python -m cellacdc.service.worker --server ...`. It must be read here, at
 # import time, because it decides which (GUI/config) modules are loaded.

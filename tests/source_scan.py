@@ -9,8 +9,10 @@ Nothing here imports ``cellacdc``: files are read and parsed with ``ast``
 Package layout (CODEMAP.md): one package per program part
 (``PART_PACKAGES``), ``shared/`` for code that several parts use and
 library modules (``load``, ``core``, ``myutils``, ...) at the top level.
-Old import paths are compat shims, files whose module level sets
-``__cellacdc_compat__ = True`` (``is_shim``).
+Old module paths have no files: the import hook of ``cellacdc/_compat.py``
+serves them (``old_modules``, table ``OLD_MODULES``). Modules whose module
+level sets ``__cellacdc_compat__ = True`` would be compat shims
+(``is_shim``); none are left.
 """
 import ast
 import functools
@@ -150,9 +152,11 @@ def is_shim(tree):
 
 
 @functools.lru_cache(maxsize=None)
-def shim_modules():
-    """Dotted names of the compat shims (files at old import paths)."""
-    return frozenset(
+def old_modules():
+    """Dotted names of the old modules served by the import hook of
+    ``cellacdc/_compat.py`` (``OLD_MODULES``: they have no file), plus any
+    compat shim file left at an old path."""
+    return frozenset(compat_moves().get('OLD_MODULES', {})) | frozenset(
         module_name(rel) for rel in package_files() if is_shim_file(rel)
     )
 
@@ -166,7 +170,7 @@ def clear_caches():
     """Release the cached texts and syntax trees (hundreds of MB for the
     whole package): the test modules call it when they are done."""
     for function in (read, parse, package_files, module_index,
-                     shim_modules, module_bindings, compat_moves):
+                     old_modules, module_bindings, compat_moves):
         function.cache_clear()
 
 

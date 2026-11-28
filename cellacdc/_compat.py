@@ -9,14 +9,20 @@ the warning into an error by its message).
 
 Kinds of old paths (tables in the generated ``_compat_moves.py``):
 
-- 1:1 moves (``alias_module``): the old module file only calls
-  ``alias_module(__name__)``. Importing it puts the module at the new path
-  into ``sys.modules`` under the old name, so both names give the same
-  object and patches reach the code.
-- split modules (``moved_module``): the old module (or a module that lost
-  some names) gets a lazy module ``__getattr__``/``__dir__``. Every access
-  imports the home module and reads the name there; nothing is cached, so
-  patches on the home module stay visible through the old path.
+- old modules without a file (``OLD_MODULES``): served by the import hook
+  ``OldPathFinder``, which ``cellacdc/__init__.py`` appends to
+  ``sys.meta_path`` (``install``). It is asked only for modules that no
+  file provides, so it never shadows real modules. Its loader applies one
+  of the next two kinds to the old name.
+- 1:1 moves (``alias_module``, ``OLD_MODULES`` kind ``'alias'``):
+  importing the old name puts the module at the new path into
+  ``sys.modules`` under the old name, so both names give the same object
+  and patches reach the code.
+- split modules (``moved_module``, kind ``'split'``): the old module (or a
+  module that lost some names, e.g. ``whitelist``) gets a lazy module
+  ``__getattr__``/``__dir__``. Every access imports the home module and
+  reads the name there; nothing is cached, so patches on the home module
+  stay visible through the old path.
 - packages that replace an old module of the same name (``gui``,
   ``measurements_viewer``, ``myutils``; ``package_compat``): submodules are
   imported on demand (no warning), old names are forwarded with a warning
@@ -38,6 +44,7 @@ This module only uses the standard library, imports nothing from
 cellacdc at module level and works on Python 3.10.
 """
 import importlib
+import importlib.machinery
 import os
 import sys
 import types
@@ -279,7 +286,7 @@ def _install_class(module):
 
 def alias_module(name):
     """Make the old module `name` an alias of the module at its new path
-    (call it from the shim at the old path: alias_module(__name__))."""
+    (called by the loader of the import hook, ``OldPathFinder``)."""
     new_name = _moves().MODULE_ALIASES.get(name)
     if new_name is None:
         raise ImportError(f'{name} has no new path in {_MOVES_MODULE}')
@@ -374,3 +381,69 @@ def package_compat(name, forward=None):
 
     _install_class(module)
     return __getattr__, __dir__
+
+
+class _OldPathLoader:
+    """Loader of an old module path without a file (``OLD_MODULES``)."""
+
+    def __init__(self, kind):
+        self.kind = kind
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        name = module.__name__
+        module.__cellacdc_compat__ = True
+        if self.kind == 'alias':
+            new_name = _moves().MODULE_ALIASES[name]
+            module.__doc__ = (
+                f'Deprecated: {name} moved to {new_name} (see CODEMAP.md).'
+            )
+            # The module at the new path replaces this one in sys.modules,
+            # so the import returns it (its own spec is not touched)
+            alias_module(name)
+            return
+        module.__doc__ = (
+            f'Deprecated: the contents of {name} moved to other modules '
+            '(see CODEMAP.md).'
+        )
+        module.__getattr__, module.__dir__ = moved_module(name)
+
+
+class OldPathFinder:
+    """``sys.meta_path`` entry serving the old module paths of the package
+    layout refactor that have no file any more (``OLD_MODULES``).
+
+    Appended at the end of ``sys.meta_path`` (``install``), it is asked only
+    for modules that the regular finders do not find.
+    """
+
+    def __init__(self, package):
+        self.package = package
+
+    def find_spec(self, fullname, path=None, target=None):
+        if not fullname.startswith(self.package + '.'):
+            return None
+        kind = getattr(_moves(), 'OLD_MODULES', {}).get(fullname)
+        if kind not in ('alias', 'split'):
+            return None
+        return importlib.machinery.ModuleSpec(fullname, _OldPathLoader(kind))
+
+    def invalidate_caches(self):
+        pass
+
+
+def install():
+    """Serve the old module paths (``OLD_MODULES``): append the import
+    hook ``OldPathFinder`` to ``sys.meta_path`` once (cellacdc/__init__.py
+    calls it). Returns the finder."""
+    for finder in sys.meta_path:
+        if (
+            type(finder).__name__ == 'OldPathFinder'
+            and getattr(finder, 'package', None) == _PACKAGE
+        ):
+            return finder
+    finder = OldPathFinder(_PACKAGE)
+    sys.meta_path.append(finder)
+    return finder

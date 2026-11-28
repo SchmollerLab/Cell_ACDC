@@ -21,7 +21,9 @@ Commands (run from any directory; --repo defaults to this checkout):
                    (after the C16 fixups; replay passes the SHAs, `apply`
                    reads ACDC_REFACTOR_SHAS or finds the commits in the
                    history by the subjects of commit_messages/)
-          C0, C1, C13, C15: nothing automatic (fixups only)
+          C0, C1, C13, C15, C17: nothing automatic (fixups only; C17
+                   applies fixups/C17/import_hook.patch: the import hook
+                   of _compat.py replaces the shim files at old paths)
         With --fixups, the scripts of tools/refactor/fixups/<commit>/ run
         afterwards. Edits are logged to tools/refactor/out/<commit>/.
 
@@ -108,6 +110,7 @@ DEFAULT_MESSAGES = {
     'C14': 'docs: update docstrings and comments for the new layout',
     'C15': 'docs: CODEMAP.md and the docs for the new layout',
     'C16': 'chore: .git-blame-ignore-revs for the reference rewrites',
+    'C17': 'refactor: serve old import paths from an import hook',
 }
 
 

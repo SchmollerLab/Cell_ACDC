@@ -1,0 +1,930 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 352f2d75..057921fc 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -25,9 +25,9 @@ Read `CODEMAP.md` first to find where code lives: package tree (one line per mod
+ 
+ - **Layout** — one package per program part with its window and the dialogs/widgets/workers only it uses (`launcher/`, `data_structure/`, `data_prep/`, `segmentation_module/`, `gui/`, `measurements_viewer/`, `utils/` with one module per utility); code used by several parts, library modules or plugins in `shared/dialogs|widgets|workers/<theme>.py`; library modules top-level plus the helper package `myutils/` (imports without Qt). New code: one part → `<part>/dialogs|widgets|workers`; reached only from the viewer-shared GUI mixins → `gui/mixins/dialogs.py` / `gui/mixins/widgets.py`; one utility → `utils/<utility>.py` (several: `utils/base.py`); several parts → `shared/<kind>/<theme>.py`; helpers without a window → `myutils/<theme>.py` (Qt only inside functions or under `GUI_INSTALLED`; details: `CODEMAP.md` "Where new code goes"). Update `CODEMAP.md` when adding or moving a module (`python tools/codemap.py`; `tests/test_codemap.py` enforces it).
+ - **Window classes** — `guiWin` (`gui/main_window/window.py`) and `MeasurementsViewerWin` (`measurements_viewer/main_window/window.py`) are composed of mixins: bases `QMainWindow` first, then the window-only mixins (`gui/main_window/<topic>.py` `<Topic>GuiElements`, `measurements_viewer/main_window/<topic>.py` `Viewer<Topic>GuiElements`), then the shared `gui/mixins/` ones. `__init__`, Qt-named methods (a mixin method named like a `QMainWindow` method would be shadowed), methods calling `super()`, Signals and class attributes overriding a mixin's stay in the class body; new methods go into the mixin of their topic (checked by `tests/test_gui_window_layout.py` / `tests/test_viewer_window_layout.py`, whose `OVERRIDES` pin the intended overrides).
+-- **Imports** — other modules through module aliases with attribute access (`from cellacdc.shared.widgets import message_box as widgets_message_box`, then `widgets_message_box.myMessageBox`), absolute outside the part package, relative inside it (aliases: `CODEMAP.md` "Conventions"; checked by `tests/test_import_paths.py`, `tests/test_import_layering.py`). No old import paths (`cellacdc.apps`, `cellacdc.widgets`, `cellacdc.workers`, `cellacdc.gui_navigation`, `cellacdc._main`, `cellacdc.dataPrep`, ...) in `cellacdc/`, `tests/` or notebooks: the compat shims there are for external code only (spotMAX, user plugins) and pytest turns their `MovedWarning` into an error (`tests/test_no_old_paths.py`). Patch a name in the module whose code looks it up (the owner module for alias-qualified names; each importing module for from-imported names such as `printl`, `is_mac`), never through another module's namespace.
++- **Imports** — other modules through module aliases with attribute access (`from cellacdc.shared.widgets import message_box as widgets_message_box`, then `widgets_message_box.myMessageBox`), absolute outside the part package, relative inside it (aliases: `CODEMAP.md` "Conventions"; checked by `tests/test_import_paths.py`, `tests/test_import_layering.py`). No old import paths (`cellacdc.apps`, `cellacdc.widgets`, `cellacdc.workers`, `cellacdc.gui_navigation`, `cellacdc._main`, `cellacdc.dataPrep`, ...) in `cellacdc/`, `tests/` or notebooks: those old modules have no files, the import hook of `_compat.py` (`OldPathFinder`, table `OLD_MODULES`) serves them for external code only (spotMAX, user plugins), and pytest turns their `MovedWarning` into an error (`tests/test_no_old_paths.py`, which also fails on a file at an old module path). Patch a name in the module whose code looks it up (the owner module for alias-qualified names; each importing module for from-imported names such as `printl`, `is_mac`), never through another module's namespace.
+ - **Launcher** — `launcher/main_window.py` (`mainWin`): the main launcher window that opens the modules and utilities. Module buttons sit in stacked group boxes (`addModulesGroupBox` / `addModuleButton`, all in `moduleButtons`, heights set in `show`): Image preprocessing (data structure, data prep), Segmentation and tracking (automatic: segmentation and tracking module, correction: GUI), Measurements visualisation (measurements viewer, SpotMAX if installed). The buttons show no numbers, and docs and messages name the modules ("the GUI", "the data prep module"), never by number ("module 3"; user decision); `getting-started.rst` lists the button texts in launcher order (checked by `test_getting_started_lists_the_module_buttons_in_launcher_order`). `restoreDefaultButtons` restores `defaultTextDataStructButton`. `tests/test_launcher_layout.py` builds the real window with `app_info.setupLogger` / `mainWin.checkConfigFiles` patched.
+-- **Main GUI** — `gui/` (`guiWin`, `gui/main_window/window.py`): the annotation/correction GUI, composed of the window-only mixins of `gui/main_window/` and the mixins of `gui/mixins/`, which the measurements viewer also composes (changes there affect both windows). Merging a branch started on the old layout (single modules `gui.py`, `apps.py`, `widgets.py`, `workers.py`, `myutils.py`, ...): its edits show up as delete/modify conflicts in the old files, now compat shims: keep the shim and port each changed item into its new home (`tools/refactor/README.md` "Porting an open branch" while it exists; homes: `CODEMAP.md` "Old name → new location"), new methods into the same mixin as their neighbours (main-GUI-only attributes the viewer would reach, e.g. `titleLabel`, read via `getattr`). Taking one side of a hunk can drop the last lines of the *preceding* method (happened to `update_z_slice`), so afterwards compare every item either side changed across merge base / both tips / working tree with an `ast` script. Host-specific behaviour of shared code goes through hooks with main-GUI defaults, e.g. `ShortcutsGuiElements.showDeleteObjectShortcut`, `CustomAnnotationsGuiElements.canDeleteSavedCustomAnnot()` / `customAnnotColumnRemovalNote()` / `customAnnotColumnConflict()` (names refused on add/load, in the viewer already on OK of the dialog via its `columnConflict` callable; the viewer's configuration load and Open folder check the new tables first with `annotation_data.flag_column_conflicts`), the optional `bottomLayoutFont` read by `gui/mixins/overlay.py`, and `limitToLoadedColumns` of the combine dialogs (`True` only in the viewer). `guiWin.connectScrollbars` connects the z-slice widgets' signals only for z-stack data and never disconnects them, so after a z-stack, 2D data in the same window still reaches z slots through keys that step the z-slice scrollbar (Up/Down, Home/End, ...): such slots must return early without z-stacks (`isZsliceScrollBarActive`; `segmInfo_df` is None then). In the viewer, positions never displayed have no `allData_li` (created by `initPosAnnotData`): mixin loops over `self.data` must tolerate it (`setAllIDs`, `countObjectsSnapshots`). `labelsGrad.item.loadPreset` (-> `updateLabelsCmap`) rebinds `self.df_settings` (`saveState` copies): never keep a local reference across LUT changes (`restoreDefaultSettings`). `changeMode` runs after the mode combo box changed (`currentText()` is already the new mode, the old one is `previousText()`), so methods gated on the current mode return early there for the mode being left (`askLineageTreeChanges` skips that check with `isLeavingMode=True`).
++- **Main GUI** — `gui/` (`guiWin`, `gui/main_window/window.py`): the annotation/correction GUI, composed of the window-only mixins of `gui/main_window/` and the mixins of `gui/mixins/`, which the measurements viewer also composes (changes there affect both windows). Merging a branch started on the old layout (single modules `gui.py`, `apps.py`, `widgets.py`, `workers.py`, `myutils.py`, ...): git follows the edits of modules moved whole (`gui_navigation.py` → `gui/mixins/navigation.py`, ...) as renames, while edits of split modules show up as delete/modify conflicts: keep the deletion (no file may come back at an old path) and port each changed item into its new home (`tools/refactor/README.md` "Porting an open branch" while it exists; homes: `CODEMAP.md` "Old name → new location"), new methods into the same mixin as their neighbours (main-GUI-only attributes the viewer would reach, e.g. `titleLabel`, read via `getattr`). Taking one side of a hunk can drop the last lines of the *preceding* method (happened to `update_z_slice`), so afterwards compare every item either side changed across merge base / both tips / working tree with an `ast` script. Host-specific behaviour of shared code goes through hooks with main-GUI defaults, e.g. `ShortcutsGuiElements.showDeleteObjectShortcut`, `CustomAnnotationsGuiElements.canDeleteSavedCustomAnnot()` / `customAnnotColumnRemovalNote()` / `customAnnotColumnConflict()` (names refused on add/load, in the viewer already on OK of the dialog via its `columnConflict` callable; the viewer's configuration load and Open folder check the new tables first with `annotation_data.flag_column_conflicts`), the optional `bottomLayoutFont` read by `gui/mixins/overlay.py`, and `limitToLoadedColumns` of the combine dialogs (`True` only in the viewer). `guiWin.connectScrollbars` connects the z-slice widgets' signals only for z-stack data and never disconnects them, so after a z-stack, 2D data in the same window still reaches z slots through keys that step the z-slice scrollbar (Up/Down, Home/End, ...): such slots must return early without z-stacks (`isZsliceScrollBarActive`; `segmInfo_df` is None then). In the viewer, positions never displayed have no `allData_li` (created by `initPosAnnotData`): mixin loops over `self.data` must tolerate it (`setAllIDs`, `countObjectsSnapshots`). `labelsGrad.item.loadPreset` (-> `updateLabelsCmap`) rebinds `self.df_settings` (`saveState` copies): never keep a local reference across LUT changes (`restoreDefaultSettings`). `changeMode` runs after the mode combo box changed (`currentText()` is already the new mode, the old one is `previousText()`), so methods gated on the current mode return early there for the mode being left (`askLineageTreeChanges` skips that check with `isLeavingMode=True`).
+ - **Measurements viewer** — `measurements_viewer/` (`MeasurementsViewerWin`, `measurements_viewer/main_window/window.py`, active development on branch `signal_gui`): standalone window that plots per-cell time courses of `acdc_output` columns, measurement-vs-measurement comparisons, combined measurements, measurement processing, time point identifiers, custom annotations and phases. It reuses the GUI mixins above and loads its own data; configurations are saved as JSON in the settings folder. The package docstring (`measurements_viewer/__init__.py`) is an extensive spec—read it before changing behavior. Users open it from the launcher (button "Launch measurements viewer..." or Utilities > Measurements > Measurements viewer..., both `mainWin.launchMeasurementsViewer`). User docs: `cellacdc/docs/source/measurements-viewer.rst`, linked from the viewer's Help menu, info buttons and the phase translator dialog via `urls.measurements_viewer_docs_url` (+ `#<section-title-anchor>`): renaming a section breaks the links (`test_docs_page_has_the_linked_sections`).
+   - Non-UI code lives in `measurements_viewer/viewer_utils.py`: module functions (loading, `last_analyzed_frame`, `evaluate_masked_cell_equation`, `signal_color`, `get_logger`, ...) and the `MeasurementsViewerUtils` mixin with the window's data/logic methods (tables, configuration validation, measurement steps), whose bases are `PositionDataUtils` (`position_data.py`: per-position/frame data, `mask_frames`) and `AnnotationDataUtils` (`annotation_data.py`: time points, custom annotations, predictors bookkeeping, phases, `is_flag_column`). The window inherits it after its `Viewer<Topic>GuiElements` mixins (`QMainWindow` comes first, so Qt attribute names would shadow its methods). Put new widget-free methods there (they must not call UI methods of the window) and patch functions in the module that calls them (tests patch `viewer_utils.load_position`). These modules never import `measurements_viewer/main_window/` (circular).
+   - Overlay channel image items are added to `ax1` when data loads (after the annotation items), so annotation layers need explicit z-values to stay visible (`gui_createAnnotationsWidgets`: 0.5–0.6; custom annotation symbols 0.6 via the viewer's `addCustomAnnnotScatterPlot` override; ruler and mirrored cursor 0.9 in `gui_createGraphicsPlots`; on-demand items (object tracks, scale bar, timestamp) 0.9 via `raiseOnDemandAx1Items`, so add new on-demand ax1 items there; text IDs are at 1, kept by `annotate.TextAnnotations.changeResolution`).
+@@ -99,7 +99,7 @@ Every save also writes a snapshot to `Images/recovery/<basename>acdc_output.zip`
+ - Run Python/pytest as in "Python environment" (`python -m pytest` from the repo root). Single test files fit in a foreground command (the slowest take up to about 95 s); runs over many files take minutes (the push tier about 3 min locally, the full suite about 10 min, more than the 10-min foreground limit of the shell tools): start those with `run_in_background` and check on them as in "Long-running work", never with the ≤ 120 s timeout meant for scratch commands. Pick the tests by what you changed:
+   - While working: the test file(s) of the code you change, one file per run (`python -m pytest tests/<file>`; add `-m "not slow"` for a quick loop). Qt files one at a time: one process over many Qt files also passes (as in CI), but a crash there may not print a summary.
+   - Before committing: the tests related to your changes, all tiers. First print the selection: `python tests/related_tests.py` (explains it on stderr). By default it covers every change of the branch since the merge base of `origin/main`, plus uncommitted and untracked files; `--base HEAD` covers only the uncommitted changes, `--base <branch>` the changes since another base (e.g. of a stacked PR). It prints `tests` (the whole suite, slow and flaky tests included) when the changes include `cellacdc/__init__.py`, a `conftest.py` or `__init__.py` in `tests`, a helper the conftest imports (e.g. `tests/utils/measurement_processing.py`), `tests/test_data`, the pytest configuration (`pyproject.toml`, ...), `requirements*.txt` or `.github/actions`, or when git fails: then run the push tier (and the full suite if the change can affect slow tests) instead. Otherwise run the selection with `python tests/related_tests.py --run [pytest args]` (same `--base`; runs nothing when no test file is related). Never `pytest $(python tests/related_tests.py)`: an empty selection runs the whole suite.
+-  - The selection follows the modules that import a changed module: inside its program part (`PART_PACKAGES`: `gui`, `measurements_viewer`, `launcher`, `data_prep`, `data_structure`, `segmentation_module`, `utils`) transitively, outside it only when the importers form at most 5 units (`MAX_IMPORTERS`; all modules of one part are one unit, compat shims never count), e.g. the shared GUI mixins (1 unit outside `gui`: the viewer) or `timepoint_predictors` (4). Shared modules have more, e.g. `measurements`, `qutils`, `core`, `load`, `myutils/filesystem.py`, `shared/widgets/message_box.py` (10 to 35 units): for those it selects only the test files that import or name the module itself. List the importers with `python -c "from tests.related_tests import Selection; print(sorted(Selection().importers('cellacdc.<module>')))"` (followed: `followed_importers`). With more than 5 units, run the push tier, plus the slow and flaky related tests (`python tests/related_tests.py --run -m "(slow and not smoke) or flaky"`, as the CI job `related-tests`; exit code 5: the related files have no such tests).
++  - The selection follows the modules that import a changed module: inside its program part (`PART_PACKAGES`: `gui`, `measurements_viewer`, `launcher`, `data_prep`, `data_structure`, `segmentation_module`, `utils`) transitively, outside it only when the importers form at most 5 units (`MAX_IMPORTERS`; all modules of one part are one unit, `_compat_moves.py` never counts), e.g. the shared GUI mixins (1 unit outside `gui`: the viewer) or `timepoint_predictors` (4). Shared modules have more, e.g. `measurements`, `qutils`, `core`, `load`, `myutils/filesystem.py`, `shared/widgets/message_box.py` (10 to 35 units): for those it selects only the test files that import or name the module itself. List the importers with `python -c "from tests.related_tests import Selection; print(sorted(Selection().importers('cellacdc.<module>')))"` (followed: `followed_importers`). With more than 5 units, run the push tier, plus the slow and flaky related tests (`python tests/related_tests.py --run -m "(slow and not smoke) or flaky"`, as the CI job `related-tests`; exit code 5: the related files have no such tests).
+   - The push tier, as CI runs it on every push to a pull request into `main`: `python -m pytest -m "(smoke or not slow) and not flaky" --durations=25` (about 3 min locally). Run it also after changes to `tests/utils` or other shared test code, and before pushing a larger change.
+   - The full suite: `python -m pytest` (about 10 min). Run it after changes to the test setup (conftest, pytest configuration, markers) or when the push tier is not enough to trust a change. `python -m pytest -m smoke` (about 25 s) checks the core workflows only; one area: e.g. `-m "viewer and not slow"`.
+   - Model integration tests are opt-in and run in no tier: `test_all_model_environments.py` (installs every model's environment and downloads weights) is skipped unless its `IMAGE_PATH` is set, and the SAM/SAM2/CellSAM tests in `tests/segm` and `tests/prompt_segm` are hidden from collection (`.test_*.py`). Run them only on purpose, one file at a time. `test_gpu_availability.py` is mocked and runs in every tier.
+diff --git a/CODEMAP.md b/CODEMAP.md
+index a84ef8f6..6b45f593 100644
+--- a/CODEMAP.md
++++ b/CODEMAP.md
+@@ -37,15 +37,19 @@ listed, or when a path or `path::Name` named here does not exist.
+   `gui/main_window/`, `gui/dialogs/`, `gui/widgets/`, `gui/workers/` and
+   `gui/helpers.py`; `gui/mixins/` and `measurements_viewer/` never import
+   them.
+-- **Compat shims**: the files at the old module paths (`apps.py`,
+-  `widgets.py`, `workers.py`, `gui_navigation.py`, `_main.py`, ...) and the
+-  `__getattr__` of `gui/__init__.py`, `measurements_viewer/__init__.py` and
+-  `myutils/__init__.py` only forward old names to their new homes, with a
+-  `MovedWarning` (`_compat.py`, tables in `_compat_moves.py`). They exist
+-  for external code (spotMAX, user plugins, notebooks). Cell-ACDC code and
+-  tests never use them: pytest turns the warning into an error and
+-  `tests/test_no_old_paths.py` scans for old paths. Exception: the plugin
+-  API names of `cellacdc.myutils` (`PLUGIN_API` in `_compat_moves.py`, e.g.
++- **Old import paths (compat)**: the old modules (`cellacdc.apps`,
++  `cellacdc.widgets`, `cellacdc.workers`, `cellacdc.gui_navigation`,
++  `cellacdc._main`, ...) have no files any more: an import hook of
++  `_compat.py` (`OldPathFinder`, installed by `__init__.py`, table
++  `OLD_MODULES` in `_compat_moves.py`) serves them, and the `__getattr__`
++  of `gui/__init__.py`, `measurements_viewer/__init__.py` and
++  `myutils/__init__.py` forwards the old names of those packages. Both give
++  the objects at their new homes, with a `MovedWarning`. They exist for
++  external code (spotMAX, user plugins, notebooks). Cell-ACDC code and tests
++  never use them: pytest turns the warning into an error and
++  `tests/test_no_old_paths.py` scans for old paths (and fails when a file
++  exists at an old module path). Exception: the plugin API names of
++  `cellacdc.myutils` (`PLUGIN_API` in `_compat_moves.py`, e.g.
+   `myutils.check_install_package`) stay reachable without a warning for
+   external models.
+ 
+@@ -87,8 +91,8 @@ Placement rules:
+ ## 3. Package tree
+ 
+ One line per package, module and data folder (indented by folder level), its
+-line count (`1.4k` = about 1400 lines) and its theme. Not listed: the
+-compat shims at old paths, `qrc_resources*.py` (generated Qt resources), the
++line count (`1.4k` = about 1400 lines) and its theme. Not listed:
++`qrc_resources*.py` (generated Qt resources), the
+ contents of `docs/` and `bioformats/` (vendored) and the plugin folders
+ (`models/<Name>/`, ...: one folder per plugin).
+ 
+@@ -98,8 +102,8 @@ cellacdc/                                    the package root; library modules (
+   __init__.py                          940   package globals: paths, settings files, GUI_INSTALLED, printl, exception_handler, disableWindow
+   __main__.py                          170   entry point run() of cellacdc/acdc/Cell-ACDC: launcher GUI, or headless CLI with --params
+   _base_widgets.py                      40   QBaseDialog (non-modal exec_), leaf base of every dialog
+-  _compat.py                           380   compat layer of old import paths: MovedWarning, alias_module, moved_module, package_compat
+-  _compat_moves.py                    1.9k   GENERATED tables old module -> new home of every moved name (do not edit)
++  _compat.py                           450   compat layer of old import paths: import hook OldPathFinder (install), MovedWarning, alias_module, moved_module, package_compat
++  _compat_moves.py                    2.0k   GENERATED tables old module -> new home of every moved name (do not edit)
+   _core.py                             180   small numeric helpers: unit conversion, rotational volume, significant digits
+   _debug.py                            110   debugging helpers (callers, lineage tree, mother-bud line)
+   _equations.py                         65   input-token detection of pandas measurement equations (backtick names)
+@@ -544,7 +548,7 @@ cellacdc/                                    the package root; library modules (
+   ones). `gui/main_window/constants.py` `_font` is read and written
+   through the module (`gui_main_constants._font`), never with `global`.
+ - **No old paths** in `cellacdc/`, `tests/` and notebooks (section 1,
+-  compat shims).
++  old import paths).
+ - **Checks**: `tests/test_import_paths.py` (every import names something
+   that exists, no relative import leaves its part),
+   `tests/test_import_layering.py` (library and `shared/` modules never import
+diff --git a/cellacdc/__init__.py b/cellacdc/__init__.py
+index 16c1a7c9..c2e236ac 100755
+--- a/cellacdc/__init__.py
++++ b/cellacdc/__init__.py
+@@ -3,6 +3,12 @@ import shutil
+ import sys
+ from importlib.metadata import version
+ 
++# Old module paths of the package layout refactor (cellacdc.apps,
++# cellacdc.widgets, cellacdc.gui_navigation, ...) have no files: an import
++# hook serves them for external code, with a DeprecationWarning (_compat.py)
++from . import _compat
++_compat.install()
++
+ # Server mode is selected with the `--server` command-line flag, e.g.
+ # `python -m cellacdc.service.worker --server ...`. It must be read here, at
+ # import time, because it decides which (GUI/config) modules are loaded.
+diff --git a/cellacdc/_compat.py b/cellacdc/_compat.py
+index 6d15671d..9a4e6a28 100644
+--- a/cellacdc/_compat.py
++++ b/cellacdc/_compat.py
+@@ -9,14 +9,20 @@ the warning into an error by its message).
+ 
+ Kinds of old paths (tables in the generated ``_compat_moves.py``):
+ 
+-- 1:1 moves (``alias_module``): the old module file only calls
+-  ``alias_module(__name__)``. Importing it puts the module at the new path
+-  into ``sys.modules`` under the old name, so both names give the same
+-  object and patches reach the code.
+-- split modules (``moved_module``): the old module (or a module that lost
+-  some names) gets a lazy module ``__getattr__``/``__dir__``. Every access
+-  imports the home module and reads the name there; nothing is cached, so
+-  patches on the home module stay visible through the old path.
++- old modules without a file (``OLD_MODULES``): served by the import hook
++  ``OldPathFinder``, which ``cellacdc/__init__.py`` appends to
++  ``sys.meta_path`` (``install``). It is asked only for modules that no
++  file provides, so it never shadows real modules. Its loader applies one
++  of the next two kinds to the old name.
++- 1:1 moves (``alias_module``, ``OLD_MODULES`` kind ``'alias'``):
++  importing the old name puts the module at the new path into
++  ``sys.modules`` under the old name, so both names give the same object
++  and patches reach the code.
++- split modules (``moved_module``, kind ``'split'``): the old module (or a
++  module that lost some names, e.g. ``whitelist``) gets a lazy module
++  ``__getattr__``/``__dir__``. Every access imports the home module and
++  reads the name there; nothing is cached, so patches on the home module
++  stay visible through the old path.
+ - packages that replace an old module of the same name (``gui``,
+   ``measurements_viewer``, ``myutils``; ``package_compat``): submodules are
+   imported on demand (no warning), old names are forwarded with a warning
+@@ -38,6 +44,7 @@ This module only uses the standard library, imports nothing from
+ cellacdc at module level and works on Python 3.10.
+ """
+ import importlib
++import importlib.machinery
+ import os
+ import sys
+ import types
+@@ -279,7 +286,7 @@ def _install_class(module):
+ 
+ def alias_module(name):
+     """Make the old module `name` an alias of the module at its new path
+-    (call it from the shim at the old path: alias_module(__name__))."""
++    (called by the loader of the import hook, ``OldPathFinder``)."""
+     new_name = _moves().MODULE_ALIASES.get(name)
+     if new_name is None:
+         raise ImportError(f'{name} has no new path in {_MOVES_MODULE}')
+@@ -374,3 +381,69 @@ def package_compat(name, forward=None):
+ 
+     _install_class(module)
+     return __getattr__, __dir__
++
++
++class _OldPathLoader:
++    """Loader of an old module path without a file (``OLD_MODULES``)."""
++
++    def __init__(self, kind):
++        self.kind = kind
++
++    def create_module(self, spec):
++        return None
++
++    def exec_module(self, module):
++        name = module.__name__
++        module.__cellacdc_compat__ = True
++        if self.kind == 'alias':
++            new_name = _moves().MODULE_ALIASES[name]
++            module.__doc__ = (
++                f'Deprecated: {name} moved to {new_name} (see CODEMAP.md).'
++            )
++            # The module at the new path replaces this one in sys.modules,
++            # so the import returns it (its own spec is not touched)
++            alias_module(name)
++            return
++        module.__doc__ = (
++            f'Deprecated: the contents of {name} moved to other modules '
++            '(see CODEMAP.md).'
++        )
++        module.__getattr__, module.__dir__ = moved_module(name)
++
++
++class OldPathFinder:
++    """``sys.meta_path`` entry serving the old module paths of the package
++    layout refactor that have no file any more (``OLD_MODULES``).
++
++    Appended at the end of ``sys.meta_path`` (``install``), it is asked only
++    for modules that the regular finders do not find.
++    """
++
++    def __init__(self, package):
++        self.package = package
++
++    def find_spec(self, fullname, path=None, target=None):
++        if not fullname.startswith(self.package + '.'):
++            return None
++        kind = getattr(_moves(), 'OLD_MODULES', {}).get(fullname)
++        if kind not in ('alias', 'split'):
++            return None
++        return importlib.machinery.ModuleSpec(fullname, _OldPathLoader(kind))
++
++    def invalidate_caches(self):
++        pass
++
++
++def install():
++    """Serve the old module paths (``OLD_MODULES``): append the import
++    hook ``OldPathFinder`` to ``sys.meta_path`` once (cellacdc/__init__.py
++    calls it). Returns the finder."""
++    for finder in sys.meta_path:
++        if (
++            type(finder).__name__ == 'OldPathFinder'
++            and getattr(finder, 'package', None) == _PACKAGE
++        ):
++            return finder
++    finder = OldPathFinder(_PACKAGE)
++    sys.meta_path.append(finder)
++    return finder
+diff --git a/cellacdc/_compat_moves.py b/cellacdc/_compat_moves.py
+index 0e49d7fc..93724b0d 100644
+--- a/cellacdc/_compat_moves.py
++++ b/cellacdc/_compat_moves.py
+@@ -22,6 +22,34 @@ MODULE_ALIASES = {
+     'cellacdc.segm': 'cellacdc.segmentation_module.main_window',
+ }
+ 
++# Old modules that have no file any more, served by the import hook of
++# _compat.py (OldPathFinder): 'alias' = the module at its new path
++# (MODULE_ALIASES), 'split' = its names are forwarded lazily (NAME_MOVES)
++OLD_MODULES = {
++    'cellacdc._main': 'alias',
++    'cellacdc._torch_utils': 'alias',
++    'cellacdc.apps': 'split',
++    'cellacdc.apps_measurements_viewer': 'split',
++    'cellacdc.custom_annotation_predictors': 'alias',
++    'cellacdc.dataPrep': 'alias',
++    'cellacdc.dataReStruct': 'alias',
++    'cellacdc.dataStruct': 'alias',
++    'cellacdc.gui_annotations': 'alias',
++    'cellacdc.gui_combine': 'split',
++    'cellacdc.gui_core': 'split',
++    'cellacdc.gui_custom_annotations': 'alias',
++    'cellacdc.gui_navigation': 'alias',
++    'cellacdc.gui_overlay': 'alias',
++    'cellacdc.gui_utils': 'split',
++    'cellacdc.gui_viewer_tools': 'split',
++    'cellacdc.measurements_viewer_utils': 'split',
++    'cellacdc.myutils_models': 'alias',
++    'cellacdc.phase_translator': 'alias',
++    'cellacdc.segm': 'alias',
++    'cellacdc.widgets': 'split',
++    'cellacdc.workers': 'split',
++}
++
+ # Module -> {name: (home module, attribute)}; attribute None: the name is
+ # the home module itself
+ NAME_MOVES = {
+diff --git a/cellacdc/_main.py b/cellacdc/_main.py
+deleted file mode 100644
+index 1e3f01b3..00000000
+--- a/cellacdc/_main.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to launcher/main_window.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/_torch_utils.py b/cellacdc/_torch_utils.py
+deleted file mode 100644
+index 6e4f602e..00000000
+--- a/cellacdc/_torch_utils.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to myutils/torch_utils.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/apps.py b/cellacdc/apps.py
+deleted file mode 100755
+index c5ba631c..00000000
+--- a/cellacdc/apps.py
++++ /dev/null
+@@ -1,12 +0,0 @@
+-"""Deprecated: the contents of apps.py moved to other modules.
+-
+-Its names now live in 36 modules.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/cellacdc/apps_measurements_viewer.py b/cellacdc/apps_measurements_viewer.py
+deleted file mode 100644
+index ede43582..00000000
+--- a/cellacdc/apps_measurements_viewer.py
++++ /dev/null
+@@ -1,13 +0,0 @@
+-"""Deprecated: the contents of apps_measurements_viewer.py moved to other
+-modules.
+-
+-Its names now live in: measurements_viewer/dialogs/predictor_editors.py.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/cellacdc/custom_annotation_predictors.py b/cellacdc/custom_annotation_predictors.py
+deleted file mode 100644
+index 1196fcc2..00000000
+--- a/cellacdc/custom_annotation_predictors.py
++++ /dev/null
+@@ -1,11 +0,0 @@
+-"""Deprecated: moved to
+-measurements_viewer/custom_annotation_predictors.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/dataPrep.py b/cellacdc/dataPrep.py
+deleted file mode 100644
+index 4d5adec9..00000000
+--- a/cellacdc/dataPrep.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to data_prep/main_window.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/dataReStruct.py b/cellacdc/dataReStruct.py
+deleted file mode 100644
+index 712e056f..00000000
+--- a/cellacdc/dataReStruct.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to data_structure/data_restruct.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/dataStruct.py b/cellacdc/dataStruct.py
+deleted file mode 100644
+index 6f0aad05..00000000
+--- a/cellacdc/dataStruct.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to data_structure/data_struct.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/gui_annotations.py b/cellacdc/gui_annotations.py
+deleted file mode 100644
+index 50f8968c..00000000
+--- a/cellacdc/gui_annotations.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to gui/mixins/annotations.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/gui_combine.py b/cellacdc/gui_combine.py
+deleted file mode 100644
+index 20664d39..00000000
+--- a/cellacdc/gui_combine.py
++++ /dev/null
+@@ -1,12 +0,0 @@
+-"""Deprecated: the contents of gui_combine.py moved to other modules.
+-
+-Its names now live in: gui/main_window/image_processing.py.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/cellacdc/gui_core.py b/cellacdc/gui_core.py
+deleted file mode 100644
+index 8cd43cf0..00000000
+--- a/cellacdc/gui_core.py
++++ /dev/null
+@@ -1,12 +0,0 @@
+-"""Deprecated: the contents of gui_core.py moved to other modules.
+-
+-Its names now live in: gui/mixins/window_core.py.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/cellacdc/gui_custom_annotations.py b/cellacdc/gui_custom_annotations.py
+deleted file mode 100644
+index 94adf32b..00000000
+--- a/cellacdc/gui_custom_annotations.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to gui/mixins/custom_annotations.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/gui_navigation.py b/cellacdc/gui_navigation.py
+deleted file mode 100644
+index cd9ea8ed..00000000
+--- a/cellacdc/gui_navigation.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to gui/mixins/navigation.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/gui_overlay.py b/cellacdc/gui_overlay.py
+deleted file mode 100644
+index c826aacc..00000000
+--- a/cellacdc/gui_overlay.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to gui/mixins/overlay.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/gui_utils.py b/cellacdc/gui_utils.py
+deleted file mode 100644
+index e7968e41..00000000
+--- a/cellacdc/gui_utils.py
++++ /dev/null
+@@ -1,12 +0,0 @@
+-"""Deprecated: the contents of gui_utils.py moved to other modules.
+-
+-Its names now live in: whitelist.py.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/cellacdc/gui_viewer_tools.py b/cellacdc/gui_viewer_tools.py
+deleted file mode 100644
+index ff666327..00000000
+--- a/cellacdc/gui_viewer_tools.py
++++ /dev/null
+@@ -1,12 +0,0 @@
+-"""Deprecated: the contents of gui_viewer_tools.py moved to other modules.
+-
+-Its names now live in: gui/mixins/viewer_tools.py.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/cellacdc/measurements_viewer_utils.py b/cellacdc/measurements_viewer_utils.py
+deleted file mode 100644
+index ea559cc8..00000000
+--- a/cellacdc/measurements_viewer_utils.py
++++ /dev/null
+@@ -1,13 +0,0 @@
+-"""Deprecated: the contents of measurements_viewer_utils.py moved to other
+-modules.
+-
+-Its names now live in: measurements_viewer/viewer_utils.py.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/cellacdc/myutils_models.py b/cellacdc/myutils_models.py
+deleted file mode 100644
+index eda5cb19..00000000
+--- a/cellacdc/myutils_models.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to myutils/model_modules.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/phase_translator.py b/cellacdc/phase_translator.py
+deleted file mode 100644
+index 4f8c5cf9..00000000
+--- a/cellacdc/phase_translator.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to measurements_viewer/phase_translator.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/segm.py b/cellacdc/segm.py
+deleted file mode 100644
+index 917b7a2e..00000000
+--- a/cellacdc/segm.py
++++ /dev/null
+@@ -1,10 +0,0 @@
+-"""Deprecated: moved to segmentation_module/main_window.py.
+-
+-Importing this module gives the module at the new path (the same object)
+-and emits a DeprecationWarning. See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-_compat.alias_module(__name__)
+diff --git a/cellacdc/widgets.py b/cellacdc/widgets.py
+deleted file mode 100755
+index a8c91d5e..00000000
+--- a/cellacdc/widgets.py
++++ /dev/null
+@@ -1,12 +0,0 @@
+-"""Deprecated: the contents of widgets.py moved to other modules.
+-
+-Its names now live in 33 modules.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/cellacdc/workers.py b/cellacdc/workers.py
+deleted file mode 100755
+index f19cb071..00000000
+--- a/cellacdc/workers.py
++++ /dev/null
+@@ -1,12 +0,0 @@
+-"""Deprecated: the contents of workers.py moved to other modules.
+-
+-Its names now live in 35 modules.
+-
+-Old names are forwarded lazily, with a DeprecationWarning
+-(cellacdc/_compat.py). See CODEMAP.md.
+-"""
+-__cellacdc_compat__ = True
+-
+-from cellacdc import _compat
+-
+-__getattr__, __dir__ = _compat.moved_module(__name__)
+diff --git a/tests/source_scan.py b/tests/source_scan.py
+index 5478b0c0..c8a99532 100644
+--- a/tests/source_scan.py
++++ b/tests/source_scan.py
+@@ -9,8 +9,10 @@ Nothing here imports ``cellacdc``: files are read and parsed with ``ast``
+ Package layout (CODEMAP.md): one package per program part
+ (``PART_PACKAGES``), ``shared/`` for code that several parts use and
+ library modules (``load``, ``core``, ``myutils``, ...) at the top level.
+-Old import paths are compat shims, files whose module level sets
+-``__cellacdc_compat__ = True`` (``is_shim``).
++Old module paths have no files: the import hook of ``cellacdc/_compat.py``
++serves them (``old_modules``, table ``OLD_MODULES``). Modules whose module
++level sets ``__cellacdc_compat__ = True`` would be compat shims
++(``is_shim``); none are left.
+ """
+ import ast
+ import functools
+@@ -150,9 +152,11 @@ def is_shim(tree):
+ 
+ 
+ @functools.lru_cache(maxsize=None)
+-def shim_modules():
+-    """Dotted names of the compat shims (files at old import paths)."""
+-    return frozenset(
++def old_modules():
++    """Dotted names of the old modules served by the import hook of
++    ``cellacdc/_compat.py`` (``OLD_MODULES``: they have no file), plus any
++    compat shim file left at an old path."""
++    return frozenset(compat_moves().get('OLD_MODULES', {})) | frozenset(
+         module_name(rel) for rel in package_files() if is_shim_file(rel)
+     )
+ 
+@@ -166,7 +170,7 @@ def clear_caches():
+     """Release the cached texts and syntax trees (hundreds of MB for the
+     whole package): the test modules call it when they are done."""
+     for function in (read, parse, package_files, module_index,
+-                     shim_modules, module_bindings, compat_moves):
++                     old_modules, module_bindings, compat_moves):
+         function.cache_clear()
+ 
+ 
+diff --git a/tests/test_compat.py b/tests/test_compat.py
+index 0986babf..b42d7468 100644
+--- a/tests/test_compat.py
++++ b/tests/test_compat.py
+@@ -12,13 +12,15 @@ tests, see ``pyproject.toml``).
+ - Real tables (``cellacdc/_compat_moves.py``), in a fresh interpreter:
+   every entry resolves to the object of its home module and warns at the
+   caller, 1:1 moves are ``sys.modules`` aliases, the documented plugin API
+-  of ``cellacdc.myutils`` does not warn and ``import cellacdc`` loads no
+-  shim.
++  of ``cellacdc.myutils`` does not warn and ``import cellacdc`` imports no
++  old module (the old modules have no files: the import hook of
++  ``_compat.py`` serves them, ``OLD_MODULES``).
+ 
+ This is the one test file allowed to use old paths
+ (``tests/test_no_old_paths.py`` exempts it).
+ """
+ import importlib
++import importlib.util
+ import itertools
+ import json
+ import os
+@@ -60,6 +62,9 @@ COMPAT_SOURCE = REPO_ROOT / 'cellacdc' / '_compat.py'
+ 
+ COMPAT_MOVES = '''
+ MODULE_ALIASES = {'{pkg}.oldmod': '{pkg}.sub.newmod'}
++# 'real' has a file: the import hook must never shadow it
++OLD_MODULES = {'{pkg}.oldmod': 'alias', '{pkg}.split': 'split',
++               '{pkg}.real': 'split'}
+ NAME_MOVES = {
+     '{pkg}.split': {
+         'Thing': ('{pkg}.home', 'Thing'),
+@@ -79,9 +84,11 @@ FORWARDERS = {'{pkg}.fwd': '{pkg}.split'}
+ PATCH_FANOUT = {'{pkg}.split': ('{pkg}.copy', '{pkg}.home')}
+ '''
+ 
+-SHIM = '__cellacdc_compat__ = True\nfrom {pkg} import _compat\n'
++# The old modules oldmod and split have no files: the import hook installed
++# by the package serves them (as cellacdc/__init__.py does)
+ FILES = {
+-    '__init__.py': '',
++    '__init__.py': 'from {pkg} import _compat\n_compat.install()\n',
++    'real.py': 'REAL = True\n',
+     '_compat_moves.py': COMPAT_MOVES,
+     'home.py': (
+         'class Thing:\n    pass\n\nVALUE = 1\n\n\ndef api():\n'
+@@ -96,8 +103,6 @@ FILES = {
+         '__getattr__, __dir__ = _compat.package_compat(__name__)\n'
+     ),
+     'sub/newmod.py': 'X = 5\n',
+-    'oldmod.py': SHIM + '_compat.alias_module(__name__)\n',
+-    'split.py': SHIM + '__getattr__, __dir__ = _compat.moved_module(__name__)\n',
+     'fwd.py': (
+         'OWN = 1\nfrom {pkg} import _compat\n'
+         "__getattr__, __dir__ = _compat.forward_module(__name__, '{pkg}.split')\n"
+@@ -124,6 +129,10 @@ def pkg(tmp_path, monkeypatch):
+     for module in list(sys.modules):
+         if module == name or module.startswith(name + '.'):
+             del sys.modules[module]
++    sys.meta_path[:] = [
++        finder for finder in sys.meta_path
++        if getattr(finder, 'package', None) != name
++    ]
+ 
+ 
+ def module(name):
+@@ -155,6 +164,40 @@ def test_alias_module_is_the_module_at_the_new_path(pkg):
+     assert record[0].filename == __file__
+ 
+ 
++def hooks_of(pkg):
++    return [f for f in sys.meta_path if getattr(f, 'package', None) == pkg]
++
++
++def test_old_modules_without_files_come_from_the_import_hook(pkg):
++    module(pkg)
++    hooks = hooks_of(pkg)
++    assert len(hooks) == 1
++    assert type(hooks[0]) is module(f'{pkg}._compat').OldPathFinder
++    # Appended last: the regular finders are asked first
++    assert sys.meta_path.index(hooks[0]) > 0
++    for old in ('oldmod', 'split'):
++        spec = importlib.util.find_spec(f'{pkg}.{old}')
++        assert spec is not None and spec.origin is None
++        assert type(spec.loader).__name__ == '_OldPathLoader'
++    split = module(f'{pkg}.split')
++    assert split.__cellacdc_compat__ is True
++    assert 'moved to other modules' in split.__doc__
++
++
++def test_import_hook_never_shadows_files_nor_invents_modules(pkg):
++    real = module(f'{pkg}.real')
++    assert real.REAL is True and real.__file__.endswith('real.py')
++    with pytest.raises(ModuleNotFoundError):
++        module(f'{pkg}.not_an_old_module')
++
++
++def test_install_adds_the_import_hook_once(pkg):
++    compat = module(f'{pkg}._compat')
++    first = hooks_of(pkg)
++    assert compat.install() is first[0]
++    assert hooks_of(pkg) == first
++
++
+ def test_moved_names_resolve_lazily_through_their_home(pkg):
+     split = module(f'{pkg}.split')
+     with pytest.warns(moved_warning(pkg)) as record:
+@@ -443,8 +486,8 @@ warnings.filterwarnings('ignore', category=DeprecationWarning,
+                         message='(?!Cell-ACDC import path moved)')
+ import cellacdc
+ 
+-shims = set(json.loads(sys.argv[1]))
+-print(json.dumps(sorted(shims & set(sys.modules))))
++old_modules = set(json.loads(sys.argv[1]))
++print(json.dumps(sorted(old_modules & set(sys.modules))))
+ '''
+ 
+ 
+@@ -477,14 +520,12 @@ def test_every_old_name_resolves_to_its_home_with_a_warning(tmp_path):
+ 
+ 
+ @pytest.mark.slow  # starts a fresh interpreter
+-def test_import_cellacdc_loads_no_shim(tmp_path):
+-    moves = source_scan.compat_moves()
+-    shims = sorted(
+-        set(source_scan.shim_modules()) | set(moves['MODULE_ALIASES'])
+-    )
+-    assert 'cellacdc.apps' in shims and 'cellacdc.gui_navigation' in shims
++def test_import_cellacdc_imports_no_old_module(tmp_path):
++    old_modules = sorted(source_scan.old_modules())
++    assert 'cellacdc.apps' in old_modules
++    assert 'cellacdc.gui_navigation' in old_modules
+     _, loaded = run_python(
+-        tmp_path, CHECK_IMPORT_CELLACDC, json.dumps(shims)
++        tmp_path, CHECK_IMPORT_CELLACDC, json.dumps(old_modules)
+     )
+     assert loaded == []
+ 
+diff --git a/tests/test_no_old_paths.py b/tests/test_no_old_paths.py
+index f3e688ca..142c51d3 100644
+--- a/tests/test_no_old_paths.py
++++ b/tests/test_no_old_paths.py
+@@ -2,12 +2,13 @@
+ 
+ The package layout moved most modules (CODEMAP.md). The old import paths
+ keep working for external code (plugins, spotMAX, users' scripts) through
+-compat shims that emit a ``MovedWarning`` (``cellacdc/_compat.py``, tables
+-in the generated ``cellacdc/_compat_moves.py``), and pytest turns that
+-warning into an error (``filterwarnings`` in ``pyproject.toml``). This
+-static scan also finds old paths that the tests never execute:
++the import hook and lazy module attributes of ``cellacdc/_compat.py``,
++which emit a ``MovedWarning`` (tables in the generated
++``cellacdc/_compat_moves.py``), and pytest turns that warning into an
++error (``filterwarnings`` in ``pyproject.toml``). This static scan also
++finds old paths that the tests never execute:
+ 
+-- imports of a shim (``import cellacdc.apps``, ``from cellacdc import
++- imports of an old module (``import cellacdc.apps``, ``from cellacdc import
+   widgets``, ``from . import gui_navigation``) or of a name through a module
+   it moved out of (``from cellacdc.gui import guiWin``,
+   ``from cellacdc.myutils import listdir``);
+@@ -21,11 +22,11 @@ static scan also finds old paths that the tests never execute:
+   Cell-ACDC installed there and is skipped) and string annotations naming
+   an old module that the file does not import (``'widgets.myMessageBox'``).
+ 
+-Docstrings and comments are not scanned. Every file at an old path must
+-be a shim: ``__cellacdc_compat__ = True`` and no definitions.
++Docstrings and comments are not scanned. No file may exist at an old
++module path (``OLD_MODULES``, served by the import hook).
+ 
+-Exempt: ``cellacdc/_compat*.py``, the shims themselves and
+-``tests/test_compat.py``, which checks the old paths on purpose.
++Exempt: ``cellacdc/_compat*.py`` and ``tests/test_compat.py``, which
++checks the old paths on purpose.
+ """
+ import ast
+ import json
+@@ -69,7 +70,7 @@ class OldPaths:
+ 
+     def __init__(self):
+         moves = source_scan.compat_moves()
+-        self.shims = set(source_scan.shim_modules()) | set(
++        self.shims = set(source_scan.old_modules()) | set(
+             moves['MODULE_ALIASES']
+         )
+         name_moves = moves['NAME_MOVES']
+@@ -476,36 +477,37 @@ def test_notebooks_use_no_old_import_paths(old_paths):
+     assert not findings, format_findings(findings)
+ 
+ 
+-def test_files_at_old_paths_are_shims():
+-    """Every module at an old import path is a compat shim: the marker
+-    ``__cellacdc_compat__ = True`` and no definitions."""
++def test_old_module_paths_have_no_files():
++    """Old module paths are served by the import hook of
++    ``cellacdc/_compat.py`` (``OLD_MODULES``): no file may exist there (the
++    hook is asked only when no file is found, and git sees the 1:1 moves as
++    renames only without a file at the old path). ``OLD_MODULES`` covers
++    every old module of the tables, with the right kind."""
+     moves = source_scan.compat_moves()
+     index = source_scan.module_index()
+-    # Every old module was a top-level module of cellacdc (tables of new
+-    # modules list names moved by a later step of the refactor)
+-    old_modules = set(moves['MODULE_ALIASES']) | {
+-        module for module in moves['NAME_MOVES']
+-        if module.count('.') == 1 and (index.get(module) or '').endswith(
+-            '.py') and not source_scan.is_package_file(index[module])
+-    }
++    old_modules = moves['OLD_MODULES']
+     wrong = {}
+-    for module in sorted(old_modules | source_scan.shim_modules()):
+-        rel = index.get(module)
+-        if rel is None:
+-            wrong[module] = 'missing (old paths must keep working)'
+-            continue
+-        tree = source_scan.parse(rel)
+-        definitions = [
+-            node.name for node in source_scan.iter_module_level(tree.body)
+-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef,
+-                                 ast.ClassDef))
+-        ]
+-        if not source_scan.is_shim(tree):
+-            if module in KEPT_MODULES_WITH_MOVED_NAMES:
+-                continue
+-            wrong[module] = f'{rel} is no shim (no {source_scan.SHIM_MARKER})'
+-        elif definitions:
+-            wrong[module] = f'{rel} defines {definitions}'
++    for module, kind in sorted(old_modules.items()):
++        expected = 'alias' if module in moves['MODULE_ALIASES'] else 'split'
++        if module in index:
++            wrong[module] = f'{index[module]} exists at an old module path'
++        elif kind != expected:
++            wrong[module] = f'kind {kind!r}, expected {expected!r}'
++        elif kind == 'split' and module not in moves['NAME_MOVES']:
++            wrong[module] = 'split old module without a NAME_MOVES table'
++    for module in moves['MODULE_ALIASES']:
++        if module not in old_modules:
++            wrong[module] = 'MODULE_ALIASES entry missing in OLD_MODULES'
++    # Every old module was a top-level module of cellacdc (tables of new
++    # modules list names moved by a later step of the refactor): one
++    # without a file must be served by the hook
++    for module in moves['NAME_MOVES']:
++        if module.count('.') == 1 and module not in index \
++                and module not in old_modules:
++            wrong[module] = 'old module with neither a file nor OLD_MODULES'
++    for module in KEPT_MODULES_WITH_MOVED_NAMES:
++        if module not in index:
++            wrong[module] = 'module with moved names is missing'
+     # A file next to a same-name package is never imported
+     for rel in source_scan.package_files():
+         path = REPO_ROOT / rel
